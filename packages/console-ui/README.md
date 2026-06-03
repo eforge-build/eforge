@@ -9,7 +9,7 @@ The canonical route list lives in [`src/lib/navigation.ts`](src/lib/navigation.t
 | Path | Route ID | Description |
 |------|----------|-------------|
 | `/console/` | `now` | Now dashboard - active builds, queue, and live status |
-| `/console/runs/:detailId` | `runDetail` | Build detail view for a specific run |
+| `/console/builds/:detailId` | `buildDetail` | Build detail view for a session (legacy `/console/runs/:detailId` still resolves and canonicalizes to this path) |
 | `/console/plans` | `plans` | Planning Workspace - read-only browsing of flat session plans and grouped session plan sets |
 | `/console/system` | `system` | System - configuration, profiles, playbooks, extensions, and diagnostic surfaces |
 
@@ -37,12 +37,12 @@ daemon REST (Now failed-build recovery)
   → applySidecarRecovery / triggerRecoveryAnalysis / startResumeBuild
   → fetchQueueRecoveryAnalysis / applyQueueRecovery (advanced queue-cascade only)
       all from @eforge-build/client/browser
-  → QueueRecoveryDialog        (src/components/now/queue-recovery-dialog.tsx)
+  → QueueRecoveryDialog        (src/views/now-dashboard.tsx, hosted at page root)
   → API_ROUTES.queue refresh   (src/hooks/use-daemon-events.ts)
   → QUEUE_REFRESH_RECEIVED     (src/lib/project-state.ts)
 ```
 
-The Now dashboard Queue card shows failed rows with an explicit **Recover…** control. Rendering and expanding rows is fetch-free; recovery data loads only when the dialog opens.
+The Queue card is forward-only (running / pending / waiting stacks): a failed or skipped PRD already ran, so it is not shown there. Failures that need a decision surface in the **Needs attention** strip (`AttentionPanel`) at the top of the Now dashboard, each carrying an explicit **Recover…** control that opens the recovery dialog hosted at the dashboard root. Failures remain in Build history as the permanent record. Rendering the strip is fetch-free; recovery data loads only when the dialog opens.
 
 The recovery dialog leads with sidecar verdict recovery and compiled-build resume:
 

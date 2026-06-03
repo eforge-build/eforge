@@ -183,10 +183,27 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
 }
 
 /**
+ * Friendly display names for dynamically-added lifecycle lanes that never appear
+ * in `earlyOrchestration` (e.g. the gap-close stage, which is compiled on demand
+ * when PRD validation finds gaps). Keep in sync with `abbreviatePlanId` in
+ * `components/pipeline/pipeline-colors.ts`, which labels the same lanes in the
+ * run-detail pipeline.
+ */
+const LIFECYCLE_LANE_NAMES: Record<string, string> = {
+  'gap-close': 'Gap Close',
+};
+
+/**
  * Returns per-plan lanes for the mini swimlane, ordered the same way as
  * {@link selectMiniGanttRows}. Each lane carries the build-stage sequence
  * (when the run was compiled) and every agent that has worked the plan with
  * its accumulated token total (running agents flagged live).
+ *
+ * Plans declared in `earlyOrchestration` come first, in declared order.
+ * Dynamically-added lifecycle lanes (e.g. `gap-close`, compiled on demand and
+ * thus absent from the orchestration) are appended afterwards so the card
+ * swimlane stays consistent with the run-detail pipeline, which surfaces them
+ * via `planStatuses`.
  */
 export function selectPlanLanes(state: RunState): PlanLane[] {
   const orchPlans = state.earlyOrchestration?.plans ?? [];
@@ -219,10 +236,23 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
     };
   };
 
-  if (orchPlans.length > 0) {
-    return orchPlans.map((plan) => makeLane(plan.id, plan.name));
+  if (orchPlans.length === 0) {
+    return Array.from(selectAllPlanIds(state)).sort().map((id) => makeLane(id, id));
   }
-  return Array.from(selectAllPlanIds(state)).sort().map((id) => makeLane(id, id));
+
+  const lanes = orchPlans.map((plan) => makeLane(plan.id, plan.name));
+
+  // Append dynamically-added lanes (e.g. gap-close) that have a status or live
+  // agents but were never part of the compiled orchestration.
+  const known = new Set(orchPlans.map((plan) => plan.id));
+  const extras = new Set<string>();
+  for (const id of Object.keys(state.planStatuses)) if (!known.has(id)) extras.add(id);
+  for (const id of threadsByPlan.keys()) if (!known.has(id)) extras.add(id);
+  for (const id of Array.from(extras).sort()) {
+    lanes.push(makeLane(id, LIFECYCLE_LANE_NAMES[id] ?? id));
+  }
+
+  return lanes;
 }
 
 /**

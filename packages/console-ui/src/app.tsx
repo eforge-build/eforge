@@ -56,6 +56,19 @@ export function App() {
     };
   }, []);
 
+  // Canonicalize legacy `/console/runs/:id` build-detail URLs to `/console/builds/:id`
+  // on first load so bookmarks and shared links land on the current path.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const route = parseConsoleRoute(window.location.pathname);
+    if (typeof route === 'object' && route.id === 'buildDetail') {
+      const canonical = toConsolePath(route);
+      if (window.location.pathname.replace(/\/$/, '') !== canonical) {
+        window.history.replaceState(null, '', canonical);
+      }
+    }
+  }, []);
+
   const handleNavigate = useCallback((href: string) => {
     const route = parseConsoleRoute(href);
     setCurrentRoute(route);
@@ -89,7 +102,7 @@ export function App() {
       );
     }
 
-    if (typeof currentRoute === 'object' && currentRoute.id === 'runDetail') {
+    if (typeof currentRoute === 'object' && currentRoute.id === 'buildDetail') {
       const { detailId } = currentRoute;
       const isLive = activeSessionIds.includes(detailId);
       const liveRunState = isLive

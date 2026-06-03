@@ -92,9 +92,9 @@ afterEach(() => {
 
 /**
  * Text that is always present when NowDashboard is mounted.
- * QueueCard renders "Queue is empty" when queue is empty (our mock state).
+ * QueueCard renders "Nothing waiting to build" when the queue is empty (our mock state).
  */
-const NOW_MARKER = 'Queue is empty';
+const NOW_MARKER = 'Nothing waiting to build';
 
 /**
  * Text present while RunDetailView's lazy module is still resolving

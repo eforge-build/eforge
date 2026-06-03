@@ -1,48 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NowDashboard } from '@/views/now-dashboard';
-import { initialConsoleProjectState } from '@/lib/project-state';
-import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
-import type { QueueItem, RunInfo } from '@eforge-build/client/browser';
 import { createInitialRunState } from '@/lib/run-state';
-
-function makeRun(overrides: Partial<RunInfo> = {}): RunInfo {
-  return {
-    id: 'run-1',
-    sessionId: 'sess-1',
-    planSet: 'plans-set',
-    command: 'build',
-    status: 'running',
-    startedAt: new Date(Date.now() - 10_000).toISOString(),
-    cwd: '/project',
-    ...overrides,
-  };
-}
-
-function makeQueue(overrides: Partial<QueueItem> = {}): QueueItem {
-  return {
-    id: 'q-1',
-    title: 'My task',
-    status: 'pending',
-    ...overrides,
-  };
-}
-
-const emptyActiveSessions: UseActiveSessionStreamsResult = {
-  sessions: {},
-  activeSessionIds: [],
-  subscriptionCount: 0,
-};
-
-function connectedState(overrides: Partial<ConsoleProjectState> = {}): ConsoleProjectState {
-  return {
-    ...initialConsoleProjectState,
-    connectionStatus: 'connected',
-    lastSnapshotAt: Date.now(),
-    ...overrides,
-  };
-}
+import {
+  makeRun,
+  makeQueue,
+  emptyActiveSessions,
+  connectedState,
+} from '@/test-support/factories';
 
 let replaceStateSpy: ReturnType<typeof vi.spyOn>;
 
@@ -71,8 +37,39 @@ describe('NowDashboard', () => {
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 
     expect(screen.getByText('Queue')).toBeDefined();
-    expect(screen.getByText('Activity')).toBeDefined();
-    expect(screen.getByText('Run history')).toBeDefined();
+    // The activity log moved to System; the Now rail is glance widgets only.
+    expect(screen.getByText('Build health')).toBeDefined();
+    expect(screen.queryByText('Open activity log →')).toBeNull();
+    expect(screen.getByText('Build history')).toBeDefined();
+  });
+
+  it('surfaces failed PRDs in the Needs attention strip with a Recover action, not in the Queue card', () => {
+    const state = connectedState({
+      queue: [
+        makeQueue({ id: 'ok-1', title: 'Pending Build', status: 'pending' }),
+        makeQueue({
+          id: 'bad-1',
+          title: 'Broken Build',
+          status: 'failed',
+          recoveryVerdict: { verdict: 'retry', confidence: 'high' },
+        }),
+      ],
+    });
+
+    const { container } = render(
+      <NowDashboard projectState={state} activeSessions={emptyActiveSessions} />,
+    );
+
+    // Failure is elevated to the Needs attention strip with the Recover action.
+    expect(screen.getByText('Needs attention')).toBeDefined();
+    expect(screen.getByText('Broken Build')).toBeDefined();
+    expect(screen.getByRole('button', { name: /recover/i })).toBeDefined();
+
+    // Queue card stays forward-only: the pending item shows there, the failure
+    // does not (it lives only in the attention strip).
+    const queueCard = container.querySelector('#queue');
+    expect(queueCard?.textContent).toContain('Pending Build');
+    expect(queueCard?.textContent).not.toContain('Broken Build');
   });
 
   it('renders dependency-linked queue stacks', () => {
@@ -118,9 +115,9 @@ describe('NowDashboard', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('Inspect →'));
+    fireEvent.click(screen.getByTitle('Open build detail'));
 
-    expect(onNavigate).toHaveBeenCalledWith('/console/runs/sess-active');
+    expect(onNavigate).toHaveBeenCalledWith('/console/builds/sess-active');
   });
 
   it('shows a connection banner when the daemon stream is disconnected', () => {
@@ -137,20 +134,8 @@ describe('NowDashboard', () => {
     expect(banner.textContent).toContain('ECONNREFUSED');
   });
 
-  it('surfaces stack sync controls when stacking data exists', () => {
+  it('does not render the stack sync card on Now for a normal (complete) outcome', () => {
     const state = connectedState({
-      stackLayers: [
-        {
-          prdId: 'prd-1',
-          stackId: 'stack-a',
-          provider: 'git-spice',
-          branch: 'feat/x',
-          baseBranch: 'main',
-          status: 'building',
-          recordedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
       stackSync: {
         last: {
           id: 'sync-1',
@@ -166,8 +151,31 @@ describe('NowDashboard', () => {
 
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 
-    expect(screen.getByText('Stack sync')).toBeDefined();
-    expect(screen.getByRole('button', { name: /sync.*now/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: /dry run/i })).toBeDefined();
+    // Stack sync status + controls live on System now, not on the Now glance view.
+    expect(screen.queryByText('Stack sync')).toBeNull();
+    expect(screen.queryByRole('button', { name: /sync.*now/i })).toBeNull();
+  });
+
+  it('escalates a conflict stack sync into the Now alert strip with a retry control', () => {
+    const state = connectedState({
+      stackSync: {
+        last: {
+          id: 'sync-2',
+          trigger: 'after-build',
+          startedAt: new Date(Date.now() - 5000).toISOString(),
+          completedAt: new Date(Date.now() - 4000).toISOString(),
+          outcome: 'conflict',
+          dryRun: false,
+          reason: 'restack conflict on feat/x',
+          restackCandidates: ['feat/x'],
+        },
+      } as never,
+    });
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.getByText('Stack sync conflict')).toBeDefined();
+    expect(screen.getByText('restack conflict on feat/x')).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeDefined();
   });
 });

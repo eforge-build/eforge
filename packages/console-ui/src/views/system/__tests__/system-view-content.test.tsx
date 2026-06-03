@@ -143,6 +143,23 @@ describe('SystemViewContent', () => {
     expect(screen.getByText('/home/user/my-project')).toBeDefined();
   });
 
+  it('opens the activity drawer from the header control', () => {
+    render(
+      <SystemViewContent
+        state={makeState()}
+        projectState={makeProjectStateWithTelemetry()}
+        onRefresh={() => {}}
+      />,
+    );
+
+    // Drawer is closed until the header control is clicked.
+    expect(screen.queryByText('Activity')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /open activity log/i }));
+
+    expect(screen.getByText('Activity')).toBeDefined();
+  });
+
   it('renders live daemon telemetry when project state is provided', () => {
     render(
       <SystemViewContent

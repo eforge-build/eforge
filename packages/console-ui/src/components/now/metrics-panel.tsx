@@ -100,7 +100,10 @@ function ThroughputBars({ model }: { model: NowMetricsPanel }) {
 }
 
 export function MetricsPanel({ model }: MetricsPanelProps) {
-  if (!model.hasHealthData && model.runBars.length === 0) return null;
+  const hasHealthContent = model.hasHealthData || model.runBars.length > 0;
+  // No build history yet means nothing to show — the card stays hidden rather
+  // than rendering an empty shell.
+  if (!hasHealthContent) return null;
 
   return (
     <Card className="bg-card/50 border-border/60">

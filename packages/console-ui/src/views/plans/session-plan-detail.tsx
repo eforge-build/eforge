@@ -12,6 +12,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import { toConsolePath } from '@/lib/navigation';
 import { SessionPlanMarkdownPreview } from './session-plan-markdown-preview';
 import type { SessionPlanShowResponse } from '@eforge-build/client/browser';
 
@@ -64,7 +65,7 @@ function BuildLink({
   onNavigate?: (href: string) => void;
   className?: string;
 }) {
-  const href = `/console/runs/${session}`;
+  const href = toConsolePath({ id: 'buildDetail', detailId: session });
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (onNavigate) {
       event.preventDefault();

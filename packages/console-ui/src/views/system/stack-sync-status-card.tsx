@@ -51,7 +51,7 @@ export function StackSyncStatusCard({ sync }: StackSyncStatusCardProps) {
   const providerCommands = lastResponse?.providerCommands ?? sync?.lastProviderCommands ?? [];
 
   return (
-    <Card className="mb-4">
+    <Card>
       <CardHeader className="pb-2 pt-4 px-4">
         <CardTitle className="text-sm font-semibold">Stack sync</CardTitle>
       </CardHeader>

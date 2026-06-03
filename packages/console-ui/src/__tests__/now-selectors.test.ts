@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import type { RunInfo, QueueItem, EforgeEvent } from '@eforge-build/client/browser';
-import type { StackLayerWire } from '@eforge-build/client/browser';
 import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConsoleActivityEntry } from '@/lib/types';
 import { selectQueueSummary } from '@/lib/selectors/queue';
@@ -10,10 +9,11 @@ import {
   selectNowQueueStacks,
   selectNowAttentionItems,
   selectNowActiveBuildCards,
+  selectNowEnqueueCards,
   selectNowStatusSummary,
-  selectNowStackSummary,
   selectNowRecentActivity,
   selectNowRecentRuns,
+  selectAllNowBuildItems,
   selectNowStackSyncStatus,
   mergeSeverity,
   isLivenessStale,
@@ -58,20 +58,6 @@ function makeActiveDetail(
     runState: createInitialRunState(),
     lastEventAt: Date.now(),
     error: null,
-    ...overrides,
-  };
-}
-
-function makeStackLayer(overrides: Partial<StackLayerWire> = {}): StackLayerWire {
-  return {
-    prdId: 'prd-1',
-    stackId: 'stack-a',
-    provider: 'git-spice',
-    branch: 'feature/prd-1',
-    baseBranch: 'main',
-    status: 'building',
-    recordedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -476,6 +462,63 @@ describe('selectNowActiveBuildCards', () => {
     expect(cards[0].latestError).toBe('TypeScript compilation failed');
   });
 
+  it('excludes enqueue runs from build cards', () => {
+    const enqueue = makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue', status: 'running' });
+    const build = makeRun({ id: 'r2', sessionId: 's2', command: 'build', status: 'running' });
+    const cards = selectNowActiveBuildCards([enqueue, build], {}, {}, now);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].sessionId).toBe('s2');
+  });
+
+  it('does not treat a transient backend-transport agent:stop as a terminal error', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const stopEvent: EforgeEvent = {
+      type: 'agent:stop',
+      agentId: 'agent-1',
+      agent: 'implementor',
+      planId: 'plan-1',
+      error: 'Backend error: WebSocket error',
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: stopEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].latestError).toBeNull();
+    expect(cards[0].transientNotice).toBe('Transport interrupted — reconnecting');
+  });
+
+  it('surfaces a transient retry notice from agent:retry with transient-transport subtype', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const retryEvent: EforgeEvent = {
+      type: 'agent:retry',
+      agent: 'implementor',
+      attempt: 2,
+      maxAttempts: 3,
+      subtype: 'error_transient_transport',
+      label: 'implementor',
+      planId: 'plan-1',
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: retryEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].latestError).toBeNull();
+    expect(cards[0].transientNotice).toBe('Transport interrupted — retrying (attempt 2/3)');
+  });
+
+  it('clears the transient notice once the build progresses past the hiccup', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const events: EforgeEvent[] = [
+      { type: 'agent:stop', agentId: 'a1', agent: 'implementor', planId: 'plan-1', error: 'Backend error: WebSocket error' } as unknown as EforgeEvent,
+      { type: 'plan:build:progress', planId: 'plan-1', message: 'Back to work' } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].transientNotice).toBeNull();
+  });
+
   it('derives gap-close lifecycle after PRD validation discovers gaps', () => {
     const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
     const events: EforgeEvent[] = [
@@ -556,6 +599,64 @@ describe('selectNowActiveBuildCards', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Enqueue card tests
+// ---------------------------------------------------------------------------
+
+describe('selectNowEnqueueCards', () => {
+  const now = Date.now();
+
+  it('returns a card only for active enqueue runs', () => {
+    const enqueue = makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue', status: 'running' });
+    const build = makeRun({ id: 'r2', sessionId: 's2', command: 'build', status: 'running' });
+    const doneEnqueue = makeRun({ id: 'r3', sessionId: 's3', command: 'enqueue', status: 'completed' });
+    const cards = selectNowEnqueueCards([enqueue, build, doneEnqueue], {}, now);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].sessionId).toBe('s1');
+  });
+
+  it('derives the current step from the running enqueue agent', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue' })];
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'inbox/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'agent:start', agentId: 'a1', agent: 'formatter' } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowEnqueueCards(runs, { s1: detail }, now);
+    expect(cards[0].step).toBe('Formatting PRD');
+    expect(cards[0].title).toBe('inbox/my-prd.md');
+  });
+
+  it('prefers the enqueue:complete title once available', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue' })];
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'inbox/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'enqueue:complete', id: 'uuid', filePath: 'queue/x.md', title: 'My Shiny PRD', planSet: 'my-shiny-prd' } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const cards = selectNowEnqueueCards(runs, { s1: makeActiveDetail('s1', { runState: rs }) }, now);
+    expect(cards[0].title).toBe('My Shiny PRD');
+  });
+
+  it('surfaces an enqueue:failed error', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue' })];
+    const failEvent: EforgeEvent = {
+      type: 'enqueue:failed',
+      error: 'Formatter produced no output',
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: failEvent, eventId: '1' });
+    const cards = selectNowEnqueueCards(runs, { s1: makeActiveDetail('s1', { runState: rs }) }, now);
+    expect(cards[0].latestError).toBe('Formatter produced no output');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Status summary tests
 // ---------------------------------------------------------------------------
 
@@ -588,38 +689,6 @@ describe('selectNowStatusSummary', () => {
     const summary = selectNowStatusSummary(state, {}, now);
     expect(summary.schedulerRunningCount).toBeNull();
     expect(summary.activeBuildCount).toBe(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Stack summary tests
-// ---------------------------------------------------------------------------
-
-describe('selectNowStackSummary', () => {
-  it('returns null for empty stack layer array', () => {
-    expect(selectNowStackSummary([])).toBeNull();
-  });
-
-  it('returns status counts for populated layers', () => {
-    const layers = [
-      makeStackLayer({ prdId: 'prd-1', status: 'building' }),
-      makeStackLayer({ prdId: 'prd-2', status: 'built' }),
-      makeStackLayer({ prdId: 'prd-3', status: 'building' }),
-    ];
-    const summary = selectNowStackSummary(layers);
-    expect(summary).not.toBeNull();
-    expect(summary!.totalCount).toBe(3);
-    expect(summary!.byStatus['building']).toBe(2);
-    expect(summary!.byStatus['built']).toBe(1);
-  });
-
-  it('limits topRows to 6 and sets hiddenCount', () => {
-    const layers = Array.from({ length: 8 }, (_, i) =>
-      makeStackLayer({ prdId: `prd-${i}`, stackId: 'stack-a' }),
-    );
-    const summary = selectNowStackSummary(layers);
-    expect(summary!.topRows).toHaveLength(6);
-    expect(summary!.hiddenCount).toBe(2);
   });
 });
 
@@ -886,5 +955,109 @@ describe('queue skipped terminal status handling', () => {
     ];
 
     expect(selectNowQueueStacks(withTerminals)).toEqual(selectNowQueueStacks(activeOnly));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectAllNowBuildItems — per-session build rollup
+// ---------------------------------------------------------------------------
+
+describe('selectAllNowBuildItems', () => {
+  const T0 = Date.parse('2026-01-01T00:00:00.000Z');
+  const at = (min: number) => new Date(T0 + min * 60_000).toISOString();
+  const now = T0 + 60 * 60_000; // one hour after T0
+
+  it("rolls a session's phase runs into a single build", () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'completed', startedAt: at(0), completedAt: at(5) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'completed', startedAt: at(5), completedAt: at(20) }),
+    ];
+    const builds = selectAllNowBuildItems(runs, now);
+    expect(builds).toHaveLength(1);
+    expect(builds[0].sessionId).toBe('s1');
+    expect(builds[0].status).toBe('completed');
+    expect(builds[0].phase).toBeNull();
+  });
+
+  it('reports wall-clock duration from earliest start to latest completion', () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'completed', startedAt: at(0), completedAt: at(5) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'completed', startedAt: at(5), completedAt: at(20) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.startedAt).toBe(at(0));
+    expect(build.durationMs).toBe(20 * 60_000);
+  });
+
+  it('reports running status and the live phase', () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'completed', startedAt: at(0), completedAt: at(5) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'running', startedAt: at(5) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('running');
+    expect(build.phase).toBe('build');
+    expect(build.durationMs).toBe(now - T0);
+  });
+
+  it('reports failed status and the phase it broke in', () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'failed', startedAt: at(0), completedAt: at(3) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('failed');
+    expect(build.phase).toBe('compile');
+  });
+
+  it('excludes successful enqueue bookkeeping from the rollup', () => {
+    const runs = [
+      makeRun({ id: 'e', sessionId: 's1', command: 'enqueue', status: 'completed', startedAt: at(0), completedAt: at(1) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'running', startedAt: at(2) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('running');
+    expect(build.phase).toBe('build');
+  });
+
+  it('surfaces a failed enqueue as a failed build', () => {
+    const runs = [
+      makeRun({ id: 'e', sessionId: 's1', command: 'enqueue', status: 'failed', startedAt: at(0), completedAt: at(1) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('failed');
+    expect(build.phase).toBe('enqueue');
+  });
+
+  it('drops a session with only a successful enqueue (setup, not a build)', () => {
+    // The enqueue phase runs in its own session, so a successful enqueue-only
+    // session is pre-build setup — it must not show up as a phantom build row
+    // alongside the real compile/build session it spawns.
+    const runs = [
+      makeRun({ id: 'e', sessionId: 's1', command: 'enqueue', status: 'completed', startedAt: at(0), completedAt: at(1) }),
+    ];
+    expect(selectAllNowBuildItems(runs, now)).toEqual([]);
+  });
+
+  it('keeps the real build when its enqueue ran in a separate session', () => {
+    // Mirrors production: enqueue is one session; compile+build is another.
+    const runs = [
+      makeRun({ id: 'enq', sessionId: 'enq-sess', command: 'enqueue', status: 'completed', startedAt: at(0), completedAt: at(2) }),
+      makeRun({ id: 'cmp', sessionId: 'build-sess', command: 'compile', status: 'completed', startedAt: at(3), completedAt: at(8) }),
+      makeRun({ id: 'bld', sessionId: 'build-sess', command: 'build', status: 'completed', startedAt: at(8), completedAt: at(20) }),
+    ];
+    const builds = selectAllNowBuildItems(runs, now);
+    expect(builds).toHaveLength(1);
+    expect(builds[0].sessionId).toBe('build-sess');
+    expect(builds[0].status).toBe('completed');
+    expect(builds[0].phase).toBeNull();
+  });
+
+  it('returns one build per session, newest first', () => {
+    const runs = [
+      makeRun({ id: 'a', sessionId: 'old', command: 'build', status: 'completed', startedAt: at(0), completedAt: at(10) }),
+      makeRun({ id: 'b', sessionId: 'new', command: 'build', status: 'completed', startedAt: at(30), completedAt: at(40) }),
+    ];
+    const builds = selectAllNowBuildItems(runs, now);
+    expect(builds.map((b) => b.sessionId)).toEqual(['new', 'old']);
   });
 });

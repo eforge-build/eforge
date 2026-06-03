@@ -1,6 +1,7 @@
 import type { EforgeEvent, AgentRole } from './events.js';
 import type { ModelRef } from './config.js';
 import type { TObject } from '@sinclair/typebox';
+import { isTransientTransportError } from '@eforge-build/client';
 
 export type ToolPreset = 'coding' | 'read-only' | 'none';
 
@@ -283,36 +284,12 @@ export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
   return err instanceof AgentTerminalError && err.subtype === 'error_max_turns';
 }
 
-/**
- * Matches `Backend error: WebSocket closed <code>` messages from the backend SDK,
- * where <code> is any numeric WebSocket close code (e.g. 1000, 1012).
- * Requires the `backend error:` prefix so unrelated messages containing
- * a close code number are not misclassified as transient transport failures.
- */
-const BACKEND_WS_CLOSE_RE = /backend error:\s*websocket closed\s+\d+\b/i;
-
-/**
- * Matches the Claude Code SDK socket-close message, which takes the form:
- *   API Error: The socket connection was closed unexpectedly. ...
- *
- * Requires both the `API Error:` prefix and the exact phrase
- * `socket connection was closed unexpectedly`. This covers:
- *   - the raw SDK text, and
- *   - the eforge-wrapper text (`Claude Code returned an error result: API Error: ...`)
- *
- * The `.*` between the two anchors accommodates any minor SDK wording between
- * the prefix and the phrase. Deliberately does NOT match generic `API Error:`
- * messages (auth, model, budget, HTTP) that omit the socket-close phrase.
- */
-const CLAUDE_SDK_SOCKET_CLOSE_RE = /api error:.*socket connection was closed unexpectedly/i;
-
-/** True when an error message matches a known transient backend transport close. */
-export function isTransientTransportError(message: string): boolean {
-  if (BACKEND_WS_CLOSE_RE.test(message)) return true;
-  if (CLAUDE_SDK_SOCKET_CLOSE_RE.test(message)) return true;
-  const normalized = message.toLowerCase();
-  return normalized.includes('backend error: websocket error');
-}
+// Transient backend-transport classification is shared wire-level logic; it
+// lives in @eforge-build/client so the engine, daemon, and browser monitors
+// agree on which error strings are retryable transport hiccups. Re-exported
+// here so engine call sites (e.g. harnesses/pi.ts) keep importing it from the
+// harness module.
+export { isTransientTransportError };
 
 /** Classify a thrown value into a terminal subtype when the engine can do so safely. */
 export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype | undefined {

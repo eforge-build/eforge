@@ -424,7 +424,7 @@ describe('PlansView', () => {
     render(<PlansView onNavigate={onNavigate} />);
     const link = await screen.findByText('build-xyz');
     fireEvent.click(link);
-    expect(onNavigate).toHaveBeenCalledWith('/console/runs/build-xyz');
+    expect(onNavigate).toHaveBeenCalledWith('/console/builds/build-xyz');
   });
 
   it('shows no mutation controls for plan sets or children', async () => {
