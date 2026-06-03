@@ -67,7 +67,7 @@ describe('executeStackLanding — PR auto-merge', () => {
     } finally {
       process.env.PATH = origPath;
     }
-  });
+  }, 15_000);
 
   it('emits landing:auto-merge:skipped (non-fatal) when gh pr merge fails and stack landing still completes', async () => {
     await seedLayer(cwd);

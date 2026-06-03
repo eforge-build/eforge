@@ -43,7 +43,6 @@ import {
 } from '../../evaluation/index.js';
 import { countEvaluationIssueOutcomes, type EvaluationIssueOutcomeCounts } from '../../evaluation/issue-outcomes.js';
 import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evaluation/index.js';
-
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
 import {
