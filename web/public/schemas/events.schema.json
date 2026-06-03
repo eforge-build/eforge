@@ -3608,6 +3608,95 @@
                   },
                   "fix": {
                     "type": "string"
+                  },
+                  "retryGuidance": {
+                    "type": "string"
+                  },
+                  "failureKind": {
+                    "type": "string"
+                  },
+                  "repairClass": {
+                    "anyOf": [
+                      {
+                        "const": "narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "structural",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      },
+                      {
+                        "const": "followup",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "$id": "T0",
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "T0"
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "$ref": "T0"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "validationProviderName": {
+                    "type": "string"
+                  },
+                  "runtimeFailureKind": {
+                    "anyOf": [
+                      {
+                        "const": "result",
+                        "type": "string"
+                      },
+                      {
+                        "const": "command",
+                        "type": "string"
+                      },
+                      {
+                        "const": "timeout",
+                        "type": "string"
+                      },
+                      {
+                        "const": "exception",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unexpected-return",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -3769,6 +3858,95 @@
                   },
                   "fix": {
                     "type": "string"
+                  },
+                  "retryGuidance": {
+                    "type": "string"
+                  },
+                  "failureKind": {
+                    "type": "string"
+                  },
+                  "repairClass": {
+                    "anyOf": [
+                      {
+                        "const": "narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "structural",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      },
+                      {
+                        "const": "followup",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "$id": "T0",
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "T0"
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "$ref": "T0"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "validationProviderName": {
+                    "type": "string"
+                  },
+                  "runtimeFailureKind": {
+                    "anyOf": [
+                      {
+                        "const": "result",
+                        "type": "string"
+                      },
+                      {
+                        "const": "command",
+                        "type": "string"
+                      },
+                      {
+                        "const": "timeout",
+                        "type": "string"
+                      },
+                      {
+                        "const": "exception",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unexpected-return",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -3930,6 +4108,95 @@
                   },
                   "fix": {
                     "type": "string"
+                  },
+                  "retryGuidance": {
+                    "type": "string"
+                  },
+                  "failureKind": {
+                    "type": "string"
+                  },
+                  "repairClass": {
+                    "anyOf": [
+                      {
+                        "const": "narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "structural",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      },
+                      {
+                        "const": "followup",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "$id": "T0",
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "T0"
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "$ref": "T0"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "validationProviderName": {
+                    "type": "string"
+                  },
+                  "runtimeFailureKind": {
+                    "anyOf": [
+                      {
+                        "const": "result",
+                        "type": "string"
+                      },
+                      {
+                        "const": "command",
+                        "type": "string"
+                      },
+                      {
+                        "const": "timeout",
+                        "type": "string"
+                      },
+                      {
+                        "const": "exception",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unexpected-return",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -4242,6 +4509,95 @@
                   },
                   "fix": {
                     "type": "string"
+                  },
+                  "retryGuidance": {
+                    "type": "string"
+                  },
+                  "failureKind": {
+                    "type": "string"
+                  },
+                  "repairClass": {
+                    "anyOf": [
+                      {
+                        "const": "narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "structural",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      },
+                      {
+                        "const": "followup",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "$id": "T0",
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "T0"
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "$ref": "T0"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "validationProviderName": {
+                    "type": "string"
+                  },
+                  "runtimeFailureKind": {
+                    "anyOf": [
+                      {
+                        "const": "result",
+                        "type": "string"
+                      },
+                      {
+                        "const": "command",
+                        "type": "string"
+                      },
+                      {
+                        "const": "timeout",
+                        "type": "string"
+                      },
+                      {
+                        "const": "exception",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unexpected-return",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -4369,6 +4725,95 @@
                   },
                   "fix": {
                     "type": "string"
+                  },
+                  "retryGuidance": {
+                    "type": "string"
+                  },
+                  "failureKind": {
+                    "type": "string"
+                  },
+                  "repairClass": {
+                    "anyOf": [
+                      {
+                        "const": "narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "structural",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      },
+                      {
+                        "const": "followup",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "$id": "T0",
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "T0"
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "$ref": "T0"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "validationProviderName": {
+                    "type": "string"
+                  },
+                  "runtimeFailureKind": {
+                    "anyOf": [
+                      {
+                        "const": "result",
+                        "type": "string"
+                      },
+                      {
+                        "const": "command",
+                        "type": "string"
+                      },
+                      {
+                        "const": "timeout",
+                        "type": "string"
+                      },
+                      {
+                        "const": "exception",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unexpected-return",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -8519,6 +8964,95 @@
                           },
                           "fix": {
                             "type": "string"
+                          },
+                          "retryGuidance": {
+                            "type": "string"
+                          },
+                          "failureKind": {
+                            "type": "string"
+                          },
+                          "repairClass": {
+                            "anyOf": [
+                              {
+                                "const": "narrow",
+                                "type": "string"
+                              },
+                              {
+                                "const": "structural",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual",
+                                "type": "string"
+                              },
+                              {
+                                "const": "followup",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "$id": "T0",
+                                "anyOf": [
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "$ref": "T0"
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "patternProperties": {
+                                      "^(.*)$": {
+                                        "$ref": "T0"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "validationProviderName": {
+                            "type": "string"
+                          },
+                          "runtimeFailureKind": {
+                            "anyOf": [
+                              {
+                                "const": "result",
+                                "type": "string"
+                              },
+                              {
+                                "const": "command",
+                                "type": "string"
+                              },
+                              {
+                                "const": "timeout",
+                                "type": "string"
+                              },
+                              {
+                                "const": "exception",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unexpected-return",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }

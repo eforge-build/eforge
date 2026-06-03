@@ -125,7 +125,7 @@ describe('validate build stage', () => {
   });
 
   it('recoverable provider with no recovery budget emits exhausted progress + plan:build:failed', async () => {
-    const ctx = makeCtx([makeProvider({ validate: () => 'lint errors found' })]);
+    const ctx = makeCtx([makeProvider({ validate: () => ({ status: 'failed' as const, message: 'lint errors found' }) })]);
     const { events } = await runStage(ctx);
 
     const types = events.map((e) => e.type);
@@ -199,7 +199,7 @@ describe('validate build stage', () => {
   it('two providers: first passes, second fails — fails on second', async () => {
     const ctx = makeCtx([
       makeProvider({ name: 'p1', validate: () => null }),
-      makeProvider({ name: 'p2', validate: () => 'type errors' }),
+      makeProvider({ name: 'p2', validate: () => ({ status: 'failed' as const, message: 'type errors' }) }),
     ]);
     const { events } = await runStage(ctx);
 

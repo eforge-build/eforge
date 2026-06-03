@@ -83,13 +83,13 @@ describe('runValidationProviderRecoveryStage', () => {
     await expect(collect(ctx)).resolves.toEqual([]);
   });
 
-  it('legacy string failure invokes review-fix and evaluate before terminal failure', async () => {
+  it('non-empty string failure is a hard unexpected-return failure', async () => {
     const log: string[] = [];
     const ctx = makeCtx([makeProvider({ validate: () => 'lint error' })]);
     const events = await collect(ctx, makeCallbacks(log));
 
-    expect(log).toEqual(['review-fix', 'evaluate:standard']);
-    expect(terminalFailedIndex(events)).toBeGreaterThan(events.findIndex((event) => event.type === 'plan:build:progress' && event.message === 'evaluate'));
+    expect(log).toEqual([]);
+    expect(events.some((event) => event.type === 'plan:build:failed')).toBe(true);
     expect(ctx.buildFailed).toBe(true);
   });
 
@@ -113,7 +113,7 @@ describe('runValidationProviderRecoveryStage', () => {
 
   it('sets reviewIssues and emits recovery progress before running callbacks', async () => {
     let calls = 0;
-    const ctx = makeCtx([makeProvider({ name: 'lint/provider', validate: () => calls++ === 0 ? 'lint error' : null })]);
+    const ctx = makeCtx([makeProvider({ name: 'lint/provider', validate: () => calls++ === 0 ? { status: 'failed' as const, message: 'lint error' } : null })]);
     ctx.review.evaluatorStrictness = 'strict';
     const callbacks = {
       runReviewFix: async function* (): AsyncGenerator<EforgeEvent> {
@@ -148,7 +148,7 @@ describe('runValidationProviderRecoveryStage', () => {
     let bCalls = 0;
     const ctx = makeCtx([
       makeProvider({ name: 'A', validate: () => { invocations.push('A'); return null; } }),
-      makeProvider({ name: 'B', validate: () => { invocations.push('B'); return bCalls++ === 0 ? 'B failed' : null; } }),
+      makeProvider({ name: 'B', validate: () => { invocations.push('B'); return bCalls++ === 0 ? { status: 'failed' as const, message: 'B failed' } : null; } }),
     ]);
 
     await collect(ctx);
@@ -159,7 +159,7 @@ describe('runValidationProviderRecoveryStage', () => {
 
   it('keeps ctx.buildFailed unset when providers pass after recovery', async () => {
     let calls = 0;
-    const ctx = makeCtx([makeProvider({ validate: () => calls++ === 0 ? 'first failure' : null })]);
+    const ctx = makeCtx([makeProvider({ validate: () => calls++ === 0 ? { status: 'failed' as const, message: 'first failure' } : null })]);
 
     await collect(ctx);
 
@@ -169,7 +169,7 @@ describe('runValidationProviderRecoveryStage', () => {
   it('runs exactly two recovery rounds when maxRounds is 2 and providers then pass', async () => {
     const log: string[] = [];
     let calls = 0;
-    const ctx = makeCtx([makeProvider({ validate: () => calls++ < 2 ? 'temporary failure' : null })], 2);
+    const ctx = makeCtx([makeProvider({ validate: () => calls++ < 2 ? { status: 'failed' as const, message: 'temporary failure' } : null })], 2);
 
     await collect(ctx, makeCallbacks(log));
 
@@ -181,7 +181,7 @@ describe('runValidationProviderRecoveryStage', () => {
   it('restores injected validation-provider issues after successful recovery when unchanged', async () => {
     let calls = 0;
     const originalIssues: ReviewIssue[] = [{ severity: 'warning', category: 'review', file: 'src/existing.ts', description: 'pre-existing' }];
-    const ctx = makeCtx([makeProvider({ validate: () => calls++ === 0 ? 'first failure' : null })]);
+    const ctx = makeCtx([makeProvider({ validate: () => calls++ === 0 ? { status: 'failed' as const, message: 'first failure' } : null })]);
     ctx.reviewIssues = originalIssues;
 
     await collect(ctx);
@@ -191,7 +191,7 @@ describe('runValidationProviderRecoveryStage', () => {
   });
 
   it('emits plan:build:failed and sets ctx.buildFailed when recoverable failures exhaust the budget', async () => {
-    const ctx = makeCtx([makeProvider({ validate: () => 'persistent failure' })], 1);
+    const ctx = makeCtx([makeProvider({ validate: () => ({ status: 'failed' as const, message: 'persistent failure' }) })], 1);
     const events = await collect(ctx);
 
     expect(events.some((event) => event.type === 'plan:build:progress' && event.message.includes('recovery exhausted'))).toBe(true);
@@ -235,7 +235,7 @@ describe('runValidationProviderRecoveryStage', () => {
   });
 
   it('returns immediately when callbacks set ctx.buildFailed', async () => {
-    const ctx = makeCtx([makeProvider({ validate: () => 'recoverable' })], 2);
+    const ctx = makeCtx([makeProvider({ validate: () => ({ status: 'failed' as const, message: 'recoverable' }) })], 2);
     const callbacks = {
       runReviewFix: async function* (): AsyncGenerator<EforgeEvent> {
         ctx.buildFailed = true;
@@ -254,7 +254,7 @@ describe('runValidationProviderRecoveryStage', () => {
   it('returns immediately when evaluate sets ctx.buildFailed', async () => {
     const log: string[] = [];
     let validateCalls = 0;
-    const ctx = makeCtx([makeProvider({ validate: () => { validateCalls += 1; return 'recoverable'; } })], 2);
+    const ctx = makeCtx([makeProvider({ validate: () => { validateCalls += 1; return { status: 'failed' as const, message: 'recoverable' }; } })], 2);
     const callbacks = {
       runReviewFix: async function* (): AsyncGenerator<EforgeEvent> {
         log.push('review-fix');
@@ -280,9 +280,19 @@ describe('validationFailureToReviewIssues', () => {
     const outcome: NormalizedValidationResult = {
       status: 'failed',
       message: 'annotated failure',
-      failureKind: 'result',
+      runtimeFailureKind: 'result',
       annotations: [
-        { severity: 'error', message: 'broken', file: 'src/a.ts', line: 3 },
+        {
+          severity: 'error',
+          message: 'broken',
+          file: 'src/a.ts',
+          line: 3,
+          fix: 'Fix the broken validator target',
+          retryGuidance: 'Retry narrowly in src/a.ts',
+          failureKind: 'domain-signature',
+          repairClass: 'structural',
+          metadata: { rule: 'guardrail', count: 1 },
+        },
         { severity: 'warning', message: 'risky', file: 'src/b.ts', line: 4 },
         { severity: 'info', message: 'consider', file: 'src/c.ts', line: 5 },
       ],
@@ -294,6 +304,15 @@ describe('validationFailureToReviewIssues', () => {
     expect(issues.map((issue) => issue.severity)).toEqual(['critical', 'warning', 'suggestion']);
     expect(issues.map((issue) => issue.file)).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts']);
     expect(issues.map((issue) => issue.line)).toEqual([3, 4, 5]);
+    expect(issues[0]).toMatchObject({
+      fix: 'Fix the broken validator target',
+      retryGuidance: 'Retry narrowly in src/a.ts',
+      failureKind: 'domain-signature',
+      repairClass: 'structural',
+      metadata: { rule: 'guardrail', count: 1 },
+      validationProviderName: 'ann-provider',
+      runtimeFailureKind: 'result',
+    });
   });
 
   it('synthesizes one critical file-less issue with provider details', () => {
@@ -304,7 +323,7 @@ describe('validationFailureToReviewIssues', () => {
       details: 'stderr output',
       command: 'pnpm lint',
       exitCode: 1,
-      failureKind: 'command',
+      runtimeFailureKind: 'command',
     };
 
     const issues: ReviewIssue[] = validationFailureToReviewIssues(provider, outcome);
@@ -329,7 +348,7 @@ describe('validationFailureToReviewIssues', () => {
       message: 'annotated failure',
       command: 'pnpm check',
       exitCode: 2,
-      failureKind: 'result',
+      runtimeFailureKind: 'result',
       annotations: [{ severity: 'warning', message: 'risky', details: 'more context' }],
     };
 

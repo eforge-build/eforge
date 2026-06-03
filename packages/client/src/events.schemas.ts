@@ -10,8 +10,8 @@
  */
 
 import { Type, type Static } from '@sinclair/typebox';
-import { safeParseWithSchema, parseWithSchema } from './schema-utils.js';
-import type { SafeParseResult } from './schema-utils.js';
+import { formatSchemaError, safeParseWithSchema } from './schema-utils.js';
+import type { SafeParseResult, SchemaError } from './schema-utils.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -350,17 +350,41 @@ const ClarificationQuestionSchema = Type.Object({
   default: Type.Optional(Type.String()),
 });
 
+const ValidationRepairClassSchema = Type.Union([
+  Type.Literal('narrow'),
+  Type.Literal('structural'),
+  Type.Literal('manual'),
+  Type.Literal('followup'),
+]);
+const ValidationRuntimeFailureKindSchema = Type.Union([
+  Type.Literal('result'),
+  Type.Literal('command'),
+  Type.Literal('timeout'),
+  Type.Literal('exception'),
+  Type.Literal('unexpected-return'),
+]);
+const MAX_REVIEW_ISSUE_METADATA_DEPTH = 8;
+const MAX_REVIEW_ISSUE_METADATA_NODES = 200;
+const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;
+const JsonSafeMetadataSchema = Type.Recursive((Self) => Type.Union([
+  Type.Null(),
+  Type.Boolean(),
+  Type.Number(),
+  Type.String({ maxLength: MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH }),
+  Type.Array(Self),
+  Type.Record(Type.String(), Self),
+]));
+
 const ReviewIssueSchema = Type.Object({
-  severity: Type.Union([
-    Type.Literal('critical'),
-    Type.Literal('warning'),
-    Type.Literal('suggestion'),
-  ]),
+  severity: Type.Union([Type.Literal('critical'), Type.Literal('warning'), Type.Literal('suggestion')]),
   category: Type.String(),
   file: Type.String(),
   line: Type.Optional(Type.Number()),
   description: Type.String(),
-  fix: Type.Optional(Type.String()),
+  fix: Type.Optional(Type.String()), retryGuidance: Type.Optional(Type.String()),
+  failureKind: Type.Optional(Type.String()), repairClass: Type.Optional(ValidationRepairClassSchema),
+  metadata: Type.Optional(Type.Record(Type.String(), JsonSafeMetadataSchema)), validationProviderName: Type.Optional(Type.String()),
+  runtimeFailureKind: Type.Optional(ValidationRuntimeFailureKindSchema),
 });
 
 const TestIssueSchema = Type.Object({
@@ -2316,6 +2340,7 @@ export type AcceptanceCriteriaConflict = Static<typeof AcceptanceCriteriaConflic
 export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
+export type ValidationRepairClass = Static<typeof ValidationRepairClassSchema>;
 export type ReviewIssue = Static<typeof ReviewIssueSchema>;
 export type TestIssue = Static<typeof TestIssueSchema>;
 export type PlanFile = Static<typeof PlanFileSchema>;
@@ -2636,11 +2661,92 @@ export type SessionStreamSnapshot = Static<typeof SessionStreamSnapshotSchema>;
 // Parse helpers
 // ---------------------------------------------------------------------------
 
+const REVIEW_ISSUE_EVENT_TYPES = new Set([
+  'planning:review:complete',
+  'planning:architecture:review:complete',
+  'planning:cohesion:complete',
+  'plan:build:review:complete',
+  'plan:build:review:parallel:perspective:complete',
+]);
+
+function validateReviewIssueMetadataBoundsForEvent(value: unknown): SchemaError | undefined {
+  if (!isPlainObject(value)) return undefined;
+
+  const issueArrays: Array<{ issues: unknown[]; path: string }> = [];
+  if (typeof value.type === 'string' && REVIEW_ISSUE_EVENT_TYPES.has(value.type) && Array.isArray(value.issues)) {
+    issueArrays.push({ issues: value.issues, path: '/issues' });
+  }
+
+  for (const { issues, path } of issueArrays) {
+    for (let issueIndex = 0; issueIndex < issues.length; issueIndex++) {
+      const issue = issues[issueIndex];
+      if (!isPlainObject(issue) || !Object.prototype.hasOwnProperty.call(issue, 'metadata')) continue;
+      const metadataResult = validateReviewIssueMetadataBounds(issue.metadata, `${path}/${issueIndex}/metadata`);
+      if (metadataResult) return metadataResult;
+    }
+  }
+
+  return undefined;
+}
+
+function validateReviewIssueMetadataBounds(metadata: unknown, path: string): SchemaError | undefined {
+  const state = { nodes: 0 };
+  const error = visitReviewIssueMetadata(metadata, path, 0, state);
+  return error ? schemaError(path, error) : undefined;
+}
+
+function visitReviewIssueMetadata(value: unknown, path: string, depth: number, state: { nodes: number }): string | undefined {
+  state.nodes += 1;
+  if (state.nodes > MAX_REVIEW_ISSUE_METADATA_NODES) {
+    return `metadata exceeds maximum node count of ${MAX_REVIEW_ISSUE_METADATA_NODES}`;
+  }
+  if (depth > MAX_REVIEW_ISSUE_METADATA_DEPTH) {
+    return `metadata exceeds maximum depth of ${MAX_REVIEW_ISSUE_METADATA_DEPTH} at ${path}`;
+  }
+  if (value === null || typeof value === 'boolean') return undefined;
+  if (typeof value === 'string') {
+    return value.length > MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH
+      ? `metadata string at ${path} exceeds ${MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH} characters`
+      : undefined;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? undefined : `metadata number at ${path} must be finite`;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const error = visitReviewIssueMetadata(value[i], `${path}/${i}`, depth + 1, state);
+      if (error) return error;
+    }
+    return undefined;
+  }
+  if (isPlainObject(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      const error = visitReviewIssueMetadata(child, `${path}/${key}`, depth + 1, state);
+      if (error) return error;
+    }
+    return undefined;
+  }
+  return `metadata value at ${path} is not JSON-safe (${typeof value})`;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function schemaError(path: string, message: string): SchemaError {
+  return { message: `${path}: ${message}`, errors: [{ path, message }] };
+}
+
 /**
  * Safely parses an unknown value as an `EforgeEvent`.
  * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
  */
 export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEvent> {
+  const metadataBoundsError = validateReviewIssueMetadataBoundsForEvent(value);
+  if (metadataBoundsError) return { success: false, error: metadataBoundsError };
+
   const result = safeParseWithSchema(EforgeEventSchema, value);
   if (!result.success) return result;
 
@@ -2726,7 +2832,9 @@ export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEven
  * Parses an unknown value as an `EforgeEvent`, throwing on failure.
  */
 export function parseEforgeEvent(value: unknown): EforgeEvent {
-  return parseWithSchema(EforgeEventSchema, value);
+  const result = safeParseEforgeEvent(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 /**

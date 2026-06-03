@@ -38,6 +38,26 @@ const severitySchema = Type.Union(
   { description: 'Issue severity: critical = must fix before merge, warning = should fix, suggestion = nice to have' },
 );
 
+const validationRepairClassSchema = Type.Union(
+  [Type.Literal('narrow'), Type.Literal('structural'), Type.Literal('manual'), Type.Literal('followup')],
+  { description: 'Validation-provider repair class: narrow, structural, manual, or followup' },
+);
+
+const validationRuntimeFailureKindSchema = Type.Union(
+  [Type.Literal('result'), Type.Literal('command'), Type.Literal('timeout'), Type.Literal('exception'), Type.Literal('unexpected-return')],
+  { description: 'Runtime validation-provider failure classification, separate from provider-authored failureKind' },
+);
+
+const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;
+const jsonSafeMetadataSchema = Type.Recursive((Self) => Type.Union([
+  Type.Null(),
+  Type.Boolean(),
+  Type.Number(),
+  Type.String({ maxLength: MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH }),
+  Type.Array(Self),
+  Type.Record(Type.String(), Self),
+]));
+
 // ---------------------------------------------------------------------------
 // Per-perspective category enums
 // ---------------------------------------------------------------------------
@@ -132,6 +152,12 @@ export const reviewIssueSchema = Type.Object({
   line: Type.Optional(Type.Integer({ minimum: 1, description: 'Line number in the file (optional)' })),
   description: Type.String({ minLength: 1, description: 'Description of the issue' }),
   fix: Type.Optional(Type.String({ description: 'Description of the fix applied, if any' })),
+  retryGuidance: Type.Optional(Type.String({ description: 'Validation-provider guidance for a safe retry, if present' })),
+  failureKind: Type.Optional(Type.String({ description: 'Provider-authored validation failure kind (domain signature), not a runtime classification' })),
+  repairClass: Type.Optional(validationRepairClassSchema),
+  metadata: Type.Optional(Type.Record(Type.String(), jsonSafeMetadataSchema, { description: 'Bounded JSON-safe validation-provider metadata' })),
+  validationProviderName: Type.Optional(Type.String({ description: 'Name of the validation provider that produced this issue' })),
+  runtimeFailureKind: Type.Optional(validationRuntimeFailureKindSchema),
 });
 
 // ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ export interface ValidationProviderRecoveryCallbacks {
 }
 
 export function isRecoverableValidationFailure(outcome: NormalizedValidationResult): boolean {
-  return outcome.status === 'failed' && (outcome.failureKind === 'result' || outcome.failureKind === 'command');
+  return outcome.status === 'failed' && (outcome.runtimeFailureKind === 'result' || outcome.runtimeFailureKind === 'command');
 }
 
 export function isHardValidationFailure(outcome: NormalizedValidationResult): boolean {
@@ -136,6 +136,13 @@ function annotationToReviewIssue(
     file: annotation.file ?? pseudoFileForProvider(provider.name),
     ...(annotation.line !== undefined ? { line: annotation.line } : {}),
     description: descriptionParts.join('\n'),
+    ...(annotation.fix !== undefined ? { fix: annotation.fix } : {}),
+    ...(annotation.retryGuidance !== undefined ? { retryGuidance: annotation.retryGuidance } : {}),
+    ...(annotation.failureKind !== undefined ? { failureKind: annotation.failureKind } : {}),
+    ...(annotation.repairClass !== undefined ? { repairClass: annotation.repairClass } : {}),
+    ...(annotation.metadata !== undefined ? { metadata: annotation.metadata } : {}),
+    validationProviderName: provider.name,
+    ...(outcome.runtimeFailureKind !== undefined ? { runtimeFailureKind: outcome.runtimeFailureKind } : {}),
   };
 }
 
@@ -148,6 +155,8 @@ function synthesizeReviewIssue(
     category: 'validation-provider',
     file: pseudoFileForProvider(provider.name),
     description: describeValidationFailure(provider, outcome),
+    validationProviderName: provider.name,
+    ...(outcome.runtimeFailureKind !== undefined ? { runtimeFailureKind: outcome.runtimeFailureKind } : {}),
   };
 }
 

@@ -19,9 +19,9 @@
  *
  * Failure semantics:
  *
- * - A provider is a **fail-closed quality gate**. Normal failures (non-null string
- *   return, `status: 'failed'` result, or command-form non-zero exit) are recoverable
- *   first using the plan's review-fixer/evaluator path and `review.maxRounds` budget.
+ * - A provider is a **fail-closed quality gate**. Normal failures (`status: 'failed'`
+ *   result or command-form non-zero exit) are recoverable first using the plan's
+ *   review-fixer/evaluator path and `review.maxRounds` budget.
  *   After each recovery attempt, eforge reruns all validation providers from the first
  *   provider. Unresolved recoverable failures still fail the current plan and emit
  *   `plan:build:failed`.
@@ -62,7 +62,7 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
   eforge.registerValidationProvider({
     name: 'type-check-gate',
     description: 'Runs TypeScript type checking via pnpm type-check and fails the plan on type errors.',
-    validate: async (planOutputDir, ctx): Promise<ValidationProviderResult | string | null> => {
+    validate: async (planOutputDir, ctx): Promise<ValidationProviderResult | null> => {
       ctx?.logger.info('Running type-check-gate', { planId: ctx.planId });
 
       const result = await ctx!.exec.run('pnpm', ['type-check'], {
@@ -75,6 +75,16 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
           status: 'failed',
           message: 'TypeScript type checking failed',
           details: errorOutput,
+          annotations: [{
+            severity: 'error',
+            message: 'TypeScript diagnostics must be resolved before review can continue.',
+            details: errorOutput,
+            fix: 'Run pnpm type-check locally and fix the reported TypeScript errors.',
+            retryGuidance: 'Make the smallest type-safe change that resolves the diagnostic; do not broaden public API types unless the error requires it.',
+            failureKind: 'typescript-diagnostics',
+            repairClass: 'narrow',
+            metadata: { command: 'pnpm type-check' },
+          }],
         };
       }
 
