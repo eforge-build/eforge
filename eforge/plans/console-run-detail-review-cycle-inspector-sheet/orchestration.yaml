@@ -1,0 +1,80 @@
+name: console-run-detail-review-cycle-inspector-sheet
+description: "Add a review-cycle stage-level inspector sheet to the console run
+  detail: a clickable review-cycle stage pill opens a right-side SheetPanel
+  summarizing rounds, reviewer issues, review-fixer activity, evaluator
+  verdicts, and cycle termination rationale, driven by a new normalized selector
+  over raw stored events, decisions, and agent threads."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-review-cycle-inspector
+    name: Console Run Detail Review-Cycle Inspector Sheet
+    depends_on: []
+    branch: console-run-detail-review-cycle-inspector-sheet/plan-01-review-cycle-inspector
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Breadth of ~30 acceptance criteria plus a normalization selector with
+          explicit-round grouping and a multi-stage inference fallback
+          (respawn-boundary then single synthetic round), across one new
+          selector, one new sheet component, and narrow edits to three existing
+          files.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - code
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a cohesive, focused console-ui feature with well-known
+    component boundaries (stage-overview, thread-pipeline, plan-row) plus one
+    new selector/model file and one new sheet component, along with focused
+    selector and component tests. A single planner session can enumerate all the
+    plans, file changes, and the sequential dependency chain (selector model ->
+    sheet component -> wiring through existing components -> tests), so
+    excursion is the right scope - not expedition (no 4+ independent subsystems
+    requiring delegated module planning) and not errand (it crosses multiple
+    files, introduces new files, and has substantial acceptance criteria). The
+    PRD itself recommends Excursion. A leading plan-review-cycle compile gate is
+    included because the work crosses component state, selectors, and tests with
+    a non-trivial round-grouping/fallback model where plan quality matters and
+    scope creep (e.g. accidentally building inspectors for non-review-cycle
+    stages, or claiming exact issue-to-fix-to-verdict mapping that the data does
+    not support) is an explicit risk worth gating early. The build pipeline is
+    implement -> validate -> review-cycle: validate is included because the
+    agent-maintainability-gate provider is registered and the PRD calls out
+    file-size/region-marker guardrails (new files must stay under 600 lines,
+    large files need region markers), so the maintainability gate should run
+    before review. review-cycle gives iterative review-fix-evaluate quality
+    assurance appropriate for code that derives a normalized data model with
+    fallback inference and must keep `pnpm type-check` and `pnpm test` green.
+    Tests are part of the plan's implementation (selector unit tests and
+    component interaction tests), so no separate test-write/test stages are
+    needed; no doc-author/doc-sync since this change touches no documentation or
+    public APIs. Review config is standard-risk feature work: single strategy
+    with the `code` perspective (no `security` since there is no
+    auth/secrets/network/subprocess surface, and no `verify` since there are no
+    build/config/dependency/test-infra changes), maxRounds 2, and standard
+    evaluator strictness."
+diff_base_ref: 8bc6898ee43ac24994687ba944d2ec36d83ae01e
