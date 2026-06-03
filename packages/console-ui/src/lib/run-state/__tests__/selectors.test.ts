@@ -300,6 +300,66 @@ describe('selectPlanLanes', () => {
     expect(lanes[0].buildStages).toEqual([]); // no orchestration
     expect(lanes[0].agents).toEqual([{ agent: 'builder', tokens: 0, running: true }]);
   });
+
+  it('appends a dynamically-added gap-close lane after the orchestration plans', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', 'gap-close': 'review' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          {
+            id: 'plan-01',
+            name: 'Plan One',
+            dependsOn: [],
+            build: ['implement', 'review-cycle'],
+            review: { strategy: 'auto', maxRounds: 1 },
+          },
+        ],
+      },
+      agentThreads: [
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:05:00.000Z', totalTokens: 200_000 },
+        { planId: 'gap-close', agent: 'reviewer', startedAt: '2026-05-24T11:06:00.000Z', endedAt: null, totalTokens: 5_900_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes.map((l) => l.planId)).toEqual(['plan-01', 'gap-close']);
+
+    const gapClose = lanes[1];
+    expect(gapClose.planName).toBe('Gap Close');
+    expect(gapClose.stage).toBe('review');
+    expect(gapClose.buildStages).toEqual([]); // compiled on demand, not in orchestration
+    expect(gapClose.agents).toEqual([
+      { agent: 'builder', tokens: 200_000, running: false },
+      { agent: 'reviewer', tokens: 5_900_000, running: true },
+    ]);
+  });
+
+  it('surfaces a gap-close lane present only via live threads (no status yet)', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          {
+            id: 'plan-01',
+            name: 'Plan One',
+            dependsOn: [],
+            build: ['implement'],
+            review: { strategy: 'auto', maxRounds: 1 },
+          },
+        ],
+      },
+      agentThreads: [
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 1_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes.map((l) => l.planId)).toEqual(['plan-01', 'gap-close']);
+    expect(lanes[1].planName).toBe('Gap Close');
+  });
 });
 
 // ---------------------------------------------------------------------------
