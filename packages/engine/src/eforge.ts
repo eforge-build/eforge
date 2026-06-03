@@ -29,7 +29,7 @@ import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
-import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
+import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
@@ -2479,7 +2479,8 @@ export class EforgeEngine {
    *   - abandon: removes the failed PRD and both sidecars
    *   - manual: no-op, returns noAction: true
    *
-   * Each mutating dispatch produces exactly one forgeCommit. Never spawns agents.
+   * Filesystem-only queue dispatch; split recovery runs the acceptance criteria extractor
+   * when the sidecar does not already carry a valid legacy inventory.
    * Throws on missing sidecar, validation failure, or missing suggestedSuccessorPrd for split.
    */
   async *applyRecovery(
@@ -2544,7 +2545,28 @@ export class EforgeEngine {
           break;
         }
         case 'split': {
-          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary });
+          if (!verdict.suggestedSuccessorPrd) {
+            throw new Error(`split verdict for ${prdId} is missing suggestedSuccessorPrd`);
+          }
+          const normalized = normalizeRecoverySuccessorPrd(verdict.suggestedSuccessorPrd);
+          let acceptanceCriteriaInventory = normalized.legacyAcceptanceCriteriaInventory;
+          if (!acceptanceCriteriaInventory) {
+            const extractorConfig = resolveAgentConfig('prd-validator', this.config);
+            const extractorGen = runAcceptanceCriteriaExtractor({
+              ...extractorConfig,
+              cwd,
+              prdContent: normalized.visibleBody,
+              phase: 'standalone',
+              harness: this.agentRuntimes.forRole('prd-validator'),
+            });
+            let extractorResult = await extractorGen.next();
+            while (!extractorResult.done) {
+              yield extractorResult.value;
+              extractorResult = await extractorGen.next();
+            }
+            acceptanceCriteriaInventory = extractorResult.value;
+          }
+          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary, acceptanceCriteriaInventory });
           result = { verdict: 'split', noAction: false, commitSha, successorPrdId };
           break;
         }

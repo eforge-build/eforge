@@ -14,8 +14,7 @@ import { join } from 'node:path';
 import type { ModelTracker } from '../model-tracker.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { enqueuePrd, inferTitle } from '../prd-queue.js';
-import { extractExpectedAcceptanceCriteria } from '../validation/acceptance-criteria.js';
-import { requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from '../validation/acceptance-criteria-inventory.js';
+import { formatAcceptanceInventoryDiagnostics, requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock, validateCanonicalAcceptanceCriteriaInventory, type CanonicalAcceptanceCriteriaInventory } from '../validation/acceptance-criteria-inventory.js';
 import { deriveSplitRecoveryContinuation } from './continuation.js';
 
 export interface ApplyHelperOptions {
@@ -28,6 +27,37 @@ export interface ApplyHelperOptions {
   /** Optional model tracker — retained for interface compatibility. */
   modelTracker?: ModelTracker;
 }
+
+export interface NormalizedRecoverySuccessorPrd {
+  visibleBody: string;
+  legacyAcceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory;
+}
+
+// --- eforge:region plan-01-recovery-split-canonical-inventory ---
+export function normalizeRecoverySuccessorPrd(markdown: string): NormalizedRecoverySuccessorPrd {
+  const body = markdown
+    .replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    .replace(/^\s+/, '');
+  const visibleBody = stripAcceptanceCriteriaInventoryBlock(body).trimEnd();
+  let legacyAcceptanceCriteriaInventory: CanonicalAcceptanceCriteriaInventory | undefined;
+  try {
+    legacyAcceptanceCriteriaInventory = requireAcceptanceCriteriaInventoryFromPrd(body);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/missing.*inventory|missing-block/i.test(message)) throw err;
+  }
+  return { visibleBody, legacyAcceptanceCriteriaInventory };
+}
+
+function validateRecoveryInventory(
+  inventory: CanonicalAcceptanceCriteriaInventory,
+  visibleBody: string,
+): CanonicalAcceptanceCriteriaInventory {
+  const result = validateCanonicalAcceptanceCriteriaInventory(inventory, visibleBody, { requireIds: false });
+  if (!result.valid) throw new Error(formatAcceptanceInventoryDiagnostics(result.diagnostics));
+  return result.inventory;
+}
+// --- eforge:endregion plan-01-recovery-split-canonical-inventory ---
 
 /**
  * Apply a `retry` verdict: move the failed PRD back to the queue and remove both
@@ -65,7 +95,7 @@ export async function applyRecoveryRetry(
 export async function applyRecoverySplit(
   options: ApplyHelperOptions,
   verdict: RecoveryVerdict,
-  context: { summary?: BuildFailureSummary } = {},
+  context: { summary?: BuildFailureSummary; acceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory } = {},
 ): Promise<{ commitSha: string; successorPrdId: string }> {
   const { cwd, prdId, queueDir } = options;
 
@@ -73,13 +103,14 @@ export async function applyRecoverySplit(
     throw new Error(`split verdict for ${prdId} is missing suggestedSuccessorPrd`);
   }
 
-  // Strip any agent-emitted YAML frontmatter and leading whitespace
-  const body = verdict.suggestedSuccessorPrd
-    .replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
-    .replace(/^\s+/, '');
-
-  const visibleBody = stripAcceptanceCriteriaInventoryBlock(body).trimEnd();
-  const acceptanceCriteriaInventory = readOrBuildRecoveryInventory(body, visibleBody);
+  const normalized = normalizeRecoverySuccessorPrd(verdict.suggestedSuccessorPrd);
+  const visibleBody = normalized.visibleBody;
+  const acceptanceCriteriaInventory = validateRecoveryInventory(
+    context.acceptanceCriteriaInventory ?? normalized.legacyAcceptanceCriteriaInventory ?? (() => {
+      throw new Error(`split verdict for ${prdId} is missing canonical acceptance criteria inventory; run the acceptance criteria extractor before applying recovery split`);
+    })(),
+    visibleBody,
+  );
   const title = inferTitle(visibleBody);
   const recoveryContinuation = await deriveSplitRecoveryContinuation({ cwd, prdId, summary: context.summary });
 
@@ -106,25 +137,6 @@ export async function applyRecoverySplit(
  * Apply an `abandon` verdict: permanently remove the failed PRD and both sidecar
  * files from the queue. Filesystem-only — queue state is runtime, not tracked in git.
  */
-function readOrBuildRecoveryInventory(body: string, visibleBody: string): CanonicalAcceptanceCriteriaInventory {
-  try {
-    return requireAcceptanceCriteriaInventoryFromPrd(body);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (!/missing.*inventory|missing-block/i.test(message)) throw err;
-  }
-  return {
-    version: 1,
-    criteria: extractExpectedAcceptanceCriteria(visibleBody, { allowFallbackSections: true }).map((criterion, index) => ({
-      id: `ac-${String(index + 1).padStart(3, '0')}`,
-      text: criterion.text,
-      raw: criterion.raw,
-      sourceQuote: criterion.raw,
-      confidence: 1,
-    })),
-  };
-}
-
 export async function applyRecoveryAbandon(
   options: ApplyHelperOptions,
 ): Promise<{ commitSha: string }> {

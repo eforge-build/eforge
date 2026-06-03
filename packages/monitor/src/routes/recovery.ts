@@ -1,5 +1,7 @@
 import { API_ROUTES } from '@eforge-build/client';
-import { applyRecoveryAbandon, applyRecoveryManual, applyRecoveryRetry, applyRecoverySplit } from '@eforge-build/engine/recovery/apply';
+import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { applyRecoveryAbandon, applyRecoveryManual, applyRecoveryRetry } from '@eforge-build/engine/recovery/apply';
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
 import { sendJson, sendJsonError } from '../http/response.js';
@@ -46,7 +48,13 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
             return sendJson(ctx.res, { verdict: 'retry', commitSha: result.commitSha, noAction: false });
           }
           case 'split': {
-            const result = await applyRecoverySplit(helperOptions, recoveryData.verdict, { summary: recoveryData.summary });
+            const splitQueueDir = context.queuePaths?.relativeQueueDir ?? context.options.config?.prdQueue?.dir ?? context.options.queueDir ?? '.eforge/queue';
+            const splitConfig = { ...context.options.config, prdQueue: { ...(context.options.config?.prdQueue ?? DEFAULT_CONFIG.prdQueue), dir: splitQueueDir } };
+            const engine = await EforgeEngine.create({ cwd: context.cwd, config: splitConfig, agentRuntimes: context.options.agentRuntimes });
+            const gen = engine.applyRecovery(body.prdId);
+            let next = await gen.next();
+            while (!next.done) next = await gen.next();
+            const result = next.value;
             context.notifyQueueMutation('apply-recovery');
             return sendJson(ctx.res, { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false });
           }
