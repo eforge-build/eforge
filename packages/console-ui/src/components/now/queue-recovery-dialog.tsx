@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/dialog';
 import {
   RecoveryVerdictChip,
-  type RecoveryConfidenceValue,
-  type RecoveryVerdictValue,
+  asConfidence,
+  asVerdict,
 } from '@/components/recovery/verdict-chip';
 import { ConfirmAction } from '@/components/recovery/confirm-action';
 import { SafeMarkdown } from '@/components/recovery/safe-markdown';
@@ -41,17 +41,6 @@ interface QueueRecoveryDialogProps {
 }
 
 type ReportStatus = 'loading' | 'loaded' | 'missing' | 'error';
-
-const VERDICT_VALUES: RecoveryVerdictValue[] = ['retry', 'split', 'abandon', 'manual'];
-const CONFIDENCE_VALUES: RecoveryConfidenceValue[] = ['low', 'medium', 'high'];
-
-function asVerdict(value: string | undefined): RecoveryVerdictValue | undefined {
-  return value && (VERDICT_VALUES as string[]).includes(value) ? (value as RecoveryVerdictValue) : undefined;
-}
-
-function asConfidence(value: string | undefined): RecoveryConfidenceValue | undefined {
-  return value && (CONFIDENCE_VALUES as string[]).includes(value) ? (value as RecoveryConfidenceValue) : undefined;
-}
 
 function is404(err: unknown): boolean {
   return err instanceof Error && /\(404\)/.test(err.message);

@@ -60,6 +60,17 @@ export interface NowAttentionItem {
   severity: NowAttentionSeverity;
   message: string;
   detail?: string;
+  /**
+   * Present on actionable failed-PRD items. Carries everything the host needs to
+   * open the recovery dialog, so the attention strip — not the Queue card — owns
+   * the Recover action for failures.
+   */
+  recovery?: {
+    prdId: string;
+    prdTitle: string;
+    verdict?: string;
+    confidence?: string;
+  };
 }
 
 export type NowBuildLifecyclePhase =
@@ -344,6 +355,7 @@ export function selectNowAttentionItems(
         severity: 'warning',
         message: `Failed: ${label}`,
         detail: `${rv.verdict} / ${rv.confidence}`,
+        recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence },
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
@@ -361,6 +373,7 @@ export function selectNowAttentionItems(
         severity: 'warning',
         message: `Failed: ${label}`,
         detail: 'recovery pending',
+        recovery: { prdId: item.id, prdTitle: label },
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });

@@ -11,6 +11,7 @@ import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
 import { BuildHistoryCard } from '@/components/now/build-history-card';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
+import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
 import { toConsolePath } from '@/lib/navigation';
 
 // ---------------------------------------------------------------------------
@@ -18,17 +19,17 @@ import { toConsolePath } from '@/lib/navigation';
 // ---------------------------------------------------------------------------
 
 /**
- * System-level attention items describe daemon/stream health rather than a
- * specific queued PRD. Per-PRD failures and skips are owned by the Queue card
- * (which carries the Recover action), so only these system alerts surface in
- * the top strip — that removes the duplicate "Failed: …" rows that previously
- * appeared in both Attention and Queue.
+ * The "Needs attention" strip carries daemon/stream health plus actionable PRD
+ * failures (failed items, with the Recover action, and skipped cascade
+ * artifacts). A failed build already ran, so it is not forward queue work — it
+ * belongs here as a todo, not in the Queue card. Forward queue waiting/blocked
+ * items stay in the Queue card (its stack view already shows the blocking), so
+ * they are excluded here to avoid duplicating that surface.
  */
-function isSystemAttentionItem(item: NowAttentionItem): boolean {
+function isStripAttentionItem(item: NowAttentionItem): boolean {
   return (
-    item.id === 'stream-error' ||
-    item.id === 'stale-heartbeat' ||
-    item.id.startsWith('session-error-')
+    !item.id.startsWith('queue-blocked-') &&
+    !item.id.startsWith('queue-stack-blocked-')
   );
 }
 
@@ -54,9 +55,16 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   const now = tick;
   const model = selectNowDashboardModel(projectState, activeSessions, now);
 
-  // Top strip carries only daemon/stream health; per-PRD failures live in Queue.
-  const systemAlerts = React.useMemo(
-    () => model.attention.filter(isSystemAttentionItem),
+  // Recovery payload for the failed-PRD item the user chose to recover; opens
+  // the dialog hosted at page root. Failures live in the attention strip now,
+  // so the dialog is hosted here rather than inside the Queue card.
+  const [recoveryItem, setRecoveryItem] =
+    React.useState<NonNullable<NowAttentionItem['recovery']> | null>(null);
+
+  // Strip carries daemon/stream health + actionable failures; forward queue
+  // waiting/blocked items stay in the Queue card.
+  const stripItems = React.useMemo(
+    () => model.attention.filter(isStripAttentionItem),
     [model.attention],
   );
 
@@ -67,9 +75,6 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
         <NowStateBanner banner={model.connectionBanner} />
       )}
 
-      {/* System alerts — daemon/stream health only, elevated above everything. */}
-      <AttentionPanel items={systemAlerts} hiddenCount={0} title="System alerts" />
-
       {/* Stack sync escalation — only a conflict/failed/stuck-deferred sync
           surfaces here; normal sync housekeeping lives on System. */}
       <StackSyncAlert
@@ -78,13 +83,23 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
         onManage={onNavigate ? () => onNavigate(toConsolePath('system')) : undefined}
       />
 
-      {/* Operational shell: a wide main column for live work (active builds +
-          queue) and a sticky rail of glanceable reference widgets. A single
-          shared grid keeps every section's edges aligned instead of each
-          section inventing its own width. Collapses to one column below lg. */}
+      {/* Operational shell: a wide main column for live work (needs attention +
+          active builds + queue) and a sticky rail of glanceable reference
+          widgets. A single shared grid keeps every section's edges aligned
+          instead of each section inventing its own width, and the rail rides up
+          to the top alongside Needs attention. Collapses to one column below
+          lg. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         {/* MAIN */}
         <div className="min-w-0 space-y-4">
+          {/* Needs attention — daemon/stream health + actionable PRD failures
+              (with the Recover action), leading the live-work column. */}
+          <AttentionPanel
+            items={stripItems}
+            hiddenCount={model.attentionHiddenCount}
+            title="Needs attention"
+            onRecover={setRecoveryItem}
+          />
           {model.enqueueCards.length > 0 && (
             <div className="grid grid-cols-1 gap-3">
               {model.enqueueCards.map((card) => (
@@ -93,7 +108,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             </div>
           )}
           <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
-          <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
+          <QueueCard stacks={model.queueStacks} summary={model.queue} />
         </div>
 
         {/* RAIL — glanceable reference widgets. Build history (one row per
@@ -108,6 +123,20 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
           <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>
       </div>
+
+      {/* Recovery dialog — opened from the Needs attention strip, hosted once at
+          page root. */}
+      <QueueRecoveryDialog
+        open={recoveryItem != null}
+        prdId={recoveryItem?.prdId ?? null}
+        prdTitle={recoveryItem?.prdTitle}
+        verdict={recoveryItem?.verdict}
+        confidence={recoveryItem?.confidence}
+        onOpenChange={(open) => {
+          if (!open) setRecoveryItem(null);
+        }}
+        refreshQueue={refreshQueue ?? (() => undefined)}
+      />
     </div>
   );
 }

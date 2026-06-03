@@ -4,6 +4,27 @@ import { cn } from '@/lib/utils';
 export type RecoveryVerdictValue = 'retry' | 'split' | 'abandon' | 'manual';
 export type RecoveryConfidenceValue = 'low' | 'medium' | 'high';
 
+const VERDICT_VALUES: RecoveryVerdictValue[] = ['retry', 'split', 'abandon', 'manual'];
+const CONFIDENCE_VALUES: RecoveryConfidenceValue[] = ['low', 'medium', 'high'];
+
+/**
+ * Narrows a raw wire string to a known verdict, or `undefined` for anything
+ * unrecognized. Use this instead of an `as` cast so an unexpected verdict from
+ * the daemon degrades gracefully (chip hidden) rather than rendering a chip with
+ * no color classes (the chip's class lookups are exhaustive switches with no
+ * default).
+ */
+export function asVerdict(value: string | undefined): RecoveryVerdictValue | undefined {
+  return value && (VERDICT_VALUES as string[]).includes(value) ? (value as RecoveryVerdictValue) : undefined;
+}
+
+/** Narrows a raw wire string to a known confidence level, or `undefined`. */
+export function asConfidence(value: string | undefined): RecoveryConfidenceValue | undefined {
+  return value && (CONFIDENCE_VALUES as string[]).includes(value)
+    ? (value as RecoveryConfidenceValue)
+    : undefined;
+}
+
 /**
  * Returns the Badge class string for a given recovery verdict.
  * Color mapping: retry → blue, split → yellow/amber, abandon → red, manual → gray.

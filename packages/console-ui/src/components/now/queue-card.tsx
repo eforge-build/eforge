@@ -1,33 +1,29 @@
 /**
- * QueueCard — the single build-queue surface.
+ * QueueCard — the single forward-looking build-queue surface.
  *
  * Renders dependency-linked plans as a "Build stack" subsection (in unlock
- * order) followed by an "Other queued items" subsection for everything not
- * part of a stack: failed items (with an explicit "Recover…" action that opens
- * the comprehensive recovery dialog), skipped items, and standalone
- * pending/waiting items. Items shown in the stack are not repeated in the flat
- * list. No recovery mutation happens during render or expansion.
+ * order) followed by an "Other queued items" subsection for standalone
+ * pending/waiting/running items not part of a stack. The queue is forward-only:
+ * a failed or skipped PRD already ran, so it is not shown here — those surface
+ * in the "Needs attention" strip, which owns the Recover action. No mutation
+ * happens during render or expansion.
  */
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import type { NowQueueItem, NowQueueStack, NowQueueSummary } from '@/lib/selectors/now';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 import { QueueStacks } from './queue-stack-card';
-import { QueueRecoveryDialog } from './queue-recovery-dialog';
 
 interface QueueCardProps {
   stacks?: NowQueueStack[];
   summary: NowQueueSummary;
-  refreshQueue?: () => Promise<void> | void;
 }
 
-function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusVariant(status: string): 'default' | 'secondary' | 'outline' {
   const s = status.toLowerCase();
-  if (s === 'failed') return 'destructive';
   if (s === 'running') return 'default';
-  if (s === 'skipped') return 'outline';
+  if (s === 'waiting') return 'outline';
   return 'secondary';
 }
 
@@ -35,14 +31,16 @@ function blockedByLabel(dependsOn: string[]): string {
   return dependsOn.map((depId) => selectPrdDisplayLabel(undefined, depId)).join(', ');
 }
 
-function LooseQueueRow({
-  item,
-  onInspect,
-}: {
-  item: NowQueueItem;
-  onInspect: (item: NowQueueItem) => void;
-}) {
-  const isFailed = item.status.toLowerCase() === 'failed';
+/**
+ * Forward queue work only. A failed or skipped PRD already ran and belongs in
+ * the Needs attention strip (with the Recover action), not in the queue.
+ */
+function isForwardItem(item: NowQueueItem): boolean {
+  const s = item.status.toLowerCase();
+  return s !== 'failed' && s !== 'skipped';
+}
+
+function LooseQueueRow({ item }: { item: NowQueueItem }) {
   return (
     <li className="flex items-start gap-2">
       <Badge variant={statusVariant(item.status)} className="shrink-0 capitalize text-xs">
@@ -56,33 +54,13 @@ function LooseQueueRow({
         {item.dependsOn && item.dependsOn.length > 0 && (
           <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
         )}
-        {item.recoveryVerdict && (
-          <p className="text-xs text-muted-foreground">
-            {item.recoveryVerdict.verdict} / {item.recoveryVerdict.confidence}
-          </p>
-        )}
-        {!item.recoveryVerdict && isFailed && (
-          <p className="text-xs text-muted-foreground">recovery pending</p>
-        )}
-        {isFailed && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-1 h-auto px-0 py-0 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => onInspect(item)}
-          >
-            Recover…
-          </Button>
-        )}
       </div>
     </li>
   );
 }
 
-export function QueueCard({ stacks = [], summary, refreshQueue = () => undefined }: QueueCardProps) {
+export function QueueCard({ stacks = [], summary }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
-  const [selectedRecoveryItem, setSelectedRecoveryItem] = React.useState<NowQueueItem | null>(null);
 
   // Items already shown in the stacked view; never repeat them in the flat list.
   const stackedIds = React.useMemo(
@@ -91,13 +69,17 @@ export function QueueCard({ stacks = [], summary, refreshQueue = () => undefined
   );
 
   // Collapsed and full loose lists track the selector's own truncation
-  // (topItems vs allItems) so the disclosure count stays consistent.
+  // (topItems vs allItems) so the disclosure count stays consistent. Forward
+  // items only — failures and skips surface in the Needs attention strip.
   const looseTop = React.useMemo(
-    () => summary.topItems.filter((item) => !stackedIds.has(item.id)),
+    () => summary.topItems.filter((item) => !stackedIds.has(item.id) && isForwardItem(item)),
     [summary.topItems, stackedIds],
   );
   const looseAll = React.useMemo(
-    () => (summary.allItems ?? summary.topItems).filter((item) => !stackedIds.has(item.id)),
+    () =>
+      (summary.allItems ?? summary.topItems).filter(
+        (item) => !stackedIds.has(item.id) && isForwardItem(item),
+      ),
     [summary.allItems, summary.topItems, stackedIds],
   );
 
@@ -121,7 +103,7 @@ export function QueueCard({ stacks = [], summary, refreshQueue = () => undefined
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-4">
         {isEmpty ? (
-          <p className="text-sm text-muted-foreground">Queue is empty</p>
+          <p className="text-sm text-muted-foreground">Nothing waiting to build</p>
         ) : (
           <>
             <QueueStacks stacks={stacks} />
@@ -131,26 +113,16 @@ export function QueueCard({ stacks = [], summary, refreshQueue = () => undefined
                 {stacks.length > 0 && (
                   <p className="mb-2 text-xs font-medium text-foreground">Other queued items</p>
                 )}
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {summary.pendingCount > 0 && (
+                {summary.pendingCount > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
                     <span className="text-xs text-muted-foreground">
                       Pending: <span className="font-medium text-foreground">{summary.pendingCount}</span>
                     </span>
-                  )}
-                  {summary.failedCount > 0 && (
-                    <span className="text-xs text-destructive">
-                      Failed: <span className="font-medium">{summary.failedCount}</span>
-                    </span>
-                  )}
-                  {summary.skippedCount > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      Skipped: <span className="font-medium text-foreground">{summary.skippedCount}</span>
-                    </span>
-                  )}
-                </div>
+                  </div>
+                )}
                 <ul className="space-y-1.5">
                   {looseVisible.map((item) => (
-                    <LooseQueueRow key={item.id} item={item} onInspect={setSelectedRecoveryItem} />
+                    <LooseQueueRow key={item.id} item={item} />
                   ))}
                 </ul>
                 {looseHidden > 0 && !expanded && (
@@ -167,17 +139,6 @@ export function QueueCard({ stacks = [], summary, refreshQueue = () => undefined
           </>
         )}
       </CardContent>
-      <QueueRecoveryDialog
-        open={selectedRecoveryItem != null}
-        prdId={selectedRecoveryItem?.id ?? null}
-        prdTitle={selectedRecoveryItem?.title}
-        verdict={selectedRecoveryItem?.recoveryVerdict?.verdict}
-        confidence={selectedRecoveryItem?.recoveryVerdict?.confidence}
-        onOpenChange={(open) => {
-          if (!open) setSelectedRecoveryItem(null);
-        }}
-        refreshQueue={refreshQueue}
-      />
     </Card>
   );
 }

@@ -43,6 +43,35 @@ describe('NowDashboard', () => {
     expect(screen.getByText('Build history')).toBeDefined();
   });
 
+  it('surfaces failed PRDs in the Needs attention strip with a Recover action, not in the Queue card', () => {
+    const state = connectedState({
+      queue: [
+        makeQueue({ id: 'ok-1', title: 'Pending Build', status: 'pending' }),
+        makeQueue({
+          id: 'bad-1',
+          title: 'Broken Build',
+          status: 'failed',
+          recoveryVerdict: { verdict: 'retry', confidence: 'high' },
+        }),
+      ],
+    });
+
+    const { container } = render(
+      <NowDashboard projectState={state} activeSessions={emptyActiveSessions} />,
+    );
+
+    // Failure is elevated to the Needs attention strip with the Recover action.
+    expect(screen.getByText('Needs attention')).toBeDefined();
+    expect(screen.getByText('Broken Build')).toBeDefined();
+    expect(screen.getByRole('button', { name: /recover/i })).toBeDefined();
+
+    // Queue card stays forward-only: the pending item shows there, the failure
+    // does not (it lives only in the attention strip).
+    const queueCard = container.querySelector('#queue');
+    expect(queueCard?.textContent).toContain('Pending Build');
+    expect(queueCard?.textContent).not.toContain('Broken Build');
+  });
+
   it('renders dependency-linked queue stacks', () => {
     const state = connectedState({
       queue: [

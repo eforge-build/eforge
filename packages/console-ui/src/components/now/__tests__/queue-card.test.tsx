@@ -31,9 +31,9 @@ function makeSummary(overrides: Partial<NowQueueSummary> = {}): NowQueueSummary 
 // ---------------------------------------------------------------------------
 
 describe('QueueCard - empty queue', () => {
-  it('renders "Queue is empty" when total is 0', () => {
+  it('renders the empty forward-queue message when total is 0', () => {
     render(<QueueCard summary={emptySummary} />);
-    expect(screen.getByText('Queue is empty')).toBeDefined();
+    expect(screen.getByText('Nothing waiting to build')).toBeDefined();
   });
 });
 
@@ -54,18 +54,24 @@ describe('QueueCard - populated queue', () => {
     expect(screen.getByText('Task B')).toBeDefined();
   });
 
-  it('renders failed count in destructive style when present', () => {
+  it('omits failed and skipped items — the queue is forward-only', () => {
     const summary = makeSummary({
-      total: 1,
+      total: 3,
+      pendingCount: 1,
       failedCount: 1,
+      skippedCount: 1,
       topItems: [
+        { id: 'q-ok', title: 'Pending Task', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
         { id: 'q-f', title: 'Failed Task', status: 'failed', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-s', title: 'Skipped Task', status: 'skipped', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
     });
-    const { container } = render(<QueueCard summary={summary} />);
-    // Should render "Failed: 1" text
-    expect(container.textContent).toContain('Failed:');
-    expect(container.textContent).toContain('1');
+    render(<QueueCard summary={summary} />);
+    expect(screen.getByText('Pending Task')).toBeDefined();
+    // Failed/skipped PRDs already ran; they live in the Needs attention strip.
+    expect(screen.queryByText('Failed Task')).toBeNull();
+    expect(screen.queryByText('Skipped Task')).toBeNull();
+    expect(screen.queryByText('Recover…')).toBeNull();
   });
 
   it('renders dependency count when items have dependencies', () => {
@@ -129,22 +135,22 @@ describe('QueueCard - no mutation', () => {
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 
-  it('expanding rows issues zero fetch calls before recovery action is used', () => {
+  it('expanding the loose list issues zero fetch calls', () => {
     const summary = makeSummary({
       total: 2,
+      pendingCount: 2,
       topItems: [
         { id: 'q-1', title: 'Task A', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
       allItems: [
         { id: 'q-1', title: 'Task A', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
-        { id: 'q-failed', title: 'Failed Task', status: 'failed', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-2', title: 'Task B', status: 'waiting', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
       hiddenCount: 1,
     });
     render(<QueueCard summary={summary} />);
     fireEvent.click(screen.getByText('+ 1 more — show all'));
-    expect(screen.getByText('Recover…')).toBeDefined();
-    expect(screen.queryByText('Inspect cascade')).toBeNull();
+    expect(screen.getByText('Task B')).toBeDefined();
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 });
