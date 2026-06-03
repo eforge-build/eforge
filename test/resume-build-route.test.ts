@@ -1,3 +1,4 @@
+// --- eforge:region resume-build-route-suite ---
 /**
  * End-to-end tests for POST /api/recover/resume-build.
  *
@@ -378,3 +379,4 @@ describe('POST /api/recover/resume-build — 503 without workerTracker', () => {
     }
   });
 });
+// --- eforge:endregion resume-build-route-suite ---

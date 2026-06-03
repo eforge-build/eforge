@@ -1,3 +1,4 @@
+// --- eforge:region resume-build-cli-mcp-suite ---
 /**
  * Tests for the resume CLI command and eforge_resume_build MCP tool.
  *
@@ -345,3 +346,4 @@ describe('eforge_resume_build MCP tool handler', () => {
     expect(spawnCalls[0].args).toEqual([prdId, '--profile', profile]);
   });
 });
+// --- eforge:endregion resume-build-cli-mcp-suite ---

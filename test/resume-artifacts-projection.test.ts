@@ -1,4 +1,4 @@
-// --- eforge:region resume-compiled-build-engine-suite ---
+// --- eforge:region resume-artifacts-projection-suite ---
 // Split from resume-compiled-build-engine.test.ts.
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -170,181 +170,139 @@ function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { 
   git(cwd, ['switch', 'main']);
 }
 
-describe('EforgeEngine.resumeBuild — compile-free execution', () => {
-  it('emits a resume phase and no compile phase when compiled artifacts already exist', async () => {
-    const cwd = initRepo();
-    const setName = 'compile-free-resume';
-    createFeatureBranchWithArtifacts(cwd, setName);
-    seedFailedRunEvidence(cwd, setName);
+describe('resolveResumeSetName — sidecar-aware set-name resolution', () => {
+  it('returns summary.setName from the recovery sidecar when present', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(
+      join(failedDir, 'prd-x.recovery.json'),
+      JSON.stringify({ summary: { setName: 'resolved-set' } }),
+    );
 
-    const engine = await EforgeEngine.create({
-      cwd,
-      agentRuntimes: new StubHarness([]),
-      config: {
-        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
-        build: {
-          ...DEFAULT_CONFIG.build,
-          postMergeCommands: [],
-          cleanupPlanFiles: false,
-          validation: {
-            ...DEFAULT_CONFIG.build.validation,
-            allowNoCommands: true,
-            noCommandsReason: 'compile-free resume unit test',
-          },
-        },
-      },
-    });
-
-    const events: EforgeEvent[] = [];
-    for await (const event of engine.resumeBuild(setName, { cwd })) {
-      events.push(event);
-    }
-
-    const phaseStarts = events.filter((event): event is Extract<EforgeEvent, { type: 'phase:start' }> => event.type === 'phase:start');
-    expect(phaseStarts.map((event) => event.command)).toContain('resume');
-    expect(phaseStarts.map((event) => event.command)).not.toContain('compile');
-    expect(events.some((event) => event.type === 'planning:start')).toBe(false);
-    expect(events.some((event) => event.type === 'planning:complete')).toBe(false);
-    const artifactIndex = events.findIndex((event) => event.type === 'build:resume:artifacts');
-    expect(artifactIndex).toBeGreaterThan(-1);
-    const firstBuildIndex = events.findIndex((event) => event.type === 'plan:build:start');
-    if (firstBuildIndex !== -1) expect(artifactIndex).toBeLessThan(firstBuildIndex);
-    expect(events.some((event) => event.type === 'build:resume:state')).toBe(true);
+    const setName = await resolveResumeSetName({ prdId: 'prd-x', failedDir });
+    expect(setName).toBe('resolved-set');
   });
 
-  it('records the resumed artifact against the original queued PRD id and finalizes queued resume state before completion', async () => {
-    const cwd = initRepo();
-    const setName = 'compile-free-resume-original-prd';
-    const prdId = 'original-queued-prd';
-    createFeatureBranchWithArtifacts(cwd, setName);
-    seedFailedRunEvidence(cwd, setName);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), `---
-title: Original Queued PRD
-created: 2026-01-01
----
-
-# Original Queued PRD
-`);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Recovery\n');
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'), `---
-title: Child PRD
-created: 2026-01-01
-depends_on: ["${prdId}"]
----
-
-# Child PRD
-`);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'artifacts', 'completions.json'), JSON.stringify({
-      version: 1,
-      completions: { [prdId]: { prdId, status: 'failed', artifactAvailable: false, completedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } },
-    }));
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
-      summary: { setName },
-      verdict: { verdict: 'resume', confidence: 'high' },
-    }));
-
-    const engine = await EforgeEngine.create({
-      cwd,
-      agentRuntimes: new StubHarness([]),
-      config: {
-        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
-        build: {
-          ...DEFAULT_CONFIG.build,
-          postMergeCommands: [],
-          cleanupPlanFiles: false,
-          validation: {
-            ...DEFAULT_CONFIG.build.validation,
-            allowNoCommands: true,
-            noCommandsReason: 'compile-free resume artifact unit test',
-          },
-        },
-      },
-    });
-
-    const events: EforgeEvent[] = [];
-    let checkedCompleteSideEffects = false;
-    for await (const event of engine.resumeBuild(prdId, { cwd })) {
-      events.push(event);
-      if (event.type === 'build:resume:complete') {
-        checkedCompleteSideEffects = true;
-        const completions = await loadCompletionRegistry(cwd);
-        expect(existsSync(join(cwd, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
-        expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
-        expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
-        expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
-        expect(existsSync(join(cwd, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(false);
-        expect(existsSync(join(cwd, '.eforge', 'queue', 'child-prd.md'))).toBe(true);
-        expect(completions.completions[prdId].status).toBe('completed');
-        expect(completions.completions[prdId].artifactAvailable).toBe(true);
-      }
-    }
-
-    const registry = await loadArtifactRegistry(cwd);
-    expect(registry.builds).toEqual(expect.arrayContaining([
-      expect.objectContaining({ prdId, status: 'built' }),
-    ]));
-    expect(checkedCompleteSideEffects).toBe(true);
-    expect(events.filter((event) => event.type === 'build:resume:complete')).toHaveLength(1);
+  it('falls back to prdId when no sidecar exists', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    const setName = await resolveResumeSetName({ prdId: 'prd-fallback', failedDir });
+    expect(setName).toBe('prd-fallback');
   });
 
-  it('rolls back queued resume state when the resumed build becomes ineligible after queue activation', async () => {
-    const cwd = initRepo();
-    const setName = 'missing-resume-artifacts';
-    const prdId = 'queued-ineligible-prd';
-    seedFailedRunEvidence(cwd, setName);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), `---
-title: Queued Ineligible PRD
-created: 2026-01-01
----
+  it('falls back to prdId when the sidecar lacks a valid setName', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(
+      join(failedDir, 'prd-y.recovery.json'),
+      JSON.stringify({ summary: {} }),
+    );
+    const setName = await resolveResumeSetName({ prdId: 'prd-y', failedDir });
+    expect(setName).toBe('prd-y');
+  });
 
-# Queued Ineligible PRD
-`);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Recovery\n');
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
-      summary: { setName },
-      verdict: { verdict: 'resume', confidence: 'high' },
-    }));
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'), `---
-title: Child PRD
-created: 2026-01-01
-depends_on: ["${prdId}"]
----
+  it('falls back to prdId when the recovery sidecar JSON is malformed', async () => {
+    const cwd = makeTempDir();
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(join(failedDir, 'prd-bad.recovery.json'), '{ not json');
 
-# Child PRD
-`);
-
-    const engine = await EforgeEngine.create({
-      cwd,
-      agentRuntimes: new StubHarness([]),
-      config: {
-        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
-        build: {
-          ...DEFAULT_CONFIG.build,
-          postMergeCommands: [],
-          cleanupPlanFiles: false,
-          validation: {
-            ...DEFAULT_CONFIG.build.validation,
-            allowNoCommands: true,
-            noCommandsReason: 'compile-free resume rollback unit test',
-          },
-        },
-      },
-    });
-
-    const events: EforgeEvent[] = [];
-    for await (const event of engine.resumeBuild(prdId, { cwd })) {
-      events.push(event);
-    }
-
-    expect(events.some((event) => event.type === 'build:resume:ineligible')).toBe(true);
-    expect(events.some((event) => event.type === 'build:resume:complete')).toBe(false);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
-    expect(existsSync(join(cwd, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
-    expect(existsSync(join(cwd, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(false);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'))).toBe(true);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'))).toBe(false);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+    const setName = await resolveResumeSetName({ prdId: 'prd-bad', failedDir });
+    expect(setName).toBe('prd-bad');
   });
 });
-// --- eforge:endregion resume-compiled-build-engine-suite ---
+
+describe('buildResumeArtifactsProjection — recovered resume artifacts', () => {
+  const review = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
+  const orchConfig = {
+    name: 'feature-x',
+    description: 'Feature X',
+    created: '2026-01-01T00:00:00.000Z',
+    mode: 'excursion' as const,
+    baseBranch: 'main',
+    pipeline: { scope: 'excursion' as const, compile: [], defaultBuild: [], defaultReview: review, rationale: 'resume' },
+    plans: [
+      { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review },
+      { id: 'plan-02', name: 'Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review },
+    ],
+  };
+
+  function planFileMap() {
+    return new Map([
+      ['plan-01', { id: 'plan-01', name: 'Plan 01', dependsOn: [], branch: 'feature-x/plan-01', body: '# Plan 01', filePath: '/tmp/plan-01.md' }],
+      ['plan-02', { id: 'plan-02', name: 'Plan 02', dependsOn: [], branch: 'feature-x/plan-02', body: '# Plan 02', filePath: '/tmp/plan-02.md' }],
+    ] as const);
+  }
+
+  it('includes plan ids, names, bodies, dependencies, branches, build config, review config, orchestration, and artifact metadata', async () => {
+    const projection = await buildResumeArtifactsProjection({
+      cwd: makeTempDir(),
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'branch-history',
+      artifactCommit: 'abc123',
+      summary: makeFailureSummary(),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.artifactSource).toBe('branch-history');
+    expect(projection.artifactCommit).toBe('abc123');
+    expect(projection.orchestration.pipeline.scope).toBe('excursion');
+    expect(projection.plans).toEqual([
+      { id: 'plan-01', name: 'Plan 01', body: '# Plan 01', dependsOn: [], branch: 'feature-x/plan-01', build: ['implement'], review },
+      { id: 'plan-02', name: 'Plan 02', body: '# Plan 02', dependsOn: ['plan-01'], branch: 'feature-x/plan-02', build: [['test', 'pnpm test']], review },
+    ]);
+  });
+
+  it('uses summary PRD content before filesystem lookup', async () => {
+    const projection = await buildResumeArtifactsProjection({
+      cwd: makeTempDir(),
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'merge-worktree',
+      summary: makeFailureSummary({ prdContent: '# Summary PRD' }),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.source).toEqual({ label: 'PRD prd-feature-x', content: '# Summary PRD' });
+  });
+
+  it('returns source content when .eforge/queue/failed/<prdId>.md exists', async () => {
+    const cwd = makeTempDir();
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', 'prd-feature-x.md'), '# Failed Queue PRD');
+
+    const projection = await buildResumeArtifactsProjection({
+      cwd,
+      prdId: 'prd-feature-x',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'merge-worktree',
+      summary: makeFailureSummary(),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.source.label).toBe('.eforge/queue/failed/prd-feature-x.md');
+    expect(projection.source.content).toBe('# Failed Queue PRD');
+  });
+
+  it('returns a stable source label and omits content when the PRD source is absent', async () => {
+    const projection = await buildResumeArtifactsProjection({
+      cwd: makeTempDir(),
+      prdId: 'prd-missing',
+      setName: 'feature-x',
+      featureBranch: 'eforge/feature-x',
+      artifactSource: 'merge-worktree',
+      summary: makeFailureSummary({ prdId: 'prd-missing' }),
+      orchConfig,
+      planFileMap: planFileMap(),
+    });
+
+    expect(projection.source).toEqual({ label: 'PRD prd-missing' });
+    expect('content' in projection.source).toBe(false);
+  });
+});
+// --- eforge:endregion resume-artifacts-projection-suite ---
