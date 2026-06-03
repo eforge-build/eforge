@@ -1,17 +1,4 @@
-/**
- * Tests for the playbook module.
- *
- * Covers:
- *  - validatePlaybook: schema validation (valid/invalid frontmatter, body)
- *  - playbookFrontmatterSchema: mode field validation
- *  - playbookToBuildSource: output shape stability, mode guard
- *  - playbookToPlanSeed: sections map, mode guard
- *  - serializePlaybook / parsePlaybook: round-trip including mode field
- *  - listPlaybooks / loadPlaybook: round-trip via writePlaybook then loadPlaybook
- *  - writePlaybook: atomic write + directory creation
- *  - Scope mismatch warning in listPlaybooks
- */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mkdir, readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,9 +22,27 @@ import {
 import { getScopeDirectory } from '@eforge-build/scopes';
 import { useTempDir } from './test-tmpdir.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+let previousXdgConfigHome: string | undefined;
+let hasIsolatedXdgConfigHome = false;
+
+function isolateXdgConfigHome(root: string): void {
+  if (!hasIsolatedXdgConfigHome) {
+    previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    hasIsolatedXdgConfigHome = true;
+  }
+  process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
+}
+
+afterEach(() => {
+  if (!hasIsolatedXdgConfigHome) return;
+  if (previousXdgConfigHome === undefined) {
+    delete process.env.XDG_CONFIG_HOME;
+  } else {
+    process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+  }
+  previousXdgConfigHome = undefined;
+  hasIsolatedXdgConfigHome = false;
+});
 
 function validPlaybookRaw(overrides: Partial<{
   name: string;
@@ -101,387 +106,9 @@ function validPlanningPlaybook(): Playbook {
   };
 }
 
-// ---------------------------------------------------------------------------
 // validatePlaybook
-// ---------------------------------------------------------------------------
 
-describe('validatePlaybook', () => {
-  it('returns ok:true for a valid playbook', () => {
-    const result = validatePlaybook(validPlaybookRaw());
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('unexpected');
-    expect(result.playbook.name).toBe('my-feature');
-    expect(result.playbook.description).toBe('Add the my-feature capability');
-    expect(result.playbook.scope).toBe('project-team');
-    expect(result.playbook.mode).toBe('autonomous');
-    expect(result.playbook.goal).toBeTruthy();
-  });
-
-  it('returns ok:false when name is missing', () => {
-    const raw = `---
-description: A description
-scope: user
-mode: autonomous
----
-
-## Goal
-
-Do something.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('unexpected');
-    expect(result.errors.some((e) => e.includes('name'))).toBe(true);
-  });
-
-  it('returns ok:false when description is missing', () => {
-    const raw = `---
-name: my-feature
-scope: user
-mode: autonomous
----
-
-## Goal
-
-Do something.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('unexpected');
-    expect(result.errors.some((e) => e.includes('description'))).toBe(true);
-  });
-
-  it('returns ok:false when scope is missing', () => {
-    const raw = `---
-name: my-feature
-description: A feature
-mode: autonomous
----
-
-## Goal
-
-Do something.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('unexpected');
-    expect(result.errors.some((e) => e.includes('scope'))).toBe(true);
-  });
-
-  it('returns ok:false when scope is an invalid enum value', () => {
-    const raw = `---
-name: my-feature
-description: A feature
-scope: global
-mode: autonomous
----
-
-## Goal
-
-Do something.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('unexpected');
-    expect(result.errors.length).toBeGreaterThan(0);
-  });
-
-  it('returns ok:false when ## Goal section is missing', () => {
-    const raw = `---
-name: my-feature
-description: A feature
-scope: user
-mode: autonomous
----
-
-## Out of scope
-
-Nothing.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('unexpected');
-    expect(result.errors.some((e) => e.toLowerCase().includes('goal'))).toBe(true);
-  });
-
-  it('returns ok:false when name is not kebab-case', () => {
-    const raw = `---
-name: My Feature
-description: A feature
-scope: user
-mode: autonomous
----
-
-## Goal
-
-Do something.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('unexpected');
-    expect(result.errors.some((e) => e.toLowerCase().includes('kebab'))).toBe(true);
-  });
-
-  it('returns ok:true when optional sections are absent', () => {
-    const raw = `---
-name: lean-feature
-description: Lean
-scope: project-local
-mode: autonomous
----
-
-## Goal
-
-Just the goal.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('unexpected');
-    expect(result.playbook.goal).toContain('Just the goal');
-    expect(result.playbook.outOfScope).toBe('');
-    expect(result.playbook.acceptanceCriteria).toBe('');
-    expect(result.playbook.plannerNotes).toBe('');
-  });
-
-  it('parses optional postMerge field', () => {
-    const raw = `---
-name: full-feature
-description: Full
-scope: project-team
-mode: autonomous
-postMerge:
-  - pnpm build
-  - pnpm test
----
-
-## Goal
-
-Do everything.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('unexpected');
-    expect(result.playbook.postMerge).toEqual(['pnpm build', 'pnpm test']);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// playbookFrontmatterSchema — mode field validation
-// ---------------------------------------------------------------------------
-
-describe('playbookFrontmatterSchema — mode field', () => {
-  it('returns failure when mode is missing, with path including "mode"', () => {
-    const result = playbookFrontmatterSchema.safeParse({
-      name: 'my-feature',
-      description: 'A feature',
-      scope: 'project-team',
-      // mode intentionally omitted
-    });
-    expect(result.success).toBe(false);
-    if (result.success) throw new Error('unexpected');
-    const modeIssue = result.error.issues.find((i) => i.path.includes('mode'));
-    expect(modeIssue).toBeDefined();
-  });
-
-  it('returns failure when mode is an invalid value', () => {
-    const result = playbookFrontmatterSchema.safeParse({
-      name: 'my-feature',
-      description: 'A feature',
-      scope: 'project-team',
-      mode: 'invalid',
-    });
-    expect(result.success).toBe(false);
-    if (result.success) throw new Error('unexpected');
-    expect(result.error.issues.length).toBeGreaterThan(0);
-  });
-
-  it('accepts mode: autonomous', () => {
-    const result = playbookFrontmatterSchema.safeParse({
-      name: 'my-feature',
-      description: 'A feature',
-      scope: 'project-team',
-      mode: 'autonomous',
-    });
-    expect(result.success).toBe(true);
-    if (!result.success) throw new Error('unexpected');
-    expect(result.data.mode).toBe('autonomous');
-  });
-
-  it('accepts mode: planning', () => {
-    const result = playbookFrontmatterSchema.safeParse({
-      name: 'my-feature',
-      description: 'A feature',
-      scope: 'project-team',
-      mode: 'planning',
-    });
-    expect(result.success).toBe(true);
-    if (!result.success) throw new Error('unexpected');
-    expect(result.data.mode).toBe('planning');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parsePlaybook / serializePlaybook round-trip with mode
-// ---------------------------------------------------------------------------
-
-describe('parsePlaybook / serializePlaybook — mode round-trip', () => {
-  it('round-trips mode: autonomous through serialize/parse', () => {
-    const pb = validPlaybook(); // mode: 'autonomous'
-    const raw = serializePlaybook(pb);
-    expect(raw).toContain('mode: autonomous');
-    const parsed = parsePlaybook(raw);
-    expect(parsed.mode).toBe('autonomous');
-  });
-
-  it('round-trips mode: planning through serialize/parse', () => {
-    const pb = validPlanningPlaybook(); // mode: 'planning'
-    const raw = serializePlaybook(pb);
-    expect(raw).toContain('mode: planning');
-    const parsed = parsePlaybook(raw);
-    expect(parsed.mode).toBe('planning');
-  });
-
-  it('fails to parse a raw string missing mode', () => {
-    const raw = `---
-name: my-feature
-description: A feature
-scope: project-team
----
-
-## Goal
-
-Do something.
-`;
-    expect(() => parsePlaybook(raw)).toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// playbookToBuildSource
-// ---------------------------------------------------------------------------
-
-describe('playbookToBuildSource', () => {
-  it('returns an object with name and source fields', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(typeof result.name).toBe('string');
-    expect(typeof result.source).toBe('string');
-    expect(result.name).toBe(pb.name);
-  });
-
-  it('source contains the goal text', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(result.source).toContain(pb.goal);
-  });
-
-  it('source contains the description as a heading', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(result.source).toContain(pb.description);
-  });
-
-  it('source contains out-of-scope text when present', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(result.source).toContain(pb.outOfScope);
-  });
-
-  it('source contains acceptance criteria when present', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(result.source).toContain(pb.acceptanceCriteria);
-  });
-
-  it('source contains planner notes when present', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(result.source).toContain(pb.plannerNotes);
-  });
-
-  it('exposes individual section fields', () => {
-    const pb = validPlaybook();
-    const result = playbookToBuildSource(pb);
-    expect(result.goal).toBe(pb.goal);
-    expect(result.outOfScope).toBe(pb.outOfScope);
-    expect(result.acceptanceCriteria).toBe(pb.acceptanceCriteria);
-    expect(result.plannerNotes).toBe(pb.plannerNotes);
-  });
-
-  it('omits empty optional sections from source', () => {
-    const pb: Playbook = {
-      ...validPlaybook(),
-      outOfScope: '',
-      acceptanceCriteria: '',
-      plannerNotes: '',
-    };
-    const result = playbookToBuildSource(pb);
-    expect(result.source).not.toContain('Out of scope');
-    expect(result.source).not.toContain('Acceptance criteria');
-    expect(result.source).not.toContain('Notes for the planner');
-  });
-
-  it('source is stable across identical inputs', () => {
-    const pb = validPlaybook();
-    expect(playbookToBuildSource(pb).source).toBe(playbookToBuildSource(pb).source);
-  });
-
-  it('throws PlaybookModeMismatchError for a planning playbook', () => {
-    const pb = validPlanningPlaybook();
-    expect(() => playbookToBuildSource(pb)).toThrow(PlaybookModeMismatchError);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// playbookToPlanSeed
-// ---------------------------------------------------------------------------
-
-describe('playbookToPlanSeed', () => {
-  it('throws PlaybookModeMismatchError for an autonomous playbook', () => {
-    const pb = validPlaybook(); // mode: 'autonomous'
-    expect(() => playbookToPlanSeed(pb)).toThrow(PlaybookModeMismatchError);
-  });
-
-  it('returns a seed object for a planning playbook', () => {
-    const pb = validPlanningPlaybook();
-    const seed = playbookToPlanSeed(pb);
-    expect(seed).toBeDefined();
-    expect(seed.sessionId).toBeTruthy();
-    expect(seed.topic).toBe(pb.description);
-    expect(seed.seededFrom).toBe(pb.name);
-  });
-
-  it('sessionId contains the playbook name', () => {
-    const pb = validPlanningPlaybook();
-    const seed = playbookToPlanSeed(pb);
-    expect(seed.sessionId).toContain(pb.name);
-  });
-
-  it('populates sections Map with lowercase-heading keys', () => {
-    const pb = validPlanningPlaybook();
-    const seed = playbookToPlanSeed(pb);
-
-    expect(seed.sections.has('goal')).toBe(true);
-    expect(seed.sections.has('out of scope')).toBe(true);
-    expect(seed.sections.has('acceptance criteria')).toBe(true);
-    expect(seed.sections.has('notes from playbook')).toBe(true);
-  });
-
-  it('sections Map values contain the playbook content', () => {
-    const pb = validPlanningPlaybook();
-    const seed = playbookToPlanSeed(pb);
-
-    expect(seed.sections.get('goal')).toBe(pb.goal);
-    expect(seed.sections.get('out of scope')).toBe(pb.outOfScope);
-    expect(seed.sections.get('acceptance criteria')).toBe(pb.acceptanceCriteria);
-    expect(seed.sections.get('notes from playbook')).toBe(pb.plannerNotes);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// writePlaybook / loadPlaybook / listPlaybooks round-trip
-// ---------------------------------------------------------------------------
-
+// --- eforge:region playbook-storage-suite ---
 describe('writePlaybook + loadPlaybook round-trip', () => {
   const makeTempDir = useTempDir('playbook-');
 
@@ -489,7 +116,7 @@ describe('writePlaybook + loadPlaybook round-trip', () => {
     const configDir = resolve(root, 'eforge');
     const cwd = root;
     // Override XDG for user-tier tests
-    process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
+    isolateXdgConfigHome(root);
     return { configDir, cwd };
   }
 
@@ -601,13 +228,14 @@ describe('writePlaybook + loadPlaybook round-trip', () => {
 // listPlaybooks
 // ---------------------------------------------------------------------------
 
+
 describe('listPlaybooks', () => {
   const makeTempDir = useTempDir('playbook-list-');
 
   function makeOpts(root: string) {
     const configDir = resolve(root, 'eforge');
     const cwd = root;
-    process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
+    isolateXdgConfigHome(root);
     return { configDir, cwd };
   }
 
@@ -758,13 +386,14 @@ This has wrong scope in frontmatter.
 // movePlaybook
 // ---------------------------------------------------------------------------
 
+
 describe('movePlaybook', () => {
   const makeTempDir = useTempDir('playbook-move-');
 
   function makeOpts(root: string) {
     const configDir = resolve(root, 'eforge');
     const cwd = root;
-    process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
+    isolateXdgConfigHome(root);
     return { configDir, cwd };
   }
 
@@ -809,6 +438,7 @@ describe('movePlaybook', () => {
 // ---------------------------------------------------------------------------
 // Bundled playbooks
 // ---------------------------------------------------------------------------
+
 
 describe('bundled playbooks', () => {
   it('all bundled playbooks parse successfully', async () => {
@@ -873,130 +503,4 @@ describe('bundled playbooks', () => {
 // profile field — parse / serialize / round-trip / build-source / plan-seed
 // ---------------------------------------------------------------------------
 
-describe('playbookFrontmatterSchema — optional profile field', () => {
-  it('accepts a playbook containing profile: docs-heavy', () => {
-    const raw = `---
-name: my-feature
-description: A feature
-scope: project-team
-mode: autonomous
-profile: docs-heavy
----
-
-## Goal
-
-Do something.
-`;
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('unexpected');
-    expect(result.playbook.profile).toBe('docs-heavy');
-  });
-
-  it('accepts a playbook without profile field (profile is optional)', () => {
-    const raw = validPlaybookRaw();
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('unexpected');
-    expect(result.playbook.profile).toBeUndefined();
-  });
-
-  it('rejects no existing playbook fixture because of profile field presence', () => {
-    // All existing playbooks (without profile) must still parse successfully
-    const raw = validPlaybookRaw();
-    const result = validatePlaybook(raw);
-    expect(result.ok).toBe(true);
-  });
-});
-
-describe('serializePlaybook — profile field', () => {
-  it('includes profile: field when profile is set', () => {
-    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
-    const serialized = serializePlaybook(pb);
-    expect(serialized).toContain('profile: docs-heavy');
-  });
-
-  it('omits profile: field when profile is undefined', () => {
-    const pb: Playbook = { ...validPlaybook() };
-    const serialized = serializePlaybook(pb);
-    expect(serialized).not.toContain('profile:');
-  });
-
-  it('round-trips profile field through parse/serialize', () => {
-    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
-    const raw = serializePlaybook(pb);
-    const reparsed = parsePlaybook(raw);
-    expect(reparsed.profile).toBe('docs-heavy');
-  });
-
-  it('serialized output contains mode: and postMerge: when profile is also present', () => {
-    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy', postMerge: ['pnpm build'] };
-    const serialized = serializePlaybook(pb);
-    expect(serialized).toContain('mode: autonomous');
-    expect(serialized).toContain('profile: docs-heavy');
-    expect(serialized).toContain('postMerge:');
-  });
-});
-
-describe('playbookToBuildSource — profile field', () => {
-  it('returns profile in the result for an autonomous playbook with profile', () => {
-    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
-    const result = playbookToBuildSource(pb);
-    expect(result.profile).toBe('docs-heavy');
-  });
-
-  it('returns undefined profile for an autonomous playbook without profile', () => {
-    const pb: Playbook = { ...validPlaybook() };
-    const result = playbookToBuildSource(pb);
-    expect(result.profile).toBeUndefined();
-  });
-});
-
-describe('playbookToPlanSeed — profile field', () => {
-  it('returns profile in the seed for a planning playbook with profile', () => {
-    const pb: Playbook = { ...validPlanningPlaybook(), profile: 'docs-heavy' };
-    const seed = playbookToPlanSeed(pb);
-    expect(seed.profile).toBe('docs-heavy');
-  });
-
-  it('returns undefined profile for a planning playbook without profile', () => {
-    const pb: Playbook = { ...validPlanningPlaybook() };
-    const seed = playbookToPlanSeed(pb);
-    expect(seed.profile).toBeUndefined();
-  });
-});
-
-describe('listPlaybooks — profile field', () => {
-  const makeTempDirForProfile = useTempDir('playbook-profile-');
-
-  function makeOpts(root: string) {
-    const configDir = resolve(root, 'eforge');
-    const cwd = root;
-    process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
-    return { configDir, cwd };
-  }
-
-  it('includes profile in listing entries when playbook declares profile', async () => {
-    const root = makeTempDirForProfile();
-    const opts = makeOpts(root);
-    const pb: Playbook = { ...validPlaybook(), profile: 'docs-heavy' };
-    await writePlaybook({ ...opts, scope: 'project-team', playbook: pb });
-
-    const { playbooks } = await listPlaybooks(opts);
-    const entry = playbooks.find((p) => p.name === 'my-feature');
-    expect(entry).toBeDefined();
-    expect(entry!.profile).toBe('docs-heavy');
-  });
-
-  it('omits profile from listing entries when playbook has no profile', async () => {
-    const root = makeTempDirForProfile();
-    const opts = makeOpts(root);
-    const pb: Playbook = { ...validPlaybook() };
-    await writePlaybook({ ...opts, scope: 'project-team', playbook: pb });
-
-    const { playbooks } = await listPlaybooks(opts);
-    const entry = playbooks.find((p) => p.name === 'my-feature');
-    expect(entry).toBeDefined();
-    expect(entry!.profile).toBeUndefined();
-  });
-});
+// --- eforge:endregion playbook-storage-suite ---

@@ -1,24 +1,16 @@
-/**
- * Integration tests for playbook HTTP routes.
- *
- * Drives the daemon in-process via `startServer` (consistent with the
- * serve-queue and daemon-recovery test patterns). Each test creates a real
- * temp directory with a minimal eforge project layout, exercises each of the
- * seven playbook routes, and asserts status codes, response shapes, and
- * engine-side persistence.
- */
-
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdir, writeFile, readFile, access, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
-import { startServer, type DaemonState, type MonitorServer, type StartServerOptions, type WorkerTracker } from '@eforge-build/monitor/server';
+import { startServer, type DaemonState, type MonitorServer, type StartServerOptions } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 import { upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
 
+import { setupPlaybookApiProject, postJson as post, invalidAcPlaybookRaw } from './playbook-api-helpers.js';
+import { validPlaybookRaw } from './playbook-helpers.js';
 const makeTempDir = useTempDir('eforge-playbook-api-');
 
 let server: MonitorServer | undefined;
@@ -43,332 +35,33 @@ afterEach(async () => {
   autoBuildWakeReasons = [];
 });
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Set up a minimal eforge project with git and a config directory. */
-async function setupProject(tmpDir: string): Promise<{ configDir: string }> {
-  // Init git repo
-  const gitOpts = { cwd: tmpDir };
-  execFileSync('git', ['init', '-b', 'main'], gitOpts);
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], gitOpts);
-  execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
-
-  // Add .gitignore ignoring .eforge/ so queue writes don't appear in git status
-  await writeFile(resolve(tmpDir, '.gitignore'), '.eforge/\n', 'utf-8');
-  execFileSync('git', ['add', '.gitignore'], gitOpts);
-  execFileSync('git', ['commit', '-m', 'chore: initial commit'], gitOpts);
-
-  // Create eforge config directory (so getConfigDir resolves it)
-  const configDir = resolve(tmpDir, 'eforge');
-  await mkdir(configDir, { recursive: true });
-  await writeFile(resolve(configDir, 'config.yaml'), '', 'utf-8');
-
-  return { configDir };
-}
-
-/** Build a valid raw playbook string. */
-function validPlaybookRaw(opts: {
-  name?: string; description?: string; scope?: string; mode?: string; goal?: string; profile?: string;
-} = {}): string {
-  const { name = 'my-feature', description = 'Add the my-feature capability', scope = 'project-team', mode = 'autonomous', goal = 'Implement the feature.', profile } = opts;
-  const lines = ['---', `name: ${name}`, `description: ${description}`, `scope: ${scope}`, `mode: ${mode}`];
-  if (profile) lines.push(`profile: ${profile}`);
-  lines.push('---', '', '## Goal', '', goal);
-  return lines.join('\n');
-}
-
-/** Build an invalid-AC playbook string (grouping label + bare command triggers the quality gate). */
-function invalidAcPlaybookRaw(opts: { name?: string; mode?: string; profile?: string; vague?: boolean } = {}): string {
-  const { name = 'bad-ac', mode = 'autonomous', profile, vague } = opts;
-  const lines = ['---', `name: ${name}`, 'description: Test playbook with bad AC', 'scope: project-team', `mode: ${mode}`];
-  if (profile) lines.push(`profile: ${profile}`);
-  lines.push('---', '', '## Goal', '', 'Do the thing.', '', '## Acceptance criteria', '', '- Supply-chain checks:', '- `pnpm build`.');
-  if (vague) lines.push('- Works correctly.');
-  return lines.join('\n');
-}
-
-/** POST helper that sends JSON. */
-async function post(url: string, body: unknown): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
-async function setup(opts: StartServerOptions = {}) {
+async function init(): Promise<{ tmpDir: string; configDir: string }> {
   const tmpDir = makeTempDir();
-  const { configDir } = await setupProject(tmpDir);
-  const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-  server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, ...opts });
-  return { tmpDir, configDir };
-}
-async function start(tmpDir: string, opts: StartServerOptions = {}) {
-  const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-  server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, ...opts });
-}
-async function init() {
-  const tmpDir = makeTempDir();
-  const { configDir } = await setupProject(tmpDir);
+  const { configDir } = await setupPlaybookApiProject(tmpDir);
   return { tmpDir, configDir };
 }
 
-// ---------------------------------------------------------------------------
-// Route: GET /api/playbook/list
-// ---------------------------------------------------------------------------
+async function start(tmpDir: string, opts: StartServerOptions = {}): Promise<void> {
+  const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+  server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, ...opts });
+}
 
-describe('GET /api/playbook/list', () => {
-  it('returns empty list when no playbooks exist', async () => {
-    await setup();
+async function setup(opts: StartServerOptions = {}): Promise<{ tmpDir: string; configDir: string }> {
+  const ctx = await init();
+  await start(ctx.tmpDir, opts);
+  return ctx;
+}
 
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookList}`);
-    expect(res.status).toBe(200);
+async function expectNoMarkdownFiles(dir: string): Promise<void> {
+  try {
+    const files = await readdir(dir);
+    expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+}
 
-    const data = await res.json() as { playbooks: unknown[]; warnings: unknown[] };
-    expect(Array.isArray(data.playbooks)).toBe(true);
-    expect(data.playbooks).toHaveLength(0);
-    expect(Array.isArray(data.warnings)).toBe(true);
-  });
-
-  it('returns playbooks with source, shadows, and mode fields when files exist at multiple tiers', async () => {
-    const { tmpDir, configDir } = await init();
-
-    // Write project-team autonomous playbook
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-team', mode: 'autonomous' }), 'utf-8');
-
-    // Write project-local shadow
-    const localDir = resolve(tmpDir, '.eforge', 'playbooks');
-    await mkdir(localDir, { recursive: true });
-    await writeFile(resolve(localDir, 'my-feature.md'), validPlaybookRaw({ scope: 'project-local', mode: 'autonomous' }), 'utf-8');
-
-    // Write a planning-mode playbook
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', scope: 'project-team', mode: 'planning' }), 'utf-8');
-
-    await start(tmpDir);
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookList}`);
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as {
-      playbooks: Array<{ name: string; source: string; mode: string; shadows: Array<{ source: string; path: string }> }>;
-      warnings: string[];
-    };
-
-    expect(data.playbooks.length).toBeGreaterThanOrEqual(2);
-    const entry = data.playbooks.find((p) => p.name === 'my-feature');
-    expect(entry).toBeDefined();
-    // project-local has highest precedence; source should be 'project-local'
-    expect(entry!.source).toBe('project-local');
-    expect(entry!.mode).toBe('autonomous');
-    // project-team is a shadow
-    expect(entry!.shadows.length).toBeGreaterThanOrEqual(1);
-    expect(entry!.shadows.some((s) => s.source === 'project-team')).toBe(true);
-
-    // Planning playbook has mode: 'planning'
-    const planningEntry = data.playbooks.find((p) => p.name === 'my-planning');
-    expect(planningEntry).toBeDefined();
-    expect(planningEntry!.mode).toBe('planning');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Route: GET /api/playbook/show
-// ---------------------------------------------------------------------------
-
-describe('GET /api/playbook/show', () => {
-  it('returns 400 when name param is missing', async () => {
-    await setup();
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}`);
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 404 when playbook does not exist', async () => {
-    await setup();
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}?name=nonexistent`);
-    expect(res.status).toBe(404);
-  });
-
-  it('returns playbook frontmatter, body, and mode for an existing playbook', async () => {
-    const { tmpDir, configDir } = await init();
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
-
-    await start(tmpDir);
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.playbookShow}?name=my-feature`);
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as {
-      playbook: { name: string; description: string; scope: string; mode: string; goal: string };
-      source: string;
-      shadows: unknown[];
-    };
-    expect(data.playbook.name).toBe('my-feature');
-    expect(data.playbook.description).toBe('Add the my-feature capability');
-    expect(data.playbook.scope).toBe('project-team');
-    expect(data.playbook.mode).toBe('autonomous');
-    expect(data.playbook.goal).toContain('Implement the feature');
-    expect(data.source).toBe('project-team');
-    expect(Array.isArray(data.shadows)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Route: POST /api/playbook/save
-// ---------------------------------------------------------------------------
-
-describe('POST /api/playbook/save', () => {
-  it('returns 400 with errors array when playbook frontmatter is invalid', async () => {
-    await setup();
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
-      scope: 'project-team',
-      playbook: {
-        frontmatter: { name: 'INVALID NAME', description: '', scope: 'project-team' },
-        body: { goal: 'Do something.' },
-      },
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string; errors: string[] };
-    expect(data.error).toContain('validation');
-    expect(Array.isArray(data.errors)).toBe(true);
-    expect(data.errors.length).toBeGreaterThan(0);
-  });
-
-  it('returns 400 when the Goal section is missing', async () => {
-    await setup();
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
-      scope: 'project-team',
-      playbook: {
-        frontmatter: { name: 'my-feature', description: 'A feature', scope: 'project-team', mode: 'autonomous' },
-        body: { goal: '' }, // empty goal → invalid
-      },
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { errors: string[] };
-    expect(Array.isArray(data.errors)).toBe(true);
-    expect(data.errors.some((e) => /goal/i.test(e))).toBe(true);
-  });
-
-
-  it('returns 400 and does not create file when acceptance criteria contain quality issues', async () => {
-    const { tmpDir } = await setup();
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
-      scope: 'project-team',
-      playbook: {
-        frontmatter: { name: 'bad-ac', description: 'Test invalid AC', scope: 'project-team', mode: 'autonomous' },
-        body: {
-          goal: 'Do the thing.',
-          outOfScope: '',
-          // Grouping label, bare command, and vague criterion
-          acceptanceCriteria: '- Supply-chain checks:\n- `pnpm build`.\n- Works correctly.',
-          plannerNotes: '',
-        },
-      },
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('Acceptance criteria quality issues');
-    expect(data.error).toContain('[grouping-label]');
-    expect(data.error).toContain('[bare-command]');
-    expect(data.error).toContain('[vague]');
-    expect(data.error).toContain('Supply-chain checks:');
-
-    // File must not have been created
-    const targetPath = resolve(tmpDir, 'eforge', 'playbooks', 'bad-ac.md');
-    await expect(access(targetPath)).rejects.toThrow();
-  });
-
-  it('returns 400 and leaves existing file unchanged when acceptance criteria contain quality issues', async () => {
-    const { tmpDir, configDir } = await init();
-
-    // Create sentinel file with known content
-    const playbooksDir = resolve(configDir, 'playbooks');
-    await mkdir(playbooksDir, { recursive: true });
-    const sentinelContent = '---\nname: existing\ndescription: Existing playbook\nscope: project-team\nmode: autonomous\n---\n\n## Goal\n\nExisting goal.\n';
-    await writeFile(resolve(playbooksDir, 'existing.md'), sentinelContent, 'utf-8');
-
-    await start(tmpDir);
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
-      scope: 'project-team',
-      playbook: {
-        frontmatter: { name: 'existing', description: 'Existing playbook', scope: 'project-team', mode: 'autonomous' },
-        body: {
-          goal: 'New goal.',
-          outOfScope: '',
-          acceptanceCriteria: '- Supply-chain checks:\n- `pnpm build`.',
-          plannerNotes: '',
-        },
-      },
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('Acceptance criteria quality issues');
-
-    // Existing file must be unchanged
-    const fileContent = await readFile(resolve(playbooksDir, 'existing.md'), 'utf-8');
-    expect(fileContent).toBe(sentinelContent);
-  });
-
-
-  it('writes the playbook file and returns its path', async () => {
-    await setup();
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookSave}`, {
-      scope: 'project-team',
-      playbook: {
-        frontmatter: { name: 'my-feature', description: 'Add the my-feature capability', scope: 'project-team', mode: 'autonomous' },
-        body: { goal: 'Implement the feature.', outOfScope: '', acceptanceCriteria: '', plannerNotes: '' },
-      },
-    });
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as { path: string };
-    expect(typeof data.path).toBe('string');
-    expect(data.path).toContain('my-feature.md');
-
-    // Verify file was actually written
-    await expect(access(data.path)).resolves.toBeUndefined();
-    const content = await readFile(data.path, 'utf-8');
-    expect(content).toContain('name: my-feature');
-    expect(content).toContain('## Goal');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Route: POST /api/playbook/enqueue (removed — must return 404)
-// ---------------------------------------------------------------------------
-
-describe('POST /api/playbook/enqueue (old route removed)', () => {
-  it('returns 404 for the old enqueue route', async () => {
-    await setup();
-
-    const res = await post(`http://localhost:${server.port}/api/playbook/enqueue`, {
-      name: 'my-feature',
-    });
-    expect(res.status).toBe(404);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Route: POST /api/playbook/run
-// ---------------------------------------------------------------------------
-
+// --- eforge:region playbook-api-run-profile-suite ---
 describe('POST /api/playbook/run', () => {
   it('returns 404 when the named playbook does not exist', async () => {
     await setup();
@@ -702,6 +395,7 @@ describe('POST /api/playbook/run', () => {
 
 // --- Route: POST /api/playbook/promote ---
 
+
 describe('POST /api/playbook/promote', () => {
   it('moves a playbook from project-local to project-team and returns the new path', async () => {
     const { tmpDir, configDir } = await init();
@@ -735,6 +429,7 @@ describe('POST /api/playbook/promote', () => {
 
 // --- Route: POST /api/playbook/demote ---
 
+
 describe('POST /api/playbook/demote', () => {
   it('moves a playbook from project-team to project-local and returns the new path', async () => {
     const { tmpDir, configDir } = await init();
@@ -767,6 +462,7 @@ describe('POST /api/playbook/demote', () => {
 });
 
 // --- Route: POST /api/playbook/validate ---
+
 
 describe('POST /api/playbook/validate', () => {
   it('returns ok:true for a valid raw playbook', async () => {
@@ -815,6 +511,7 @@ describe('POST /api/playbook/validate', () => {
 });
 
 // --- Playbook profile field — /api/playbook/run ---
+
 
 describe('POST /api/playbook/run — profile field', () => {
   it('does not validate missing profile for a planning-mode playbook', async () => {
@@ -1119,6 +816,7 @@ describe('POST /api/playbook/run — profile field', () => {
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     const files = await readdir(queueDir);
     expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+    await expectNoMarkdownFiles(resolve(queueDir, 'waiting'));
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
@@ -1154,6 +852,7 @@ describe('POST /api/playbook/run — profile field', () => {
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     const files = await readdir(queueDir);
     expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+    await expectNoMarkdownFiles(resolve(queueDir, 'waiting'));
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
@@ -1234,74 +933,10 @@ describe('POST /api/playbook/run — profile field', () => {
 });
 
 
-// --- Helpers for enqueue-route tests (daemon mode requires workerTracker) ---
-
-function makeStubWorkerTracker(): WorkerTracker {
-  return {
-    spawnWorker(_command: string, _args: string[]): { sessionId: string; pid: number } {
-      return { sessionId: 'stub-session', pid: 99999 };
-    },
-    cancelWorker(_sessionId: string): boolean {
-      return false;
-    },
-  };
-}
-
-// --- Route: POST /api/enqueue — landingAutoMerge validation ---
-
-describe('POST /api/enqueue - landingAutoMerge validation', () => {
-  it('returns 400 when landingAutoMerge is true and landingAction is merge', async () => {
-    await setup({ workerTracker: makeStubWorkerTracker() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a new feature',
-      landingAction: 'merge',
-      landingAutoMerge: true,
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('landingAutoMerge');
-    expect(data.error).toContain('pr');
-  });
-
-  it('returns 400 when landingAutoMerge is a non-boolean value', async () => {
-    await setup({ workerTracker: makeStubWorkerTracker() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a new feature',
-      landingAutoMerge: 'yes',
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('landingAutoMerge');
-    expect(data.error).toContain('boolean');
-  });
-
-  it('returns 400 when landingAutoMerge is true and policy is never', async () => {
-    const { tmpDir, configDir } = await init();
-
-    // Set landing.pr.autoMerge: never in project config
-    await writeFile(resolve(configDir, 'config.yaml'), 'landing:\n  pr:\n    autoMerge: never\n', 'utf-8');
-
-    await start(tmpDir, { workerTracker: makeStubWorkerTracker() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a new feature',
-      landingAction: 'pr',
-      landingAutoMerge: true,
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain("never");
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Route: POST /api/playbook/run — landingAutoMerge persistence
 // ---------------------------------------------------------------------------
+
 
 describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
   it('persists landing_auto_merge: true in PRD frontmatter when landingAction pr and landingAutoMerge true are both supplied', async () => {
@@ -1374,101 +1009,4 @@ describe('POST /api/playbook/run - landingAutoMerge persistence', () => {
 
 
 
-// ---------------------------------------------------------------------------
-// Route: POST /api/enqueue — afterQueueId validation
-// ---------------------------------------------------------------------------
-
-// Recording workerTracker so tests can inspect spawned args
-function makeRecordingWorkerTracker(): WorkerTracker & { calls: Array<{ command: string; args: string[] }> } {
-  const calls: Array<{ command: string; args: string[] }> = [];
-  return {
-    calls,
-    spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
-      calls.push({ command, args });
-      return { sessionId: 'rec-session', pid: 88888 };
-    },
-    cancelWorker(_sessionId: string): boolean {
-      return false;
-    },
-  };
-}
-
-describe('POST /api/enqueue - afterQueueId validation', () => {
-  it('returns 400 when afterQueueId is not a string (number)', async () => {
-    await setup({ workerTracker: makeStubWorkerTracker() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a new feature',
-      afterQueueId: 42,
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('afterQueueId');
-    expect(data.error).toContain('string');
-  });
-
-  it('returns 400 when afterQueueId is not a string (boolean)', async () => {
-    await setup({ workerTracker: makeStubWorkerTracker() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a new feature',
-      afterQueueId: true,
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('afterQueueId');
-  });
-
-  it('returns 400 with the invalid id in error text for an unknown afterQueueId', async () => {
-    const { tmpDir } = await init();
-    // Initialize git repo so loadQueue works
-    execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir });
-    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tmpDir });
-    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmpDir });
-    await start(tmpDir, { workerTracker: makeStubWorkerTracker() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a new feature',
-      afterQueueId: 'nonexistent-q-abc',
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain('nonexistent-q-abc');
-  });
-
-  it('passes --after <id> to enqueue worker when afterQueueId is valid (active root item)', async () => {
-    const { tmpDir, configDir } = await init();
-    execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir });
-    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tmpDir });
-    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmpDir });
-
-    // Write an active PRD to the queue root
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    await mkdir(queueDir, { recursive: true });
-    await writeFile(
-      resolve(queueDir, 'active-upstream.md'),
-      '---\ntitle: active-upstream\ncreated: 2026-01-01\n---\n\n# Active upstream\n',
-      'utf-8',
-    );
-
-    const tracker = makeRecordingWorkerTracker();
-    await start(tmpDir, { workerTracker: tracker });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      source: 'implement a dependent feature',
-      afterQueueId: 'active-upstream',
-    });
-    expect(res.status).toBe(200);
-
-    // Worker should have been spawned with --after active-upstream
-    const call = tracker.calls.find((c) => c.command === 'enqueue');
-    expect(call).toBeDefined();
-    expect(call!.args).toContain('--after');
-    const afterIdx = call!.args.indexOf('--after');
-    expect(call!.args[afterIdx + 1]).toBe('active-upstream');
-  });
-});
-
+// --- eforge:endregion playbook-api-run-profile-suite ---
