@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import type { ModelTracker } from '../model-tracker.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { enqueuePrd, inferTitle } from '../prd-queue.js';
+import { extractExpectedAcceptanceCriteria } from '../validation/acceptance-criteria.js';
+import { requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from '../validation/acceptance-criteria-inventory.js';
 import { deriveSplitRecoveryContinuation } from './continuation.js';
 
 export interface ApplyHelperOptions {
@@ -76,12 +78,15 @@ export async function applyRecoverySplit(
     .replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
     .replace(/^\s+/, '');
 
-  const title = inferTitle(body);
+  const visibleBody = stripAcceptanceCriteriaInventoryBlock(body).trimEnd();
+  const acceptanceCriteriaInventory = readOrBuildRecoveryInventory(body, visibleBody);
+  const title = inferTitle(visibleBody);
   const recoveryContinuation = await deriveSplitRecoveryContinuation({ cwd, prdId, summary: context.summary });
 
   const { id: successorPrdId } = await enqueuePrd({
-    body,
+    body: visibleBody,
     title,
+    acceptanceCriteriaInventory,
     queueDir,
     cwd,
     depends_on: [],
@@ -101,6 +106,25 @@ export async function applyRecoverySplit(
  * Apply an `abandon` verdict: permanently remove the failed PRD and both sidecar
  * files from the queue. Filesystem-only — queue state is runtime, not tracked in git.
  */
+function readOrBuildRecoveryInventory(body: string, visibleBody: string): CanonicalAcceptanceCriteriaInventory {
+  try {
+    return requireAcceptanceCriteriaInventoryFromPrd(body);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/missing.*inventory|missing-block/i.test(message)) throw err;
+  }
+  return {
+    version: 1,
+    criteria: extractExpectedAcceptanceCriteria(visibleBody, { allowFallbackSections: true }).map((criterion, index) => ({
+      id: `ac-${String(index + 1).padStart(3, '0')}`,
+      text: criterion.text,
+      raw: criterion.raw,
+      sourceQuote: criterion.raw,
+      confidence: 1,
+    })),
+  };
+}
+
 export async function applyRecoveryAbandon(
   options: ApplyHelperOptions,
 ): Promise<{ commitSha: string }> {

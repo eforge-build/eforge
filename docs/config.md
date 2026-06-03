@@ -107,7 +107,7 @@ build:
   #   noCommandsReason: ""    # Required when allowNoCommands is true
   #   allowEmptyPrdDiff: false # Allow PRD validation to pass when the implementation diff is empty
   #   emptyPrdDiffReason: ""  # Required when allowEmptyPrdDiff is true
-  #   allowNoAcceptanceCriteria: false # Allow builds with no extractable acceptance criteria to pass instead of failing
+  #   allowNoAcceptanceCriteria: false # Allow builds with an empty canonical acceptance-criteria inventory to pass instead of failing
   #   noAcceptanceCriteriaReason: ""   # Required when allowNoAcceptanceCriteria is true
   #   allowNoCommittedChanges: false   # Allow builds that produce no committed changes to pass instead of failing
   #   noCommittedChangesReason: ""     # Required when allowNoCommittedChanges is true
@@ -302,7 +302,7 @@ build:
 
 ### `build.validation.allowNoAcceptanceCriteria`
 
-When no extractable acceptance criteria are found in the PRD (the `## Acceptance Criteria` section is absent or empty), the build fails with `acceptance_validation:complete passed:false`. The PRD validator cannot produce meaningful per-criterion verdicts against an empty inventory.
+Queued PRD builds use the canonical acceptance-criteria inventory extracted and persisted at enqueue. If the hidden inventory block is missing, duplicated, or malformed, the build fails before orchestration and the PRD must be re-enqueued. When the persisted inventory is valid but empty, the build fails with `acceptance_validation:complete passed:false` because the PRD validator cannot produce meaningful per-criterion verdicts against an empty inventory.
 
 Set `allowNoAcceptanceCriteria: true` with a non-empty `noAcceptanceCriteriaReason` to allow such builds to pass:
 
@@ -332,7 +332,7 @@ All waiver booleans require a non-empty reason string. A config that sets any wa
 
 ## PRD provenance
 
-When the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md` as a provenance record. Unlike queue state (`.eforge/queue/` — gitignored), `eforge/prds/` files are committed artifacts that link each build session to its originating requirements and survive queue cleanup. These files are written by the engine at dispatch time and committed to the artifact branch.
+When the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md` as a provenance record. Unlike queue state (`.eforge/queue/` — gitignored), `eforge/prds/` files are committed artifacts that link each build session to its originating requirements and survive queue cleanup. Queue PRDs include a hidden canonical acceptance-criteria inventory used for validation IDs; that hidden block is stripped from the committed provenance prose. These files are written by the engine at dispatch time and committed to the artifact branch.
 
 When `build.cleanupPlanFiles: true` (the default), the engine removes plan artifacts — including the PRD copy in `eforge/prds/`, the compiled plan files in `eforge/plans/{planSet}/`, and `orchestration.yaml` — from `HEAD` during the `pr` or `merge` landing flows after a successful build. Cleanup also strips temporary plan-ID eforge region marker comment lines from tracked JavaScript/TypeScript-family source files, preserving durable semantic markers and all code between marker lines. These artifacts are **not** permanently lost: cleanup only removes them from the final tree. When the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the full intermediate history — including the commits that added these artifacts — remains reachable from the base branch. `landing.action: leave` does not run this cleanup path and leaves the artifact branch in place for manual inspection. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy: squash or rebase merges can collapse intermediate commits and make artifact references unreachable.
 

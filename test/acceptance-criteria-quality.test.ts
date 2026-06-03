@@ -9,7 +9,7 @@
  *    when formatted PRD contains invalid AC content
  */
 import { describe, it, expect } from 'vitest';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
@@ -18,6 +18,7 @@ import {
   analyzeAcceptanceCriteriaInBody,
 } from '@eforge-build/input';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { StubHarness } from './stub-harness.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -268,7 +269,7 @@ describe('analyzeAcceptanceCriteriaInBody', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Engine enqueue — AC quality gate integration
+// Engine enqueue — canonical extractor quality integration
 // ---------------------------------------------------------------------------
 
 const makeTempDir = useTempDir('eforge-ac-quality-enqueue-');
@@ -311,33 +312,37 @@ function makePrdBody(acLines: string[]): string {
   ].join('\n');
 }
 
-describe('EforgeEngine.enqueue — AC quality gate', () => {
-  /** Engine options that disable heavy plugin/MCP loading for unit tests. */
-  async function makeEngine(tmpDir: string, formattedBody: string): Promise<EforgeEngine> {
-    const formatter = new StubHarness([{ text: formattedBody }]);
+describe('EforgeEngine.enqueue — canonical extractor quality gate', () => {
+  async function makeEngine(tmpDir: string, formattedBody: string, extractorOutput: string): Promise<EforgeEngine> {
+    const harness = new StubHarness([{ text: formattedBody }, { text: extractorOutput }]);
     return EforgeEngine.create({
       cwd: tmpDir,
-      agentRuntimes: formatter,
+      agentRuntimes: harness,
       config: {
         plugins: { enabled: false },
       },
     });
   }
 
-  it('emits enqueue:failed for PRD with grouping-label AC ("Tests cover:")', async () => {
+  it('emits enqueue:failed for extractor output with grouping-label AC ("Tests cover:")', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
 
     const formattedBody = makePrdBody(['- Tests cover:']);
-    const engine = await makeEngine(tmpDir, formattedBody);
+    const engine = await makeEngine(tmpDir, formattedBody, JSON.stringify({
+      version: 1,
+      criteria: [{ text: 'Tests cover:', sourceQuote: 'Tests cover:', confidence: 0.95 }],
+    }));
 
-    const events: string[] = [];
+    const events = [];
     for await (const e of engine.enqueue('test input')) {
-      events.push(e.type);
+      events.push(e);
     }
 
-    expect(events).toContain('enqueue:failed');
-    expect(events).not.toContain('enqueue:complete');
+    const failed = events.find((event) => event.type === 'enqueue:failed');
+    expect(failed).toBeDefined();
+    expect(failed?.error).toMatch(/grouping-label|Tests cover/i);
+    expect(events.map((event) => event.type)).not.toContain('enqueue:complete');
 
     // Queue directory should have zero queued markdown files
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
@@ -350,20 +355,22 @@ describe('EforgeEngine.enqueue — AC quality gate', () => {
     expect(queueFiles).toHaveLength(0);
   });
 
-  it('emits enqueue:failed for PRD with bare-command AC ("`pnpm type-check`.")', async () => {
+  it('emits enqueue:failed for extractor output with malformed JSON', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
 
     const formattedBody = makePrdBody(['- `pnpm type-check`.']);
-    const engine = await makeEngine(tmpDir, formattedBody);
+    const engine = await makeEngine(tmpDir, formattedBody, 'not json');
 
-    const events: string[] = [];
+    const events = [];
     for await (const e of engine.enqueue('test input')) {
-      events.push(e.type);
+      events.push(e);
     }
 
-    expect(events).toContain('enqueue:failed');
-    expect(events).not.toContain('enqueue:complete');
+    const failed = events.find((event) => event.type === 'enqueue:failed');
+    expect(failed).toBeDefined();
+    expect(failed?.error).toMatch(/invalid JSON|JSON/i);
+    expect(events.map((event) => event.type)).not.toContain('enqueue:complete');
 
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     let queueFiles: string[] = [];
@@ -375,12 +382,42 @@ describe('EforgeEngine.enqueue — AC quality gate', () => {
     expect(queueFiles).toHaveLength(0);
   });
 
-  it('reaches enqueue:complete for PRD with valid AC ("`pnpm type-check` exits 0.")', async () => {
+  it('enqueues when Markdown ACs are invalid but structured extractor output is valid', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const formattedBody = makePrdBody(['- Tests cover:', '  - The queue writes a canonical inventory for valid extracted criteria.']);
+    const engine = await makeEngine(tmpDir, formattedBody, JSON.stringify({
+      version: 1,
+      criteria: [{
+        text: 'The queue writes a canonical inventory for valid extracted criteria.',
+        sourceQuote: 'The queue writes a canonical inventory for valid extracted criteria.',
+        confidence: 0.95,
+      }],
+    }));
+
+    const events: string[] = [];
+    for await (const e of engine.enqueue('test input')) events.push(e.type);
+
+    expect(events).toContain('enqueue:complete');
+    expect(events).not.toContain('enqueue:failed');
+
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    const queueFiles = (await readdir(queueDir)).filter((f) => f.endsWith('.md'));
+    expect(queueFiles).toHaveLength(1);
+    const queuedContent = await readFile(resolve(queueDir, queueFiles[0]), 'utf-8');
+    expect(requireAcceptanceCriteriaInventoryFromPrd(queuedContent).criteria).toHaveLength(1);
+  });
+
+  it('writes exactly one queued PRD with one hidden inventory block and stable AC ids for valid extractor output', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
 
     const formattedBody = makePrdBody(['- `pnpm type-check` exits 0.']);
-    const engine = await makeEngine(tmpDir, formattedBody);
+    const engine = await makeEngine(tmpDir, formattedBody, JSON.stringify({
+      version: 1,
+      criteria: [{ text: '`pnpm type-check` exits 0.', sourceQuote: '`pnpm type-check` exits 0.', confidence: 0.95 }],
+    }));
 
     const events: string[] = [];
     for await (const e of engine.enqueue('test input')) {
@@ -389,5 +426,13 @@ describe('EforgeEngine.enqueue — AC quality gate', () => {
 
     expect(events).toContain('enqueue:complete');
     expect(events).not.toContain('enqueue:failed');
+
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    const queueFiles = (await readdir(queueDir)).filter((f) => f.endsWith('.md'));
+    expect(queueFiles).toHaveLength(1);
+    const queuedContent = await readFile(resolve(queueDir, queueFiles[0]), 'utf-8');
+    expect((queuedContent.match(/eforge:acceptance-criteria-inventory/g) ?? [])).toHaveLength(1);
+    expect((queuedContent.match(/eforge:end-acceptance-criteria-inventory/g) ?? [])).toHaveLength(1);
+    expect(queuedContent).toContain('"id":"ac-001"');
   });
 });

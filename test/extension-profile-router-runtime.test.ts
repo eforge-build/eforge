@@ -460,6 +460,30 @@ describe('buildProfileRouterContext', () => {
     expect(ctx.prdContentSummary).toBeUndefined();
   });
 
+  it('strips hidden acceptance inventory blocks from router body and summary context', () => {
+    const hiddenBlock = '<!-- eforge:acceptance-criteria-inventory\n{"version":1,"criteria":[]}\neforge:end-acceptance-criteria-inventory -->';
+    const body = `# Test\n\nVisible PRD prose.\n\n${hiddenBlock}\n\n${'More visible prose. '.repeat(80)}`;
+    const prd = makePrd({ content: `---\ntitle: Test PRD\n---\n\n${body}` });
+
+    const shortCtx = buildProfileRouterContext(
+      prd,
+      { configProfileName: null, availableProfiles: [], cwd: '/tmp', prdBodyCapChars: 4096 },
+      'test-ext',
+      'test-router',
+    );
+    expect(shortCtx.prdBody).not.toContain('eforge:acceptance-criteria-inventory');
+    expect(shortCtx.prdBody).toContain('Visible PRD prose.');
+
+    const summaryCtx = buildProfileRouterContext(
+      prd,
+      { configProfileName: null, availableProfiles: [], cwd: '/tmp', prdBodyCapChars: 40 },
+      'test-ext',
+      'test-router',
+    );
+    expect(summaryCtx.prdContentSummary).not.toContain('eforge:acceptance-criteria-inventory');
+    expect(summaryCtx.prdContentSummary).toContain('Visible PRD prose.');
+  });
+
   it('dependsOn comes from frontmatter.depends_on', () => {
     const prd = makePrd({
       frontmatter: { title: 'Test PRD', depends_on: ['upstream-1', 'upstream-2'] },

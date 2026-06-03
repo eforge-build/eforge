@@ -24,6 +24,7 @@ import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
 import type { ProfileRouterRegistration, NativeExtensionRegistry } from './types.js';
 import type { ProfileUsageProvider, ProfileUsageSummary } from '../profile-usage.js';
+import { stripAcceptanceCriteriaInventoryBlock } from '../validation/acceptance-criteria-inventory.js';
 
 // ---------------------------------------------------------------------------
 // Local SDK-mirror types (avoid importing from @eforge-build/extension-sdk to
@@ -252,7 +253,7 @@ export function buildProfileRouterContext(
   // Extract body text (strip frontmatter delimiter block)
   const bodyMatch = prd.content.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
   const rawBody = bodyMatch ? bodyMatch[1] : prd.content;
-  const trimmedBody = rawBody.trim();
+  const trimmedBody = stripAcceptanceCriteriaInventoryBlock(rawBody).trim();
 
   let prdBody: string | undefined;
   let prdContentSummary: string | undefined;

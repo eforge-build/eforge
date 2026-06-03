@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { runAcceptanceCriteriaExtractor } from '@eforge-build/engine/agents/acceptance-criteria-extractor';
 import {
   extractExpectedAcceptanceCriteria,
   normalizeCriterionText,
@@ -7,6 +8,196 @@ import {
   synthesizeMissingVerdicts,
   analyzeAcceptanceCriteriaItem,
 } from '@eforge-build/engine/validation/acceptance-criteria';
+import {
+  AC_EXTRACTION_MIN_CONFIDENCE,
+  appendAcceptanceCriteriaInventoryBlock,
+  parseAcceptanceCriteriaExtractorOutput,
+  readAcceptanceCriteriaInventoryBlock,
+  requireAcceptanceCriteriaInventoryFromPrd,
+  stripAcceptanceCriteriaInventoryBlock,
+} from '@eforge-build/engine/validation/acceptance-criteria-inventory';
+import { StubHarness } from './stub-harness.js';
+
+const CANONICAL_SOURCE = [
+  '# Feature',
+  '',
+  '## Acceptance Criteria',
+  '',
+  '- Engine emits `enqueue:complete` after writing the PRD.',
+  '- `pnpm type-check` exits 0.',
+].join('\n');
+
+function validExtractorJson(): string {
+  return JSON.stringify({
+    version: 1,
+    criteria: [
+      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
+      { text: '`pnpm type-check` exits 0.', sourceQuote: '`pnpm type-check` exits 0.', confidence: 0.9 },
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// extractor agent helper
+// ---------------------------------------------------------------------------
+
+describe('runAcceptanceCriteriaExtractor', () => {
+  it('uses the prd-validator role with tools disabled and yields ordinary agent events', async () => {
+    const harness = new StubHarness([{ text: validExtractorJson() }]);
+    const events = [];
+    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: CANONICAL_SOURCE, verbose: true });
+    let result = await gen.next();
+    while (!result.done) {
+      events.push(result.value);
+      result = await gen.next();
+    }
+
+    expect(result.value.criteria.map((criterion) => criterion.id)).toEqual(['ac-001', 'ac-002']);
+    expect(harness.calls[0].tools).toBe('none');
+    expect(events.find((event) => event.type === 'agent:start')?.agent).toBe('prd-validator');
+    expect(events.map((event) => event.type)).toContain('agent:start');
+    expect(events.map((event) => event.type)).toContain('agent:message');
+  });
+
+  it('falls back to accumulated messages when resultText is blank', async () => {
+    const harness = new StubHarness([{ text: validExtractorJson(), resultText: '   ' }]);
+    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: CANONICAL_SOURCE });
+    let result = await gen.next();
+    while (!result.done) result = await gen.next();
+
+    expect(result.value.criteria[0].id).toBe('ac-001');
+  });
+
+  it('fails closed when the harness emits no parseable output', async () => {
+    const harness = new StubHarness([{ resultText: '' }]);
+    const gen = runAcceptanceCriteriaExtractor({ harness, cwd: process.cwd(), prdContent: CANONICAL_SOURCE });
+    let result = await gen.next();
+    await expect(async () => {
+      while (!result.done) result = await gen.next();
+    }).rejects.toThrow(/produced no output/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// canonical structured inventory
+// ---------------------------------------------------------------------------
+
+describe('canonical acceptance criteria inventory', () => {
+  it('parses valid extractor JSON and assigns stable ac ids', () => {
+    const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorJson(), CANONICAL_SOURCE);
+    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
+  });
+
+  it('accepts source quotes grounded after whitespace normalization', () => {
+    const source = [
+      '# Feature',
+      '',
+      '## Acceptance Criteria',
+      '',
+      '- Engine emits `enqueue:complete` after',
+      '  writing the PRD.',
+    ].join('\n');
+    const inventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
+      version: 1,
+      criteria: [{
+        text: 'Engine emits `enqueue:complete` after writing the PRD.',
+        sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.',
+        confidence: 0.95,
+      }],
+    }), source);
+
+    expect(inventory.criteria[0].id).toBe('ac-001');
+  });
+
+  it('rejects non-object and missing criteria extractor payloads', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput('[]', CANONICAL_SOURCE)).toThrow(/JSON object/);
+    expect(() => parseAcceptanceCriteriaExtractorOutput('{"version":1}', CANONICAL_SOURCE)).toThrow(/criteria array/);
+  });
+
+  it('rejects ungrounded source quotes', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
+      version: 1,
+      criteria: [{
+        text: 'Engine emits `enqueue:complete` after writing the PRD.',
+        sourceQuote: 'A source quote that does not appear in the PRD.',
+        confidence: 0.95,
+      }],
+    }), CANONICAL_SOURCE)).toThrow(/formatted PRD body/);
+  });
+
+  it('rejects empty inventories when not allowed', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput('{"version":1,"criteria":[]}', CANONICAL_SOURCE)).toThrow(/empty/i);
+  });
+
+  it('rejects criteria without a source quote', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text: 'Something concrete happens.', confidence: 0.9 }] }), CANONICAL_SOURCE)).toThrow(/sourceQuote/);
+  });
+
+  it('rejects low-confidence criteria', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text: 'Something concrete happens.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: AC_EXTRACTION_MIN_CONFIDENCE - 0.01 }] }), CANONICAL_SOURCE)).toThrow(/confidence/);
+  });
+
+  it('rejects duplicate, grouping-label, bare-command, and vague criteria', () => {
+    const cases = ['Tests cover:', '`pnpm type-check`.', 'Works correctly.'];
+    for (const text of cases) {
+      expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text, sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 }] }), CANONICAL_SOURCE)).toThrow();
+    }
+    expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [
+      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
+      { text: 'Engine emits `enqueue:complete` after writing the PRD.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 },
+    ] }), CANONICAL_SOURCE)).toThrow(/duplicate/);
+  });
+
+  it('serializes, reads, and strips exactly one hidden inventory block', () => {
+    const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorJson(), CANONICAL_SOURCE);
+    const withBlock = appendAcceptanceCriteriaInventoryBlock(CANONICAL_SOURCE, inventory);
+    expect(readAcceptanceCriteriaInventoryBlock(withBlock)).toContain('ac-001');
+    expect(stripAcceptanceCriteriaInventoryBlock(withBlock)).toBe(CANONICAL_SOURCE);
+    const stripped = stripAcceptanceCriteriaInventoryBlock(withBlock);
+    expect(stripped).not.toContain('eforge:acceptance-criteria-inventory');
+    expect(stripped).not.toContain('eforge:end-acceptance-criteria-inventory');
+    expect(stripped).not.toContain('"version"');
+    expect(stripped).not.toContain('"criteria"');
+    expect(stripped).not.toContain('ac-001');
+    expect(stripped).not.toContain('"confidence"');
+    expect(requireAcceptanceCriteriaInventoryFromPrd(withBlock).criteria[1].id).toBe('ac-002');
+  });
+
+  it('does not fall back to deterministic PRD parsing when the persisted block is missing', () => {
+    expect(extractExpectedAcceptanceCriteria(CANONICAL_SOURCE)).toHaveLength(2);
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(CANONICAL_SOURCE)).toThrow(/re-enqueue/);
+  });
+
+  it('rejects persisted inventory grounded only by YAML frontmatter', () => {
+    const frontmatterOnly = `---\ntitle: Hidden Metadata Criterion\n---\n\n${CANONICAL_SOURCE}\n\n<!-- eforge:acceptance-criteria-inventory\n${JSON.stringify({
+      version: 1,
+      criteria: [{ id: 'ac-001', text: 'Hidden metadata criterion is implemented by the engine.', raw: 'Hidden metadata criterion is implemented by the engine.', sourceQuote: 'Hidden Metadata Criterion', confidence: 0.95 }],
+    })}\neforge:end-acceptance-criteria-inventory -->`;
+
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(frontmatterOnly)).toThrow(/formatted PRD body.*re-enqueue|re-enqueue.*formatted PRD body/i);
+  });
+
+  it('rejects persisted inventory grounded only by its hidden JSON block', () => {
+    const hiddenOnly = `${CANONICAL_SOURCE}\n\n<!-- eforge:acceptance-criteria-inventory\n${JSON.stringify({
+      version: 1,
+      criteria: [{ id: 'ac-001', text: 'Hidden-only criterion is completed by the engine.', raw: 'Hidden-only criterion is completed by the engine.', sourceQuote: 'Hidden-only criterion is completed by the engine.', confidence: 0.95 }],
+    })}\neforge:end-acceptance-criteria-inventory -->`;
+
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(hiddenOnly)).toThrow(/formatted PRD body.*re-enqueue|re-enqueue.*formatted PRD body/i);
+  });
+
+  it('rejects malformed, multiple, and out-of-order persisted inventory blocks with re-enqueue diagnostics', () => {
+    const inventory = parseAcceptanceCriteriaExtractorOutput(validExtractorJson(), CANONICAL_SOURCE);
+    const withBlock = appendAcceptanceCriteriaInventoryBlock(CANONICAL_SOURCE, inventory);
+    const secondBlock = appendAcceptanceCriteriaInventoryBlock('# Other PRD', inventory);
+    const malformedBlock = `${CANONICAL_SOURCE}\n\n<!-- eforge:acceptance-criteria-inventory\nnot json\neforge:end-acceptance-criteria-inventory -->`;
+    const wrongIdBlock = withBlock.replace('"id":"ac-001"', '"id":"ac-999"');
+
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(malformedBlock)).toThrow(/re-enqueue/);
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(`${withBlock}\n${secondBlock}`)).toThrow(/multiple.*re-enqueue|re-enqueue.*multiple/i);
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(wrongIdBlock)).toThrow(/id.*re-enqueue|re-enqueue.*id/i);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // normalizeCriterionText
