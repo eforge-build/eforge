@@ -13,10 +13,12 @@ interface DecisionTimelineProps {
   sessionStart: number;
   totalSpan: number;
   label?: string;
+  onDecisionSelect?: (decision: Decision) => void;
 }
 
-export function DecisionTimeline({ decisions, sessionStart, totalSpan, label }: DecisionTimelineProps) {
+export function DecisionTimeline({ decisions, sessionStart, totalSpan, label, onDecisionSelect }: DecisionTimelineProps) {
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
+  const handleDecisionSelect = onDecisionSelect ?? setSelectedDecision;
 
   if (decisions.length === 0) return null;
 
@@ -38,7 +40,7 @@ export function DecisionTimeline({ decisions, sessionStart, totalSpan, label }: 
                   type="button"
                   className={`absolute top-0 bottom-0 w-1 rounded-sm border cursor-pointer transition-opacity hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-foreground/30 hover:z-10 focus:z-10 ${bg} ${border}`}
                   style={{ left: `${leftPercent}%` }}
-                  onClick={() => setSelectedDecision(dp.decision)}
+                  onClick={() => handleDecisionSelect(dp.decision)}
                   aria-label={`${dp.decision.kind}: ${decisionSummary(dp.decision)}`}
                 >
                   <span className="absolute -top-0.5 left-0 right-0 h-1 rounded-t-sm" />
@@ -56,7 +58,7 @@ export function DecisionTimeline({ decisions, sessionStart, totalSpan, label }: 
         })}
       </div>
 
-      {selectedDecision && (
+      {!onDecisionSelect && selectedDecision && (
         <SheetPanel
           open={selectedDecision !== null}
           onClose={() => setSelectedDecision(null)}

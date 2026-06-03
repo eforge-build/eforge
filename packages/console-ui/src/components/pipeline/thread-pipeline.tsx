@@ -1,7 +1,9 @@
 import { memo, useMemo, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import type { AgentThread, StoredEvent, DecisionPoint } from '@/lib/run-state';
+import { SheetPanel } from '@/components/ui/sheet-panel';
+import type { AgentThread, StoredEvent, DecisionPoint, Decision } from '@/lib/run-state';
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
+import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
@@ -9,6 +11,8 @@ import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
 import { computeDepthMap } from './compute-depth-map';
 import { PlanRow } from './plan-row';
 import { AgentDetailSheet } from './agent-detail-sheet';
+import { buildReviewCycleDetail } from './review-cycle-detail-model';
+import { ReviewCycleDetailSheet } from './review-cycle-detail-sheet';
 
 interface ThreadPipelineProps {
   agentThreads: AgentThread[];
@@ -29,6 +33,8 @@ interface ThreadPipelineProps {
 function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
+  const [selectedReviewCyclePlanId, setSelectedReviewCyclePlanId] = useState<string | null>(null);
 
   const planArtifactMap = useMemo(() => {
     const map = new Map<string, { name: string; body: string }>();
@@ -164,6 +170,37 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
 
   const selectedThread = agentThreads.find((t) => t.agentId === selectedAgentId) ?? null;
 
+  const selectedReviewCycleDetail = useMemo(() => {
+    if (!selectedReviewCyclePlanId) return null;
+    return buildReviewCycleDetail(
+      events,
+      threadsByPlan.get(selectedReviewCyclePlanId) ?? EMPTY_THREADS,
+      selectedReviewCyclePlanId,
+      decisions?.[selectedReviewCyclePlanId] ?? [],
+    );
+  }, [events, threadsByPlan, selectedReviewCyclePlanId, decisions]);
+
+  const handleAgentSelect = (agentId: string) => {
+    setSelectedDecision(null);
+    setSelectedReviewCyclePlanId(null);
+    setSelectedAgentId(agentId);
+  };
+
+  const handleDecisionSelect = (decision: Decision) => {
+    setSelectedAgentId(null);
+    setSelectedReviewCyclePlanId(null);
+    setSelectedDecision(decision);
+  };
+
+  const handleStageSelect = (planId: string, stage: string) => {
+    if (stage !== 'review-cycle') return;
+    setSelectedAgentId(null);
+    setSelectedDecision(null);
+    setSelectedReviewCyclePlanId(planId);
+  };
+
+  const handleReviewCycleOpenAgent = handleAgentSelect;
+
   return (
     <TooltipProvider delayDuration={0}>
       <div>
@@ -174,7 +211,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
 
         {decisions?.['__run__'] && decisions['__run__'].length > 0 && (
           <div className="mb-2">
-            <DecisionTimeline decisions={decisions['__run__']} sessionStart={sessionStart} totalSpan={totalSpan} label="Planning decisions" />
+            <DecisionTimeline decisions={decisions['__run__']} sessionStart={sessionStart} totalSpan={totalSpan} label="Planning decisions" onDecisionSelect={handleDecisionSelect} />
           </div>
         )}
 
@@ -198,7 +235,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 compileActiveStages={activeStages}
                 compileCompletedStages={completedStages}
                 validationCommands={validationCommands}
-                onAgentSelect={setSelectedAgentId}
+                onAgentSelect={handleAgentSelect}
               />
             )}
             {!hasGlobalThreads && prdSource && (
@@ -215,7 +252,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 eventsByAgent={eventsByAgent}
                 prdSource={{ label: prdSource.label, content: prdSource.content ?? '' }}
                 validationCommands={validationCommands}
-                onAgentSelect={setSelectedAgentId}
+                onAgentSelect={handleAgentSelect}
               />
             )}
             {orderedPlanIds.map((planId) => (
@@ -238,12 +275,32 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}
                 decisions={decisions?.[planId]}
-                onAgentSelect={setSelectedAgentId}
+                onDecisionSelect={handleDecisionSelect}
+                onAgentSelect={handleAgentSelect}
+                onStageSelect={(stage) => handleStageSelect(planId, stage)}
               />
             ))}
           </div>
         )}
 
+        <ReviewCycleDetailSheet
+          detail={selectedReviewCycleDetail}
+          open={selectedReviewCyclePlanId !== null}
+          onClose={() => setSelectedReviewCyclePlanId(null)}
+          onOpenAgent={handleReviewCycleOpenAgent}
+        />
+        {selectedDecision && (
+          <SheetPanel
+            open={selectedDecision !== null}
+            onClose={() => setSelectedDecision(null)}
+            title={`Decision: ${selectedDecision.kind}`}
+            description={decisionSummary(selectedDecision)}
+          >
+            <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-bg-secondary rounded p-3 overflow-auto max-h-[60vh] m-4">
+              {decisionDetail(selectedDecision)}
+            </pre>
+          </SheetPanel>
+        )}
         <AgentDetailSheet
           thread={selectedThread}
           events={events}
