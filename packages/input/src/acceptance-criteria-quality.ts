@@ -75,14 +75,14 @@ function isGroupingLabel(normalized: string): boolean {
  *   - `` `pnpm type-check` exits 0. `` → NOT bare (meaningful outcome follows)
  */
 function isBareCommand(normalized: string): boolean {
-  return /^`[^`]+`\.?\s*$/.test(normalized);
+  return /^`[^`]+`\.?\s*$/.test(normalized) || /^run\s+(?:pnpm|npm|yarn|bun)\s+[\w:-]+\.?$/i.test(normalized);
 }
 
 /**
  * Generic outcome verbs that indicate vague criteria when they appear as the
  * first meaningful word of a criterion with no concrete specifics.
  */
-const VAGUE_VERB_RE = /^(works?|improves?|handles?|fixes?|addresses?|makes?\s+\w+\s+(?:faster|better|more\s+\w+)|ensures?\s+(?:correct|proper|better)|allows?|supports?|provides?\s+better)\b/i;
+const VAGUE_VERB_RE = /^(works?|improves?|handles?|fixes?|addresses?|makes?\s+\w+\s+(?:faster|better|more\s+\w+)|ensures?\s+(?:it\s+works|correct|proper|better)|allows?|supports?|provides?\s+better)\b/i;
 
 /**
  * Returns true when the criterion is vague — it uses generic outcome language

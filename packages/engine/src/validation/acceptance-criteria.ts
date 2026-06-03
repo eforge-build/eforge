@@ -63,11 +63,11 @@ function _isGroupingLabel(normalized: string): boolean {
 }
 
 function _isBareCommand(normalized: string): boolean {
-  return /^`[^`]+`\.?\s*$/.test(normalized);
+  return /^`[^`]+`\.?\s*$/.test(normalized) || /^run\s+(?:pnpm|npm|yarn|bun)\s+[\w:-]+\.?$/i.test(normalized);
 }
 
 const _VAGUE_VERB_RE =
-  /^(works?|improves?|handles?|fixes?|addresses?|makes?\s+\w+\s+(?:faster|better|more\s+\w+)|ensures?\s+(?:correct|proper|better)|allows?|supports?|provides?\s+better)\b/i;
+  /^(works?|improves?|handles?|fixes?|addresses?|makes?\s+\w+\s+(?:faster|better|more\s+\w+)|ensures?\s+(?:it\s+works|correct|proper|better)|allows?|supports?|provides?\s+better)\b/i;
 
 function _isVague(normalized: string): boolean {
   if (/`[^`]+`/.test(normalized)) return false;
