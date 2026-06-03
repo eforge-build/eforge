@@ -3651,6 +3651,7 @@
                             "type": "number"
                           },
                           {
+                            "maxLength": 4096,
                             "type": "string"
                           },
                           {
@@ -3901,6 +3902,7 @@
                             "type": "number"
                           },
                           {
+                            "maxLength": 4096,
                             "type": "string"
                           },
                           {
@@ -4151,6 +4153,7 @@
                             "type": "number"
                           },
                           {
+                            "maxLength": 4096,
                             "type": "string"
                           },
                           {
@@ -4552,6 +4555,7 @@
                             "type": "number"
                           },
                           {
+                            "maxLength": 4096,
                             "type": "string"
                           },
                           {
@@ -4768,6 +4772,7 @@
                             "type": "number"
                           },
                           {
+                            "maxLength": 4096,
                             "type": "string"
                           },
                           {
@@ -9007,6 +9012,7 @@
                                     "type": "number"
                                   },
                                   {
+                                    "maxLength": 4096,
                                     "type": "string"
                                   },
                                   {

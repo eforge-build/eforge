@@ -10,8 +10,9 @@
  */
 
 import { Type, type Static } from '@sinclair/typebox';
+import { MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH, validateEforgeEventSemanticFields, validateReviewIssueMetadataBoundsForEvent } from './event-validation.js';
 import { formatSchemaError, safeParseWithSchema } from './schema-utils.js';
-import type { SafeParseResult, SchemaError } from './schema-utils.js';
+import type { SafeParseResult } from './schema-utils.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -363,9 +364,6 @@ const ValidationRuntimeFailureKindSchema = Type.Union([
   Type.Literal('exception'),
   Type.Literal('unexpected-return'),
 ]);
-const MAX_REVIEW_ISSUE_METADATA_DEPTH = 8;
-const MAX_REVIEW_ISSUE_METADATA_NODES = 200;
-const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;
 const JsonSafeMetadataSchema = Type.Recursive((Self) => Type.Union([
   Type.Null(),
   Type.Boolean(),
@@ -2661,84 +2659,6 @@ export type SessionStreamSnapshot = Static<typeof SessionStreamSnapshotSchema>;
 // Parse helpers
 // ---------------------------------------------------------------------------
 
-const REVIEW_ISSUE_EVENT_TYPES = new Set([
-  'planning:review:complete',
-  'planning:architecture:review:complete',
-  'planning:cohesion:complete',
-  'plan:build:review:complete',
-  'plan:build:review:parallel:perspective:complete',
-]);
-
-function validateReviewIssueMetadataBoundsForEvent(value: unknown): SchemaError | undefined {
-  if (!isPlainObject(value)) return undefined;
-
-  const issueArrays: Array<{ issues: unknown[]; path: string }> = [];
-  if (typeof value.type === 'string' && REVIEW_ISSUE_EVENT_TYPES.has(value.type) && Array.isArray(value.issues)) {
-    issueArrays.push({ issues: value.issues, path: '/issues' });
-  }
-
-  for (const { issues, path } of issueArrays) {
-    for (let issueIndex = 0; issueIndex < issues.length; issueIndex++) {
-      const issue = issues[issueIndex];
-      if (!isPlainObject(issue) || !Object.prototype.hasOwnProperty.call(issue, 'metadata')) continue;
-      const metadataResult = validateReviewIssueMetadataBounds(issue.metadata, `${path}/${issueIndex}/metadata`);
-      if (metadataResult) return metadataResult;
-    }
-  }
-
-  return undefined;
-}
-
-function validateReviewIssueMetadataBounds(metadata: unknown, path: string): SchemaError | undefined {
-  const state = { nodes: 0 };
-  const error = visitReviewIssueMetadata(metadata, path, 0, state);
-  return error ? schemaError(path, error) : undefined;
-}
-
-function visitReviewIssueMetadata(value: unknown, path: string, depth: number, state: { nodes: number }): string | undefined {
-  state.nodes += 1;
-  if (state.nodes > MAX_REVIEW_ISSUE_METADATA_NODES) {
-    return `metadata exceeds maximum node count of ${MAX_REVIEW_ISSUE_METADATA_NODES}`;
-  }
-  if (depth > MAX_REVIEW_ISSUE_METADATA_DEPTH) {
-    return `metadata exceeds maximum depth of ${MAX_REVIEW_ISSUE_METADATA_DEPTH} at ${path}`;
-  }
-  if (value === null || typeof value === 'boolean') return undefined;
-  if (typeof value === 'string') {
-    return value.length > MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH
-      ? `metadata string at ${path} exceeds ${MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH} characters`
-      : undefined;
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? undefined : `metadata number at ${path} must be finite`;
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      const error = visitReviewIssueMetadata(value[i], `${path}/${i}`, depth + 1, state);
-      if (error) return error;
-    }
-    return undefined;
-  }
-  if (isPlainObject(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      const error = visitReviewIssueMetadata(child, `${path}/${key}`, depth + 1, state);
-      if (error) return error;
-    }
-    return undefined;
-  }
-  return `metadata value at ${path} is not JSON-safe (${typeof value})`;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-function schemaError(path: string, message: string): SchemaError {
-  return { message: `${path}: ${message}`, errors: [{ path, message }] };
-}
-
 /**
  * Safely parses an unknown value as an `EforgeEvent`.
  * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
@@ -2750,82 +2670,8 @@ export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEven
   const result = safeParseWithSchema(EforgeEventSchema, value);
   if (!result.success) return result;
 
-  if (
-    result.data.type === 'extension:policy:decision' &&
-    (result.data.decision === 'block' || result.data.decision === 'require-approval') &&
-    (typeof result.data.reason !== 'string' || result.data.reason.trim().length === 0)
-  ) {
-    return {
-      success: false,
-      error: {
-        message: '/reason: blocking policy decisions require a non-empty reason',
-        errors: [{ path: '/reason', message: 'blocking policy decisions require a non-empty reason' }],
-      },
-    };
-  }
-
-  if (
-    result.data.type === 'stack:landing:conflict:recovery:start' &&
-    result.data.attempt > result.data.maxAttempts
-  ) {
-    return {
-      success: false,
-      error: {
-        message: '/attempt: recovery attempt cannot exceed maxAttempts',
-        errors: [{ path: '/attempt', message: 'recovery attempt cannot exceed maxAttempts' }],
-      },
-    };
-  }
-
-  if (
-    result.data.type === 'stack:landing:conflict:recovery:failed' &&
-    result.data.abortSucceeded &&
-    !result.data.abortAttempted
-  ) {
-    return {
-      success: false,
-      error: {
-        message: '/abortSucceeded: abortSucceeded=true requires abortAttempted=true',
-        errors: [{ path: '/abortSucceeded', message: 'abortSucceeded=true requires abortAttempted=true' }],
-      },
-    };
-  }
-
-  if (result.data.type === 'acceptance_validation:complete') {
-    const nonPassingCount = result.data.verdicts.filter((v) => v.verdict !== 'pass').length;
-    const waiverIssues = (result.data.waivers ?? [])
-      .map((waiver, index) => ({ waiver, index }))
-      .filter(({ waiver }) => waiver.trim().length === 0);
-    if (waiverIssues.length > 0) {
-      return {
-        success: false,
-        error: {
-          message: '/waivers: waiver entries must be non-empty reason strings',
-          errors: waiverIssues.map(({ index }) => ({ path: `/waivers/${index}`, message: 'waiver entries must be non-empty reason strings' })),
-        },
-      };
-    }
-    if (result.data.passed && nonPassingCount > 0 && (result.data.waivers ?? []).length === 0) {
-      return {
-        success: false,
-        error: {
-          message: '/passed: acceptance_validation passed=true requires all verdicts to pass or explicit waivers',
-          errors: [{ path: '/passed', message: 'passed=true requires all verdicts to pass or explicit waivers' }],
-        },
-      };
-    }
-    if (!result.data.passed && nonPassingCount === 0) {
-      return {
-        success: false,
-        error: {
-          message: '/passed: acceptance_validation passed=false requires at least one fail or unknown verdict',
-          errors: [{ path: '/passed', message: 'passed=false requires at least one fail or unknown verdict' }],
-        },
-      };
-    }
-  }
-
-  return result;
+  const semanticError = validateEforgeEventSemanticFields(result.data);
+  return semanticError ? { success: false, error: semanticError } : result;
 }
 
 /**

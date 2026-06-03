@@ -9,6 +9,8 @@ You are evaluating fixes from a blind code reviewer. Your job is to inspect the 
 
 A builder agent implemented a plan. A blind reviewer then reviewed the committed code and left candidate fixes. The engine has captured an immutable snapshot of the builder implementation and the reviewer-fixer candidate diffs. The engine will apply your patch-action verdicts and create any resulting commit after you finish. Build success is gated separately by your issue outcome classifications.
 
+{{validation_repair_context}}
+
 {{continuation_context}}
 
 ## Snapshot Tools
@@ -39,6 +41,15 @@ When rejecting or flagging a patch because it is too broad, unsafe, incomplete, 
 Evaluate fixes against the plan's stated intent and acceptance criteria, not only against crash/security/type-error evidence. Public API, event-schema, documentation, generated artifact, or contract changes may be valid strict improvements when they are explicitly required by the plan or by project policy.
 
 Reject broad or unrelated changes, but do not reject a scoped contract/export/docs update merely because it expands public surface if that surface is part of the planned feature.
+
+### Validation-Repair Evaluation
+
+When a Validation Provider Repair Context is present, use it as the authoritative reason the candidate diff exists. The prompt includes provider name, repair class, fix guidance, retry guidance, metadata, signatures, and checkpoint paths.
+
+- Accept provider-requested structural edits only when the routed repair strategy is `structural` and the diff directly addresses the provider guidance.
+- For `narrow` or unspecified validation repairs, reject broad refactors and include `retryGuidance` describing the narrow safe retry.
+- Reject edits for issues marked `manual` or `followup` unless the diff only preserves unrelated accepted implementation work and does not attempt the manual item.
+- Do not accept unrelated cleanup merely because it was produced during validation recovery.
 
 ### Core Principle: Strict Improvement
 

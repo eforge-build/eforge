@@ -814,6 +814,30 @@ describe('safeParseEforgeEvent — recovery:summary with multi-failure fields', 
     expect(result.success).toBe(true);
   });
 
+  it('rejects recovery:summary reviewFailure issue metadata beyond bounded depth', () => {
+    const result = safeParseEforgeEvent({
+      ...baseRecoverySummaryEvent,
+      summary: {
+        ...baseRecoverySummaryEvent.summary,
+        reviewFailure: {
+          planId: 'plan-06-static-serving',
+          issues: [{
+            severity: 'critical',
+            category: 'validation-provider',
+            file: 'src/a.ts',
+            description: 'deep metadata',
+            metadata: { a: { b: { c: { d: { e: { f: { g: { h: { i: 'too deep' } } } } } } } } },
+          }],
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('/summary/reviewFailure/issues/0/metadata');
+    }
+  });
+
   it('accepts recovery:summary with failingPlans array', () => {
     const result = safeParseEforgeEvent({
       ...baseRecoverySummaryEvent,

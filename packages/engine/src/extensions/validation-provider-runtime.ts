@@ -399,8 +399,12 @@ function normalizeValidationAnnotations(raw: unknown): NormalizedValidationAnnot
 
     const metadataResult = normalizeMetadataProperty(obj);
     const metadataRejectionReason = metadataResult && !metadataResult.ok ? metadataResult.reason : undefined;
+    const repairClassResult = normalizeRepairClassProperty(obj);
     const details = appendMetadataRejectionReason(
-      typeof obj.details === 'string' ? obj.details : undefined,
+      appendRepairClassRejectionReason(
+        typeof obj.details === 'string' ? obj.details : undefined,
+        repairClassResult && !repairClassResult.ok ? repairClassResult.reason : undefined,
+      ),
       metadataRejectionReason,
     );
 
@@ -413,7 +417,7 @@ function normalizeValidationAnnotations(raw: unknown): NormalizedValidationAnnot
       ...(typeof obj.fix === 'string' ? { fix: obj.fix } : {}),
       ...(typeof obj.retryGuidance === 'string' ? { retryGuidance: obj.retryGuidance } : {}),
       ...(typeof obj.failureKind === 'string' ? { failureKind: obj.failureKind } : {}),
-      ...(isValidationRepairClass(obj.repairClass) ? { repairClass: obj.repairClass } : {}),
+      ...(repairClassResult ? { repairClass: repairClassResult.value } : {}),
       ...(metadataResult?.ok ? { metadata: metadataResult.value } : {}),
       ...(metadataRejectionReason !== undefined ? { metadataRejectionReason } : {}),
     }];
@@ -431,6 +435,20 @@ function unexpectedReturnResult(raw: unknown): NormalizedValidationResult {
 
 function isValidationRepairClass(value: unknown): value is ValidationRepairClass {
   return typeof value === 'string' && VALIDATION_REPAIR_CLASSES.has(value as ValidationRepairClass);
+}
+
+type RepairClassResult = { ok: true; value: ValidationRepairClass } | { ok: false; value: 'manual'; reason: string };
+
+function normalizeRepairClassProperty(obj: Record<string, unknown>): RepairClassResult | undefined {
+  if (!Object.prototype.hasOwnProperty.call(obj, 'repairClass')) return undefined;
+  if (isValidationRepairClass(obj.repairClass)) return { ok: true, value: obj.repairClass };
+  return { ok: false, value: 'manual', reason: `invalid repairClass ${safeStringify(obj.repairClass)}; routed as manual` };
+}
+
+function appendRepairClassRejectionReason(details: string | undefined, reason: string | undefined): string | undefined {
+  if (!reason) return details;
+  const line = `Repair class rejected: ${reason}`;
+  return details ? `${details}\n${line}` : line;
 }
 
 function appendMetadataRejectionReason(details: string | undefined, reason: string | undefined): string | undefined {

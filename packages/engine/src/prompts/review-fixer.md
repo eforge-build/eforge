@@ -8,6 +8,8 @@ The following issues were identified by specialist reviewers, sorted by severity
 
 {{issues}}
 
+{{validation_repair_context}}
+
 {{evaluator_feedback_context}}
 
 {{continuation_context}}
@@ -22,6 +24,7 @@ The following issues were identified by specialist reviewers, sorted by severity
 6. Keep fixes minimal - only change what is necessary to resolve each issue.
 7. Do not alter the implementation's design or architecture.
 8. If previous evaluator feedback is provided, use it to avoid repeating rejected broad fixes. Retry unresolved blocking issues narrowly according to the guidance. Do not fix issues previously classified as false-positive, accepted-risk, nonblocking, or split-to-follow-up unless the current reviewer issue includes materially new evidence.
+9. For validation-provider issues, follow the provider's `fix` and `retryGuidance` fields exactly. Treat `repairClass: narrow` or an unspecified repair class as permission for narrow, localized edits only. Do not perform structural refactors from this prompt; those must be routed to the validation-fixer. Skip issues marked `repairClass: manual` or `repairClass: followup`.
 
 # Cross-Diff Fixes
 

@@ -16,6 +16,21 @@ export interface ValidationFixerOptions extends SdkPassthroughConfig {
   maxTurns?: number;
 }
 
+// --- eforge:region plan-02-validation-repair-routing ---
+export interface ValidationRepairFixerOptions extends SdkPassthroughConfig {
+  harness: AgentHarness;
+  cwd: string;
+  planId: string;
+  validationRepairContext: string;
+  attempt: number;
+  maxAttempts: number;
+  verbose?: boolean;
+  abortController?: AbortController;
+  /** Override max conversation turns (default: implementation tier default) */
+  maxTurns?: number;
+}
+// --- eforge:endregion plan-02-validation-repair-routing ---
+
 /**
  * Validation fixer agent — attempts to fix post-merge validation failures.
  * Receives failed command output, diagnoses the issue, and makes minimal fixes.
@@ -62,3 +77,42 @@ export async function* runValidationFixer(
 
   yield { timestamp: new Date().toISOString(), type: 'validation:fix:complete', attempt: options.attempt };
 }
+
+// --- eforge:region plan-02-validation-repair-routing ---
+/**
+ * In-build validation repair fixer — leaves candidate edits unstaged and
+ * uncommitted so the build evaluator can accept or reject the captured diff.
+ */
+export async function* runValidationRepairFixer(
+  options: ValidationRepairFixerOptions,
+): AsyncGenerator<EforgeEvent> {
+  const prompt = await loadPrompt('validation-repair-fixer', {
+    validation_repair_context: options.validationRepairContext,
+    attempt: String(options.attempt),
+    max_attempts: String(options.maxAttempts),
+  }, options.promptAppend);
+
+  try {
+    for await (const event of options.harness.run(
+      {
+        prompt,
+        cwd: options.cwd,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation,
+        tools: 'coding',
+        abortSignal: options.abortController?.signal,
+        ...pickSdkOptions(options),
+      },
+      'validation-fixer',
+      options.planId,
+    )) {
+      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
+        yield event;
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    // Other in-build fixer failures are non-fatal; validation will re-run and
+    // the evaluator remains the only path that can land candidate edits.
+  }
+}
+// --- eforge:endregion plan-02-validation-repair-routing ---
