@@ -13,6 +13,7 @@
  */
 
 export { API_ROUTES, buildPath } from './routes.js';
+export { isTransientTransportError } from './transient-transport.js';
 export type {
   ApiRoute,
   EnqueueRequest,

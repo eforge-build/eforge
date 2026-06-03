@@ -6,9 +6,9 @@ import type { NowAttentionItem } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
 import { AttentionPanel } from '@/components/now/attention-panel';
 import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
+import { EnqueueCard } from '@/components/now/enqueue-card';
 import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
-import { useBuildMetricHistory } from '@/hooks/use-build-metric-history';
 import { RunHistoryCard } from '@/components/now/run-history-card';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { ActivityDrawerLauncher } from '@/components/now/activity-drawer-launcher';
@@ -66,12 +66,6 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   const now = tick;
   const model = selectNowDashboardModel(projectState, activeSessions, now);
 
-  // Accrue rolling token/cost history for the active-build velocity sparklines.
-  const metricHistory = useBuildMetricHistory(
-    model.activeBuilds.map((b) => ({ sessionId: b.sessionId, tokens: b.tokens, cost: b.cost })),
-    now,
-  );
-
   const handleActivityOpen = React.useCallback(() => setActivityOpen(true), []);
   const handleActivityClose = React.useCallback(() => setActivityOpen(false), []);
 
@@ -106,11 +100,14 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         {/* MAIN */}
         <div className="min-w-0 space-y-4">
-          <ActiveBuildsGrid
-            cards={model.activeBuilds}
-            onNavigate={onNavigate}
-            metricHistory={metricHistory}
-          />
+          {model.enqueueCards.length > 0 && (
+            <div className="grid grid-cols-1 gap-3">
+              {model.enqueueCards.map((card) => (
+                <EnqueueCard key={card.sessionId} card={card} />
+              ))}
+            </div>
+          )}
+          <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
           <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
         </div>
 

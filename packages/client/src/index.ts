@@ -7,6 +7,7 @@ export {
 export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
 
 export { API_ROUTES, buildPath } from './routes.js';
+export { isTransientTransportError } from './transient-transport.js';
 export type {
   ApiRoute,
   EnqueueRequest,

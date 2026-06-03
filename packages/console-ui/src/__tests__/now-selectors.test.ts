@@ -9,6 +9,7 @@ import {
   selectNowQueueStacks,
   selectNowAttentionItems,
   selectNowActiveBuildCards,
+  selectNowEnqueueCards,
   selectNowStatusSummary,
   selectNowRecentActivity,
   selectNowRecentRuns,
@@ -460,6 +461,63 @@ describe('selectNowActiveBuildCards', () => {
     expect(cards[0].latestError).toBe('TypeScript compilation failed');
   });
 
+  it('excludes enqueue runs from build cards', () => {
+    const enqueue = makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue', status: 'running' });
+    const build = makeRun({ id: 'r2', sessionId: 's2', command: 'build', status: 'running' });
+    const cards = selectNowActiveBuildCards([enqueue, build], {}, {}, now);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].sessionId).toBe('s2');
+  });
+
+  it('does not treat a transient backend-transport agent:stop as a terminal error', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const stopEvent: EforgeEvent = {
+      type: 'agent:stop',
+      agentId: 'agent-1',
+      agent: 'implementor',
+      planId: 'plan-1',
+      error: 'Backend error: WebSocket error',
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: stopEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].latestError).toBeNull();
+    expect(cards[0].transientNotice).toBe('Transport interrupted — reconnecting');
+  });
+
+  it('surfaces a transient retry notice from agent:retry with transient-transport subtype', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const retryEvent: EforgeEvent = {
+      type: 'agent:retry',
+      agent: 'implementor',
+      attempt: 2,
+      maxAttempts: 3,
+      subtype: 'error_transient_transport',
+      label: 'implementor',
+      planId: 'plan-1',
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: retryEvent, eventId: '1' });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].latestError).toBeNull();
+    expect(cards[0].transientNotice).toBe('Transport interrupted — retrying (attempt 2/3)');
+  });
+
+  it('clears the transient notice once the build progresses past the hiccup', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
+    const events: EforgeEvent[] = [
+      { type: 'agent:stop', agentId: 'a1', agent: 'implementor', planId: 'plan-1', error: 'Backend error: WebSocket error' } as unknown as EforgeEvent,
+      { type: 'plan:build:progress', planId: 'plan-1', message: 'Back to work' } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowActiveBuildCards(runs, {}, { s1: detail }, now);
+    expect(cards[0].transientNotice).toBeNull();
+  });
+
   it('derives gap-close lifecycle after PRD validation discovers gaps', () => {
     const runs = [makeRun({ id: 'r1', sessionId: 's1' })];
     const events: EforgeEvent[] = [
@@ -536,6 +594,64 @@ describe('selectNowActiveBuildCards', () => {
     expect(cards[0].cost).toBeCloseTo(0.005);
     // cachePercent = cacheRead / tokensIn * 100 = 50 / 200 * 100 = 25
     expect(cards[0].cachePercent).toBeCloseTo(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Enqueue card tests
+// ---------------------------------------------------------------------------
+
+describe('selectNowEnqueueCards', () => {
+  const now = Date.now();
+
+  it('returns a card only for active enqueue runs', () => {
+    const enqueue = makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue', status: 'running' });
+    const build = makeRun({ id: 'r2', sessionId: 's2', command: 'build', status: 'running' });
+    const doneEnqueue = makeRun({ id: 'r3', sessionId: 's3', command: 'enqueue', status: 'completed' });
+    const cards = selectNowEnqueueCards([enqueue, build, doneEnqueue], {}, now);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].sessionId).toBe('s1');
+  });
+
+  it('derives the current step from the running enqueue agent', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue' })];
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'inbox/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'agent:start', agentId: 'a1', agent: 'formatter' } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const detail = makeActiveDetail('s1', { runState: rs });
+    const cards = selectNowEnqueueCards(runs, { s1: detail }, now);
+    expect(cards[0].step).toBe('Formatting PRD');
+    expect(cards[0].title).toBe('inbox/my-prd.md');
+  });
+
+  it('prefers the enqueue:complete title once available', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue' })];
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'inbox/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'enqueue:complete', id: 'uuid', filePath: 'queue/x.md', title: 'My Shiny PRD', planSet: 'my-shiny-prd' } as unknown as EforgeEvent,
+    ];
+    let rs = createInitialRunState();
+    events.forEach((event, i) => {
+      rs = eforgeReducer(rs, { type: 'ADD_EVENT', event, eventId: String(i + 1) });
+    });
+    const cards = selectNowEnqueueCards(runs, { s1: makeActiveDetail('s1', { runState: rs }) }, now);
+    expect(cards[0].title).toBe('My Shiny PRD');
+  });
+
+  it('surfaces an enqueue:failed error', () => {
+    const runs = [makeRun({ id: 'r1', sessionId: 's1', command: 'enqueue' })];
+    const failEvent: EforgeEvent = {
+      type: 'enqueue:failed',
+      error: 'Formatter produced no output',
+    } as unknown as EforgeEvent;
+    const rs = eforgeReducer(createInitialRunState(), { type: 'ADD_EVENT', event: failEvent, eventId: '1' });
+    const cards = selectNowEnqueueCards(runs, { s1: makeActiveDetail('s1', { runState: rs }) }, now);
+    expect(cards[0].latestError).toBe('Formatter produced no output');
   });
 });
 

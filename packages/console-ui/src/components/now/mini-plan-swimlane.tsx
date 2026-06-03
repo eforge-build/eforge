@@ -9,10 +9,16 @@
  *
  * The stage track shows *position*, not percent-complete; the agent token bar
  * shows *relative magnitude* across the card. Neither implies progress.
+ *
+ * Lanes are collapsible. Active (and failed) lanes expand by default so the
+ * live work is front-and-centre; finished lanes and the completed PRD/planning
+ * lane collapse to a single summary row, recovering the vertical space they
+ * used to waste. Clicking a lane header toggles it and pins that choice.
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { compactTokens } from '@/lib/format';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { PlanLane, PlanLaneAgent, PlanningLane, PipelineStage } from '@/lib/run-state';
 import { STAGE_STATUS_STYLES } from '@/components/pipeline/pipeline-colors';
 import { Chevron } from '@/components/pipeline/stage-overview';
@@ -45,21 +51,63 @@ function isLaneActive(lane: PlanLane): boolean {
   return lane.stage != null && lane.stage !== 'plan' && !lane.isComplete && !lane.isFailed;
 }
 
+function totalTokens(agents: PlanLaneAgent[]): number {
+  return agents.reduce((sum, a) => sum + a.tokens, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Disclosure
+// ---------------------------------------------------------------------------
+
+function DisclosureCaret({ open }: { open: boolean }) {
+  return (
+    <span
+      className={cn(
+        'inline-block shrink-0 text-10px leading-none text-muted-foreground transition-transform',
+        open && 'rotate-90',
+      )}
+      aria-hidden="true"
+    >
+      ▶
+    </span>
+  );
+}
+
+/** Compact `N tok` summary shown on a collapsed lane header. */
+function TokenSummary({ tokens }: { tokens: number }) {
+  if (tokens <= 0) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="shrink-0 text-10px tabular-nums text-muted-foreground">{compactTokens(tokens)} tok</span>
+      </TooltipTrigger>
+      <TooltipContent side="left">{tokens.toLocaleString()} tokens</TooltipContent>
+    </Tooltip>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Stage track
 // ---------------------------------------------------------------------------
 
 function StageChip({ label, status }: { label: string; status: StageStatus }) {
   return (
-    <span
-      className={cn(
-        'rounded px-1.5 py-0.5 text-10px font-medium leading-none whitespace-nowrap',
-        STAGE_STATUS_STYLES[status],
-      )}
-      style={status === 'active' ? { animation: 'pulse-opacity 2s ease-in-out infinite' } : undefined}
-    >
-      {label}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            'rounded px-1.5 py-0.5 text-10px font-medium leading-none whitespace-nowrap',
+            STAGE_STATUS_STYLES[status],
+          )}
+          style={status === 'active' ? { animation: 'pulse-opacity 2s ease-in-out infinite' } : undefined}
+        >
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        {label} · {status}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -101,33 +149,82 @@ function MiniStageTrack({ lane }: { lane: PlanLane }) {
 function AgentLine({ agent, maxTokens }: { agent: PlanLaneAgent; maxTokens: number }) {
   const widthPct = maxTokens > 0 && agent.tokens > 0 ? Math.max(2, (agent.tokens / maxTokens) * 100) : 0;
   return (
-    <div className="flex items-center gap-2">
-      <span
-        className={cn(
-          'h-1.5 w-1.5 shrink-0 rounded-full',
-          agent.running ? 'bg-blue motion-safe:animate-pulse' : 'bg-muted-foreground/40',
-        )}
-        aria-hidden="true"
-      />
-      <span className={cn('shrink-0 text-xs font-medium', agent.running ? 'text-blue' : 'text-muted-foreground')}>
-        {agent.agent}
-      </span>
-      {agent.tokens > 0 && (
-        <span className="shrink-0 text-10px tabular-nums text-muted-foreground">
-          {compactTokens(agent.tokens)}
-        </span>
-      )}
-      {widthPct > 0 && (
-        <div
-          className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted/25"
-          title="Relative token usage across this build"
-        >
-          <div
-            className={cn('h-full rounded-full', agent.running ? 'bg-blue/45' : 'bg-muted-foreground/30')}
-            style={{ width: `${widthPct}%` }}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              'h-1.5 w-1.5 shrink-0 rounded-full',
+              agent.running ? 'bg-blue motion-safe:animate-pulse' : 'bg-muted-foreground/40',
+            )}
+            aria-hidden="true"
           />
+          <span className={cn('shrink-0 text-xs font-medium', agent.running ? 'text-blue' : 'text-muted-foreground')}>
+            {agent.agent}
+          </span>
+          {agent.tokens > 0 && (
+            <span className="shrink-0 text-10px tabular-nums text-muted-foreground">
+              {compactTokens(agent.tokens)}
+            </span>
+          )}
+          {widthPct > 0 && (
+            <div
+              className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted/25"
+              title="Relative token usage across this build"
+            >
+              <div
+                className={cn('h-full rounded-full', agent.running ? 'bg-blue/45' : 'bg-muted-foreground/30')}
+                style={{ width: `${widthPct}%` }}
+              />
+            </div>
+          )}
         </div>
-      )}
+      </TooltipTrigger>
+      <TooltipContent side="left">
+        <span className="font-medium">{agent.agent}</span>
+        {agent.tokens > 0 && <> · {agent.tokens.toLocaleString()} tokens</>}
+        {agent.running ? ' · running' : ''}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Collapsible lane shell
+// ---------------------------------------------------------------------------
+
+/**
+ * Tracks open/closed for a lane. `defaultOpen` follows the lane's live status
+ * (active lanes open, finished lanes closed) until the user clicks the header,
+ * after which their explicit choice is pinned.
+ */
+function useLaneDisclosure(defaultOpen: boolean): { open: boolean; toggle: () => void } {
+  const [override, setOverride] = React.useState<boolean | null>(null);
+  const open = override ?? defaultOpen;
+  const toggle = React.useCallback(() => setOverride(!open), [open]);
+  return { open, toggle };
+}
+
+interface LaneShellProps {
+  open: boolean;
+  onToggle: () => void;
+  header: React.ReactNode;
+  className?: string;
+  children?: React.ReactNode;
+}
+
+function LaneShell({ open, onToggle, header, className, children }: LaneShellProps) {
+  return (
+    <div className={cn('rounded-md border border-border/60 bg-muted/5 px-2 py-1.5', className)}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        {header}
+      </button>
+      {open && children && <div className="space-y-1.5 pt-1.5">{children}</div>}
     </div>
   );
 }
@@ -145,21 +242,32 @@ function statusIcon(lane: PlanLane): React.ReactNode {
 
 function PlanLaneRow({ lane, maxTokens }: { lane: PlanLane; maxTokens: number }) {
   const active = isLaneActive(lane);
+  const { open, toggle } = useLaneDisclosure(active || lane.isFailed);
+  const tokens = totalTokens(lane.agents);
+
   return (
-    <div
+    <LaneShell
+      open={open}
+      onToggle={toggle}
       className={cn(
-        'space-y-1.5 rounded-md border border-border/60 bg-muted/5 px-2 py-1.5',
         active && 'border-blue/35 bg-blue/5 shadow-sm shadow-blue/10',
         lane.isFailed && 'border-destructive/35 bg-destructive/5',
       )}
-      data-plan-id={lane.planId}
+      header={
+        <>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <DisclosureCaret open={open} />
+            <span className="truncate text-xs font-medium text-foreground" title={lane.planName}>
+              {shortPlanLabel(lane)}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {!open && <TokenSummary tokens={tokens} />}
+            {statusIcon(lane)}
+          </span>
+        </>
+      }
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-xs font-medium text-foreground" title={lane.planName}>
-          {shortPlanLabel(lane)}
-        </span>
-        {statusIcon(lane)}
-      </div>
       <MiniStageTrack lane={lane} />
       {lane.agents.length > 0 && (
         <div className="space-y-1">
@@ -168,7 +276,7 @@ function PlanLaneRow({ lane, maxTokens }: { lane: PlanLane; maxTokens: number })
           ))}
         </div>
       )}
-    </div>
+    </LaneShell>
   );
 }
 
@@ -177,23 +285,30 @@ function PlanLaneRow({ lane, maxTokens }: { lane: PlanLane; maxTokens: number })
 // ---------------------------------------------------------------------------
 
 function PrdLaneRow({ planning, maxTokens }: { planning: PlanningLane; maxTokens: number }) {
+  const { open, toggle } = useLaneDisclosure(planning.running);
+  const tokens = totalTokens(planning.agents);
+
   return (
-    <div
-      className={cn(
-        'space-y-1.5 rounded-md border border-border/60 bg-muted/5 px-2 py-1.5',
-        planning.running && 'border-blue/35 bg-blue/5 shadow-sm shadow-blue/10',
-      )}
-      data-plan-id="__prd__"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 rounded bg-yellow/15 px-1.5 py-0.5 text-10px font-semibold uppercase tracking-wide text-yellow/80">
-            PRD
+    <LaneShell
+      open={open}
+      onToggle={toggle}
+      className={cn(planning.running && 'border-blue/35 bg-blue/5 shadow-sm shadow-blue/10')}
+      header={
+        <>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <DisclosureCaret open={open} />
+            <span className="shrink-0 rounded bg-yellow/15 px-1.5 py-0.5 text-10px font-semibold uppercase tracking-wide text-yellow/80">
+              PRD
+            </span>
+            <span className="truncate text-xs font-medium text-foreground">planning</span>
           </span>
-          <span className="truncate text-xs font-medium text-foreground">planning</span>
-        </span>
-        {!planning.running && <span className="shrink-0 text-xs text-primary">✓ done</span>}
-      </div>
+          <span className="flex shrink-0 items-center gap-2">
+            {!open && <TokenSummary tokens={tokens} />}
+            {!planning.running && <span className="shrink-0 text-xs text-primary">✓ done</span>}
+          </span>
+        </>
+      }
+    >
       {planning.agents.length > 0 && (
         <div className="space-y-1">
           {planning.agents.map((agent, i) => (
@@ -201,7 +316,7 @@ function PrdLaneRow({ planning, maxTokens }: { planning: PlanningLane; maxTokens
           ))}
         </div>
       )}
-    </div>
+    </LaneShell>
   );
 }
 
@@ -214,12 +329,9 @@ export interface MiniPlanSwimlaneProps {
   planning: PlanningLane;
   /** True when planning events exist in the run state (shows the PRD lane). */
   hasPlanningRow: boolean;
-  /** Optional initial lane limit; overflow is available through disclosure. */
-  maxRows?: number;
 }
 
-export function MiniPlanSwimlane({ lanes, planning, hasPlanningRow, maxRows }: MiniPlanSwimlaneProps) {
-  const [expanded, setExpanded] = React.useState(false);
+export function MiniPlanSwimlane({ lanes, planning, hasPlanningRow }: MiniPlanSwimlaneProps) {
   if (lanes.length === 0 && !hasPlanningRow) return null;
 
   // Normalize token bars across every agent on the card (planning + plans) so a
@@ -229,28 +341,14 @@ export function MiniPlanSwimlane({ lanes, planning, hasPlanningRow, maxRows }: M
     planning.agents.reduce((m, a) => Math.max(m, a.tokens), 0),
   );
 
-  const shouldLimit = maxRows != null && lanes.length > maxRows && !expanded;
-  const visibleLanes = shouldLimit ? lanes.slice(0, maxRows) : lanes;
-  const hiddenCount = Math.max(0, lanes.length - visibleLanes.length);
-
   return (
-    <div className="space-y-1.5 border-t border-border pt-2" data-testid="mini-plan-swimlane">
-      {hasPlanningRow && <PrdLaneRow planning={planning} maxTokens={maxTokens} />}
-      {visibleLanes.map((lane) => (
-        <PlanLaneRow key={lane.planId} lane={lane} maxTokens={maxTokens} />
-      ))}
-      {hiddenCount > 0 && (
-        <button
-          type="button"
-          className="w-full rounded-md border border-dashed border-border/70 px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded(true);
-          }}
-        >
-          + {hiddenCount} more plan{hiddenCount === 1 ? '' : 's'} — show all
-        </button>
-      )}
-    </div>
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-1.5 border-t border-border pt-2" data-testid="mini-plan-swimlane">
+        {hasPlanningRow && <PrdLaneRow planning={planning} maxTokens={maxTokens} />}
+        {lanes.map((lane) => (
+          <PlanLaneRow key={lane.planId} lane={lane} maxTokens={maxTokens} />
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }

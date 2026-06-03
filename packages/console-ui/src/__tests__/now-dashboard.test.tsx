@@ -118,7 +118,7 @@ describe('NowDashboard', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('Inspect →'));
+    fireEvent.click(screen.getByTitle('Open run detail'));
 
     expect(onNavigate).toHaveBeenCalledWith('/console/runs/sess-active');
   });

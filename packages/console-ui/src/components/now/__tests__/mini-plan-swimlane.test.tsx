@@ -65,7 +65,7 @@ describe('MiniPlanSwimlane', () => {
     expect(container.textContent).toContain('failed');
   });
 
-  it('renders a finished PRD lane covering the planning agents', () => {
+  it('collapses a finished PRD lane to a summary and reveals agents on expand', () => {
     const planning: PlanningLane = {
       running: false,
       agents: [
@@ -73,19 +73,19 @@ describe('MiniPlanSwimlane', () => {
         { agent: 'plan-reviewer', tokens: 184_500, running: false },
       ],
     };
-    const { container } = render(
-      <MiniPlanSwimlane lanes={[]} planning={planning} hasPlanningRow={true} />,
-    );
+    render(<MiniPlanSwimlane lanes={[]} planning={planning} hasPlanningRow={true} />);
+    // Collapsed by default: header + done marker, but individual agents hidden.
     expect(screen.getByText('PRD')).toBeDefined();
     expect(screen.getByText('✓ done')).toBeDefined();
-    // each planning agent gets its own line with a token total
+    expect(screen.queryByText('planner')).toBeNull();
+
+    // Expanding the lane reveals each planning agent and its token total.
+    fireEvent.click(screen.getByText('planning'));
     expect(screen.getByText('planner')).toBeDefined();
     expect(screen.getByText('plan-reviewer')).toBeDefined();
-    expect(container.textContent).toContain('4.9M');
-    expect(container.textContent).toContain('184.5K');
   });
 
-  it('shows the PRD lane as running while planning agents are active', () => {
+  it('shows the PRD lane expanded with agents while planning is active', () => {
     const planning: PlanningLane = {
       running: true,
       agents: [{ agent: 'planner', tokens: 1_200_000, running: true }],
@@ -93,21 +93,25 @@ describe('MiniPlanSwimlane', () => {
     render(<MiniPlanSwimlane lanes={[]} planning={planning} hasPlanningRow={true} />);
     expect(screen.getByText('PRD')).toBeDefined();
     expect(screen.queryByText('✓ done')).toBeNull(); // no done marker while running
-    expect(screen.getByText('planner')).toBeDefined();
+    expect(screen.getByText('planner')).toBeDefined(); // active → expanded
   });
 
-  it('limits lanes to maxRows and expands on disclosure click', () => {
-    const lanes = [
-      makeLane({ planId: 'plan-01', planName: 'One' }),
-      makeLane({ planId: 'plan-02', planName: 'Two' }),
-      makeLane({ planId: 'plan-03', planName: 'Three' }),
-    ];
-    render(<MiniPlanSwimlane lanes={lanes} planning={emptyPlanning} hasPlanningRow={false} maxRows={2} />);
-    expect(screen.getByText('Plan 01 · One')).toBeDefined();
-    expect(screen.getByText('Plan 02 · Two')).toBeDefined();
-    expect(screen.queryByText('Plan 03 · Three')).toBeNull();
+  it('expands active plan lanes by default and collapses completed ones', () => {
+    const active = makeLane({ planId: 'plan-01', planName: 'Active' });
+    const done = makeLane({
+      planId: 'plan-02',
+      planName: 'Done',
+      stage: 'complete',
+      isComplete: true,
+      agents: [{ agent: 'reviewer', tokens: 2_000_000, running: false }],
+    });
+    render(<MiniPlanSwimlane lanes={[active, done]} planning={emptyPlanning} hasPlanningRow={false} />);
+    // Active lane is expanded: its agent shows.
+    expect(screen.getByText('builder')).toBeDefined();
+    // Completed lane is collapsed: its agent is hidden until expanded.
+    expect(screen.queryByText('reviewer')).toBeNull();
 
-    fireEvent.click(screen.getByText('+ 1 more plan — show all'));
-    expect(screen.getByText('Plan 03 · Three')).toBeDefined();
+    fireEvent.click(screen.getByText('Plan 02 · Done'));
+    expect(screen.getByText('reviewer')).toBeDefined();
   });
 });

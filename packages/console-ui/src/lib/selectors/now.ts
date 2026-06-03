@@ -11,7 +11,7 @@ import type {
   RunInfo,
   EforgeEvent,
 } from '@eforge-build/client/browser';
-import { getEventSummary } from '@eforge-build/client/browser';
+import { getEventSummary, isTransientTransportError } from '@eforge-build/client/browser';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
@@ -33,6 +33,10 @@ import { selectNowMetricsPanel } from './metrics';
 import type { NowMetricsPanel } from './metrics';
 export { selectNowMetricsPanel } from './metrics';
 export type { NowMetricsPanel } from './metrics';
+import { selectNowEnqueueCards, ENQUEUE_COMMAND } from './enqueue-cards';
+import type { NowEnqueueCard } from './enqueue-cards';
+export { selectNowEnqueueCards } from './enqueue-cards';
+export type { NowEnqueueCard } from './enqueue-cards';
 
 // ---------------------------------------------------------------------------
 // View model types
@@ -86,7 +90,19 @@ export interface NowActiveBuildCard {
   currentPhase: string | null;
   latestAgent: string | null;
   latestProgress: string | null;
+  /**
+   * Terminal build failure message (from `plan:build:failed`), or null. Drives
+   * the card's hard error styling. Transient backend-transport hiccups are NOT
+   * reported here — see `transientNotice`.
+   */
   latestError: string | null;
+  /**
+   * Soft, recoverable notice for an in-flight transient backend-transport retry
+   * (e.g. a provider websocket dropped and the agent is reconnecting). Rendered
+   * as a non-alarming chip; the build is still considered live. Null when the
+   * build is progressing normally or has already recovered.
+   */
+  transientNotice: string | null;
   /** High-level build lifecycle derived from plan, PRD validation, and gap-close events. */
   lifecycle: NowBuildLifecycle;
   /** Plan status counts derived from reduced RunState. */
@@ -169,6 +185,8 @@ export interface NowDashboardModel {
   attention: NowAttentionItem[];
   attentionHiddenCount: number;
   activeBuilds: NowActiveBuildCard[];
+  /** Pre-build PRD formatting/validation runs, shown above active builds. */
+  enqueueCards: NowEnqueueCard[];
   queue: NowQueueSummary;
   queueStacks: NowQueueStack[];
   recentRuns: NowRecentRunItem[];
@@ -480,17 +498,61 @@ function extractLatestProgressFromRunState(runState: RunState): string | null {
   return null;
 }
 
-function extractLatestErrorFromRunState(sessionError: string | null, runState: RunState): string | null {
-  if (sessionError) return sessionError;
+/**
+ * Terminal build failure, if any. Only a `plan:build:failed` event counts as a
+ * hard error here. Trailing `agent:stop` errors are deliberately ignored: a
+ * single agent hiccup (especially a transient backend-transport drop the engine
+ * retries) is not a build failure, and surfacing it as one made recovered,
+ * still-running builds look dead. Console-to-daemon stream disconnects are
+ * surfaced through `streamStatus`, not here.
+ */
+function extractTerminalErrorFromRunState(runState: RunState): string | null {
   for (let i = runState.events.length - 1; i >= 0; i--) {
     const e = runState.events[i].event;
     if (e.type === 'plan:build:failed') {
       const pe = e as Extract<EforgeEvent, { type: 'plan:build:failed' }>;
       return pe.error;
     }
-    if (e.type === 'agent:stop') {
-      const ae = e as Extract<EforgeEvent, { type: 'agent:stop' }>;
-      if (ae.error) return ae.error;
+  }
+  return null;
+}
+
+/**
+ * Soft notice for an in-flight transient backend-transport retry. Decided by
+ * the most recent *lifecycle-relevant* event: a transient-transport retry or an
+ * agent stop carrying a transient-transport error means a reconnect is underway;
+ * any later success/progress signal means the build already recovered and no
+ * notice is shown.
+ */
+function extractTransientNotice(runState: RunState): string | null {
+  for (let i = runState.events.length - 1; i >= 0; i--) {
+    const e = runState.events[i].event;
+    switch (e.type) {
+      case 'agent:retry': {
+        const re = e as Extract<EforgeEvent, { type: 'agent:retry' }>;
+        if (re.subtype !== 'error_transient_transport') return null;
+        return `Transport interrupted — retrying (attempt ${re.attempt}/${re.maxAttempts})`;
+      }
+      case 'agent:stop': {
+        const ae = e as Extract<EforgeEvent, { type: 'agent:stop' }>;
+        if (ae.error && isTransientTransportError(ae.error)) {
+          return 'Transport interrupted — reconnecting';
+        }
+        return null;
+      }
+      // Any of these later than the hiccup means the build moved on.
+      case 'agent:result':
+      case 'plan:build:failed':
+      case 'plan:build:progress':
+        return null;
+      // NOTE: `agent:start` is intentionally NOT a recovery terminator. The
+      // retry sequence is `agent:stop` -> `agent:retry` -> `agent:start` ->
+      // `result`/`progress`. The build is still mid-reconnect until the new
+      // attempt produces forward progress, so the notice should persist across
+      // `agent:start`. Do not add it here to "clear faster" — that breaks the
+      // intended reconnecting/retrying UX.
+      default:
+        break;
     }
   }
   return null;
@@ -572,9 +634,12 @@ export function selectNowActiveBuildCards(
    */
   titleByPlanSet: Map<string, string> = new Map(),
 ): NowActiveBuildCard[] {
-  // Filter to active runs (no completedAt, non-terminal status)
+  // Filter to active *build* runs (no completedAt, non-terminal status). Enqueue
+  // runs share a session with the build that follows but are pre-build PRD
+  // formatting, not a build — they get their own lighter card via
+  // selectNowEnqueueCards, so exclude them here.
   const activeRuns = runs.filter(
-    (r) => !r.completedAt && r.sessionId && !isTerminalStatus(r.status),
+    (r) => !r.completedAt && r.sessionId && !isTerminalStatus(r.status) && r.command !== ENQUEUE_COMMAND,
   );
 
   // Group by sessionId, picking newest startedAt per session
@@ -606,6 +671,7 @@ export function selectNowActiveBuildCards(
     let latestAgent: string | null = null;
     let latestProgress: string | null = null;
     let latestError: string | null = null;
+    let transientNotice: string | null = null;
     let lifecycle: NowBuildLifecycle = EMPTY_LIFECYCLE;
     let planProgress: PlanStatusCounts = EMPTY_PLAN_PROGRESS;
     let tokens = 0;
@@ -622,7 +688,8 @@ export function selectNowActiveBuildCards(
       currentPhase = extractCurrentPhaseFromRunState(rs);
       latestAgent = extractLatestAgentFromRunState(rs);
       latestProgress = extractLatestProgressFromRunState(rs);
-      latestError = extractLatestErrorFromRunState(detail.error, rs);
+      latestError = extractTerminalErrorFromRunState(rs);
+      transientNotice = latestError ? null : extractTransientNotice(rs);
       lifecycle = extractBuildLifecycle(rs);
       planProgress = selectPlanStatusCounts(rs);
       const stats = getSummaryStats(rs);
@@ -653,6 +720,7 @@ export function selectNowActiveBuildCards(
       latestAgent,
       latestProgress,
       latestError,
+      transientNotice,
       lifecycle,
       planProgress,
       tokens,
@@ -931,6 +999,7 @@ export function selectNowDashboardModel(
     now,
     titleByPlanSet,
   );
+  const enqueueCards = selectNowEnqueueCards(state.runs, activeSessions.sessions, now);
   const queue = selectNowQueueSummary(state.queue);
   const queueStacks = selectNowQueueStacks(state.queue);
   const recentRuns = selectNowRecentRuns(state.runs, now);
@@ -947,6 +1016,7 @@ export function selectNowDashboardModel(
     attention,
     attentionHiddenCount,
     activeBuilds,
+    enqueueCards,
     queue,
     queueStacks,
     recentRuns,

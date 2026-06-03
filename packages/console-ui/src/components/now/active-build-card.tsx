@@ -1,27 +1,22 @@
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { NowActiveBuildCard as NowActiveBuildCardModel } from '@/lib/selectors/now';
 import type { MiniGanttRow } from '@/lib/run-state';
 import { formatDuration, truncateId, compactTokens } from '@/lib/format';
 import { MiniPlanSwimlane } from './mini-plan-swimlane';
-import { PlanProgressRing } from '@/components/charts/plan-progress-ring';
-import { VelocitySparkline } from '@/components/charts/velocity-sparkline';
-import type { BuildMetricSamples } from '@/hooks/use-build-metric-history';
+import { CancelBuildButton } from './cancel-build-button';
 import { cn } from '@/lib/utils';
 
 interface ActiveBuildCardProps {
   card: NowActiveBuildCardModel;
   onNavigate?: (href: string) => void;
-  /** Rolling token/cost history for the velocity sparklines. */
-  samples?: BuildMetricSamples;
 }
 
 const STREAM_STATUS_BADGE: Record<
   string,
   'default' | 'secondary' | 'destructive' | 'outline'
 > = {
-  connected: 'outline',
   connecting: 'secondary',
   disconnected: 'destructive',
 };
@@ -141,40 +136,43 @@ function BuildLifecycleRail({ steps }: { steps: RailStep[] }) {
   );
 }
 
-export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardProps) {
+export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
   const durationLabel = formatDuration(card.durationMs);
-  const streamBadgeVariant = STREAM_STATUS_BADGE[card.streamStatus] ?? 'outline';
+  const streamBadgeVariant = STREAM_STATUS_BADGE[card.streamStatus] ?? 'secondary';
+  // "connected" is the silent default — the card's own pulse signals liveness —
+  // so the badge only appears when the stream needs attention.
+  const showStreamBadge = card.streamStatus !== 'connected';
 
   const summaryLabel = progressSummary(card);
-  const tokensLabel = card.tokens > 0 ? `${card.tokens.toLocaleString()} tok` : null;
-  const costLabel = card.cost > 0 ? `$${card.cost.toFixed(4)}` : null;
-  const cacheLabel =
-    card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
+  const tokensLabel = card.tokens > 0 ? `${compactTokens(card.tokens)} tok` : null;
+  const costLabel = card.cost > 0 ? `$${card.cost.toFixed(2)}` : null;
+  const cacheLabel = card.cachePercent > 0 ? `${Math.round(card.cachePercent)}% cache` : null;
+  // Rough token throughput; only meaningful once the build has run a little.
+  const rateLabel =
+    card.tokens > 0 && card.durationMs > 5_000
+      ? `${compactTokens(Math.round(card.tokens / (card.durationMs / 60_000)))}/min`
+      : null;
+  // `durationLabel` (formatDuration) always returns a non-empty string, so
+  // metricBits is never empty and `metricBits[0]` below is always defined.
+  const metricBits = [durationLabel, tokensLabel, costLabel, cacheLabel, rateLabel].filter(
+    (bit): bit is string => Boolean(bit),
+  );
+
   const railSteps = buildRailSteps(card);
   const hasActivePlan = card.miniGanttRows.some(isActivePlan);
   const hasActiveLifecyclePhase = ['prd-validation', 'gap-close', 'final-validation', 'landing'].includes(card.lifecycle.phase);
+  // A terminal failure stops the pulse; a transient transport hiccup does not —
+  // the build is still live and reconnecting.
   const showLivePulse = !card.latestError;
 
-  const handleClick = () => onNavigate?.(card.href);
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') handleClick();
-  };
+  const title = card.planSet || truncateId(card.sessionId);
+  const navigate = onNavigate ? () => onNavigate(card.href) : undefined;
 
   return (
     <Card
-      role={onNavigate ? 'button' : undefined}
-      tabIndex={onNavigate ? 0 : undefined}
-      onClick={onNavigate ? handleClick : undefined}
-      onKeyDown={onNavigate ? handleKeyDown : undefined}
       className={cn(
         'relative flex flex-col overflow-hidden border-border/80 shadow-sm',
         card.latestError && 'border-l-2 border-l-destructive ring-1 ring-destructive/25',
-        onNavigate && [
-          'cursor-pointer',
-          'transition-shadow duration-150',
-          'hover:ring-1 hover:ring-primary/40',
-          'focus:outline-none focus:ring-2 focus:ring-ring',
-        ],
       )}
     >
       {showLivePulse && (
@@ -189,41 +187,56 @@ export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardPr
       <CardHeader className="relative z-10 pb-2 pt-4 px-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 space-y-1">
-            <CardTitle className="text-sm font-semibold truncate">
-              {card.planSet || truncateId(card.sessionId)}
-            </CardTitle>
+            {navigate ? (
+              <button
+                type="button"
+                onClick={navigate}
+                className="block max-w-full truncate text-left text-sm font-semibold text-foreground transition-colors hover:text-primary hover:underline focus:outline-none focus-visible:text-primary focus-visible:underline"
+                title="Open run detail"
+              >
+                {title}
+              </button>
+            ) : (
+              <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
+            )}
             <p className="text-xs text-muted-foreground truncate">
               {summaryLabel ?? card.command}
             </p>
           </div>
-          <Badge
-            variant={streamBadgeVariant}
-            className={cn(
-              'shrink-0 capitalize text-xs',
-              card.streamStatus === 'connected' && 'border-border/70 bg-muted/10 text-muted-foreground shadow-none',
+          <div className="flex shrink-0 items-center gap-2">
+            {showStreamBadge && (
+              <Badge variant={streamBadgeVariant} className="capitalize text-xs">
+                {card.streamStatus}
+              </Badge>
             )}
-          >
-            {card.streamStatus}
-          </Badge>
+            <CancelBuildButton sessionId={card.sessionId} label={title} />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="relative z-10 px-4 pb-4 space-y-3 flex-1">
         <BuildLifecycleRail steps={railSteps} />
 
-        <div className="flex items-start justify-between gap-2 text-xs">
-          <div className="min-w-0">
+        {(card.latestError || card.transientNotice || card.latestProgress) && (
+          <div className="text-xs">
             {card.latestError ? (
               <p className="truncate text-destructive" title={card.latestError}>
                 {card.latestError}
               </p>
-            ) : card.latestProgress ? (
-              <p className="truncate text-muted-foreground" title={card.latestProgress}>
+            ) : card.transientNotice ? (
+              <p className="flex items-center gap-1.5 truncate text-yellow/90" title={card.transientNotice}>
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow motion-safe:animate-pulse"
+                  aria-hidden="true"
+                />
+                {card.transientNotice}
+              </p>
+            ) : (
+              <p className="truncate text-muted-foreground" title={card.latestProgress ?? undefined}>
                 {card.latestProgress}
               </p>
-            ) : null}
+            )}
           </div>
-          <span className="shrink-0 tabular-nums text-muted-foreground">{durationLabel}</span>
-        </div>
+        )}
 
         <MiniPlanSwimlane
           lanes={card.planLanes}
@@ -231,47 +244,32 @@ export function ActiveBuildCard({ card, onNavigate, samples }: ActiveBuildCardPr
           hasPlanningRow={card.hasPlanningRow}
         />
 
-        {/* Metrics: plan-progress ring + live token/cost velocity sparklines */}
-        <div className="flex items-stretch gap-3">
-          {card.planProgress.total > 0 && (
-            <PlanProgressRing counts={card.planProgress} />
+        {/* Consolidated live status: elapsed time + spend + throughput, plus the
+            agent running right now. Replaces the former plan-progress donut and
+            token/cost sparklines (mostly-flat, low-signal at this size). */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-2 text-xs tabular-nums text-muted-foreground">
+          <span className="font-medium text-foreground">{metricBits[0]}</span>
+          {metricBits.slice(1).map((bit) => (
+            <React.Fragment key={bit}>
+              <span className="text-border" aria-hidden="true">·</span>
+              <span>{bit}</span>
+            </React.Fragment>
+          ))}
+          {card.latestAgent && (
+            <>
+              <span className="text-border" aria-hidden="true">·</span>
+              <span className="text-blue">{card.latestAgent}</span>
+            </>
           )}
-          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
-            <VelocitySparkline
-              label="Tokens"
-              display={`${compactTokens(card.tokens)} tok`}
-              samples={samples?.tokens ?? []}
-              color="var(--color-blue)"
-            />
-            <VelocitySparkline
-              label="Cost"
-              display={`$${card.cost.toFixed(2)}`}
-              samples={samples?.cost ?? []}
-              color="var(--color-green)"
-            />
-          </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t pt-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="min-w-0 truncate">
             {card.profile ?? card.command}
             <span className="mx-1.5 text-border">·</span>
             <code className="font-mono">{truncateId(card.sessionId)}</code>
           </span>
-          <span className="shrink-0 flex gap-2">
-            {tokensLabel && <span>{tokensLabel}</span>}
-            {costLabel && <span>{costLabel}</span>}
-            {cacheLabel && <span>{cacheLabel}</span>}
-          </span>
         </div>
-
-        {onNavigate && (
-          <div className="flex items-center justify-end">
-            <span className="text-xs text-primary font-medium">
-              Inspect →
-            </span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
