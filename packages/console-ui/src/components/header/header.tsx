@@ -4,6 +4,8 @@ import { EFORGE_LOGO_URL, EFORGE_LOGO_ALT } from '@/lib/brand';
 import { selectNowStatusSummary } from '@/lib/selectors/now';
 import { formatRelativeTime, formatAbsoluteTimestamp } from '@/lib/format';
 import { projectBasename } from '@/lib/selectors/runs';
+import { projectLabelFromContext } from '@/lib/selectors/project-label';
+import { useProjectContext } from '@/hooks/use-project-context';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import { ConnectionIndicator } from './connection-indicator';
 import { AutoBuildToggle } from './auto-build-toggle';
@@ -35,7 +37,10 @@ export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled,
     );
     return sorted[0].cwd;
   }, [projectState.runs]);
-  const basename = projectBasename(latestCwd);
+  // Project identity comes from the latest run's cwd when one exists; on a
+  // fresh/idle daemon with no runs, fall back to daemon-reported project context.
+  const projectContext = useProjectContext();
+  const basename = projectBasename(latestCwd) ?? projectLabelFromContext(projectContext);
 
   const absoluteTs =
     projectState.lastEventAt != null || projectState.lastSnapshotAt != null

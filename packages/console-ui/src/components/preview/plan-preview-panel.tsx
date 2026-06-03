@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePlanPreview } from './plan-preview-context';
 import { PlanMetadata } from './plan-metadata';
 import { PlanBodyHighlight } from './plan-body-highlight';
+import { BuildConfigSection, StatusBadge, ModuleStatusBadge } from './plan-config';
 import { splitPlanContent, parseFrontmatterFields, extractPrdTitle } from '@/lib/plan-content';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,7 +15,7 @@ interface PlanPreviewPanelProps {
 }
 
 export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
-  const { selectedPlanId, contentPreview, closePreview, fileChanges } = usePlanPreview();
+  const { selectedPlanId, previewFallback, contentPreview, closePreview, fileChanges, planStatuses, moduleStatuses } = usePlanPreview();
   const isOpen = selectedPlanId !== null || contentPreview !== null;
 
   const [plans, setPlans] = useState<PlanInfo[] | null>(null);
@@ -82,7 +83,9 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
     ? extractPrdTitle(contentPreview.content) ?? contentPreview.title
     : null;
 
-  // File changes for selected plan
+  // Runtime data for selected plan
+  const planStatus = selectedPlanId ? planStatuses[selectedPlanId] : undefined;
+  const moduleStatus = selectedPlanId ? moduleStatuses[selectedPlanId] : undefined;
   const planFileChanges = selectedPlanId ? fileChanges.get(selectedPlanId) : undefined;
 
   // Escape key to close
@@ -130,8 +133,10 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
               </span>
             )}
             <h2 className="text-sm font-semibold text-foreground truncate">
-              {contentPreviewTitle ?? selectedPlan?.name ?? 'Plan Preview'}
+              {contentPreviewTitle ?? selectedPlan?.name ?? previewFallback?.name ?? 'Plan Preview'}
             </h2>
+            {selectedPlan && planType === 'plan' && <StatusBadge status={planStatus} />}
+            {selectedPlan && planType === 'module' && <ModuleStatusBadge status={moduleStatus} />}
           </div>
           <Button
             type="button"
@@ -164,7 +169,11 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
             </div>
           )}
 
-          {!contentPreview && !loading && !error && !selectedPlan && selectedPlanId && (
+          {!contentPreview && !loading && !error && !selectedPlan && selectedPlanId && previewFallback && (
+            <PlanBodyHighlight content={previewFallback.body} />
+          )}
+
+          {!contentPreview && !loading && !error && !selectedPlan && selectedPlanId && !previewFallback && (
             <div className="text-text-dim text-xs py-4 text-center">
               Plan &ldquo;{selectedPlanId}&rdquo; not found.
             </div>
@@ -173,6 +182,7 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
           {!contentPreview && !loading && !error && selectedPlan && (
             <>
               {metadata && <PlanMetadata {...metadata} />}
+              <BuildConfigSection build={selectedPlan.build} review={selectedPlan.review} />
               {planFileChanges && planFileChanges.length > 0 && (
                 <div>
                   <div className="text-10px uppercase tracking-wide text-text-dim mb-1">Files Changed</div>

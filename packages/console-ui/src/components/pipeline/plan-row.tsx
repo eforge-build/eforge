@@ -20,6 +20,11 @@ import {
 import { AGENT_TO_STAGE, REVIEW_AGENTS, resolveBuildStage } from './agent-stage-map';
 import { ActivityOverlay } from './activity-overlay';
 import { StageOverview, BuildStageProgress } from './stage-overview';
+import { packIntoLanes } from './pack-lanes';
+
+/** Below this rendered width, a bar's inline label is dropped (it would only
+ *  show a clipped fragment); the agent name stays available via the tooltip. */
+const MIN_LABEL_WIDTH_PERCENT = 4;
 
 interface PlanRowProps {
   planId: string;
@@ -85,40 +90,28 @@ export function DepthBars({ depth }: { depth: number }) {
 function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, onDecisionSelect, onAgentSelect, onStageSelect }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
-  const sortedThreads = useMemo(
-    () => [...threads].sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()),
-    [threads],
+  // Pack agent threads into the minimum number of lanes so sequential agents
+  // (e.g. planner -> architecture-reviewer -> module-planner) share a single
+  // row instead of cascading diagonally. Concurrent agents still fan out.
+  const threadLanes = useMemo(
+    () => packIntoLanes(
+      threads,
+      (t) => new Date(t.startedAt).getTime(),
+      (t) => (t.endedAt ? new Date(t.endedAt).getTime() : (endTime ?? Date.now())),
+    ),
+    [threads, endTime],
   );
 
   // Pack validation commands into the minimum number of lanes so sequential
   // validations share a single row.
-  const validationLanes = useMemo<ValidationCommandSpan[][]>(() => {
-    if (!validationCommands || validationCommands.length === 0) return [];
-    const sorted = [...validationCommands].sort(
-      (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
-    );
-    const fallbackEnd = endTime ?? Date.now();
-    const lanes: ValidationCommandSpan[][] = [];
-    const laneEnds: number[] = [];
-    for (const span of sorted) {
-      const start = new Date(span.startedAt).getTime();
-      const end = span.endedAt ? new Date(span.endedAt).getTime() : fallbackEnd;
-      let placed = false;
-      for (let i = 0; i < lanes.length; i++) {
-        if (laneEnds[i] <= start) {
-          lanes[i].push(span);
-          laneEnds[i] = end;
-          placed = true;
-          break;
-        }
-      }
-      if (!placed) {
-        lanes.push([span]);
-        laneEnds.push(end);
-      }
-    }
-    return lanes;
-  }, [validationCommands, endTime]);
+  const validationLanes = useMemo<ValidationCommandSpan[][]>(
+    () => packIntoLanes(
+      validationCommands ?? [],
+      (s) => new Date(s.startedAt).getTime(),
+      (s) => (s.endedAt ? new Date(s.endedAt).getTime() : (endTime ?? Date.now())),
+    ),
+    [validationCommands, endTime],
+  );
 
   // Build tooltip text for plan pills
   const planTooltipText = useMemo(() => {
@@ -135,7 +128,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
   const leftLabel = (() => {
     if (prdSource) {
       return (
-        <div className="w-[100px] shrink-0 flex items-stretch gap-1.5">
+        <div className="flex items-stretch gap-1.5 min-w-0">
           <DepthBars depth={depth ?? 0} />
           <div className="flex-1 min-w-0 mt-0.5">
             <Tooltip>
@@ -158,7 +151,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
     }
     if (planArtifact) {
       return (
-        <div className="w-[100px] shrink-0 flex items-stretch gap-1.5">
+        <div className="flex items-stretch gap-1.5 min-w-0">
           <DepthBars depth={depth ?? 0} />
           <div className="flex-1 min-w-0 mt-0.5">
             <Tooltip>
@@ -167,10 +160,10 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className={planPillClassFor(depth ?? 0)}
-                  onClick={() => openContentPreview(planArtifact.name || planId, planArtifact.body)}
+                  className={`${planPillClassFor(depth ?? 0)} max-w-full justify-start`}
+                  onClick={() => openPreview(planId, { name: planArtifact.name || planId, body: planArtifact.body })}
                 >
-                  {abbreviatePlanId(planId)}
+                  <span className="truncate min-w-0">{abbreviatePlanId(planId)}</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -185,7 +178,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
     }
     // Fallback: pill label
     return (
-      <div className="w-[100px] shrink-0 flex items-stretch gap-1.5">
+      <div className="flex items-stretch gap-1.5 min-w-0">
         <DepthBars depth={depth ?? 0} />
         <div className="flex-1 min-w-0 mt-0.5">
           <Tooltip>
@@ -197,7 +190,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                 className={planPillClassFor(depth ?? 0)}
                 onClick={disablePreview ? undefined : () => openPreview(planId)}
               >
-                {abbreviatePlanId(planId)}
+                <span className="truncate min-w-0">{abbreviatePlanId(planId)}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">{planId}</TooltipContent>
@@ -207,11 +200,13 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
     );
   })();
 
+  // Renders two bare fragment children (left label + timeline content) that
+  // become adjacent cells in the parent grid in thread-pipeline.tsx. Must be
+  // rendered inside that two-column grid; it is not standalone.
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-start gap-2 text-xs">
-        {leftLabel}
-        <div className="flex-1 flex flex-col gap-0.5">
+    <>
+      {leftLabel}
+      <div className="flex flex-col gap-0.5 min-w-0 text-xs">
           {compileStages && (
             <StageOverview
               compile={compileStages}
@@ -227,14 +222,17 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
           {decisions && decisions.length > 0 && (
             <DecisionTimeline decisions={decisions} sessionStart={sessionStart} totalSpan={totalSpan} onDecisionSelect={onDecisionSelect} />
           )}
-        <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
-          {sortedThreads.map((thread) => {
+        <div className="bg-bg-tertiary rounded-sm overflow-hidden flex flex-col gap-px py-px min-h-4">
+          {threadLanes.map((lane, laneIdx) => (
+            <div key={`thread-lane-${laneIdx}`} className="relative h-4">
+              {lane.map((thread) => {
             const threadStart = new Date(thread.startedAt).getTime();
             const threadEnd = thread.endedAt
               ? new Date(thread.endedAt).getTime()
               : (endTime ?? Date.now());
             const leftPercent = Math.max(0, ((threadStart - sessionStart) / totalSpan) * 100);
             const widthPercent = Math.max(0, Math.min(((threadEnd - threadStart) / totalSpan) * 100, 100 - leftPercent));
+            const showLabel = widthPercent >= MIN_LABEL_WIDTH_PERCENT;
             const isRunning = thread.endedAt === null;
             const color = getAgentColor(thread.agent);
             const duration = thread.durationMs != null
@@ -248,8 +246,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
             const isStripDimmed = hoveredStage !== null && hoveredStage !== stripStage;
 
             return (
-              <div key={thread.agentId} className="relative h-4">
-                <Tooltip>
+                <Tooltip key={thread.agentId}>
                   <TooltipTrigger asChild>
                     <div
                       className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${color.bg} ${color.border} flex items-center overflow-hidden cursor-pointer${isStripHighlighted ? ' brightness-150 ring-1 ring-foreground/30' : ''}${isStripDimmed ? ' opacity-30' : ''}`}
@@ -268,9 +265,11 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                         threadStart={threadStart}
                         threadEnd={threadEnd}
                       />
-                      <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
-                        {thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
-                      </span>
+                      {showLabel && (
+                        <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
+                          {thread.agent}{thread.totalTokens != null ? ` ${formatNumber(thread.totalTokens)}` : ''}
+                        </span>
+                      )}
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top">
@@ -353,9 +352,10 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                     })()}
                   </TooltipContent>
                 </Tooltip>
-              </div>
             );
-          })}
+              })}
+            </div>
+          ))}
           {validationLanes.map((lane, laneIdx) => (
             <div key={`validation-lane-${laneIdx}`} className="relative h-4">
               {lane.map((span, idx) => {
@@ -365,6 +365,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                   : (endTime ?? Date.now());
                 const leftPercent = Math.max(0, ((spanStart - sessionStart) / totalSpan) * 100);
                 const widthPercent = Math.max(0, Math.min(((spanEnd - spanStart) / totalSpan) * 100, 100 - leftPercent));
+                const showLabel = widthPercent >= MIN_LABEL_WIDTH_PERCENT;
                 const isRunning = span.endedAt === null;
                 const durationMs = spanEnd - spanStart;
                 const durationStr = isRunning ? 'running...' : `${(durationMs / 1000).toFixed(1)}s`;
@@ -382,9 +383,11 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                           animation: isRunning ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
                         }}
                       >
-                        <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
-                          {statusGlyph ? `${statusGlyph} ` : ''}{span.command}
-                        </span>
+                        {showLabel && (
+                          <span className="text-9px truncate px-1 leading-4 text-foreground/70 relative z-10">
+                            {statusGlyph ? `${statusGlyph} ` : ''}{span.command}
+                          </span>
+                        )}
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="top">
@@ -426,9 +429,8 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
             </div>
           )}
         </div>
-        </div>
       </div>
-    </div>
+    </>
   );
 }
 
