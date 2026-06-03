@@ -35,6 +35,9 @@ describe('getSchemaYaml', () => {
     expect(yaml).toContain('description');
     expect(yaml).toContain('line');
     expect(yaml).toContain('fix');
+    expect(yaml).toContain('retryGuidance');
+    expect(yaml).toContain('repairClass');
+    expect(yaml).toContain('runtimeFailureKind');
   });
 
   it('caches and returns the same reference on second call', () => {
@@ -106,6 +109,12 @@ describe('reviewIssueSchema safeParse', () => {
       line: 42,
       description: 'Off-by-one error in loop',
       fix: 'Changed < to <=',
+      retryGuidance: 'Retry narrowly',
+      failureKind: 'domain-signature',
+      repairClass: 'structural',
+      metadata: { rule: 'guardrail' },
+      validationProviderName: 'guardrails',
+      runtimeFailureKind: 'result',
     });
     expect(result.success).toBe(true);
   });

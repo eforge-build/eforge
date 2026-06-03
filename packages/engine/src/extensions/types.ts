@@ -1,4 +1,5 @@
 import type { Scope } from '@eforge-build/scopes';
+import type { ValidationProviderSpec as SdkValidationProviderSpec } from '@eforge-build/extension-sdk';
 
 /**
  * Package provenance attached to directory-layout extensions that have a `package.json`.
@@ -54,7 +55,7 @@ export interface ReviewerPerspectiveApplicability {
   fn?: (changedFiles: string[], changedLines: number) => boolean | Promise<boolean>;
 }
 export interface ReviewerPerspectiveSpec { key: string; label: string; description: string; promptFragment: string; appliesTo?: ReviewerPerspectiveApplicability; }
-export interface ValidationProviderSpec { name: string; description: string; validate?: ExtensionHandler; commands?: string[] }
+export type ValidationProviderSpec = Omit<SdkValidationProviderSpec, 'validate'> & { validate?: ExtensionHandler };
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
 export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';

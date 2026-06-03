@@ -202,7 +202,7 @@ graph LR
 | `doc-sync` | Syncs existing documentation against the post-implement diff |
 | `test-write` | Writes tests from the plan spec (TDD - runs before `implement`) |
 | `test-cycle` | Composite: iterates `test` then `evaluate` up to `maxRounds`. The tester agent runs tests, debugs failures, and writes production fixes inline; the evaluator then judges those fixes. There is no separate `test-fix` substage. |
-| `validate` | Runs validation commands (compile, test, lint) |
+| `validate` | Runs registered extension validation providers as per-plan quality gates before review. Structured provider failures can route to narrow review-fixer recovery or structural validation-fixer recovery; post-merge command validation remains orchestrator-owned. |
 
 Build stages support parallel groups - arrays in the stage list run concurrently. For example, `[['implement', 'doc-author'], 'doc-sync', 'review-cycle']` runs implement and doc-author in parallel, then doc-sync sequentially, then review-cycle after both complete.
 
@@ -242,6 +242,8 @@ Per-role configuration (effort level, thinking, tool filters, maxTurns, promptAp
 Quality requires separating generation from evaluation. The reviewer operates without builder context - it sees only the code diff, not the builder's reasoning. The review-fixer applies suggested fixes as unstaged changes. The evaluator then judges each fix against the original plan intent, accepting strict improvements and rejecting changes that alter intent. This same three-step pattern (blind review -> fix -> evaluate) applies to plan review, architecture review, and cohesion review.
 
 The `verify` perspective is an exception to the diff-only rule: instead of reading a diff, it runs the plan's verification commands as subprocesses and emits one critical issue per failing command, with the full exit code and stdout/stderr in the issue's fix element. The review-fixer then applies the necessary edits - which may touch files outside the original diff - and the evaluator accepts or rejects as usual. This allows integration failures in sharded builds to flow through the same iterative fix cycle as code-review issues.
+
+Validation-provider recovery uses the same evaluator boundary with additional routing. Structured provider annotations become review issues with optional `repairClass`, `retryGuidance`, `failureKind`, and `metadata`. Narrow or unspecified issues enter the review-fixer path; structural issues enter the validation-fixer path; repeated signatures that survive a narrow attempt are escalated to structural repair. Before each automated validation-provider repair, the engine writes `.eforge/validation-recovery/.../checkpoint.patch` and `metadata.json` and includes those checkpoint references in both the fixer and evaluator contexts.
 
 ## Orchestration
 

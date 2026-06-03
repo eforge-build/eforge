@@ -58,12 +58,10 @@ export {
   getPlanMarkdownPath,
 } from './resume-projection.js';
 export type { ResumeStatus, ResumeSeedState, ResumeArtifactsProjection } from './resume-projection.js';
-// --- eforge:region plan-01-engine-queued-resume ---
 export { resolveResumePrdContent } from './prd-content.js';
 export type { ResolvedResumePrdContent, ResumePrdContentSource } from './prd-content.js';
 export { prepareFailedPrdForQueuedCompiledResume, resolveQueuedCompiledResumeMetadata } from './queued-resume.js';
 export type { PrepareQueuedCompiledResumeResult, QueuedCompiledResumeMetadata } from './queued-resume.js';
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 // ---------------------------------------------------------------------------
 // Eligibility checks

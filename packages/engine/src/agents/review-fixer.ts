@@ -29,6 +29,8 @@ export interface ReviewFixerOptions extends SdkPassthroughConfig {
   continuationContext?: ReviewFixerContinuationContext;
   /** Prior evaluator feedback from earlier review-cycle rounds. */
   evaluatorFeedbackContext?: string;
+  /** Validation-provider recovery context when validate-stage routing invokes the narrow review-fixer path. */
+  validationRepairContext?: string;
   /** Zero-based review-cycle round for lifecycle event metadata. */
   round?: number;
 }
@@ -44,10 +46,22 @@ function formatIssuesForPrompt(issues: ReviewIssue[]): string {
   return sorted
     .map((issue, i) => {
       const line = issue.line ? `:${issue.line}` : '';
-      const fix = issue.fix ? `\n   Fix: ${issue.fix}` : '';
-      return `${i + 1}. [${issue.severity.toUpperCase()}] ${issue.file}${line} — ${issue.category}\n   ${issue.description}${fix}`;
+      const guidance = formatValidationGuidance(issue);
+      return `${i + 1}. [${issue.severity.toUpperCase()}] ${issue.file}${line} — ${issue.category}\n   ${issue.description}${guidance}`;
     })
     .join('\n\n');
+}
+
+function formatValidationGuidance(issue: ReviewIssue): string {
+  const lines: string[] = [];
+  if (issue.fix) lines.push(`Fix: ${issue.fix}`);
+  if (issue.retryGuidance) lines.push(`Retry guidance: ${issue.retryGuidance}`);
+  if (issue.validationProviderName) lines.push(`Validation provider: ${issue.validationProviderName}`);
+  if (issue.failureKind) lines.push(`Provider failure kind: ${issue.failureKind}`);
+  if (issue.runtimeFailureKind) lines.push(`Runtime failure kind: ${issue.runtimeFailureKind}`);
+  if (issue.repairClass) lines.push(`Repair class: ${issue.repairClass}`);
+  if (issue.metadata !== undefined) lines.push(`Metadata: ${JSON.stringify(issue.metadata)}`);
+  return lines.length > 0 ? `\n   ${lines.join('\n   ')}` : '';
 }
 
 /** Maximum number of recent agent:message events to buffer per attempt. */
@@ -148,7 +162,7 @@ function renderContinuationContext(ctx: ReviewFixerContinuationContext | undefin
 export async function* runReviewFixer(
   options: ReviewFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext, round } = options;
+  const { harness, planId, cwd, issues, verbose, abortController, continuationContext, evaluatorFeedbackContext, validationRepairContext, round } = options;
   const maxTurns = options.maxTurns ?? 80;
   const roundMetadata = round !== undefined ? { round } : {};
 
@@ -159,6 +173,7 @@ export async function* runReviewFixer(
   const prompt = await loadPrompt('review-fixer', {
     issues: issuesText,
     evaluator_feedback_context: evaluatorFeedbackContext ?? '',
+    validation_repair_context: validationRepairContext ?? '',
     continuation_context: continuationText,
   }, options.promptAppend);
 

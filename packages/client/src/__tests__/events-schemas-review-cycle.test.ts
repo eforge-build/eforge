@@ -180,6 +180,112 @@ it('accepts all six built-in perspectives in parallel:start', () => {
   });
 });
 
+describe('safeParseEforgeEvent — ReviewIssue validation guidance', () => {
+  it('accepts validation guidance fields with structural repair class', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        severity: 'critical',
+        category: 'validation-provider',
+        file: 'src/app.ts',
+        description: 'Validation provider failed',
+        retryGuidance: 'Retry narrowly',
+        failureKind: 'domain-signature',
+        repairClass: 'structural',
+        metadata: { rule: 'guardrail', count: 1, nested: { ok: true } },
+        validationProviderName: 'guardrails',
+        runtimeFailureKind: 'result',
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects validation guidance with an out-of-set repair class', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        severity: 'critical',
+        category: 'validation-provider',
+        file: 'src/app.ts',
+        description: 'Validation provider failed',
+        repairClass: 'random',
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects validation guidance metadata beyond bounded wire string length', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        severity: 'critical',
+        category: 'validation-provider',
+        file: 'src/app.ts',
+        description: 'Validation provider failed',
+        metadata: { value: 'x'.repeat(4097) },
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects validation guidance metadata beyond bounded wire depth', () => {
+    let nested: Record<string, unknown> = { value: 'leaf' };
+    for (let i = 0; i < 9; i++) nested = { child: nested };
+
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        severity: 'critical',
+        category: 'validation-provider',
+        file: 'src/app.ts',
+        description: 'Validation provider failed',
+        metadata: nested,
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects validation guidance metadata beyond bounded wire node count', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        severity: 'critical',
+        category: 'validation-provider',
+        file: 'src/app.ts',
+        description: 'Validation provider failed',
+        metadata: { values: Array.from({ length: 199 }, (_, index) => index) },
+      }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('does not apply ReviewIssue metadata bounds to unrelated unknown payloads', () => {
+    let nested: Record<string, unknown> = { value: 'leaf' };
+    for (let i = 0; i < 9; i++) nested = { child: nested };
+
+    const result = safeParseEforgeEvent({
+      type: 'agent:tool_use',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agent-01',
+      agent: 'builder',
+      tool: 'example',
+      toolUseId: 'toolu-01',
+      input: { issues: [{ metadata: nested }] },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('safeParseEforgeEvent — plan:build:review:fix:continuation', () => {
   it('accepts plan:build:review:fix:continuation with required fields', () => {
     const result = safeParseEforgeEvent({

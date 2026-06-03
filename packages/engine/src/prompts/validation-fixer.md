@@ -1,6 +1,6 @@
-# Validation Fixer
+# Post-Merge Validation Fixer
 
-You are fixing validation failures that occurred after all implementation plans were merged. Your job is to diagnose the failures and make minimal fixes to make the validation commands pass.
+You are fixing validation failures that occurred after all implementation plans were merged. This prompt is only for post-merge validation repair. Your job is to diagnose the failures, make minimal fixes to make the validation commands pass, and commit those fixes.
 
 ## Failed Commands
 

@@ -6,6 +6,10 @@
 import { execFile as nodeExecFile, type ChildProcess } from 'node:child_process';
 
 import type { EforgeEvent } from '../events.js';
+import type {
+  ValidationProviderMetadata,
+  ValidationRepairClass,
+} from '@eforge-build/extension-sdk';
 import type { ValidationProviderRegistration } from './types.js';
 import { runExec } from './event-runtime.js';
 
@@ -52,6 +56,12 @@ export interface NormalizedValidationAnnotation {
   file?: string;
   line?: number;
   details?: string;
+  fix?: string;
+  retryGuidance?: string;
+  failureKind?: string;
+  repairClass?: ValidationRepairClass;
+  metadata?: ValidationProviderMetadata;
+  metadataRejectionReason?: string;
 }
 
 export interface NormalizedValidationResult {
@@ -61,7 +71,7 @@ export interface NormalizedValidationResult {
   annotations?: NormalizedValidationAnnotation[];
   command?: string;
   exitCode?: number;
-  failureKind?: NormalizedValidationFailureKind;
+  runtimeFailureKind?: NormalizedValidationFailureKind;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +103,7 @@ export interface RunValidationProviderOptions {
  * `NormalizedValidationResult`.
  *
  * - `null` / `undefined` → `{ status: 'passed' }`
- * - non-empty `string` → `{ status: 'failed', message }`
+ * - non-empty `string` → failed unexpected return shape
  * - `ValidationProviderResult` object → passed through (status-keyed)
  */
 export function normalizeValidationResult(raw: unknown): NormalizedValidationResult {
@@ -104,7 +114,7 @@ export function normalizeValidationResult(raw: unknown): NormalizedValidationRes
     if (raw.trim().length === 0) {
       return { status: 'passed' };
     }
-    return { status: 'failed', message: raw, failureKind: 'result' };
+    return unexpectedReturnResult(raw);
   }
   if (typeof raw === 'object' && raw !== null && 'status' in raw) {
     const obj = raw as { status: unknown; message?: unknown; details?: unknown; annotations?: unknown };
@@ -118,12 +128,12 @@ export function normalizeValidationResult(raw: unknown): NormalizedValidationRes
         ...(message !== undefined ? { message } : {}),
         ...(details !== undefined ? { details } : {}),
         ...(annotations !== undefined ? { annotations } : {}),
-        ...(status === 'failed' ? { failureKind: 'result' as const } : {}),
+        ...(status === 'failed' ? { runtimeFailureKind: 'result' as const } : {}),
       };
     }
   }
   // Unknown shape — treat as failure
-  return { status: 'failed', message: `Validation provider returned unexpected value: ${safeStringify(raw)}`, failureKind: 'unexpected-return' };
+  return unexpectedReturnResult(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +209,7 @@ export async function runValidationProvider(
           command: cmd,
         });
         return {
-          outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms running: ${cmd}`, command: cmd, failureKind: 'timeout' },
+          outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms running: ${cmd}`, command: cmd, runtimeFailureKind: 'timeout' },
           events,
         };
       }
@@ -230,7 +240,7 @@ export async function runValidationProvider(
           exitCode,
         });
         return {
-          outcome: { status: 'failed', message, command: cmd, exitCode, failureKind: 'command' },
+          outcome: { status: 'failed', message, command: cmd, exitCode, runtimeFailureKind: 'command' },
           events,
         };
       }
@@ -314,7 +324,7 @@ export async function runValidationProvider(
       timeoutMs,
     });
     return {
-      outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms`, failureKind: 'timeout' },
+      outcome: { status: 'failed', message: `Validation provider "${providerName}" timed out after ${timeoutMs}ms`, runtimeFailureKind: 'timeout' },
       events,
     };
   }
@@ -333,7 +343,7 @@ export async function runValidationProvider(
       message,
     });
     return {
-      outcome: { status: 'failed', message, failureKind: 'exception' },
+      outcome: { status: 'failed', message, runtimeFailureKind: 'exception' },
       events,
     };
   }
@@ -374,6 +384,11 @@ export async function runValidationProvider(
 // Private helpers
 // ---------------------------------------------------------------------------
 
+const VALIDATION_REPAIR_CLASSES = new Set<ValidationRepairClass>(['narrow', 'structural', 'manual', 'followup']);
+const MAX_METADATA_DEPTH = 8;
+const MAX_METADATA_NODES = 200;
+const MAX_METADATA_STRING_LENGTH = 4096;
+
 function normalizeValidationAnnotations(raw: unknown): NormalizedValidationAnnotation[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const annotations = raw.flatMap((entry): NormalizedValidationAnnotation[] => {
@@ -381,15 +396,144 @@ function normalizeValidationAnnotations(raw: unknown): NormalizedValidationAnnot
     const obj = entry as Record<string, unknown>;
     if (obj.severity !== 'error' && obj.severity !== 'warning' && obj.severity !== 'info') return [];
     if (typeof obj.message !== 'string') return [];
+
+    const metadataResult = normalizeMetadataProperty(obj);
+    const metadataRejectionReason = metadataResult && !metadataResult.ok ? metadataResult.reason : undefined;
+    const repairClassResult = normalizeRepairClassProperty(obj);
+    const details = appendMetadataRejectionReason(
+      appendRepairClassRejectionReason(
+        typeof obj.details === 'string' ? obj.details : undefined,
+        repairClassResult && !repairClassResult.ok ? repairClassResult.reason : undefined,
+      ),
+      metadataRejectionReason,
+    );
+
     return [{
       severity: obj.severity,
       message: obj.message,
       ...(typeof obj.file === 'string' ? { file: obj.file } : {}),
       ...(typeof obj.line === 'number' ? { line: obj.line } : {}),
-      ...(typeof obj.details === 'string' ? { details: obj.details } : {}),
+      ...(details !== undefined ? { details } : {}),
+      ...(typeof obj.fix === 'string' ? { fix: obj.fix } : {}),
+      ...(typeof obj.retryGuidance === 'string' ? { retryGuidance: obj.retryGuidance } : {}),
+      ...(typeof obj.failureKind === 'string' ? { failureKind: obj.failureKind } : {}),
+      ...(repairClassResult ? { repairClass: repairClassResult.value } : {}),
+      ...(metadataResult?.ok ? { metadata: metadataResult.value } : {}),
+      ...(metadataRejectionReason !== undefined ? { metadataRejectionReason } : {}),
     }];
   });
   return annotations.length > 0 ? annotations : undefined;
+}
+
+function unexpectedReturnResult(raw: unknown): NormalizedValidationResult {
+  return {
+    status: 'failed',
+    message: `Validation provider returned unexpected value: ${safeStringify(raw)}`,
+    runtimeFailureKind: 'unexpected-return',
+  };
+}
+
+function isValidationRepairClass(value: unknown): value is ValidationRepairClass {
+  return typeof value === 'string' && VALIDATION_REPAIR_CLASSES.has(value as ValidationRepairClass);
+}
+
+type RepairClassResult = { ok: true; value: ValidationRepairClass } | { ok: false; value: 'manual'; reason: string };
+
+function normalizeRepairClassProperty(obj: Record<string, unknown>): RepairClassResult | undefined {
+  if (!Object.prototype.hasOwnProperty.call(obj, 'repairClass')) return undefined;
+  if (isValidationRepairClass(obj.repairClass)) return { ok: true, value: obj.repairClass };
+  return { ok: false, value: 'manual', reason: `invalid repairClass ${safeStringify(obj.repairClass)}; routed as manual` };
+}
+
+function appendRepairClassRejectionReason(details: string | undefined, reason: string | undefined): string | undefined {
+  if (!reason) return details;
+  const line = `Repair class rejected: ${reason}`;
+  return details ? `${details}\n${line}` : line;
+}
+
+function appendMetadataRejectionReason(details: string | undefined, reason: string | undefined): string | undefined {
+  if (!reason) return details;
+  const line = `Metadata rejected: ${reason}`;
+  return details ? `${details}\n${line}` : line;
+}
+
+type MetadataResult = { ok: true; value: ValidationProviderMetadata } | { ok: false; reason: string };
+
+function normalizeMetadataProperty(obj: Record<string, unknown>): MetadataResult | undefined {
+  try {
+    return Object.prototype.hasOwnProperty.call(obj, 'metadata')
+      ? normalizeMetadata(obj.metadata)
+      : undefined;
+  } catch (error) {
+    return { ok: false, reason: `metadata traversal failed: ${errorMessage(error)}` };
+  }
+}
+
+function normalizeMetadata(raw: unknown): MetadataResult {
+  try {
+    const state = { nodes: 0 };
+    const result = normalizeJsonValue(raw, 'metadata', 0, state);
+    if (!result.ok) return result;
+    if (!isPlainRecord(result.value)) {
+      return { ok: false, reason: 'metadata must be a JSON object' };
+    }
+    return { ok: true, value: result.value as ValidationProviderMetadata };
+  } catch (error) {
+    return { ok: false, reason: `metadata traversal failed: ${errorMessage(error)}` };
+  }
+}
+
+type JsonValueResult = { ok: true; value: unknown } | { ok: false; reason: string };
+
+function normalizeJsonValue(raw: unknown, path: string, depth: number, state: { nodes: number }): JsonValueResult {
+  state.nodes += 1;
+  if (state.nodes > MAX_METADATA_NODES) {
+    return { ok: false, reason: `metadata exceeds maximum node count of ${MAX_METADATA_NODES}` };
+  }
+  if (depth > MAX_METADATA_DEPTH) {
+    return { ok: false, reason: `metadata exceeds maximum depth of ${MAX_METADATA_DEPTH} at ${path}` };
+  }
+  if (raw === null || typeof raw === 'boolean') return { ok: true, value: raw };
+  if (typeof raw === 'string') {
+    if (raw.length > MAX_METADATA_STRING_LENGTH) {
+      return { ok: false, reason: `metadata string at ${path} exceeds ${MAX_METADATA_STRING_LENGTH} characters` };
+    }
+    return { ok: true, value: raw };
+  }
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw)
+      ? { ok: true, value: raw }
+      : { ok: false, reason: `metadata number at ${path} must be finite` };
+  }
+  if (Array.isArray(raw)) {
+    const values: unknown[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const item = normalizeJsonValue(raw[i], `${path}[${i}]`, depth + 1, state);
+      if (!item.ok) return item;
+      values.push(item.value);
+    }
+    return { ok: true, value: values };
+  }
+  if (isPlainRecord(raw)) {
+    const record: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const item = normalizeJsonValue(value, `${path}.${key}`, depth + 1, state);
+      if (!item.ok) return item;
+      record[key] = item.value;
+    }
+    return { ok: true, value: record };
+  }
+  return { ok: false, reason: `metadata value at ${path} is not JSON-safe (${typeof raw})` };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : safeStringify(error);
 }
 
 function safeStringify(value: unknown): string {

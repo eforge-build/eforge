@@ -19,13 +19,11 @@ async function writePrd(cwd: string, location: 'queue' | 'waiting' | 'failed' | 
   await writeFile(join(dir, `${id}.md`), `---\ntitle: ${id}\ncreated: 2026-01-01\n${deps}---\n\n# ${id}\n`, 'utf-8');
 }
 
-// --- eforge:region plan-01-engine-queued-resume ---
 async function writePrdWithFrontmatter(cwd: string, location: 'queue' | 'waiting' | 'failed' | 'skipped', id: string, frontmatterLines: string[]): Promise<void> {
   const dir = location === 'queue' ? join(cwd, '.eforge', 'queue') : join(cwd, '.eforge', 'queue', location);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, `${id}.md`), `---\n${frontmatterLines.join('\n')}\n---\n\n# ${id}\n`, 'utf-8');
 }
-// --- eforge:endregion plan-01-engine-queued-resume ---
 
 async function writeSidecars(cwd: string, id: string): Promise<void> {
   const failedDir = join(cwd, '.eforge', 'queue', 'failed');
@@ -253,7 +251,6 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue-locks', 'parent.lock'))).toBe(false);
   });
 
-  // --- eforge:region plan-01-engine-queued-resume ---
   it('requeues a failed PRD with compiled-resume metadata while preserving frontmatter and sidecars', async () => {
     const cwd = makeTempDir();
     await writePrdWithFrontmatter(cwd, 'failed', 'parent', [
@@ -334,7 +331,6 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue', 'skipped', 'child.md'))).toBe(true);
     expect(await exists(join(cwd, '.eforge', 'queue', 'waiting', 'child.md'))).toBe(false);
   });
-  // --- eforge:endregion plan-01-engine-queued-resume ---
 
   it('finalizes queued resume success after a usable artifact and unblocks satisfied descendants', async () => {
     const cwd = makeTempDir();

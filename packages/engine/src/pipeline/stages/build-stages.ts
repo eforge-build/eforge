@@ -24,6 +24,7 @@ import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from 
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
 import { selectNextReviewPerspectives, shouldTerminateCycleEarly } from '../../review-cycle-perspectives.js';
 import { runReviewFixer } from '../../agents/review-fixer.js';
+import { runValidationRepairFixer } from '../../agents/validation-fixer.js';
 import { runDocAuthor } from '../../agents/doc-author.js';
 import { runDocSyncer } from '../../agents/doc-syncer.js';
 import { runTestWriter, runTester } from '../../agents/tester.js';
@@ -42,10 +43,12 @@ import {
 } from '../../evaluation/index.js';
 import { countEvaluationIssueOutcomes, type EvaluationIssueOutcomeCounts } from '../../evaluation/issue-outcomes.js';
 import { captureEvaluationSnapshot, EvaluationInvariantError } from '../../evaluation/index.js';
-
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
-import { runValidationProviderRecoveryStage } from './validation-provider-recovery.js';
+import {
+  runValidationProviderRecoveryStage,
+  type ValidationRecoveryRepairContext,
+} from './validation-provider-recovery.js';
 import { resolveAgentConfig } from '../agent-config.js';
 import { appendPromptSection, buildReviewCycleFeedback, getReviewCycleFeedback, renderReviewFixerEvaluatorFeedback, renderReviewerPriorOutcomeContext, setReviewCycleFeedback, summarizeEvaluationVerdicts } from '../review-cycle-feedback.js';
 import { isMaxTurnsError } from '../../harness.js';
@@ -71,7 +74,7 @@ async function hasEvaluationCandidateChanges(cwd: string): Promise<boolean> {
     const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
     if (tracked.trim().length > 0) return true;
     const { stdout: untracked } = await exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd });
-    return untracked.trim().length > 0;
+    return untracked.split('\n').some((path) => path.length > 0 && path !== '.eforge' && !path.startsWith('.eforge/'));
   } catch {
     return false;
   }
@@ -153,6 +156,9 @@ async function* runEvaluatorAttempt(
   const { harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = ctx.agentRuntimes.forRoleResolved('evaluator', ctx.planFile);
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
+    const validationRepairContext = typeof input.evaluatorOptions.validationRepairContext === 'string'
+      ? input.evaluatorOptions.validationRepairContext
+      : undefined;
     const evaluator = builderEvaluate(ctx.planFile, {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
@@ -164,6 +170,7 @@ async function* runEvaluatorAttempt(
       stage: 'evaluate',
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       ...(input.evaluationSnapshot && { evaluatorSnapshot: input.evaluationSnapshot }),
+      ...(validationRepairContext !== undefined ? { validationRepairContext } : {}),
       ...(input.round !== undefined ? { round: input.round } : {}),
       preImplementCommit: ctx.preImplementCommit,
       harness: evaluatorHarness,
@@ -450,7 +457,7 @@ async function* reviewStageInner(
 
 async function* evaluateStageInner(
   ctx: BuildStageContext,
-  overrides?: { strictness?: 'strict' | 'standard' | 'lenient'; round?: number },
+  overrides?: { strictness?: 'strict' | 'standard' | 'lenient'; round?: number; validationRepairContext?: ValidationRecoveryRepairContext },
 ): AsyncGenerator<EforgeEvent> {
   try {
     await unstageEvaluationCandidateChanges(ctx.worktreePath);
@@ -501,7 +508,9 @@ async function* evaluateStageInner(
     planId: ctx.planId,
     ...(round !== undefined ? { round } : {}),
     evaluationSnapshot: snapshot,
-    evaluatorOptions: {},
+    evaluatorOptions: {
+      ...(overrides?.validationRepairContext ? { validationRepairContext: overrides.validationRepairContext.promptContext } : {}),
+    },
   };
   const evaluatorPolicy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
   let result: BuilderEvaluationResult | undefined;
@@ -590,6 +599,7 @@ async function* runReviewFixerAttempt(
   input: ReviewFixerContinuationInput,
   ctx: BuildStageContext,
   onAgentId: (id: string) => void,
+  validationRepairContext?: ValidationRecoveryRepairContext,
 ): AsyncGenerator<EforgeEvent> {
   const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
   const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
@@ -603,6 +613,7 @@ async function* runReviewFixerAttempt(
       cwd: input.cwd,
       issues: ctx.reviewIssues,
       evaluatorFeedbackContext: renderReviewFixerEvaluatorFeedback(getReviewCycleFeedback(ctx)),
+      validationRepairContext: validationRepairContext?.promptContext,
       ...(input.round !== undefined ? { round: input.round } : {}),
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -629,7 +640,7 @@ async function* runReviewFixerAttempt(
 
 async function* reviewFixStageInner(
   ctx: BuildStageContext,
-  options?: { round?: number },
+  options?: { round?: number; validationRepairContext?: ValidationRecoveryRepairContext },
 ): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
 
@@ -659,7 +670,7 @@ async function* reviewFixStageInner(
 
   try {
     for await (const event of withRetry(
-      (input) => runReviewFixerAttempt(input, ctx, (id) => { fixerAgentId = id; }),
+      (input) => runReviewFixerAttempt(input, ctx, (id) => { fixerAgentId = id; }, options?.validationRepairContext),
       reviewFixerPolicy,
       initialInput,
     )) {
@@ -700,6 +711,37 @@ async function* reviewFixStageInner(
       // Non-critical — skip silently
     }
   }
+}
+async function* structuralValidationFixStageInner(ctx: BuildStageContext, validationRepairContext: ValidationRecoveryRepairContext): AsyncGenerator<EforgeEvent> {
+  let baseRef: string | undefined; let agentId: string | undefined;
+  try { baseRef = (await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath })).stdout.trim(); } catch { /* non-git unit contexts skip commit rollback/activity */ }
+  const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('validation-fixer', ctx.planFile); const fixerConfig = { ...resolveAgentConfig('validation-fixer', ctx.config, ctx.planFile, fixerTb), phase: 'build', stage: 'validate-repair' };
+  const span = ctx.tracing.createSpan('validation-fixer', { planId: ctx.planId, providerName: validationRepairContext.providerName });
+  span.setInput({ planId: ctx.planId, providerName: validationRepairContext.providerName, repairStrategy: validationRepairContext.repairStrategy }); const tracker = createToolTracker(span);
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:progress', planId: ctx.planId, message: `Running structural validation repair for provider "${validationRepairContext.providerName}". Checkpoint: ${validationRepairContext.checkpoint.directory}` };
+  try {
+    const repair = runValidationRepairFixer({ cwd: ctx.worktreePath, planId: ctx.planId, validationRepairContext: validationRepairContext.promptContext, attempt: validationRepairContext.attempt, maxAttempts: validationRepairContext.maxAttempts, verbose: ctx.verbose, abortController: ctx.abortController, ...fixerConfig, harness: fixerHarness });
+    for await (const event of withPeriodicFileCheck(repair, ctx)) {
+      if (event.type === 'agent:start' && event.agent === 'validation-fixer') agentId = event.agentId;
+      tracker.handleEvent(event); yield event;
+    }
+    tracker.cleanup(); span.end();
+  } catch (err) {
+    tracker.cleanup(); span.error(err as Error);
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    yield toBuildFailedEvent(ctx.planId, err); ctx.buildFailed = true; return;
+  }
+  if (baseRef) try {
+    const currentHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath })).stdout.trim();
+    if (currentHead !== baseRef) {
+      await exec('git', ['reset', '--soft', baseRef], { cwd: ctx.worktreePath });
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:progress', planId: ctx.planId, message: 'Validation-fixer created a commit during in-build repair; reset it to leave candidate edits for evaluation.' };
+    }
+  } catch (err) { yield toBuildFailedEvent(ctx.planId, err); ctx.buildFailed = true; return; }
+  try { await unstageEvaluationCandidateChanges(ctx.worktreePath); } catch (err) { yield toBuildFailedEvent(ctx.planId, err); ctx.buildFailed = true; return; }
+  if (agentId && baseRef) try {
+    const activity = await emitAgentActivity({ cwd: ctx.worktreePath, baseRef, planId: ctx.planId, agentId, agent: 'validation-fixer', attribution: 'exact', mode: 'working-tree' }); if (activity) yield activity;
+  } catch { /* non-critical */ }
 }
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
@@ -1287,13 +1329,15 @@ registerBuildStage({
   // No-op when no validation providers are registered — skip the diff computation entirely.
   const validationProviders = ctx.extensionValidationProviders;
   if (!validationProviders || validationProviders.length === 0) return;
-  // Compute the plan changed files once and pass a cloned list to each provider invocation.
-  const validationSnapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch);
-  const validationChangedFiles = [...validationSnapshot.changedFiles];
+  const getValidationChangedFiles = async (): Promise<string[]> => {
+    const validationSnapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.diffBaseRef ?? ctx.orchConfig.baseBranch);
+    return [...validationSnapshot.changedFiles];
+  };
   yield* runValidationProviderRecoveryStage(ctx, {
-    runReviewFix: () => reviewFixStageInner(ctx),
+    runReviewFix: (validationRepairContext) => reviewFixStageInner(ctx, { validationRepairContext }),
+    runStructuralValidationFix: (validationRepairContext) => structuralValidationFixStageInner(ctx, validationRepairContext),
     runEvaluate: (overrides) => evaluateStageInner(ctx, overrides),
-  }, validationChangedFiles);
+  }, getValidationChangedFiles);
 });
 
 registerBuildStage({

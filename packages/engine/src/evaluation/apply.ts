@@ -270,7 +270,9 @@ async function applyHunkDecision(snapshot: EvaluationSnapshot, decision: Extract
 
 async function currentUntrackedHashes(cwd: string): Promise<Map<string, string>> {
   const output = await git(cwd, ['ls-files', '--others', '--exclude-standard', '-z']);
-  const paths = splitNul(output).map(validateEvaluationPath);
+  const paths = splitNul(output)
+    .map(validateEvaluationPath)
+    .filter((path) => !isInternalEvaluationArtifactPath(path));
   const hashes = new Map<string, string>();
   for (const path of paths) {
     const absolute = repoAbsolutePath(cwd, path);
@@ -338,7 +340,8 @@ export async function captureEvaluationSnapshot(cwd: string, resetState?: Partia
   }
 
   const untrackedPaths = splitNul(await git(cwd, ['ls-files', '--others', '--exclude-standard', '-z']))
-    .map(validateEvaluationPath);
+    .map(validateEvaluationPath)
+    .filter((path) => !isInternalEvaluationArtifactPath(path));
   for (const path of untrackedPaths) {
     const absolute = repoAbsolutePath(cwd, path);
     const stat = await lstat(absolute);
@@ -388,6 +391,10 @@ export async function captureEvaluationSnapshot(cwd: string, resetState?: Partia
     candidatePatch,
     files,
   };
+}
+
+function isInternalEvaluationArtifactPath(path: string): boolean {
+  return path === '.eforge' || path.startsWith('.eforge/');
 }
 
 export function validateEvaluationVerdicts(snapshot: EvaluationSnapshot, verdicts: EvaluationVerdict[]): EvaluationValidationResult {
@@ -578,7 +585,8 @@ export async function restoreEvaluationSnapshotAfterFailure(snapshot: Evaluation
   await git(snapshot.cwd, ['reset', '--hard', snapshot.baseHead]);
 
   const untrackedPaths = splitNul(await git(snapshot.cwd, ['ls-files', '--others', '--exclude-standard', '-z']))
-    .map(validateEvaluationPath);
+    .map(validateEvaluationPath)
+    .filter((path) => !isInternalEvaluationArtifactPath(path));
   for (const path of untrackedPaths) {
     await removeRepoPath(snapshot.cwd, path);
   }

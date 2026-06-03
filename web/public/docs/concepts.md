@@ -126,7 +126,7 @@ Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave
 
 ## Validation
 
-During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
+During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. Structured provider failures can be repaired before review: narrow issues use the review-fixer path, while `repairClass: 'structural'` issues route to an in-build validation-fixer path with evaluator-gated checkpoints. After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
 
 ## Stacked PRs
 

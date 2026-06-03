@@ -400,6 +400,7 @@ export type {
   EforgeResult,
   ClarificationQuestion,
   ReviewIssue,
+  ValidationRepairClass,
   PlanFile,
   OrchestrationConfig,
   PlanState,

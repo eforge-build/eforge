@@ -10,7 +10,8 @@
  */
 
 import { Type, type Static } from '@sinclair/typebox';
-import { safeParseWithSchema, parseWithSchema } from './schema-utils.js';
+import { MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH, validateEforgeEventSemanticFields, validateReviewIssueMetadataBoundsForEvent } from './event-validation.js';
+import { formatSchemaError, safeParseWithSchema } from './schema-utils.js';
 import type { SafeParseResult } from './schema-utils.js';
 
 // ---------------------------------------------------------------------------
@@ -350,17 +351,38 @@ const ClarificationQuestionSchema = Type.Object({
   default: Type.Optional(Type.String()),
 });
 
+const ValidationRepairClassSchema = Type.Union([
+  Type.Literal('narrow'),
+  Type.Literal('structural'),
+  Type.Literal('manual'),
+  Type.Literal('followup'),
+]);
+const ValidationRuntimeFailureKindSchema = Type.Union([
+  Type.Literal('result'),
+  Type.Literal('command'),
+  Type.Literal('timeout'),
+  Type.Literal('exception'),
+  Type.Literal('unexpected-return'),
+]);
+const JsonSafeMetadataSchema = Type.Recursive((Self) => Type.Union([
+  Type.Null(),
+  Type.Boolean(),
+  Type.Number(),
+  Type.String({ maxLength: MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH }),
+  Type.Array(Self),
+  Type.Record(Type.String(), Self),
+]));
+
 const ReviewIssueSchema = Type.Object({
-  severity: Type.Union([
-    Type.Literal('critical'),
-    Type.Literal('warning'),
-    Type.Literal('suggestion'),
-  ]),
+  severity: Type.Union([Type.Literal('critical'), Type.Literal('warning'), Type.Literal('suggestion')]),
   category: Type.String(),
   file: Type.String(),
   line: Type.Optional(Type.Number()),
   description: Type.String(),
-  fix: Type.Optional(Type.String()),
+  fix: Type.Optional(Type.String()), retryGuidance: Type.Optional(Type.String()),
+  failureKind: Type.Optional(Type.String()), repairClass: Type.Optional(ValidationRepairClassSchema),
+  metadata: Type.Optional(Type.Record(Type.String(), JsonSafeMetadataSchema)), validationProviderName: Type.Optional(Type.String()),
+  runtimeFailureKind: Type.Optional(ValidationRuntimeFailureKindSchema),
 });
 
 const TestIssueSchema = Type.Object({
@@ -2316,6 +2338,7 @@ export type AcceptanceCriteriaConflict = Static<typeof AcceptanceCriteriaConflic
 export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
 export type EforgeResult = Static<typeof EforgeResultSchema>;
 export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
+export type ValidationRepairClass = Static<typeof ValidationRepairClassSchema>;
 export type ReviewIssue = Static<typeof ReviewIssueSchema>;
 export type TestIssue = Static<typeof TestIssueSchema>;
 export type PlanFile = Static<typeof PlanFileSchema>;
@@ -2641,92 +2664,23 @@ export type SessionStreamSnapshot = Static<typeof SessionStreamSnapshotSchema>;
  * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
  */
 export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEvent> {
+  const metadataBoundsError = validateReviewIssueMetadataBoundsForEvent(value);
+  if (metadataBoundsError) return { success: false, error: metadataBoundsError };
+
   const result = safeParseWithSchema(EforgeEventSchema, value);
   if (!result.success) return result;
 
-  if (
-    result.data.type === 'extension:policy:decision' &&
-    (result.data.decision === 'block' || result.data.decision === 'require-approval') &&
-    (typeof result.data.reason !== 'string' || result.data.reason.trim().length === 0)
-  ) {
-    return {
-      success: false,
-      error: {
-        message: '/reason: blocking policy decisions require a non-empty reason',
-        errors: [{ path: '/reason', message: 'blocking policy decisions require a non-empty reason' }],
-      },
-    };
-  }
-
-  if (
-    result.data.type === 'stack:landing:conflict:recovery:start' &&
-    result.data.attempt > result.data.maxAttempts
-  ) {
-    return {
-      success: false,
-      error: {
-        message: '/attempt: recovery attempt cannot exceed maxAttempts',
-        errors: [{ path: '/attempt', message: 'recovery attempt cannot exceed maxAttempts' }],
-      },
-    };
-  }
-
-  if (
-    result.data.type === 'stack:landing:conflict:recovery:failed' &&
-    result.data.abortSucceeded &&
-    !result.data.abortAttempted
-  ) {
-    return {
-      success: false,
-      error: {
-        message: '/abortSucceeded: abortSucceeded=true requires abortAttempted=true',
-        errors: [{ path: '/abortSucceeded', message: 'abortSucceeded=true requires abortAttempted=true' }],
-      },
-    };
-  }
-
-  if (result.data.type === 'acceptance_validation:complete') {
-    const nonPassingCount = result.data.verdicts.filter((v) => v.verdict !== 'pass').length;
-    const waiverIssues = (result.data.waivers ?? [])
-      .map((waiver, index) => ({ waiver, index }))
-      .filter(({ waiver }) => waiver.trim().length === 0);
-    if (waiverIssues.length > 0) {
-      return {
-        success: false,
-        error: {
-          message: '/waivers: waiver entries must be non-empty reason strings',
-          errors: waiverIssues.map(({ index }) => ({ path: `/waivers/${index}`, message: 'waiver entries must be non-empty reason strings' })),
-        },
-      };
-    }
-    if (result.data.passed && nonPassingCount > 0 && (result.data.waivers ?? []).length === 0) {
-      return {
-        success: false,
-        error: {
-          message: '/passed: acceptance_validation passed=true requires all verdicts to pass or explicit waivers',
-          errors: [{ path: '/passed', message: 'passed=true requires all verdicts to pass or explicit waivers' }],
-        },
-      };
-    }
-    if (!result.data.passed && nonPassingCount === 0) {
-      return {
-        success: false,
-        error: {
-          message: '/passed: acceptance_validation passed=false requires at least one fail or unknown verdict',
-          errors: [{ path: '/passed', message: 'passed=false requires at least one fail or unknown verdict' }],
-        },
-      };
-    }
-  }
-
-  return result;
+  const semanticError = validateEforgeEventSemanticFields(result.data);
+  return semanticError ? { success: false, error: semanticError } : result;
 }
 
 /**
  * Parses an unknown value as an `EforgeEvent`, throwing on failure.
  */
 export function parseEforgeEvent(value: unknown): EforgeEvent {
-  return parseWithSchema(EforgeEventSchema, value);
+  const result = safeParseEforgeEvent(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 /**

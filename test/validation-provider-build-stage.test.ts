@@ -9,15 +9,21 @@
  */
 
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { afterEach, describe, it, expect } from 'vitest';
+import type { AgentRunOptions } from '../packages/engine/src/harness.js';
+import type { AgentRole, EforgeEvent, OrchestrationConfig, PlanFile } from '../packages/engine/src/events.js';
 import type { BuildStageContext } from '../packages/engine/src/pipeline/types.js';
 import type { ValidationProviderRegistration } from '../packages/engine/src/extensions/types.js';
-import { EforgeConfig } from '../packages/engine/src/config.js';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW, type EforgeConfig } from '../packages/engine/src/config.js';
+import { singletonRegistry } from '../packages/engine/src/agent-runtime-registry.js';
+import { createNoopTracingContext } from '../packages/engine/src/tracing.js';
+import { ModelTracker } from '../packages/engine/src/model-tracker.js';
+import { StubHarness } from './stub-harness.js';
 
 // We import the stage function by running the pipeline module (which registers all stages)
 // then look it up from the registry.
@@ -48,32 +54,50 @@ function makeProvider(spec: {
 }
 
 function makeCtx(providers: ValidationProviderRegistration[]): BuildStageContext {
+  const planFile: PlanFile = {
+    id: 'plan-test-01',
+    name: 'Validation Provider Test Plan',
+    dependsOn: [],
+    branch: 'test/plan-test-01',
+    body: '# Test plan',
+    filePath: '/tmp/plan.md',
+  };
+  const orchConfig: OrchestrationConfig = {
+    name: 'test',
+    description: 'test',
+    created: new Date().toISOString(),
+    mode: 'errand',
+    baseBranch: 'main',
+    pipeline: { scope: 'errand', compile: [], defaultBuild: ['validate'], defaultReview: DEFAULT_REVIEW, rationale: 'test' },
+    plans: [{ id: planFile.id, name: planFile.name, dependsOn: [], branch: planFile.branch, build: ['validate'], review: DEFAULT_REVIEW }],
+  };
   return {
-    planId: 'plan-test-01',
+    planId: planFile.id,
     worktreePath: '/tmp/worktree-test',
     config: {
+      ...DEFAULT_CONFIG,
       extensions: {
+        ...DEFAULT_CONFIG.extensions,
         validationProviderTimeoutMs: 5000,
       },
-    } as unknown as EforgeConfig,
+    } as EforgeConfig,
     extensionValidationProviders: providers,
-    // Fields consumed by the validate stage: extensionValidationProviders, config.extensions.validationProviderTimeoutMs,
-    // planId, worktreePath. All other fields below are unused by this stage and stubbed with empty objects.
-    agentRuntimes: {} as BuildStageContext['agentRuntimes'],
-    pipeline: {} as BuildStageContext['pipeline'],
-    tracing: {} as BuildStageContext['tracing'],
+    agentRuntimes: singletonRegistry(new StubHarness([])),
+    pipeline: orchConfig.pipeline,
+    tracing: createNoopTracingContext(),
     cwd: '/tmp/cwd',
     planSetName: 'test',
     sourceContent: '',
-    modelTracker: {} as BuildStageContext['modelTracker'],
-    plans: [],
+    modelTracker: new ModelTracker(),
+    plans: [planFile],
     expeditionModules: [],
     moduleBuildConfigs: new Map(),
-    planFile: {} as BuildStageContext['planFile'],
-    orchConfig: {} as BuildStageContext['orchConfig'],
+    planFile,
+    orchConfig,
     reviewIssues: [],
-    build: [],
+    build: ['validate'],
     review: {
+      ...DEFAULT_REVIEW,
       strategy: 'single',
       perspectives: [],
       maxRounds: 0,
@@ -125,7 +149,7 @@ describe('validate build stage', () => {
   });
 
   it('recoverable provider with no recovery budget emits exhausted progress + plan:build:failed', async () => {
-    const ctx = makeCtx([makeProvider({ validate: () => 'lint errors found' })]);
+    const ctx = makeCtx([makeProvider({ validate: () => ({ status: 'failed' as const, message: 'lint errors found' }) })]);
     const { events } = await runStage(ctx);
 
     const types = events.map((e) => e.type);
@@ -199,7 +223,7 @@ describe('validate build stage', () => {
   it('two providers: first passes, second fails — fails on second', async () => {
     const ctx = makeCtx([
       makeProvider({ name: 'p1', validate: () => null }),
-      makeProvider({ name: 'p2', validate: () => 'type errors' }),
+      makeProvider({ name: 'p2', validate: () => ({ status: 'failed' as const, message: 'type errors' }) }),
     ]);
     const { events } = await runStage(ctx);
 
@@ -227,13 +251,64 @@ describe('validate build stage', () => {
     expect(ctx.buildFailed).toBeUndefined();
   });
 
-  it('skipped provider does not fail the plan', async () => {
-    const ctx = makeCtx([makeProvider({ validate: () => ({ status: 'skipped' as const, message: 'not applicable' }) })]);
+  it('routes structural validation repairs through validation-fixer and evaluator context', async () => {
+    const cwd = await createValidateRepo();
+    let providerCalls = 0;
+    const preImplementCommit = (await gitOutput(cwd, ['rev-parse', 'HEAD~1'])).trim();
+
+    class StructuralHarness extends StubHarness {
+      cachedDiffAtEvaluator = 'not-called';
+      headAtEvaluator = 'not-called';
+
+      override async *run(
+        options: AgentRunOptions,
+        agent: AgentRole,
+        planId?: string,
+      ): AsyncGenerator<EforgeEvent> {
+        if (agent === 'evaluator') {
+          this.cachedDiffAtEvaluator = await gitOutput(cwd, ['diff', '--cached', '--name-only']);
+          this.headAtEvaluator = (await gitOutput(cwd, ['rev-parse', 'HEAD'])).trim();
+        }
+        for await (const event of super.run(options, agent, planId)) {
+          yield event;
+          if (event.type === 'agent:stop' && agent === 'validation-fixer') {
+            const current = await readFile(join(cwd, 'src/app.ts'), 'utf8');
+            await writeRepoFile(cwd, 'src/app.ts', `${current.trimEnd()}\nexport const repaired = true;\n`);
+          }
+        }
+      }
+    }
+
+    const harness = new StructuralHarness([
+      { text: 'Applied provider-guided structural validation repair.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-1', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', issueOutcome: 'resolved', reason: 'Directly addresses provider guidance.' }] }, output: '' }] },
+    ]);
+    const ctx = makeCtx([makeProvider({
+      name: 'structural-validator',
+      validate: () => providerCalls++ === 0
+        ? {
+            status: 'failed' as const,
+            message: 'structural issue',
+            annotations: [{ severity: 'error' as const, message: 'repair structure', file: 'src/app.ts', fix: 'Add the repaired export', retryGuidance: 'Keep the change in src/app.ts', repairClass: 'structural' as const, metadata: { rule: 'structure' } }],
+          }
+        : null,
+    })]);
+    ctx.worktreePath = cwd;
+    ctx.cwd = cwd;
+    ctx.agentRuntimes = singletonRegistry(harness);
+    ctx.preImplementCommit = preImplementCommit;
+    ctx.review = { ...ctx.review, maxRounds: 1 };
+
     const { events } = await runStage(ctx);
 
-    expect(events.find((e) => e.type === 'extension:validation-provider:complete')).toMatchObject({
-      status: 'skipped',
-    });
+    expect(events.find((e) => e.type === 'agent:start' && e.agent === 'validation-fixer')).toBeDefined();
+    expect(events.find((e) => e.type === 'plan:build:evaluate:complete')).toBeDefined();
+    expect(harness.cachedDiffAtEvaluator).toContain('src/app.ts');
+    expect(harness.headAtEvaluator).toBe(preImplementCommit);
+    expect(harness.prompts[0]).toContain('Repair strategy: structural');
+    expect(harness.prompts[0]).toContain('Checkpoint directory:');
+    expect(harness.prompts[1]).toContain('Provider: structural-validator');
+    expect(harness.prompts[1]).toContain('Fix guidance: Add the repaired export');
     expect(ctx.buildFailed).toBeUndefined();
   });
 });
@@ -244,6 +319,11 @@ describe('validate build stage', () => {
 
 const exec = promisify(execFile);
 const tempDirs: string[] = [];
+
+async function gitOutput(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await exec('git', args, { cwd });
+  return stdout;
+}
 
 async function git(cwd: string, args: string[]): Promise<void> {
   await exec('git', args, { cwd });

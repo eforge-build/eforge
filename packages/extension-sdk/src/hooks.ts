@@ -455,8 +455,30 @@ export interface ReviewerPerspectiveSpec {
  * Use this form when you need to report a status explicitly (including
  * `'skipped'`) or attach structured annotations to the build output.
  *
- * Structured `annotations` give recovery precise file/line repair targets.
+ * Structured `annotations` give recovery precise file/line repair targets plus
+ * optional guidance fields such as `fix`, `retryGuidance`, `failureKind`,
+ * `repairClass`, and JSON-safe `metadata`.
  */
+export type ValidationRepairClass = 'narrow' | 'structural' | 'manual' | 'followup';
+
+export type ValidationJsonPrimitive = string | number | boolean | null;
+export type ValidationJsonValue = ValidationJsonPrimitive | ValidationJsonValue[] | { [key: string]: ValidationJsonValue };
+export type ValidationProviderMetadata = Record<string, ValidationJsonValue>;
+
+export interface ValidationProviderAnnotation {
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  file?: string;
+  line?: number;
+  details?: string;
+  fix?: string;
+  retryGuidance?: string;
+  /** Provider-authored domain failure signature. Runtime failures use a separate classification. */
+  failureKind?: string;
+  repairClass?: ValidationRepairClass;
+  metadata?: ValidationProviderMetadata;
+}
+
 export interface ValidationProviderResult {
   /** Validation outcome. */
   status: 'passed' | 'failed' | 'skipped';
@@ -465,19 +487,11 @@ export interface ValidationProviderResult {
   /** Optional extended details (e.g. full command output). */
   details?: string;
   /** Optional structured annotations for individual files. */
-  annotations?: Array<{
-    severity: 'info' | 'warning' | 'error';
-    message: string;
-    file?: string;
-    line?: number;
-  }>;
+  annotations?: ValidationProviderAnnotation[];
 }
 
 /**
- * Rich context passed to validation provider `validate` functions.
- *
- * Carries read-only build facts. Do not attempt to mutate engine state, the
- * extension registry, or plan status from within a provider.
+ * Rich read-only context passed to validation provider `validate` functions.
  */
 export interface ValidationProviderContext {
   /** The plan ID being validated. */
@@ -497,8 +511,8 @@ export interface ValidationProviderContext {
 }
 
 type ValidationProviderReturn =
-  | Promise<string | null | undefined | ValidationProviderResult>
-  | string | null | undefined | ValidationProviderResult;
+  | Promise<null | undefined | ValidationProviderResult>
+  | null | undefined | ValidationProviderResult;
 
 /**
  * Specification for a custom validation provider registered via
@@ -507,17 +521,11 @@ type ValidationProviderReturn =
  * Validation providers run after a plan's build stage completes, before the
  * review stage, allowing extensions to enforce project-specific quality gates.
  *
- * A provider is a **fail-closed quality gate**. Normal failures — non-empty
- * string returns, `status: 'failed'` results, or command-form non-zero exits —
- * enter bounded recovery before terminal failure. Recovery uses the plan's
- * review-fixer/evaluator path and `review.maxRounds` budget; after each attempt,
- * eforge reruns the provider suite from the first provider. Unresolved failures
- * still emit `plan:build:failed`.
- *
- * Hard failures bypass recovery and emit `plan:build:failed` immediately:
- * thrown errors/rejections, provider timeouts, and unexpected return shapes. The
- * daemon process itself is never crashed by a provider. Structured annotations
- * improve recovery precision with file/line repair targets.
+ * A provider is a **fail-closed quality gate**. Normal failures (`status: 'failed'`
+ * or command-form non-zero exits) enter bounded recovery before terminal failure.
+ * Command-form failures are generic subprocess failures; function-form annotations
+ * can route narrow, structural, manual, or follow-up recovery. Hard failures
+ * (throws/rejections, timeouts, non-empty strings, unexpected shapes) bypass recovery.
  *
  * @remarks Runtime-supported. Providers execute inside the built-in `validate`
  * build stage, bounded by `extensions.validationProviderTimeoutMs` (falls back
@@ -525,21 +533,14 @@ type ValidationProviderReturn =
  *
  * @example Function form (for pure-JS validation logic):
  * ```ts
- * import { readFile } from 'node:fs/promises';
- * import { join } from 'node:path';
- *
  * eforge.registerValidationProvider({
  *   name: 'no-debugger-statements',
- *   description: 'Rejects any debugger statements left in changed source files',
- *   validate: async (planOutputDir, ctx) => {
- *     for (const file of ctx?.changedFiles ?? []) {
- *       const contents = await readFile(join(planOutputDir, file), 'utf8');
- *       if (contents.includes('debugger;')) {
- *         return `debugger statement found in ${file}`;
- *       }
- *     }
- *     return null; // passed
- *   },
+ *   description: 'Rejects debugger statements',
+ *   validate: async (_dir, ctx) => ({
+ *     status: 'failed',
+ *     message: 'Debugger statement found',
+ *     annotations: [{ severity: 'error', message: 'Remove debugger statement', file: ctx?.changedFiles?.[0], repairClass: 'narrow' }],
+ *   }),
  * });
  * ```
  *
@@ -563,20 +564,8 @@ export interface ValidationProviderSpec {
   description: string;
   /**
    * Run validation for the given plan output directory.
-   *
-   * Supports the legacy single-argument signature `(planOutputDir: string)` as
-   * well as the richer two-argument form
-   * `(planOutputDir: string, ctx: ValidationProviderContext)`. The second
-   * argument is optional so existing one-arg implementations remain assignable.
-   *
-   * Return values:
-   * - `null` or `undefined` — passed
-   * - non-empty `string` — failed and recoverable before terminal failure
-   * - `ValidationProviderResult` — explicit structured outcome; `status: 'failed'`
-   *   is recoverable, and annotations improve targeting
-   *
-   * Throws/rejections, timeouts, and unexpected shapes bypass recovery.
-   *
+   * Return `null`/`undefined` to pass or a structured `ValidationProviderResult`.
+   * Throws/rejections, timeouts, non-empty strings, and unexpected shapes bypass recovery.
    * Mutually exclusive with `commands`. Provide exactly one.
    */
   validate?: (
@@ -587,8 +576,8 @@ export interface ValidationProviderSpec {
    * Shell commands to run in the plan worktree, one per entry. Each command is
    * split on whitespace into `[executable, ...args]` and run via `execFile`
    * (no shell interpretation — quoted args, env-var expansion, redirects, and
-   * pipes are not supported). A non-zero exit code is a recoverable normal
-   * failure using stderr (or stdout if stderr is empty) as the message.
+   * pipes are not supported). A non-zero exit code is a recoverable generic
+   * subprocess failure using stderr (or stdout if stderr is empty) as the message.
    *
    * Mutually exclusive with `validate`. Provide exactly one.
    */

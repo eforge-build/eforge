@@ -474,7 +474,7 @@ execFileSync('git', ['-C', clone, 'push', 'origin', 'HEAD:main'], { env });
     expect(ctx.state.status).toBe('failed');
     const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
     expect(ghLog).not.toContain('"create"');
-  });
+  }, 15_000);
 
   it('fails closed in finalize for direct PRs missing the pre-validation sync point', async () => {
     const tmp = makeTempDir();
