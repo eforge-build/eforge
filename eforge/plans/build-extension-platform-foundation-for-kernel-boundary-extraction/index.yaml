@@ -3,7 +3,8 @@ description: Foundation for typed extension actions, contribution manifests,
   daemon invocation routes, Console rendering, and host discovery/invocation
   while preserving existing workflows.
 created: 2026-06-03
-status: draft
+status: compiled
+compiled: "2026-06-03"
 mode: expedition
 validate:
   - pnpm maintainability:check

@@ -1,0 +1,97 @@
+name: build-extension-platform-foundation-for-kernel-boundary-extraction
+description: Foundation for typed extension actions, contribution manifests,
+  daemon invocation routes, Console rendering, and host discovery/invocation
+  while preserving existing workflows.
+created: 2026-06-03
+compiled: 2026-06-03
+mode: expedition
+base_branch: main
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-platform-contracts
+    name: Define SDK registration methods plus client-owned TypeBox manifest/action
+      wire contracts, helpers, exports, and daemon API v52 bump.
+    depends_on: []
+    branch: build-extension-platform-foundation-for-kernel-boundary-extraction/platform-contracts
+    build: &a1
+      - - implement
+        - doc-author
+      - - doc-sync
+        - test-write
+      - test-cycle
+      - validate
+      - review-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - api
+        - security
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-engine-registry-runtime
+    name: Record, validate, de-duplicate, project, replay-summarize, and invoke
+      extension actions/contributions/commands/deep links in the engine
+      registry/runtime.
+    depends_on:
+      - plan-01-platform-contracts
+    branch: build-extension-platform-foundation-for-kernel-boundary-extraction/engine-registry-runtime
+    build: *a1
+    review: *a2
+  - id: plan-03-daemon-action-routes
+    name: Add daemon manifest and action invocation routes, typed action lifecycle
+      events, route security, and route/event regression coverage.
+    depends_on:
+      - plan-02-engine-registry-runtime
+    branch: build-extension-platform-foundation-for-kernel-boundary-extraction/daemon-action-routes
+    build: *a1
+    review: *a2
+  - id: plan-04-console-contribution-rendering
+    name: Render declarative extension Console contributions in the System route and
+      invoke bound actions through browser-safe client helpers.
+    depends_on:
+      - plan-03-daemon-action-routes
+    branch: build-extension-platform-foundation-for-kernel-boundary-extraction/console-contribution-rendering
+    build: *a1
+    review: *a2
+  - id: plan-05-host-integration-surfaces
+    name: Expose generic extension contribution discovery and invocation in Pi,
+      Claude/MCP, and CLI while keeping management dispatch separate.
+    depends_on:
+      - plan-03-daemon-action-routes
+    branch: build-extension-platform-foundation-for-kernel-boundary-extraction/host-integration-surfaces
+    build: *a1
+    review: *a2
+  - id: plan-06-docs-examples-compat
+    name: Update docs, SDK README, examples, generated references, and compatibility
+      guidance for shipped and deferred extension platform seams.
+    depends_on:
+      - plan-04-console-contribution-rendering
+      - plan-05-host-integration-surfaces
+    branch: build-extension-platform-foundation-for-kernel-boundary-extraction/docs-examples-compat
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: This is expedition-scale because it spans coordinated SDK contracts,
+    engine extension registry/runtime, daemon/client wire routes, Console
+    rendering, host integrations, examples, tests, and docs. Architecture and
+    module planning are warranted to keep shared action/contribution contracts
+    coherent across subsystems. The build pipeline includes documentation
+    authoring/sync for public API and user-facing docs, test generation and
+    execution for the extensive acceptance criteria, the registered
+    maintainability validation gate after implementation, and a strict
+    multi-round review focused on API compatibility and security/trust-boundary
+    risks around extension action invocation.
+diff_base_ref: 74aae9c9c17e2d1605f4ee1a67562517e326a482
