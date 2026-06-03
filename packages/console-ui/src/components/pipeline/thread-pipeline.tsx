@@ -218,7 +218,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
         {!hasThreadContent ? (
           <div className="text-11px text-text-dim italic">Waiting for agent activity...</div>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-[fit-content(180px)_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-start">
             {hasGlobalThreads && (
               <PlanRow
                 key="__compile__"
