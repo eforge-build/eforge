@@ -17,12 +17,32 @@ import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { useTempDir } from './test-tmpdir.js';
 import { StubHarness } from './stub-harness.js';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { ApplyRecoveryResult } from '@eforge-build/engine/schemas';
 
 const execAsync = promisify(execFile);
+const RECOVERY_AC_SENTENCE = 'The successor must persist canonical acceptance criteria before recovery queueing completes.';
+
+function bodyWithRecoveryAcceptanceCriteria(body: string): string {
+  return `${body.trimEnd()}\n\n## Acceptance Criteria\n\n- ${RECOVERY_AC_SENTENCE}\n`;
+}
+
+function validRecoveryExtractorResponse(): { resultText: string } {
+  return {
+    resultText: JSON.stringify({
+      version: 1,
+      criteria: [{
+        text: RECOVERY_AC_SENTENCE,
+        raw: `- ${RECOVERY_AC_SENTENCE}`,
+        sourceQuote: RECOVERY_AC_SENTENCE,
+        confidence: 0.95,
+      }],
+    }),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,8 +99,9 @@ async function seedFailedPrd(
     risks: [],
   };
   if (verdict === 'split') {
-    verdictJson.suggestedSuccessorPrd =
-      opts?.suggestedSuccessorPrd ?? '# Successor Feature\n\nContinue the work.';
+    verdictJson.suggestedSuccessorPrd = bodyWithRecoveryAcceptanceCriteria(
+      opts?.suggestedSuccessorPrd ?? '# Successor Feature\n\nContinue the work.',
+    );
   }
   const sidecarJson = {
     schemaVersion: 2,
@@ -149,7 +170,7 @@ describe('applyRecovery — retry', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'retry');
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape — filesystem-only, no commit
@@ -182,7 +203,7 @@ describe('applyRecovery — retry', () => {
 
     const headBefore = await gitHeadSha(dir);
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     await driveGenerator(engine.applyRecovery(prdId));
 
     // HEAD must not advance — no commit is made for filesystem-only queue operations
@@ -206,7 +227,7 @@ describe('applyRecovery — split', () => {
       suggestedSuccessorPrd: '# Successor Feature\n\nContinue the API work.',
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape — filesystem-only, no commit
@@ -231,6 +252,7 @@ describe('applyRecovery — split', () => {
       'utf-8',
     );
     expect(successorContent).toContain('Successor Feature');
+    expect(requireAcceptanceCriteriaInventoryFromPrd(successorContent).criteria).toHaveLength(1);
 
     // Events
     const completeEvent = events.find((e) => e.type === 'recovery:apply:complete') as
@@ -260,7 +282,7 @@ describe('applyRecovery — split', () => {
       ].join('\n'),
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Successor ID should come from the body heading, not the agent frontmatter
@@ -292,7 +314,7 @@ describe('applyRecovery — split', () => {
       suggestedSuccessorPrd: '# REST API Layer\n\nBuild the REST layer.',
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     expect(result.successorPrdId).toBe('rest-api-layer');
@@ -309,7 +331,7 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
     const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
 
@@ -331,7 +353,7 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
     const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
 
@@ -365,7 +387,7 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
     const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
 
@@ -384,7 +406,7 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/eforge\/test-set/);
 
     const entries = await readdir(join(dir, '.eforge', 'queue'));
@@ -402,7 +424,7 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/test-set\.\.evil/);
 
     const entries = await readdir(join(dir, '.eforge', 'queue'));
@@ -421,7 +443,7 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/missing-base/);
 
     const entries = await readdir(join(dir, '.eforge', 'queue'));
@@ -440,8 +462,33 @@ describe('applyRecovery — split', () => {
       },
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(/main\^\{commit\}/);
+
+    const entries = await readdir(join(dir, '.eforge', 'queue'));
+    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
+  });
+
+  it.each([
+    ['malformed JSON', 'NOT JSON', /invalid/i],
+    ['empty criteria', JSON.stringify({ version: 1, criteria: [] }), /empty/i],
+    ['ungrounded source quote', JSON.stringify({ version: 1, criteria: [{ text: RECOVERY_AC_SENTENCE, raw: `- ${RECOVERY_AC_SENTENCE}`, sourceQuote: 'not in source', confidence: 0.95 }] }), /sourceQuote/i],
+    ['low confidence', JSON.stringify({ version: 1, criteria: [{ text: RECOVERY_AC_SENTENCE, raw: `- ${RECOVERY_AC_SENTENCE}`, sourceQuote: RECOVERY_AC_SENTENCE, confidence: 0.2 }] }), /confidence/i],
+    ['duplicate criteria', JSON.stringify({ version: 1, criteria: [{ text: RECOVERY_AC_SENTENCE, raw: `- ${RECOVERY_AC_SENTENCE}`, sourceQuote: RECOVERY_AC_SENTENCE, confidence: 0.95 }, { text: RECOVERY_AC_SENTENCE, raw: `- ${RECOVERY_AC_SENTENCE}`, sourceQuote: RECOVERY_AC_SENTENCE, confidence: 0.95 }] }), /duplicate/i],
+    ['grouping-label criteria', JSON.stringify({ version: 1, criteria: [{ text: 'Security:', raw: '- Security:', sourceQuote: RECOVERY_AC_SENTENCE, confidence: 0.95 }] }), /criteria/i],
+    ['bare-command criteria', JSON.stringify({ version: 1, criteria: [{ text: 'Run pnpm test', raw: '- Run pnpm test', sourceQuote: RECOVERY_AC_SENTENCE, confidence: 0.95 }] }), /criteria/i],
+    ['vague criteria', JSON.stringify({ version: 1, criteria: [{ text: 'Ensure it works', raw: '- Ensure it works', sourceQuote: RECOVERY_AC_SENTENCE, confidence: 0.95 }] }), /criteria/i],
+    ['no extractor output', '', /no output/i],
+  ])('rejects %s before writing a successor', async (_name, resultText, messagePattern) => {
+    const dir = makeTempDir();
+    const prdId = `test-split-invalid-extractor-${String(_name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', {
+      suggestedSuccessorPrd: '# Successor Feature\n\nContinue the API work.',
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([{ resultText }]) });
+    await expect(driveGenerator(engine.applyRecovery(prdId))).rejects.toThrow(messagePattern);
 
     const entries = await readdir(join(dir, '.eforge', 'queue'));
     expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
@@ -453,7 +500,7 @@ describe('applyRecovery — split', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'split');
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
     const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
 
@@ -477,7 +524,7 @@ describe('applyRecovery — abandon', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'abandon');
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape — filesystem-only, no commit
@@ -515,7 +562,7 @@ describe('applyRecovery — manual', () => {
 
     const headBefore = await gitHeadSha(dir);
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape
@@ -561,7 +608,7 @@ describe('applyRecovery — error paths', () => {
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, `${prdId}.md`), '# PRD', 'utf-8');
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
 
     await expect(
       driveGenerator(engine.applyRecovery(prdId)),
@@ -614,7 +661,7 @@ describe('applyRecovery — error paths', () => {
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
     execFileSync('git', ['commit', '-m', 'chore: seed split-no-successor'], { cwd: dir });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
 
     await expect(
       driveGenerator(engine.applyRecovery(prdId)),
@@ -626,7 +673,7 @@ describe('applyRecovery — error paths', () => {
     const prdId = 'no-sidecar-events';
     seedGitRepo(dir);
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const gen = engine.applyRecovery(prdId);
     const events: EforgeEvent[] = [];
 
@@ -686,7 +733,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
       recommendationRationale: 'All failed plans have terminalSubtype error_transient_transport with zero tool use.',
     };
     if (verdictType === 'split') {
-      verdictJson.suggestedSuccessorPrd = '# Successor PRD\n\nRetry the failed plans.';
+      verdictJson.suggestedSuccessorPrd = bodyWithRecoveryAcceptanceCriteria('# Successor PRD\n\nRetry the failed plans.');
     }
 
     const sidecarJson = {
@@ -727,7 +774,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     seedGitRepo(dir);
     await seedSidecarWithVerdictMetadata(dir, prdId, 'retry');
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Must succeed — schema changes are backward-compatible
@@ -742,7 +789,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     seedGitRepo(dir);
     await seedSidecarWithVerdictMetadata(dir, prdId, 'split');
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     expect(result.verdict).toBe('split');
@@ -797,7 +844,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
     execFileSync('git', ['commit', '-m', `chore: seed invalidation sidecar ${prdId}`], { cwd: dir });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // manual verdict → noAction: true (no files moved)
@@ -853,7 +900,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
     execFileSync('git', ['commit', '-m', `chore: seed legacy sidecar ${prdId}`], { cwd: dir });
 
-    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Legacy sidecar must work exactly as before

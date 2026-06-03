@@ -7,6 +7,7 @@ import { EforgeEngine } from '@eforge-build/engine/eforge';
 import type { CompileOptions, EforgeEvent } from '@eforge-build/engine/events';
 import { enqueuePrd, getRecoveryContinuationFrontmatter, loadQueue, validatePrdFrontmatter, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 import { computeWorktreeBase, createMergeWorktree } from '@eforge-build/engine/worktree-ops';
+import { appendAcceptanceCriteriaInventoryBlock, parseAcceptanceCriteriaExtractorOutput } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { StubHarness } from './stub-harness.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -36,11 +37,21 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function queuedPrd(dir: string, frontmatter: QueuedPrd['frontmatter'], id = 'successor'): QueuedPrd {
+  const body = `# ${frontmatter.title}\n\n## Acceptance Criteria\n\n- Recovery continuation passes the preserved branch to compile.`;
+  const inventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
+    version: 1,
+    criteria: [{
+      text: 'Recovery continuation passes the preserved branch to compile.',
+      sourceQuote: 'Recovery continuation passes the preserved branch to compile.',
+      confidence: 0.95,
+    }],
+  }), body);
+  const content = `---\ntitle: ${frontmatter.title}\n---\n\n${appendAcceptanceCriteriaInventoryBlock(body, inventory)}\n`;
   return {
     id,
     filePath: join(dir, '.eforge', 'queue', `${id}.md`),
     frontmatter,
-    content: `---\ntitle: ${frontmatter.title}\n---\n\n# ${frontmatter.title}\n`,
+    content,
     lastCommitHash: '',
     lastCommitDate: '',
   };

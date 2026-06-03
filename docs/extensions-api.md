@@ -327,7 +327,7 @@ interface ProfileRouterResult {
 }
 ```
 
-At least one of `selectBuildProfile` or `resolve` must be provided. The `selectBuildProfile` method is canonical and receives `ProfileRouterContext` with PRD id, title, body, priority, dependencies, available profiles, and usage statistics.
+At least one of `selectBuildProfile` or `resolve` must be provided. The `selectBuildProfile` method is canonical and receives `ProfileRouterContext` with PRD id, title, body, priority, dependencies, available profiles, and usage statistics. The PRD body and summary exclude eforge's hidden acceptance-criteria inventory block.
 
 Return `null` or `undefined` from the handler to defer to the next registered router (or the default profile if no router selects one). The optional `reason` and `confidence` fields flow into the `queue:profile:selected` wire event.
 

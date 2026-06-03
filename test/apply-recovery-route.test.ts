@@ -27,7 +27,9 @@ import {
   type WorkerTracker,
 } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
+import { requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
+import { StubHarness } from './stub-harness.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,6 +50,26 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const RECOVERY_AC_SENTENCE = 'The successor must persist canonical acceptance criteria before recovery queueing completes.';
+
+function bodyWithRecoveryAcceptanceCriteria(body: string): string {
+  return `${body.trimEnd()}\n\n## Acceptance Criteria\n\n- ${RECOVERY_AC_SENTENCE}\n`;
+}
+
+function validRecoveryExtractorResponse(): { resultText: string } {
+  return {
+    resultText: JSON.stringify({
+      version: 1,
+      criteria: [{
+        text: RECOVERY_AC_SENTENCE,
+        raw: `- ${RECOVERY_AC_SENTENCE}`,
+        sourceQuote: RECOVERY_AC_SENTENCE,
+        confidence: 0.95,
+      }],
+    }),
+  };
 }
 
 let autoBuildWakeReasons: string[];
@@ -126,8 +148,9 @@ async function seedFailedPrd(
         risks: [],
       };
       if (verdict === 'split') {
-        verdictData.suggestedSuccessorPrd =
-          opts?.suggestedSuccessorPrd ?? '# Successor Feature\n\nContinue the work.';
+        verdictData.suggestedSuccessorPrd = bodyWithRecoveryAcceptanceCriteria(
+          opts?.suggestedSuccessorPrd ?? '# Successor Feature\n\nContinue the work.',
+        );
       }
       const sidecarJson = {
         schemaVersion: 2,
@@ -183,6 +206,7 @@ async function setupServer(): Promise<void> {
       cwd: tmpDir,
       daemonState: makeDaemonState(),
       workerTracker: tracker,
+      agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]),
     },
   );
 }
@@ -359,6 +383,7 @@ describe('POST /api/recover/apply — split continuation', () => {
     expect(content).toContain('recovery_set_name: test-set');
     expect(content).toContain('recovery_feature_branch: eforge/test-set');
     expect(content).toContain('recovery_base_branch: main');
+    expect(requireAcceptanceCriteriaInventoryFromPrd(content).criteria).toHaveLength(1);
   });
 
   it('returns non-2xx and writes no successor when partial work references a missing branch', async () => {

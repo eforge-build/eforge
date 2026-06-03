@@ -13,7 +13,7 @@ import type { EforgeEvent, OrchestrationConfig, EforgeState } from '../events.js
 import { transitionPlan } from './plan-lifecycle.js';
 import { WorktreeManager } from '../worktree-manager.js';
 import { Semaphore, AsyncEventQueue } from '../concurrency.js';
-import type { PlanRunner, ValidationFixer, PrdValidator, GapCloser } from '../orchestrator.js';
+import type { PlanRunner, ValidationFixer, PrdValidator, GapCloser, AcceptanceUnknownResolver } from '../orchestrator.js';
 import type { MergeResolver } from '../worktree-ops.js';
 import { cleanupPlanFiles } from '../cleanup.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
@@ -33,6 +33,8 @@ import { collectBuildArtifactProvenance } from '../provenance.js';
 import type { EforgeConfig, LandingConfig } from '../config.js';
 import type { ValidationConfig } from '../config.js';
 import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js';
+import { type AcceptanceValidationEvent } from '../validation/acceptance-unknown-resolution.js';
+import { resolveAcceptanceUnknownsIfNeeded } from '../validation/acceptance-unknown-resolution-runner.js';
 import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
@@ -70,6 +72,7 @@ export interface PhaseContext {
   maxValidationRetries: number;
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
+  acceptanceUnknownResolver?: AcceptanceUnknownResolver;
   gapCloser?: GapCloser;
   minCompletionPercent: number;
   gapClosePerformed: boolean;
@@ -773,6 +776,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   let prdValidationPassed: boolean | undefined;
   let acceptanceReceived = false;
   let acceptancePassed = false;
+  let bufferedAcceptanceEvent: AcceptanceValidationEvent | undefined;
   let gapClosePerformedThisRun = false;
   try {
     const validatorContext = ctx.validationCommandEvidence !== undefined
@@ -780,44 +784,32 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       : undefined;
     for await (const event of prdValidator(ctx.mergeWorktreePath, validatorContext)) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
-      // When the expected criteria inventory is defined but empty, a validator-produced
-      // passing verdict cannot be trusted — there was nothing to verify. Fail-closed
-      // unless an allowNoAcceptanceCriteria waiver is active.
-      if (event.type === 'acceptance_validation:complete' && ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length === 0) {
-        const _policy = ctx.validationPolicy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined;
-        const waiverReason = _policy?.allowNoAcceptanceCriteria
-          ? (_policy.noAcceptanceCriteriaReason ?? '').trim()
-          : '';
-        if (waiverReason) {
-          yield { ...event, passed: true, waivers: [waiverReason] } as EforgeEvent;
+      // Buffer acceptance_validation:complete long enough to synthesize expected
+      // unknown verdicts and optionally run the acceptance unknown resolver before
+      // yielding the final acceptance event.
+      if (event.type === 'acceptance_validation:complete') {
+        if (ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length === 0) {
+          const _policy = ctx.validationPolicy as { allowNoAcceptanceCriteria?: boolean; noAcceptanceCriteriaReason?: string } | undefined;
+          const waiverReason = _policy?.allowNoAcceptanceCriteria
+            ? (_policy.noAcceptanceCriteriaReason ?? '').trim()
+            : '';
+          bufferedAcceptanceEvent = waiverReason
+            ? { ...event, passed: true, waivers: [waiverReason] } as AcceptanceValidationEvent
+            : {
+                timestamp: event.timestamp,
+                type: 'acceptance_validation:complete',
+                passed: false,
+                verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No acceptance criteria found in PRD; cannot verify validator verdicts against an empty inventory.' }],
+                source: (event as unknown as { source?: string }).source as 'prd' | 'plan' | undefined,
+              } as AcceptanceValidationEvent;
+        } else if (ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length > 0) {
+          const augmented = synthesizeMissingVerdicts(ctx.expectedAcceptanceCriteria, event.verdicts);
+          const augmentedPassed = (augmented.length > 0 && augmented.every((v) => v.verdict === 'pass')) || (event.waivers ?? []).some((w) => w.trim().length > 0);
+          bufferedAcceptanceEvent = { ...event, verdicts: augmented, passed: augmentedPassed } as AcceptanceValidationEvent;
         } else {
-          yield {
-            timestamp: event.timestamp,
-            type: 'acceptance_validation:complete',
-            passed: false,
-            verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'No acceptance criteria found in PRD; cannot verify validator verdicts against an empty inventory.' }],
-            source: (event as unknown as { source?: string }).source as 'prd' | 'plan' | undefined,
-          } as EforgeEvent;
+          bufferedAcceptanceEvent = event;
         }
         acceptanceReceived = true;
-        acceptancePassed = !!waiverReason;
-        continue;
-      }
-      // Intercept acceptance_validation:complete to synthesize unknown verdicts for any
-      // expected criteria not covered by the validator output. Fail-closed: a criterion
-      // with no matching verdict is treated as unverified.
-      if (event.type === 'acceptance_validation:complete' && ctx.expectedAcceptanceCriteria && ctx.expectedAcceptanceCriteria.length > 0) {
-        const augmented = synthesizeMissingVerdicts(ctx.expectedAcceptanceCriteria, event.verdicts);
-        const augmentedPassed = (augmented.length > 0 && augmented.every((v) => v.verdict === 'pass')) || (event.waivers ?? []).some((w) => w.trim().length > 0);
-        const adjusted = buildAcceptanceValidationEvents({ ...event, verdicts: augmented, passed: augmentedPassed }, ctx);
-        for (const adjustedEvent of adjusted.events) yield adjustedEvent;
-        acceptanceReceived = true; acceptancePassed = adjusted.passed;
-        continue;
-      }
-      if (event.type === 'acceptance_validation:complete') {
-        const adjusted = buildAcceptanceValidationEvents(event, ctx);
-        for (const adjustedEvent of adjusted.events) yield adjustedEvent;
-        acceptanceReceived = true; acceptancePassed = adjusted.passed;
         continue;
       }
       yield event;
@@ -903,18 +895,33 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     state.completedAt = new Date().toISOString();
   }
 
+  if (prdValidationPassed !== true && bufferedAcceptanceEvent) {
+    const adjusted = buildAcceptanceValidationEvents(bufferedAcceptanceEvent, ctx);
+    for (const adjustedEvent of adjusted.events) yield adjustedEvent;
+    acceptancePassed = adjusted.passed;
+  }
+
   // Acceptance gate: when PRD validation passed but acceptance was absent or failed, reject the build.
   // Skip when gap close was performed this run — the orchestrator will rerun both validate and prdValidate.
   if (prdValidationPassed === true && (state.status as string) !== 'failed' && !gapClosePerformedThisRun) {
     if (!acceptanceReceived) {
-      yield {
+      bufferedAcceptanceEvent = {
         timestamp: new Date().toISOString(),
         type: 'acceptance_validation:complete',
         passed: false,
         verdicts: [{ criterion: 'Acceptance criteria', verdict: 'unknown', evidence: 'Validator did not emit acceptance validation evidence.' }],
         source: 'prd',
-      } as EforgeEvent;
+      } as AcceptanceValidationEvent;
+      acceptanceReceived = true;
     }
+
+    if (bufferedAcceptanceEvent) {
+      const resolvedEvent = yield* resolveAcceptanceUnknownsIfNeeded(ctx, prdValidationPassed, bufferedAcceptanceEvent);
+      const adjusted = buildAcceptanceValidationEvents(resolvedEvent, ctx);
+      for (const adjustedEvent of adjusted.events) yield adjustedEvent;
+      acceptancePassed = adjusted.passed;
+    }
+
     if (!acceptanceReceived || !acceptancePassed) {
       yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Acceptance criteria validation failed — build rejected' } as EforgeEvent;
       state.status = 'failed';

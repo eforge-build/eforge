@@ -12,6 +12,7 @@ import { writeRecoverySidecar } from './recovery/sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
+import { appendAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
 
 const exec = promisify(execFile);
 
@@ -646,6 +647,7 @@ export interface EnqueuePrdOptions {
   recovery_set_name?: string;
   recovery_feature_branch?: string;
   recovery_base_branch?: string;
+  acceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory;
 }
 
 export interface EnqueuePrdResult {
@@ -700,6 +702,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     recovery_set_name,
     recovery_feature_branch,
     recovery_base_branch,
+    acceptanceCriteriaInventory,
   } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
@@ -798,7 +801,8 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     fmLines.push(`recovery_base_branch: ${recovery_base_branch}`);
   }
 
-  const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
+  const serializedBody = acceptanceCriteriaInventory ? appendAcceptanceCriteriaInventoryBlock(body, acceptanceCriteriaInventory).trimEnd() : body;
+  const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${serializedBody}\n`;
   const filePath = resolve(absDir, `${slug}.md`);
   await writeFile(filePath, fileContent, 'utf-8');
 

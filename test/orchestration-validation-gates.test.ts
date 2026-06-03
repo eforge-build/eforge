@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize, validate, prdValidate, recordArtifact } from '@eforge-build/engine/orchestrator/phases';
-import { extractExpectedAcceptanceCriteria } from '@eforge-build/engine/validation/acceptance-criteria';
+import { appendAcceptanceCriteriaInventoryBlock, parseAcceptanceCriteriaExtractorOutput, requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { initializeState, applyResumeSeed, type ResumeSeedOptions, Orchestrator } from '@eforge-build/engine/orchestrator';
@@ -563,7 +563,7 @@ describe('prdValidate — no-validator acceptance gate', () => {
     expect(waivers).toContain('No plan-level criteria defined; waived for this build');
   });
 
-  it('derives expected criteria from real PRD markdown and enforces them in the acceptance gate', async () => {
+  it('uses a persisted canonical PRD inventory and enforces it in the acceptance gate', async () => {
 
     const prdMarkdown = `
 # My Feature PRD
@@ -571,15 +571,25 @@ describe('prdValidate — no-validator acceptance gate', () => {
 ## Acceptance Criteria
 
 - Add login page with username and password
-- Support OAuth via Google
+- Google OAuth sign-in returns the user to the dashboard after successful authentication
 - All existing tests pass
 `.trim();
 
-    const derived = extractExpectedAcceptanceCriteria(prdMarkdown);
+    const inventory = parseAcceptanceCriteriaExtractorOutput(JSON.stringify({
+      version: 1,
+      criteria: [
+        { text: 'Add login page with username and password', sourceQuote: 'Add login page with username and password', confidence: 0.95 },
+        { text: 'Google OAuth sign-in returns the user to the dashboard after successful authentication', sourceQuote: 'Google OAuth sign-in returns the user to the dashboard after successful authentication', confidence: 0.95 },
+        { text: 'All existing tests pass', sourceQuote: 'All existing tests pass', confidence: 0.95 },
+      ],
+    }), prdMarkdown);
+    const queuedPrdMarkdown = appendAcceptanceCriteriaInventoryBlock(prdMarkdown, inventory);
+    const persistedInventory = requireAcceptanceCriteriaInventoryFromPrd(queuedPrdMarkdown);
+    const derived = persistedInventory.criteria.map((criterion) => ({ id: criterion.id, text: criterion.text, raw: criterion.raw }));
 
     expect(derived).toHaveLength(3);
     expect(derived[0]).toMatchObject({ id: 'ac-001', text: 'Add login page with username and password' });
-    expect(derived[1]).toMatchObject({ id: 'ac-002', text: 'Support OAuth via Google' });
+    expect(derived[1]).toMatchObject({ id: 'ac-002', text: 'Google OAuth sign-in returns the user to the dashboard after successful authentication' });
     expect(derived[2]).toMatchObject({ id: 'ac-003', text: 'All existing tests pass' });
 
 

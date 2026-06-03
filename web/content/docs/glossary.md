@@ -71,7 +71,7 @@ Product Requirements Document. A PRD file is one supported input surface, but ef
 
 ## PRD provenance
 
-The `eforge/prds/` directory where the engine writes a canonical copy of each PRD at dispatch time. Each file is named `{prdId}.md` and serves as a committed artifact linking a build session to its originating requirements. Unlike queue state (`.eforge/queue/` — gitignored), PRD provenance files are committed to the artifact branch and survive queue cleanup.
+The `eforge/prds/` directory where the engine writes a canonical copy of each PRD at dispatch time. Each file is named `{prdId}.md` and serves as a committed artifact linking a build session to its originating requirements. Unlike queue state (`.eforge/queue/` — gitignored), PRD provenance files are committed to the artifact branch and survive queue cleanup. The hidden canonical acceptance-criteria inventory stored in the queued PRD is consumed for validation IDs and stripped from the committed prose artifact.
 
 When `build.cleanupPlanFiles: true` (default), the PRD copy and compiled plan artifacts in `eforge/plans/{planSet}/` may be removed from `HEAD` when cleanup runs during `pr` or `merge` landing. Cleanup also strips temporary plan-ID eforge region marker comment lines from tracked JavaScript/TypeScript-family source files while preserving durable semantic markers and marked code. `landing.action: leave` does not run cleanup and leaves the artifact branch in place for inspection. Artifacts removed by cleanup remain recoverable from Git history: when the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the commits that added these files stay reachable. Use `git show <sha>:<path>` with a commit-pinned reference to recover any artifact. PR bodies include an **Eforge provenance** section with these references when artifact commits are found. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy.
 
@@ -83,7 +83,7 @@ The validation step after all plans merge. eforge runs `build.postMergeCommands`
 
 ## Queue
 
-The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
+The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Each queued PRD includes an eforge-owned hidden canonical acceptance-criteria inventory; queued builds with missing, duplicated, or malformed inventory fail before orchestration and must be re-enqueued. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
 
 ## Queue priority
 

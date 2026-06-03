@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
+import type { AgentHarness } from '@eforge-build/engine/harness';
+import type { AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { AutoBuildController } from './auto-build-supervisor.js';
 
 export interface MonitorServer {
@@ -30,6 +32,7 @@ export interface StartServerOptions {
   workerTracker?: WorkerTracker;
   daemonState?: DaemonState;
   config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'>;
+  agentRuntimes?: AgentRuntimeRegistry | AgentHarness;
   uiDirs?: { monitorUiDir?: string; consoleUiDir?: string };
 }
 

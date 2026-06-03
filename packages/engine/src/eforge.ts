@@ -29,13 +29,14 @@ import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
-import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
+import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { emitBuildDecisionForPlan } from './decisions.js';
 import { runFormatter } from './agents/formatter.js';
+import { runAcceptanceCriteriaExtractor } from './agents/acceptance-criteria-extractor.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
 import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './extensions/index.js';
@@ -50,9 +51,10 @@ import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { runPrdValidator } from './agents/prd-validator.js';
+import { runAcceptanceUnknownResolver } from './agents/acceptance-unknown-resolver.js';
 import { buildPrdValidatorDiff } from './prd-validator-diff.js';
 import { runGapCloser } from './agents/gap-closer.js';
-import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser } from './orchestrator.js';
+import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser, type AcceptanceUnknownResolver } from './orchestrator.js';
 import { createBuildTerminalFailureTracker } from './terminal-failure.js';
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
@@ -78,8 +80,8 @@ import { resolveTrunkBranch } from './branch-policy.js';
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
 import { extractExpectedAcceptanceCriteria, type ExpectedAcceptanceCriterion } from './validation/acceptance-criteria.js';
-import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics } from './validation/acceptance-criteria.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
+import { appendAcceptanceCriteriaInventoryBlock, requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
 
 const exec = promisify(execFile);
 
@@ -396,9 +398,9 @@ export class EforgeEngine {
       try {
         const sourcePath = resolve(cwd, source);
         const stats = await stat(sourcePath);
-        sourceContent = stats.isFile() ? await readFile(sourcePath, 'utf-8') : source;
+        sourceContent = stats.isFile() ? stripAcceptanceCriteriaInventoryBlock(await readFile(sourcePath, 'utf-8')) : source;
       } catch {
-        sourceContent = source;
+        sourceContent = stripAcceptanceCriteriaInventoryBlock(source);
       }
       // Create merge worktree — all plan artifact commits go here, not repoRoot
       const featureBranch = `eforge/${planSetName}`;
@@ -519,14 +521,23 @@ export class EforgeEngine {
       // Infer title from formatted content (or from name override)
       const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
 
-      // Run AC quality gate: reject before any queue write when formatted PRD
-      // contains grouping labels, bare command fragments, or vague criteria.
-      const acQualityResult = analyzeAcceptanceCriteriaInBody(formattedBody);
-      if (acQualityResult !== null && !acQualityResult.valid) {
-        const errorMsg = `PRD acceptance criteria quality gate failed:\n${formatAcDiagnostics(acQualityResult.diagnostics)}`;
-        yield { timestamp: new Date().toISOString(), type: 'enqueue:failed', error: errorMsg };
-        return;
+      const extractorConfig = resolveAgentConfig('prd-validator', this.config);
+      const extractorGen = runAcceptanceCriteriaExtractor({
+        ...extractorConfig,
+        cwd,
+        prdContent: formattedBody,
+        verbose,
+        abortController,
+        phase: 'standalone',
+        harness: this.agentRuntimes.forRole('prd-validator'),
+        allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
+      });
+      let extractorResult = await extractorGen.next();
+      while (!extractorResult.done) {
+        yield extractorResult.value;
+        extractorResult = await extractorGen.next();
       }
+      const acceptanceCriteriaInventory = extractorResult.value;
 
       // When an explicit afterQueueId is provided, classify the upstream and
       // skip dependency-detector output. Otherwise, run dependency detection.
@@ -548,7 +559,7 @@ export class EforgeEngine {
             .map((p) => ({
               id: p.id,
               title: p.frontmatter.title,
-              scopeSummary: p.content.slice(0, 500),
+              scopeSummary: stripAcceptanceCriteriaInventoryBlock(p.content).slice(0, 500),
             }));
 
           // In CLI-only mode, running builds are not tracked via state.json.
@@ -584,6 +595,7 @@ export class EforgeEngine {
       const enqueueResult = await enqueuePrd({
         body: formattedBody,
         title,
+        acceptanceCriteriaInventory,
         queueDir: this.config.prdQueue.dir,
         cwd,
         depends_on: dependsOn,
@@ -822,15 +834,18 @@ export class EforgeEngine {
       // Create PRD validator closure
       const validationPolicy = this.config.build.validation;
       // Pre-derive expected acceptance criteria before validator closure construction.
-      // PRD builds extract from the PRD content; non-PRD builds aggregate from plan file bodies.
+      // PRD builds load the persisted inventory; non-PRD builds aggregate from plan file bodies.
       let expectedAcceptanceCriteria: ExpectedAcceptanceCriterion[];
       if (options.prdFilePath) {
-        try {
-          const prdContentForAC = await readFile(resolve(cwd, options.prdFilePath), 'utf-8');
-          expectedAcceptanceCriteria = extractExpectedAcceptanceCriteria(prdContentForAC);
-        } catch {
-          expectedAcceptanceCriteria = [];
-        }
+        const prdContentForAC = await readFile(resolve(cwd, options.prdFilePath), 'utf-8');
+        const inventory = requireAcceptanceCriteriaInventoryFromPrd(prdContentForAC, {
+          allowNoAcceptanceCriteria: validationPolicy?.allowNoAcceptanceCriteria,
+        });
+        expectedAcceptanceCriteria = inventory.criteria.map((criterion) => ({
+          id: criterion.id,
+          text: criterion.text,
+          raw: criterion.raw,
+        }));
       } else {
         const allCriteria: ExpectedAcceptanceCriterion[] = [];
         let counter = 1;
@@ -847,7 +862,7 @@ export class EforgeEngine {
         // Read PRD content
         let prdContent: string;
         try {
-          prdContent = await readFile(resolve(cwd, options.prdFilePath!), 'utf-8');
+          prdContent = stripAcceptanceCriteriaInventoryBlock(await readFile(resolve(cwd, options.prdFilePath!), 'utf-8'));
         } catch {
           // Fail closed: emit events so the orchestrator marks the build as failed.
           yield { timestamp: new Date().toISOString(), type: 'prd_validation:start' } as EforgeEvent;
@@ -925,12 +940,25 @@ export class EforgeEngine {
         }
       } : undefined;
 
+      const acceptanceUnknownResolver: AcceptanceUnknownResolver | undefined = options.prdFilePath ? async function* (resolverCwd, request) {
+        let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
+        try { built = await buildPrdValidatorDiff({ cwd: resolverCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch }); }
+        catch (err) { throw new Error(`Acceptance unknown resolver could not build implementation diff context: ${err instanceof Error ? err.message : String(err)}`); }
+        const resolverSpan = tracing!.createSpan('prd-validator', { unknownCount: request.unknownCriteria.length, diffLength: built.renderedText.length });
+        resolverSpan.setInput({ unknownCriteria: request.unknownCriteria.map((criterion) => criterion.id), validationCommandCount: request.validationCommandEvidence?.length ?? 0, totalBytes: built.totalBytes, summarizedCount: built.summarizedCount });
+        const resolverTracker = createToolTracker(resolverSpan);
+        try {
+          const result = yield* runAcceptanceUnknownResolver({ ...resolveAgentConfig('prd-validator', config), cwd: resolverCwd, unknownCriteria: request.unknownCriteria, acceptanceVerdicts: request.acceptanceVerdicts, validationCommandEvidence: request.validationCommandEvidence, implementationDiffContext: built.renderedText, verbose, abortController, phase: 'standalone', harness: agentRuntimes.forRole('prd-validator') });
+          resolverTracker.cleanup(); resolverSpan.end(); return result;
+        } catch (err) { resolverTracker.cleanup(); resolverSpan.error(err as Error); throw err; }
+      } : undefined;
+
       // Create gap closer closure
       const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps, completionPercent) {
         // Read PRD content
         let prdContent: string;
         try {
-          prdContent = await readFile(resolve(cwd, options.prdFilePath!), 'utf-8');
+          prdContent = stripAcceptanceCriteriaInventoryBlock(await readFile(resolve(cwd, options.prdFilePath!), 'utf-8'));
         } catch {
           return;
         }
@@ -981,7 +1009,7 @@ export class EforgeEngine {
       let cleanupPrdFilePath: string | undefined;
       if (options.prdFilePath) {
         try {
-          const prdContent = await readFile(resolve(cwd, options.prdFilePath), 'utf-8');
+          const prdContent = stripAcceptanceCriteriaInventoryBlock(await readFile(resolve(cwd, options.prdFilePath), 'utf-8'));
           const { artifactRelPath } = await materializePrdArtifact({
             mergeWorktreePath,
             prdId: planSet,
@@ -1013,6 +1041,7 @@ export class EforgeEngine {
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
         prdValidator,
+        acceptanceUnknownResolver,
         gapCloser,
         mergeWorktreePath,
         shouldCleanup,
@@ -1130,6 +1159,27 @@ export class EforgeEngine {
       return;
     }
 
+    const prdSessionId = sessionId ?? randomUUID();
+    const failBeforeBuildSession = function* (message: string): Generator<EforgeEvent> {
+      if (sessionId === undefined) {
+        yield { type: 'session:start', sessionId: prdSessionId, timestamp: new Date().toISOString() } as EforgeEvent;
+      }
+      yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
+      yield { type: 'session:end', sessionId: prdSessionId, result: { status: 'failed', summary: message }, timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
+    };
+
+    try {
+      requireAcceptanceCriteriaInventoryFromPrd(prd.content, {
+        allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      yield* failBeforeBuildSession(message);
+      return;
+    }
+
     // Staleness check — skip only if PRD was added in the most recent commit
     const headHash = await getHeadHash(cwd);
     if (prd.lastCommitHash && prd.lastCommitHash !== headHash) {
@@ -1141,7 +1191,7 @@ export class EforgeEngine {
       const stalenessConfig = resolveAgentConfig('staleness-assessor', this.config);
       for await (const event of runStalenessAssessor({
         ...stalenessConfig,
-        prdContent: prd.content,
+        prdContent: stripAcceptanceCriteriaInventoryBlock(prd.content),
         diffSummary,
         cwd,
         prdId: prd.id,
@@ -1169,8 +1219,35 @@ export class EforgeEngine {
 
       if (stalenessVerdict === 'revise') {
         if (revision) {
+          const visibleRevision = stripAcceptanceCriteriaInventoryBlock(revision).trimEnd();
+          let revisedContent: string;
+          try {
+            const extractorConfig = resolveAgentConfig('prd-validator', this.config);
+            const extractorGen = runAcceptanceCriteriaExtractor({
+              ...extractorConfig,
+              cwd,
+              prdContent: visibleRevision,
+              verbose,
+              abortController,
+              phase: 'standalone',
+              harness: this.agentRuntimes.forRole('prd-validator'),
+              allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
+            });
+            let extractorResult = await extractorGen.next();
+            while (!extractorResult.done) {
+              yield extractorResult.value;
+              extractorResult = await extractorGen.next();
+            }
+            revisedContent = appendAcceptanceCriteriaInventoryBlock(visibleRevision, extractorResult.value).trimEnd();
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            yield* failBeforeBuildSession(message);
+            return;
+          }
+
           // Auto-apply revision and commit
-          await writeFile(prd.filePath, revision, 'utf-8');
+          await writeFile(prd.filePath, `${revisedContent}\n`, 'utf-8');
+          prd = { ...prd, content: `${revisedContent}\n` };
           try {
             await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
             await forgeCommit(cwd, composeCommitMessage(`chore(queue): revise stale PRD ${prd.id}`));
@@ -1198,7 +1275,6 @@ export class EforgeEngine {
     // Per-PRD session: each PRD gets its own sessionId for monitor grouping.
     // When sessionId is injected by the parent scheduler, use it verbatim and
     // skip the child-side session:start emission (parent already emitted it).
-    const prdSessionId = sessionId ?? randomUUID();
     let prdResult: { status: 'completed' | 'failed' | 'skipped'; summary: string } = {
       status: 'failed',
       summary: 'Session terminated abnormally',
@@ -2418,7 +2494,8 @@ export class EforgeEngine {
    *   - abandon: removes the failed PRD and both sidecars
    *   - manual: no-op, returns noAction: true
    *
-   * Each mutating dispatch produces exactly one forgeCommit. Never spawns agents.
+   * Filesystem-only queue dispatch; split recovery runs the acceptance criteria extractor
+   * when the sidecar does not already carry a valid legacy inventory.
    * Throws on missing sidecar, validation failure, or missing suggestedSuccessorPrd for split.
    */
   async *applyRecovery(
@@ -2483,7 +2560,28 @@ export class EforgeEngine {
           break;
         }
         case 'split': {
-          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary });
+          if (!verdict.suggestedSuccessorPrd) {
+            throw new Error(`split verdict for ${prdId} is missing suggestedSuccessorPrd`);
+          }
+          const normalized = normalizeRecoverySuccessorPrd(verdict.suggestedSuccessorPrd);
+          let acceptanceCriteriaInventory = normalized.legacyAcceptanceCriteriaInventory;
+          if (!acceptanceCriteriaInventory) {
+            const extractorConfig = resolveAgentConfig('prd-validator', this.config);
+            const extractorGen = runAcceptanceCriteriaExtractor({
+              ...extractorConfig,
+              cwd,
+              prdContent: normalized.visibleBody,
+              phase: 'standalone',
+              harness: this.agentRuntimes.forRole('prd-validator'),
+            });
+            let extractorResult = await extractorGen.next();
+            while (!extractorResult.done) {
+              yield extractorResult.value;
+              extractorResult = await extractorGen.next();
+            }
+            acceptanceCriteriaInventory = extractorResult.value;
+          }
+          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary, acceptanceCriteriaInventory });
           result = { verdict: 'split', noAction: false, commitSha, successorPrdId };
           break;
         }

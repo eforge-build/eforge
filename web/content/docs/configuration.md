@@ -318,7 +318,7 @@ Keep all documentation in sync with the latest code changes.
 
 ## Queue and Auto-Build
 
-The daemon watches `prdQueue.dir` for normalized PRDs. Leave `prdQueue.autoBuild` enabled for normal usage so queued PRDs start automatically; disable it when you want to stage multiple queue items before running them. `prdQueue.watchPollIntervalMs` tunes how often the auto-build watcher polls for queue changes.
+The daemon watches `prdQueue.dir` for normalized PRDs. Enqueue stores a validated hidden canonical acceptance-criteria inventory in each queued PRD; missing, duplicated, or malformed inventories fail queued builds before orchestration and require re-enqueue. Leave `prdQueue.autoBuild` enabled for normal usage so queued PRDs start automatically; disable it when you want to stage multiple queue items before running them. `prdQueue.watchPollIntervalMs` tunes how often the auto-build watcher polls for queue changes.
 
 ```yaml
 maxConcurrentBuilds: 2   # default: concurrent PRD builds across the queue
@@ -328,7 +328,7 @@ prdQueue:
   watchPollIntervalMs: 5000
 ```
 
-**PRD provenance**: when the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md`. Queue state is ephemeral and gitignored; `eforge/prds/` files are committed provenance artifacts that record what was built.
+**PRD provenance**: when the daemon dispatches a PRD from `.eforge/queue/`, it writes a canonical copy to `eforge/prds/{prdId}.md`. Queue state is ephemeral and gitignored; `eforge/prds/` files are committed provenance artifacts that record what was built. The hidden acceptance-criteria inventory is consumed for validation IDs and stripped from the committed prose artifact.
 
 **Artifact cleanup and preserved history**: when `build.cleanupPlanFiles: true` (default), eforge removes committed build artifacts — the PRD copy in `eforge/prds/`, compiled plan files in `eforge/plans/{planSet}/`, and `orchestration.yaml` — from `HEAD` during the `pr` or `merge` landing flows after a successful build. Cleanup also strips temporary plan-ID eforge region marker comment lines from tracked JavaScript/TypeScript-family source files while preserving durable semantic markers and marked code. `landing.action: leave` does not run cleanup and leaves the artifact branch intact for inspection. These files are not permanently lost. When the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the commits that originally added the artifacts remain reachable in Git history. PR bodies include an **Eforge provenance** section with commit-pinned references (`git show <sha>:<path>`) that can be used to recover any artifact. The durable guarantee is Git history, not the final tree — squash or rebase merge strategies applied after a PR is opened can collapse intermediate commits and make artifact references unreachable. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy.
 
