@@ -256,6 +256,8 @@ depends_on: ["${prdId}"]
             ...DEFAULT_CONFIG.build.validation,
             allowNoCommands: true,
             noCommandsReason: 'compile-free resume artifact unit test',
+            allowNoAcceptanceCriteria: true,
+            noAcceptanceCriteriaReason: 'direct resume side-effect test does not configure a PRD validator',
           },
         },
       },

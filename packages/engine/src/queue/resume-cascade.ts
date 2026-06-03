@@ -1,11 +1,11 @@
 /** Queue transitions for compiled-build resume reactivation/finalization. */
 
-import { access, link, mkdir, rm, unlink } from 'node:fs/promises';
+import { access, link, mkdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { loadArtifactRegistry, lookupArtifactByPrdId } from '../artifacts/registry.js';
 import { upsertCompletion } from '../artifacts/completions.js';
-import { claimPrd, loadQueue, releasePrd, unblockWaiting, type QueuedPrd } from '../prd-queue.js';
+import { claimPrd, getCompiledResumeFrontmatter, loadQueue, releasePrd, setQueuedPrdFrontmatterFields, unblockWaiting, type QueuedPrd } from '../prd-queue.js';
 
 export interface QueuedResumeOptions {
   cwd: string;
@@ -20,6 +20,20 @@ export type ResumeQueueTransitionResult =
   | { status: 'rolled-back'; prdId: string; skippedIds: string[] }
   | { status: 'blocked'; prdId: string; reason: string };
 
+// --- eforge:region plan-01-engine-queued-resume ---
+export interface RequeueCompiledResumeOptions extends QueuedResumeOptions {
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
+  profileOverride?: string;
+}
+
+export type RequeueCompiledResumeResult =
+  | { status: 'queued'; prdId: string; setName: string; featureBranch: string; baseBranch: string; movedDescendantIds: string[] }
+  | { status: 'already-queued'; prdId: string; setName: string; featureBranch: string; baseBranch: string; movedDescendantIds: [] }
+  | { status: 'blocked'; prdId: string; setName: string; featureBranch: string; baseBranch: string; reason: string };
+// --- eforge:endregion plan-01-engine-queued-resume ---
+
 interface ResumeQueueSnapshot {
   queueDir: string;
   queue: QueuedPrd[];
@@ -27,6 +41,70 @@ interface ResumeQueueSnapshot {
   failed: QueuedPrd[];
   skipped: QueuedPrd[];
 }
+
+// --- eforge:region plan-01-engine-queued-resume ---
+export async function requeueFailedPrdForCompiledResume(options: RequeueCompiledResumeOptions): Promise<RequeueCompiledResumeResult> {
+  const unsafe = unsafePrdIdReason(options.prdId);
+  if (unsafe) return blockedRequeue(options, unsafe);
+
+  const snapshot = await loadResumeQueueSnapshot(options);
+  const root = snapshot.queue.find((prd) => prd.id === options.prdId);
+  if (root) {
+    if (compiledResumeMatches(root, options)) {
+      return { status: 'already-queued', prdId: options.prdId, setName: options.setName, featureBranch: options.featureBranch, baseBranch: options.baseBranch, movedDescendantIds: [] };
+    }
+    return blockedRequeue(options, `Queue root already contains ${options.prdId}.md without matching compiled-resume metadata.`);
+  }
+
+  const parent = snapshot.failed.find((prd) => prd.id === options.prdId);
+  if (!parent) return blockedRequeue(options, 'No failed queue PRD found for compiled-build resume requeue.');
+
+  const descendantIds = findDescendantIds(options.prdId, snapshot.skipped);
+  const moves = [
+    { source: parent.filePath, target: queuePath(snapshot.queueDir, options.prdId) },
+    ...descendantIds.map((id) => {
+      const prd = snapshot.skipped.find((candidate) => candidate.id === id)!;
+      return { source: prd.filePath, target: locationPath(snapshot.queueDir, 'waiting', id) };
+    }),
+  ];
+  const preflightBlocker = await preflightMoves(moves);
+  if (preflightBlocker) return blockedRequeue(options, preflightBlocker);
+
+  const patch: Record<string, string> = {
+    resume_mode: 'compiled',
+    resume_from: options.prdId,
+    resume_set_name: options.setName,
+    resume_feature_branch: options.featureBranch,
+    resume_base_branch: options.baseBranch,
+  };
+  if (options.profileOverride !== undefined) patch.profile = options.profileOverride;
+  const originalParentContent = parent.content;
+  await setQueuedPrdFrontmatterFields(parent, patch);
+
+  const appliedMoves: Array<{ source: string; target: string }> = [];
+  try {
+    await mkdir(snapshot.queueDir, { recursive: true });
+    for (const move of moves) {
+      await moveNoOverwrite(move.source, move.target);
+      appliedMoves.push(move);
+    }
+  } catch (err) {
+    try {
+      await rollbackAppliedMoves(appliedMoves);
+    } catch {
+      // Return the original blocker below; rollback failure leaves the queue blocked.
+    }
+    const restorePath = await exists(parent.filePath) ? parent.filePath : moves[0]?.target;
+    if (restorePath && await exists(restorePath)) {
+      await writeFile(restorePath, originalParentContent, 'utf-8');
+    }
+    return blockedRequeue(options, `Compiled resume requeue blocked: ${(err as Error).message}`);
+  }
+
+  await releasePrd(options.prdId, options.cwd);
+  return { status: 'queued', prdId: options.prdId, setName: options.setName, featureBranch: options.featureBranch, baseBranch: options.baseBranch, movedDescendantIds: descendantIds };
+}
+// --- eforge:endregion plan-01-engine-queued-resume ---
 
 export async function beginQueuedResume(options: QueuedResumeOptions): Promise<ResumeQueueTransitionResult> {
   const unsafe = unsafePrdIdReason(options.prdId);
@@ -219,6 +297,31 @@ function unsafePrdIdReason(prdId: string): string | undefined {
   }
   return undefined;
 }
+
+// --- eforge:region plan-01-engine-queued-resume ---
+function compiledResumeMatches(prd: QueuedPrd, options: RequeueCompiledResumeOptions): boolean {
+  try {
+    const metadata = getCompiledResumeFrontmatter(prd.frontmatter);
+    return metadata?.sourcePrdId === options.prdId &&
+      metadata.setName === options.setName &&
+      metadata.featureBranch === options.featureBranch &&
+      metadata.baseBranch === options.baseBranch;
+  } catch {
+    return false;
+  }
+}
+
+function blockedRequeue(options: RequeueCompiledResumeOptions, reason: string): RequeueCompiledResumeResult {
+  return {
+    status: 'blocked',
+    prdId: options.prdId,
+    setName: options.setName,
+    featureBranch: options.featureBranch,
+    baseBranch: options.baseBranch,
+    reason,
+  };
+}
+// --- eforge:endregion plan-01-engine-queued-resume ---
 
 function blocked(prdId: string, reason: string): ResumeQueueTransitionResult {
   return { status: 'blocked', prdId, reason };

@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { BuildFailureSummary, PlanSummaryEntry, OrchestrationConfig, PlanFile, BuildResumeArtifactsEvent } from '../events.js';
+import { resolveResumePrdContent } from './prd-content.js';
 
 // ---------------------------------------------------------------------------
 // State seeding
@@ -66,30 +67,23 @@ export type ResumeArtifactsProjection = Omit<BuildResumeArtifactsEvent, 'type' |
 async function resolveResumeSource(opts: {
   cwd: string;
   prdId: string;
+  setName: string;
+  featureBranch: string;
   summary: BuildFailureSummary;
 }): Promise<BuildResumeArtifactsEvent['source']> {
-  if (opts.summary.prdContent !== undefined) {
-    return { label: `PRD ${opts.prdId}`, content: opts.summary.prdContent };
-  }
-
-  const candidates = [
-    join(opts.cwd, '.eforge', 'queue', 'failed', `${opts.prdId}.md`),
-    join(opts.cwd, '.eforge', 'queue', `${opts.prdId}.md`),
-  ];
-
-  for (const path of candidates) {
-    try {
-      return {
-        label: path.startsWith(opts.cwd) ? path.slice(opts.cwd.length + 1) : path,
-        path,
-        content: await readFile(path, 'utf-8'),
-      };
-    } catch {
-      // Try the next best-effort source path.
-    }
-  }
-
-  return { label: `PRD ${opts.prdId}` };
+  const resolved = await resolveResumePrdContent({
+    cwd: opts.cwd,
+    prdId: opts.prdId,
+    setName: opts.setName,
+    featureBranch: opts.featureBranch,
+    summaryPrdContent: opts.summary.prdContent,
+  });
+  if (!resolved) return { label: `PRD ${opts.prdId}` };
+  return {
+    label: resolved.label,
+    content: resolved.content,
+    ...(resolved.path !== undefined ? { path: resolved.path } : {}),
+  };
 }
 
 export async function buildResumeArtifactsProjection(opts: {
@@ -103,7 +97,7 @@ export async function buildResumeArtifactsProjection(opts: {
   orchConfig: OrchestrationConfig;
   planFileMap: Map<string, PlanFile>;
 }): Promise<ResumeArtifactsProjection> {
-  const source = await resolveResumeSource({ cwd: opts.cwd, prdId: opts.prdId, summary: opts.summary });
+  const source = await resolveResumeSource({ cwd: opts.cwd, prdId: opts.prdId, setName: opts.setName, featureBranch: opts.featureBranch, summary: opts.summary });
 
   return {
     prdId: opts.prdId,

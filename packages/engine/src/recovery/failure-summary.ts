@@ -59,18 +59,20 @@ function parseModelsFromLog(logBody: string): string[] {
  *                      from callers that have access to the resolved config so the
  *                      failure summary honors the project's trunk configuration.
  */
-export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent, trunkBranch }: {
+export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent, trunkBranch, featureBranch: featureBranchOverride, baseBranch: baseBranchOverride }: {
   setName: string;
   prdId: string;
   cwd: string;
   dbPath?: string;
   prdContent?: string;
   trunkBranch?: string;
+  featureBranch?: string;
+  baseBranch?: string;
 }): Promise<BuildFailureSummary> {
-  const featureBranch = `eforge/${setName}`;
-  // When trunkBranch is explicitly configured, use it directly without git I/O.
+  const featureBranch = featureBranchOverride ?? `eforge/${setName}`;
+  // When trunkBranch/baseBranch is explicitly configured, use it directly without git I/O.
   // Otherwise, fall back to git symbolic-ref + `main` via resolveTrunkBranch.
-  const baseBranch = trunkBranch ?? await resolveTrunkBranch(undefined, cwd);
+  const baseBranch = baseBranchOverride ?? trunkBranch ?? await resolveTrunkBranch(undefined, cwd);
 
   // Try event-history synthesis from monitor DB
   const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath });

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { enqueuePrd, inferTitle } from '@eforge-build/engine/prd-queue';
+import { enqueuePrd, getCompiledResumeFrontmatter, inferTitle, validatePrdFrontmatter } from '@eforge-build/engine/prd-queue';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- inferTitle ---
@@ -32,6 +32,44 @@ describe('inferTitle', () => {
     expect(inferTitle('# Heading Title', 'fallback-slug')).toBe('Heading Title');
   });
 });
+
+// --- eforge:region plan-01-engine-queued-resume ---
+describe('compiled resume frontmatter', () => {
+  it('accepts and extracts complete compiled-resume metadata', () => {
+    const result = validatePrdFrontmatter({
+      title: 'Resume PRD',
+      resume_mode: 'compiled',
+      resume_from: 'failed-prd',
+      resume_set_name: 'failed-set',
+      resume_feature_branch: 'eforge/failed-set',
+      resume_base_branch: 'main',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(getCompiledResumeFrontmatter(result.data)).toEqual({
+        mode: 'compiled',
+        sourcePrdId: 'failed-prd',
+        setName: 'failed-set',
+        featureBranch: 'eforge/failed-set',
+        baseBranch: 'main',
+      });
+    }
+  });
+
+  it('returns undefined for absent fields and lists missing keys for partial metadata', () => {
+    const absent = validatePrdFrontmatter({ title: 'Ordinary PRD' });
+    expect(absent.success).toBe(true);
+    if (absent.success) expect(getCompiledResumeFrontmatter(absent.data)).toBeUndefined();
+
+    const partial = validatePrdFrontmatter({ title: 'Partial Resume', resume_from: 'failed-prd' });
+    expect(partial.success).toBe(true);
+    if (partial.success) {
+      expect(() => getCompiledResumeFrontmatter(partial.data)).toThrow(/resume_mode.*resume_set_name.*resume_feature_branch.*resume_base_branch/);
+    }
+  });
+});
+// --- eforge:endregion plan-01-engine-queued-resume ---
 
 // --- enqueuePrd ---
 
