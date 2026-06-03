@@ -1,0 +1,125 @@
+name: improve-eforge-guardrails-and-structural-validation-repair-resilience
+description: Improve validation-provider guardrails with structured repair
+  guidance, structural in-build validation repair, checkpoint artifacts, and
+  maintainability gate parsing.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-validation-guidance-contract
+    name: Validation Guidance Contract and Normalization
+    depends_on: []
+    branch: improve-eforge-guardrails-and-structural-validation-repair-resilience/plan-01-validation-guidance-contract
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Public SDK and client wire-shape changes require careful type and
+          runtime normalization updates.
+      reviewer:
+        effort: high
+        rationale: Review needs to check SDK, engine, and client schema alignment.
+  - id: plan-02-validation-repair-routing
+    name: Validation Repair Routing, Structural Fixer, and Checkpoints
+    depends_on:
+      - plan-01-validation-guidance-contract
+    branch: improve-eforge-guardrails-and-structural-validation-repair-resilience/plan-02-validation-repair-routing
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: This plan changes build-stage control flow, agent prompting,
+          evaluator context, repeated-signature strategy, and durable artifacts.
+      reviewer:
+        effort: high
+        rationale: Review needs to inspect recovery-loop safety, evaluator gating, and
+          event/checkpoint semantics.
+      tester:
+        effort: high
+        rationale: Recovery routing and checkpoint behavior require focused tests across
+          multiple stage seams.
+  - id: plan-03-guardrails-parser-and-docs
+    name: Guardrails Parser, Examples, and Documentation
+    depends_on:
+      - plan-02-validation-repair-routing
+    branch: improve-eforge-guardrails-and-structural-validation-repair-resilience/plan-03-guardrails-parser-and-docs
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The plan combines a concrete project-team extension parser with
+          public SDK documentation updates.
+      doc-author:
+        effort: high
+        rationale: Public extension docs need contract, recovery, checkpoint, and
+          greenfield/no-compatibility language aligned across several files.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - validate
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "Excursion fits because the work is deep and cross-cutting but
+    follows one cohesive data flow from SDK contract to runtime normalization,
+    recovery routing, prompts, guardrails parsing, tests, and docs; a single
+    planner should be able to enumerate the ordered plans without expedition
+    module planning. The compile pipeline adds a plan review gate because
+    contract and recovery design quality matter. The build pipeline runs
+    implementation and doc authoring in parallel, then validate immediately
+    after implementation because the maintainability validation provider is
+    loaded, then writes tests and syncs docs before review so reviewers can
+    assess API, docs, and test coverage. A final test cycle verifies the
+    reviewed implementation. Parallel API/test review with strict evaluation
+    targets the highest-risk areas: public SDK/wire-shape changes and required
+    recovery/guardrails test coverage."
+diff_base_ref: 74aae9c9c17e2d1605f4ee1a67562517e326a482
