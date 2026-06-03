@@ -21,6 +21,8 @@ export interface MetricsRunBar {
   durationMin: number;
   outcome: RunOutcome;
   color: string;
+  /** ISO start timestamp, surfaced in the tooltip as relative "when". */
+  startedAt: string;
 }
 
 export interface NowMetricsPanel {
@@ -95,6 +97,7 @@ export function selectNowMetricsPanel(allRuns: NowRecentRunItem[]): NowMetricsPa
         durationMin: run.durationMs != null ? Math.max(0, run.durationMs / 60_000) : 0,
         outcome,
         color: OUTCOME_COLOR[outcome],
+        startedAt: run.startedAt,
       };
     });
 
