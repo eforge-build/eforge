@@ -11,17 +11,7 @@ import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
 import { BuildHistoryCard } from '@/components/now/build-history-card';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
-import { ActivityDrawer } from '@/components/now/activity-drawer';
 import { toConsolePath } from '@/lib/navigation';
-
-// ---------------------------------------------------------------------------
-// URL query-param helpers
-// ---------------------------------------------------------------------------
-
-function readActivityOpenParam(): boolean {
-  if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).get('activity') === 'open';
-}
 
 // ---------------------------------------------------------------------------
 // Attention partitioning
@@ -55,7 +45,6 @@ interface NowDashboardProps {
 
 export function NowDashboard({ projectState, activeSessions, onNavigate, refreshQueue }: NowDashboardProps) {
   const [tick, setTick] = React.useState(() => Date.now());
-  const [activityOpen, setActivityOpen] = React.useState(() => readActivityOpenParam());
 
   React.useEffect(() => {
     const id = setInterval(() => setTick(Date.now()), 5_000);
@@ -64,9 +53,6 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
 
   const now = tick;
   const model = selectNowDashboardModel(projectState, activeSessions, now);
-
-  const handleActivityOpen = React.useCallback(() => setActivityOpen(true), []);
-  const handleActivityClose = React.useCallback(() => setActivityOpen(false), []);
 
   // Top strip carries only daemon/stream health; per-PRD failures live in Queue.
   const systemAlerts = React.useMemo(
@@ -110,27 +96,18 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
           <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
         </div>
 
-        {/* RAIL — glanceable reference widgets. Build health hosts the activity
-            log entry point in its footer (no separate Activity card — the raw
-            event preview added noise, and its launcher duplicated the drawer
-            open). Build history (one row per session, rolled up from its phase
-            runs) replaces the former Git stack history card (a redundant landing
-            log: a failed land is already a failed build, so it
-            added no signal the Queue/Build health didn't). The landed-PRD →
-            branch → PR reference now lives in System. */}
+        {/* RAIL — glanceable reference widgets. Build history (one row per
+            session, rolled up from its phase runs) replaces the former Git stack
+            history card (a redundant landing log: a failed land is already a
+            failed build, so it added no signal the Queue/Build health didn't).
+            The activity log now lives on System (it's daemon-level event flow,
+            not a Now glance widget); the landed-PRD → branch → PR reference also
+            lives in System. */}
         <aside className="space-y-4 lg:sticky lg:top-4">
-          <MetricsPanel model={model.metrics} onOpenActivity={handleActivityOpen} />
+          <MetricsPanel model={model.metrics} />
           <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>
       </div>
-
-      {/* Activity drawer — mounted once at page root */}
-      <ActivityDrawer
-        open={activityOpen}
-        onClose={handleActivityClose}
-        activity={projectState.recentActivity}
-        now={now}
-      />
     </div>
   );
 }

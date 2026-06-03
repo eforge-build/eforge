@@ -37,10 +37,9 @@ describe('NowDashboard', () => {
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 
     expect(screen.getByText('Queue')).toBeDefined();
-    // The activity log entry point lives in the Build health card footer; there
-    // is no longer a separate Activity card.
+    // The activity log moved to System; the Now rail is glance widgets only.
     expect(screen.getByText('Build health')).toBeDefined();
-    expect(screen.getByText('Open activity log →')).toBeDefined();
+    expect(screen.queryByText('Open activity log →')).toBeNull();
     expect(screen.getByText('Build history')).toBeDefined();
   });
 

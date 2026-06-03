@@ -40,14 +40,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** No build history yet — empty state with the activity-log footer entry point. */
-export const Empty: Story = {
-  args: {
-    model: modelFromRuns([]),
-    onOpenActivity: () => {},
-  },
-};
-
 /** A healthy mix: mostly landed with a couple of failures. */
 export const HealthyMix: Story = {
   args: {
@@ -59,7 +51,6 @@ export const HealthyMix: Story = {
       completedBuild(2 * HOUR, 15 * 60_000, { planSet: 'storybook-phase-1' }),
       completedBuild(1 * HOUR, 6 * 60_000, { planSet: 'docs-drift' }),
     ]),
-    onOpenActivity: () => {},
   },
 };
 
@@ -73,7 +64,6 @@ export const MostlyFailing: Story = {
       failedBuild(2 * HOUR, 1 * 60_000, { planSet: 'wip-4' }),
       failedBuild(1 * HOUR, 5 * 60_000, { planSet: 'wip-5' }),
     ]),
-    onOpenActivity: () => {},
   },
 };
 
@@ -89,6 +79,5 @@ export const HighThroughput: Story = {
         ),
       ),
     ),
-    onOpenActivity: () => {},
   },
 };
