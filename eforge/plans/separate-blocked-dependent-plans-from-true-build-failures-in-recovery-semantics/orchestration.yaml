@@ -1,0 +1,64 @@
+name: separate-blocked-dependent-plans-from-true-build-failures-in-recovery-semantics
+description: Separate dependency-blocked dependent plans from true build
+  failures so terminal failure, phase summaries, and recovery summaries identify
+  the upstream plan that ran and failed.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm exec vitest run test/orchestration-state-helpers.test.ts
+    test/orchestration-execute-plans.test.ts
+    test/recovery-terminal-failure.test.ts test/recovery-failure-summary.test.ts
+plans:
+  - id: plan-01-blocked-dependent-failure-semantics
+    name: Blocked Dependent Failure Semantics
+    depends_on: []
+    branch: separate-blocked-dependent-plans-from-true-build-failures-in-recovery-semantics/plan-01-blocked-dependent-failure-semantics
+    build:
+      - implement
+      - validate
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The implementation is small, but the event-flow change crosses
+          orchestration, terminal failure tracking, and recovery-summary tests;
+          high effort helps preserve existing true failure semantics while
+          removing only dependency-blocked false failures.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file bug fix across orchestration semantics,
+    terminal failure/recovery summaries, and regression tests, so excursion is
+    appropriate. A planner plus plan review is enough; expedition-level module
+    planning is unnecessary. The build includes test-writing and iterative test
+    execution because the PRD has explicit regression requirements. The validate
+    stage is included after implementation and before review to run the
+    registered maintainability gate. Review focuses on code correctness and test
+    coverage, with standard strictness and two rounds for a quality-critical but
+    non-security change.
+diff_base_ref: 8bc6898ee43ac24994687ba944d2ec36d83ae01e
