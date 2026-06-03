@@ -19,6 +19,7 @@ import { toConsolePath } from '@/lib/navigation';
 // ---------------------------------------------------------------------------
 
 const DEFAULT_ROW_COUNT = 4;
+const COMPACT_ROW_COUNT = 6;
 
 type StatusFilter = 'all' | 'running' | 'failed' | 'completed';
 type CommandFilter = 'all' | string;
@@ -131,9 +132,12 @@ interface FilterBarProps {
   filters: FilterState;
   commands: string[];
   onFiltersChange: (f: FilterState) => void;
+  /** Rail mode: show only the status chips (drop command chips + search) so the
+   *  bar stays a single row in a ~360px column. */
+  compact?: boolean;
 }
 
-function FilterBar({ filters, commands, onFiltersChange }: FilterBarProps) {
+function FilterBar({ filters, commands, onFiltersChange, compact = false }: FilterBarProps) {
   const STATUS_OPTIONS: StatusFilter[] = ['all', 'running', 'failed', 'completed'];
 
   return (
@@ -159,7 +163,7 @@ function FilterBar({ filters, commands, onFiltersChange }: FilterBarProps) {
       </div>
 
       {/* Command chips */}
-      {commands.length > 0 && (
+      {!compact && commands.length > 0 && (
         <div className="flex gap-1 flex-wrap" aria-label="Filter by command">
           <button
             onClick={() => onFiltersChange({ ...filters, command: 'all' })}
@@ -194,18 +198,20 @@ function FilterBar({ filters, commands, onFiltersChange }: FilterBarProps) {
       )}
 
       {/* Search input */}
-      <input
-        type="text"
-        value={filters.search}
-        onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-        placeholder="Search runs…"
-        aria-label="search"
-        className={cn(
-          'h-6 min-w-[120px] flex-1 rounded-md border border-input bg-background px-2 py-0.5',
-          'text-xs text-foreground placeholder:text-muted-foreground',
-          'focus:outline-none focus:ring-1 focus:ring-ring',
-        )}
-      />
+      {!compact && (
+        <input
+          type="text"
+          value={filters.search}
+          onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
+          placeholder="Search runs…"
+          aria-label="search"
+          className={cn(
+            'h-6 min-w-[120px] flex-1 rounded-md border border-input bg-background px-2 py-0.5',
+            'text-xs text-foreground placeholder:text-muted-foreground',
+            'focus:outline-none focus:ring-1 focus:ring-ring',
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -217,9 +223,12 @@ function FilterBar({ filters, commands, onFiltersChange }: FilterBarProps) {
 interface RunHistoryCardProps {
   runs: NowRecentRunItem[];
   onNavigate?: (href: string) => void;
+  /** Rail mode: status-only filter bar and a slightly taller default list so the
+   *  card reads well in the narrow sidebar column. */
+  compact?: boolean;
 }
 
-export function RunHistoryCard({ runs, onNavigate }: RunHistoryCardProps) {
+export function RunHistoryCard({ runs, onNavigate, compact = false }: RunHistoryCardProps) {
   const [expanded, setExpanded] = React.useState(false);
   const [filters, setFilters] = React.useState<FilterState>(DEFAULT_FILTERS);
 
@@ -229,14 +238,15 @@ export function RunHistoryCard({ runs, onNavigate }: RunHistoryCardProps) {
     [runs, filters],
   );
 
-  const visibleRuns = expanded ? filteredRuns : runs.slice(0, DEFAULT_ROW_COUNT);
+  const defaultRowCount = compact ? COMPACT_ROW_COUNT : DEFAULT_ROW_COUNT;
+  const visibleRuns = expanded ? filteredRuns : runs.slice(0, defaultRowCount);
 
   return (
     <Card className="bg-card/50 border-border/60">
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold text-muted-foreground">Run history</CardTitle>
-          {runs.length > DEFAULT_ROW_COUNT && (
+          {runs.length > defaultRowCount && (
             <Button
               variant="ghost"
               size="sm"
@@ -258,6 +268,7 @@ export function RunHistoryCard({ runs, onNavigate }: RunHistoryCardProps) {
                 filters={filters}
                 commands={commands}
                 onFiltersChange={setFilters}
+                compact={compact}
               />
             )}
             <ul className={cn('space-y-1', expanded && 'max-h-96 overflow-y-auto')}>
@@ -265,9 +276,9 @@ export function RunHistoryCard({ runs, onNavigate }: RunHistoryCardProps) {
                 <RunRow key={run.id} run={run} onNavigate={onNavigate} />
               ))}
             </ul>
-            {!expanded && runs.length > DEFAULT_ROW_COUNT && (
+            {!expanded && runs.length > defaultRowCount && (
               <p className="text-xs text-muted-foreground mt-2">
-                + {runs.length - DEFAULT_ROW_COUNT} more — click Show all
+                + {runs.length - defaultRowCount} more — click Show all
               </p>
             )}
           </>

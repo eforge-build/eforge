@@ -9,7 +9,6 @@
 
 import type {
   RunInfo,
-  StackLayerWire,
   EforgeEvent,
 } from '@eforge-build/client/browser';
 import { getEventSummary } from '@eforge-build/client/browser';
@@ -119,24 +118,6 @@ export interface NowRecentRunItem {
   durationMs: number | null;
 }
 
-export interface NowStackRow {
-  prdId: string;
-  stackId: string;
-  provider: string;
-  branch: string;
-  baseBranch: string | undefined;
-  status: string;
-  landingStatus: string | undefined;
-}
-
-export interface NowStackSummary {
-  totalCount: number;
-  byStatus: Record<string, number>;
-  byStackId: Record<string, number>;
-  topRows: NowStackRow[];
-  hiddenCount: number;
-}
-
 export interface NowActivityPreviewItem {
   id: string;
   eventType: string;
@@ -193,7 +174,6 @@ export interface NowDashboardModel {
   recentRuns: NowRecentRunItem[];
   /** All runs sorted newest first (no limit), for the expandable RunHistoryCard. */
   allRuns: NowRecentRunItem[];
-  stack: NowStackSummary | null;
   stackSync: NowStackSyncViewModel | null;
   activity: NowActivityPreviewItem[];
   activityHiddenCount: number;
@@ -209,7 +189,6 @@ export interface NowDashboardModel {
 const STALE_THRESHOLD_MS = 30_000;
 const MAX_ATTENTION_ITEMS = 5;
 const MAX_RECENT_RUNS = 4;
-const MAX_STACK_ROWS = 6;
 const MAX_ACTIVITY_ROWS = 6;
 
 // ---------------------------------------------------------------------------
@@ -762,41 +741,6 @@ export function selectNowStatusSummary(
 }
 
 // ---------------------------------------------------------------------------
-// Stack summary selector
-// ---------------------------------------------------------------------------
-
-export function selectNowStackSummary(stackLayers: StackLayerWire[]): NowStackSummary | null {
-  if (stackLayers.length === 0) return null;
-
-  const byStatus: Record<string, number> = {};
-  const byStackId: Record<string, number> = {};
-
-  for (const layer of stackLayers) {
-    const s = layer.status;
-    byStatus[s] = (byStatus[s] ?? 0) + 1;
-    byStackId[layer.stackId] = (byStackId[layer.stackId] ?? 0) + 1;
-  }
-
-  const topRows: NowStackRow[] = stackLayers.slice(0, MAX_STACK_ROWS).map((layer) => ({
-    prdId: selectPrdDisplayLabel(undefined, layer.prdId),
-    stackId: layer.stackId,
-    provider: layer.provider,
-    branch: layer.branch,
-    baseBranch: layer.baseBranch,
-    status: layer.status,
-    landingStatus: layer.landing?.status,
-  }));
-
-  return {
-    totalCount: stackLayers.length,
-    byStatus,
-    byStackId,
-    topRows,
-    hiddenCount: Math.max(0, stackLayers.length - MAX_STACK_ROWS),
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Recent activity selector
 // ---------------------------------------------------------------------------
 
@@ -991,7 +935,6 @@ export function selectNowDashboardModel(
   const queueStacks = selectNowQueueStacks(state.queue);
   const recentRuns = selectNowRecentRuns(state.runs, now);
   const allRuns = selectAllNowRunItems(state.runs, now);
-  const stack = selectNowStackSummary(state.stackLayers);
   const stackSync = selectNowStackSyncStatus(state.stackSync);
   const { items: activity, hiddenCount: activityHiddenCount } = selectNowRecentActivity(
     state.recentActivity,
@@ -1008,7 +951,6 @@ export function selectNowDashboardModel(
     queueStacks,
     recentRuns,
     allRuns,
-    stack,
     stackSync,
     activity,
     activityHiddenCount,

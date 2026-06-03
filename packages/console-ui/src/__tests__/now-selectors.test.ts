@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import type { RunInfo, QueueItem, EforgeEvent } from '@eforge-build/client/browser';
-import type { StackLayerWire } from '@eforge-build/client/browser';
 import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConsoleActivityEntry } from '@/lib/types';
 import { selectQueueSummary } from '@/lib/selectors/queue';
@@ -11,7 +10,6 @@ import {
   selectNowAttentionItems,
   selectNowActiveBuildCards,
   selectNowStatusSummary,
-  selectNowStackSummary,
   selectNowRecentActivity,
   selectNowRecentRuns,
   selectNowStackSyncStatus,
@@ -58,20 +56,6 @@ function makeActiveDetail(
     runState: createInitialRunState(),
     lastEventAt: Date.now(),
     error: null,
-    ...overrides,
-  };
-}
-
-function makeStackLayer(overrides: Partial<StackLayerWire> = {}): StackLayerWire {
-  return {
-    prdId: 'prd-1',
-    stackId: 'stack-a',
-    provider: 'git-spice',
-    branch: 'feature/prd-1',
-    baseBranch: 'main',
-    status: 'building',
-    recordedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -588,38 +572,6 @@ describe('selectNowStatusSummary', () => {
     const summary = selectNowStatusSummary(state, {}, now);
     expect(summary.schedulerRunningCount).toBeNull();
     expect(summary.activeBuildCount).toBe(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Stack summary tests
-// ---------------------------------------------------------------------------
-
-describe('selectNowStackSummary', () => {
-  it('returns null for empty stack layer array', () => {
-    expect(selectNowStackSummary([])).toBeNull();
-  });
-
-  it('returns status counts for populated layers', () => {
-    const layers = [
-      makeStackLayer({ prdId: 'prd-1', status: 'building' }),
-      makeStackLayer({ prdId: 'prd-2', status: 'built' }),
-      makeStackLayer({ prdId: 'prd-3', status: 'building' }),
-    ];
-    const summary = selectNowStackSummary(layers);
-    expect(summary).not.toBeNull();
-    expect(summary!.totalCount).toBe(3);
-    expect(summary!.byStatus['building']).toBe(2);
-    expect(summary!.byStatus['built']).toBe(1);
-  });
-
-  it('limits topRows to 6 and sets hiddenCount', () => {
-    const layers = Array.from({ length: 8 }, (_, i) =>
-      makeStackLayer({ prdId: `prd-${i}`, stackId: 'stack-a' }),
-    );
-    const summary = selectNowStackSummary(layers);
-    expect(summary!.topRows).toHaveLength(6);
-    expect(summary!.hiddenCount).toBe(2);
   });
 });
 

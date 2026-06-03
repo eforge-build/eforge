@@ -137,20 +137,8 @@ describe('NowDashboard', () => {
     expect(banner.textContent).toContain('ECONNREFUSED');
   });
 
-  it('surfaces stack sync controls when stacking data exists', () => {
+  it('does not render the stack sync card on Now for a normal (complete) outcome', () => {
     const state = connectedState({
-      stackLayers: [
-        {
-          prdId: 'prd-1',
-          stackId: 'stack-a',
-          provider: 'git-spice',
-          branch: 'feat/x',
-          baseBranch: 'main',
-          status: 'building',
-          recordedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
       stackSync: {
         last: {
           id: 'sync-1',
@@ -166,8 +154,31 @@ describe('NowDashboard', () => {
 
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 
-    expect(screen.getByText('Stack sync')).toBeDefined();
-    expect(screen.getByRole('button', { name: /sync.*now/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: /dry run/i })).toBeDefined();
+    // Stack sync status + controls live on System now, not on the Now glance view.
+    expect(screen.queryByText('Stack sync')).toBeNull();
+    expect(screen.queryByRole('button', { name: /sync.*now/i })).toBeNull();
+  });
+
+  it('escalates a conflict stack sync into the Now alert strip with a retry control', () => {
+    const state = connectedState({
+      stackSync: {
+        last: {
+          id: 'sync-2',
+          trigger: 'after-build',
+          startedAt: new Date(Date.now() - 5000).toISOString(),
+          completedAt: new Date(Date.now() - 4000).toISOString(),
+          outcome: 'conflict',
+          dryRun: false,
+          reason: 'restack conflict on feat/x',
+          restackCandidates: ['feat/x'],
+        },
+      } as never,
+    });
+
+    render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
+
+    expect(screen.getByText('Stack sync conflict')).toBeDefined();
+    expect(screen.getByText('restack conflict on feat/x')).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeDefined();
   });
 });

@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 interface AttentionPanelProps {
   items: NowAttentionItem[];
   hiddenCount: number;
+  /** Card heading. Defaults to "Attention". */
+  title?: string;
 }
 
 const SEVERITY_VARIANT: Record<
@@ -36,13 +38,13 @@ function panelAccent(items: NowAttentionItem[]): string {
   return 'border-l-2 border-l-blue/60 bg-blue/5';
 }
 
-export function AttentionPanel({ items, hiddenCount }: AttentionPanelProps) {
+export function AttentionPanel({ items, hiddenCount, title = 'Attention' }: AttentionPanelProps) {
   if (items.length === 0) return null;
 
   return (
     <Card className={cn(panelAccent(items))}>
       <CardHeader className="pb-2 pt-4 px-4">
-        <CardTitle className="text-sm font-semibold">Attention</CardTitle>
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4">
         <ul className="space-y-2">

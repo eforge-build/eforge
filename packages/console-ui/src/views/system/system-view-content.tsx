@@ -11,6 +11,8 @@ import { ExtensionsSection } from './extensions-section';
 import { PlaybooksSection } from './playbooks-section';
 import { SessionPlansSection } from './session-plans-section';
 import { ModelsSection } from './models-section';
+import { StackArtifactsSection } from './stack-artifacts-section';
+import { StackSyncSection } from './stack-sync-section';
 import type { SystemSurfacesState } from './system-types';
 import type { ConsoleProjectState } from '@/lib/project-state';
 
@@ -73,6 +75,14 @@ export function SystemViewContent({ state, onRefresh, projectState }: SystemView
 
         <ModelsSection
           catalogs={state.models.catalogs}
+        />
+
+        <StackArtifactsSection
+          layers={projectState?.stackLayers}
+        />
+
+        <StackSyncSection
+          stackSync={projectState?.stackSync}
         />
       </div>
     </div>

@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
 import { selectNowDashboardModel } from '@/lib/selectors/now';
+import type { NowAttentionItem } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
 import { AttentionPanel } from '@/components/now/attention-panel';
 import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
@@ -9,10 +10,10 @@ import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
 import { useBuildMetricHistory } from '@/hooks/use-build-metric-history';
 import { RunHistoryCard } from '@/components/now/run-history-card';
-import { StackSummaryCard } from '@/components/now/stack-summary-card';
-import { StackSyncStatusCard } from '@/components/now/stack-sync-status-card';
+import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { ActivityDrawerLauncher } from '@/components/now/activity-drawer-launcher';
 import { ActivityDrawer } from '@/components/now/activity-drawer';
+import { toConsolePath } from '@/lib/navigation';
 
 // ---------------------------------------------------------------------------
 // URL query-param helpers
@@ -21,6 +22,25 @@ import { ActivityDrawer } from '@/components/now/activity-drawer';
 function readActivityOpenParam(): boolean {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('activity') === 'open';
+}
+
+// ---------------------------------------------------------------------------
+// Attention partitioning
+// ---------------------------------------------------------------------------
+
+/**
+ * System-level attention items describe daemon/stream health rather than a
+ * specific queued PRD. Per-PRD failures and skips are owned by the Queue card
+ * (which carries the Recover action), so only these system alerts surface in
+ * the top strip — that removes the duplicate "Failed: …" rows that previously
+ * appeared in both Attention and Queue.
+ */
+function isSystemAttentionItem(item: NowAttentionItem): boolean {
+  return (
+    item.id === 'stream-error' ||
+    item.id === 'stale-heartbeat' ||
+    item.id.startsWith('session-error-')
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +75,12 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   const handleActivityOpen = React.useCallback(() => setActivityOpen(true), []);
   const handleActivityClose = React.useCallback(() => setActivityOpen(false), []);
 
+  // Top strip carries only daemon/stream health; per-PRD failures live in Queue.
+  const systemAlerts = React.useMemo(
+    () => model.attention.filter(isSystemAttentionItem),
+    [model.attention],
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4">
       {/* Connection/state banner */}
@@ -62,36 +88,46 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
         <NowStateBanner banner={model.connectionBanner} />
       )}
 
-      {/* Attention section — top priority, elevated above everything else */}
-      <AttentionPanel items={model.attention} hiddenCount={model.attentionHiddenCount} />
+      {/* System alerts — daemon/stream health only, elevated above everything. */}
+      <AttentionPanel items={systemAlerts} hiddenCount={0} title="System alerts" />
 
-      {/* Active builds grid */}
-      <ActiveBuildsGrid
-        cards={model.activeBuilds}
-        onNavigate={onNavigate}
-        metricHistory={metricHistory}
+      {/* Stack sync escalation — only a conflict/failed/stuck-deferred sync
+          surfaces here; normal sync housekeeping lives on System. */}
+      <StackSyncAlert
+        sync={model.stackSync}
+        hasActiveBuilds={model.activeBuilds.length > 0}
+        onManage={onNavigate ? () => onNavigate(toConsolePath('system')) : undefined}
       />
 
-      {/* Primary working surfaces: queue alongside reference cards.
-          Collapses to a single column below lg. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-        <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
-        <div className="space-y-4">
+      {/* Operational shell: a wide main column for live work (active builds +
+          queue) and a sticky rail of glanceable reference widgets. A single
+          shared grid keeps every section's edges aligned instead of each
+          section inventing its own width. Collapses to one column below lg. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+        {/* MAIN */}
+        <div className="min-w-0 space-y-4">
+          <ActiveBuildsGrid
+            cards={model.activeBuilds}
+            onNavigate={onNavigate}
+            metricHistory={metricHistory}
+          />
+          <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
+        </div>
+
+        {/* RAIL — glanceable reference widgets. Run history replaces the former
+            Git stack history card (a redundant landing log: a failed land is
+            already a failed build, so it added no signal the Queue/Build health
+            didn't). The landed-PRD → branch → PR reference now lives in System. */}
+        <aside className="space-y-4 lg:sticky lg:top-4">
           <MetricsPanel model={model.metrics} />
           <ActivityDrawerLauncher
             items={model.activity}
             onOpen={handleActivityOpen}
             now={now}
           />
-          <StackSummaryCard summary={model.stack} />
-        </div>
+          <RunHistoryCard runs={model.allRuns} onNavigate={onNavigate} compact />
+        </aside>
       </div>
-
-      {/* Run history */}
-      <RunHistoryCard runs={model.allRuns} onNavigate={onNavigate} />
-
-      {/* Stack sync status and controls (when stacking is configured) */}
-      {model.stack && <StackSyncStatusCard sync={model.stackSync} />}
 
       {/* Activity drawer — mounted once at page root */}
       <ActivityDrawer
