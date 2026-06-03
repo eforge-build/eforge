@@ -13,6 +13,7 @@ import {
   selectNowStatusSummary,
   selectNowRecentActivity,
   selectNowRecentRuns,
+  selectAllNowBuildItems,
   selectNowStackSyncStatus,
   mergeSeverity,
   isLivenessStale,
@@ -954,5 +955,109 @@ describe('queue skipped terminal status handling', () => {
     ];
 
     expect(selectNowQueueStacks(withTerminals)).toEqual(selectNowQueueStacks(activeOnly));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectAllNowBuildItems — per-session build rollup
+// ---------------------------------------------------------------------------
+
+describe('selectAllNowBuildItems', () => {
+  const T0 = Date.parse('2026-01-01T00:00:00.000Z');
+  const at = (min: number) => new Date(T0 + min * 60_000).toISOString();
+  const now = T0 + 60 * 60_000; // one hour after T0
+
+  it("rolls a session's phase runs into a single build", () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'completed', startedAt: at(0), completedAt: at(5) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'completed', startedAt: at(5), completedAt: at(20) }),
+    ];
+    const builds = selectAllNowBuildItems(runs, now);
+    expect(builds).toHaveLength(1);
+    expect(builds[0].sessionId).toBe('s1');
+    expect(builds[0].status).toBe('completed');
+    expect(builds[0].phase).toBeNull();
+  });
+
+  it('reports wall-clock duration from earliest start to latest completion', () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'completed', startedAt: at(0), completedAt: at(5) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'completed', startedAt: at(5), completedAt: at(20) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.startedAt).toBe(at(0));
+    expect(build.durationMs).toBe(20 * 60_000);
+  });
+
+  it('reports running status and the live phase', () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'completed', startedAt: at(0), completedAt: at(5) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'running', startedAt: at(5) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('running');
+    expect(build.phase).toBe('build');
+    expect(build.durationMs).toBe(now - T0);
+  });
+
+  it('reports failed status and the phase it broke in', () => {
+    const runs = [
+      makeRun({ id: 'c', sessionId: 's1', command: 'compile', status: 'failed', startedAt: at(0), completedAt: at(3) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('failed');
+    expect(build.phase).toBe('compile');
+  });
+
+  it('excludes successful enqueue bookkeeping from the rollup', () => {
+    const runs = [
+      makeRun({ id: 'e', sessionId: 's1', command: 'enqueue', status: 'completed', startedAt: at(0), completedAt: at(1) }),
+      makeRun({ id: 'b', sessionId: 's1', command: 'build', status: 'running', startedAt: at(2) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('running');
+    expect(build.phase).toBe('build');
+  });
+
+  it('surfaces a failed enqueue as a failed build', () => {
+    const runs = [
+      makeRun({ id: 'e', sessionId: 's1', command: 'enqueue', status: 'failed', startedAt: at(0), completedAt: at(1) }),
+    ];
+    const [build] = selectAllNowBuildItems(runs, now);
+    expect(build.status).toBe('failed');
+    expect(build.phase).toBe('enqueue');
+  });
+
+  it('drops a session with only a successful enqueue (setup, not a build)', () => {
+    // The enqueue phase runs in its own session, so a successful enqueue-only
+    // session is pre-build setup — it must not show up as a phantom build row
+    // alongside the real compile/build session it spawns.
+    const runs = [
+      makeRun({ id: 'e', sessionId: 's1', command: 'enqueue', status: 'completed', startedAt: at(0), completedAt: at(1) }),
+    ];
+    expect(selectAllNowBuildItems(runs, now)).toEqual([]);
+  });
+
+  it('keeps the real build when its enqueue ran in a separate session', () => {
+    // Mirrors production: enqueue is one session; compile+build is another.
+    const runs = [
+      makeRun({ id: 'enq', sessionId: 'enq-sess', command: 'enqueue', status: 'completed', startedAt: at(0), completedAt: at(2) }),
+      makeRun({ id: 'cmp', sessionId: 'build-sess', command: 'compile', status: 'completed', startedAt: at(3), completedAt: at(8) }),
+      makeRun({ id: 'bld', sessionId: 'build-sess', command: 'build', status: 'completed', startedAt: at(8), completedAt: at(20) }),
+    ];
+    const builds = selectAllNowBuildItems(runs, now);
+    expect(builds).toHaveLength(1);
+    expect(builds[0].sessionId).toBe('build-sess');
+    expect(builds[0].status).toBe('completed');
+    expect(builds[0].phase).toBeNull();
+  });
+
+  it('returns one build per session, newest first', () => {
+    const runs = [
+      makeRun({ id: 'a', sessionId: 'old', command: 'build', status: 'completed', startedAt: at(0), completedAt: at(10) }),
+      makeRun({ id: 'b', sessionId: 'new', command: 'build', status: 'completed', startedAt: at(30), completedAt: at(40) }),
+    ];
+    const builds = selectAllNowBuildItems(runs, now);
+    expect(builds.map((b) => b.sessionId)).toEqual(['new', 'old']);
   });
 });

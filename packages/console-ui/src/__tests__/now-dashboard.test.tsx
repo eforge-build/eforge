@@ -71,8 +71,11 @@ describe('NowDashboard', () => {
     render(<NowDashboard projectState={state} activeSessions={emptyActiveSessions} />);
 
     expect(screen.getByText('Queue')).toBeDefined();
-    expect(screen.getByText('Activity')).toBeDefined();
-    expect(screen.getByText('Run history')).toBeDefined();
+    // The activity log entry point lives in the Build health card footer; there
+    // is no longer a separate Activity card.
+    expect(screen.getByText('Build health')).toBeDefined();
+    expect(screen.getByText('Open activity log →')).toBeDefined();
+    expect(screen.getByText('Build history')).toBeDefined();
   });
 
   it('renders dependency-linked queue stacks', () => {
@@ -118,9 +121,9 @@ describe('NowDashboard', () => {
       />,
     );
 
-    fireEvent.click(screen.getByTitle('Open run detail'));
+    fireEvent.click(screen.getByTitle('Open build detail'));
 
-    expect(onNavigate).toHaveBeenCalledWith('/console/runs/sess-active');
+    expect(onNavigate).toHaveBeenCalledWith('/console/builds/sess-active');
   });
 
   it('shows a connection banner when the daemon stream is disconnected', () => {

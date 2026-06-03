@@ -33,6 +33,10 @@ import { selectNowMetricsPanel } from './metrics';
 import type { NowMetricsPanel } from './metrics';
 export { selectNowMetricsPanel } from './metrics';
 export type { NowMetricsPanel } from './metrics';
+import { selectAllNowRunItems, selectAllNowBuildItems } from './build-history';
+import type { NowRecentRunItem, NowBuildItem } from './build-history';
+export { selectAllNowRunItems, selectAllNowBuildItems, classifyBuildStatus } from './build-history';
+export type { NowRecentRunItem, NowBuildItem, BuildStatusClass } from './build-history';
 import { selectNowEnqueueCards, ENQUEUE_COMMAND } from './enqueue-cards';
 import type { NowEnqueueCard } from './enqueue-cards';
 export { selectNowEnqueueCards } from './enqueue-cards';
@@ -124,16 +128,6 @@ export interface NowActiveBuildCard {
   hasPlanningRow: boolean;
 }
 
-export interface NowRecentRunItem {
-  id: string;
-  sessionId: string | undefined;
-  planSet: string;
-  command: string;
-  status: string;
-  startedAt: string;
-  durationMs: number | null;
-}
-
 export interface NowActivityPreviewItem {
   id: string;
   eventType: string;
@@ -190,8 +184,8 @@ export interface NowDashboardModel {
   queue: NowQueueSummary;
   queueStacks: NowQueueStack[];
   recentRuns: NowRecentRunItem[];
-  /** All runs sorted newest first (no limit), for the expandable RunHistoryCard. */
-  allRuns: NowRecentRunItem[];
+  /** Per-build rollup (one row per session), newest first, for Build history. */
+  builds: NowBuildItem[];
   stackSync: NowStackSyncViewModel | null;
   activity: NowActivityPreviewItem[];
   activityHiddenCount: number;
@@ -726,7 +720,7 @@ export function selectNowActiveBuildCards(
       tokens,
       cost,
       cachePercent,
-      href: toConsolePath({ id: 'runDetail', detailId: sessionId }),
+      href: toConsolePath({ id: 'buildDetail', detailId: sessionId }),
       miniGanttRows,
       planLanes,
       planning,
@@ -915,38 +909,6 @@ export function selectNowRecentRuns(runs: RunInfo[], now: number = Date.now()): 
 }
 
 // ---------------------------------------------------------------------------
-// All runs selector (no limit — used by RunHistoryCard)
-// ---------------------------------------------------------------------------
-
-export function selectAllNowRunItems(runs: RunInfo[], now: number = Date.now()): NowRecentRunItem[] {
-  const sorted = [...runs].sort((a, b) => {
-    if (a.startedAt > b.startedAt) return -1;
-    if (a.startedAt < b.startedAt) return 1;
-    return 0;
-  });
-  return sorted.map((run) => {
-    let durationMs: number | null = null;
-    if (run.completedAt) {
-      const start = new Date(run.startedAt).getTime();
-      const end = new Date(run.completedAt).getTime();
-      if (!isNaN(start) && !isNaN(end)) durationMs = end - start;
-    } else {
-      const start = new Date(run.startedAt).getTime();
-      if (!isNaN(start)) durationMs = now - start;
-    }
-    return {
-      id: run.id,
-      sessionId: run.sessionId,
-      planSet: selectPrdDisplayLabel(undefined, run.planSet),
-      command: run.command,
-      status: run.status,
-      startedAt: run.startedAt,
-      durationMs,
-    };
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Stack sync status selector
 // ---------------------------------------------------------------------------
 
@@ -1004,6 +966,7 @@ export function selectNowDashboardModel(
   const queueStacks = selectNowQueueStacks(state.queue);
   const recentRuns = selectNowRecentRuns(state.runs, now);
   const allRuns = selectAllNowRunItems(state.runs, now);
+  const builds = selectAllNowBuildItems(state.runs, now);
   const stackSync = selectNowStackSyncStatus(state.stackSync);
   const { items: activity, hiddenCount: activityHiddenCount } = selectNowRecentActivity(
     state.recentActivity,
@@ -1020,7 +983,7 @@ export function selectNowDashboardModel(
     queue,
     queueStacks,
     recentRuns,
-    allRuns,
+    builds,
     stackSync,
     activity,
     activityHiddenCount,

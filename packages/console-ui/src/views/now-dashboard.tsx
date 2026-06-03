@@ -9,9 +9,8 @@ import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
 import { EnqueueCard } from '@/components/now/enqueue-card';
 import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
-import { RunHistoryCard } from '@/components/now/run-history-card';
+import { BuildHistoryCard } from '@/components/now/build-history-card';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
-import { ActivityDrawerLauncher } from '@/components/now/activity-drawer-launcher';
 import { ActivityDrawer } from '@/components/now/activity-drawer';
 import { toConsolePath } from '@/lib/navigation';
 
@@ -111,18 +110,17 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
           <QueueCard stacks={model.queueStacks} summary={model.queue} refreshQueue={refreshQueue} />
         </div>
 
-        {/* RAIL — glanceable reference widgets. Run history replaces the former
-            Git stack history card (a redundant landing log: a failed land is
-            already a failed build, so it added no signal the Queue/Build health
-            didn't). The landed-PRD → branch → PR reference now lives in System. */}
+        {/* RAIL — glanceable reference widgets. Build health hosts the activity
+            log entry point in its footer (no separate Activity card — the raw
+            event preview added noise, and its launcher duplicated the drawer
+            open). Build history (one row per session, rolled up from its phase
+            runs) replaces the former Git stack history card (a redundant landing
+            log: a failed land is already a failed build, so it
+            added no signal the Queue/Build health didn't). The landed-PRD →
+            branch → PR reference now lives in System. */}
         <aside className="space-y-4 lg:sticky lg:top-4">
-          <MetricsPanel model={model.metrics} />
-          <ActivityDrawerLauncher
-            items={model.activity}
-            onOpen={handleActivityOpen}
-            now={now}
-          />
-          <RunHistoryCard runs={model.allRuns} onNavigate={onNavigate} compact />
+          <MetricsPanel model={model.metrics} onOpenActivity={handleActivityOpen} />
+          <BuildHistoryCard builds={model.builds} onNavigate={onNavigate} compact />
         </aside>
       </div>
 

@@ -9,7 +9,7 @@ The canonical route list lives in [`src/lib/navigation.ts`](src/lib/navigation.t
 | Path | Route ID | Description |
 |------|----------|-------------|
 | `/console/` | `now` | Now dashboard - active builds, queue, and live status |
-| `/console/runs/:detailId` | `runDetail` | Build detail view for a specific run |
+| `/console/builds/:detailId` | `buildDetail` | Build detail view for a session (legacy `/console/runs/:detailId` still resolves and canonicalizes to this path) |
 | `/console/plans` | `plans` | Planning Workspace - read-only browsing of flat session plans and grouped session plan sets |
 | `/console/system` | `system` | System - configuration, profiles, playbooks, extensions, and diagnostic surfaces |
 

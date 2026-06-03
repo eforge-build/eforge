@@ -6,12 +6,20 @@
 import * as React from 'react';
 import { Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { NowMetricsPanel } from '@/lib/selectors/metrics';
 import { formatDuration } from '@/lib/format';
 
 interface MetricsPanelProps {
   model: NowMetricsPanel;
+  /**
+   * When provided, renders an "Open activity log →" footer that opens the
+   * activity drawer. Build health is the activity log's entry point — there is
+   * no separate Activity card, so the footer persists even before any build
+   * history exists.
+   */
+  onOpenActivity?: () => void;
 }
 
 const SUCCESS_CONFIG: ChartConfig = {
@@ -99,8 +107,11 @@ function ThroughputBars({ model }: { model: NowMetricsPanel }) {
   );
 }
 
-export function MetricsPanel({ model }: MetricsPanelProps) {
-  if (!model.hasHealthData && model.runBars.length === 0) return null;
+export function MetricsPanel({ model, onOpenActivity }: MetricsPanelProps) {
+  const hasHealthContent = model.hasHealthData || model.runBars.length > 0;
+  // The card still renders when it only hosts the activity-log entry point, so
+  // the activity drawer stays reachable before any build history exists.
+  if (!hasHealthContent && !onOpenActivity) return null;
 
   return (
     <Card className="bg-card/50 border-border/60">
@@ -110,6 +121,21 @@ export function MetricsPanel({ model }: MetricsPanelProps) {
       <CardContent className="px-4 pb-4 space-y-3">
         {model.hasHealthData && <LandRateDonut model={model} />}
         <ThroughputBars model={model} />
+        {!hasHealthContent && (
+          <p className="text-xs text-muted-foreground">No build history yet</p>
+        )}
+        {onOpenActivity && (
+          <div className="border-t border-border/60 pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={onOpenActivity}
+            >
+              Open activity log →
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

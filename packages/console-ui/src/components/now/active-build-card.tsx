@@ -192,7 +192,7 @@ export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
                 type="button"
                 onClick={navigate}
                 className="block max-w-full truncate text-left text-sm font-semibold text-foreground transition-colors hover:text-primary hover:underline focus:outline-none focus-visible:text-primary focus-visible:underline"
-                title="Open run detail"
+                title="Open build detail"
               >
                 {title}
               </button>

@@ -12,7 +12,7 @@ import {
 
 describe('consoleRouteOrder', () => {
   it('contains exactly four route base IDs in order', () => {
-    expect(consoleRouteOrder).toEqual(['now', 'plans', 'runDetail', 'system']);
+    expect(consoleRouteOrder).toEqual(['now', 'plans', 'buildDetail', 'system']);
   });
 
   it('has length 4', () => {
@@ -49,13 +49,13 @@ describe('toConsolePath', () => {
     expect(toConsolePath('system')).toBe('/console/system');
   });
 
-  it('maps a runDetail object to /console/runs/:detailId', () => {
-    expect(toConsolePath({ id: 'runDetail', detailId: 'abc123' })).toBe('/console/runs/abc123');
+  it('maps a buildDetail object to /console/builds/:detailId', () => {
+    expect(toConsolePath({ id: 'buildDetail', detailId: 'abc123' })).toBe('/console/builds/abc123');
   });
 
-  it('includes the detailId verbatim in the run detail path', () => {
-    expect(toConsolePath({ id: 'runDetail', detailId: 'my-session-id' })).toBe(
-      '/console/runs/my-session-id',
+  it('includes the detailId verbatim in the build detail path', () => {
+    expect(toConsolePath({ id: 'buildDetail', detailId: 'my-session-id' })).toBe(
+      '/console/builds/my-session-id',
     );
   });
 });
@@ -85,18 +85,23 @@ describe('parseConsoleRoute', () => {
     expect(parseConsoleRoute('/console/system')).toBe('system');
   });
 
-  it('returns runDetail object for /console/runs/:detailId', () => {
-    const result = parseConsoleRoute('/console/runs/abc123');
-    expect(result).toEqual({ id: 'runDetail', detailId: 'abc123' });
+  it('returns buildDetail object for /console/builds/:detailId', () => {
+    const result = parseConsoleRoute('/console/builds/abc123');
+    expect(result).toEqual({ id: 'buildDetail', detailId: 'abc123' });
   });
 
-  it('runDetail has correct detailId', () => {
-    const result = parseConsoleRoute('/console/runs/abc123');
+  it('buildDetail has correct detailId', () => {
+    const result = parseConsoleRoute('/console/builds/abc123');
     expect(typeof result).toBe('object');
     if (typeof result === 'object') {
-      expect(result.id).toBe('runDetail');
+      expect(result.id).toBe('buildDetail');
       expect(result.detailId).toBe('abc123');
     }
+  });
+
+  it('resolves the legacy /console/runs/:detailId path to buildDetail', () => {
+    const legacy = '/console/' + 'runs' + '/abc123';
+    expect(parseConsoleRoute(legacy)).toEqual({ id: 'buildDetail', detailId: 'abc123' });
   });
 
   it("returns 'now' for deleted routes (redirect to now)", () => {
@@ -106,9 +111,9 @@ describe('parseConsoleRoute', () => {
     for (const path of deleted) {
       expect(parseConsoleRoute(path)).toBe('now');
     }
-    // runs without a detail segment also returns now
-    const runsNoDetail = '/console/' + 'runs';
-    expect(parseConsoleRoute(runsNoDetail)).toBe('now');
+    // builds without a detail segment also returns now
+    const buildsNoDetail = '/console/' + 'builds';
+    expect(parseConsoleRoute(buildsNoDetail)).toBe('now');
   });
 
   it("returns 'now' for unrecognized path", () => {
@@ -127,14 +132,14 @@ describe('parseConsoleRoute', () => {
     expect(parseConsoleRoute('/console/system/')).toBe('system');
   });
 
-  it('strips query string from run detail path', () => {
-    const result = parseConsoleRoute('/console/runs/abc123?foo=bar');
-    expect(result).toEqual({ id: 'runDetail', detailId: 'abc123' });
+  it('strips query string from build detail path', () => {
+    const result = parseConsoleRoute('/console/builds/abc123?foo=bar');
+    expect(result).toEqual({ id: 'buildDetail', detailId: 'abc123' });
   });
 
-  it('strips trailing slash from run detail path', () => {
-    const result = parseConsoleRoute('/console/runs/abc123/');
-    expect(result).toEqual({ id: 'runDetail', detailId: 'abc123' });
+  it('strips trailing slash from build detail path', () => {
+    const result = parseConsoleRoute('/console/builds/abc123/');
+    expect(result).toEqual({ id: 'buildDetail', detailId: 'abc123' });
   });
 
   it('strips query string from plans path', () => {

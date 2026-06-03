@@ -9,7 +9,7 @@ const ROUTE_DESCRIPTIONS: Record<string, { title: string; description: string }>
     description:
       'Live dashboard showing current active builds, queue head, and daemon status.',
   },
-  runDetail: {
+  buildDetail: {
     title: 'Build Detail',
     description: 'Detailed view of a build session. Full view coming in a future update.',
   },
