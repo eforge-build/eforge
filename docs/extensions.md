@@ -386,22 +386,34 @@ See [`examples/extensions/reviewer-perspective.ts`](../examples/extensions/revie
 
 Validation providers execute during the per-plan `validate` build stage, after the implement stage completes and before the review stage, when `validate` is included in the build pipeline. Each registered provider is invoked in registration order for every plan that reaches the validate stage. Providers are fail-closed gates: normal validation failures can be repaired first, but unresolved failures still fail the current plan and emit `plan:build:failed`. The daemon process itself is never crashed by a provider failure.
 
-Normal validation-provider failures are recoverable before fail-closed terminal failure: legacy non-empty string returns, structured `{ status: 'failed' }` results, and command-form non-zero exits enter the plan's recovery loop. Recovery uses the same review-fixer/evaluator path as normal review issues and is bounded by the plan's `review.maxRounds` budget. After each recovery attempt, eforge reruns the provider suite from the first provider so earlier gates can re-check changes made during recovery.
+Normal validation-provider failures are recoverable before fail-closed terminal failure: structured `{ status: 'failed' }` function-form results and command-form non-zero exits enter the plan's recovery loop. Recovery is bounded by the plan's `review.maxRounds` budget. After each recovery attempt, eforge reruns the provider suite from the first provider so earlier gates can re-check changes made during recovery.
 
-Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions or rejected promises, provider timeouts, and unexpected return shapes. Use these hard-failure paths for extension bugs or unavailable infrastructure, not ordinary quality-gate findings.
+Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions or rejected promises, provider timeouts, non-empty string returns from function-form providers, and unexpected return shapes. Use these hard-failure paths for extension bugs or unavailable infrastructure, not ordinary quality-gate findings.
 
 **Result contract**
 
-A provider may return values in one of two ways:
+A function-form provider returns `null` or `undefined` to pass, or a structured `ValidationProviderResult` object with `status` (`'passed'`, `'failed'`, or `'skipped'`), an optional `message`, optional extended `details`, and optional per-file `annotations`. Non-empty string failure returns are not part of the function-form contract; they are treated as unexpected return shapes.
 
-- **Legacy string form**: return `null` or `undefined` to pass, or a non-empty `string` message to fail.
-- **Structured form**: return a `ValidationProviderResult` object with `status` (`'passed'`, `'failed'`, or `'skipped'`), an optional `message`, optional extended `details`, and optional per-file `annotations`.
+Structured annotations are the best path to precise recovery issues. Include `file` and `line` whenever possible so the repair agent can target the relevant location instead of inferring it from free-form output. Each annotation may include:
 
-Mutually exclusive with the command form (see below). Provide exactly one of `validate` or `commands`. Structured annotations are the best path to precise recovery issues: include `file` and `line` whenever possible so the repair agent can target the relevant location instead of inferring it from free-form output.
+- `details`: diagnostic output or other context for the annotation.
+- `fix`: provider-authored repair instruction.
+- `retryGuidance`: advice for the next repair attempt if the first patch is rejected or the same failure recurs.
+- `failureKind`: a provider-authored domain signature such as `maintainability:file-size-cap`; this is separate from runtime failure classification.
+- `repairClass`: one of `narrow`, `structural`, `manual`, or `followup`.
+- `metadata`: small JSON-safe data that lets the fixer avoid parsing prose (for example `{ currentLines, cap, overflow }`).
+
+Use `repairClass: 'narrow'` or omit it for localized fixes. Use `repairClass: 'structural'` when the correct fix requires extraction, file splitting, or broader code organization changes. Use `manual` when the provider should fail closed without automated repair. Use `followup` for findings that should only fail closed when every remaining issue is follow-up-only; mixed follow-up plus automatable issues route according to the narrow/structural guidance.
+
+**Recovery routing and checkpoints**
+
+Function-form annotations are normalized into review issues. Narrow or unspecified issues go through the review-fixer path first. Structural issues route to the validation-fixer path. If the same validation failure signature survives a prior narrow repair attempt, eforge escalates the next attempt to structural repair. Any manual annotation disables automated repair, and an all-follow-up failure set fails closed without an automated attempt; mixed follow-up plus narrow or structural issues routes according to the remaining automatable issues.
+
+Before each automated validation-provider repair attempt, eforge writes a checkpoint under `.eforge/validation-recovery/<plan-set>/<plan-id>/attempt-<n>-<provider>/` with `checkpoint.patch` and `metadata.json`. The repair prompt references these paths, and the evaluator receives the same validation repair context. Every narrow or structural validation repair is evaluator-mediated: a candidate patch must be judged as a strict improvement before the provider suite reruns.
 
 **Command form**
 
-For gates that reduce to a subprocess exit code, use the `commands` array instead of a `validate` function. Each entry is a whitespace-split command string run via `execFile` in the plan worktree. A non-zero exit code is a recoverable normal validation failure with the command's stderr (or stdout if stderr is empty) as the message. Shell interpretation, quoted arguments, env-var expansion, redirects, and pipes are not supported; use the function form when you need those features.
+For gates that reduce to a subprocess exit code, use the `commands` array instead of a `validate` function. Each entry is a whitespace-split command string run via `execFile` in the plan worktree. A non-zero exit code is a recoverable generic subprocess failure with the command's stderr (or stdout if stderr is empty) as the message. Command-form providers cannot attach annotations, `repairClass`, `retryGuidance`, `failureKind`, or `metadata`; use the function form when you need structured guidance. Shell interpretation, quoted arguments, env-var expansion, redirects, and pipes are not supported; use the function form when you need those features.
 
 **Failure semantics and timeout**
 
@@ -417,7 +429,7 @@ The runtime emits the following events during validation provider execution:
 
 - `extension:validation-provider:start` — provider invocation has begun.
 - `extension:validation-provider:complete` — provider completed with a passed or skipped outcome; carries `status`.
-- `extension:validation-provider:error` — provider completed with a failed outcome; carries provider name and error message. This includes recoverable normal failures (legacy string returns, structured failed results, and command-form non-zero exits) as well as hard exception/rejection and unexpected-return-shape failures.
+- `extension:validation-provider:error` — provider completed with a failed outcome; carries provider name and error message. This includes recoverable normal failures (structured failed results and command-form non-zero exits) as well as hard exception/rejection, non-empty string return, and unexpected-return-shape failures.
 - `extension:validation-provider:timeout` — provider exceeded `validationProviderTimeoutMs`; carries the provider name and elapsed milliseconds. Timeouts are hard failures that bypass recovery.
 
 **Management output**

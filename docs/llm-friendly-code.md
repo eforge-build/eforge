@@ -14,6 +14,8 @@ This policy applies to all implementation files in the eforge monorepo. Its goal
 
 Run `pnpm maintainability:check` to validate the repository against these caps.
 
+When a file-size failure occurs, treat it as a structural maintainability problem. Prefer extracting cohesive helpers, splitting modules, or moving tests/fixtures into focused files. Do not use comment shortening, dense formatting, or other line shaving as the primary repair strategy.
+
 ## Legacy Baseline
 
 `scripts/agent-maintainability-baseline.json` lists all files that currently exceed the cap, together with a `noGrowthCeiling` equal to their line count at the time they were baselined. The ratchet script enforces two things:

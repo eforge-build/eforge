@@ -283,9 +283,10 @@ export interface EforgeExtensionAPI {
    * Providers are **fail-closed quality gates**. Normal validation failures — a
    * {@link ValidationProviderResult} with `status: 'failed'` or a command-form
    * non-zero exit — enter bounded in-plan recovery before terminal failure.
-   * Recovery uses the plan's review-fixer /
-   * evaluator path and is limited by the `review.maxRounds` budget; after each
-   * recovery attempt, eforge reruns the provider suite from the first provider.
+   * Recovery is limited by the `review.maxRounds` budget. Narrow or unspecified
+   * structured failures use the review-fixer path first; structural failures use
+   * the validation-fixer path. Every automated validation repair is evaluator-gated,
+   * and after each recovery attempt eforge reruns the provider suite from the first provider.
    * Unresolved recoverable failures still emit `plan:build:failed` and halt the
    * current plan.
    *
@@ -295,7 +296,7 @@ export interface EforgeExtensionAPI {
    *
    * Prefer structured annotations on failed results when possible. File/line,
    * fix, retry guidance, repair class, provider failure kind, and JSON-safe
-   * metadata give the recovery agent precise repair targets without parsing prose.
+   * metadata give the recovery agent precise repair targets and routing hints without parsing prose.
    *
    * Each provider spec must supply exactly one of:
    * - `validate`: an async function receiving `(planOutputDir, ctx?)` — return

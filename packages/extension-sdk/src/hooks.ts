@@ -455,7 +455,9 @@ export interface ReviewerPerspectiveSpec {
  * Use this form when you need to report a status explicitly (including
  * `'skipped'`) or attach structured annotations to the build output.
  *
- * Structured `annotations` give recovery precise file/line repair targets.
+ * Structured `annotations` give recovery precise file/line repair targets plus
+ * optional guidance fields such as `fix`, `retryGuidance`, `failureKind`,
+ * `repairClass`, and JSON-safe `metadata`.
  */
 export type ValidationRepairClass = 'narrow' | 'structural' | 'manual' | 'followup';
 
@@ -521,8 +523,9 @@ type ValidationProviderReturn =
  *
  * A provider is a **fail-closed quality gate**. Normal failures (`status: 'failed'`
  * or command-form non-zero exits) enter bounded recovery before terminal failure.
- * Hard failures (throws/rejections, timeouts, non-empty strings, unexpected shapes)
- * bypass recovery. Structured annotations improve recovery precision.
+ * Command-form failures are generic subprocess failures; function-form annotations
+ * can route narrow, structural, manual, or follow-up recovery. Hard failures
+ * (throws/rejections, timeouts, non-empty strings, unexpected shapes) bypass recovery.
  *
  * @remarks Runtime-supported. Providers execute inside the built-in `validate`
  * build stage, bounded by `extensions.validationProviderTimeoutMs` (falls back
@@ -573,8 +576,8 @@ export interface ValidationProviderSpec {
    * Shell commands to run in the plan worktree, one per entry. Each command is
    * split on whitespace into `[executable, ...args]` and run via `execFile`
    * (no shell interpretation — quoted args, env-var expansion, redirects, and
-   * pipes are not supported). A non-zero exit code is a recoverable normal
-   * failure using stderr (or stdout if stderr is empty) as the message.
+   * pipes are not supported). A non-zero exit code is a recoverable generic
+   * subprocess failure using stderr (or stdout if stderr is empty) as the message.
    *
    * Mutually exclusive with `validate`. Provide exactly one.
    */

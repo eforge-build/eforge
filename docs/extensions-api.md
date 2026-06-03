@@ -36,12 +36,13 @@ export default defineEforgeExtension((eforge) => {
 
 ## Configuration fields
 
-Policy gate runtime behavior is controlled by native extension config:
+Policy gate and validation-provider runtime behavior is controlled by native extension config:
 
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `extensions.policyGateTimeoutMs` | inherits `extensions.eventHookTimeoutMs` | Timeout in milliseconds for each `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` handler. Must be a positive integer. |
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
+| `extensions.validationProviderTimeoutMs` | inherits `extensions.eventHookTimeoutMs` | Timeout in milliseconds for each validation-provider function invocation or command. Must be a positive integer. |
 
 ---
 
@@ -617,20 +618,19 @@ interface ValidationProviderSpec {
    *
    * Return values:
    * - `null` or `undefined` — passed
-   * - non-empty `string` — recoverable failed gate (the string is the failure message)
    * - `ValidationProviderResult` — explicit structured outcome; `status: 'failed'`
-   *   is recoverable before terminal failure, and annotations improve file/line targeting
+   *   is recoverable before terminal failure, and annotations improve recovery targeting
    *
-   * Throwing/rejecting, timing out, or returning an unexpected shape is a hard
-   * failure that bypasses recovery.
+   * Throwing/rejecting, timing out, returning a non-empty string, or returning
+   * an unexpected shape is a hard failure that bypasses recovery.
    *
    * Mutually exclusive with `commands`. Provide exactly one.
    */
   validate?: (
     planOutputDir: string,
     context?: ValidationProviderContext,
-  ) => Promise<string | null | undefined | ValidationProviderResult>
-     | string | null | undefined | ValidationProviderResult;
+  ) => Promise<null | undefined | ValidationProviderResult>
+     | null | undefined | ValidationProviderResult;
 
   /**
    * Command form: shell commands to run in the plan worktree, one per entry.
@@ -638,8 +638,8 @@ interface ValidationProviderSpec {
    * Each command string is split on whitespace into `[executable, ...args]`
    * and run via `execFile` (no shell interpretation — quoted args, env-var
    * expansion, redirects, and pipes are not supported). A non-zero exit code
-   * is a recoverable failed gate using the command's stderr (or stdout if stderr
-   * is empty) as the failure message.
+   * is a recoverable generic subprocess failure using the command's stderr
+   * (or stdout if stderr is empty) as the failure message.
    *
    * Mutually exclusive with `validate`. Provide exactly one.
    */
@@ -668,6 +668,20 @@ interface ValidationProviderContext {
 }
 ```
 
+**`ValidationRepairClass` and metadata:**
+
+```ts
+type ValidationRepairClass = 'narrow' | 'structural' | 'manual' | 'followup';
+type ValidationJsonPrimitive = string | number | boolean | null;
+type ValidationJsonValue =
+  | ValidationJsonPrimitive
+  | ValidationJsonValue[]
+  | { [key: string]: ValidationJsonValue };
+type ValidationProviderMetadata = Record<string, ValidationJsonValue>;
+```
+
+Metadata values must be JSON-safe primitives, arrays, or objects. Keep metadata small and factual so repair agents can use it without parsing prose.
+
 **`ValidationProviderResult`:**
 
 ```ts
@@ -679,14 +693,25 @@ interface ValidationProviderResult {
   /** Optional extended details (e.g. full command output). */
   details?: string;
   /** Optional structured annotations for individual files. */
-  annotations?: Array<{
-    severity: 'info' | 'warning' | 'error';
-    message: string;
-    file?: string;
-    line?: number;
-  }>;
+  annotations?: ValidationProviderAnnotation[];
+}
+
+interface ValidationProviderAnnotation {
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  file?: string;
+  line?: number;
+  details?: string;
+  fix?: string;
+  retryGuidance?: string;
+  /** Provider-authored domain failure signature; runtime failures use a separate classification. */
+  failureKind?: string;
+  repairClass?: ValidationRepairClass;
+  metadata?: ValidationProviderMetadata;
 }
 ```
+
+Use `repairClass: 'narrow'` or omit it for localized fixes. Use `repairClass: 'structural'` for extraction, file splitting, or broader code organization changes. Use `manual` when the provider should fail closed without automated repair. Use `followup` for findings that should only fail closed when every remaining issue is follow-up-only; mixed follow-up plus automatable issues route according to the narrow/structural guidance.
 
 **Worked example:**
 
@@ -698,13 +723,24 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
   eforge.registerValidationProvider({
     name: 'type-check-gate',
     description: 'Runs TypeScript type checking and fails the plan on type errors.',
-    validate: async (planOutputDir, ctx): Promise<ValidationProviderResult | string | null> => {
+    validate: async (planOutputDir, ctx): Promise<ValidationProviderResult | null> => {
       const result = await ctx!.exec.run('pnpm', ['type-check'], { cwd: planOutputDir });
       if (result.exitCode !== 0) {
+        const output = result.stderr.trim() || result.stdout.trim();
         return {
           status: 'failed',
           message: 'TypeScript type checking failed',
-          details: result.stderr.trim() || result.stdout.trim(),
+          details: output,
+          annotations: [{
+            severity: 'error',
+            message: 'TypeScript diagnostics must be resolved before review can continue.',
+            details: output,
+            fix: 'Run pnpm type-check locally and fix the reported TypeScript errors.',
+            retryGuidance: 'Make the smallest type-safe change that resolves the diagnostic.',
+            failureKind: 'typescript-diagnostics',
+            repairClass: 'narrow',
+            metadata: { command: 'pnpm type-check' },
+          }],
         };
       }
       return null; // passed
@@ -720,17 +756,21 @@ export default function validationProviders(eforge: EforgeExtensionAPI): void {
 }
 ```
 
-**Failure semantics and timeout:**
+**Failure semantics, recovery, and timeout:**
 
-Providers are fail-closed gates. Normal validation failures — legacy non-empty string returns, structured `{ status: 'failed' }` results, and command-form non-zero exits — enter bounded in-plan recovery before terminal failure. Recovery uses the plan's review-fixer/evaluator path and the `review.maxRounds` budget. After each recovery attempt, eforge reruns the provider suite from the first provider. If recoverable failures remain unresolved when the budget is exhausted, the current plan fails and emits `plan:build:failed`.
+Providers are fail-closed gates. Normal validation failures — structured `{ status: 'failed' }` results and command-form non-zero exits — enter bounded in-plan recovery before terminal failure. Recovery uses the `review.maxRounds` budget and reruns the provider suite from the first provider after each recovery attempt. If recoverable failures remain unresolved when the budget is exhausted, the current plan fails and emits `plan:build:failed`.
 
-Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions/rejections, provider timeouts, and unexpected return shapes. The timeout is controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`). Structured annotations on failed results improve recovery precision by giving the repair agent file/line targets.
+Structured annotations are normalized into review issues. Narrow or unspecified annotations go through the review-fixer path first. Structural annotations route to the validation-fixer path. If the same validation failure signature survives a prior narrow repair attempt, eforge escalates the next attempt to structural repair. Any manual annotation disables automated repair, and an all-follow-up failure set fails closed without automated repair; mixed follow-up plus narrow or structural issues routes according to the remaining automatable issues. Before each automated repair attempt, eforge writes `.eforge/validation-recovery/<plan-set>/<plan-id>/attempt-<n>-<provider>/checkpoint.patch` and `metadata.json`; the repair prompt and evaluator both receive those checkpoint references. Every narrow or structural validation repair is evaluator-mediated before the provider suite reruns.
+
+Command-form failures are recoverable but generic: the command output becomes the message, with no annotations, `repairClass`, `retryGuidance`, `failureKind`, or `metadata`. Use function form when a provider can supply structured repair guidance.
+
+Hard provider failures bypass recovery and emit terminal `plan:build:failed` immediately: thrown exceptions/rejections, provider timeouts, non-empty string returns, and unexpected return shapes. The timeout is controlled by `extensions.validationProviderTimeoutMs` (falls back to `extensions.eventHookTimeoutMs`).
 
 **Runtime events:**
 
 - `extension:validation-provider:start` — provider invocation has begun.
 - `extension:validation-provider:complete` — provider completed with a passed or skipped outcome; carries `status`.
-- `extension:validation-provider:error` — provider completed with a failed outcome; carries provider name and error message. This includes recoverable normal failures (legacy string returns, structured failed results, and command-form non-zero exits) as well as hard exception/rejection and unexpected-return-shape failures.
+- `extension:validation-provider:error` — provider completed with a failed outcome; carries provider name and error message. This includes recoverable normal failures (structured failed results and command-form non-zero exits) as well as hard exception/rejection, non-empty string return, and unexpected-return-shape failures.
 - `extension:validation-provider:timeout` — timeout exceeded; carries provider name and elapsed milliseconds. This is a hard failure that bypasses recovery.
 
 **Runtime status:** registration is captured at load time. Providers execute at runtime during the per-plan `validate` build stage. See [`examples/extensions/validation-provider.ts`](../examples/extensions/validation-provider.ts) for a worked example with both function-form and command-form providers.

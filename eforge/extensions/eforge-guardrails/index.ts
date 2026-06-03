@@ -2,7 +2,8 @@ import type {
   AgentRunContext,
   EforgeExtensionAPI,
   ValidationProviderResult,
-} from '../../packages/extension-sdk/src/index';
+} from '../../../packages/extension-sdk/src/index';
+import { parseMaintainabilityOutput } from './maintainability-parser.js';
 
 const BUILD_ROLES = new Set([
   'builder',
@@ -20,6 +21,8 @@ const BUILD_STAGES = new Set([
   'implement',
   'review',
   'review-fix',
+  'validate',
+  'validate-repair',
   'evaluate',
   'test',
   'test-write',
@@ -183,12 +186,10 @@ Return findings as critical / warning / suggestion. If no issue is found, explic
       });
 
       if (result.exitCode !== 0) {
-        const output = result.stderr.trim() || result.stdout.trim();
-        return {
-          status: 'failed',
-          message: `Agent maintainability check failed:\n${output}`,
-          details: output,
-        };
+        const output = [result.stderr.trim(), result.stdout.trim()]
+          .filter((part) => part.length > 0)
+          .join('\n');
+        return parseMaintainabilityOutput(output);
       }
 
       return {
