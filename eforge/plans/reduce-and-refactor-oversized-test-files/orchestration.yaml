@@ -1,0 +1,204 @@
+name: reduce-and-refactor-oversized-test-files
+description: Reduce all currently over-1,000-line test files by splitting suites
+  along logical boundaries, preserving assertions, and removing stale test
+  maintainability baseline entries after refactors land.
+base_branch: main
+mode: excursion
+validate:
+  - find . \( -path './node_modules' -o -path './dist' -o -path './.git' \)
+    -prune -o -name '*.test.ts' -print0 | xargs -0 wc -l | awk '$2 != "total" &&
+    $1 > 1000 { found=1; print } END { exit found }'
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-client-event-tests
+    name: Split Client Event Schema and Wire Parity Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-01-client-event-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The client event schema file is the largest test file in the repo and
+          requires careful movement of many event-domain suites without
+          weakening schema coverage.
+  - id: plan-02-agent-retry-pipeline-tests
+    name: Split Agent Wiring, Retry, and Pipeline Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-02-agent-retry-pipeline-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Three large orchestration-adjacent suites share StubHarness and
+          pipeline helpers, so the refactor must preserve harness inputs and
+          retry event assertions across moved files.
+  - id: plan-03-recovery-orchestration-resume-tests
+    name: Split Recovery, Orchestration, and Resume Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-03-recovery-orchestration-resume-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Recovery and resume tests contain integration-style setup, sidecar
+          assertions, and deterministic verdict paths that require careful
+          helper extraction without changing engine behavior.
+  - id: plan-04-config-profile-tests
+    name: Split Config and Profile Wiring Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-04-config-profile-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-05-playbook-session-tests
+    name: Split Playbook and Session Plan Route Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-05-playbook-session-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-06-extension-tooling-tests
+    name: Split Extension Tooling Route and Wiring Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-06-extension-tooling-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-07-monitor-queue-tests
+    name: Split Monitor Reducer and Queue Scheduler Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-07-monitor-queue-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-08-landing-stack-tests
+    name: Split Landing Action and Stack Runtime Landing Tests
+    depends_on: []
+    branch: reduce-and-refactor-oversized-test-files/plan-08-landing-stack-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-09-maintainability-baseline
+    name: Remove Stale Test Baseline Entries and Run Final Gates
+    depends_on:
+      - plan-01-client-event-tests
+      - plan-02-agent-retry-pipeline-tests
+      - plan-03-recovery-orchestration-resume-tests
+      - plan-04-config-profile-tests
+      - plan-05-playbook-session-tests
+      - plan-06-extension-tooling-tests
+      - plan-07-monitor-queue-tests
+      - plan-08-landing-stack-tests
+    branch: reduce-and-refactor-oversized-test-files/plan-09-maintainability-baseline
+    build:
+      - implement
+      - validate
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - verify
+      maxRounds: 1
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - test
+      - code
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a broad but cohesive test-only refactor, so excursion is
+    appropriate: a single planner can enumerate the split strategy and
+    dependencies without expedition module planning. plan-review-cycle is
+    included because the work spans many large suites and preservation of
+    coverage matters. The build runs implement, then validate so the registered
+    maintainability gate executes before review, followed by review-cycle for
+    assertion-preservation and refactor quality, and test-cycle to run/diagnose
+    the required targeted validation. Review uses focused test and code
+    perspectives with standard strictness because the main risks are lost
+    coverage, bad test discovery, and overly opaque helper extraction, not API
+    or security changes."
+diff_base_ref: 2d272e2c0875c64b62b3b9e649cbf70d20ada279
