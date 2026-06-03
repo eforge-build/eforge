@@ -184,6 +184,35 @@ describe('queued recovery continuation compile selection', () => {
     expect(calls[0]?.worktreeBaseRefOverride).toBeUndefined();
   });
 
+  it('does not infer stack metadata for recovery continuations when global stacking is enabled', async () => {
+    const dir = makeTempDir();
+    initRepo(dir);
+    createPreservedFeatureBranch(dir);
+    const prd = queuedPrd(dir, {
+      title: 'Continuation With Global Stacking',
+      recovery_from: 'failed-prd',
+      recovery_set_name: 'failed-set',
+      recovery_feature_branch: 'eforge/failed-set',
+      recovery_base_branch: 'main',
+    });
+    await mkdir(resolve(dir, '.eforge', 'queue'), { recursive: true });
+    await writeFile(prd.filePath, prd.content, 'utf-8');
+
+    const engine = await EforgeEngine.create({
+      cwd: dir,
+      agentRuntimes: new StubHarness([]),
+      config: { stacking: { enabled: true } },
+    });
+    const calls: Partial<CompileOptions>[] = [];
+    installCompileRecorder(engine, dir, calls);
+
+    const events = await collect(engine.buildSinglePrd(prd, {}));
+
+    expect(events.some((event) => event.type === 'plan:error:set' && event.error === 'Recovery continuation PRD cannot also use stack metadata')).toBe(false);
+    expect(calls[0]?.baseBranchOverride).toBe('main');
+    expect(calls[0]?.worktreeBaseRefOverride).toBe('eforge/failed-set');
+  });
+
   it('fails stacked PRDs with recovery continuation metadata before compile', async () => {
     const dir = makeTempDir();
     initRepo(dir);
