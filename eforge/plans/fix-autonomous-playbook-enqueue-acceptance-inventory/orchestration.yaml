@@ -1,0 +1,53 @@
+name: fix-autonomous-playbook-enqueue-acceptance-inventory
+description: Fix autonomous playbook enqueue so queued PRDs include canonical
+  acceptance criteria inventory blocks before queue execution.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm exec vitest run test/playbook-api-run-profile.test.ts
+    test/playbook-api-run-landing-auto-merge.test.ts
+plans:
+  - id: plan-01-playbook-inventory
+    name: Persist Playbook Acceptance Inventory
+    depends_on: []
+    branch: fix-autonomous-playbook-enqueue-acceptance-inventory/plan-01-playbook-inventory
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused multi-file bugfix spanning the monitor playbook
+    route, engine enqueue preparation, and targeted tests, so excursion is
+    appropriate. A plan review is included to protect the engine/daemon boundary
+    and fail-closed validation behavior. The build writes or updates tests, runs
+    the registered maintainability validation gate before review, then uses
+    review-cycle plus test-cycle to verify the autonomous enqueue path persists
+    the canonical acceptance criteria inventory while preserving existing route
+    semantics.
+diff_base_ref: 6f411c9f6698ea41283c2ad63143c6954bbe2dda
