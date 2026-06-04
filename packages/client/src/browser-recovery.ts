@@ -17,6 +17,10 @@ import type {
   ResumeBuildResponse,
   ResumeEligibilityRequest,
   ResumeEligibilityResponse,
+  AcceptSuccessPreviewRequest,
+  AcceptSuccessPreviewResponse,
+  AcceptSuccessRequest,
+  AcceptSuccessResponse,
 } from './routes.js';
 
 async function getJson<TResponse>(path: string, init?: RequestInit): Promise<TResponse> {
@@ -67,6 +71,23 @@ export function applySidecarRecovery(
   init?: RequestInit,
 ): Promise<ApplyRecoveryResponse> {
   return postJson<ApplyRecoveryResponse>(API_ROUTES.applyRecovery, body, init);
+}
+
+/** Read-only preview of an accepted-success recovery action for a failed PRD. */
+export function fetchAcceptSuccessPreview(
+  query: AcceptSuccessPreviewRequest,
+  init?: RequestInit,
+): Promise<AcceptSuccessPreviewResponse> {
+  const params = new URLSearchParams({ prdId: query.prdId });
+  return getJson<AcceptSuccessPreviewResponse>(`${API_ROUTES.acceptRecoverySuccessPreview}?${params.toString()}`, init);
+}
+
+/** Accept a failed build as successful, applying cleanup, landing, and unblocking. */
+export function acceptRecoverySuccess(
+  body: AcceptSuccessRequest,
+  init?: RequestInit,
+): Promise<AcceptSuccessResponse> {
+  return postJson<AcceptSuccessResponse>(API_ROUTES.acceptRecoverySuccess, body, init);
 }
 
 /** Queue a compiled-build resume for scheduler dispatch. */

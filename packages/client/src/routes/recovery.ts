@@ -25,14 +25,15 @@ export interface ReadSidecarRequest {
  *
  * Action-discriminated: a `split` marker requires `successorPrdId` (the apply
  * enqueues exactly one successor and idempotent Console UX needs the id);
- * non-split actions do not carry one. `commitSha` is reserved for the
- * `accepted-success` action added by plan-02. The union stays forward compatible
- * with later recovery actions.
+ * `retry`/`abandon` do not carry one. The `accepted-success` action uses its own
+ * rich `AcceptSuccessAppliedSummary` shape (keyed by `acceptedAt`), which is
+ * unioned in below. The union stays forward compatible with later recovery
+ * actions.
  */
 interface RecoveryAppliedMetadataBase {
   /** ISO timestamp when the action was applied. */
   appliedAt: string;
-  /** Commit SHA produced by an `accepted-success` apply (reserved for plan-02). */
+  /** Commit SHA produced by the apply, when one was created. */
   commitSha?: string;
 }
 
@@ -49,12 +50,20 @@ export interface RecoverySplitAppliedMetadata extends RecoveryAppliedMetadataBas
 
 /** Applied marker for non-split verdicts (no successor is enqueued). */
 export interface RecoveryNonSplitAppliedMetadata extends RecoveryAppliedMetadataBase {
-  action: 'retry' | 'abandon' | 'accepted-success';
+  action: 'retry' | 'abandon';
   /** Not used by non-split applies; retained for forward compatibility. */
   successorPrdId?: undefined;
 }
 
-export type RecoveryAppliedMetadata = RecoverySplitAppliedMetadata | RecoveryNonSplitAppliedMetadata;
+/**
+ * Durable applied marker union. `accepted-success` is the rich
+ * `AcceptSuccessAppliedSummary` (keyed by `acceptedAt`, carrying reason / cleanup
+ * / landing / dependents); the other actions use the `appliedAt`-based shapes.
+ */
+export type RecoveryAppliedMetadata =
+  | RecoverySplitAppliedMetadata
+  | RecoveryNonSplitAppliedMetadata
+  | AcceptSuccessAppliedSummary;
 // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 
 /**
@@ -162,3 +171,144 @@ export interface ApplyRecoveryResponse {
   detail?: string;
   // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 }
+
+// --- eforge:region plan-02-accept-success-recovery-backend ---
+/**
+ * Accept-build-as-successful recovery action contracts.
+ *
+ * The accepted-success action is a focused human recovery path for failed PRDs
+ * whose implementation and deterministic checks are acceptable but final PRD or
+ * acceptance validation failed (bad/conflicting/externally-unverifiable
+ * criterion). Preview is read-only; apply mutates only after explicit user
+ * confirmation and reuses the durable sidecar `applied` marker for idempotency.
+ */
+
+/** Reason category required when accepting a failed build as successful. */
+export type AcceptSuccessReasonCategory =
+  | 'bad_acceptance_criterion'
+  | 'manual_verification_passed'
+  | 'external_or_inconclusive_criterion_waived'
+  | 'other';
+
+/** Canonical, ordered list of accepted-success reason categories. */
+export const ACCEPT_SUCCESS_REASON_CATEGORIES: readonly AcceptSuccessReasonCategory[] = [
+  'bad_acceptance_criterion',
+  'manual_verification_passed',
+  'external_or_inconclusive_criterion_waived',
+  'other',
+] as const;
+
+/** Effective landing action applied to the accepted build. */
+export type AcceptSuccessLandingAction = 'pr' | 'merge' | 'leave';
+
+/** GET /api/recover/accept-success/preview query params. */
+export interface AcceptSuccessPreviewRequest {
+  prdId: string;
+}
+
+/** Cleanup effects that an accepted-success apply will produce. */
+export interface AcceptSuccessCleanupEffect {
+  /** Plan set name whose plan files would be cleaned up. */
+  planSet: string;
+  /** True when plan artifact files exist on the feature branch. */
+  planArtifactsPresent: boolean;
+  /** True when the PRD provenance artifact exists on the feature branch. */
+  prdArtifactPresent: boolean;
+  /** True when applying would create a cleanup commit (artifacts present). */
+  willCommit: boolean;
+}
+
+/** Durable audit fields written by an accepted-success apply. */
+export interface AcceptSuccessAuditFields {
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
+  landedCommitCount: number;
+}
+
+/** A direct skipped dependent candidate that may be unblocked on apply. */
+export interface AcceptSuccessDependentCandidate {
+  prdId: string;
+  title: string;
+  /** Remaining `depends_on` after removing the accepted PRD id. */
+  remainingDependencies: string[];
+  /** True when every remaining dependency is already satisfied. */
+  unblockable: boolean;
+  /** Remaining dependency ids that still block this dependent. */
+  blockedBy: string[];
+}
+
+/** Result of the cleanup step of an accepted-success apply. */
+export interface AcceptSuccessCleanupResult {
+  status: 'committed' | 'noop';
+  /** Cleanup commit SHA when `status === 'committed'`. */
+  commitSha?: string;
+}
+
+/** Result of the landing step of an accepted-success apply. */
+export interface AcceptSuccessLandingResult {
+  action: AcceptSuccessLandingAction;
+  status: 'complete' | 'skipped' | 'failed';
+  /** PR URL when `action === 'pr'` and a PR was opened. */
+  prUrl?: string;
+  /** Merge commit SHA when `action === 'merge'` and the merge completed. */
+  mergeCommitSha?: string;
+  /** Feature branch name (always reported for `leave`, best-effort otherwise). */
+  branch?: string;
+  /** Failure/skipped reason when `status` is `failed` or `skipped`. */
+  reason?: string;
+}
+
+/** Result of moving selected skipped dependents back to the queue root. */
+export interface AcceptSuccessDependentResult {
+  /** Dependent ids moved from `skipped/` to the queue root. */
+  unblocked: string[];
+  /** Selected dependent ids that remained blocked by other dependencies. */
+  remainedBlocked: string[];
+  /** Selected ids that were not direct skipped dependents of the accepted PRD. */
+  notFound: string[];
+}
+
+/** Durable accepted-success applied metadata recorded on the recovery sidecar. */
+export interface AcceptSuccessAppliedSummary {
+  action: 'accepted-success';
+  /** ISO timestamp when the build was accepted as successful. */
+  acceptedAt: string;
+  reasonCategory: AcceptSuccessReasonCategory;
+  reason: string;
+  cleanup: AcceptSuccessCleanupResult;
+  landing: AcceptSuccessLandingResult;
+  dependents: AcceptSuccessDependentResult;
+}
+
+/** Response for GET /api/recover/accept-success/preview. */
+export interface AcceptSuccessPreviewResponse {
+  prdId: string;
+  status: 'eligible' | 'ineligible' | 'already-applied';
+  /** Present when `status === 'ineligible'`: human-readable reason. */
+  reason?: string;
+  /** Effective landing action resolved from project configuration. */
+  landingAction: AcceptSuccessLandingAction;
+  cleanup: AcceptSuccessCleanupEffect;
+  audit: AcceptSuccessAuditFields;
+  dependentCandidates: AcceptSuccessDependentCandidate[];
+  /** Present when `status === 'already-applied'`: the recorded apply metadata. */
+  applied?: AcceptSuccessAppliedSummary;
+}
+
+/** POST /api/recover/accept-success request body. */
+export interface AcceptSuccessRequest {
+  prdId: string;
+  reasonCategory: AcceptSuccessReasonCategory;
+  reason: string;
+  /** Selected direct skipped dependent ids to unblock. */
+  unblockDependentIds: string[];
+}
+
+/** Response for POST /api/recover/accept-success. */
+export interface AcceptSuccessResponse {
+  prdId: string;
+  status: 'applied' | 'already-applied';
+  applied: AcceptSuccessAppliedSummary;
+}
+// --- eforge:endregion plan-02-accept-success-recovery-backend ---

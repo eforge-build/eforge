@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 54 for durable recovery applied metadata wire contract', () => {
-    expect(DAEMON_API_VERSION).toBe(54);
+  it('is 55 for accepted-success recovery routes', () => {
+    expect(DAEMON_API_VERSION).toBe(55);
   });
 });

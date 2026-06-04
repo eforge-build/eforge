@@ -157,6 +157,17 @@ export { apiReadRecoverySidecar, apiReadRecoverySidecarIfRunning } from './api/r
 
 export { apiApplyRecovery, apiApplyRecoveryIfRunning } from './api/apply-recovery.js';
 
+export {
+  apiAcceptRecoverySuccessPreview, apiAcceptRecoverySuccessPreviewIfRunning,
+  apiAcceptRecoverySuccess, apiAcceptRecoverySuccessIfRunning,
+} from './api/accept-recovery-success.js';
+export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes.js';
+export type {
+  AcceptSuccessReasonCategory, AcceptSuccessLandingAction, AcceptSuccessPreviewRequest, AcceptSuccessCleanupEffect,
+  AcceptSuccessAuditFields, AcceptSuccessDependentCandidate, AcceptSuccessCleanupResult, AcceptSuccessLandingResult,
+  AcceptSuccessDependentResult, AcceptSuccessAppliedSummary, AcceptSuccessPreviewResponse, AcceptSuccessRequest, AcceptSuccessResponse,
+} from './routes.js';
+
 export type {
   QueueRecoveryStrategy,
   QueueRecoveryStrategyWire,

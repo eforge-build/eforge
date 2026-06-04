@@ -11,16 +11,24 @@
  * and are atomic via write-to-temp-then-rename.
  */
 
-import { readFile, writeFile, rename } from 'node:fs/promises';
-import type { RecoveryAppliedMetadata } from '@eforge-build/client';
+import { readFile, writeFile, rename, open } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import type {
+  RecoveryAppliedMetadata,
+  AcceptSuccessAppliedSummary,
+  AcceptSuccessReasonCategory,
+} from '@eforge-build/client';
+import { ACCEPT_SUCCESS_REASON_CATEGORIES } from '@eforge-build/client';
 
-export type { RecoveryAppliedMetadata };
+export type { RecoveryAppliedMetadata, AcceptSuccessAppliedSummary };
 
+// `accepted-success` is intentionally excluded: it uses the rich
+// `AcceptSuccessAppliedSummary` shape (keyed by `acceptedAt`) parsed by
+// `parseAcceptSuccessAppliedMetadata`, not this `appliedAt`-based base parser.
 const VALID_ACTIONS = new Set<RecoveryAppliedMetadata['action']>([
   'retry',
   'split',
   'abandon',
-  'accepted-success',
 ]);
 
 /**
@@ -49,7 +57,7 @@ export function parseRecoveryAppliedMetadata(value: unknown): RecoveryAppliedMet
     };
   }
   return {
-    action: action as 'retry' | 'abandon' | 'accepted-success',
+    action: action as 'retry' | 'abandon',
     appliedAt: obj.appliedAt,
     ...(commitSha !== undefined && { commitSha }),
   };
@@ -99,3 +107,149 @@ export async function writeRecoveryAppliedMetadata(
   await writeFile(tmp, content, 'utf-8');
   await rename(tmp, sidecarJsonPath);
 }
+
+// --- eforge:region plan-02-accept-success-recovery-backend ---
+
+const ACCEPT_SUCCESS_REASON_CATEGORY_SET = new Set<AcceptSuccessReasonCategory>(
+  ACCEPT_SUCCESS_REASON_CATEGORIES,
+);
+
+function isReasonCategory(value: unknown): value is AcceptSuccessReasonCategory {
+  return typeof value === 'string' && ACCEPT_SUCCESS_REASON_CATEGORY_SET.has(value as AcceptSuccessReasonCategory);
+}
+
+/**
+ * Read the raw `applied.action` string from a recovery sidecar without
+ * validating the rest of the marker. Returns `undefined` when the file is
+ * missing, unreadable, malformed JSON, or has no `applied.action` string.
+ *
+ * Used to detect the presence of *any* applied marker — including malformed or
+ * non-accepted-success markers that the strict parsers reject — so an
+ * accepted-success apply never silently overwrites another recovery action's
+ * audit record.
+ */
+export async function readRawAppliedAction(
+  sidecarJsonPath: string,
+): Promise<string | undefined> {
+  let raw: string;
+  try {
+    raw = await readFile(sidecarJsonPath, 'utf-8');
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return undefined;
+  const applied = (parsed as Record<string, unknown>).applied;
+  if (typeof applied !== 'object' || applied === null) return undefined;
+  const action = (applied as Record<string, unknown>).action;
+  return typeof action === 'string' ? action : undefined;
+}
+
+/**
+ * Validate and narrow an unknown value into the rich `accepted-success` applied
+ * metadata recorded by an accepted-success apply. Returns `undefined` for any
+ * value that is not a well-formed accepted-success marker so callers can treat a
+ * malformed or non-accepted-success marker as absent.
+ */
+export function parseAcceptSuccessAppliedMetadata(value: unknown): AcceptSuccessAppliedSummary | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const obj = value as Record<string, unknown>;
+  if (obj.action !== 'accepted-success') return undefined;
+  if (typeof obj.acceptedAt !== 'string' || obj.acceptedAt.length === 0) return undefined;
+  if (!isReasonCategory(obj.reasonCategory)) return undefined;
+  if (typeof obj.reason !== 'string' || obj.reason.trim().length === 0) return undefined;
+
+  const cleanup = obj.cleanup as Record<string, unknown> | undefined;
+  if (!cleanup || (cleanup.status !== 'committed' && cleanup.status !== 'noop')) return undefined;
+
+  const landing = obj.landing as Record<string, unknown> | undefined;
+  if (!landing || (landing.action !== 'pr' && landing.action !== 'merge' && landing.action !== 'leave')) return undefined;
+  if (landing.status !== 'complete' && landing.status !== 'skipped' && landing.status !== 'failed') return undefined;
+
+  const dependents = obj.dependents as Record<string, unknown> | undefined;
+  const asStringArray = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  if (!dependents) return undefined;
+
+  return {
+    action: 'accepted-success',
+    acceptedAt: obj.acceptedAt,
+    reasonCategory: obj.reasonCategory,
+    reason: obj.reason,
+    cleanup: {
+      status: cleanup.status,
+      ...(typeof cleanup.commitSha === 'string' && cleanup.commitSha.length > 0 ? { commitSha: cleanup.commitSha } : {}),
+    },
+    landing: {
+      action: landing.action,
+      status: landing.status,
+      ...(typeof landing.prUrl === 'string' ? { prUrl: landing.prUrl } : {}),
+      ...(typeof landing.mergeCommitSha === 'string' ? { mergeCommitSha: landing.mergeCommitSha } : {}),
+      ...(typeof landing.branch === 'string' ? { branch: landing.branch } : {}),
+      ...(typeof landing.reason === 'string' ? { reason: landing.reason } : {}),
+    },
+    dependents: {
+      unblocked: asStringArray(dependents.unblocked),
+      remainedBlocked: asStringArray(dependents.remainedBlocked),
+      notFound: asStringArray(dependents.notFound),
+    },
+  };
+}
+
+/**
+ * Read the rich `accepted-success` applied metadata from a recovery sidecar JSON
+ * file. Returns `undefined` when the file is missing, unreadable, malformed, or
+ * has no valid accepted-success marker.
+ */
+export async function readAcceptSuccessAppliedMetadata(
+  sidecarJsonPath: string,
+): Promise<AcceptSuccessAppliedSummary | undefined> {
+  let raw: string;
+  try {
+    raw = await readFile(sidecarJsonPath, 'utf-8');
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return undefined;
+  return parseAcceptSuccessAppliedMetadata((parsed as Record<string, unknown>).applied);
+}
+
+/**
+ * Write (or overwrite) the rich `accepted-success` applied marker on a recovery
+ * sidecar JSON file, preserving all existing fields. Atomic via temp-file rename.
+ *
+ * Throws if the sidecar does not exist or is not valid JSON — the marker is only
+ * written after an accepted-success apply, at which point the sidecar is known to
+ * be present and well-formed.
+ */
+export async function writeAcceptSuccessAppliedMetadata(
+  sidecarJsonPath: string,
+  applied: AcceptSuccessAppliedSummary,
+): Promise<void> {
+  const raw = await readFile(sidecarJsonPath, 'utf-8');
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  parsed.applied = applied;
+  const content = JSON.stringify(parsed, null, 2) + '\n';
+  // Write to a randomly-named sibling opened with exclusive-create semantics
+  // (O_CREAT|O_EXCL, mode 0600) so a pre-existing file or symlink at the temp
+  // path is never followed, then rename atomically onto the sidecar.
+  const tmp = `${sidecarJsonPath}.${randomBytes(8).toString('hex')}.tmp`;
+  const handle = await open(tmp, 'wx', 0o600);
+  try {
+    await handle.writeFile(content, 'utf-8');
+  } finally {
+    await handle.close();
+  }
+  await rename(tmp, sidecarJsonPath);
+}
+// --- eforge:endregion plan-02-accept-success-recovery-backend ---

@@ -22,17 +22,22 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
   yield { timestamp: new Date().toISOString(), type: 'cleanup:start', planSet };
 
   try {
-    const planDir = resolve(cwd, outputDir, planSet);
-    await retryOnLock(() => exec('git', ['rm', '-r', '--', planDir], { cwd }), cwd);
-
-    // Remove empty output directory
-    const plansDir = resolve(cwd, outputDir);
+    // Plan-directory removal is independent of PRD artifact removal: a missing
+    // plan directory (already removed, or never created) must not prevent the
+    // PRD provenance artifact below from being removed and committed.
     try {
-      const remaining = await readdir(plansDir);
-      if (remaining.length === 0) {
-        await rm(plansDir, { recursive: true });
-      }
-    } catch { /* may already be gone */ }
+      const planDir = resolve(cwd, outputDir, planSet);
+      await retryOnLock(() => exec('git', ['rm', '-r', '--', planDir], { cwd }), cwd);
+
+      // Remove empty output directory
+      const plansDir = resolve(cwd, outputDir);
+      try {
+        const remaining = await readdir(plansDir);
+        if (remaining.length === 0) {
+          await rm(plansDir, { recursive: true });
+        }
+      } catch { /* may already be gone */ }
+    } catch { /* plan directory absent or already removed — continue to PRD removal */ }
 
     // Also remove PRD file when provided
     if (prdFilePath) {

@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { parseWithSchema, type QueueItem } from '@eforge-build/client';
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
-import { parseRecoveryAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
+import { parseRecoveryAppliedMetadata, parseAcceptSuccessAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
 
 export function parseQueueFrontmatter(content: string): Record<string, unknown> | null {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -65,7 +65,10 @@ function parseRecoverySidecarProjection(raw: string): RecoverySidecarProjection 
     const parsed = parseWithSchema(recoveryVerdictSchema, sidecarData.verdict);
     projection.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
   }
-  const applied = parseRecoveryAppliedMetadata(sidecarData?.applied);
+  // Prefer the rich accepted-success marker (keyed by `acceptedAt`); fall back to
+  // the base `appliedAt`-keyed retry/split/abandon marker.
+  const applied = parseAcceptSuccessAppliedMetadata(sidecarData?.applied)
+    ?? parseRecoveryAppliedMetadata(sidecarData?.applied);
   if (applied !== undefined) projection.recoveryApplied = applied;
   return projection;
 }
