@@ -16,7 +16,12 @@ import type {
   DiffResponse,
   SessionMetadata,
 } from '../types.js';
-import type { EnqueueRequest } from '../routes.js';
+import type {
+  EnqueueRequest,
+  QueuePriorityRequest,
+  QueuePriorityResponse,
+  QueueRemoveResponse,
+} from '../routes.js';
 
 export function apiEnqueue(opts: { cwd: string; body: EnqueueRequest }) {
   return daemonRequest<EnqueueResponse>(opts.cwd, 'POST', API_ROUTES.enqueue, opts.body);
@@ -48,6 +53,40 @@ export function apiGetQueue(opts: { cwd: string }) {
 
 export function apiGetQueueIfRunning(opts: { cwd: string }) {
   return daemonRequestIfRunning<QueueItem[]>(opts.cwd, 'GET', API_ROUTES.queue);
+}
+
+export function apiUpdateQueuePriority(opts: { cwd: string; prdId: string; priority: number }) {
+  return daemonRequest<QueuePriorityResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queuePriority, { prdId: opts.prdId }),
+    { priority: opts.priority } satisfies QueuePriorityRequest,
+  );
+}
+
+export function apiUpdateQueuePriorityIfRunning(opts: { cwd: string; prdId: string; priority: number }) {
+  return daemonRequestIfRunning<QueuePriorityResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queuePriority, { prdId: opts.prdId }),
+    { priority: opts.priority } satisfies QueuePriorityRequest,
+  );
+}
+
+export function apiRemoveQueueItem(opts: { cwd: string; prdId: string }) {
+  return daemonRequest<QueueRemoveResponse>(
+    opts.cwd,
+    'DELETE',
+    buildPath(API_ROUTES.queueRemove, { prdId: opts.prdId }),
+  );
+}
+
+export function apiRemoveQueueItemIfRunning(opts: { cwd: string; prdId: string }) {
+  return daemonRequestIfRunning<QueueRemoveResponse>(
+    opts.cwd,
+    'DELETE',
+    buildPath(API_ROUTES.queueRemove, { prdId: opts.prdId }),
+  );
 }
 
 export function apiGetRuns(opts: { cwd: string }) {

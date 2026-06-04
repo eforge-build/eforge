@@ -1,5 +1,5 @@
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/eforge/src/cli/index.ts -->
+<!-- Source: packages/eforge/src/cli/index.ts, packages/eforge/src/cli/queue-control.ts -->
 
 # eforge CLI Reference
 
@@ -85,6 +85,20 @@ Check running builds
 **Full command:** `eforge queue`
 
 Manage PRD queue
+
+
+#### `priority`
+
+**Full command:** `eforge queue priority`
+
+Update the priority for a pending or waiting PRD queue item
+
+
+#### `remove`
+
+**Full command:** `eforge queue remove`
+
+Remove a non-running PRD queue item
 
 
 #### `list`

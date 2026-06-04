@@ -19,6 +19,9 @@ import { registerPlaybookCommand } from './playbook.js';
 import { registerExtensionContributionCommands } from './extension-contributions.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
+// --- eforge:region host-queue-controls ---
+import { registerQueueControlCommands } from './queue-control.js';
+// --- eforge:endregion host-queue-controls ---
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
 import {
   readLockfile,
@@ -765,6 +768,10 @@ export function createProgram(abortController?: AbortController, version?: strin
   const queue = program
     .command('queue')
     .description('Manage PRD queue');
+
+  // --- eforge:region host-queue-controls ---
+  registerQueueControlCommands(queue);
+  // --- eforge:endregion host-queue-controls ---
 
   queue
     .command('list')

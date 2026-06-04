@@ -813,6 +813,7 @@ export type QueuedPrdFrontmatterFieldValue = string | number | boolean | string[
 export async function setQueuedPrdFrontmatterFields(
   prd: QueuedPrd,
   fields: Record<string, QueuedPrdFrontmatterFieldValue>,
+  options: { existingOnly?: boolean } = {},
 ): Promise<QueuedPrd> {
   const content = prd.content;
   const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)([\s\S]*)$/);
@@ -844,8 +845,18 @@ export async function setQueuedPrdFrontmatterFields(
     throw new Error(`Invalid PRD frontmatter after update: ${z.prettifyError(parseResult.error)}`);
   }
 
-  await writeFile(prd.filePath, newContent, 'utf-8');
+  await (options.existingOnly ? writeExistingFile(prd.filePath, newContent) : writeFile(prd.filePath, newContent, 'utf-8'));
   return { ...prd, content: newContent, frontmatter: parseResult.data };
+}
+
+export function setQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fields: Record<string, QueuedPrdFrontmatterFieldValue>): Promise<QueuedPrd> {
+  return setQueuedPrdFrontmatterFields(prd, fields, { existingOnly: true });
+}
+
+async function writeExistingFile(filePath: string, content: string): Promise<void> {
+  const fd = await open(filePath, 'r+');
+  try { await fd.truncate(0); await fd.writeFile(content, 'utf-8'); }
+  finally { await fd.close(); }
 }
 
 function serializeFrontmatterFieldValue(value: QueuedPrdFrontmatterFieldValue): string {

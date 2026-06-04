@@ -18,6 +18,7 @@ import { selectNowSpendPanel } from '@/lib/selectors/spend';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
 import { toConsolePath } from '@/lib/navigation';
+import { removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
 
 // ---------------------------------------------------------------------------
 // Attention partitioning
@@ -95,6 +96,24 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     isStripAttentionItem,
   );
 
+  // Queue mutation handlers — call the browser-safe client helper, then refresh
+  // queue state on success. A helper rejection propagates to the row, which
+  // renders the error and skips the refresh.
+  const handleQueuePriority = React.useCallback(
+    async (id: string, priority: number) => {
+      await updateQueuePriority(id, { priority });
+      await refreshQueue?.();
+    },
+    [refreshQueue],
+  );
+  const handleQueueRemove = React.useCallback(
+    async (id: string) => {
+      await removeQueueItem(id);
+      await refreshQueue?.();
+    },
+    [refreshQueue],
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4">
       {/* Connection/state banner */}
@@ -140,7 +159,12 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             </div>
           )}
           <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
-          <QueueCard stacks={model.queueStacks} summary={model.queue} />
+          <QueueCard
+            stacks={model.queueStacks}
+            summary={model.queue}
+            onSetPriority={handleQueuePriority}
+            onRemove={handleQueueRemove}
+          />
         </div>
 
         {/* RAIL — glanceable reference widgets. Build history (one row per

@@ -40,9 +40,15 @@ export function compareQueueItems(a: QueueItem, b: QueueItem): number {
   const orderDiff = queueStatusOrder(a.status) - queueStatusOrder(b.status);
   if (orderDiff !== 0) return orderDiff;
 
-  const aPriority = a.priority ?? 0;
-  const bPriority = b.priority ?? 0;
-  if (bPriority !== aPriority) return bPriority - aPriority;
+  // Lower numeric priority dispatches first; absent priority sorts last. This
+  // mirrors the engine's queue-order semantics (priority ascending, nulls last)
+  // so the Console visual order matches the order items will actually build in.
+  const aHasPriority = a.priority != null;
+  const bHasPriority = b.priority != null;
+  if (aHasPriority !== bHasPriority) return aHasPriority ? -1 : 1;
+  if (aHasPriority && bHasPriority && a.priority !== b.priority) {
+    return (a.priority as number) - (b.priority as number);
+  }
 
   const aCreated = a.created ?? '';
   const bCreated = b.created ?? '';

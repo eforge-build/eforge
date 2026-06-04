@@ -12,6 +12,10 @@ import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, apiStackSync,
+  // --- eforge:region host-queue-controls ---
+  apiUpdateQueuePriority,
+  apiRemoveQueueItem,
+  // --- eforge:endregion host-queue-controls ---
   apiResumeBuild,
   dispatchEforgeExtensionAction,
 } from '@eforge-build/client';
@@ -325,6 +329,35 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       return data;
     },
   });
+
+  // --- eforge:region host-queue-controls ---
+  // Tool: eforge_queue_priority
+  createDaemonTool(server, cwd, {
+    name: 'eforge_queue_priority',
+    description: 'Update priority for a pending or waiting PRD queue item. Lower numbers run earlier; cancel running builds by session id instead.',
+    schema: {
+      prdId: z.string(),
+      priority: z.number().int(),
+    },
+    handler: async ({ prdId, priority }, { cwd: toolCwd }) => {
+      const { data } = await apiUpdateQueuePriority({ cwd: toolCwd, prdId, priority });
+      return data;
+    },
+  });
+
+  // Tool: eforge_queue_remove
+  createDaemonTool(server, cwd, {
+    name: 'eforge_queue_remove',
+    description: 'Remove a non-running PRD queue item, including failed recovery sidecars. Refuses running items and live-dependent conflicts.',
+    schema: {
+      prdId: z.string(),
+    },
+    handler: async ({ prdId }, { cwd: toolCwd }) => {
+      const { data } = await apiRemoveQueueItem({ cwd: toolCwd, prdId });
+      return data;
+    },
+  });
+  // --- eforge:endregion host-queue-controls ---
 
   // Tool: eforge_config
   createDaemonTool(server, cwd, {

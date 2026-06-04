@@ -54,6 +54,10 @@ import {
   apiRemoveExtensionIfRunning,
   apiPromoteExtensionIfRunning,
   apiDemoteExtensionIfRunning,
+  // --- eforge:region host-queue-controls ---
+  apiUpdateQueuePriorityIfRunning,
+  apiRemoveQueueItemIfRunning,
+  // --- eforge:endregion host-queue-controls ---
   dispatchEforgeExtensionAction,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
@@ -576,6 +580,49 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       return jsonResult(data);
     },
   });
+
+  // --- eforge:region host-queue-controls ---
+  // ------------------------------------------------------------------
+  // Tool: eforge_queue_priority
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_queue_priority",
+    label: "eforge queue priority",
+    description:
+      "Update priority for a pending or waiting PRD queue item. Lower numbers run earlier; cancel running builds by session id instead.",
+    parameters: Type.Object({
+      prdId: Type.String({ description: "PRD queue item id" }),
+      priority: Type.Integer({ description: "Queue priority; lower numbers run earlier" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { prdId, priority } = params;
+      const result = await apiUpdateQueuePriorityIfRunning({ cwd: ctx.cwd, prdId, priority });
+      if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+      const { data } = result;
+      return jsonResult(data);
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_queue_remove
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_queue_remove",
+    label: "eforge queue remove",
+    description:
+      "Remove a non-running PRD queue item, including failed recovery sidecars. Refuses running items and live-dependent conflicts.",
+    parameters: Type.Object({
+      prdId: Type.String({ description: "PRD queue item id" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { prdId } = params;
+      const result = await apiRemoveQueueItemIfRunning({ cwd: ctx.cwd, prdId });
+      if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
+      const { data } = result;
+      return jsonResult(data);
+    },
+  });
+  // --- eforge:endregion host-queue-controls ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_config

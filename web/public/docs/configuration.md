@@ -320,7 +320,7 @@ Keep all documentation in sync with the latest code changes.
 
 ## Queue and Auto-Build
 
-The daemon watches `prdQueue.dir` for normalized PRDs. Enqueue stores a validated hidden canonical acceptance-criteria inventory in each queued PRD; missing, duplicated, or malformed inventories fail queued builds before orchestration and require re-enqueue. Leave `prdQueue.autoBuild` enabled for normal usage so queued PRDs start automatically; disable it when you want to stage multiple queue items before running them. `prdQueue.watchPollIntervalMs` tunes how often the auto-build watcher polls for queue changes.
+The daemon watches `prdQueue.dir` for normalized PRDs. Enqueue stores a validated hidden canonical acceptance-criteria inventory in each queued PRD; missing, duplicated, or malformed inventories fail queued builds before orchestration and require re-enqueue. Queue mutations under `prdQueue.dir` are runtime filesystem operations in `.eforge/queue/` by default, are gitignored, and produce no git commits. Leave `prdQueue.autoBuild` enabled for normal usage so queued PRDs start automatically; disable it when you want to stage multiple queue items before running them. `prdQueue.watchPollIntervalMs` tunes how often the auto-build watcher polls for queue changes.
 
 ```yaml
 maxConcurrentBuilds: 2   # default: concurrent PRD builds across the queue
@@ -345,6 +345,8 @@ depends_on: [api-v2]  # wait for pending/running/waiting queue item ids
 ```
 
 `depends_on` is validated at enqueue time. Dependencies may be active queue items (pending/running/waiting) or completed items with usable artifacts. Items blocked on active upstream dependencies live under the queue's `waiting/` subdirectory until all upstream items complete; items whose dependencies are already completed with usable artifacts are eligible immediately and remain in the queue root. If an upstream item fails or is cancelled, its waiting dependents move to `skipped/`.
+
+Queue controls operate on this runtime state. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; lower numeric priority values run earlier within each dependency wave, failed and skipped items reject priority mutation with a conflict until recovery/requeue makes them runnable, and running items reject priority changes because cancellation uses the existing session-id cancel route. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal deletes matching `.recovery.md` and `.recovery.json` sidecars. Removal fails closed when live pending/waiting dependents exist, lists dependent ids, and requires removing dependents first until future cascade controls ship. The daemon notifies the scheduler after successful priority or removal mutations, and the scheduler re-reads queue files before dispatch.
 
 **Explicit deterministic handoff**: instead of writing `depends_on` in frontmatter, pass `--after <queue-id>` to the CLI or `afterQueueId` to the `eforge_build` MCP/Pi tool to create an explicit dependency on an active or completed queue entry. Active upstream items (pending/running/waiting) are held in `waiting/` and unblocked when the upstream completes. Completed upstream items with a usable artifact are enqueued immediately as eligible dependents. Explicit `afterQueueId` takes precedence over automatic dependency detection, which remains best effort and is only used when no explicit dependency is supplied. Failed, skipped, and unknown IDs are rejected at enqueue time.
 

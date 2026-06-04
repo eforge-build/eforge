@@ -19,7 +19,16 @@ export type {
   ReadSidecarRequest,
   RecoveryVerdictSidecar,
   ReadSidecarResponse,
+  QueueControlStatus,
+  QueuePriorityRequest,
+  QueuePriorityResponse,
+  QueueRemoveResponse,
 } from './routes.js';
+
+export {
+  updateQueuePriority,
+  removeQueueItem,
+} from './browser-queue-control.js';
 
 export {
   apiEnqueue,
@@ -28,6 +37,10 @@ export {
   apiCancelIfRunning,
   apiGetQueue,
   apiGetQueueIfRunning,
+  apiUpdateQueuePriority,
+  apiUpdateQueuePriorityIfRunning,
+  apiRemoveQueueItem,
+  apiRemoveQueueItemIfRunning,
   apiGetRuns,
   apiGetRunsIfRunning,
   apiGetLatestRunFromRuns,

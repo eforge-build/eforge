@@ -14,7 +14,7 @@ import { afterEach, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { QueueScheduler } from '@eforge-build/engine/queue/scheduler';
@@ -36,6 +36,20 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Materialize a queued PRD file on disk and return its path.
+ *
+ * The scheduler reconciles dispatch order against the on-disk queue on every
+ * discovery tick (mirroring production, where initialPrds come from loadQueue),
+ * so initial PRDs that must survive reconciliation need a real queue file.
+ */
+export async function writeQueuedPrdFile(cwd: string, id: string, dependsOn: string[] = []): Promise<string> {
+  const filePath = join(cwd, 'eforge', 'queue', `${id}.md`);
+  const depsLine = dependsOn.length ? `depends_on: [${dependsOn.join(', ')}]\n` : '';
+  await writeFile(filePath, `---\ntitle: ${id}\n${depsLine}---\n\n# ${id}`);
+  return filePath;
+}
 
 export function makeQueuedPrd(id: string, dependsOn: string[] = [], filePath?: string): QueuedPrd {
   return {

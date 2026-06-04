@@ -68,7 +68,10 @@ describe('QueueScheduler — runtime lock reconciliation', () => {
     const aPath = join(cwd, 'eforge', 'queue', 'a.md');
     const bPath = join(cwd, 'eforge', 'queue', 'b.md');
     await writeFile(aPath, '---\ntitle: A\n---\n\n# A');
-    await writeFile(bPath, '---\ntitle: B\n---\n\n# B');
+    // b carries a higher priority (lower number) so resolveQueueOrder dispatches
+    // it before a once capacity frees up — dispatch order is driven by the
+    // reconciled on-disk queue, not the initial in-memory array order.
+    await writeFile(bPath, '---\ntitle: B\npriority: 1\n---\n\n# B');
 
     const lockPath = join(cwd, '.eforge', 'queue-locks', 'a.lock');
     await mkdir(join(cwd, '.eforge', 'queue-locks'), { recursive: true });
@@ -76,9 +79,9 @@ describe('QueueScheduler — runtime lock reconciliation', () => {
 
     spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
 
-    // Put b first in scheduler order and run at capacity=1. While a's live lock
-    // is counted as running, b must be capacity-blocked; once the lock is gone,
-    // b should be dequeued instead of a stale running count blocking the tick.
+    // Prioritize b and run at capacity=1. While a's live lock is counted as
+    // running, b must be capacity-blocked; once the lock is gone, b should be
+    // dequeued instead of a stale running count blocking the tick.
     const scheduler = makeScheduler([
       makeQueuedPrd('b', [], bPath),
       makeQueuedPrd('a', [], aPath),

@@ -7,8 +7,10 @@ import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import type { NowQueueStack, NowQueueStackItem } from '@/lib/selectors/now';
 import { cn } from '@/lib/utils';
+import { QueueRowActions } from './queue-row-actions';
+import type { QueueRowActionCallbacks } from './queue-row-actions';
 
-interface QueueStacksProps {
+interface QueueStacksProps extends QueueRowActionCallbacks {
   stacks: NowQueueStack[];
 }
 
@@ -43,7 +45,16 @@ function itemDetail(item: NowQueueStackItem): string {
   return 'ready when dependencies clear';
 }
 
-function QueueStackItemRow({ item, isLast }: { item: NowQueueStackItem; isLast: boolean }) {
+function QueueStackItemRow({
+  item,
+  isLast,
+  onSetPriority,
+  onRemove,
+}: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
+  const status = item.status.toLowerCase();
+  // Only forward queue work (pending/waiting) is mutable from Console; running
+  // rows keep their status-only presentation.
+  const showActions = status === 'pending' || status === 'waiting';
   return (
     <li className="relative pl-6">
       {!isLast && <span className="absolute left-[7px] top-5 h-full w-px bg-border" aria-hidden="true" />}
@@ -65,12 +76,21 @@ function QueueStackItemRow({ item, isLast }: { item: NowQueueStackItem; isLast: 
         </div>
         <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
+        {showActions && (
+          <QueueRowActions
+            itemId={item.id}
+            itemTitle={item.title}
+            initialPriority={item.priority}
+            onSetPriority={onSetPriority}
+            onRemove={onRemove}
+          />
+        )}
       </div>
     </li>
   );
 }
 
-export function QueueStacks({ stacks }: QueueStacksProps) {
+export function QueueStacks({ stacks, onSetPriority, onRemove }: QueueStacksProps) {
   if (stacks.length === 0) return null;
 
   const totalPlans = stacks.reduce((sum, stack) => sum + stack.totalItems, 0);
@@ -106,6 +126,8 @@ export function QueueStacks({ stacks }: QueueStacksProps) {
                   key={item.id}
                   item={item}
                   isLast={itemIndex === stack.items.length - 1}
+                  onSetPriority={onSetPriority}
+                  onRemove={onRemove}
                 />
               ))}
             </ol>

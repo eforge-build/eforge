@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, cleanupCompletedPrd, setQueuedPrdProfile, isPrdRunning, readPrdLockStatus, type QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { findQueuedPrdForControl, removeQueuedPrd, updateQueuedPrdPriority, isQueueControlError } from '@eforge-build/engine/queue/control';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -578,5 +579,219 @@ describe('readPrdLockStatus', () => {
     writeFileSync(join(lockDir, 'empty.lock'), '');
     expect(await claimPrd('empty', dir)).toBe(false);
     expect(readFileSync(join(lockDir, 'empty.lock'), 'utf-8')).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Queue-control helpers (priority + removal)
+// ---------------------------------------------------------------------------
+
+describe('queue-control helpers', () => {
+  const makeTempDir = useTempDir('eforge-prd-control-');
+
+  function queueRoot(dir: string): string {
+    return join(dir, '.eforge', 'queue');
+  }
+
+  function writePrdFile(
+    dir: string,
+    sub: '' | 'waiting' | 'failed' | 'skipped',
+    id: string,
+    frontmatterExtra = '',
+    body = 'Original body text.',
+  ): string {
+    const targetDir = sub ? join(queueRoot(dir), sub) : queueRoot(dir);
+    mkdirSync(targetDir, { recursive: true });
+    const filePath = join(targetDir, `${id}.md`);
+    writeFileSync(filePath, `---\ntitle: ${id}${frontmatterExtra}\n---\n\n# ${id}\n\n${body}\n`);
+    return filePath;
+  }
+
+  function writeLock(dir: string, id: string, content: string): string {
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    const lockPath = join(lockDir, `${id}.lock`);
+    writeFileSync(lockPath, content);
+    return lockPath;
+  }
+
+  async function expectKind(promise: Promise<unknown>, kind: string): Promise<Error> {
+    let caught: unknown;
+    try { await promise; } catch (err) { caught = err; }
+    expect(isQueueControlError(caught)).toBe(true);
+    expect((caught as { kind: string }).kind).toBe(kind);
+    return caught as Error;
+  }
+
+  it('classifies a root PRD as pending (absent lock) and running (live lock)', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    writePrdFile(dir, '', 'p');
+
+    const pending = await findQueuedPrdForControl({ cwd: dir, queueDir, prdId: 'p' });
+    expect(pending.status).toBe('pending');
+    expect(pending.location).toBe('queue');
+
+    writeLock(dir, 'p', String(process.pid));
+    const running = await findQueuedPrdForControl({ cwd: dir, queueDir, prdId: 'p' });
+    expect(running.status).toBe('running');
+  });
+
+  it('sets priority on a pending root PRD, preserving body and unrelated frontmatter', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p', '\ndepends_on: [other]\nprofile: careful', 'Keep this body.');
+
+    const result = await updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'p', priority: 5 });
+    expect(result).toEqual({ id: 'p', previousStatus: 'pending', currentStatus: 'pending', priority: 5 });
+
+    const written = readFileSync(filePath, 'utf-8');
+    expect(written).toContain('priority: 5');
+    expect(written).toContain('Keep this body.');
+    expect(written).toContain('profile: careful');
+    expect(written).toContain('depends_on: [other]');
+  });
+
+  it('sets priority on a waiting PRD', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, 'waiting', 'w');
+
+    const result = await updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'w', priority: 9 });
+    expect(result).toEqual({ id: 'w', previousStatus: 'waiting', currentStatus: 'waiting', priority: 9 });
+    expect(readFileSync(filePath, 'utf-8')).toContain('priority: 9');
+  });
+
+  it('rejects non-integer priority before touching the file', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p');
+    const before = readFileSync(filePath, 'utf-8');
+
+    await expectKind(updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'p', priority: 1.5 }), 'validation');
+    await expectKind(updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'p', priority: Infinity }), 'validation');
+    expect(readFileSync(filePath, 'utf-8')).toBe(before);
+  });
+
+  it('returns not-found for ids absent from all queue locations', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    mkdirSync(queueDir, { recursive: true });
+    await expectKind(updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'missing', priority: 1 }), 'not-found');
+    await expectKind(removeQueuedPrd({ cwd: dir, queueDir, prdId: 'missing' }), 'not-found');
+  });
+
+  it('rejects priority change for a live running PRD and leaves the file unchanged', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p');
+    const lockPath = writeLock(dir, 'p', String(process.pid));
+    const before = readFileSync(filePath, 'utf-8');
+
+    const err = await expectKind(updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'p', priority: 5 }), 'conflict');
+    expect(err.message).toMatch(/running/);
+    expect(err.message).toMatch(/cancel/);
+    expect(readFileSync(filePath, 'utf-8')).toBe(before);
+    expect(existsSync(lockPath)).toBe(true);
+  });
+
+  it('rejects priority change for failed and skipped PRDs and leaves files plus sidecars unchanged', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const failedPath = writePrdFile(dir, 'failed', 'f');
+    const skippedPath = writePrdFile(dir, 'skipped', 's');
+    const sidecarPath = join(queueDir, 'failed', 'f.recovery.json');
+    writeFileSync(sidecarPath, '{"verdict":"manual"}');
+
+    await expectKind(updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 'f', priority: 2 }), 'conflict');
+    await expectKind(updateQueuedPrdPriority({ cwd: dir, queueDir, prdId: 's', priority: 2 }), 'conflict');
+
+    expect(readFileSync(failedPath, 'utf-8')).not.toContain('priority: 2');
+    expect(readFileSync(skippedPath, 'utf-8')).not.toContain('priority: 2');
+    expect(existsSync(sidecarPath)).toBe(true);
+  });
+
+  it('removes pending, waiting, failed, and skipped PRD files', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const cases: Array<['' | 'waiting' | 'failed' | 'skipped', string, string]> = [
+      ['', 'p', 'pending'],
+      ['waiting', 'w', 'waiting'],
+      ['failed', 'f', 'failed'],
+      ['skipped', 's', 'skipped'],
+    ];
+    for (const [sub, id, previousStatus] of cases) {
+      const filePath = writePrdFile(dir, sub, id);
+      const result = await removeQueuedPrd({ cwd: dir, queueDir, prdId: id });
+      expect(result).toEqual({ id, previousStatus, currentStatus: 'removed', removedSidecars: [] });
+      expect(existsSync(filePath)).toBe(false);
+    }
+  });
+
+  it('removes a failed PRD and its recovery sidecars, reporting queue-relative paths', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, 'failed', 'f');
+    const failedDir = join(queueDir, 'failed');
+    writeFileSync(join(failedDir, 'f.recovery.md'), '# recovery');
+    writeFileSync(join(failedDir, 'f.recovery.json'), '{}');
+
+    const result = await removeQueuedPrd({ cwd: dir, queueDir, prdId: 'f' });
+    expect(result.currentStatus).toBe('removed');
+    expect([...result.removedSidecars].sort()).toEqual(['failed/f.recovery.json', 'failed/f.recovery.md']);
+    expect(existsSync(filePath)).toBe(false);
+    expect(existsSync(join(failedDir, 'f.recovery.md'))).toBe(false);
+    expect(existsSync(join(failedDir, 'f.recovery.json'))).toBe(false);
+  });
+
+  it('refuses to remove a live running PRD and leaves the file and lock in place', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p');
+    const lockPath = writeLock(dir, 'p', String(process.pid));
+
+    const err = await expectKind(removeQueuedPrd({ cwd: dir, queueDir, prdId: 'p' }), 'conflict');
+    expect(err.message).toMatch(/running/);
+    expect(existsSync(filePath)).toBe(true);
+    expect(existsSync(lockPath)).toBe(true);
+  });
+
+  it('removes a stale root lock before deleting the PRD file', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p');
+    const lockPath = writeLock(dir, 'p', String(makeDeadPid()));
+
+    const result = await removeQueuedPrd({ cwd: dir, queueDir, prdId: 'p' });
+    expect(result.currentStatus).toBe('removed');
+    expect(existsSync(filePath)).toBe(false);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('removes a corrupt root lock before deleting the PRD file', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p');
+    const lockPath = writeLock(dir, 'p', 'not-a-pid');
+
+    const result = await removeQueuedPrd({ cwd: dir, queueDir, prdId: 'p' });
+    expect(result.currentStatus).toBe('removed');
+    expect(existsSync(filePath)).toBe(false);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('refuses removal when a live root or waiting dependent lists the target and leaves files in place', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const basePath = writePrdFile(dir, '', 'base');
+    const rootDepPath = writePrdFile(dir, '', 'root-dep', '\ndepends_on: [base]');
+    const waitingDepPath = writePrdFile(dir, 'waiting', 'waiting-dep', '\ndepends_on: [base]');
+
+    const err = await expectKind(removeQueuedPrd({ cwd: dir, queueDir, prdId: 'base' }), 'conflict');
+    expect(err.message).toContain('root-dep');
+    expect(err.message).toContain('waiting-dep');
+    expect(existsSync(basePath)).toBe(true);
+    expect(existsSync(rootDepPath)).toBe(true);
+    expect(existsSync(waitingDepPath)).toBe(true);
   });
 });

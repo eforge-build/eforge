@@ -11,6 +11,18 @@ import {
   emptyActiveSessions,
   connectedState,
 } from '@/test-support/factories';
+import { removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
+
+// Mock only the queue-control browser helpers; everything else in the browser
+// barrel (types, selectors' transitive imports) keeps its real implementation.
+vi.mock('@eforge-build/client/browser', async (importActual) => {
+  const actual = await importActual<typeof import('@eforge-build/client/browser')>();
+  return {
+    ...actual,
+    updateQueuePriority: vi.fn(),
+    removeQueueItem: vi.fn(),
+  };
+});
 
 let replaceStateSpy: ReturnType<typeof vi.spyOn>;
 
@@ -156,6 +168,145 @@ describe('NowDashboard', () => {
     // Stack sync status + controls live on System now, not on the Now glance view.
     expect(screen.queryByText('Stack sync')).toBeNull();
     expect(screen.queryByRole('button', { name: /sync.*now/i })).toBeNull();
+  });
+
+  describe('queue mutations', () => {
+    const priorityMock = vi.mocked(updateQueuePriority);
+    const removeMock = vi.mocked(removeQueueItem);
+
+    beforeEach(() => {
+      priorityMock.mockReset();
+      removeMock.mockReset();
+    });
+
+    function pendingState() {
+      return connectedState({
+        queue: [makeQueue({ id: 'q-pending', title: 'Pending Build', status: 'pending' })],
+      });
+    }
+
+    it('refreshes the queue only after the priority helper resolves', async () => {
+      // Deferred helper: the refresh must not fire while the mutation is still
+      // pending — only once the helper promise resolves.
+      let resolvePriority!: (value: Awaited<ReturnType<typeof updateQueuePriority>>) => void;
+      priorityMock.mockReturnValue(
+        new Promise<Awaited<ReturnType<typeof updateQueuePriority>>>((resolve) => {
+          resolvePriority = resolve;
+        }),
+      );
+      const refreshQueue = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <NowDashboard
+          projectState={pendingState()}
+          activeSessions={emptyActiveSessions}
+          refreshQueue={refreshQueue}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText('Priority for Pending Build'), {
+        target: { value: '3' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Set priority' }));
+
+      await waitFor(() => expect(priorityMock).toHaveBeenCalledWith('q-pending', { priority: 3 }));
+      // The mutation has not resolved yet, so no refresh should have happened.
+      expect(refreshQueue).not.toHaveBeenCalled();
+
+      resolvePriority({
+        id: 'q-pending',
+        previousStatus: 'pending',
+        currentStatus: 'pending',
+        priority: 3,
+      });
+
+      await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
+      // Order: helper resolved before refresh ran.
+      expect(priorityMock.mock.invocationCallOrder[0]).toBeLessThan(
+        refreshQueue.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('refreshes the queue only after the remove helper resolves', async () => {
+      let resolveRemove!: (value: Awaited<ReturnType<typeof removeQueueItem>>) => void;
+      removeMock.mockReturnValue(
+        new Promise<Awaited<ReturnType<typeof removeQueueItem>>>((resolve) => {
+          resolveRemove = resolve;
+        }),
+      );
+      const refreshQueue = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <NowDashboard
+          projectState={pendingState()}
+          activeSessions={emptyActiveSessions}
+          refreshQueue={refreshQueue}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+      const dialog = screen.getByRole('alertdialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+      await waitFor(() => expect(removeMock).toHaveBeenCalledWith('q-pending'));
+      expect(refreshQueue).not.toHaveBeenCalled();
+
+      resolveRemove({
+        id: 'q-pending',
+        previousStatus: 'pending',
+        currentStatus: 'removed',
+        removedSidecars: [],
+      });
+
+      await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
+      expect(removeMock.mock.invocationCallOrder[0]).toBeLessThan(
+        refreshQueue.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('shows row error text and does not refresh the queue when the priority helper fails', async () => {
+      priorityMock.mockRejectedValue(new Error('Queue priority request failed (409): locked'));
+      const refreshQueue = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <NowDashboard
+          projectState={pendingState()}
+          activeSessions={emptyActiveSessions}
+          refreshQueue={refreshQueue}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText('Priority for Pending Build'), {
+        target: { value: '2' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Set priority' }));
+
+      await screen.findByText(/Queue priority request failed/);
+      expect(refreshQueue).not.toHaveBeenCalled();
+    });
+
+    it('shows row error text and does not refresh the queue when the remove helper fails', async () => {
+      // The remove failure path goes through the AlertDialog confirm flow and must
+      // keep the row error visible without refreshing the queue.
+      removeMock.mockRejectedValue(new Error('Queue removal request failed (409): locked'));
+      const refreshQueue = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <NowDashboard
+          projectState={pendingState()}
+          activeSessions={emptyActiveSessions}
+          refreshQueue={refreshQueue}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+      const dialog = screen.getByRole('alertdialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+      await waitFor(() => expect(removeMock).toHaveBeenCalledWith('q-pending'));
+      await screen.findByText(/Queue removal request failed/);
+      expect(refreshQueue).not.toHaveBeenCalled();
+    });
   });
 
   it('escalates a conflict stack sync into the Now alert strip with a retry control', () => {

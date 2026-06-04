@@ -83,11 +83,11 @@ The validation step after all plans merge. eforge runs `build.postMergeCommands`
 
 ## Queue
 
-The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Each queued PRD includes an eforge-owned hidden canonical acceptance-criteria inventory; queued builds with missing, duplicated, or malformed inventory fail before orchestration and must be re-enqueued. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave.
+The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Each queued PRD includes an eforge-owned hidden canonical acceptance-criteria inventory; queued builds with missing, duplicated, or malformed inventory fail before orchestration and must be re-enqueued. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal also deletes matching recovery sidecars and live-dependent conflicts list dependent ids.
 
 ## Queue priority
 
-An optional PRD frontmatter number. Lower numbers run before higher numbers within the same dependency wave; PRDs without `priority` run after prioritized items.
+An optional PRD frontmatter number. Lower numbers run before higher numbers within the same dependency wave; PRDs without `priority` run after prioritized items. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; failed and skipped items return conflict until recovery or requeue makes them runnable, and running items must be cancelled by session id instead of reprioritized.
 
 ## Recovery sidecar
 
