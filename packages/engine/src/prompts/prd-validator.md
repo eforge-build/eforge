@@ -10,7 +10,9 @@ You are validating that a completed implementation satisfies the original PRD (P
 
 {{criteria}}
 
-When the list above is populated, you MUST produce a verdict entry in `acceptanceVerdicts` for **every** criterion listed. Do not skip or merge criteria. Each line starts with a stable ID such as `ac-001`; set each verdict's `criterion` field to that exact ID rather than rewriting the criterion text.
+When the list above is populated, it is authoritative: you MUST produce a verdict entry in `acceptanceVerdicts` for **every** criterion listed and only those expected acceptance criteria create hard-gated acceptance obligations. Do not skip or merge criteria. Each line starts with a stable ID such as `ac-001`; set each verdict's `criterion` field to that exact ID rather than rewriting the criterion text.
+
+`Manual Verification Notes` in the PRD are informational and non-gating. Do not treat manual-only or visual-only notes as passed acceptance evidence, and do not create additional acceptance verdicts for them when Expected Acceptance Criteria is populated.
 
 {{validationEvidence}}
 

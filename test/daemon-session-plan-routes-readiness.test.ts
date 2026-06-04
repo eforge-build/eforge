@@ -277,6 +277,28 @@ describe('GET /api/session-plan/readiness — AC quality diagnostics', () => {
     expect(data.acDiagnostics![0].kind).toBe('grouping-label');
   });
 
+  it('returns manual-only acDiagnostics for manual-only AC', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const session = '2026-01-01-ac-manual-only';
+    await writeSessionPlanFile(tmpDir, session, makeSessionPlanWithAc(session, ['- Manually verify dashboard rendering in the browser.']));
+
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    const res = await fetch(
+      `http://localhost:${server.port}${API_ROUTES.sessionPlanReadiness}?session=${session}`,
+    );
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as {
+      ready: boolean;
+      acDiagnostics?: Array<{ kind: string; message: string; suggestion: string }>;
+    };
+    expect(data.ready).toBe(false);
+    expect(data.acDiagnostics?.[0].kind).toBe('manual-only');
+  });
+
   it('returns ready: true with no acDiagnostics for valid command AC', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);

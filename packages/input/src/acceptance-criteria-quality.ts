@@ -2,7 +2,7 @@
  * Acceptance criteria quality analyzer.
  *
  * Detects malformed acceptance criteria: grouping labels, bare command fragments,
- * and vague/unverifiable criteria. Used by session-plan readiness and engine
+ * manual-only checks, and vague/unverifiable criteria. Used by session-plan readiness and engine
  * enqueue gates to prevent poorly-specified criteria from entering the build queue.
  *
  * This module is intentionally dependency-free (no workspace imports) so it can
@@ -17,7 +17,7 @@
 /** A diagnostic produced by the AC quality analyzer for a single criterion. */
 export interface AcDiagnostic {
   /** Classification of the quality issue. */
-  kind: 'grouping-label' | 'bare-command' | 'vague';
+  kind: 'grouping-label' | 'bare-command' | 'manual-only' | 'vague';
   /** The raw line text that triggered the diagnostic (with list markers). */
   line: string;
   /** Human-readable description of the issue. */
@@ -76,6 +76,19 @@ function isGroupingLabel(normalized: string): boolean {
  */
 function isBareCommand(normalized: string): boolean {
   return /^`[^`]+`\.?\s*$/.test(normalized) || /^run\s+(?:pnpm|npm|yarn|bun)\s+[\w:-]+\.?$/i.test(normalized);
+}
+
+const MANUAL_ONLY_RE = /\b(?:manually\s+(?:verify|check|inspect|confirm)|manual\s+(?:verification|check|inspection)(?!\s+notes)|visually\s+(?:verify|inspect|check|confirm)|visual\s+(?:inspection|verification|check)|(?:check|inspect|verify)\s+in\s+(?:the\s+)?browser)\b/i;
+
+const OBJECTIVE_AUTOMATION_OUTCOME_RE = /(?:`[^`]+`.*\b(?:exits?\s+0|passes?|completes?\s+without\s+errors?|returns?\s+HTTP\s+\d{3}|responds?\s+with)\b|\b(?:exits?\s+0|completes?\s+without\s+errors?|returns?\s+HTTP\s+\d{3}|responds?\s+with|API\s+returns?|route\s+(?:responds?|returns?)|(?:API|route|endpoint)\s+returns?\s+status\s+\d{3}|emits?\s+(?:an?\s+)?(?:`[^`]+`|[\w:-]+)\s+event|(?:tests?|test\s+suite|type\s+checking|validation(?:\s+command)?|command|build|lint|compile)\s+passes?|(?:file|directory|path|`[^`]+`|[./\w-]+\/[./\w-]+|[\w-]+\.[\w-]+)\s+contains?|JSON\s+matches?|schema\s+validates?|validation\s+command\s+(?:exits?\s+0|completes?\s+without\s+errors?))\b)/i;
+
+function hasObjectiveAutomationOutcome(normalized: string): boolean {
+  return OBJECTIVE_AUTOMATION_OUTCOME_RE.test(normalized);
+}
+
+function isManualOnly(normalized: string): boolean {
+  if (/^manual\s+verification\s+notes:?$/i.test(normalized)) return false;
+  return MANUAL_ONLY_RE.test(normalized) && !hasObjectiveAutomationOutcome(normalized);
 }
 
 /**
@@ -145,6 +158,15 @@ export function analyzeAcceptanceCriteriaItem(rawLine: string): AcDiagnostic | n
       line: rawLine,
       message: `"${normalized}" is a bare command fragment. Acceptance criteria must state the expected outcome, not just a command to run.`,
       suggestion: 'Append the expected outcome after the command, e.g., change "`pnpm type-check`." to "`pnpm type-check` exits 0."',
+    };
+  }
+
+  if (isManualOnly(normalized)) {
+    return {
+      kind: 'manual-only',
+      line: rawLine,
+      message: `"${normalized}" depends on manual or visual verification without objective automation evidence. Hard-gated acceptance criteria must be automatable and objectively verifiable.`,
+      suggestion: 'Replace this item with an automatable criterion that states a concrete command, API, file, event, JSON/schema, or route outcome; or move the manual/visual detail to non-gating Manual Verification Notes.',
     };
   }
 

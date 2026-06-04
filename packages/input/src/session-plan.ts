@@ -516,8 +516,8 @@ export function selectDimensions(plan: SessionPlan): {
  * - Appears in `skipped_dimensions` with a reason.
  *
  * Optional dimensions never block readiness. Acceptance criteria quality issues
- * (grouping labels, bare command fragments, or vague criteria) also prevent
- * readiness, consistent with `getReadinessDetail`.
+ * (grouping labels, bare command fragments, vague criteria, manual-only, or
+ * visual-only criteria) also prevent readiness, consistent with `getReadinessDetail`.
  */
 export function checkReadiness(plan: SessionPlan): {
   ready: boolean;
@@ -537,8 +537,9 @@ export function checkReadiness(plan: SessionPlan): {
  * Optional dimensions are not included in any of the arrays.
  *
  * When the `acceptance-criteria` dimension is covered but contains quality issues
- * (grouping labels, bare command fragments, or vague criteria), `ready` is set to
- * `false` and `acDiagnostics` is populated with actionable feedback.
+ * (grouping labels, bare command fragments, vague criteria, manual-only, or
+ * visual-only criteria), `ready` is set to `false` and `acDiagnostics` is
+ * populated with actionable feedback.
  */
 export function getReadinessDetail(plan: SessionPlan): {
   ready: boolean;
