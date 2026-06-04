@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { QueueExecExitCode } from '@eforge-build/engine/prd-queue';
+import { QueueExecExitCode, movePrdToSubdir } from '@eforge-build/engine/prd-queue';
 import { upsertArtifact } from '@eforge-build/engine/artifacts';
 import { StubHarness } from './stub-harness';
 import {
@@ -17,6 +17,7 @@ import {
   makeQueuedPrd,
   waitForSchedulerEvents,
   waitForSpawnCallCount,
+  writeQueuedPrdFile,
 } from './queue-scheduler-helpers';
 
 describe('QueueScheduler — queue:prd:complete (completed)', () => {
@@ -24,8 +25,10 @@ describe('QueueScheduler — queue:prd:complete (completed)', () => {
     const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
     // Two PRDs: 'foundation' (no deps) and 'feature' (depends_on: ['foundation'])
-    const foundation = makeQueuedPrd('foundation');
-    const feature = makeQueuedPrd('feature', ['foundation']);
+    const foundationPath = await writeQueuedPrdFile(cwd, 'foundation');
+    const featurePath = await writeQueuedPrdFile(cwd, 'feature', ['foundation']);
+    const foundation = makeQueuedPrd('foundation', [], foundationPath);
+    const feature = makeQueuedPrd('feature', ['foundation'], featurePath);
 
     // spawnPrdChild: foundation completes successfully; feature also resolves
     spawnPrdChild.mockResolvedValueOnce('completed').mockResolvedValueOnce('completed');
@@ -65,10 +68,12 @@ describe('QueueScheduler — queue:prd:complete (completed)', () => {
 
 describe('QueueScheduler — queue:prd:complete (skipped)', () => {
   it('does not spawn dependent PRD after upstream is terminally skipped', async () => {
-    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
-    const foundation = makeQueuedPrd('foundation');
-    const feature = makeQueuedPrd('feature', ['foundation']);
+    const foundationPath = await writeQueuedPrdFile(cwd, 'foundation');
+    const featurePath = await writeQueuedPrdFile(cwd, 'feature', ['foundation']);
+    const foundation = makeQueuedPrd('foundation', [], foundationPath);
+    const feature = makeQueuedPrd('feature', ['foundation'], featurePath);
 
     spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
 
@@ -101,13 +106,19 @@ describe('QueueScheduler — queue:prd:complete (skipped)', () => {
 
 describe('QueueScheduler — queue:prd:complete (failed)', () => {
   it('marks dependent PRDs as blocked without spawning them', async () => {
-    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
-    const foundation = makeQueuedPrd('foundation');
-    const feature = makeQueuedPrd('feature', ['foundation']);
+    const foundationPath = await writeQueuedPrdFile(cwd, 'foundation');
+    const featurePath = await writeQueuedPrdFile(cwd, 'feature', ['foundation']);
+    const foundation = makeQueuedPrd('foundation', [], foundationPath);
+    const feature = makeQueuedPrd('feature', ['foundation'], featurePath);
 
-    // foundation fails
-    spawnPrdChild.mockResolvedValueOnce('failed');
+    // foundation fails — mirror production by moving its file out of the root
+    // queue (the child process does this), so reconciliation does not re-queue it.
+    spawnPrdChild.mockImplementationOnce(async () => {
+      await movePrdToSubdir(foundationPath, 'failed', cwd);
+      return 'failed';
+    });
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();
@@ -189,12 +200,19 @@ describe('QueueScheduler — pause() suspends new launches', () => {
 
 describe('QueueScheduler — onComplete runs while suspended', () => {
   it('failed completion finalizes prdState to failed even when suspended', async () => {
-    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
-    const foundation = makeQueuedPrd('foundation');
-    const feature = makeQueuedPrd('feature', ['foundation']);
+    const foundationPath = await writeQueuedPrdFile(cwd, 'foundation');
+    const featurePath = await writeQueuedPrdFile(cwd, 'feature', ['foundation']);
+    const foundation = makeQueuedPrd('foundation', [], foundationPath);
+    const feature = makeQueuedPrd('feature', ['foundation'], featurePath);
 
-    spawnPrdChild.mockResolvedValueOnce('failed');
+    // foundation fails — mirror production by moving its file out of the root
+    // queue (the child process does this), so reconciliation does not re-queue it.
+    spawnPrdChild.mockImplementationOnce(async () => {
+      await movePrdToSubdir(foundationPath, 'failed', cwd);
+      return 'failed';
+    });
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();

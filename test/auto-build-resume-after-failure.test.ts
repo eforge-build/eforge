@@ -21,21 +21,33 @@ import { join } from 'node:path';
 import { QueueScheduler, type SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
 import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { movePrdToSubdir, type QueuedPrd } from '@eforge-build/engine/prd-queue';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeQueuedPrd(id: string, dependsOn: string[] = []): QueuedPrd {
+function makeQueuedPrd(id: string, dependsOn: string[] = [], filePath?: string): QueuedPrd {
   return {
     id,
-    filePath: `/tmp/${id}.md`,
+    filePath: filePath ?? `/tmp/${id}.md`,
     frontmatter: { title: id, depends_on: dependsOn.length ? dependsOn : undefined },
     content: `---\ntitle: ${id}\n---\n\n# ${id}`,
     lastCommitHash: '',
     lastCommitDate: '',
   };
+}
+
+/**
+ * Materialize a queued PRD file on disk so it survives the scheduler's per-tick
+ * reconciliation against the on-disk queue (mirroring production, where
+ * initialPrds come from loadQueue).
+ */
+async function writeQueuedPrdFile(cwd: string, id: string, dependsOn: string[] = []): Promise<string> {
+  const filePath = join(cwd, 'eforge', 'queue', `${id}.md`);
+  const depsLine = dependsOn.length ? `depends_on: [${dependsOn.join(', ')}]\n` : '';
+  await writeFile(filePath, `---\ntitle: ${id}\n${depsLine}---\n\n# ${id}`);
+  return filePath;
 }
 
 async function waitForSpawnCount(spawnPrdChild: ReturnType<typeof vi.fn>, expectedCount: number): Promise<void> {
@@ -113,14 +125,18 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
   it('after pause and resume, independent pending PRD c is dequeued', async () => {
     const { cwd, queueDir, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv(2);
 
-    const prdA = makeQueuedPrd('prd-a');
-    const prdB = makeQueuedPrd('prd-b');
+    const prdAPath = await writeQueuedPrdFile(cwd, 'prd-a');
+    const prdBPath = await writeQueuedPrdFile(cwd, 'prd-b');
+    const prdA = makeQueuedPrd('prd-a', [], prdAPath);
+    const prdB = makeQueuedPrd('prd-b', [], prdBPath);
 
     const prdContent = '---\ntitle: PRD C\nstatus: pending\n---\n\n# PRD C\n\nDo something.';
 
-    // a fails, b completes
+    // a fails, b completes. prd-a is dispatched first (alphabetical queue order);
+    // mirror production by moving its file out of the root queue on failure so
+    // reconciliation does not re-queue it.
     spawnPrdChild
-      .mockResolvedValueOnce('failed')   // prd-a
+      .mockImplementationOnce(async () => { await movePrdToSubdir(prdAPath, 'failed', cwd); return 'failed'; })   // prd-a
       .mockResolvedValueOnce('completed') // prd-b
       .mockResolvedValueOnce('completed'); // prd-c
 
@@ -279,12 +295,19 @@ describe('scheduler pause/resume — queue:mutation ignored while suspended', ()
 
 describe('scheduler pause/resume — onComplete runs while suspended', () => {
   it('failed completion finalizes prdState and propagates blocked deps while suspended', async () => {
-    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv(2);
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv(2);
 
-    const foundation = makeQueuedPrd('foundation');
-    const dependent = makeQueuedPrd('dependent', ['foundation']);
+    const foundationPath = await writeQueuedPrdFile(cwd, 'foundation');
+    const dependentPath = await writeQueuedPrdFile(cwd, 'dependent', ['foundation']);
+    const foundation = makeQueuedPrd('foundation', [], foundationPath);
+    const dependent = makeQueuedPrd('dependent', ['foundation'], dependentPath);
 
-    spawnPrdChild.mockResolvedValueOnce('failed');
+    // foundation fails — mirror production by moving its file out of the root
+    // queue (the child process does this), so reconciliation does not re-queue it.
+    spawnPrdChild.mockImplementationOnce(async () => {
+      await movePrdToSubdir(foundationPath, 'failed', cwd);
+      return 'failed';
+    });
 
     const scheduler = makeScheduler([foundation, dependent]);
     await scheduler.start();

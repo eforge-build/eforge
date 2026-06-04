@@ -26,6 +26,7 @@ import {
   daemonRequestIfRunning,
   writeLockfile,
   API_ROUTES,
+  buildPath,
   DAEMON_API_VERSION,
   clearApiVersionCache,
   apiCancelIfRunning,
@@ -33,6 +34,8 @@ import {
   apiGetQueueIfRunning,
   apiShowConfigVerboseIfRunning,
   apiStackSyncIfRunning,
+  apiUpdateQueuePriorityIfRunning,
+  apiRemoveQueueItemIfRunning,
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -115,6 +118,18 @@ function startTestServer(): Promise<TestServer> {
         return;
       }
 
+      if (method === 'POST' && url === buildPath(API_ROUTES.queuePriority, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ id: 'prd-1', previousStatus: 'pending', currentStatus: 'pending', priority: 3 }));
+        return;
+      }
+
+      if (method === 'DELETE' && url === buildPath(API_ROUTES.queueRemove, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ id: 'prd-1', previousStatus: 'failed', currentStatus: 'removed', removedSidecars: [] }));
+        return;
+      }
+
       if (url === '/api/cancel/session-1') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
@@ -172,6 +187,8 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiEnqueueIfRunning', opts: (cwd) => ({ cwd, body: { prompt: 'Build the thing' } }) },
   { name: 'apiCancelIfRunning', opts: (cwd) => ({ cwd, sessionId: 'session-1' }) },
   { name: 'apiGetQueueIfRunning', opts: (cwd) => ({ cwd }) },
+  { name: 'apiUpdateQueuePriorityIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', priority: 3 }) },
+  { name: 'apiRemoveQueueItemIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1' }) },
   { name: 'apiGetRunsIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiGetLatestRunFromRunsIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiGetRunningRunsIfRunning', opts: (cwd) => ({ cwd }) },
@@ -468,5 +485,51 @@ describe('helper import discipline', () => {
       url: API_ROUTES.stackSync,
       bodyText: JSON.stringify(syncBody),
     });
+  });
+
+  it('(6f) queue-control live helpers send the expected method, path, and body', async () => {
+    writeLockfile(tmpDir, {
+      pid: process.pid,
+      port: testServer.port,
+      startedAt: new Date().toISOString(),
+    });
+
+    const priorityResult = await apiUpdateQueuePriorityIfRunning({ cwd: tmpDir, prdId: 'prd-1', priority: 3 });
+    expect(priorityResult).toEqual({
+      data: { id: 'prd-1', previousStatus: 'pending', currentStatus: 'pending', priority: 3 },
+      port: testServer.port,
+    });
+    expect(testServer.requests.at(-1)).toEqual({
+      method: 'POST',
+      url: buildPath(API_ROUTES.queuePriority, { prdId: 'prd-1' }),
+      bodyText: JSON.stringify({ priority: 3 }),
+    });
+
+    const removeResult = await apiRemoveQueueItemIfRunning({ cwd: tmpDir, prdId: 'prd-1' });
+    expect(removeResult).toEqual({
+      data: { id: 'prd-1', previousStatus: 'failed', currentStatus: 'removed', removedSidecars: [] },
+      port: testServer.port,
+    });
+    expect(testServer.requests.at(-1)).toEqual({
+      method: 'DELETE',
+      url: buildPath(API_ROUTES.queueRemove, { prdId: 'prd-1' }),
+      bodyText: '',
+    });
+  });
+
+  it('(6g) queue-control helpers fail version verification before issuing the mutation request', async () => {
+    testServer.reportedVersion = DAEMON_API_VERSION + 1;
+    writeLockfile(tmpDir, {
+      pid: process.pid,
+      port: testServer.port,
+      startedAt: new Date().toISOString(),
+    });
+
+    await expect(
+      apiUpdateQueuePriorityIfRunning({ cwd: tmpDir, prdId: 'prd-1', priority: 3 }),
+    ).rejects.toThrow(/version.mismatch/i);
+
+    // The stale-version check must short-circuit before the queue-control route is hit.
+    expect(testServer.requests.some((r) => r.url.includes('/api/queue/prd-1'))).toBe(false);
   });
 });

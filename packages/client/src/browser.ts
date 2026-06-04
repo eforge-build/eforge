@@ -27,6 +27,10 @@ export type {
   ReadSidecarResponse,
   ApplyRecoveryRequest,
   ApplyRecoveryResponse,
+  QueueControlStatus,
+  QueuePriorityRequest,
+  QueuePriorityResponse,
+  QueueRemoveResponse,
   ResumeBuildRequest,
   ResumeBuildResponse,
   ResumeEligibilityRequest,
@@ -91,6 +95,10 @@ export {
   fetchQueueRecoveryAnalysis,
   applyQueueRecovery,
 } from './browser-queue-recovery.js';
+export {
+  updateQueuePriority,
+  removeQueueItem,
+} from './browser-queue-control.js';
 
 export {
   fetchRecoverySidecar,

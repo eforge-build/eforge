@@ -58,6 +58,13 @@ export type {
 } from './routes/session-plan.js';
 
 export type {
+  QueueControlStatus,
+  QueuePriorityRequest,
+  QueuePriorityResponse,
+  QueueRemoveResponse,
+} from './routes/queue-control.js';
+
+export type {
   PlaybookRunRequest,
   PlaybookRunEnqueuedResponse,
   PlaybookRunRequiresAgentResponse,

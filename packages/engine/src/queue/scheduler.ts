@@ -495,6 +495,38 @@ export class QueueScheduler {
     // running, demote running PRDs with absent/stale/corrupt locks to pending,
     // and remove phantom running entries missing from the root queue.
     await this.reconcileQueueState(freshOrdered);
+    // Rebuild dispatch order from the freshly resolved queue so external queue
+    // mutations (priority rewrites, pending/blocked removals) take effect on the
+    // next dispatch tick.
+    this.rebuildDispatchOrder(freshOrdered);
+  }
+
+  /**
+   * Replace the root portion of `orderedPrds` with the freshly resolved queue
+   * order so priority changes alter subsequent dispatch, and drop pending or
+   * blocked `prdState` entries whose root-queue file is no longer present (e.g.
+   * an operator removed the PRD via the queue-control route).
+   *
+   * In-flight entries (live `running` locks or ids in `launching`) whose file
+   * may already have been consumed are preserved so capacity accounting and
+   * completion handling stay conservative.
+   */
+  private rebuildDispatchOrder(freshOrdered: QueuedPrd[]): void {
+    const freshIds = new Set(freshOrdered.map((p) => p.id));
+
+    // Drop pending/blocked entries that left the root queue.
+    for (const [id, state] of [...this.prdState.entries()]) {
+      if ((state.status === 'pending' || state.status === 'blocked') && !freshIds.has(id)) {
+        this.prdState.delete(id);
+      }
+    }
+
+    // Preserve in-flight entries absent from the fresh root listing.
+    const preserved = this.orderedPrds.filter(
+      (p) => !freshIds.has(p.id) && (this.launching.has(p.id) || this.prdState.get(p.id)?.status === 'running'),
+    );
+
+    this.orderedPrds = [...freshOrdered, ...preserved];
   }
 
   private async failDispatch(prd: QueuedPrd, message: string): Promise<void> {

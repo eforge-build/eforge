@@ -43,6 +43,8 @@ export const API_ROUTES = {
   extensionContributionManifest: '/api/extensions/contributions',
   extensionActionInvoke: '/api/extensions/actions/invoke',
   queue: '/api/queue',
+  queuePriority: '/api/queue/:prdId/priority',
+  queueRemove: '/api/queue/:prdId',
   queueRecoveryAnalyze: '/api/queue/recovery/analyze',
   queueRecoveryApply: '/api/queue/recovery/apply',
   sessionMetadata: '/api/session-metadata',

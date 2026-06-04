@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from '@eforge-build/engine/queue/scheduler';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
@@ -16,6 +16,8 @@ import {
   makeProfileRouter,
   makeQueueDispatchPolicyGate,
   makeQueuedPrd,
+  waitForSchedulerEvents,
+  waitForSpawnCallCount,
 } from './queue-scheduler-helpers';
 
 describe('SCHEDULER_INPUT_TYPES', () => {
@@ -168,7 +170,15 @@ describe('QueueScheduler — queue:mutation event', () => {
   it('dispatches an independent queued PRD while parallel capacity remains', async () => {
     const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
-    const runningPrd = makeQueuedPrd('already-running');
+    // The scheduler reconciles dispatch order against the on-disk queue on every
+    // discovery tick, so initial PRDs must exist as real queue files (matching
+    // production, where initialPrds come from loadQueue).
+    const runningPath = join(cwd, 'eforge', 'queue', 'already-running.md');
+    await writeFile(runningPath, '---\ntitle: already-running\n---\n\n# already-running');
+    const runningPrd = makeQueuedPrd('already-running', [], runningPath);
+    // Keep the dispatched build genuinely running so it occupies a slot and is
+    // not re-dispatched by reconciliation after completion.
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
     const scheduler = makeScheduler([runningPrd]);
     await scheduler.start();
     await vi.waitFor(() => {
@@ -232,6 +242,89 @@ describe('QueueScheduler — queue:mutation event', () => {
     expect(spawnPrdChild.mock.calls[0][0].id).toBe('new-prd');
 
     // Release the watcher producer so the queue can terminate
+    eventQueue.removeProducer();
+  });
+});
+
+describe('QueueScheduler — queue-control reconciliation', () => {
+  it('lets a changed priority control the next dequeued PRD after a mutation tick', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const queueDir = join(cwd, 'eforge', 'queue');
+    const blockerPath = join(queueDir, 'blocker.md');
+    const alphaPath = join(queueDir, 'alpha.md');
+    const zzzPath = join(queueDir, 'zzz.md');
+    await writeFile(blockerPath, '---\ntitle: Blocker\n---\n\n# Blocker');
+    await writeFile(alphaPath, '---\ntitle: Alpha\n---\n\n# Alpha');
+    await writeFile(zzzPath, '---\ntitle: Zzz\n---\n\n# Zzz');
+
+    // blocker holds the single slot via a live lock (counts as running, never dispatched here).
+    const lockDir = join(cwd, '.eforge', 'queue-locks');
+    await mkdir(lockDir, { recursive: true });
+    await writeFile(join(lockDir, 'blocker.lock'), String(process.pid));
+
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const scheduler = makeScheduler([
+      makeQueuedPrd('blocker', [], blockerPath),
+      makeQueuedPrd('alpha', [], alphaPath),
+      makeQueuedPrd('zzz', [], zzzPath),
+    ], [], [], 1);
+    await scheduler.start();
+
+    // Nothing dispatched: blocker occupies the only slot; alpha + zzz are capacity-blocked.
+    await waitForSchedulerEvents(eventQueue, (seen) => seen.some((e) => e.type === 'daemon:scheduler:capacity-blocked'));
+    expect(spawnPrdChild).not.toHaveBeenCalled();
+
+    // Operator raises zzz priority (lower number dispatches earlier); blocker lock goes stale.
+    await writeFile(zzzPath, '---\ntitle: Zzz\npriority: 1\n---\n\n# Zzz');
+    await writeFile(join(lockDir, 'blocker.lock'), String(makeDeadPid()));
+
+    bus.emit('queue:mutation', { type: 'queue:mutation', reason: 'external', timestamp: new Date().toISOString() } as SchedulerInputEvent);
+
+    await waitForSpawnCallCount(spawnPrdChild, 1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('zzz');
+
+    eventQueue.removeProducer();
+  });
+
+  it('does not pass a deleted pending PRD to spawnPrdChild after a mutation tick', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+    const queueDir = join(cwd, 'eforge', 'queue');
+    const blockerPath = join(queueDir, 'mmm-blocker.md');
+    const doomedPath = join(queueDir, 'aaa-doomed.md');
+    const keepPath = join(queueDir, 'zzz-keep.md');
+    await writeFile(blockerPath, '---\ntitle: Blocker\n---\n\n# Blocker');
+    await writeFile(doomedPath, '---\ntitle: Doomed\n---\n\n# Doomed');
+    await writeFile(keepPath, '---\ntitle: Keep\n---\n\n# Keep');
+
+    const lockDir = join(cwd, '.eforge', 'queue-locks');
+    await mkdir(lockDir, { recursive: true });
+    await writeFile(join(lockDir, 'mmm-blocker.lock'), String(process.pid));
+
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const scheduler = makeScheduler([
+      makeQueuedPrd('mmm-blocker', [], blockerPath),
+      makeQueuedPrd('aaa-doomed', [], doomedPath),
+      makeQueuedPrd('zzz-keep', [], keepPath),
+    ], [], [], 1);
+    await scheduler.start();
+
+    await waitForSchedulerEvents(eventQueue, (seen) => seen.some((e) => e.type === 'daemon:scheduler:capacity-blocked'));
+    expect(spawnPrdChild).not.toHaveBeenCalled();
+
+    // Remove the alphabetically-first pending PRD and free the blocker slot.
+    await rm(doomedPath);
+    await writeFile(join(lockDir, 'mmm-blocker.lock'), String(makeDeadPid()));
+
+    bus.emit('queue:mutation', { type: 'queue:mutation', reason: 'external', timestamp: new Date().toISOString() } as SchedulerInputEvent);
+
+    await waitForSpawnCallCount(spawnPrdChild, 1);
+    const dispatchedIds = spawnPrdChild.mock.calls.map((c) => c[0].id);
+    expect(dispatchedIds).not.toContain('aaa-doomed');
+    // The freed slot goes to a still-present PRD, not the deleted one.
+    expect(dispatchedIds[0]).toBe('mmm-blocker');
+
     eventQueue.removeProducer();
   });
 });

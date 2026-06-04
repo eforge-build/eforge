@@ -1,6 +1,7 @@
 import type { MonitorContext } from '../context.js';
 import type { RouteDefinition } from '../http/router.js';
 import { createControlPlaneRoutes } from './control-plane.js';
+import { createQueueControlRoutes } from './queue-control.js';
 import { createQueueRecoveryRoutes } from './queue-recovery.js';
 import { createRecoveryRoutes } from './recovery.js';
 import { createResumeRoutes } from './resume.js';
@@ -17,6 +18,8 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'autoBuildGet',
   'autoBuildSet',
   'schedulerKick',
+  'queuePriority',
+  'queueRemove',
   'recover',
   'readRecoverySidecar',
   'applyRecovery',
@@ -39,6 +42,7 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
 export function createControlMonitorRoutes(context: MonitorContext, runtime?: ControlMonitorRuntime): RouteDefinition[] {
   return [
     ...createControlPlaneRoutes(context, runtime),
+    ...createQueueControlRoutes(context),
     ...createRecoveryRoutes(context),
     ...createResumeRoutes(context),
     ...createQueueRecoveryRoutes(context),
