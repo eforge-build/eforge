@@ -59,7 +59,7 @@ function parseModelsFromLog(logBody: string): string[] {
  *                      from callers that have access to the resolved config so the
  *                      failure summary honors the project's trunk configuration.
  */
-export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent, trunkBranch, featureBranch: featureBranchOverride, baseBranch: baseBranchOverride }: {
+export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdContent, trunkBranch, featureBranch: featureBranchOverride, baseBranch: baseBranchOverride, runId }: {
   setName: string;
   prdId: string;
   cwd: string;
@@ -68,6 +68,7 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
   trunkBranch?: string;
   featureBranch?: string;
   baseBranch?: string;
+  runId?: string;
 }): Promise<BuildFailureSummary> {
   const featureBranch = featureBranchOverride ?? `eforge/${setName}`;
   // When trunkBranch/baseBranch is explicitly configured, use it directly without git I/O.
@@ -75,7 +76,7 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
   const baseBranch = baseBranchOverride ?? trunkBranch ?? await resolveTrunkBranch(undefined, cwd);
 
   // Try event-history synthesis from monitor DB
-  const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath });
+  const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath, runId });
 
   // Try git log/diff against feature branch if it exists
   let landedCommits: LandedCommit[] = [];

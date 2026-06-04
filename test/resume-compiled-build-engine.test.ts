@@ -2,17 +2,19 @@
 // Split from resume-compiled-build-engine.test.ts.
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { synthesizeFromEvents } from '@eforge-build/engine/recovery/event-history';
 import { deriveResumeSeedState, formatResumeContext, checkResumeEligibility, buildResumeArtifactsProjection, projectResumeEligibility, resolveResumeSetName } from '@eforge-build/engine/resume/compiled-build';
 import { applyResumeSeed, initializeState, type ResumeSeedOptions } from '@eforge-build/engine/orchestrator';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { finalizeFailedQueuedResumeSidecars } from '@eforge-build/engine/recovery/failed-resume-sidecar-finalization';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import { loadArtifactRegistry } from '@eforge-build/engine/artifacts/registry';
 import { loadCompletionRegistry } from '@eforge-build/engine/artifacts/completions';
 import { openDatabase } from '@eforge-build/monitor/db';
-import type { PlanSummaryEntry, BuildFailureSummary, EforgeEvent } from '@eforge-build/engine/events';
+import { withRecording } from '@eforge-build/monitor/recorder';
+import type { PlanSummaryEntry, BuildFailureSummary, EforgeEvent, AgentRole } from '@eforge-build/engine/events';
 import { StubHarness } from './stub-harness.js';
 import { useTempDir } from './test-tmpdir.js';
 import { makeResumeFailureSummary as makeFailureSummary, makeResumePlanSummary as makePlanSummary } from './resume-compiled-build-helpers.js';
@@ -129,7 +131,7 @@ function insertRecoverySelectionEvent(
   });
 }
 
-function seedRecoveryRunSelectionFixture(cwd: string, setName: string, newerResumeStatus: 'failed' | 'running'): string {
+function seedRecoveryRunSelectionFixture(cwd: string, setName: string, newerResumeStatus: 'failed' | 'running', opts: { prdId?: string; featureBranch?: string; baseBranch?: string } = {}): string {
   const dbPath = join(cwd, '.eforge', 'monitor.db');
   const db = openDatabase(dbPath);
   const buildRunId = `run-${setName}-build`;
@@ -143,6 +145,7 @@ function seedRecoveryRunSelectionFixture(cwd: string, setName: string, newerResu
   insertRecoverySelectionEvent(db, buildRunId, 'phase:end', undefined, t0, { runId: buildRunId, result: { status: 'failed', summary: 'failed' } });
 
   db.insertRun({ id: resumeRunId, planSet: setName, command: 'resume', status: newerResumeStatus, startedAt: t1, cwd });
+  insertRecoverySelectionEvent(db, resumeRunId, 'build:resume:start', undefined, t1, { prdId: opts.prdId ?? setName, setName, featureBranch: opts.featureBranch ?? `eforge/${setName}`, baseBranch: opts.baseBranch ?? 'main' });
   insertRecoverySelectionEvent(db, resumeRunId, 'plan:status:change', 'plan-05', t1, { status: 'merged' });
   insertRecoverySelectionEvent(db, resumeRunId, 'plan:merge:complete', 'plan-05', t1, { commitSha: 'abc005' });
   insertRecoverySelectionEvent(db, resumeRunId, 'plan:status:change', 'plan-06', t1, { status: 'merged' });
@@ -155,6 +158,35 @@ function seedRecoveryRunSelectionFixture(cwd: string, setName: string, newerResu
 
   db.close();
   return dbPath;
+}
+
+function seedFailedQueuedResumePrd(cwd: string, prdId: string, setName: string, location: 'failed' | 'root' = 'failed', opts: { featureBranch?: string; baseBranch?: string } = {}): void {
+  const dir = location === 'failed' ? join(cwd, '.eforge', 'queue', 'failed') : join(cwd, '.eforge', 'queue');
+  writeFileEnsuringDir(join(dir, `${prdId}.md`), `---
+title: Queued Resume PRD
+created: 2026-01-01
+resume_mode: compiled
+resume_from: ${prdId}
+resume_set_name: ${setName}
+resume_feature_branch: ${opts.featureBranch ?? `eforge/${setName}`}
+resume_base_branch: ${opts.baseBranch ?? 'main'}
+---
+
+# Queued Resume PRD
+`);
+}
+
+function recoveryAnalystManualXml(planId: string): string {
+  return `<recovery verdict="manual" confidence="low"><rationale>Manual review for ${planId}</rationale><completed_work></completed_work><remaining_work><item>${planId}</item></remaining_work><risks></risks></recovery>`;
+}
+
+class RoleRecordingStubHarness extends StubHarness {
+  readonly roles: AgentRole[] = [];
+
+  override async *run(options: Parameters<StubHarness['run']>[0], agent: AgentRole, planId?: string): ReturnType<StubHarness['run']> {
+    this.roles.push(agent);
+    yield* super.run(options, agent, planId);
+  }
 }
 
 function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { removeArtifactsAtTip?: boolean } = {}): void {
@@ -276,6 +308,8 @@ depends_on: ["${prdId}"]
         expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
         expect(existsSync(join(cwd, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(false);
         expect(existsSync(join(cwd, '.eforge', 'queue', 'child-prd.md'))).toBe(true);
+        expect(existsSync(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'))).toBe(false);
+        expect(existsSync(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'))).toBe(false);
         expect(completions.completions[prdId].status).toBe('completed');
         expect(completions.completions[prdId].artifactAvailable).toBe(true);
       }
@@ -301,11 +335,13 @@ created: 2026-01-01
 
 # Queued Ineligible PRD
 `);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Recovery\n');
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
-      summary: { setName },
+    const originalRecoveryMd = '# Recovery\n';
+    const originalRecoveryJson = JSON.stringify({
+      summary: { setName, failingPlan: { planId: 'old-plan' } },
       verdict: { verdict: 'resume', confidence: 'high' },
-    }));
+    });
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), originalRecoveryMd);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), originalRecoveryJson);
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'), `---
 title: Child PRD
 created: 2026-01-01
@@ -345,8 +381,277 @@ depends_on: ["${prdId}"]
     expect(existsSync(join(cwd, '.eforge', 'queue-locks', `${prdId}.lock`))).toBe(false);
     expect(existsSync(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'))).toBe(true);
     expect(existsSync(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'))).toBe(false);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
-    expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+    expect(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), 'utf-8')).toBe(originalRecoveryMd);
+    expect(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')).toBe(originalRecoveryJson);
+  });
+
+  it('preserves non-default compiled-resume branch metadata in refreshed sidecars', async () => {
+    const cwd = initRepo();
+    const prdId = 'non-default-metadata-prd';
+    const setName = 'non-default-metadata-set';
+    const featureBranch = 'custom/resume-feature';
+    const baseBranch = 'release/base';
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.md`), '# PRD\n');
+    seedRecoveryRunSelectionFixture(cwd, setName, 'failed', { prdId, featureBranch, baseBranch });
+
+    const result = await finalizeFailedQueuedResumeSidecars({
+      cwd,
+      prdId,
+      setName,
+      featureBranch,
+      baseBranch,
+      agentRuntimes: new StubHarness([{ text: recoveryAnalystManualXml('plan-07') }]),
+      config: DEFAULT_CONFIG,
+      resumeRunId: `run-${setName}-resume`,
+    });
+
+    expect(result.status).toBe('refreshed');
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary };
+    const md = readFileSync(join(failedDir, `${prdId}.recovery.md`), 'utf-8');
+    expect(parsed.summary.setName).toBe(setName);
+    expect(parsed.summary.failingPlan.planId).toBe('plan-07');
+    expect(parsed.summary.featureBranch).toBe(featureBranch);
+    expect(parsed.summary.baseBranch).toBe(baseBranch);
+    expect(md).toContain(featureBranch);
+    expect(md).toContain(baseBranch);
+  });
+
+  it('writes degraded manual sidecar for activated resume evidence without summarizable plan evidence', async () => {
+    const cwd = initRepo();
+    const prdId = 'degraded-evidence-prd';
+    const setName = 'degraded-evidence-set';
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.md`), '# PRD\n');
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const runId = 'current-incomplete-resume';
+    const ts = '2026-01-01T00:00:00.000Z';
+    db.insertRun({ id: runId, planSet: setName, command: 'resume', status: 'running', startedAt: ts, cwd });
+    insertRecoverySelectionEvent(db, runId, 'build:resume:start', undefined, ts, { prdId, setName });
+    db.close();
+
+    const result = await finalizeFailedQueuedResumeSidecars({
+      cwd,
+      prdId,
+      setName,
+      featureBranch: `eforge/${setName}`,
+      baseBranch: 'main',
+      agentRuntimes: new StubHarness([]),
+      config: DEFAULT_CONFIG,
+      resumeRunId: runId,
+    });
+
+    expect(result.status).toBe('degraded');
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary; verdict: { verdict: string; confidence: string; rationale: string; partial?: boolean; recoveryError?: string } };
+    expect(parsed.summary.partial).toBe(true);
+    expect(parsed.summary.failingPlan.planId).toBe('unknown');
+    expect(parsed.verdict.verdict).toBe('manual');
+    expect(parsed.verdict.confidence).toBe('low');
+    expect(parsed.verdict.partial).toBe(true);
+    expect(parsed.verdict.recoveryError).toContain('incomplete or not summarizable');
+  });
+
+  it('invalidates old sidecars when failed-resume sidecar rewrite fails', async () => {
+    const cwd = initRepo();
+    const prdId = 'rewrite-failure-prd';
+    const setName = 'rewrite-failure-set';
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.md`), '# PRD\n');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.recovery.md`), '# Old\n');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.recovery.json`), '{"old":true}\n');
+    mkdirSync(join(failedDir, `${prdId}.recovery.json.tmp`), { recursive: true });
+
+    const result = await finalizeFailedQueuedResumeSidecars({
+      cwd,
+      prdId,
+      setName,
+      featureBranch: `eforge/${setName}`,
+      baseBranch: 'main',
+      agentRuntimes: new StubHarness([]),
+      config: DEFAULT_CONFIG,
+      activationReached: true,
+      degradedReason: 'forced rewrite failure',
+    });
+
+    expect(result.status).toBe('invalidated');
+    expect(existsSync(join(failedDir, `${prdId}.recovery.md`))).toBe(false);
+    expect(existsSync(join(failedDir, `${prdId}.recovery.json`))).toBe(false);
+  });
+
+  it('replaces old sidecars after direct queued resume fails after activation', async () => {
+    const cwd = initRepo();
+    const setName = 'activated-resume-sidecars';
+    const prdId = 'activated-resume-prd';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedRecoveryRunSelectionFixture(cwd, setName, 'failed');
+    seedFailedQueuedResumePrd(cwd, prdId, setName);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Old recovery for old-plan\n');
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({ schemaVersion: 2, summary: { prdId, setName, failingPlan: { planId: 'old-plan' } }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] } }));
+
+    const harness = new RoleRecordingStubHarness([{ error: new Error('resume builder failure') }, { text: recoveryAnalystManualXml('plan-01') }]);
+    const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness, config: { landing: { ...DEFAULT_CONFIG.landing, action: 'leave' }, build: { ...DEFAULT_CONFIG.build, postMergeCommands: [], cleanupPlanFiles: false, validation: { ...DEFAULT_CONFIG.build.validation, allowNoCommands: true, noCommandsReason: 'direct failed resume sidecar test' } } } });
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const events: EforgeEvent[] = [];
+    let currentRunId: string | undefined;
+    try {
+      for await (const event of withRecording(engine.resumeBuild(prdId, { cwd }), db, cwd)) {
+        events.push(event);
+        if (event.type === 'phase:start' && event.command === 'resume') currentRunId = event.runId;
+        if (event.type === 'build:resume:start' && currentRunId !== undefined) {
+          const now = new Date().toISOString();
+          insertRecoverySelectionEvent(db, currentRunId, 'plan:status:change', 'plan-01', now, { status: 'failed' });
+          insertRecoverySelectionEvent(db, currentRunId, 'plan:build:failed', 'plan-01', now, { error: 'current direct resume failure' });
+        }
+      }
+    } finally {
+      db.close();
+    }
+
+    expect(events.some((event) => event.type === 'build:resume:start')).toBe(true);
+    expect(events.some((event) => event.type === 'build:resume:complete')).toBe(false);
+    const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary; verdict: { verdict: string; rationale: string } };
+    const md = readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), 'utf-8');
+    expect(parsed.summary.setName).toBe(setName);
+    expect(parsed.summary.failingPlan.planId).toBe('plan-01');
+    expect(harness.roles).toEqual(['builder', 'recovery-analyst']);
+    expect(parsed.verdict.verdict).toBe('manual');
+    expect(parsed.verdict.rationale).toBe('Manual review for plan-01');
+    expect(md).toContain(setName);
+    expect(md).toContain('plan-01');
+  });
+
+  it('does not refresh old sidecars when direct queued resume rollback is blocked', async () => {
+    const cwd = initRepo();
+    const setName = 'blocked-rollback-sidecars';
+    const prdId = 'blocked-rollback-prd';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedFailedQueuedResumePrd(cwd, prdId, setName);
+    const oldMd = '# Old recovery stays authoritative until manual cleanup\n';
+    const oldJson = JSON.stringify({ schemaVersion: 2, summary: { prdId, setName, failingPlan: { planId: 'old-plan' } }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] } });
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), oldMd);
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), oldJson);
+
+    const harness = new RoleRecordingStubHarness([{ error: new Error('resume builder failure') }, { text: recoveryAnalystManualXml('plan-01') }]);
+    const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness, config: { landing: { ...DEFAULT_CONFIG.landing, action: 'leave' }, build: { ...DEFAULT_CONFIG.build, postMergeCommands: [], cleanupPlanFiles: false, validation: { ...DEFAULT_CONFIG.build.validation, allowNoCommands: true, noCommandsReason: 'blocked rollback sidecar test' } } } });
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const events: EforgeEvent[] = [];
+    let currentRunId: string | undefined;
+    try {
+      for await (const event of withRecording(engine.resumeBuild(prdId, { cwd }), db, cwd)) {
+        events.push(event);
+        if (event.type === 'phase:start' && event.command === 'resume') currentRunId = event.runId;
+        if (event.type === 'build:resume:start' && currentRunId !== undefined) {
+          const now = new Date().toISOString();
+          writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), '# Collision PRD\n');
+          insertRecoverySelectionEvent(db, currentRunId, 'plan:status:change', 'plan-01', now, { status: 'failed' });
+          insertRecoverySelectionEvent(db, currentRunId, 'plan:build:failed', 'plan-01', now, { error: 'current blocked resume failure' });
+          db.updateRunStatus(currentRunId, 'failed', now);
+        }
+      }
+    } finally {
+      db.close();
+    }
+
+    expect(events.some((event) => event.type === 'build:resume:start')).toBe(true);
+    expect(events.some((event) => event.type === 'build:resume:complete')).toBe(false);
+    expect(events.some((event) => event.type === 'phase:end' && event.result.summary.includes('rollback blocked'))).toBe(true);
+    expect(harness.roles).toEqual(['builder']);
+    expect(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), 'utf-8')).toBe(oldMd);
+    expect(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')).toBe(oldJson);
+  });
+
+  it('records success-finalization failure in a degraded manual sidecar', async () => {
+    const cwd = initRepo();
+    const setName = 'scheduler-degraded-sidecars';
+    const prdId = 'scheduler-degraded-prd';
+    const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    writeFileEnsuringDir(join(failedDir, `${prdId}.md`), '# PRD\n');
+    const reason = `Cannot finalize queued resume for ${prdId}: no usable built artifact exists.`;
+
+    const result = await finalizeFailedQueuedResumeSidecars({
+      cwd,
+      prdId,
+      setName,
+      featureBranch: `eforge/${setName}`,
+      baseBranch: 'main',
+      agentRuntimes: new StubHarness([]),
+      config: DEFAULT_CONFIG,
+      activationReached: true,
+      degradedReason: reason,
+    });
+
+    expect(result.status).toBe('degraded');
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary; verdict: { verdict: string; confidence: string; recoveryError?: string } };
+    expect(parsed.summary.partial).toBe(true);
+    expect(parsed.summary.failingPlan.planId).toBe('unknown');
+    expect(parsed.verdict.verdict).toBe('manual');
+    expect(parsed.verdict.confidence).toBe('low');
+    expect(parsed.verdict.recoveryError).toBe(reason);
+  });
+
+  it('refreshes scheduler-owned failed compiled-resume sidecars before queue completion', async () => {
+    const cwd = initRepo();
+    const setName = 'scheduler-resume-sidecars';
+    const prdId = 'scheduler-resume-prd';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedRecoveryRunSelectionFixture(cwd, setName, 'failed');
+    seedFailedQueuedResumePrd(cwd, prdId, setName, 'root');
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Old scheduler recovery\n');
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({ schemaVersion: 2, summary: { prdId, setName, failingPlan: { planId: 'old-plan' } }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] } }));
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'), `---
+title: Child PRD
+created: 2026-01-01
+depends_on: ["${prdId}"]
+---
+
+# Child PRD
+`);
+    const cliPath = join(cwd, 'fake-eforge-cli.js');
+    writeFileSync(cliPath, `const { DatabaseSync } = require('node:sqlite');
+const { join } = require('node:path');
+const sessionId = process.argv[process.argv.indexOf('--session-id') + 1];
+const cwd = process.cwd();
+const runId = 'child-resume-run';
+const ts = new Date().toISOString();
+const db = new DatabaseSync(join(cwd, '.eforge', 'monitor.db'));
+db.prepare('INSERT INTO runs (id, session_id, plan_set, command, status, started_at, cwd) VALUES (?, ?, ?, ?, ?, ?, ?)').run(runId, sessionId, '${setName}', 'resume', 'failed', ts, cwd);
+function insert(type, planId, data = {}) {
+  db.prepare('INSERT INTO events (run_id, type, plan_id, data, timestamp) VALUES (?, ?, ?, ?, ?)').run(runId, type, planId ?? null, JSON.stringify({ type, ...(planId ? { planId } : {}), ...data, timestamp: ts }), ts);
+}
+insert('build:resume:start', null, { prdId: '${prdId}', setName: '${setName}', featureBranch: 'eforge/${setName}' });
+insert('plan:status:change', 'plan-07', { status: 'failed' });
+insert('plan:build:failed', 'plan-07', { error: 'resume failure' });
+db.close();
+process.exit(1);
+`, 'utf-8');
+    const oldCliPath = process.env.EFORGE_CLI_PATH;
+    process.env.EFORGE_CLI_PATH = cliPath;
+    let checkedAtComplete = false;
+    const harness = new StubHarness([{ text: recoveryAnalystManualXml('plan-07') }]);
+    try {
+      const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness, config: { landing: { ...DEFAULT_CONFIG.landing, action: 'leave' }, build: { ...DEFAULT_CONFIG.build, postMergeCommands: [], cleanupPlanFiles: false, validation: { ...DEFAULT_CONFIG.build.validation, allowNoCommands: true, noCommandsReason: 'scheduler sidecar test' } } } });
+      for await (const event of engine.runQueue({ name: prdId, cwd })) {
+        if (event.type === 'queue:prd:complete' && event.prdId === prdId) {
+          checkedAtComplete = true;
+          expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+          expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
+          expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
+          const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary };
+          const md = readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), 'utf-8');
+          expect(parsed.summary.setName).toBe(setName);
+          expect(parsed.summary.failingPlan.planId).toBe('plan-07');
+          expect(harness.calls.some((call) => call.prompt.includes('plan-07'))).toBe(true);
+          expect(md).toContain(setName);
+          expect(md).toContain('plan-07');
+          expect(existsSync(join(cwd, '.eforge', 'queue', 'skipped', 'child-prd.md'))).toBe(true);
+          expect(existsSync(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'))).toBe(false);
+        }
+      }
+    } finally {
+      if (oldCliPath === undefined) delete process.env.EFORGE_CLI_PATH;
+      else process.env.EFORGE_CLI_PATH = oldCliPath;
+    }
+    expect(checkedAtComplete).toBe(true);
   });
 });
 // --- eforge:endregion resume-compiled-build-engine-suite ---

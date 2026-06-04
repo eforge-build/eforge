@@ -7,6 +7,7 @@ export interface SynthesizeOptions {
   setName: string;
   prdId: string;
   dbPath?: string;
+  runId?: string;
 }
 
 interface EventHistoryRow {
@@ -23,7 +24,13 @@ interface SelectedRunRow {
   startedAt: string;
 }
 
-function selectRunForEventHistory(db: DatabaseSync, setName: string): SelectedRunRow | undefined {
+function selectRunForEventHistory(db: DatabaseSync, setName: string, runId?: string): SelectedRunRow | undefined {
+  if (runId !== undefined) {
+    return db.prepare(
+      `SELECT id, command, started_at AS startedAt FROM runs WHERE id = ? AND plan_set = ? LIMIT 1`,
+    ).get(runId, setName) as SelectedRunRow | undefined;
+  }
+
   const failedEvidenceRunStmt = db.prepare(
     `SELECT r.id, r.command, r.started_at AS startedAt
      FROM runs r
@@ -74,13 +81,13 @@ function terminalSubtypeFromMessage(message: string | undefined): string | undef
  * @returns A partial BuildFailureSummary, or null when no data is findable
  */
 export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildFailureSummary> | null {
-  const { setName, prdId, dbPath } = options;
+  const { setName, prdId, dbPath, runId: requestedRunId } = options;
   if (!dbPath) return null;
 
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      const run = selectRunForEventHistory(db, setName);
+      const run = selectRunForEventHistory(db, setName, requestedRunId);
 
       if (!run) return null;
 

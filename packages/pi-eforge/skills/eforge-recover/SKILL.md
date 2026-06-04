@@ -98,7 +98,7 @@ The daemon applies the action in-process and returns synchronously. Report the r
 
 > Queued compiled-build resume for PRD `{prdId}`. It will wait for scheduler dispatch under the current queue controls.
 
-A dispatched compiled-build resume automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics. Manual queue-cascade recovery remains available for explicit retry or repair workflows.
+A dispatched compiled-build resume automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics when it succeeds. If an activated resume fails, the engine rolls the PRD back to `failed/` and refreshes the recovery sidecar from resumed-run evidence, or writes/removes degraded evidence so stale pre-resume sidecars are not authoritative. Manual queue-cascade recovery remains available for explicit retry or repair workflows.
 
 ## When to Choose Compiled-Build Resume vs PRD-Level Retry
 
