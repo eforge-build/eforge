@@ -6,8 +6,8 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 interface SheetPanelProps {
   open: boolean;
   onClose: () => void;
-  title?: string;
-  description?: string;
+  title?: ReactNode;
+  description?: ReactNode;
   className?: string;
   children: ReactNode;
 }

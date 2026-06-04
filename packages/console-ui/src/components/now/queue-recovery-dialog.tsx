@@ -10,23 +10,16 @@ import {
   type ResumeBuildResponse,
   type ResumeEligibilityResponse,
 } from '@eforge-build/client/browser';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { SheetPanel } from '@/components/ui/sheet-panel';
 import {
   RecoveryVerdictChip,
   asConfidence,
   asVerdict,
 } from '@/components/recovery/verdict-chip';
-import { ConfirmAction } from '@/components/recovery/confirm-action';
-import { SafeMarkdown } from '@/components/recovery/safe-markdown';
-import { AdvancedCascadeSection } from '@/components/recovery/advanced-cascade-section';
+import {
+  RecoveryReportPanel,
+  type ReportStatus,
+} from '@/components/recovery/recovery-report-panel';
 
 interface QueueRecoveryDialogProps {
   open: boolean;
@@ -40,8 +33,6 @@ interface QueueRecoveryDialogProps {
   refreshQueue: () => Promise<void> | void;
 }
 
-type ReportStatus = 'loading' | 'loaded' | 'missing' | 'error';
-
 function is404(err: unknown): boolean {
   return err instanceof Error && /\(404\)/.test(err.message);
 }
@@ -49,47 +40,6 @@ function is404(err: unknown): boolean {
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
-
-function applyResultMessage(result: ApplyRecoveryResponse): string {
-  switch (result.verdict) {
-    case 'retry':
-      return 'Applied retry: re-queueing the PRD.';
-    case 'split':
-      return `Applied split: enqueuing the successor PRD${result.successorPrdId ? ` (${result.successorPrdId})` : ''}. When the recovery report records landed partial work, the successor starts from the preserved feature branch while still targeting the original base branch.`;
-    case 'abandon':
-      return 'Applied abandon: archiving or removing the failed PRD.';
-    case 'manual':
-      return 'Manual review required: no action taken.';
-  }
-}
-
-interface SidecarActionConfig {
-  triggerLabel: string;
-  title: string;
-  description: string;
-  confirmLabel: string;
-}
-
-const SIDECAR_ACTIONS: Record<'retry' | 'split' | 'abandon', SidecarActionConfig> = {
-  retry: {
-    triggerLabel: 'Re-queue PRD',
-    title: 'Re-queue this PRD?',
-    description: 'The recovery apply route will move the failed PRD back to the queue.',
-    confirmLabel: 'Re-queue',
-  },
-  split: {
-    triggerLabel: 'Enqueue successor PRD',
-    title: 'Enqueue the successor PRD?',
-    description: 'The recovery apply route will enqueue the suggested successor PRD. If the report records landed partial work, the successor may continue from the preserved feature branch while targeting the original base branch.',
-    confirmLabel: 'Enqueue',
-  },
-  abandon: {
-    triggerLabel: 'Archive failed PRD',
-    title: 'Archive this failed PRD?',
-    description: 'The recovery apply route will archive or remove the failed PRD.',
-    confirmLabel: 'Archive',
-  },
-};
 
 export function QueueRecoveryDialog({
   open,
@@ -228,133 +178,49 @@ export function QueueRecoveryDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span>Recover failed build</span>
-            {effectiveVerdict && effectiveConfidence && (
-              <RecoveryVerdictChip verdict={effectiveVerdict} confidence={effectiveConfidence} />
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {prdTitle ?? prdId ?? 'the selected failed PRD'}
-            {prdId && <span className="ml-2 text-xs text-muted-foreground">{prdId}</span>}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Recovery report */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-medium text-foreground">Recovery report</h3>
-            {reportStatus === 'loading' && (
-              <p className="text-sm text-muted-foreground">Loading recovery report…</p>
-            )}
-            {reportStatus === 'error' && (
-              <p role="alert" className="text-sm text-destructive">{reportError}</p>
-            )}
-            {reportStatus === 'missing' && (
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">recovery pending — no recovery report exists yet.</p>
-                <ConfirmAction
-                  triggerLabel="Run recovery analysis"
-                  title="Run recovery analysis?"
-                  description="This starts a recovery analysis worker that inspects the failed build and writes a recovery report."
-                  confirmLabel="Run analysis"
-                  onConfirm={handleRunAnalysis}
-                  disabled={startingAnalysis || analysisStarted}
-                />
-                {analysisStarted && (
-                  <p className="text-xs text-foreground">Recovery analysis started.</p>
-                )}
-                {analysisError && (
-                  <p role="alert" className="text-xs text-destructive">{analysisError}</p>
-                )}
-              </div>
-            )}
-            {reportStatus === 'loaded' && sidecar && (
-              <div className="rounded-md border p-3 text-xs">
-                <SafeMarkdown markdown={sidecar.markdown} />
-              </div>
-            )}
-          </section>
-
-          {/* Sidecar verdict action */}
-          {reportStatus === 'loaded' && sidecar && (
-            <section className="space-y-2">
-              <h3 className="text-sm font-medium text-foreground">Recommended recovery action</h3>
-              {sidecarVerdict === 'manual' ? (
-                <p className="text-sm text-muted-foreground">Manual review required.</p>
-              ) : sidecarVerdict && SIDECAR_ACTIONS[sidecarVerdict] ? (
-                <ConfirmAction
-                  triggerLabel={SIDECAR_ACTIONS[sidecarVerdict].triggerLabel}
-                  title={SIDECAR_ACTIONS[sidecarVerdict].title}
-                  description={SIDECAR_ACTIONS[sidecarVerdict].description}
-                  confirmLabel={SIDECAR_ACTIONS[sidecarVerdict].confirmLabel}
-                  onConfirm={handleApplySidecar}
-                  disabled={applyingSidecar || applyResult !== null}
-                />
-              ) : null}
-              {applyResult && (
-                <p className="text-sm text-foreground">{applyResultMessage(applyResult)}</p>
-              )}
-              {applyError && (
-                <p role="alert" className="text-sm text-destructive">{applyError}</p>
-              )}
-            </section>
+    <SheetPanel
+      open={open}
+      onClose={() => onOpenChange(false)}
+      className="w-full sm:max-w-3xl"
+      title={
+        <span className="flex items-center gap-2">
+          <span>Recover failed build</span>
+          {effectiveVerdict && effectiveConfidence && (
+            <RecoveryVerdictChip verdict={effectiveVerdict} confidence={effectiveConfidence} />
           )}
-
-          {/* Compiled-build resume */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-medium text-foreground">Compiled-build resume</h3>
-            {eligibilityError && (
-              <p role="alert" className="text-sm text-destructive">{eligibilityError}</p>
-            )}
-            {eligibility && eligibility.eligible && (
-              <ConfirmAction
-                triggerLabel="Resume compiled build"
-                title="Resume compiled build?"
-                description={`Resume the compiled build for ${eligibility.prdId} in set ${eligibility.setName}.`}
-                confirmLabel="Resume"
-                onConfirm={handleResume}
-                disabled={startingResume || resumeResult !== null}
-              />
-            )}
-            {eligibility && !eligibility.eligible && (
-              <p className="text-sm text-muted-foreground">{eligibility.reason}</p>
-            )}
-            {resumeResult && (
-              <div className="space-y-1 text-sm text-foreground">
-                <p>Resume queued</p>
-                <p className="text-xs text-muted-foreground">PRD: {resumeResult.prdId}</p>
-                <p className="text-xs text-muted-foreground">Set: {resumeResult.setName}</p>
-                <p className="text-xs text-muted-foreground">Feature branch: {resumeResult.featureBranch}</p>
-                <p className="text-xs text-muted-foreground">Base branch: {resumeResult.baseBranch}</p>
-                {resumeResult.profile && <p className="text-xs text-muted-foreground">Profile: {resumeResult.profile}</p>}
-              </div>
-            )}
-            {resumeError && (
-              <p role="alert" className="text-sm text-destructive">{resumeError}</p>
-            )}
-          </section>
-
-          {/* Advanced queue-cascade */}
-          {prdId && (
-            <AdvancedCascadeSection
-              prdId={prdId}
-              verdict={effectiveVerdict}
-              confidence={effectiveConfidence}
-              refreshQueue={refreshQueue}
-            />
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </span>
+      }
+      description={
+        <span>
+          {prdTitle ?? prdId ?? 'the selected failed PRD'}
+          {prdId && <span className="ml-2 text-text-dim">{prdId}</span>}
+        </span>
+      }
+    >
+      <RecoveryReportPanel
+        prdId={prdId}
+        reportStatus={reportStatus}
+        sidecar={sidecar}
+        reportError={reportError}
+        sidecarVerdict={sidecarVerdict}
+        effectiveVerdict={effectiveVerdict}
+        effectiveConfidence={effectiveConfidence}
+        eligibility={eligibility}
+        eligibilityError={eligibilityError}
+        applyResult={applyResult}
+        applyError={applyError}
+        analysisStarted={analysisStarted}
+        analysisError={analysisError}
+        resumeResult={resumeResult}
+        resumeError={resumeError}
+        applyingSidecar={applyingSidecar}
+        startingAnalysis={startingAnalysis}
+        startingResume={startingResume}
+        onApplySidecar={handleApplySidecar}
+        onRunAnalysis={handleRunAnalysis}
+        onResume={handleResume}
+        refreshQueue={refreshQueue}
+      />
+    </SheetPanel>
   );
 }
