@@ -51,7 +51,7 @@ Runtime-supported capability families:
 
 Runtime-deferred capability families:
 
-- `registerAction`, `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink` are SDK methods for extension-authored actions and host-facing contributions; daemon manifest projection and action invocation are runtime-supported, while Console rendering and host command/deep-link UX are deferred.
+- `registerAction`, `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink` are SDK methods for extension-authored actions and host-facing contributions; daemon manifest projection, action invocation, and Console System rendering for declarative contributions are runtime-supported, while host command/deep-link UX is deferred.
 - `beforeEnqueue` and `beforeValidation` policy gates.
 - Approval workflow/UI/state and `modify` policy decisions.
 - `registerValidationProvider` validation providers.

@@ -214,7 +214,7 @@ registerTool(tool: ExtensionTool): void
 
 ### Extension contribution contracts
 
-The SDK also exposes registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; the daemon exposes safe manifest projection and action invocation routes, while Console rendering and host integration wiring are separate platform modules.
+The SDK also exposes registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; the daemon exposes safe manifest projection and action invocation routes, Console renders declarative contributions under `/console/system`, and host integration wiring is a separate platform module.
 
 ```ts
 registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
@@ -242,7 +242,7 @@ const sayHi = defineExtensionAction({
 
 Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `IntegrationCommand`, and `ExtensionDeepLink`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
 
-**Runtime status:** engine registry/runtime support plus daemon manifest/action routes. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input or output payloads. Console rendering and host command/deep-link dispatch are separate platform layers.
+**Runtime status:** engine registry/runtime support plus daemon manifest/action routes and Console System rendering for declarative contributions. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input or output payloads. Host command/deep-link dispatch is a separate platform layer.
 
 ---
 
@@ -1030,7 +1030,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
 | `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route |
-| `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console rendering is separate |
+| `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console renders declarative panels under `/console/system` |
 | `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integration wiring is separate |
 | `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Daemon contribution manifest projection; host integration wiring is separate |
 

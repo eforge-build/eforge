@@ -11,6 +11,7 @@ import {
   fetchSystemProfileShow,
   fetchSystemExtensionList,
   fetchSystemExtensionValidate,
+  fetchSystemExtensionContributionManifest,
   fetchSystemPlaybookList,
   fetchSystemSessionPlanList,
   fetchSystemModelProviders,
@@ -100,7 +101,7 @@ describe('system-fetches', () => {
   });
 
   it('fetchSystemExtensionList calls API_ROUTES.extensionList', async () => {
-    const mockBody = { extensions: [], diagnostics: [], totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0 } };
+    const mockBody = { extensions: [], diagnostics: [], totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 } };
     globalThis.fetch = makeFetchMock(200, mockBody);
     await fetchSystemExtensionList();
     const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
@@ -113,6 +114,14 @@ describe('system-fetches', () => {
     await fetchSystemExtensionValidate();
     const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toBe(API_ROUTES.extensionValidate);
+  });
+
+  it('fetchSystemExtensionContributionManifest calls API_ROUTES.extensionContributionManifest', async () => {
+    const mockBody = { schemaVersion: 1, generatedAt: '2026-01-01T00:00:00.000Z', actions: [], consoleContributions: [], integrationCommands: [], deepLinks: [], diagnostics: [] };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    await fetchSystemExtensionContributionManifest();
+    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toBe(API_ROUTES.extensionContributionManifest);
   });
 
   it('fetchSystemPlaybookList calls API_ROUTES.playbookList', async () => {

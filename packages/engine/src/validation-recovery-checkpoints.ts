@@ -79,7 +79,7 @@ export async function writeValidationRecoveryCheckpoint(
   options: WriteValidationRecoveryCheckpointOptions,
 ): Promise<ValidationRecoveryCheckpointReference> {
   const paths = resolveValidationRecoveryCheckpointPaths(options);
-  await mkdir(paths.directory, { recursive: true });
+  await ensureCheckpointDirectory(paths.artifactRoot, paths.directory);
   await assertCheckpointDirectorySafe(paths.artifactRoot, paths.directory);
 
   const patch = await captureCheckpointPatch(resolve(options.worktreePath));
@@ -245,17 +245,45 @@ async function assertCheckpointDirectorySafe(artifactRoot: string, directory: st
   if (!isSameOrInside(realDirectory, realRoot)) {
     throw new Error('Validation recovery checkpoint directory resolves outside artifact root');
   }
+  await assertNoSymlinkDirectoryComponents(resolvedRoot, resolvedDirectory);
+}
+
+async function ensureCheckpointDirectory(artifactRoot: string, directory: string): Promise<void> {
+  const resolvedRoot = resolve(artifactRoot);
+  const resolvedDirectory = resolve(directory);
+  if (!isSameOrInside(resolvedDirectory, resolvedRoot)) {
+    throw new Error('Validation recovery checkpoint directory escapes artifact root');
+  }
   let current = resolvedRoot;
   const rel = relative(resolvedRoot, resolvedDirectory);
   for (const segment of rel.split('/').filter(Boolean)) {
     current = join(current, segment);
-    const stat = await lstat(current);
-    if (stat.isSymbolicLink()) {
-      throw new Error('Validation recovery checkpoint directory contains a symlink');
+    try {
+      await assertDirectoryComponentSafe(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      await mkdir(current);
+      await assertDirectoryComponentSafe(current);
     }
-    if (!stat.isDirectory()) {
-      throw new Error('Validation recovery checkpoint path component is not a directory');
-    }
+  }
+}
+
+async function assertNoSymlinkDirectoryComponents(resolvedRoot: string, resolvedDirectory: string): Promise<void> {
+  let current = resolvedRoot;
+  const rel = relative(resolvedRoot, resolvedDirectory);
+  for (const segment of rel.split('/').filter(Boolean)) {
+    current = join(current, segment);
+    await assertDirectoryComponentSafe(current);
+  }
+}
+
+async function assertDirectoryComponentSafe(path: string): Promise<void> {
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink()) {
+    throw new Error('Validation recovery checkpoint directory contains a symlink');
+  }
+  if (!stat.isDirectory()) {
+    throw new Error('Validation recovery checkpoint path component is not a directory');
   }
 }
 

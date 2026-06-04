@@ -1,8 +1,8 @@
 /**
  * Typed fetch functions for all System view surfaces.
- * All paths are built from API_ROUTES and URLSearchParams — no /api/ literals.
+ * All paths are built from API_ROUTES and URLSearchParams — no raw daemon route literals.
  */
-import { API_ROUTES } from '@eforge-build/client/browser';
+import { API_ROUTES, fetchExtensionContributionManifest } from '@eforge-build/client/browser';
 import { fetchJson } from '@/lib/fetch-json';
 import type {
   HealthResponse,
@@ -14,6 +14,7 @@ import type {
   ProfileShowResponse,
   ExtensionListResponse,
   ExtensionValidateResponse,
+  ExtensionContributionManifestResponse,
   PlaybookListResponse,
   SessionPlanListResponse,
   ModelProvidersResponse,
@@ -68,6 +69,10 @@ export async function fetchSystemExtensionList(signal?: AbortSignal): Promise<Ex
 export async function fetchSystemExtensionValidate(signal?: AbortSignal): Promise<ExtensionValidateResponse> {
   const data = await fetchJson<ExtensionValidateResponse>(API_ROUTES.extensionValidate, { signal });
   return data!;
+}
+
+export async function fetchSystemExtensionContributionManifest(signal?: AbortSignal): Promise<ExtensionContributionManifestResponse> {
+  return fetchExtensionContributionManifest({ signal });
 }
 
 export async function fetchSystemPlaybookList(signal?: AbortSignal): Promise<PlaybookListResponse> {

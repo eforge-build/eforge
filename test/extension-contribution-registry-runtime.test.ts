@@ -199,12 +199,13 @@ describe('extension contribution registry runtime', () => {
       'blocks.js': `export default function extension(eforge) {
         eforge.registerAction({ id: 'run', title: 'Run', inputSchema: { type: 'object' }, handler: () => ({ ok: true }) });
         eforge.registerConsoleContribution({ id: 'valid', title: 'Valid', blocks: [{ rendererId: 'link', content: 'Docs', href: 'https://example.test' }] });
+        eforge.registerConsoleContribution({ id: 'console-relative', title: 'Console relative', blocks: [{ rendererId: 'link', content: 'System', href: '/console/system' }] });
         eforge.registerConsoleContribution({ id: 'extra-field', title: 'Extra', blocks: [{ rendererId: 'text', content: 'Hi', href: 'https://example.test' }] });
         eforge.registerConsoleContribution({ id: 'unsupported-action', title: 'Action', blocks: [{ rendererId: 'markdown', content: 'Hi', action: { actionId: 'run' } }] });
       }`,
     });
 
-    expect(result.registry.consoleContributions.map((entry) => entry.id)).toEqual(['blocks:valid']);
+    expect(result.registry.consoleContributions.map((entry) => entry.id)).toEqual(['blocks:valid', 'blocks:console-relative']);
     expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toHaveLength(2);
   });
 

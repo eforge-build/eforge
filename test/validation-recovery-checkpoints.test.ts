@@ -117,6 +117,28 @@ describe('validation recovery checkpoints', () => {
     });
   });
 
+  it('rejects symlinked checkpoint parent directories before writing artifacts', async () => {
+    const repo = await initRepo();
+    const outside = await mkdtemp(join(tmpdir(), 'eforge-validation-checkpoint-outside-'));
+    tempDirs.push(outside);
+    await symlink(outside, join(repo, '.eforge'));
+
+    await expect(writeValidationRecoveryCheckpoint({
+      cwd: repo,
+      worktreePath: repo,
+      planSetName: 'demo-set',
+      planId: 'plan-02',
+      attempt: 1,
+      providerName: 'lint/provider',
+      repairStrategy: 'narrow',
+      repairClass: 'narrow',
+      issues: [issue()],
+      signatures: [],
+    })).rejects.toThrow(/symlink/);
+
+    await expect(readFile(join(outside, 'validation-recovery'), 'utf8')).rejects.toThrow();
+  });
+
   it('omits untracked symlinks without reading their targets', async () => {
     const repo = await initRepo();
     const secretDir = await mkdtemp(join(tmpdir(), 'eforge-validation-checkpoint-secret-'));

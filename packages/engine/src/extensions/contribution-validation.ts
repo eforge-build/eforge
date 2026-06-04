@@ -162,7 +162,7 @@ function validateConsoleContributionBlock(block: unknown): JsonSafeValidationRes
   if (typeof block.content !== 'string') return { ok: false, message: 'Console contribution block content must be a string' };
   if (block.rendererId === 'status-badge' && typeof block.status !== 'string') return { ok: false, message: 'status-badge blocks require string status' };
   if (block.rendererId === 'link' && typeof block.href !== 'string') return { ok: false, message: 'link blocks require string href' };
-  if (block.rendererId === 'link' && typeof block.href === 'string' && !isSafeUrlString(block.href, SAFE_CONSOLE_LINK_SCHEMES)) return { ok: false, message: 'link blocks require a safe href URL scheme' };
+  if (block.rendererId === 'link' && typeof block.href === 'string' && !isSafeConsoleHref(block.href)) return { ok: false, message: 'link blocks require a safe href URL scheme' };
   if (ACTION_RENDERERS.has(block.rendererId) && !isValidActionBindingSpec(block.action)) return { ok: false, message: `${block.rendererId} blocks require an action binding` };
   return validateJsonSafeValue(block, { requireObjectRoot: true, rejectSymbolKeys: true });
 }
@@ -185,6 +185,12 @@ function isSafeUrlString(value: string, allowedSchemes: Set<string>): boolean {
   if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
   const schemeMatch = /^([a-z][a-z0-9+.-]*:)/iu.exec(value.trim());
   return schemeMatch !== null && allowedSchemes.has(schemeMatch[1].toLowerCase());
+}
+
+function isSafeConsoleHref(value: string): boolean {
+  if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
+  if (value.startsWith('/console/')) return true;
+  return isSafeUrlString(value, SAFE_CONSOLE_LINK_SCHEMES);
 }
 
 function isValidActionBindingSpec(value: unknown): value is ExtensionActionBindingSpec {
