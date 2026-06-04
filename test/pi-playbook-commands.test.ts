@@ -10,7 +10,7 @@
  * Pi framework peer deps are avoided by mocking ui-helpers entirely.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { PlaybookListEntry } from '@eforge-build/client';
+import type { PlaybookListEntry, PlaybookRunRequest } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Mock Pi TUI helpers — avoids loading @earendil-works/pi-tui peer dep
@@ -47,7 +47,7 @@ vi.mock('@eforge-build/client', async (importOriginal) => {
 });
 
 import { handlePlaybookCommand } from '../packages/pi-eforge/extensions/eforge/playbook-commands.js';
-import { promptForPlaybookLandingGate } from '../packages/pi-eforge/extensions/eforge/landing-gate.js';
+import { promptForPlaybookLandingGate, type LandingGateResult } from '../packages/pi-eforge/extensions/eforge/landing-gate.js';
 import {
   apiPlaybookListIfRunning,
   apiPlaybookRunIfRunning,
@@ -95,28 +95,32 @@ function mockPlaybookList(playbooks: PlaybookListEntry[]) {
   });
 }
 
-function mockLandingGate(result: { landingAction?: string; cancelled?: boolean; configUpdated?: boolean; landingAutoMerge?: boolean }) {
+type EnqueuePath = 'immediate' | 'delayed' | 'fallback';
+
+type ExpectedEnqueueBody = Pick<PlaybookRunRequest, 'name' | 'afterQueueId' | 'landingAction' | 'landingAutoMerge'>;
+
+function mockLandingGate(result: LandingGateResult) {
   (promptForPlaybookLandingGate as ReturnType<typeof vi.fn>).mockResolvedValue(result);
 }
 
-function mockQueueEmpty() {
-  (apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({
-    status: 200,
-    data: [],
-  });
-}
-
-function mockQueueWithRunning(items: Partial<QueueItem>[] = []) {
+function queueItems(items: Partial<QueueItem>[] = []): QueueItem[] {
   const defaultItem: QueueItem = {
     id: 'build-1',
     title: 'Running build',
     status: 'running',
   };
-  const data = items.length > 0 ? items.map((i) => ({ ...defaultItem, ...i })) : [defaultItem];
+  return items.length > 0 ? items.map((i) => ({ ...defaultItem, ...i })) : [defaultItem];
+}
+
+function mockQueueState(path: EnqueuePath) {
   (apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({
     status: 200,
-    data,
+    data: path === 'immediate' ? [] : queueItems([{ id: 'build-1', title: 'Running build', status: 'running' }]),
   });
+}
+
+function mockQueueEmpty() {
+  mockQueueState('immediate');
 }
 
 function mockPlaybookRun(id = 'run-1') {
@@ -126,10 +130,52 @@ function mockPlaybookRun(id = 'run-1') {
   });
 }
 
-function mockPlaybookRunFailThenSucceed(errorMsg = 'not found') {
-  (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>)
-    .mockRejectedValueOnce(new Error(errorMsg))
-    .mockResolvedValueOnce({ status: 200, data: { kind: 'enqueued', id: 'run-2' } });
+function mockEnqueueBehavior(path: EnqueuePath) {
+  if (path === 'fallback') {
+    (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('not found'))
+      .mockResolvedValueOnce({ status: 200, data: { kind: 'enqueued', id: 'run-2' } });
+    return;
+  }
+  mockPlaybookRun();
+}
+
+function selectDelayedUpstream(path: EnqueuePath) {
+  if (path === 'immediate') return;
+  (showSelectOverlay as ReturnType<typeof vi.fn>)
+    .mockResolvedValueOnce('build-1')
+    .mockResolvedValueOnce('confirm');
+}
+
+async function runAutonomousScenario(path: EnqueuePath, landingGateResult: LandingGateResult) {
+  const pi = makePi();
+  const ctx = makeCtx();
+
+  mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
+  mockLandingGate(landingGateResult);
+  mockQueueState(path);
+  mockEnqueueBehavior(path);
+  selectDelayedUpstream(path);
+
+  await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+}
+
+function expectEnqueueBody(callIndex: number, expected: ExpectedEnqueueBody, omittedKeys: string[] = []) {
+  const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[callIndex][0] as {
+    body: Record<string, unknown>;
+  };
+  expect(call.body).toEqual(expect.objectContaining(expected));
+  for (const key of omittedKeys) {
+    expect(call.body).not.toHaveProperty(key);
+  }
+}
+
+function expectedBody(path: EnqueuePath, body: Omit<ExpectedEnqueueBody, 'name' | 'afterQueueId'> = {}): ExpectedEnqueueBody {
+  return {
+    name: 'my-feature',
+    ...(path === 'delayed' && { afterQueueId: 'build-1' }),
+    ...body,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,25 +267,6 @@ describe('Pi handlePlaybookCommand - autonomous playbook landing gate', () => {
     ).toBeLessThan((apiGetQueueIfRunning as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
   });
 
-  it('passes selected landingAction to apiPlaybookRunIfRunning', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'leave' });
-    mockQueueEmpty();
-    mockPlaybookRun();
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({ name: 'my-feature', landingAction: 'leave' }),
-      }),
-    );
-  });
-
   it('makes zero apiPlaybookRunIfRunning calls when landing gate is cancelled', async () => {
     const pi = makePi();
     const ctx = makeCtx();
@@ -274,73 +301,18 @@ describe('Pi handlePlaybookCommand - project-default selection omits landingActi
     vi.clearAllMocks();
   });
 
-  it('enqueue body has no landingAction key when landing gate returns no landingAction', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
+  it.each([
+    { scenario: 'immediate enqueue', path: 'immediate' as const, callCount: 1, callIndex: 0, omitted: ['landingAction', 'afterQueueId'] },
+    { scenario: 'delayed enqueue', path: 'delayed' as const, callCount: 1, callIndex: 0, omitted: ['landingAction'] },
+    { scenario: 'stale-upstream fallback enqueue', path: 'fallback' as const, callCount: 2, callIndex: 1, omitted: ['landingAction', 'afterQueueId'] },
+  ])('enqueue body has no landingAction key for project-default $scenario', async ({ path, callCount, callIndex, omitted }) => {
+    await runAutonomousScenario(path, {});
 
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    // No landingAction returned = project default
-    mockLandingGate({});
-    mockQueueEmpty();
-    mockPlaybookRun();
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).not.toHaveProperty('landingAction');
-  });
-
-  it('enqueue body has no landingAction key for project-default when afterQueueId is set', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({});
-    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
-    mockPlaybookRun();
-
-    // Simulate user selecting wait-for + confirm
-    (showSelectOverlay as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('build-1')  // wait choice: wait for build-1
-      .mockResolvedValueOnce('confirm'); // confirm choice
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).toHaveProperty('afterQueueId', 'build-1');
-    expect(call.body).not.toHaveProperty('landingAction');
-  });
-
-  it('fallback enqueue body has no landingAction key for project-default when upstream build already finished', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({});
-    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
-    mockPlaybookRunFailThenSucceed('not found');
-
-    (showSelectOverlay as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('build-1')  // wait choice
-      .mockResolvedValueOnce('confirm'); // confirm
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(2);
-    const fallbackCall = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[1][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(fallbackCall.body).toHaveProperty('name', 'my-feature');
-    expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
-    expect(fallbackCall.body).not.toHaveProperty('landingAction');
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(callCount);
+    if (path === 'fallback') {
+      expectEnqueueBody(0, { name: 'my-feature', afterQueueId: 'build-1' }, ['landingAction', 'landingAutoMerge']);
+    }
+    expectEnqueueBody(callIndex, expectedBody(path), omitted);
   });
 });
 
@@ -353,74 +325,18 @@ describe('Pi handlePlaybookCommand - explicit leave propagation', () => {
     vi.clearAllMocks();
   });
 
-  it('propagates leave to immediate enqueue body (no afterQueueId)', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
+  it.each([
+    { scenario: 'immediate enqueue body', path: 'immediate' as const, callCount: 1, callIndex: 0, omitted: ['afterQueueId'] },
+    { scenario: 'delayed enqueue body', path: 'delayed' as const, callCount: 1, callIndex: 0, omitted: [] },
+    { scenario: 'stale-upstream fallback body', path: 'fallback' as const, callCount: 2, callIndex: 1, omitted: ['afterQueueId'] },
+  ])('propagates leave to $scenario', async ({ path, callCount, callIndex, omitted }) => {
+    await runAutonomousScenario(path, { landingAction: 'leave' });
 
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'leave' });
-    mockQueueEmpty();
-    mockPlaybookRun();
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).toHaveProperty('landingAction', 'leave');
-    expect(call.body).not.toHaveProperty('afterQueueId');
-  });
-
-  it('propagates leave to delayed enqueue body (with afterQueueId)', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'leave' });
-    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
-    mockPlaybookRun();
-
-    (showSelectOverlay as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('build-1')  // wait choice
-      .mockResolvedValueOnce('confirm'); // confirm
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).toHaveProperty('afterQueueId', 'build-1');
-    expect(call.body).toHaveProperty('landingAction', 'leave');
-  });
-
-  it('propagates leave to fallback enqueue body when upstream build is already finished', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'leave' });
-    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
-    // First call (with afterQueueId) fails with 404; second (fallback) succeeds
-    mockPlaybookRunFailThenSucceed('not found');
-
-    (showSelectOverlay as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('build-1')  // wait choice
-      .mockResolvedValueOnce('confirm'); // confirm
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    // Two calls were made: the first failed, the second (fallback) should carry leave
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(2);
-    const fallbackCall = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[1][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(fallbackCall.body).toHaveProperty('name', 'my-feature');
-    expect(fallbackCall.body).toHaveProperty('landingAction', 'leave');
-    // Fallback is an immediate enqueue — no afterQueueId
-    expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(callCount);
+    if (path === 'fallback') {
+      expectEnqueueBody(0, { name: 'my-feature', afterQueueId: 'build-1', landingAction: 'leave' }, ['landingAutoMerge']);
+    }
+    expectEnqueueBody(callIndex, expectedBody(path, { landingAction: 'leave' }), omitted);
   });
 });
 
@@ -434,94 +350,34 @@ describe('Pi handlePlaybookCommand - landingAutoMerge propagation', () => {
     vi.clearAllMocks();
   });
 
-  it('propagates landingAutoMerge: true to immediate enqueue body', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
+  it.each([
+    { scenario: 'immediate enqueue body', path: 'immediate' as const, callCount: 1, callIndex: 0, omitted: ['afterQueueId'] },
+    { scenario: 'delayed enqueue body', path: 'delayed' as const, callCount: 1, callIndex: 0, omitted: [] },
+    { scenario: 'stale-upstream fallback body', path: 'fallback' as const, callCount: 2, callIndex: 1, omitted: ['afterQueueId'] },
+  ])('propagates landingAutoMerge: true to $scenario', async ({ path, callCount, callIndex, omitted }) => {
+    await runAutonomousScenario(path, { landingAction: 'pr', landingAutoMerge: true });
 
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
-    mockQueueEmpty();
-    mockPlaybookRun();
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).toHaveProperty('landingAction', 'pr');
-    expect(call.body).toHaveProperty('landingAutoMerge', true);
-    expect(call.body).not.toHaveProperty('afterQueueId');
-  });
-
-  it('propagates landingAutoMerge: true to delayed enqueue body (with afterQueueId)', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
-    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
-    mockPlaybookRun();
-
-    (showSelectOverlay as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('build-1')  // wait choice
-      .mockResolvedValueOnce('confirm'); // confirm
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).toHaveProperty('name', 'my-feature');
-    expect(call.body).toHaveProperty('afterQueueId', 'build-1');
-    expect(call.body).toHaveProperty('landingAction', 'pr');
-    expect(call.body).toHaveProperty('landingAutoMerge', true);
-  });
-
-  it('preserves landingAutoMerge: true in fallback enqueue body when stale afterQueueId fails', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'pr', landingAutoMerge: true });
-    mockQueueWithRunning([{ id: 'build-1', title: 'Running build', status: 'running' }]);
-    // First call (with afterQueueId) fails; second (fallback) succeeds
-    mockPlaybookRunFailThenSucceed('not found');
-
-    (showSelectOverlay as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('build-1')  // wait choice
-      .mockResolvedValueOnce('confirm'); // confirm
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
-
-    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(2);
-    const fallbackCall = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[1][0] as {
-      body: Record<string, unknown>;
-    };
-    // The fallback enqueue must carry landingAutoMerge: true even though afterQueueId was stale
-    expect(fallbackCall.body).toHaveProperty('name', 'my-feature');
-    expect(fallbackCall.body).toHaveProperty('landingAutoMerge', true);
-    expect(fallbackCall.body).not.toHaveProperty('afterQueueId');
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledTimes(callCount);
+    if (path === 'fallback') {
+      expectEnqueueBody(0, {
+        name: 'my-feature',
+        afterQueueId: 'build-1',
+        landingAction: 'pr',
+        landingAutoMerge: true,
+      });
+    }
+    expectEnqueueBody(
+      callIndex,
+      expectedBody(path, { landingAction: 'pr', landingAutoMerge: true }),
+      omitted,
+    );
   });
 
   it('omits landingAutoMerge from enqueue body when gate returns no landingAutoMerge', async () => {
-    const pi = makePi();
-    const ctx = makeCtx();
-
-    mockPlaybookList([makeEntry({ name: 'my-feature', mode: 'autonomous' })]);
-    mockLandingGate({ landingAction: 'leave' }); // no landingAutoMerge
-    mockQueueEmpty();
-    mockPlaybookRun();
-
-    await handlePlaybookCommand(pi as any, ctx as any, 'run my-feature');
+    await runAutonomousScenario('immediate', { landingAction: 'leave' });
 
     expect(apiPlaybookRunIfRunning).toHaveBeenCalledOnce();
-    const call = (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).not.toHaveProperty('landingAutoMerge');
+    expectEnqueueBody(0, expectedBody('immediate', { landingAction: 'leave' }), ['afterQueueId', 'landingAutoMerge']);
   });
 });
 
