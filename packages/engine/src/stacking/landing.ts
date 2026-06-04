@@ -26,11 +26,14 @@ import { recoverLandingConflict, type LandingConflictRecoveryResult } from './la
 import {
   initialLandingBaseDecision,
   landingBaseMetadata,
+  landingBaseRetargetFailureDecision,
+  landingBaseRetargetFailureError,
   preflightLandingBase,
   proveLandingHeadFreshness,
   stackContextForLandingDecision,
   type LandingBaseDecision,
   type LandingBasePreflightResult,
+  type LandingBaseRepairMode,
   type StackLandingBaseMetadata,
 } from './landing-base.js';
 import { stackProviderCommandEvent, stackProviderCommandEventFromError } from './provider-events.js';
@@ -178,10 +181,10 @@ function restackRecoveryFailureReason(result: LandingConflictRecoveryResult | un
  *
  * For `landingAction === 'pr'`:
  *   1. Emits and persists `stack:landing:update` started.
- *   2. Runs landing-base preflight; if a parent base has landed, retargets to trunk.
+ *   2. Runs decision-only landing-base preflight to choose the effective base.
  *   3. Calls `provider.syncRepo`, then tracks the branch against the effective base.
  *   4. Runs optional cleanup once (non-fatal) before any submit attempt.
- *   5. Restacks, repeats final base preflight/repair for disappearing parent bases,
+ *   5. Restacks, repeats retarget-capable base preflight/repair for disappearing parent bases,
  *      then proves HEAD contains the fetched remote base.
  *   6. On stale freshness, retries provider sync + restack + freshness proof once.
  *   7. Calls `provider.submitBranch`, discovers the PR URL, applies metadata, and
@@ -271,11 +274,16 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       ...metadataFields,
     } as EforgeEvent;
   };
-  const runBasePreflight = async (): Promise<LandingBasePreflightResult | { ok: false; decision: LandingBaseDecision; reason: string; retargetError: unknown }> => {
+  const runBasePreflight = async (repairMode: LandingBaseRepairMode): Promise<LandingBasePreflightResult | { ok: false; decision: LandingBaseDecision; reason: string; retargetError: unknown }> => {
     try {
-      return await preflightLandingBase({ cwd, mergeWorktreePath, stackContext: effectiveStackContext, provider, decision: baseDecision });
+      return await preflightLandingBase({ cwd, mergeWorktreePath, stackContext: effectiveStackContext, provider, decision: baseDecision, repairMode });
     } catch (err) {
-      return { ok: false, decision: baseDecision, reason: redact(err instanceof Error ? err.message : String(err)), retargetError: err };
+      return {
+        ok: false,
+        decision: landingBaseRetargetFailureDecision(err) ?? baseDecision,
+        reason: redact(err instanceof Error ? err.message : String(err)),
+        retargetError: landingBaseRetargetFailureError(err) ?? err,
+      };
     }
   };
   async function* runProviderSync(): AsyncGenerator<EforgeEvent, { ok: true } | { ok: false; reason: string }> {
@@ -322,7 +330,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     }
   }
 
-  const preflight = await runBasePreflight();
+  const preflight = await runBasePreflight('decision-only');
   baseDecision = preflight.decision;
   effectiveStackContext = stackContextForLandingDecision(stackContext, baseDecision);
   if (!preflight.ok) {
@@ -385,7 +393,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       return;
     }
 
-    const finalPreflight = await runBasePreflight();
+    const finalPreflight = await runBasePreflight('retarget');
     baseDecision = finalPreflight.decision;
     effectiveStackContext = stackContextForLandingDecision(stackContext, baseDecision);
     if (!finalPreflight.ok) {

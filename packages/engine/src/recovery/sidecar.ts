@@ -8,7 +8,7 @@
 
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
+import type { AcceptanceCriterionVerdict, BuildFailureSummary, RecoveryVerdict } from '../events.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -71,6 +71,17 @@ export async function writeRecoverySidecar({
  */
 function escapeTableCell(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
+}
+
+function acceptanceNextStep(verdict: AcceptanceCriterionVerdict): string {
+  switch (verdict.verdict) {
+    case 'fail':
+      return 'Update the implementation or tests cited by the evidence, then rerun acceptance validation for this criterion.';
+    case 'unknown':
+      return 'Inspect the cited evidence manually; add deterministic proof or clarify/split the criterion before retrying.';
+    case 'pass':
+      return 'No action required.';
+  }
 }
 
 function buildMarkdown(
@@ -245,10 +256,10 @@ function buildMarkdown(
     lines.push(`**Total:** ${av.total} | **Pass:** ${av.pass} | **Fail:** ${av.fail} | **Unknown (inconclusive):** ${av.unknown}`);
     lines.push('');
     if (av.verdicts.length > 0) {
-      lines.push('| Criterion | Verdict | Evidence |');
-      lines.push('|-----------|---------|----------|');
+      lines.push('| Criterion | Verdict | Evidence | Next Step |');
+      lines.push('|-----------|---------|----------|-----------|');
       for (const v of av.verdicts) {
-        lines.push(`| ${escapeTableCell(v.criterion)} | ${v.verdict} | ${escapeTableCell(v.evidence)} |`);
+        lines.push(`| ${escapeTableCell(v.criterion)} | ${v.verdict} | ${escapeTableCell(v.evidence)} | ${escapeTableCell(acceptanceNextStep(v))} |`);
       }
       lines.push('');
     }
