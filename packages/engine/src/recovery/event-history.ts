@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit, AcceptanceCriteriaConflict, AcceptanceCriterionVerdict } from '../events.js';
+import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
-import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, extractPlanErrorMap, buildAuthoritativeFragment, detectLegacyFallbackFragment } from './terminal-failure-history.js';
+import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, extractPlanErrorMap, buildAuthoritativeFragment, detectLegacyFallbackFragment, extractAuthoritativeAcceptanceValidation, parseAcceptanceValidationPayload } from './terminal-failure-history.js';
 
 export interface SynthesizeOptions {
   setName: string;
@@ -124,6 +124,22 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
       if (failedPhaseRow) {
         const authTerminal = findAuthoritativeTerminalEvent(db, runId, failedPhaseRow.id);
         if (authTerminal) {
+          if (authTerminal.scope === 'acceptance-validation') {
+            const prdValidationRow = db.prepare(`SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'prd_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as EventHistoryRow | undefined;
+            const parsedPrdValidation = prdValidationRow ? parseEventData(prdValidationRow.data) : undefined;
+            if (parsedPrdValidation?.passed === false) {
+              const errorMessage = `PRD validation failed: ${Array.isArray(parsedPrdValidation.gaps) ? parsedPrdValidation.gaps.length : 0} gap(s) found`;
+              return {
+                prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main',
+                plans: [{ planId: 'prd-validation', status: 'failed', error: errorMessage }],
+                failingPlan: { planId: 'prd-validation', errorMessage },
+                landedCommits: [] as LandedCommit[], diffStat: '', modelsUsed,
+                failedAt: failedPhaseRow.timestamp, partial: true,
+                terminalFailure: { stage: 'prd-validation', scope: 'prd-validation', message: errorMessage, authoritative: false, eventType: 'prd_validation:complete' },
+              };
+            }
+          }
+
           const maps = reconstructPlanMaps(db, runId);
           const valStartRow = db.prepare(`SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as { id: number } | undefined;
           const valCmds = extractValidationCommands(db, runId, valStartRow?.id ?? 0, failedPhaseRow.id);
@@ -132,7 +148,22 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
             ? extractReviewFailureDetails(db, runId, authTerminal.planId, authTerminal.id)
             : undefined;
           const lifecyclePlanErrorMap = extractPlanErrorMap(db, runId, failedPhaseRow.id);
-          const fragment = buildAuthoritativeFragment(authTerminal, maps, prdId, setName, modelsUsed, failedPhaseRow.timestamp, valCmds, landingInfo, reviewFailure, lifecyclePlanErrorMap);
+          const acceptanceValidation = authTerminal.scope === 'acceptance-validation'
+            ? extractAuthoritativeAcceptanceValidation(db, runId, authTerminal)
+            : undefined;
+          const fragment = buildAuthoritativeFragment(
+            authTerminal,
+            maps,
+            prdId,
+            setName,
+            modelsUsed,
+            failedPhaseRow.timestamp,
+            valCmds,
+            landingInfo,
+            reviewFailure,
+            lifecyclePlanErrorMap,
+            acceptanceValidation !== undefined ? { acceptanceValidation } : {},
+          );
           return fragment;
         }
         // phase:end found but no authoritative terminal event — legacy fallback applies.
@@ -393,33 +424,9 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         const acceptanceRow = acceptanceStmt.get(runId, failedPhase.id) as EventHistoryRow | undefined;
 
         if (acceptanceRow && prdValidationPassedCleanly) {
-          const parsedAcc = parseEventData(acceptanceRow.data);
-          if (parsedAcc.passed === false) {
-            // Extract verdicts (fail-safe: filter out malformed entries)
-            const rawVerdicts = Array.isArray(parsedAcc.verdicts) ? parsedAcc.verdicts : [];
-            const verdicts: AcceptanceCriterionVerdict[] = rawVerdicts.filter(
-              (v): v is AcceptanceCriterionVerdict =>
-                typeof v === 'object' && v !== null &&
-                typeof (v as Record<string, unknown>).criterion === 'string' &&
-                typeof (v as Record<string, unknown>).verdict === 'string' &&
-                typeof (v as Record<string, unknown>).evidence === 'string',
-            );
-            const passCount = verdicts.filter((v) => v.verdict === 'pass').length;
-            const failCount = verdicts.filter((v) => v.verdict === 'fail').length;
-            const unknownCount = verdicts.filter((v) => v.verdict !== 'pass' && v.verdict !== 'fail').length;
-            const waivers = Array.isArray(parsedAcc.waivers)
-              ? parsedAcc.waivers.filter((waiver): waiver is string => typeof waiver === 'string' && waiver.trim().length > 0)
-              : [];
-            const rawConflicts = Array.isArray(parsedAcc.acceptanceConflicts) ? parsedAcc.acceptanceConflicts : [];
-            const conflicts: AcceptanceCriteriaConflict[] = rawConflicts.filter(
-              (conflict): conflict is AcceptanceCriteriaConflict =>
-                typeof conflict === 'object' && conflict !== null &&
-                typeof (conflict as Record<string, unknown>).criterion === 'string' &&
-                typeof (conflict as Record<string, unknown>).evidence === 'string' &&
-                typeof (conflict as Record<string, unknown>).conflictsWith === 'string' &&
-                typeof (conflict as Record<string, unknown>).scope === 'string' &&
-                typeof (conflict as Record<string, unknown>).recommendedAction === 'string',
-            );
+          const parsedAcceptance = parseAcceptanceValidationPayload(acceptanceRow.data, { legacyCompatible: true });
+          if (parsedAcceptance.ok) {
+            const acceptanceValidation = parsedAcceptance.acceptanceValidation;
 
             // Gather validation command results from the final validation attempt only.
             // Find the latest validation:start before the acceptance event to bound the window.
@@ -486,16 +493,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
                 ...(phaseStatus !== undefined ? { phaseStatus } : {}),
                 eventType: 'acceptance_validation:complete',
               },
-              acceptanceValidation: {
-                passed: false,
-                total: verdicts.length,
-                pass: passCount,
-                fail: failCount,
-                unknown: unknownCount,
-                verdicts,
-                ...(waivers.length > 0 ? { waivers } : {}),
-                ...(conflicts.length > 0 ? { conflicts } : {}),
-              },
+              acceptanceValidation,
               ...(validationCommands.length > 0 ? { validationCommands } : {}),
               ...(landingInfo !== undefined ? { landing: landingInfo } : {}),
             };

@@ -196,6 +196,40 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('acceptance_validation:complete');
   });
 
+  it('Markdown includes acceptance verdict evidence and deterministic next-step guidance', async () => {
+    const dir = makeTempDir();
+    const summary = makeSummaryWithAcceptanceFailure();
+    summary.acceptanceValidation = {
+      passed: false,
+      total: 2,
+      pass: 0,
+      fail: 1,
+      unknown: 1,
+      verdicts: [
+        { criterion: 'Must reject invalid tokens', verdict: 'fail', evidence: 'Invalid token request succeeded in acceptance trace' },
+        { criterion: 'Must expose audit trail', verdict: 'unknown', evidence: 'No deterministic audit trail proof found' },
+      ],
+    };
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary,
+      verdict: makeVerdict('manual')!,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+    expect(md).toContain('## Acceptance Validation');
+    expect(md).toContain('| Criterion | Verdict | Evidence | Next Step |');
+    expect(md).toContain('Must reject invalid tokens');
+    expect(md).toContain('fail');
+    expect(md).toContain('Invalid token request succeeded in acceptance trace');
+    expect(md).toContain('Update the implementation or tests cited by the evidence, then rerun acceptance validation for this criterion.');
+    expect(md).toContain('Must expose audit trail');
+    expect(md).toContain('unknown');
+    expect(md).toContain('No deterministic audit trail proof found');
+    expect(md).toContain('Inspect the cited evidence manually; add deterministic proof or clarify/split the criterion before retrying.');
+  });
+
   it('Markdown includes unknown acceptance verdict count when acceptanceValidation is present', async () => {
     const dir = makeTempDir();
     const { mdPath } = await writeRecoverySidecar({

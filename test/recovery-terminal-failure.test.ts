@@ -260,6 +260,82 @@ describe('authoritative terminal failure precedence', () => {
     expect(summary.plans.find((p) => p.planId === 'plan-b')).not.toHaveProperty('error');
   });
 
+  it('enriches authoritative acceptance-validation failures from the latest source event at or before the terminal event', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-auth-acceptance.db');
+    const db = openDatabase(dbPath);
+
+    makeBaseRun(db, 'run-auth-acceptance-01', 'auth-acceptance-set', dir);
+    db.insertEvent({ runId: 'run-auth-acceptance-01', type: 'prd_validation:complete', data: JSON.stringify({ type: 'prd_validation:complete', passed: true, gaps: [] }), timestamp: new Date('2026-01-01T10:05:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-acceptance-01', type: 'acceptance_validation:complete', data: JSON.stringify({ type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Stale criterion', verdict: 'fail', evidence: 'Stale evidence' }] }), timestamp: new Date('2026-01-01T10:10:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-acceptance-01', type: 'acceptance_validation:complete', data: JSON.stringify({
+      type: 'acceptance_validation:complete',
+      passed: false,
+      verdicts: [
+        { criterion: 'Target failed criterion', verdict: 'fail', evidence: 'Target failed evidence' },
+        { criterion: 'Target unknown criterion', verdict: 'unknown', evidence: 'Target unknown evidence' },
+        { criterion: 'Target passed criterion', verdict: 'pass', evidence: 'Target passed evidence' },
+      ],
+      waivers: ['waived criterion because of external dependency'],
+      acceptanceConflicts: [{ criterion: 'Target unknown criterion', evidence: 'Conflicting acceptance text', conflictsWith: 'Original PRD scope', scope: 'unknown', recommendedAction: 'manual_review' }],
+    }), timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-acceptance-01', type: 'build:terminal-failure', data: JSON.stringify({
+      type: 'build:terminal-failure',
+      runId: 'run-auth-acceptance-01',
+      failure: {
+        scope: 'acceptance-validation',
+        message: 'Acceptance criteria validation failed',
+        authoritative: true,
+        sourceEventType: 'acceptance_validation:complete',
+        sourceEventId: 3,
+        sourceEventTimestamp: new Date('2026-01-01T10:20:00.000Z').toISOString(),
+        acceptanceValidationPassed: false,
+      },
+    }), timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-acceptance-01', type: 'acceptance_validation:complete', data: JSON.stringify({ type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'Later criterion must not be selected', verdict: 'fail', evidence: 'Later evidence' }] }), timestamp: new Date('2026-01-01T10:26:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-auth-acceptance-01', 'failed');
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'auth-acceptance-set', prdId: 'auth-acceptance-prd', cwd: dir, dbPath });
+
+    expect(summary.terminalFailure).toEqual(expect.objectContaining({ scope: 'acceptance-validation', authoritative: true, sourceEventType: 'acceptance_validation:complete', sourceEventId: 3 }));
+    expect(summary.acceptanceValidation).toBeDefined();
+    expect(summary.acceptanceValidation).toMatchObject({ passed: false, total: 3, pass: 1, fail: 1, unknown: 1 });
+    expect(summary.acceptanceValidation!.verdicts).toContainEqual({ criterion: 'Target failed criterion', verdict: 'fail', evidence: 'Target failed evidence' });
+    expect(summary.acceptanceValidation!.verdicts).toContainEqual({ criterion: 'Target unknown criterion', verdict: 'unknown', evidence: 'Target unknown evidence' });
+    expect(summary.acceptanceValidation!.verdicts.map((v) => v.criterion)).not.toContain('Later criterion must not be selected');
+    expect(summary.acceptanceValidation!.waivers).toEqual(['waived criterion because of external dependency']);
+    expect(summary.acceptanceValidation!.conflicts).toHaveLength(1);
+  });
+
+  it('emits placeholder acceptance-validation evidence when authoritative source lookup cannot parse a source row', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-auth-acceptance-placeholder.db');
+    const db = openDatabase(dbPath);
+
+    makeBaseRun(db, 'run-auth-acceptance-placeholder-01', 'auth-acceptance-placeholder-set', dir);
+    db.insertEvent({ runId: 'run-auth-acceptance-placeholder-01', type: 'acceptance_validation:complete', data: JSON.stringify({ type: 'acceptance_validation:complete', passed: true, verdicts: [{ criterion: 'Passed criterion', verdict: 'pass', evidence: 'OK' }] }), timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-acceptance-placeholder-01', type: 'build:terminal-failure', data: JSON.stringify({ type: 'build:terminal-failure', runId: 'run-auth-acceptance-placeholder-01', failure: { scope: 'acceptance-validation', message: 'Acceptance criteria validation failed', authoritative: true, sourceEventType: 'acceptance_validation:complete', acceptanceValidationPassed: false } }), timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-auth-acceptance-placeholder-01', 'failed');
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'auth-acceptance-placeholder-set', prdId: 'auth-acceptance-placeholder-prd', cwd: dir, dbPath });
+
+    expect(summary.acceptanceValidation).toMatchObject({ passed: false, total: 1, pass: 0, fail: 0, unknown: 1 });
+    expect(summary.acceptanceValidation!.verdicts).toHaveLength(1);
+    const placeholder = summary.acceptanceValidation!.verdicts[0]!;
+    expect(placeholder).toMatchObject({ criterion: 'Acceptance validation evidence lookup failed', verdict: 'unknown' });
+    expect(placeholder.evidence).toContain('run_id=run-auth-acceptance-placeholder-01');
+    expect(placeholder.evidence).toContain('build:terminal-failure event id=2');
+    expect(placeholder.evidence).toContain('acceptance_validation:complete');
+    expect(placeholder.evidence).toContain('id <= 2');
+    expect(placeholder.evidence).toContain('monitor.db');
+  });
+
   it('fallback without authoritative event sets partial:true and authoritative:false', async () => {
     const dir = makeTempDir();
     mkdirSync(join(dir, '.eforge'), { recursive: true });
