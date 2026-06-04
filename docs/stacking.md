@@ -1,6 +1,6 @@
 # Stacked PRs with git-spice
 
-Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, root PRD artifact branches target trunk, while child PRD artifact branches normally target the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk.
+Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, root PRD artifact branches target trunk, while child PRD artifact branches normally target the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk. It also runs provider repo sync, branch restack, and a remote-base freshness proof before submitting the PR.
 
 ## Concepts
 
@@ -8,7 +8,7 @@ Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-
 
 Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output from that build. When `landing.action: pr`, eforge opens a pull request from this artifact branch targeting its resolved base.
 
-For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch), and direct PR base sync fetches `origin/<baseBranch>` before validation and again immediately before PR creation. For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch, creating a branch-per-PR topology:
+For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch), and direct PR base sync fetches `origin/<baseBranch>` before validation and again immediately before PR creation. For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch, creating a branch-per-PR topology. Stacked landing uses provider-owned repo sync/restack plus a remote effective-base ancestor proof instead of the direct non-stacked PR publication path:
 
 ```mermaid
 graph TD
@@ -104,9 +104,9 @@ If git-spice is not available or not initialized, eforge fails the build at the 
 With stacking enabled, the call sequence for a two-PRD stack looks like this:
 
 1. PRD `prd-a` builds, artifact branch `eforge/prd-a` is created off `main`.
-2. git-spice tracks `eforge/prd-a` against `main` and submits it as PR #1.
+2. eforge preflights the effective base, runs provider repo sync, tracks `eforge/prd-a` against `main`, restacks the branch, proves the fetched remote `main` commit is an ancestor of `HEAD`, and submits it as PR #1.
 3. PRD `prd-b` (depends on `prd-a`) builds, artifact branch `eforge/prd-b` is created off `eforge/prd-a`.
-4. git-spice tracks `eforge/prd-b` against `eforge/prd-a` and submits it as PR #2 targeting PR #1.
+4. eforge preflights the effective base, runs provider repo sync, tracks `eforge/prd-b` against `eforge/prd-a`, restacks the branch, proves the fetched remote effective base commit is an ancestor of `HEAD`, and submits it as PR #2 targeting PR #1.
 
 The stack state (artifact branch refs and PR URLs) is persisted to `.eforge/stacks/layers.json`. This file is gitignored - it is runtime state, not a committed artifact.
 
@@ -116,11 +116,13 @@ During stacked builds with `landing.action: pr`, eforge restacks the artifact br
 
 Recovery first cleans up deterministic temporary plan-ID region marker conflicts. If unmerged files remain, eforge falls back to the merge-conflict resolver agent. The stack provider owns the continue and abort operations; eforge records provider commands as events without hard-coding git-spice arguments.
 
-If recovery succeeds, eforge runs any configured post-merge/validation commands and then submits the PR normally. Manual recovery is still required for non-recoverable provider failures, failed automatic recovery, and conflicts from `eforge stack sync`.
+If recovery succeeds, eforge proves remote-base freshness and then submits the PR normally. Manual recovery is still required for non-recoverable provider failures, failed automatic recovery, and conflicts from `eforge stack sync`.
 
 ## Manual stack sync
 
-When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. To update local artifact branches after upstream merges, use `eforge stack sync`:
+Landing-time sync/freshness is automatic and scoped to the branch being submitted: eforge runs provider repo sync, branch restack, and a remote-base ancestor proof immediately before `provider.submitBranch(...)`. If the fetched effective base is not contained in `HEAD`, eforge retries that sync/restack/proof cycle once before failing closed.
+
+When an upstream PR merges, GitHub updates the base branch of the downstream PR automatically. To update local artifact branches after upstream merges outside a landing run, use `eforge stack sync`:
 
 ```bash
 eforge stack sync
@@ -132,7 +134,7 @@ Use `--dry-run` to preview what commands would run without executing them:
 eforge stack sync --dry-run
 ```
 
-`eforge stack sync` calls the daemon's stack sync route, which runs `git-spice repo sync` to pull remote changes, then `git-spice stack restack` to update the full local stack. The restack step only runs when there are eligible artifact branches and none of them overlap with active-build worktrees - because git-spice stack restack operates globally, it cannot be scoped to a subset of branches. When active-build branches overlap the stack, sync is skipped until those builds finish. The command returns a structured report with the following fields:
+`eforge stack sync` calls the daemon's stack sync route, which runs `git-spice repo sync` to pull remote changes, then `git-spice stack restack` to update the full local stack. This is different from automatic landing-time sync, which is branch-scoped and gates PR submission on a freshness proof for that branch's effective base. The manual restack step only runs when there are eligible artifact branches and none of them overlap with active-build worktrees - because git-spice stack restack operates globally, it cannot be scoped to a subset of branches. When active-build branches overlap the stack, sync is skipped until those builds finish. The command returns a structured report with the following fields:
 
 | Field | Description |
 |-------|-------------|
@@ -170,13 +172,13 @@ When sync runs while active eforge builds are in progress, branches whose worktr
 
 ### Pre-landing reconciliation
 
-Before a stacked build lands, eforge checks whether the child artifact branch's stacked base still exists on the remote. This remote-base preflight protects git-spice submission from stale parent branches that were deleted after their PR merged.
+Before a stacked build lands, eforge checks whether the child artifact branch's stacked base still exists on the remote. This remote-base preflight protects git-spice submission from stale parent branches that were deleted after their PR merged. After preflight and any repair, eforge runs provider repo sync and branch restack, rechecks the effective base, fetches the latest remote effective base, and proves that fetched commit is an ancestor of `HEAD` before PR submission.
 
 If the parent remote branch is missing and eforge can prove that the parent artifact commit is already an ancestor of trunk, stale-parent landing repair is automatic and branch-scoped: eforge retargets and restacks only the child artifact branch onto trunk, then submits the child PR against trunk. This avoids running a whole-stack restack while preserving the proof that the parent layer is already integrated.
 
 If eforge cannot prove the parent artifact commit is an ancestor of trunk, landing fails closed with an actionable error instead of guessing or mutating the rest of the stack. Restore, submit, or repair the parent branch, or verify the parent changes are integrated before rerunning the build.
 
-`eforge stack sync` remains the command for normal whole-stack maintenance when parent branches move or upstream PRs merge. Stale-parent landing repair is automatic and branch-scoped during landing; use stack sync when you intentionally want git-spice to reconcile the full local stack.
+`eforge stack sync` remains the command for normal whole-stack maintenance when parent branches move or upstream PRs merge. Stale-parent landing repair and landing-time sync/freshness are automatic and branch-scoped during landing; use stack sync when you intentionally want git-spice to reconcile the full local stack.
 
 ### Conflict recovery
 

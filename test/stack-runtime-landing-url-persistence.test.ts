@@ -30,6 +30,14 @@ import {
   type StackProviderAdapter,
 } from './stack-runtime-landing-helpers.js';
 
+function addFailingGhToPath(binDir: string, originalPath: string | undefined): string {
+  mkdirSync(binDir, { recursive: true });
+  const ghPath = join(binDir, 'gh');
+  writeFileSync(ghPath, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  chmodSync(ghPath, 0o755);
+  return `${binDir}:${originalPath ?? ''}`;
+}
+
 describe('executeStackLanding — PR URL discovery and persistence', () => {
   it('extracts PR URL from submit stdout and includes it in the complete event', async () => {
     const prUrl = 'https://github.com/owner/repo/pull/42';
@@ -95,7 +103,7 @@ describe('executeStackLanding — PR URL discovery and persistence', () => {
     await seedLayer(cwd);
 
     const origPath = process.env.PATH;
-    process.env.PATH = '/nonexistent-path-for-test';
+    process.env.PATH = addFailingGhToPath(join(cwd, 'bin-gh-view-fails-no-url'), origPath);
 
     try {
       const opts: StackLandingOptions = {
@@ -188,8 +196,8 @@ process.exit(0);
     await seedLayer(cwd);
 
     const origPath = process.env.PATH;
-    // Disable gh fallback to prevent URL discovery via CLI
-    process.env.PATH = '/nonexistent-path-for-test';
+    // Disable gh fallback to prevent URL discovery via CLI while leaving git available for freshness checks.
+    process.env.PATH = addFailingGhToPath(join(cwd, 'bin-gh-view-fails-restack-url'), origPath);
 
     try {
       const opts: StackLandingOptions = {

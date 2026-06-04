@@ -23,19 +23,21 @@ export async function resolveStackBaseContext(options: {
   const provider = prd.frontmatter.stack_provider ?? config.stacking.provider;
   const parentPrdId = prd.frontmatter.stack_parent;
 
+  const trunkRemote = config.build.trunkSync?.remote ?? 'origin';
   if (!parentPrdId) {
-    const baseBranch = await resolveTrunkBranch({ build: config.build }, cwd);
+    const baseBranch = await resolveTrunkBranch({ build: config.build }, cwd, trunkRemote);
     return {
       prdId,
       stackId: prd.frontmatter.stack_id ?? prdId,
       provider,
       branch,
       baseBranch,
+      trunkBranch: baseBranch,
+      trunkRemote,
     };
   }
 
-  const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, config.build.trunkSync?.remote);
-  const trunkRemote = config.build.trunkSync?.remote ?? 'origin';
+  const trunkBranch = await resolveTrunkBranch({ build: config.build }, cwd, trunkRemote);
   const trunkIntegrationRef = await resolveTrunkIntegrationRef(cwd, trunkBranch, trunkRemote);
 
   // Resolve parent artifact ref: check the provider-neutral artifact registry

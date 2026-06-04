@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -101,6 +101,7 @@ export async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<E
 }
 
 export async function seedLayer(dir: string, prdId = 'test-prd'): Promise<void> {
+  if (dir === cwd && !existsSync(join(dir, '.git'))) setupRemoteBaseRepo({ branch: `eforge/${prdId}` });
   const now = new Date().toISOString();
   await upsertStackLayer(dir, {
     prdId,
@@ -119,6 +120,50 @@ export function initGitRepo(dir: string): void {
 
 export function git(args: string[], dir = cwd): string {
   return execFileSync('git', args, { cwd: dir, encoding: 'utf-8' }).trim();
+}
+
+export function setupRemoteBaseRepo(opts: { baseBranch?: string; branch?: string } = {}): { baseSha: string; branchSha: string; remoteDir: string } {
+  const baseBranch = opts.baseBranch ?? 'main';
+  const branch = opts.branch ?? 'eforge/test-prd';
+  if (existsSync(join(cwd, '.git'))) {
+    return { baseSha: git(['rev-parse', baseBranch]), branchSha: git(['rev-parse', 'HEAD']), remoteDir: join(cwd, 'remote.git') };
+  }
+  initGitRepo(cwd);
+  git(['config', 'user.email', 'test@example.com']);
+  git(['config', 'user.name', 'Test User']);
+  writeFileSync(join(cwd, 'root.txt'), 'root\n');
+  git(['add', 'root.txt']);
+  git(['commit', '-m', 'root']);
+  git(['branch', '-M', 'main']);
+  const remoteDir = join(cwd, 'remote.git');
+  execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+  git(['remote', 'add', 'origin', remoteDir]);
+  git(['push', '-u', 'origin', 'main']);
+  if (baseBranch !== 'main') {
+    git(['checkout', '-b', baseBranch, 'main']);
+    writeFileSync(join(cwd, 'base.txt'), `${baseBranch}\n`);
+    git(['add', 'base.txt']);
+    git(['commit', '-m', `base ${baseBranch}`]);
+    git(['push', '-u', 'origin', baseBranch]);
+  }
+  const baseSha = git(['rev-parse', baseBranch]);
+  git(['checkout', '-b', branch, baseBranch]);
+  writeFileSync(join(cwd, 'child.txt'), `${branch}\n`);
+  git(['add', 'child.txt']);
+  git(['commit', '-m', `child ${branch}`]);
+  return { baseSha, branchSha: git(['rev-parse', 'HEAD']), remoteDir };
+}
+
+export function advanceRemoteBase(fileName = 'remote-main.txt'): string {
+  const currentBranch = git(['branch', '--show-current']);
+  git(['checkout', 'main']);
+  writeFileSync(join(cwd, fileName), `${Date.now()}\n`);
+  git(['add', fileName]);
+  git(['commit', '-m', `advance ${fileName}`]);
+  git(['push', 'origin', 'main']);
+  const sha = git(['rev-parse', 'HEAD']);
+  git(['checkout', currentBranch]);
+  return sha;
 }
 
 export function setupStackRepo(opts: { parentIntegrated: boolean; deleteParentRemote: boolean }): { parentSha: string } {
@@ -176,7 +221,9 @@ export const recoveryLifecycleTypes = new Set([
 ]);
 
 export function landingOptions(provider: StackProviderAdapter, overrides: Partial<StackLandingOptions> = {}): StackLandingOptions {
-  return { cwd, mergeWorktreePath: cwd, stackContext: makeStackContext(), landingAction: 'pr', provider, ...overrides };
+  const stackContext = overrides.stackContext ?? makeStackContext();
+  if (!existsSync(join(cwd, '.git'))) setupRemoteBaseRepo({ baseBranch: stackContext.baseBranch ?? 'main', branch: stackContext.branch });
+  return { cwd, mergeWorktreePath: cwd, stackContext, landingAction: 'pr', provider, ...overrides };
 }
 
 // ---------------------------------------------------------------------------

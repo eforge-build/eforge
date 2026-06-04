@@ -405,7 +405,7 @@ landing:
 
 ## Stacked PRs
 
-When `stacking.enabled: true`, each build's artifact branch normally targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk.
+When `stacking.enabled: true`, each build's artifact branch normally targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk, then gates PR submission on provider sync/restack and a remote-base freshness proof.
 
 ```yaml
 stacking:
@@ -428,7 +428,7 @@ For single-dependency builds (`depends_on` has one entry), `stack_parent` is inf
 
 Set `stacking.sync.afterBuild: true` to have the daemon automatically sync the stack after each queued build reaches a terminal state. When active builds overlap the stack candidates, sync is `deferred` and the daemon retries automatically. Prefer this over `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.
 
-See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, manual sync conflict recovery, automatic stacked PR landing conflict recovery, and branch-scoped stale-parent landing repair.
+See [Stacked PRs](/docs/stacking) for the full guide including git-spice setup, stack sync, deferred retry, manual sync conflict recovery, automatic stacked PR landing conflict recovery, branch-scoped stale-parent landing repair, and landing-time sync/freshness.
 
 ## Trunk Branch Policy
 
@@ -501,7 +501,7 @@ build:
 
 Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
 
-Stacked PR landing remains delegated to git-spice restacking (`eforge stack sync`) and does not use direct PR base sync. Stack restacking updates the in-flight stack topology after trunk has been updated - a separate concern from selecting a fresh compile base before a build begins.
+Stacked PR landing does not use the direct non-stacked PR base sync path. Instead, it stays behind the stack provider boundary: eforge runs provider repo sync, branch restack, and a remote-base freshness proof for the branch being submitted. Manual `eforge stack sync` remains the separate whole-stack maintenance path after trunk or parent branches move.
 
 ## Per-Role Tuning
 

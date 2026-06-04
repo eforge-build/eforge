@@ -9,6 +9,7 @@ import {
   executeStackLanding,
   GitSpiceCommandError,
   GitSpiceNotAvailableError,
+  git,
   initGitRepo,
   interruptedRestack,
   landingOptions,
@@ -66,10 +67,11 @@ describe('executeStackLanding — PR metadata editing', () => {
 
       // Provider calls must still happen in order
       const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
-      expect(providerCmds).toHaveLength(3);
-      expect(providerCmds[0]).toMatchObject({ args: expect.arrayContaining(['track']) });
-      expect(providerCmds[1]).toMatchObject({ args: expect.arrayContaining(['restack']) });
-      expect(providerCmds[2]).toMatchObject({ args: expect.arrayContaining(['submit']) });
+      expect(providerCmds).toHaveLength(4);
+      expect(providerCmds[0]).toMatchObject({ args: ['repo', 'sync'] });
+      expect(providerCmds[1]).toMatchObject({ args: expect.arrayContaining(['track']) });
+      expect(providerCmds[2]).toMatchObject({ args: expect.arrayContaining(['restack']) });
+      expect(providerCmds[3]).toMatchObject({ args: expect.arrayContaining(['submit']) });
 
       // stack:landing:update with status complete must be emitted
       const completeEvent = events.find(
@@ -166,6 +168,46 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
     expect(retargetCalled).toBe(false);
   });
 
+  it('repairs a parent base that disappears during landing and submits against trunk', async () => {
+    const { parentSha } = setupStackRepo({ parentIntegrated: false, deleteParentRemote: false });
+    const calls: string[] = [];
+    const provider = makeStubProvider({
+      retargetBranch: async (_cwd, branch, target) => { calls.push(`retarget:${branch}:${target}`); return makeResult('git-spice', ['branch', 'onto', target, '--branch', branch]); },
+      syncRepo: async () => { calls.push('sync'); return makeResult('git-spice', ['repo', 'sync']); },
+      trackBranch: async (_cwd, base) => { calls.push(`track:${base}`); return makeResult('git-spice', ['branch', 'track', '--base', base]); },
+      restackBranch: async () => {
+        calls.push('restack');
+        if (calls.filter((call) => call === 'restack').length === 1) {
+          const currentBranch = git(['branch', '--show-current']);
+          git(['checkout', 'main']);
+          git(['merge', '--ff-only', 'eforge/parent-prd']);
+          git(['push', 'origin', 'main']);
+          git(['push', 'origin', '--delete', 'eforge/parent-prd']);
+          git(['checkout', currentBranch]);
+        }
+        return makeResult('git-spice', ['branch', 'restack']);
+      },
+      submitBranch: async () => { calls.push('submit'); return makeResult('git-spice', ['branch', 'submit']); },
+    });
+    await seedLayer(cwd);
+
+    const events = await collectEvents(executeStackLanding(landingOptions(provider, { stackContext: childContext(parentSha) })));
+    const retargetIdx = events.findIndex((e) => e.type === 'stack:provider:command' && e.args.includes('onto'));
+    const restackIndexes = events
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event.type === 'stack:provider:command' && event.args.includes('restack'))
+      .map(({ index }) => index);
+    const submitIdx = events.findIndex((e) => e.type === 'stack:provider:command' && e.args.includes('submit'));
+
+    expect(calls).toEqual(['sync', 'track:eforge/parent-prd', 'restack', 'retarget:eforge/test-prd:main', 'restack', 'submit']);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'onto', 'main', '--branch', 'eforge/test-prd'] }));
+    expect(restackIndexes).toHaveLength(2);
+    expect(retargetIdx).toBeGreaterThan(restackIndexes[0]);
+    expect(restackIndexes[1]).toBeGreaterThan(retargetIdx);
+    expect(submitIdx).toBeGreaterThan(restackIndexes[1]);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'stack:landing:update', status: 'complete', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' }));
+  });
+
   it('repairs a missing integrated parent base and reports effective trunk metadata', async () => {
     const { parentSha } = setupStackRepo({ parentIntegrated: true, deleteParentRemote: true });
     const binDir = join(cwd, 'bin-stack-repair');
@@ -176,6 +218,7 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
     const trackBases: string[] = [];
     const provider = makeStubProvider({
       retargetBranch: async (_cwd, branch, target) => { calls.push(`retarget:${branch}:${target}`); return makeResult('git-spice', ['branch', 'onto', target, '--branch', branch]); },
+      syncRepo: async () => { calls.push('sync'); return makeResult('git-spice', ['repo', 'sync']); },
       trackBranch: async (_cwd, base) => { calls.push(`track:${base}`); trackBases.push(base); return makeResult('git-spice', ['branch', 'track', '--base', base]); },
       restackBranch: async () => { calls.push('restack'); return makeResult('git-spice', ['branch', 'restack']); },
       submitBranch: async () => { calls.push('submit'); return makeResult('git-spice', ['branch', 'submit'], 'https://github.com/owner/repo/pull/42'); },
@@ -190,7 +233,7 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
       const landing = (await loadStackState(cwd)).layers.find((l) => l.prdId === 'test-prd')?.landing;
       const body = readFileSync(join(cwd, 'gh-pr-body.log'), 'utf-8');
       expect(trackBases).toEqual(['main']);
-      expect(calls).toEqual(['retarget:eforge/test-prd:main', 'track:main', 'restack', 'submit']);
+      expect(calls).toEqual(['retarget:eforge/test-prd:main', 'sync', 'track:main', 'restack', 'submit']);
       expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'onto', 'main', '--branch', 'eforge/test-prd'] }));
       expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'track', '--base', 'main'] }));
       expect(complete).toMatchObject({ originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' });

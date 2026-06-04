@@ -21,10 +21,18 @@ import type {
 } from './provider.js';
 import type { StackBaseContext } from './base-resolver.js';
 import type { LandingPublicationAction, StackLayer } from './types.js';
-import { loadStackState, lookupLayerByPrdId, updateStackLayerLanding, updateStackLayerStatusAndLanding } from './state.js';
-import { loadArtifactRegistry, lookupArtifactByPrdId } from '../artifacts/registry.js';
-import { fetchRemoteBranchHeadCommit, isAncestor, remoteBranchExists, resolveRefCommit, type StackBaseRepairReason } from './base-repair.js';
+import { updateStackLayerLanding, updateStackLayerStatusAndLanding } from './state.js';
 import { recoverLandingConflict, type LandingConflictRecoveryResult } from './landing-conflict-recovery.js';
+import {
+  initialLandingBaseDecision,
+  landingBaseMetadata,
+  preflightLandingBase,
+  proveLandingHeadFreshness,
+  stackContextForLandingDecision,
+  type LandingBaseDecision,
+  type LandingBasePreflightResult,
+  type StackLandingBaseMetadata,
+} from './landing-base.js';
 import { stackProviderCommandEvent, stackProviderCommandEventFromError } from './provider-events.js';
 // PR URL parsing and redaction are delegated to provider helpers (parsePrUrl, isValidPrUrl, redactMessage)
 // to avoid direct git-spice imports in orchestration code.
@@ -33,17 +41,13 @@ import { editPullRequest } from '../worktree-ops.js';
 import type { PullRequestMetadata } from '../pr-metadata.js';
 import { emitStackLandingAutoMergeEvents } from './landing-auto-merge.js';
 
+export type { StackLandingBaseMetadata } from './landing-base.js';
+
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
-
-export interface StackLandingBaseMetadata {
-  originalBaseBranch?: string;
-  effectiveBaseBranch: string;
-  baseRepairReason?: StackBaseRepairReason;
-}
 
 export interface StackLandingOptions {
   /** Project root (cwd) — used for `.eforge/stacks/layers.json` persistence. */
@@ -120,132 +124,6 @@ async function discoverPrUrlViaGh(
   }
 }
 
-type LandingBaseDecision = StackLandingBaseMetadata;
-
-type LandingBasePreflightResult =
-  | { ok: true; decision: LandingBaseDecision; retargetResult?: ProviderCommandResult }
-  | { ok: false; decision: LandingBaseDecision; reason: string };
-
-function initialLandingBaseDecision(stackContext: StackBaseContext, fallbackBase: string): LandingBaseDecision {
-  const effectiveBaseBranch = stackContext.baseBranch ?? fallbackBase;
-  const originalBaseBranch = stackContext.originalBaseBranch ?? effectiveBaseBranch;
-  return {
-    originalBaseBranch,
-    effectiveBaseBranch,
-    ...(stackContext.repairReason !== undefined && { baseRepairReason: stackContext.repairReason }),
-  };
-}
-
-function landingBaseMetadata(decision: LandingBaseDecision): Partial<LandingBaseDecision> {
-  return {
-    originalBaseBranch: decision.originalBaseBranch,
-    effectiveBaseBranch: decision.effectiveBaseBranch,
-    ...(decision.baseRepairReason !== undefined && { baseRepairReason: decision.baseRepairReason }),
-  };
-}
-
-async function resolveParentArtifactCommit(cwd: string, stackContext: StackBaseContext): Promise<string | undefined> {
-  if (stackContext.parentArtifactCommit !== undefined) return stackContext.parentArtifactCommit;
-  if (stackContext.parentPrdId === undefined) return undefined;
-  const [registry, stackState] = await Promise.all([loadArtifactRegistry(cwd), loadStackState(cwd)]);
-  const artifactRecord = lookupArtifactByPrdId(registry, stackContext.parentPrdId);
-  const parentLayer = lookupLayerByPrdId(stackState, stackContext.parentPrdId);
-  const artifactRef = stackContext.parentArtifactRef
-    ?? (artifactRecord?.status === 'built' ? artifactRecord.artifactBranch : undefined)
-    ?? parentLayer?.artifact?.branch;
-  const refCommit = artifactRef !== undefined ? await resolveRefCommit(cwd, artifactRef) : undefined;
-  if (refCommit !== undefined) return refCommit;
-  const recordedCommit = artifactRecord?.commitSha ?? parentLayer?.artifact?.commitSha;
-  return recordedCommit !== undefined ? resolveRefCommit(cwd, recordedCommit) : undefined;
-}
-
-async function verifyParentIntegratedIntoRemoteTrunk(options: {
-  cwd: string;
-  mergeWorktreePath: string;
-  stackContext: StackBaseContext;
-  decision: LandingBaseDecision;
-  remote: string;
-  trunkBranch: string;
-  missingBaseBranch?: string;
-}): Promise<{ ok: true; parentCommit: string; remoteTrunkCommit: string } | { ok: false; reason: string }> {
-  const { cwd, mergeWorktreePath, stackContext, decision, remote, trunkBranch, missingBaseBranch } = options;
-  const parentCommit = await resolveParentArtifactCommit(cwd, stackContext);
-  const baseDescription = missingBaseBranch !== undefined
-    ? `Remote base branch '${missingBaseBranch}' is missing on remote '${remote}' and `
-    : `Effective trunk base '${decision.effectiveBaseBranch}' requires current remote integration proof, but `;
-  if (parentCommit === undefined) {
-    return { ok: false, reason: `${baseDescription}parent artifact commit evidence is unavailable; cannot prove the parent is integrated into trunk '${trunkBranch}'` };
-  }
-  const remoteTrunk = await fetchRemoteBranchHeadCommit(mergeWorktreePath, trunkBranch, remote);
-  if (!remoteTrunk.ok) {
-    return { ok: false, reason: `${baseDescription}current trunk '${trunkBranch}' could not be resolved from remote '${remote}'${remoteTrunk.stderr ? `: ${remoteTrunk.stderr}` : ''}` };
-  }
-  if (!await isAncestor(mergeWorktreePath, parentCommit, remoteTrunk.commit)) {
-    return { ok: false, reason: `${baseDescription}parent artifact commit '${parentCommit}' is not an ancestor of current remote trunk '${remoteTrunk.commit}'` };
-  }
-  return { ok: true, parentCommit, remoteTrunkCommit: remoteTrunk.commit };
-}
-
-function requiresCurrentTrunkProof(decision: LandingBaseDecision, trunkBranch: string): boolean {
-  return decision.effectiveBaseBranch === trunkBranch &&
-    (decision.baseRepairReason !== undefined || decision.originalBaseBranch !== decision.effectiveBaseBranch);
-}
-
-function stackContextForLandingDecision(
-  stackContext: StackBaseContext,
-  decision: LandingBaseDecision,
-): StackBaseContext {
-  const effectiveContext: StackBaseContext = {
-    ...stackContext,
-    baseBranch: decision.effectiveBaseBranch,
-    originalBaseBranch: decision.originalBaseBranch,
-    effectiveBaseBranch: decision.effectiveBaseBranch,
-  };
-  if (decision.baseRepairReason !== undefined) {
-    effectiveContext.repairReason = decision.baseRepairReason;
-  } else {
-    delete effectiveContext.repairReason;
-  }
-  return effectiveContext;
-}
-
-async function preflightLandingBase(options: {
-  cwd: string;
-  mergeWorktreePath: string;
-  stackContext: StackBaseContext;
-  provider: StackProviderAdapter;
-  decision: LandingBaseDecision;
-}): Promise<LandingBasePreflightResult> {
-  const { cwd, mergeWorktreePath, stackContext, provider } = options;
-  const decision = { ...options.decision };
-  if (stackContext.parentPrdId === undefined) return { ok: true, decision };
-  const remote = stackContext.trunkRemote ?? 'origin';
-  const trunkBranch = stackContext.trunkBranch ?? 'main';
-  const remoteCheck = await remoteBranchExists(mergeWorktreePath, decision.effectiveBaseBranch, remote);
-  if (remoteCheck.exists) {
-    if (requiresCurrentTrunkProof(decision, trunkBranch)) {
-      const proof = await verifyParentIntegratedIntoRemoteTrunk({ cwd, mergeWorktreePath, stackContext, decision, remote, trunkBranch });
-      if (!proof.ok) return { ok: false, decision, reason: proof.reason };
-    }
-    return { ok: true, decision };
-  }
-  if (remoteCheck.reason === 'query-failed') {
-    return { ok: false, decision, reason: `Cannot verify remote base branch '${decision.effectiveBaseBranch}' on remote '${remote}'; remote query failed${remoteCheck.stderr ? `: ${remoteCheck.stderr}` : ''}` };
-  }
-  if (decision.effectiveBaseBranch === trunkBranch) {
-    return { ok: false, decision, reason: `Remote base branch '${decision.effectiveBaseBranch}' is missing on remote '${remote}'; cannot submit stacked child against a missing trunk base` };
-  }
-  const proof = await verifyParentIntegratedIntoRemoteTrunk({ cwd, mergeWorktreePath, stackContext, decision, remote, trunkBranch, missingBaseBranch: decision.effectiveBaseBranch });
-  if (!proof.ok) return { ok: false, decision, reason: proof.reason };
-  const repairedDecision: LandingBaseDecision = {
-    originalBaseBranch: decision.originalBaseBranch ?? decision.effectiveBaseBranch,
-    effectiveBaseBranch: trunkBranch,
-    baseRepairReason: 'parent-artifact-already-integrated',
-  };
-  const retargetResult = await provider.retargetBranch(mergeWorktreePath, stackContext.branch, trunkBranch);
-  return { ok: true, decision: repairedDecision, retargetResult };
-}
-
 // --- eforge:region stack-landing-recovery ---
 function isRecoverableRestackConflict(
   classification: StackProviderErrorClassification | undefined,
@@ -299,13 +177,15 @@ function restackRecoveryFailureReason(result: LandingConflictRecoveryResult | un
  * Execute the git-spice landing workflow for a single stacked layer.
  *
  * For `landingAction === 'pr'`:
- *   1. Emits `stack:landing:update` started
- *   2. Calls `provider.trackBranch` → emits `stack:provider:command`
- *   3. Runs optional cleanup (non-fatal)
- *   4. Calls `provider.restackBranch` → emits `stack:provider:command`
- *   5. Calls `provider.submitBranch` → emits `stack:provider:command`
- *   6. Discovers PR URL from submit output (or via `gh pr view` fallback)
- *   7. Persists landing state and emits `stack:landing:update` complete/failed
+ *   1. Emits and persists `stack:landing:update` started.
+ *   2. Runs landing-base preflight; if a parent base has landed, retargets to trunk.
+ *   3. Calls `provider.syncRepo`, then tracks the branch against the effective base.
+ *   4. Runs optional cleanup once (non-fatal) before any submit attempt.
+ *   5. Restacks, repeats final base preflight/repair for disappearing parent bases,
+ *      then proves HEAD contains the fetched remote base.
+ *   6. On stale freshness, retries provider sync + restack + freshness proof once.
+ *   7. Calls `provider.submitBranch`, discovers the PR URL, applies metadata, and
+ *      persists/emits `stack:landing:update` complete; failures persist/emits failed.
  *
  * For non-pr actions (`merge`, `leave`) or when stacked landing is not
  * applicable, emits `stack:landing:update` skipped and returns.
@@ -398,6 +278,49 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
       return { ok: false, decision: baseDecision, reason: redact(err instanceof Error ? err.message : String(err)), retargetError: err };
     }
   };
+  async function* runProviderSync(): AsyncGenerator<EforgeEvent, { ok: true } | { ok: false; reason: string }> {
+    try {
+      const syncResult = await provider.syncRepo(mergeWorktreePath);
+      yield stackProviderCommandEvent(providerName, branch, syncResult, redact);
+      return { ok: true };
+    } catch (err) {
+      const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
+      if (commandEvent) yield commandEvent;
+      return { ok: false, reason: redact(err instanceof Error ? err.message : String(err)) };
+    }
+  }
+  async function* runRestackWithRecovery(): AsyncGenerator<EforgeEvent, { ok: true } | { ok: false; reason: string }> {
+    try {
+      const restackResult = await provider.restackBranch(mergeWorktreePath);
+      yield stackProviderCommandEvent(providerName, branch, restackResult, redact);
+      return { ok: true };
+    } catch (err) {
+      const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
+      if (commandEvent) yield commandEvent;
+
+      // --- eforge:region stack-landing-recovery ---
+      const classification = await classifyProviderError(provider, mergeWorktreePath, err);
+      if (isRecoverableRestackConflict(classification) && providerCanRecoverLandingConflict(provider)) {
+        const recoveryResult = yield* consumeRecovery(recoverLandingConflict({
+          cwd,
+          mergeWorktreePath,
+          stackContext: effectiveStackContext,
+          provider,
+          classification,
+          mergeResolver: opts.mergeResolver,
+          maxAttempts: opts.maxConflictRecoveryAttempts,
+          postRecoveryValidationCommands: opts.postRecoveryValidationCommands,
+          validationTimeoutMs: opts.validationTimeoutMs,
+          signal: opts.signal,
+        }));
+        if (recoveryResult.recovered) return { ok: true };
+        return { ok: false, reason: restackRecoveryFailureReason(recoveryResult) };
+      }
+      // --- eforge:endregion stack-landing-recovery ---
+
+      return { ok: false, reason: redact(err instanceof Error ? err.message : String(err)) };
+    }
+  }
 
   const preflight = await runBasePreflight();
   baseDecision = preflight.decision;
@@ -412,7 +335,14 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   }
   if (preflight.retargetResult !== undefined) yield stackProviderCommandEvent(providerName, branch, preflight.retargetResult, redact);
 
-  // Step 1: Track branch against the effective base
+  // Step 1: Sync repo before tracking against the effective base.
+  const initialSync = yield* runProviderSync();
+  if (!initialSync.ok) {
+    yield await failLanding(initialSync.reason);
+    return;
+  }
+
+  // Step 2: Track branch against the effective base
   let trackResult: ProviderCommandResult;
   try {
     trackResult = await provider.trackBranch(mergeWorktreePath, baseDecision.effectiveBaseBranch);
@@ -424,7 +354,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     return;
   }
 
-  // Step 2 (pre-submit): Run cleanup before submitting the PR, if configured.
+  // Step 3 (pre-submit): Run cleanup before submitting the PR, if configured.
   if (shouldCleanup && cleanupPlanSet && cleanupOutputDir) {
     for await (const event of runCleanup(
       mergeWorktreePath,
@@ -438,68 +368,60 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     }
   }
 
-  // Step 3: Restack branch so it sits atop the latest base tip before submit
-  try {
-    const restackResult = await provider.restackBranch(mergeWorktreePath);
-    yield stackProviderCommandEvent(providerName, branch, restackResult, redact);
-  } catch (err) {
-    const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
-    if (commandEvent) yield commandEvent;
-
-    // --- eforge:region stack-landing-recovery ---
-    const classification = await classifyProviderError(provider, mergeWorktreePath, err);
-    if (isRecoverableRestackConflict(classification) && providerCanRecoverLandingConflict(provider)) {
-      const recoveryResult = yield* consumeRecovery(recoverLandingConflict({
-        cwd,
-        mergeWorktreePath,
-        stackContext: effectiveStackContext,
-        provider,
-        classification,
-        mergeResolver: opts.mergeResolver,
-        maxAttempts: opts.maxConflictRecoveryAttempts,
-        postRecoveryValidationCommands: opts.postRecoveryValidationCommands,
-        validationTimeoutMs: opts.validationTimeoutMs,
-        signal: opts.signal,
-      }));
-      if (recoveryResult.recovered) {
-        // Recovery completed the interrupted restack; continue through the existing submit path.
-      } else {
-        const reason = restackRecoveryFailureReason(recoveryResult);
-        yield await failLanding(reason);
+  // Step 4: Restack, repair a disappearing parent base, and prove remote-base freshness.
+  const maxFreshnessAttempts = 2;
+  for (let attempt = 0; attempt < maxFreshnessAttempts; attempt += 1) {
+    if (attempt > 0) {
+      const retrySync = yield* runProviderSync();
+      if (!retrySync.ok) {
+        yield await failLanding(retrySync.reason);
         return;
       }
-    // --- eforge:endregion stack-landing-recovery ---
-    } else {
-      const reason = redact(err instanceof Error ? err.message : String(err));
-      yield await failLanding(reason);
+    }
+
+    const restack = yield* runRestackWithRecovery();
+    if (!restack.ok) {
+      yield await failLanding(restack.reason);
+      return;
+    }
+
+    const finalPreflight = await runBasePreflight();
+    baseDecision = finalPreflight.decision;
+    effectiveStackContext = stackContextForLandingDecision(stackContext, baseDecision);
+    if (!finalPreflight.ok) {
+      if ('retargetError' in finalPreflight) {
+        const commandEvent = stackProviderCommandEventFromError(providerName, branch, finalPreflight.retargetError, redact);
+        if (commandEvent) yield commandEvent;
+      }
+      yield await failLanding(finalPreflight.reason);
+      return;
+    }
+    if (finalPreflight.retargetResult !== undefined) {
+      yield stackProviderCommandEvent(providerName, branch, finalPreflight.retargetResult, redact);
+      const repairedRestack = yield* runRestackWithRecovery();
+      if (!repairedRestack.ok) {
+        yield await failLanding(repairedRestack.reason);
+        return;
+      }
+    }
+
+    const freshness = await proveLandingHeadFreshness({ mergeWorktreePath, stackContext: effectiveStackContext, decision: baseDecision });
+    if (freshness.kind === 'fresh') break;
+    if (freshness.kind === 'failed') {
+      if (freshness.error !== undefined) {
+        const commandEvent = stackProviderCommandEventFromError(providerName, branch, freshness.error, redact);
+        if (commandEvent) yield commandEvent;
+      }
+      yield await failLanding(redact(freshness.reason));
+      return;
+    }
+    if (attempt + 1 >= maxFreshnessAttempts) {
+      yield await failLanding(redact(freshness.reason));
       return;
     }
   }
 
-  const finalPreflight = await runBasePreflight();
-  baseDecision = finalPreflight.decision;
-  if (!finalPreflight.ok) {
-    if ('retargetError' in finalPreflight) {
-      const commandEvent = stackProviderCommandEventFromError(providerName, branch, finalPreflight.retargetError, redact);
-      if (commandEvent) yield commandEvent;
-    }
-    yield await failLanding(finalPreflight.reason);
-    return;
-  }
-  if (finalPreflight.retargetResult !== undefined) {
-    yield stackProviderCommandEvent(providerName, branch, finalPreflight.retargetResult, redact);
-    try {
-      const repairedRestack = await provider.restackBranch(mergeWorktreePath);
-      yield stackProviderCommandEvent(providerName, branch, repairedRestack, redact);
-    } catch (err) {
-      const commandEvent = stackProviderCommandEventFromError(providerName, branch, err, redact);
-      if (commandEvent) yield commandEvent;
-      yield await failLanding(redact(err instanceof Error ? err.message : String(err)));
-      return;
-    }
-  }
-
-  // Step 4: Submit the branch as a PR
+  // Step 5: Submit the branch as a PR
   let submitResult: ProviderCommandResult;
   try {
     submitResult = await provider.submitBranch(mergeWorktreePath);

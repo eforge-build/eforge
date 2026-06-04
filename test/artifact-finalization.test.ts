@@ -64,9 +64,13 @@ async function initGitRepo(cwd: string): Promise<void> {
   await execAsync('git', ['config', 'user.email', 'test@test.com'], { cwd });
   await execAsync('git', ['config', 'user.name', 'Test'], { cwd });
   await writeFile(join(cwd, 'README.md'), 'hello\n');
-  await writeFile(join(cwd, '.gitignore'), '.eforge/artifacts/\n.eforge/stacks/\n', 'utf-8');
+  await writeFile(join(cwd, '.gitignore'), '.eforge/artifacts/\n.eforge/stacks/\nremote.git/\n', 'utf-8');
   await execAsync('git', ['add', '.'], { cwd });
   await execAsync('git', ['commit', '-m', 'initial'], { cwd });
+  const remoteDir = join(cwd, 'remote.git');
+  await execAsync('git', ['init', '--bare', remoteDir]);
+  await execAsync('git', ['remote', 'add', 'origin', remoteDir], { cwd });
+  await execAsync('git', ['push', '-u', 'origin', 'main'], { cwd });
 }
 
 async function getCurrentSha(cwd: string): Promise<string> {
