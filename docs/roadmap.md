@@ -44,7 +44,7 @@
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility, and cross-project visibility without weakening the kernel/extension boundary.
 
-- **Daemon & MCP controls** - Add MCP tool and web UI controls for changing priority on queued PRDs at runtime; the priority field exists in frontmatter and affects execution order, but there is no way to modify it after enqueue.
+- **Queue lifecycle controls** - Add unshipped controls such as hold, pause, cascade-aware removal, and running cancellation by queued PRD id.
 - **Overseer / multi-project observability** - Provide a durable unified view across many eforge projects and daemons without moving orchestration out of project-local daemons. Schaake OS epic: `cf245870-90f4-48db-b5e7-b7a0f17a458b`.
 - **Low-fidelity input handling** - When the user provides a high-level prompt with minimal detail, launch an exploration agent (or parallel exploratory agents) that performs thorough codebase exploration before compiling plans. Bypassed for detailed PRDs. Scope levels (expedition/errand/excursion) classify intended depth but don't perform exploration; this fills that gap.
 - **Schema library unification on TypeBox** - TypeBox is canonical for eforge-owned domain schemas; Zod is isolated to third-party SDK compatibility adapters. The first migration slice (client wire schemas, engine structured output, and custom-tool contracts) is complete. Config, input artifact, and MCP proxy schemas remain Zod until a follow-up PRD lands.

@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), and auto-build state. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; Console uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -75,7 +75,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links.
 
 ### Pi commands
 
@@ -105,6 +105,8 @@ eforge build "Add dark mode toggle"
 eforge build --profile pi-anthropic plans/my-feature-prd.md
 eforge build --landing-action pr plans/my-feature-prd.md
 eforge queue run --all
+eforge queue priority <prdId> <priority>
+eforge queue remove <prdId>
 eforge play docs-sync
 eforge playbook list
 eforge daemon status
@@ -117,7 +119,7 @@ eforge stack sync
 eforge stack sync --dry-run
 ```
 
-For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands.
+For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands. CLI queue controls match host tools: priority applies to pending/waiting items, removal applies to non-running pending, waiting, failed, and skipped items, running items must be cancelled by session id through the existing cancel route, and failed removal cleans up recovery sidecars.
 
 ## Extension host contributions
 
@@ -178,6 +180,7 @@ The port is deterministically assigned per project in the 4567-4667 range. The s
 
 Console shows:
 - Active and queued builds with live progress
+- Pending/waiting queue row actions to set priority and confirm removal
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover

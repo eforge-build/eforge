@@ -1,5 +1,5 @@
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/eforge/src/cli/index.ts -->
+<!-- Source: packages/eforge/src/cli/index.ts, packages/eforge/src/cli/queue-control.ts -->
 
 # eforge CLI Reference
 
