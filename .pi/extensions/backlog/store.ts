@@ -27,13 +27,17 @@ export type BacklogSummary = Omit<BacklogItem, "body"> & { stale: boolean };
 export const STATUS_VALUES = ["candidate", "planned", "active", "shipped", "stale", "superseded"] as const;
 export const PRIORITY_VALUES = ["low", "medium", "high"] as const;
 export const SOURCE_VALUES = ["conversation", "review", "build", "roadmap", "manual"] as const;
-export const BACKLOG_ACTIONS = ["list", "ready", "blocked", "graph", "add", "show", "status", "stale", "depends", "review", "analyze", "analyze-all", "promote", "curate"] as const;
+export const BACKLOG_ACTIONS = ["list", "ready", "blocked", "graph", "html", "add", "show", "status", "stale", "depends", "review", "analyze", "analyze-all", "promote", "curate"] as const;
 export const CLOSED_STATUSES = new Set<BacklogStatus>(["shipped", "stale", "superseded"]);
 export const SATISFIED_DEPENDENCY_STATUSES = new Set<BacklogStatus>(["shipped", "superseded"]);
 export const DEFAULT_STALE_DAYS = 14;
 
+export function backlogRoot(cwd: string): string {
+	return join(cwd, ".backlog");
+}
+
 export function backlogDir(cwd: string): string {
-	return join(cwd, ".eforge", "backlog", "items");
+	return join(backlogRoot(cwd), "items");
 }
 
 export function today(): string {
@@ -172,8 +176,7 @@ export async function ensureBacklogDir(cwd: string): Promise<void> {
 }
 
 export async function readItem(cwd: string, id: string): Promise<BacklogItem> {
-	const content = await readFile(itemPath(cwd, id), "utf8");
-	return parseItem(content, id);
+	return parseItem(await readFile(itemPath(cwd, id), "utf8"), id);
 }
 
 export async function writeItem(cwd: string, item: BacklogItem): Promise<void> {

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, type AutocompleteItem } from "@earendil-works/pi-tui";
 import { showBacklogBrowser, showBacklogItem, showPanel, type BacklogBrowserAction, type BacklogBrowserMutationHandlers } from "./browser";
+import { writeBacklogHtml } from "./html";
 import { AddParams, ListParams, ShowParams, UpdateParams } from "./schemas";
 import {
 	BACKLOG_ACTIONS,
@@ -120,6 +121,7 @@ function backlogArgumentCompletions(prefix: string): AutocompleteItem[] | null {
 			ready: "Show ready items not blocked by dependencies",
 			blocked: "Show items blocked by dependencies",
 			graph: "Show dependency tree",
+			html: "Generate a static HTML dependency view",
 			add: "Capture a new candidate item",
 			show: "Show one item by id",
 			status: "Set item status",
@@ -135,6 +137,10 @@ function backlogArgumentCompletions(prefix: string): AutocompleteItem[] | null {
 
 	if (action === "status" && (parts.length === 3 || (parts.length === 2 && endsWithSpace))) {
 		return matchingCompletions(STATUS_VALUES, current);
+	}
+
+	if ((action === "html" || action === "view") && (current.startsWith("--") || endsWithSpace)) {
+		return matchingCompletions(["--include-closed", "--no-open"], current);
 	}
 
 	return null;
@@ -167,6 +173,15 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 		const allItems = await listItems(ctx.cwd);
 		const items = filterItems(allItems, { query: rest.join(" ") || undefined });
 		await showPanel(ctx, "Backlog dependency graph", formatDependencyGraph(items));
+		return;
+	}
+
+	if (action === "html" || action === "view") {
+		const flags = new Set(rest.filter((part) => part.startsWith("--")));
+		const query = rest.filter((part) => !part.startsWith("--")).join(" ").trim() || undefined;
+		const result = await writeBacklogHtml(ctx.cwd, { query, includeClosed: flags.has("--include-closed") });
+		if (!flags.has("--no-open")) await openGeneratedHtml(pi, ctx, result.path);
+		ctx.ui.notify(`Backlog HTML view written to ${result.path} (${result.total} items, ${result.blocked} blocked, ${result.ready} ready)`, "info");
 		return;
 	}
 
@@ -268,7 +283,14 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 		return;
 	}
 
-	ctx.ui.notify("Usage: /backlog [list|ready|blocked|graph|add|show|status|stale|depends|review|analyze|analyze-all|promote|curate]", "error");
+	ctx.ui.notify("Usage: /backlog [list|ready|blocked|graph|html|add|show|status|stale|depends|review|analyze|analyze-all|promote|curate]", "error");
+}
+
+async function openGeneratedHtml(pi: ExtensionAPI, ctx: ExtensionContext, path: string): Promise<void> {
+	const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+	const args = process.platform === "win32" ? ["/c", "start", "", path] : [path];
+	const result = await pi.exec(command, args, { timeout: 10_000 }).catch((error) => ({ code: 1, stderr: error instanceof Error ? error.message : String(error) }));
+	if (result.code !== 0) ctx.ui.notify(`Wrote HTML view, but could not open it: ${result.stderr || "unknown error"}`, "warning");
 }
 
 function sendAgentPrompt(pi: ExtensionAPI, ctx: ExtensionContext, prompt: string): void {
@@ -278,7 +300,7 @@ function sendAgentPrompt(pi: ExtensionAPI, ctx: ExtensionContext, prompt: string
 
 function buildPromotePrompt(item: BacklogItem): string {
 	const claim = sectionContent(item.body, "Claim");
-	return `/eforge:plan ${item.title}\n\nBacklog source: ${item.id}\n\nClaim:\n${claim || "TBD"}\n\nUse the backlog item at .eforge/backlog/items/${item.id}.md as context. Validate assumptions before marking the plan ready.`;
+	return `/eforge:plan ${item.title}\n\nBacklog source: ${item.id}\n\nClaim:\n${claim || "TBD"}\n\nUse the backlog item at .backlog/items/${item.id}.md as context. Validate assumptions before marking the plan ready.`;
 }
 
 function buildAnalyzeInstructions(scope: string): string {
@@ -294,7 +316,7 @@ function buildAnalyzeAllPrompt(): string {
 }
 
 function buildCuratorPrompt(): string {
-	return `Review the lightweight backlog in .eforge/backlog/items without starting an eforge build.\n\nGoals:\n- list open, blocked, and analysis-due items;\n- inspect recent git history and relevant docs/code for evidence when cheap;\n- use backlog_update to mark shipped/stale/superseded items or maintain dependsOn relationships when evidence is clear;\n- suggest which items should be promoted to /eforge:plan, Schaake OS epics, roadmap updates, or discarded;\n- do not enqueue builds.\n\nStart by calling backlog_list with includeClosed=false.`;
+	return `Review the lightweight backlog in .backlog/items without starting an eforge build.\n\nGoals:\n- list open, blocked, and analysis-due items;\n- inspect recent git history and relevant docs/code for evidence when cheap;\n- use backlog_update to mark shipped/stale/superseded items or maintain dependsOn relationships when evidence is clear;\n- suggest which items should be promoted to /eforge:plan, Schaake OS epics, roadmap updates, or discarded;\n- do not enqueue builds.\n\nStart by calling backlog_list with includeClosed=false.`;
 }
 
 function createDetails(item: BacklogItem | BacklogItem[] | BacklogSummary | BacklogSummary[]): Record<string, unknown> {
@@ -312,7 +334,7 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 		name: "backlog_add",
 		label: "Backlog Add",
 		description: "Capture a lightweight project backlog item without creating an eforge build.",
-		promptSnippet: "Capture lightweight project backlog items in .eforge/backlog/items.",
+		promptSnippet: "Capture lightweight project backlog items in .backlog/items.",
 		promptGuidelines: [
 			"Use backlog_add when the user wants to remember an issue, follow-up, idea, or concern without starting an eforge build.",
 			"Set dependsOn when a backlog item should wait for other backlog item IDs to be completed first.",
@@ -338,7 +360,7 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "backlog_list",
 		label: "Backlog List",
-		description: "List lightweight project backlog items from .eforge/backlog/items.",
+		description: "List lightweight project backlog items from .backlog/items.",
 		promptSnippet: "List and filter lightweight backlog items.",
 		promptGuidelines: [
 			"Use backlog_list before curating or updating project backlog items.",

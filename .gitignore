@@ -5,6 +5,7 @@ tmp/
 .env
 .env.local
 .eforge/
+.backlog/
 .eforge-logs/
 .mcp.json
 .vercel/
