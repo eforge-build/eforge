@@ -74,8 +74,27 @@ async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEv
 }
 
 async function seedLayer(dir: string, prdId = 'test-prd'): Promise<void> {
+  setupRemoteBaseRepo(`eforge/${prdId}`);
   const now = new Date().toISOString();
   await upsertStackLayer(dir, { prdId, stackId: 'test-stack', provider: 'git-spice', branch: `eforge/${prdId}`, status: 'built', recordedAt: now, updatedAt: now });
+}
+
+function setupRemoteBaseRepo(branch = 'eforge/test-prd'): void {
+  execFileSync('git', ['init', cwd], { stdio: 'ignore' });
+  execFileSync('git', ['-C', cwd, 'config', 'user.email', 'test@test.com']);
+  execFileSync('git', ['-C', cwd, 'config', 'user.name', 'Test']);
+  writeFileSync(join(cwd, 'root.txt'), 'root\n');
+  execFileSync('git', ['-C', cwd, 'add', 'root.txt']);
+  execFileSync('git', ['-C', cwd, 'commit', '-m', 'root'], { stdio: 'ignore' });
+  execFileSync('git', ['-C', cwd, 'branch', '-M', 'main']);
+  const remoteDir = join(cwd, 'remote.git');
+  execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+  execFileSync('git', ['-C', cwd, 'remote', 'add', 'origin', remoteDir]);
+  execFileSync('git', ['-C', cwd, 'push', '-u', 'origin', 'main'], { stdio: 'ignore' });
+  execFileSync('git', ['-C', cwd, 'checkout', '-b', branch], { stdio: 'ignore' });
+  writeFileSync(join(cwd, 'child.txt'), 'child\n');
+  execFileSync('git', ['-C', cwd, 'add', 'child.txt']);
+  execFileSync('git', ['-C', cwd, 'commit', '-m', 'child'], { stdio: 'ignore' });
 }
 
 function makeFakeGhForMetadata(binDir: string, editBehavior: 'success' | 'fail'): void {
@@ -261,8 +280,13 @@ describe('executeStackLanding — Eforge provenance section in stacked PR body',
     writeFileSync(join(planDir, 'plan-01.md'), '# Plan 01\n');
     execFileSync('git', ['-C', cwd, 'add', '.']);
     execFileSync('git', ['-C', cwd, 'commit', '-m', 'add artifacts']);
+    const remoteDir = join(cwd, 'remote.git');
+    execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+    execFileSync('git', ['-C', cwd, 'remote', 'add', 'origin', remoteDir]);
+    execFileSync('git', ['-C', cwd, 'branch', '-M', 'main']);
+    execFileSync('git', ['-C', cwd, 'push', '-u', 'origin', 'main'], { stdio: 'ignore' });
 
-    await seedLayer(cwd);
+    await upsertStackLayer(cwd, { prdId: 'test-prd', stackId: 'test-stack', provider: 'git-spice', branch: 'eforge/test-prd', status: 'built', recordedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
 
     const binDir = join(cwd, 'bin-stack-prov-sect');
     makeFakeGhForMetadata(binDir, 'success');

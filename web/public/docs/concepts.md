@@ -120,7 +120,7 @@ Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave
 
 | `landing.action` | Behavior |
 |-----------------|----------|
-| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch onto that fetched base before validation, and checks freshness again immediately before PR creation. For stacked builds, the root PR targets the resolved trunk branch and child PRs target their parent artifact branch unless eforge proves a missing parent base is already integrated into trunk and performs branch-scoped stale-parent landing repair. |
+| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch onto that fetched base before validation, and checks freshness again immediately before PR creation. For stacked builds, the root PR targets the resolved trunk branch and child PRs target their parent artifact branch unless eforge proves a missing parent base is already integrated into trunk and performs branch-scoped stale-parent landing repair; before submission, stacked landing runs provider repo sync, branch restack, and a remote-base freshness proof. |
 | `merge` | Merges the artifact branch into the base branch directly. |
 | `leave` | Leaves the artifact branch in place for manual inspection or cherry-picking. |
 

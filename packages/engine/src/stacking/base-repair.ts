@@ -67,6 +67,7 @@ export type RemoteBranchHeadCommitResult =
       remote: string;
       reason: 'not-found' | 'query-failed';
       stderr?: string;
+      error?: unknown;
     };
 
 function redactRemoteDiagnostic(message: string): string {
@@ -203,6 +204,11 @@ export async function fetchRemoteBranchHeadCommit(
       remote,
       reason: 'query-failed',
       ...(stderr !== undefined ? { stderr } : {}),
+      error: {
+        command: 'git',
+        args: ['fetch', '--no-tags', '--no-recurse-submodules', remote, branch],
+        exitCode: typeof (err as { code?: unknown }).code === 'number' ? (err as { code: number }).code : null,
+      },
     };
   }
 }

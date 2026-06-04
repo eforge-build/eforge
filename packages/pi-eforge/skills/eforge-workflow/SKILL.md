@@ -33,7 +33,7 @@ The wizard asks four questions in sequence:
 ### 3. Stacked PRs (git-spice or none)
 
 - **No stacking** — standard single-branch builds
-- **git-spice stacking** — each build PR normally targets the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk. Requires git-spice and `git-spice repo init`.
+- **git-spice stacking** — each build PR normally targets the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk, then runs provider repo sync, branch restack, and a remote-base freshness proof before submitting the PR. Requires git-spice and `git-spice repo init`.
 
 When stacking is selected, the wizard checks whether `git-spice` is available. If not found on `$PATH`, it offers three remediation choices: disable stacking, configure a custom path, or cancel.
 

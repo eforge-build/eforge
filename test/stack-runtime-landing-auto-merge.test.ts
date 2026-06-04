@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   collectEvents,
@@ -29,6 +29,14 @@ import {
   type StackLandingOptions,
   type StackProviderAdapter,
 } from './stack-runtime-landing-helpers.js';
+
+function addFailingGhToPath(binDir: string, originalPath: string | undefined): string {
+  mkdirSync(binDir, { recursive: true });
+  const ghPath = join(binDir, 'gh');
+  writeFileSync(ghPath, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  chmodSync(ghPath, 0o755);
+  return `${binDir}:${originalPath ?? ''}`;
+}
 
 describe('executeStackLanding — PR auto-merge', () => {
   it('emits landing:auto-merge:start and landing:auto-merge:complete when policy=always and PR URL is discovered', async () => {
@@ -132,8 +140,8 @@ describe('executeStackLanding — PR auto-merge', () => {
         prAutoMergePolicy: 'always',
       };
 
-      // Ensure no real gh binary interferes
-      process.env.PATH = '/nonexistent-path-for-test';
+      // Ensure no real gh binary interferes while leaving git available for freshness checks.
+      process.env.PATH = addFailingGhToPath(join(cwd, 'bin-stack-am-no-url'), origPath);
 
       const events = await collectEvents(executeStackLanding(opts));
 

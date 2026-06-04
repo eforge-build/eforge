@@ -21,6 +21,7 @@ import {
   recoveryLifecycleTypes,
   seedLayer,
   setupStackRepo,
+  setupRemoteBaseRepo,
   stackLanding,
   type EforgeEvent,
   type PhaseContext,
@@ -31,10 +32,15 @@ import {
 } from './stack-runtime-landing-helpers.js';
 
 describe('executeStackLanding — pr action argv construction', () => {
-  it('calls trackBranch with the resolved base, then restackBranch, then submitBranch in the merge worktree', async () => {
-    const invocations: Array<{ method: 'track'; cwd: string; base: string } | { method: 'restack'; cwd: string } | { method: 'submit'; cwd: string }> = [];
+  it('calls syncRepo, trackBranch, restackBranch, then submitBranch in the merge worktree', async () => {
+    setupRemoteBaseRepo();
+    const invocations: Array<{ method: 'sync'; cwd: string } | { method: 'track'; cwd: string; base: string } | { method: 'restack'; cwd: string } | { method: 'submit'; cwd: string }> = [];
 
     const provider = makeStubProvider({
+      syncRepo: async (worktreePath) => {
+        invocations.push({ method: 'sync', cwd: worktreePath });
+        return makeResult('git-spice', ['repo', 'sync']);
+      },
       trackBranch: async (worktreePath, base) => {
         invocations.push({ method: 'track', cwd: worktreePath, base });
         return makeResult('git-spice', ['branch', 'track', '--base', base]);
@@ -63,13 +69,15 @@ describe('executeStackLanding — pr action argv construction', () => {
 
     await collectEvents(executeStackLanding(opts));
 
-    expect(invocations).toHaveLength(3);
-    expect(invocations[0]).toEqual({ method: 'track', cwd, base: 'main' });
-    expect(invocations[1]).toEqual({ method: 'restack', cwd });
-    expect(invocations[2]).toEqual({ method: 'submit', cwd });
+    expect(invocations).toHaveLength(4);
+    expect(invocations[0]).toEqual({ method: 'sync', cwd });
+    expect(invocations[1]).toEqual({ method: 'track', cwd, base: 'main' });
+    expect(invocations[2]).toEqual({ method: 'restack', cwd });
+    expect(invocations[3]).toEqual({ method: 'submit', cwd });
   });
 
   it('passes the full baseBranch (including slashes) verbatim to trackBranch', async () => {
+    setupRemoteBaseRepo({ baseBranch: 'feat/parent-layer' });
     const trackArgs: string[] = [];
     const provider = makeStubProvider({
       trackBranch: async (_cwd, base) => {
@@ -91,6 +99,7 @@ describe('executeStackLanding — pr action argv construction', () => {
   });
 
   it('falls back to "main" when baseBranch is undefined', async () => {
+    setupRemoteBaseRepo();
     const trackArgs: string[] = [];
     const provider = makeStubProvider({
       trackBranch: async (_cwd, base) => {
@@ -117,7 +126,8 @@ describe('executeStackLanding — pr action argv construction', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeStackLanding — pr action event sequence', () => {
-  it('emits started, provider:command x3, complete events in order', async () => {
+  it('emits started, provider:command x4, complete events in order', async () => {
+    setupRemoteBaseRepo();
     const provider = makeStubProvider();
     const opts: StackLandingOptions = {
       cwd,
@@ -136,14 +146,16 @@ describe('executeStackLanding — pr action event sequence', () => {
       'stack:provider:command',
       'stack:provider:command',
       'stack:provider:command',
+      'stack:provider:command',
       'stack:landing:update',
       'landing:auto-merge:skipped',
     ]);
     expect((events[0] as Record<string, unknown>).status).toBe('started');
-    expect((events[4] as Record<string, unknown>).status).toBe('complete');
+    expect((events[5] as Record<string, unknown>).status).toBe('complete');
   });
 
-  it('first stack:provider:command has trackBranch args', async () => {
+  it('first stack:provider:command has syncRepo args and second has trackBranch args', async () => {
+    setupRemoteBaseRepo({ baseBranch: 'feat/parent-prd' });
     const provider = makeStubProvider();
     const opts: StackLandingOptions = {
       cwd,
@@ -157,29 +169,16 @@ describe('executeStackLanding — pr action event sequence', () => {
     const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
     expect(providerCmds[0]).toMatchObject({
       type: 'stack:provider:command',
+      args: ['repo', 'sync'],
+    });
+    expect(providerCmds[1]).toMatchObject({
+      type: 'stack:provider:command',
       args: ['branch', 'track', '--base', 'feat/parent-prd'],
     });
   });
 
-  it('second stack:provider:command has restackBranch args', async () => {
-    const provider = makeStubProvider();
-    const opts: StackLandingOptions = {
-      cwd,
-      mergeWorktreePath: cwd,
-      stackContext: makeStackContext(),
-      landingAction: 'pr',
-      provider,
-    };
-
-    const events = await collectEvents(executeStackLanding(opts));
-    const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
-    expect(providerCmds[1]).toMatchObject({
-      type: 'stack:provider:command',
-      args: ['branch', 'restack'],
-    });
-  });
-
-  it('third stack:provider:command has submitBranch args', async () => {
+  it('third stack:provider:command has restackBranch args', async () => {
+    setupRemoteBaseRepo();
     const provider = makeStubProvider();
     const opts: StackLandingOptions = {
       cwd,
@@ -193,11 +192,31 @@ describe('executeStackLanding — pr action event sequence', () => {
     const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
     expect(providerCmds[2]).toMatchObject({
       type: 'stack:provider:command',
+      args: ['branch', 'restack'],
+    });
+  });
+
+  it('fourth stack:provider:command has submitBranch args', async () => {
+    setupRemoteBaseRepo();
+    const provider = makeStubProvider();
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'pr',
+      provider,
+    };
+
+    const events = await collectEvents(executeStackLanding(opts));
+    const providerCmds = events.filter((e) => e.type === 'stack:provider:command');
+    expect(providerCmds[3]).toMatchObject({
+      type: 'stack:provider:command',
       args: ['branch', 'submit'],
     });
   });
 
   it('stack:landing:update complete includes prdId, stackId, branch', async () => {
+    setupRemoteBaseRepo({ branch: 'eforge/my-prd' });
     const provider = makeStubProvider();
     const stackContext = makeStackContext({
       prdId: 'my-prd',

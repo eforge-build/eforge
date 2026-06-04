@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const CLEANUP_MAX_RETRIES = 5;
+const CLEANUP_RETRY_DELAY_MS = 100;
+
 /**
  * Create a temp dir factory with automatic cleanup via vitest's afterEach.
  * Call inside a describe block — registers cleanup automatically.
@@ -14,10 +17,23 @@ export function useTempDir(prefix = 'eforge-test-'): () => string {
   const tempDirs: string[] = [];
 
   afterEach(() => {
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
+    const dirs = tempDirs.splice(0);
+    let cleanupError: unknown;
+
+    for (const dir of dirs) {
+      try {
+        rmSync(dir, {
+          recursive: true,
+          force: true,
+          maxRetries: CLEANUP_MAX_RETRIES,
+          retryDelay: CLEANUP_RETRY_DELAY_MS,
+        });
+      } catch (err) {
+        cleanupError ??= err;
+      }
     }
-    tempDirs.length = 0;
+
+    if (cleanupError) throw cleanupError;
   });
 
   return function makeTempDir(): string {

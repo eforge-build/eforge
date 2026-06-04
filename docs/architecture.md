@@ -339,7 +339,7 @@ The durable provenance guarantee is Git history, not the final tree. Artifact re
 
 ### Stacked PR topology
 
-When `stacking.enabled: true`, the artifact branches form a linear chain. Each artifact branch targets the parent artifact branch (`stack_parent`'s artifact branch) as its PR base. Before landing, eforge preflights the remote base; if a deleted parent branch's artifact commit is already an ancestor of trunk, eforge performs automatic branch-scoped repair by retargeting only the child artifact branch to trunk, and otherwise fails closed. Stacked PR landing remains delegated to git-spice restacking and does not use direct PR base sync. git-spice is the only supported stack provider in v1. See [docs/stacking.md](stacking.md) for setup and operation details.
+When `stacking.enabled: true`, the artifact branches form a linear chain. Each artifact branch targets the parent artifact branch (`stack_parent`'s artifact branch) as its PR base. Before landing, eforge preflights the remote base; if a deleted parent branch's artifact commit is already an ancestor of trunk, eforge performs automatic branch-scoped repair by retargeting only the child artifact branch to trunk, and otherwise fails closed. Stacked PR landing remains delegated to the stack provider: eforge runs provider repo sync, tracks the branch against the effective base, restacks the branch, and proves the fetched remote effective base commit is an ancestor of `HEAD` before submitting the PR. If the remote base advances during landing, eforge retries provider sync plus branch restack once and fails closed if freshness still cannot be proven. git-spice is the only supported stack provider in v1. See [docs/stacking.md](stacking.md) for setup and operation details.
 
 ## Monitor
 

@@ -107,6 +107,51 @@ describe('resolveStackBaseContext', () => {
     expect(result.stackId).toBe('root-prd');
   });
 
+  it('carries configured trunk sync remote for root stack layers', async () => {
+    const cwd = await repo();
+    const upstreamConfig = {
+      ...config,
+      build: { trunkBranch: 'main', trunkSync: { remote: 'upstream' } },
+    } as unknown as EforgeConfig;
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config: upstreamConfig,
+      prd: queuedPrd('root-prd'),
+      planSetName: 'root-prd',
+    });
+
+    expect(result.baseBranch).toBe('main');
+    expect(result.trunkBranch).toBe('main');
+    expect(result.trunkRemote).toBe('upstream');
+  });
+
+  it('resolves trunk from the configured remote HEAD when trunkBranch is unset', async () => {
+    const cwd = await repo();
+    await exec('git', ['branch', 'develop'], { cwd });
+    const { stdout: mainSha } = await exec('git', ['rev-parse', 'main'], { cwd });
+    const { stdout: developSha } = await exec('git', ['rev-parse', 'develop'], { cwd });
+    await exec('git', ['update-ref', 'refs/remotes/origin/main', mainSha.trim()], { cwd });
+    await exec('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'], { cwd });
+    await exec('git', ['update-ref', 'refs/remotes/upstream/develop', developSha.trim()], { cwd });
+    await exec('git', ['symbolic-ref', 'refs/remotes/upstream/HEAD', 'refs/remotes/upstream/develop'], { cwd });
+    const upstreamConfig = {
+      ...config,
+      build: { trunkSync: { remote: 'upstream' } },
+    } as unknown as EforgeConfig;
+
+    const result = await resolveStackBaseContext({
+      cwd,
+      config: upstreamConfig,
+      prd: queuedPrd('root-prd'),
+      planSetName: 'root-prd',
+    });
+
+    expect(result.baseBranch).toBe('develop');
+    expect(result.trunkBranch).toBe('develop');
+    expect(result.trunkRemote).toBe('upstream');
+  });
+
   it('uses the parent recorded artifact branch for child stack layers', async () => {
     const cwd = await repo();
     const commitSha = await createUnlandedArtifactBranch(cwd, 'eforge/parent-prd');

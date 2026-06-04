@@ -21,6 +21,7 @@ import {
   recoveryLifecycleTypes,
   seedLayer,
   setupStackRepo,
+  setupRemoteBaseRepo,
   stackLanding,
   type EforgeEvent,
   type PhaseContext,
@@ -158,7 +159,7 @@ describe('executeStackLanding — failure handling', () => {
     await seedLayer(cwd);
 
     const events = await collectEvents(executeStackLanding(landingOptions(provider)));
-    expect(events.find((event) => event.type === 'stack:provider:command')).toMatchObject({
+    expect(events.find((event) => event.type === 'stack:provider:command' && ((event as { args?: string[] }).args ?? []).includes('track'))).toMatchObject({
       command: 'git-spice',
       args: ['branch', 'track', '--base', 'main'],
       exitCode: 2,
@@ -181,14 +182,23 @@ describe('executeStackLanding — failure handling', () => {
     await seedLayer(cwd);
 
     const events = await collectEvents(executeStackLanding(landingOptions(provider)));
+    const layer = (await loadStackState(cwd)).layers.find((item) => item.prdId === 'test-prd');
+    const restackIdx = events.findIndex((event) => event.type === 'stack:provider:command' && event.args.join(' ') === 'branch restack');
+    const failedIdx = events.findIndex((event) => event.type === 'stack:landing:update' && (event as { status?: string }).status === 'failed');
     expect(submitCalled).toBe(false);
     expect(events.some((event) => recoveryLifecycleTypes.has(event.type))).toBe(false);
-    expect(events.filter((event) => event.type === 'stack:provider:command')).toHaveLength(2);
+    expect(events.filter((event) => event.type === 'stack:provider:command')).toHaveLength(3);
+    expect(restackIdx).toBeGreaterThanOrEqual(0);
+    expect(failedIdx).toBeGreaterThan(restackIdx);
+    expect(events[restackIdx]).toMatchObject({ args: ['branch', 'restack'], exitCode: 2 });
     expect(events.at(-1)).toMatchObject({ type: 'stack:landing:update', status: 'failed', reason: expect.stringContaining('restack failed') });
+    expect(layer?.status).toBe('failed');
+    expect(layer?.landing?.status).toBe('failed');
+    expect(layer?.landing?.reason).toContain('restack failed');
   });
 
   it('recovers a recoverable restack conflict, submits the branch, and completes landing', async () => {
-    initGitRepo(cwd);
+    setupRemoteBaseRepo();
     let submitCalled = false;
     const provider = makeStubProvider({
       restackBranch: async () => {
@@ -215,7 +225,7 @@ describe('executeStackLanding — failure handling', () => {
   });
 
   it('persists failed state and skips submit when restack conflict recovery fails', async () => {
-    initGitRepo(cwd);
+    setupRemoteBaseRepo();
     let submitCalled = false;
     const provider = makeStubProvider({
       restackBranch: async () => {
@@ -245,7 +255,7 @@ describe('executeStackLanding — failure handling', () => {
   });
 
   it('prevents submit and persists failed state when post-recovery validation fails', async () => {
-    initGitRepo(cwd);
+    setupRemoteBaseRepo();
     let submitCalled = false;
     const provider = makeStubProvider({
       restackBranch: async () => { throw new Error('restack conflict'); },

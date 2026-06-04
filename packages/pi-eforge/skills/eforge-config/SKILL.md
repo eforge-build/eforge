@@ -65,7 +65,7 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
 10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
 11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
-12. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs normally target the parent artifact branch rather than the feature/trunk branch; during landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk), `stacking.gitSpice.command` (optional path to the `git-spice` binary when it is not on `$PATH`, e.g. `/usr/local/bin/git-spice`; set to `gs` only if you use the optional short alias). The `stacking.provider` is always `git-spice` and need not be set.
+12. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs normally target the parent artifact branch rather than the feature/trunk branch; during landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk, then gates PR submission on provider sync/restack and a remote-base freshness proof), `stacking.gitSpice.command` (optional path to the `git-spice` binary when it is not on `$PATH`, e.g. `/usr/local/bin/git-spice`; set to `gs` only if you use the optional short alias). The `stacking.provider` is always `git-spice` and need not be set.
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 3. Skip sections the user isn't interested in.
 
@@ -160,7 +160,8 @@ landing:
 # stacking:
 #   enabled: false                     # Default false. Set to true to enable git-spice stacking.
 #                                      # When enabled, artifact branch PRs normally target the parent artifact branch.
-#                                      # Landing can repair a missing integrated parent by retargeting only the child to trunk.
+#                                      # Landing can repair a missing integrated parent by retargeting only the child to trunk,
+#                                      # then gates PR submission on provider sync/restack and a remote-base freshness proof.
 #                                      # Run 'git-spice repo init' in the repo before enabling.
 #   gitSpice:
 #     command: git-spice               # Default. Set to 'gs' only if you use the optional short alias.

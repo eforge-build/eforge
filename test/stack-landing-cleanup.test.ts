@@ -15,6 +15,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtemp } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -34,6 +36,7 @@ let cwd: string;
 
 beforeEach(async () => {
   cwd = await mkdtemp(join(tmpdir(), 'eforge-stack-cleanup-'));
+  setupRemoteBaseRepo();
 });
 
 function makeResult(command: string, args: string[], stdout = ''): ProviderCommandResult {
@@ -83,6 +86,34 @@ async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEv
   const events: EforgeEvent[] = [];
   for await (const event of gen) events.push(event);
   return events;
+}
+
+function advanceRemoteBase(fileName = 'remote-main.txt'): void {
+  const currentBranch = execFileSync('git', ['branch', '--show-current'], { cwd, encoding: 'utf-8' }).trim();
+  execFileSync('git', ['checkout', 'main'], { cwd, stdio: 'ignore' });
+  writeFileSync(join(cwd, fileName), `${Date.now()}\n`);
+  execFileSync('git', ['add', fileName], { cwd });
+  execFileSync('git', ['commit', '-m', `advance ${fileName}`], { cwd, stdio: 'ignore' });
+  execFileSync('git', ['push', 'origin', 'main'], { cwd, stdio: 'ignore' });
+  execFileSync('git', ['checkout', currentBranch], { cwd, stdio: 'ignore' });
+}
+
+function setupRemoteBaseRepo(): void {
+  execFileSync('git', ['init'], { cwd, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd });
+  execFileSync('git', ['config', 'user.name', 'Test User'], { cwd });
+  writeFileSync(join(cwd, 'root.txt'), 'root\n');
+  execFileSync('git', ['add', 'root.txt'], { cwd });
+  execFileSync('git', ['commit', '-m', 'root'], { cwd, stdio: 'ignore' });
+  execFileSync('git', ['branch', '-M', 'main'], { cwd });
+  const remoteDir = join(cwd, 'remote.git');
+  execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+  execFileSync('git', ['remote', 'add', 'origin', remoteDir], { cwd });
+  execFileSync('git', ['push', '-u', 'origin', 'main'], { cwd, stdio: 'ignore' });
+  execFileSync('git', ['checkout', '-b', 'eforge/cleanup-prd'], { cwd, stdio: 'ignore' });
+  writeFileSync(join(cwd, 'child.txt'), 'child\n');
+  execFileSync('git', ['add', 'child.txt'], { cwd });
+  execFileSync('git', ['commit', '-m', 'child'], { cwd, stdio: 'ignore' });
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +272,50 @@ describe('executeStackLanding — cleanup runs exactly once', () => {
     const progressEvents = events.filter((e) => e.type === 'planning:progress');
     // runCleanup emits one planning:progress per failure (git checkout fails in non-git tempdir)
     expect(progressEvents).toHaveLength(1);
+  });
+
+  it('emits cleanup once before the first restack during a stale-base retry', async () => {
+    let restackCalls = 0;
+    const provider = makeStubProvider({
+      restackBranch: async () => {
+        restackCalls += 1;
+        if (restackCalls === 1) {
+          advanceRemoteBase();
+        } else {
+          execFileSync('git', ['fetch', 'origin', 'main'], { cwd, stdio: 'ignore' });
+          execFileSync('git', ['merge', '--no-edit', 'FETCH_HEAD'], { cwd, stdio: 'ignore' });
+        }
+        return makeResult('git-spice', ['branch', 'restack']);
+      },
+    });
+    const opts: StackLandingOptions = {
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext: makeStackContext(),
+      landingAction: 'pr',
+      provider,
+      shouldCleanup: true,
+      cleanupPlanSet: 'my-set',
+      cleanupOutputDir: '.eforge/output',
+    };
+
+    const events = await collectEvents(executeStackLanding(opts));
+    const cleanupIndexes = events
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event.type === 'planning:progress')
+      .map(({ index }) => index);
+    const commandIndexes = events
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => event.type === 'stack:provider:command')
+      .map(({ event, index }) => ({ args: (event as { args: string[] }).args, index }));
+    const syncIndexes = commandIndexes.filter(({ args }) => args.includes('sync')).map(({ index }) => index);
+    const restackIndexes = commandIndexes.filter(({ args }) => args.includes('restack')).map(({ index }) => index);
+
+    expect(cleanupIndexes).toHaveLength(1);
+    expect(restackIndexes).toHaveLength(2);
+    expect(syncIndexes).toHaveLength(2);
+    expect(cleanupIndexes[0]).toBeLessThan(restackIndexes[0]);
+    expect(events.slice(syncIndexes[1] + 1, restackIndexes[1]).filter((event) => event.type === 'planning:progress')).toHaveLength(0);
   });
 
   it('does not emit cleanup events for non-pr actions', async () => {

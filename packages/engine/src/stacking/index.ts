@@ -75,7 +75,7 @@ export {
 } from './git-spice.js';
 
 export { executeStackLanding } from './landing.js';
-export type { StackLandingOptions } from './landing.js';
+export type { StackLandingBaseMetadata, StackLandingOptions } from './landing.js';
 
 export { performStackSync } from './sync.js';
 export type {
