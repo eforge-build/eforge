@@ -82,6 +82,7 @@ function expectRequiredEvidenceGuidance(raw: string): void {
   expect(raw).toContain('normal `cleanupPlanFiles` cleanup');
   expect(raw).toContain('must not require permanent committed documentation');
   expect(raw).toContain('future review candidate');
+  expect(raw.toLowerCase()).not.toContain('implementation summary');
 }
 
 describe('project-team test-thinning playbooks', () => {
