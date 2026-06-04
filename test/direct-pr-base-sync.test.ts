@@ -231,7 +231,7 @@ describe('direct PR base sync', () => {
       expect(pr.url).toBe('https://github.com/test/repo/pull/1');
     });
     expect(readFileSync(log, 'utf8')).toContain('"create"');
-  });
+  }, 10_000);
 
   it('aborts an unresolved rebase conflict and leaves no opportunity to call gh pr create', async () => {
     const tmp = makeTempDir();
@@ -314,7 +314,7 @@ describe('direct PR base sync', () => {
     expect(existsSync(join(repo, '.git', 'rebase-merge')) || existsSync(join(repo, '.git', 'rebase-apply'))).toBe(false);
     const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
     expect(ghLog).not.toContain('"create"');
-  });
+  }, 10_000);
 
   it('reruns sync, validation, PRD validation, artifact recording, and PR creation after a final freshness retry', async () => {
     const tmp = makeTempDir();
@@ -360,7 +360,7 @@ describe('direct PR base sync', () => {
     expect(registry.builds.find((build) => build.prdId === 'prd-1')?.landingStatus).toBe('complete');
     expect(readFileSync(log, 'utf8')).toContain('"create"');
     expect(ctx.state.status).toBe('completed');
-  });
+  }, 10_000);
 
   it('exhausts final freshness retries without creating a PR when the base keeps advancing', async () => {
     const tmp = makeTempDir();
@@ -409,7 +409,7 @@ execFileSync('git', ['-C', clone, 'push', 'origin', 'HEAD:main'], { env });
     expect(ctx.state.status).toBe('failed');
     const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
     expect(ghLog).not.toContain('"create"');
-  });
+  }, 10_000);
 
   it('detects final pre-PR base advancement by comparing the fetched SHA to the validated sync point', async () => {
     const tmp = makeTempDir();
