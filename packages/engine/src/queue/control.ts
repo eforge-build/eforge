@@ -15,10 +15,11 @@ import type {
   QueueRemoveResponse,
 } from '@eforge-build/client';
 import {
+  claimPrd,
   loadQueue,
   readPrdLockStatus,
   releasePrd,
-  setQueuedPrdFrontmatterFields,
+  setQueuedPrdFrontmatterFieldsExistingOnly,
   type QueuedPrd,
 } from '../prd-queue.js';
 
@@ -51,10 +52,19 @@ export interface LocatedPrd {
   status: LocatedPrdStatus;
 }
 
+interface QueueControlRaceTestHooks {
+  afterLocate?: () => void | Promise<void>;
+  afterRootClaim?: () => void | Promise<void>;
+  beforePriorityWrite?: () => void | Promise<void>;
+  beforeMainRemoval?: () => void | Promise<void>;
+}
+
 export interface QueueControlLocateOptions {
   cwd: string;
   queueDir: string;
   prdId: string;
+  /** Internal deterministic race seam for engine regression tests only. */
+  __testHooks?: QueueControlRaceTestHooks;
 }
 
 export interface UpdateQueuedPrdPriorityOptions extends QueueControlLocateOptions {
@@ -114,6 +124,66 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+async function runQueueControlRaceHook(
+  opts: QueueControlLocateOptions,
+  hookName: keyof QueueControlRaceTestHooks,
+): Promise<void> {
+  await opts.__testHooks?.[hookName]?.();
+}
+
+function isErrno(err: unknown, code: string): boolean {
+  return (err as NodeJS.ErrnoException)?.code === code;
+}
+
+function locationDirectory(absQueueDir: string, location: QueueControlLocation): string {
+  return location === 'queue' ? absQueueDir : resolve(absQueueDir, location);
+}
+
+async function reloadExpectedPrd(
+  cwd: string,
+  absQueueDir: string,
+  located: LocatedPrd,
+): Promise<QueuedPrd> {
+  const prds = await strictLoadQueue(locationDirectory(absQueueDir, located.location), cwd);
+  const expected = resolve(located.prd.filePath);
+  const fresh = prds.find((prd) => prd.id === located.prd.id && resolve(prd.filePath) === expected);
+  if (!fresh) {
+    throw new QueueControlError(
+      'conflict',
+      `Queue item '${located.prd.id}' changed location or disappeared before mutation; expected '${located.prd.filePath}'.`,
+    );
+  }
+  return fresh;
+}
+
+async function setPriorityExistingOnly(prd: QueuedPrd, priority: number): Promise<void> {
+  try {
+    await setQueuedPrdFrontmatterFieldsExistingOnly(prd, { priority });
+  } catch (err) {
+    if (isErrno(err, 'ENOENT')) {
+      throw new QueueControlError(
+        'not-found',
+        `Queue item '${prd.id}' disappeared before priority update; expected '${prd.filePath}'.`,
+      );
+    }
+    throw err;
+  }
+}
+
+async function removeMainPrdFile(prd: QueuedPrd): Promise<void> {
+  try {
+    await rm(prd.filePath);
+  } catch (err) {
+    if (isErrno(err, 'ENOENT')) {
+      throw new QueueControlError(
+        'not-found',
+        `Queue item '${prd.id}' disappeared before removal; expected '${prd.filePath}'.`,
+      );
+    }
+    throw err;
+  }
+}
+
 /**
  * Classify a root-queue PRD via its lock file.
  *
@@ -136,23 +206,6 @@ async function classifyRootStatus(prdId: string, cwd: string): Promise<'pending'
     );
   }
   return 'pending';
-}
-
-/**
- * Final lock re-check for a root-queue item, run immediately before mutating its
- * PRD file. Closes the race where a scheduler/worker claims the PRD between the
- * initial classification and the priority update or `rm`: re-running the same
- * classification refuses a now-live lock (cancel-by-session guidance) and clears
- * a stale/corrupt lock, or throws a conflict if the lock cannot be safely cleared.
- */
-async function assertRootStillMutable(prdId: string, cwd: string): Promise<void> {
-  const status = await classifyRootStatus(prdId, cwd);
-  if (status === 'running') {
-    throw new QueueControlError(
-      'conflict',
-      `Queue item '${prdId}' became running; ${RUNNING_CANCEL_GUIDANCE}.`,
-    );
-  }
 }
 
 /**
@@ -196,6 +249,7 @@ export async function updateQueuedPrdPriority(opts: UpdateQueuedPrdPriorityOptio
   }
 
   const located = await findQueuedPrdForControl(opts);
+  await runQueueControlRaceHook(opts, 'afterLocate');
   if (located.status === 'running') {
     throw new QueueControlError(
       'conflict',
@@ -209,13 +263,28 @@ export async function updateQueuedPrdPriority(opts: UpdateQueuedPrdPriorityOptio
     );
   }
 
-  // Re-check the root lock immediately before mutating to close the race where a
-  // scheduler/worker claims the PRD between classification and this write.
+  const absQueueDir = resolve(opts.cwd, opts.queueDir);
   if (located.location === 'queue') {
-    await assertRootStillMutable(opts.prdId, opts.cwd);
+    const claimed = await claimPrd(opts.prdId, opts.cwd);
+    if (!claimed) {
+      throw new QueueControlError(
+        'conflict',
+        `Queue item '${opts.prdId}' was claimed or became running before priority update; ${RUNNING_CANCEL_GUIDANCE}.`,
+      );
+    }
+    try {
+      await runQueueControlRaceHook(opts, 'afterRootClaim');
+      const fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
+      await runQueueControlRaceHook(opts, 'beforePriorityWrite');
+      await setPriorityExistingOnly(fresh, opts.priority);
+    } finally {
+      await releasePrd(opts.prdId, opts.cwd);
+    }
+  } else {
+    const fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
+    await runQueueControlRaceHook(opts, 'beforePriorityWrite');
+    await setPriorityExistingOnly(fresh, opts.priority);
   }
-
-  await setQueuedPrdFrontmatterFields(located.prd, { priority: opts.priority });
 
   return {
     id: opts.prdId,
@@ -239,6 +308,7 @@ export async function removeQueuedPrd(opts: RemoveQueuedPrdOptions): Promise<Que
   const absQueueDir = resolve(opts.cwd, opts.queueDir);
 
   const located = await findQueuedPrdForControl(opts);
+  await runQueueControlRaceHook(opts, 'afterLocate');
   if (located.status === 'running') {
     throw new QueueControlError(
       'conflict',
@@ -246,22 +316,44 @@ export async function removeQueuedPrd(opts: RemoveQueuedPrdOptions): Promise<Que
     );
   }
 
-  const dependents = await findLiveDependents(opts.cwd, absQueueDir, opts.prdId);
-  if (dependents.length > 0) {
-    throw new QueueControlError(
-      'conflict',
-      `Cannot remove '${opts.prdId}': live queue items depend on it (${dependents.join(', ')}). ` +
-        'Remove the dependents first, or wait for future cascade controls.',
-    );
-  }
-
-  // Re-check the root lock immediately before deletion to close the race where a
-  // scheduler/worker claims the PRD between classification and this `rm`.
+  let fresh: QueuedPrd;
   if (located.location === 'queue') {
-    await assertRootStillMutable(opts.prdId, opts.cwd);
+    const claimed = await claimPrd(opts.prdId, opts.cwd);
+    if (!claimed) {
+      throw new QueueControlError(
+        'conflict',
+        `Queue item '${opts.prdId}' was claimed or became running before removal; ${RUNNING_CANCEL_GUIDANCE}.`,
+      );
+    }
+    try {
+      await runQueueControlRaceHook(opts, 'afterRootClaim');
+      fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
+      const dependents = await findLiveDependents(opts.cwd, absQueueDir, opts.prdId);
+      if (dependents.length > 0) {
+        throw new QueueControlError(
+          'conflict',
+          `Cannot remove '${opts.prdId}': live queue items depend on it (${dependents.join(', ')}). ` +
+            'Remove the dependents first, or wait for future cascade controls.',
+        );
+      }
+      await runQueueControlRaceHook(opts, 'beforeMainRemoval');
+      await removeMainPrdFile(fresh);
+    } finally {
+      await releasePrd(opts.prdId, opts.cwd);
+    }
+  } else {
+    fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
+    const dependents = await findLiveDependents(opts.cwd, absQueueDir, opts.prdId);
+    if (dependents.length > 0) {
+      throw new QueueControlError(
+        'conflict',
+        `Cannot remove '${opts.prdId}': live queue items depend on it (${dependents.join(', ')}). ` +
+          'Remove the dependents first, or wait for future cascade controls.',
+      );
+    }
+    await runQueueControlRaceHook(opts, 'beforeMainRemoval');
+    await removeMainPrdFile(fresh);
   }
-
-  await rm(located.prd.filePath, { force: true });
 
   const removedSidecars: string[] = [];
   if (located.location === 'failed') {
@@ -269,8 +361,12 @@ export async function removeQueuedPrd(opts: RemoveQueuedPrdOptions): Promise<Que
       const relative = `failed/${opts.prdId}.${ext}`;
       const absolute = resolve(absQueueDir, 'failed', `${opts.prdId}.${ext}`);
       if (await fileExists(absolute)) {
-        await rm(absolute, { force: true });
-        removedSidecars.push(relative);
+        try {
+          await rm(absolute);
+          removedSidecars.push(relative);
+        } catch (err) {
+          if (!isErrno(err, 'ENOENT')) throw err;
+        }
       }
     }
   }

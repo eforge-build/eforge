@@ -8,8 +8,11 @@
  * No mocks: spawnPrdChild is a plain function that never resolves so the
  * synchronously-pushed scheduler events are drained before any build completes.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { QueueScheduler } from '@eforge-build/engine/queue/scheduler';
 import { AsyncEventQueue } from '@eforge-build/engine/concurrency';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
@@ -20,16 +23,25 @@ import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a minimal QueuedPrd without touching the filesystem. */
-function makePrd(id: string, dependsOn: string[] = []): QueuedPrd {
+interface PrdFixtureSpec {
+  id: string;
+  dependsOn?: string[];
+}
+
+/** Build a minimal QueuedPrd backed by a real root-queue file. */
+async function makePrd(cwd: string, id: string, dependsOn: string[] = []): Promise<QueuedPrd> {
+  const filePath = join(cwd, '.eforge', 'queue', `${id}.md`);
+  const dependsOnLine = dependsOn.length > 0 ? `depends_on: [${dependsOn.join(', ')}]\n` : '';
+  const content = `---\ntitle: ${id}\n${dependsOnLine}---\n`;
+  await writeFile(filePath, content, 'utf-8');
   return {
     id,
-    filePath: `/nonexistent/${id}.md`,
+    filePath,
     frontmatter: {
       title: id,
       depends_on: dependsOn.length > 0 ? dependsOn : undefined,
     },
-    content: `---\ntitle: ${id}\n---\n`,
+    content,
     lastCommitHash: '',
     lastCommitDate: '',
   };
@@ -46,21 +58,32 @@ const CONFIG_PROFILE = {
   config: null,
 };
 
-function buildScheduler(
-  initialPrds: QueuedPrd[],
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+async function buildScheduler(
+  prdSpecs: PrdFixtureSpec[],
   parallelism: number,
-): {
+): Promise<{
   scheduler: QueueScheduler;
   eventQueue: AsyncEventQueue<EforgeEvent>;
   bus: EventEmitter;
-} {
+}> {
+  const cwd = await mkdtemp(join(tmpdir(), 'eforge-scheduler-events-'));
+  tempDirs.push(cwd);
+  await mkdir(join(cwd, '.eforge', 'queue'), { recursive: true });
+  const initialPrds = await Promise.all(
+    prdSpecs.map((spec) => makePrd(cwd, spec.id, spec.dependsOn ?? [])),
+  );
   const eventQueue = new AsyncEventQueue<EforgeEvent>();
   const bus = new EventEmitter();
   const scheduler = new QueueScheduler({
     bus,
-    cwd: '/nonexistent/cwd',
-    // Non-existent path so discoverNewPrds() fails gracefully and returns early.
-    queueDir: '/nonexistent/queue',
+    cwd,
+    queueDir: '.eforge/queue',
     config: DEFAULT_CONFIG,
     configProfile: CONFIG_PROFILE,
     parallelism,
@@ -81,8 +104,8 @@ describe('daemon:scheduler:dequeued', () => {
   it('emits one dequeued event per successful start, up to the parallelism limit', async () => {
     const N = 5;
     const K = 2;
-    const prds = Array.from({ length: N }, (_, i) => makePrd(`prd-${i}`));
-    const { scheduler, eventQueue } = buildScheduler(prds, K);
+    const prds = Array.from({ length: N }, (_, i) => ({ id: `prd-${i}` }));
+    const { scheduler, eventQueue } = await buildScheduler(prds, K);
 
     await scheduler.start();
 
@@ -118,8 +141,8 @@ describe('daemon:scheduler:capacity-blocked', () => {
   it('emits exactly one capacity-blocked event per tick when N > K', async () => {
     const N = 5;
     const K = 2;
-    const prds = Array.from({ length: N }, (_, i) => makePrd(`prd-${i}`));
-    const { scheduler, eventQueue } = buildScheduler(prds, K);
+    const prds = Array.from({ length: N }, (_, i) => ({ id: `prd-${i}` }));
+    const { scheduler, eventQueue } = await buildScheduler(prds, K);
 
     await scheduler.start();
 
@@ -139,8 +162,8 @@ describe('daemon:scheduler:capacity-blocked', () => {
   it('dedup resets each tick: two capacity-blocked ticks produce two events', async () => {
     const N = 5;
     const K = 2;
-    const prds = Array.from({ length: N }, (_, i) => makePrd(`prd-${i}`));
-    const { scheduler, eventQueue } = buildScheduler(prds, K);
+    const prds = Array.from({ length: N }, (_, i) => ({ id: `prd-${i}` }));
+    const { scheduler, eventQueue } = await buildScheduler(prds, K);
 
     // Tick 1: start() triggers the initial scan and startReadyPrds().
     await scheduler.start();
@@ -164,14 +187,14 @@ describe('daemon:scheduler:dependency-blocked', () => {
   it('emits exactly one dependency-blocked event per prdId per tick regardless of how many deps are unmet', async () => {
     // prd-blocked has 3 unmet dependencies — still only 1 event with all 3 in blockedBy.
     const prds = [
-      makePrd('dep-a'),
-      makePrd('dep-b'),
-      makePrd('dep-c'),
-      makePrd('prd-blocked', ['dep-a', 'dep-b', 'dep-c']),
+      { id: 'dep-a' },
+      { id: 'dep-b' },
+      { id: 'dep-c' },
+      { id: 'prd-blocked', dependsOn: ['dep-a', 'dep-b', 'dep-c'] },
     ];
     // parallelism=1 so dep-a starts and dep-b/dep-c are capacity-blocked;
     // prd-blocked stays dependency-blocked (all 3 deps are not completed/skipped).
-    const { scheduler, eventQueue } = buildScheduler(prds, 1);
+    const { scheduler, eventQueue } = await buildScheduler(prds, 1);
 
     await scheduler.start();
 
@@ -193,11 +216,11 @@ describe('daemon:scheduler:dependency-blocked', () => {
   it('emits one dependency-blocked event per blocked prdId when multiple PRDs share the same unmet dep', async () => {
     // prd-1 and prd-2 both depend on prd-0 which starts but does not complete.
     const prds = [
-      makePrd('prd-0'),
-      makePrd('prd-1', ['prd-0']),
-      makePrd('prd-2', ['prd-0']),
+      { id: 'prd-0' },
+      { id: 'prd-1', dependsOn: ['prd-0'] },
+      { id: 'prd-2', dependsOn: ['prd-0'] },
     ];
-    const { scheduler, eventQueue } = buildScheduler(prds, 1);
+    const { scheduler, eventQueue } = await buildScheduler(prds, 1);
 
     await scheduler.start();
 
