@@ -112,6 +112,11 @@ export {
   apiDemoteExtensionIfRunning,
 } from './api/extensions.js';
 
+// --- eforge:region plan-01-platform-contracts ---
+export * from './extension-contributions.js';
+export * from './api/extension-contributions.js';
+// --- eforge:endregion plan-01-platform-contracts ---
+
 export {
   dispatchEforgeExtensionAction,
   EFORGE_EXTENSION_ACTIONS,

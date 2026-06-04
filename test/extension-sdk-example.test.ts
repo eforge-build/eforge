@@ -114,6 +114,56 @@ const _policyGateStub: sdk.EforgeExtensionFactory = (api) => {
 };
 void _policyGateStub;
 
+// --- eforge:region plan-01-platform-contracts ---
+const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
+  const action = sdk.defineExtensionAction({
+    id: 'say-hi',
+    title: 'Say hi',
+    inputSchema: sdk.Type.Object({ name: sdk.Type.String() }),
+    outputSchema: sdk.Type.Object({ greeting: sdk.Type.String() }),
+    sideEffects: ['none'],
+    handler: (input, ctx) => {
+      const _requestedBy: sdk.ExtensionActionRequestedBy = ctx.requestedBy;
+      const _host: sdk.ExtensionActionRequestedByHost = _requestedBy.host;
+      void _host;
+      return { greeting: `Hello ${input.name}` };
+    },
+  });
+  const contribution: sdk.ConsoleContribution = sdk.defineConsoleContribution({
+    id: 'hello-panel',
+    blocks: [{ rendererId: 'action-button', content: 'Say hi', action: { actionId: 'say-hi' } }],
+  });
+  const command: sdk.IntegrationCommand = sdk.defineIntegrationCommand({
+    id: 'hello-command',
+    label: 'Say hi',
+    inputSchema: sdk.Type.Object({ name: sdk.Type.String() }),
+    action: { actionId: 'say-hi', inputDefaults: { name: 'world' } },
+  });
+  const deepLink: sdk.ExtensionDeepLink = sdk.defineExtensionDeepLink({
+    id: 'hello-link',
+    label: 'Hello link',
+    urlTemplate: 'https://example.test/{id}',
+    action: { actionId: 'say-hi' },
+  });
+
+  api.registerAction(action);
+  api.registerConsoleContribution(contribution);
+  api.registerIntegrationCommand(command);
+  api.registerDeepLink(deepLink);
+};
+void _contributionApiStub;
+
+const _objectRootActionSchemaStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerAction({
+    id: 'bad-input-schema',
+    title: 'Bad input schema',
+    // @ts-expect-error Extension actions must use object-root TypeBox input schemas.
+    inputSchema: sdk.Type.String(),
+    handler: () => null,
+  });
+};
+void _objectRootActionSchemaStub;
+// --- eforge:endregion plan-01-platform-contracts ---
 
 // Compile-time examples: old one-argument input source remains compatible
 const _oldInputSourceStub: sdk.EforgeExtensionFactory = (api) => {

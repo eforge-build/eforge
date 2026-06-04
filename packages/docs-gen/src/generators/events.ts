@@ -40,6 +40,38 @@ interface EventVariant {
   fields: string[];
 }
 
+function toDeterministicJsonSchema(value: unknown): unknown {
+  const autoIds = new Map<string, string>();
+  const normalizeAutoId = (id: string): string => {
+    const existing = autoIds.get(id);
+    if (existing) return existing;
+    const stable = `TypeBoxRecursive${autoIds.size}`;
+    autoIds.set(id, stable);
+    return stable;
+  };
+
+  const normalize = (nestedValue: unknown): unknown => {
+    if (Array.isArray(nestedValue)) {
+      return nestedValue.map((item) => normalize(item));
+    }
+    if (!nestedValue || typeof nestedValue !== 'object') {
+      return nestedValue;
+    }
+
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(nestedValue)) {
+      if ((key === '$id' || key === '$ref') && typeof nested === 'string' && /^T\d+$/.test(nested)) {
+        result[key] = normalizeAutoId(nested);
+      } else {
+        result[key] = normalize(nested);
+      }
+    }
+    return result;
+  };
+
+  return normalize(value);
+}
+
 function extractVariants(schema: JsonSchemaObject): EventVariant[] {
   // EforgeEventSchema = Intersect([envelope, variantsUnion])
   // TypeBox Intersect -> { allOf: [...] }
@@ -81,8 +113,10 @@ export async function generateEvents(opts: {
     sourceFiles: ['packages/client/src/events.schemas.ts'],
   });
 
-  // Write JSON Schema — TypeBox schema objects are JSON Schema (sans Symbol keys)
-  const schemaJson = JSON.stringify(EforgeEventSchema, null, 2);
+  // Write JSON Schema — TypeBox schema objects are JSON Schema (sans Symbol keys).
+  // Normalize TypeBox auto-generated $id/$ref values because they depend on global
+  // schema construction order and can drift when unrelated schemas are added.
+  const schemaJson = JSON.stringify(toDeterministicJsonSchema(EforgeEventSchema), null, 2);
   await mkdir(dirname(opts.outputPaths.schemaEvents), { recursive: true });
   await writeFile(opts.outputPaths.schemaEvents, schemaJson + '\n', 'utf-8');
 

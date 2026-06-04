@@ -3,7 +3,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -115,6 +115,32 @@ describe('validation recovery checkpoints', () => {
       fix: 'Adjust src.txt according to the provider guidance.',
       retryGuidance: 'Retry narrowly in src.txt.',
     });
+  });
+
+  it('omits untracked symlinks without reading their targets', async () => {
+    const repo = await initRepo();
+    const secretDir = await mkdtemp(join(tmpdir(), 'eforge-validation-checkpoint-secret-'));
+    tempDirs.push(secretDir);
+    const secretPath = join(secretDir, 'secret.txt');
+    await writeFile(secretPath, 'super-secret-token\n', 'utf8');
+    await symlink(secretPath, join(repo, 'leak.txt'));
+
+    const checkpoint = await writeValidationRecoveryCheckpoint({
+      cwd: repo,
+      worktreePath: repo,
+      planSetName: 'demo-set',
+      planId: 'plan-02',
+      attempt: 1,
+      providerName: 'lint/provider',
+      repairStrategy: 'narrow',
+      repairClass: 'narrow',
+      issues: [issue()],
+      signatures: [],
+    });
+
+    const patch = await readFile(checkpoint.patchPath, 'utf8');
+    expect(patch).toContain('Untracked symlink omitted: leak.txt');
+    expect(patch).not.toContain('super-secret-token');
   });
 
   it('bounds checkpoint metadata output for large provider metadata', async () => {

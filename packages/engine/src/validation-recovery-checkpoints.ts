@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -192,26 +193,41 @@ async function captureUntrackedFiles(worktreePath: string): Promise<string> {
 }
 
 async function formatUntrackedFilePatch(worktreePath: string, file: string): Promise<string> {
-  const fullPath = join(worktreePath, file);
+  const fullPath = resolve(worktreePath, file);
+  if (!isSameOrInside(fullPath, worktreePath)) {
+    return `# Untracked path outside worktree omitted: ${file}\n`;
+  }
   try {
-    const info = await stat(fullPath);
+    const info = await lstat(fullPath);
+    if (info.isSymbolicLink()) return `# Untracked symlink omitted: ${file}\n`;
     if (!info.isFile()) return `# Untracked non-file omitted: ${file}\n`;
-    if (info.size > MAX_UNTRACKED_FILE_BYTES) {
-      return `# Untracked file omitted because it exceeds ${MAX_UNTRACKED_FILE_BYTES} bytes: ${file} (${info.size} bytes)\n`;
+
+    const handle = await open(fullPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const openedInfo = await handle.stat();
+      if (!openedInfo.isFile()) return `# Untracked non-file omitted: ${file}\n`;
+      if (openedInfo.size > MAX_UNTRACKED_FILE_BYTES) {
+        return `# Untracked file omitted because it exceeds ${MAX_UNTRACKED_FILE_BYTES} bytes: ${file} (${openedInfo.size} bytes)\n`;
+      }
+      if (!isSameOrInside(resolve(worktreePath, file), worktreePath)) {
+        return `# Untracked path outside worktree omitted: ${file}\n`;
+      }
+      const content = await handle.readFile();
+      if (content.includes(0)) return `# Binary untracked file omitted: ${file} (${openedInfo.size} bytes)\n`;
+      const text = content.toString('utf8');
+      const lines = text.length === 0 ? [] : text.replace(/\n$/u, '').split('\n');
+      return [
+        `diff --git a/${file} b/${file}`,
+        'new file mode 100644',
+        '--- /dev/null',
+        `+++ b/${file}`,
+        `@@ -0,0 +1,${lines.length} @@`,
+        ...lines.map((line) => `+${line}`),
+        '',
+      ].join('\n');
+    } finally {
+      await handle.close();
     }
-    const content = await readFile(fullPath);
-    if (content.includes(0)) return `# Binary untracked file omitted: ${file} (${info.size} bytes)\n`;
-    const text = content.toString('utf8');
-    const lines = text.length === 0 ? [] : text.replace(/\n$/u, '').split('\n');
-    return [
-      `diff --git a/${file} b/${file}`,
-      'new file mode 100644',
-      '--- /dev/null',
-      `+++ b/${file}`,
-      `@@ -0,0 +1,${lines.length} @@`,
-      ...lines.map((line) => `+${line}`),
-      '',
-    ].join('\n');
   } catch (error) {
     return `# Unable to capture untracked file ${file}: ${errorMessage(error)}\n`;
   }

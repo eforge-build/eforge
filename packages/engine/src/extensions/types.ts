@@ -1,5 +1,12 @@
 import type { Scope } from '@eforge-build/scopes';
-import type { ValidationProviderSpec as SdkValidationProviderSpec } from '@eforge-build/extension-sdk';
+import type {
+  ConsoleContribution,
+  ExtensionAction,
+  ExtensionDeepLink,
+  IntegrationCommand,
+  ValidationProviderSpec as SdkValidationProviderSpec,
+} from '@eforge-build/extension-sdk';
+import type { TObject, TSchema } from '@sinclair/typebox';
 
 /**
  * Package provenance attached to directory-layout extensions that have a `package.json`.
@@ -72,6 +79,10 @@ export interface EforgeExtensionAPIShape {
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
   registerValidationProvider(spec: ValidationProviderSpec): void;
   registerTool(tool: ExtensionTool): void;
+  registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(action: ExtensionAction<TInput, TOutput>): void;
+  registerConsoleContribution(contribution: ConsoleContribution): void;
+  registerIntegrationCommand(command: IntegrationCommand): void;
+  registerDeepLink(deepLink: ExtensionDeepLink): void;
 }
 export type EforgeExtensionFactoryShape = (api: EforgeExtensionAPIShape) => void | Promise<void>;
 

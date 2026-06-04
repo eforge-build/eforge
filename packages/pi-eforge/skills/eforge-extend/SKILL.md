@@ -51,11 +51,12 @@ Runtime-supported capability families:
 
 Runtime-deferred capability families:
 
+- `registerAction`, `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink` are contract-only SDK methods for extension-authored actions and host-facing contributions; runtime manifest projection, action dispatch, Console rendering, and host wiring are deferred.
 - `beforeEnqueue` and `beforeValidation` policy gates.
 - Approval workflow/UI/state and `modify` policy decisions.
 - `registerValidationProvider` validation providers.
 
-If user intent maps to the supported policy-gate or reviewer-perspective subset, explain that the capability executes at runtime and note the parallel-review condition for reviewer perspectives. If user intent maps to deferred APIs, state that eforge can load/capture the registration for provenance and validation, but it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, or validate builds at runtime.
+If user intent maps to the supported policy-gate or reviewer-perspective subset, explain that the capability executes at runtime and note the parallel-review condition for reviewer perspectives. If user intent maps to deferred APIs, state whether the current SDK provides only a type contract or a captured registration, and that it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, render Console UI, invoke actions, or validate builds at runtime.
 
 ### Step 4: Scope selection
 

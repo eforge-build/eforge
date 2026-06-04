@@ -31,9 +31,9 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     diagnostics: [],
   };
 
-  const addDiagnostic = (message: string, code = 'extension:invalid-registration', name?: string): void => {
+  const addDiagnostic = (message: string, code = 'extension:invalid-registration', name?: string, severity: NativeExtensionDiagnostic['severity'] = 'error'): void => {
     state.diagnostics.push({
-      severity: 'error',
+      severity,
       code,
       message,
       name,
@@ -168,6 +168,38 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         return;
       }
       state.tools.push({ kind: 'tool', extensionName, extensionPath, name: tool.name, value: tool as unknown as ExtensionTool });
+    },
+    registerAction(action: unknown): void {
+      addDiagnostic(
+        'registerAction is accepted by the runtime API, but action capture/execution is not enabled in this engine build',
+        'extension:unsupported-registration',
+        isObject(action) && typeof action.id === 'string' ? action.id : undefined,
+        'warning',
+      );
+    },
+    registerConsoleContribution(contribution: unknown): void {
+      addDiagnostic(
+        'registerConsoleContribution is accepted by the runtime API, but console contribution capture is not enabled in this engine build',
+        'extension:unsupported-registration',
+        isObject(contribution) && typeof contribution.id === 'string' ? contribution.id : undefined,
+        'warning',
+      );
+    },
+    registerIntegrationCommand(command: unknown): void {
+      addDiagnostic(
+        'registerIntegrationCommand is accepted by the runtime API, but integration command capture is not enabled in this engine build',
+        'extension:unsupported-registration',
+        isObject(command) && typeof command.id === 'string' ? command.id : undefined,
+        'warning',
+      );
+    },
+    registerDeepLink(deepLink: unknown): void {
+      addDiagnostic(
+        'registerDeepLink is accepted by the runtime API, but deep link capture is not enabled in this engine build',
+        'extension:unsupported-registration',
+        isObject(deepLink) && typeof deepLink.id === 'string' ? deepLink.id : undefined,
+        'warning',
+      );
     },
   };
 

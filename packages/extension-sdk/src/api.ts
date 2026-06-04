@@ -35,6 +35,15 @@ import type {
 } from './hooks.js';
 import type { EventPattern } from './patterns.js';
 import type { ExtensionTool } from './tools.js';
+// --- eforge:region plan-01-platform-contracts ---
+import type {
+  ConsoleContribution,
+  ExtensionAction,
+  ExtensionDeepLink,
+  IntegrationCommand,
+} from './contributions.js';
+import type { TObject, TSchema } from './schema.js';
+// --- eforge:endregion plan-01-platform-contracts ---
 
 /**
  * The API surface passed to an extension factory at load time.
@@ -322,6 +331,15 @@ export interface EforgeExtensionAPI {
    * the specific runs that should receive it.
    */
   registerTool(tool: ExtensionTool): void;
+
+  // --- eforge:region plan-01-platform-contracts ---
+  registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
+    action: ExtensionAction<TInput, TOutput>,
+  ): void;
+  registerConsoleContribution(contribution: ConsoleContribution): void;
+  registerIntegrationCommand(command: IntegrationCommand): void;
+  registerDeepLink(deepLink: ExtensionDeepLink): void;
+  // --- eforge:endregion plan-01-platform-contracts ---
 }
 
 /**

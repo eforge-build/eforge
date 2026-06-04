@@ -84,6 +84,29 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
+// --- eforge:region plan-01-platform-contracts ---
+export type {
+  ConsoleContribution,
+  ConsoleContributionBlock,
+  ConsoleContributionRendererId,
+  ExtensionAction,
+  ExtensionActionBinding,
+  ExtensionActionContext,
+  ExtensionActionOutput,
+  ExtensionActionRequestedBy,
+  ExtensionActionRequestedByHost,
+  ExtensionActionSideEffect,
+  ExtensionDeepLink,
+  IntegrationCommand,
+} from './contributions.js';
+export {
+  defineConsoleContribution,
+  defineExtensionAction,
+  defineExtensionDeepLink,
+  defineIntegrationCommand,
+} from './contributions.js';
+// --- eforge:endregion plan-01-platform-contracts ---
+
 // TypeBox re-exports
 export { Type } from './schema.js';
 export type { TSchema, TObject, Static } from './schema.js';

@@ -3639,7 +3639,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "T0",
+                        "$id": "TypeBoxRecursive0",
                         "anyOf": [
                           {
                             "type": "null"
@@ -3657,14 +3657,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "T0"
+                              "$ref": "TypeBoxRecursive0"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "T0"
+                                "$ref": "TypeBoxRecursive0"
                               }
                             }
                           }
@@ -3890,7 +3890,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "T0",
+                        "$id": "TypeBoxRecursive0",
                         "anyOf": [
                           {
                             "type": "null"
@@ -3908,14 +3908,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "T0"
+                              "$ref": "TypeBoxRecursive0"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "T0"
+                                "$ref": "TypeBoxRecursive0"
                               }
                             }
                           }
@@ -4141,7 +4141,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "T0",
+                        "$id": "TypeBoxRecursive0",
                         "anyOf": [
                           {
                             "type": "null"
@@ -4159,14 +4159,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "T0"
+                              "$ref": "TypeBoxRecursive0"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "T0"
+                                "$ref": "TypeBoxRecursive0"
                               }
                             }
                           }
@@ -4543,7 +4543,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "T0",
+                        "$id": "TypeBoxRecursive0",
                         "anyOf": [
                           {
                             "type": "null"
@@ -4561,14 +4561,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "T0"
+                              "$ref": "TypeBoxRecursive0"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "T0"
+                                "$ref": "TypeBoxRecursive0"
                               }
                             }
                           }
@@ -4760,7 +4760,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "T0",
+                        "$id": "TypeBoxRecursive0",
                         "anyOf": [
                           {
                             "type": "null"
@@ -4778,14 +4778,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "T0"
+                              "$ref": "TypeBoxRecursive0"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "T0"
+                                "$ref": "TypeBoxRecursive0"
                               }
                             }
                           }
@@ -9000,7 +9000,7 @@
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$id": "T0",
+                                "$id": "TypeBoxRecursive0",
                                 "anyOf": [
                                   {
                                     "type": "null"
@@ -9018,14 +9018,14 @@
                                   {
                                     "type": "array",
                                     "items": {
-                                      "$ref": "T0"
+                                      "$ref": "TypeBoxRecursive0"
                                     }
                                   },
                                   {
                                     "type": "object",
                                     "patternProperties": {
                                       "^(.*)$": {
-                                        "$ref": "T0"
+                                        "$ref": "TypeBoxRecursive0"
                                       }
                                     }
                                   }
