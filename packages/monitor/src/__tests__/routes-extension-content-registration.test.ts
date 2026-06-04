@@ -4,8 +4,11 @@ import { createExtensionContentRoutes, EXTENSION_CONTENT_ROUTE_KEYS } from '../r
 import { routeMethodsByKey, startContentRouteHarness } from './route-test-harness.js';
 
 const EXPECTED_ROUTE_KEYS = [
-  'extensionList', 'extensionShow', 'extensionValidate', 'extensionNew', 'extensionReload',
-  'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
+  'extensionList', 'extensionShow', 'extensionValidate',
+  // --- eforge:region plan-03-daemon-action-routes ---
+  'extensionContributionManifest', 'extensionActionInvoke',
+  // --- eforge:endregion plan-03-daemon-action-routes ---
+  'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
   'extensionRemove', 'extensionPromote', 'extensionDemote',
   'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',
   'playbookDemote', 'playbookValidate', 'playbookCopy', 'sessionPlanCreateFromPlaybook',
@@ -17,14 +20,20 @@ const EXPECTED_ROUTE_KEYS = [
 
 const GET_ROUTE_KEYS = new Set([
   'extensionList', 'extensionShow', 'extensionValidate',
+  // --- eforge:region plan-03-daemon-action-routes ---
+  'extensionContributionManifest',
+  // --- eforge:endregion plan-03-daemon-action-routes ---
   'playbookList', 'playbookShow',
   'sessionPlanList', 'sessionPlanShow', 'sessionPlanReadiness',
   'sessionPlanSetList', 'sessionPlanSetShow', 'sessionPlanSetValidate',
 ]);
 
 const SECURED_ROUTE_KEYS = new Set([
-  'extensionList', 'extensionShow', 'extensionValidate', 'extensionNew', 'extensionReload',
-  'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
+  'extensionList', 'extensionShow', 'extensionValidate',
+  // --- eforge:region plan-03-daemon-action-routes ---
+  'extensionContributionManifest', 'extensionActionInvoke',
+  // --- eforge:endregion plan-03-daemon-action-routes ---
+  'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
   'extensionRemove', 'extensionPromote', 'extensionDemote',
   'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',
   'playbookDemote', 'playbookValidate', 'playbookCopy', 'sessionPlanCreateFromPlaybook',
@@ -35,11 +44,11 @@ const SECURED_ROUTE_KEYS = new Set([
 ]);
 
 describe('extension content route registration', () => {
-  it('registers exactly the 34 module-owned route keys with client patterns', async () => {
+  it('registers exactly the 36 module-owned route keys with client patterns', async () => {
     const harness = await startContentRouteHarness();
     try {
       expect(EXTENSION_CONTENT_ROUTE_KEYS).toEqual(EXPECTED_ROUTE_KEYS);
-      expect(EXTENSION_CONTENT_ROUTE_KEYS).toHaveLength(34);
+      expect(EXTENSION_CONTENT_ROUTE_KEYS).toHaveLength(36);
       expect(harness.routes.map((route) => route.routeKey)).toEqual(EXPECTED_ROUTE_KEYS);
       expect(new Set(harness.routes.map((route) => route.routeKey)).size).toBe(harness.routes.length);
       for (const route of harness.routes) expect(route.pattern).toBe(API_ROUTES[route.routeKey]);

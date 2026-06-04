@@ -62,4 +62,14 @@ describe('extension content route source contracts', () => {
       expect(staticFeatureImports, file).toEqual([]);
     }
   });
+
+  // --- eforge:region plan-03-daemon-action-routes ---
+  it('does not import server-main from extension content route modules', () => {
+    for (const file of CONTENT_ROUTE_FILES) {
+      const serverMainImports = productionLines(file).filter((line) => /^import\s/.test(line))
+        .filter((line) => /server-main\.js['"]/.test(line));
+      expect(serverMainImports, file).toEqual([]);
+    }
+  });
+  // --- eforge:endregion plan-03-daemon-action-routes ---
 });

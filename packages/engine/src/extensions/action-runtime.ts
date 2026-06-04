@@ -43,10 +43,12 @@ export async function dispatchExtensionAction(
   }
 
   let rawOutput: unknown;
+  const controller = new AbortController();
   try {
     rawOutput = await runWithTimeout(
-      Promise.resolve().then(() => action.value.handler(parsedInput.data as Record<string, unknown>, buildActionContext(action, options, invocationId))),
+      Promise.resolve().then(() => action.value.handler(parsedInput.data as Record<string, unknown>, buildActionContext(action, options, invocationId, controller.signal))),
       options.timeoutMs,
+      controller,
     );
   } catch (err) {
     if (err instanceof TimeoutError) {
@@ -82,12 +84,13 @@ export async function dispatchExtensionAction(
   };
 }
 
-function buildActionContext(action: ActionRegistration, options: DispatchExtensionActionOptions, invocationId: string) {
+function buildActionContext(action: ActionRegistration, options: DispatchExtensionActionOptions, invocationId: string, signal: AbortSignal) {
   return {
     invocationId,
     actionId: action.id,
     requestedBy: options.requestedBy,
     cwd: options.cwd,
+    signal,
     logger: buildLogger(action),
   };
 }
@@ -105,10 +108,13 @@ function buildLogger(action: ActionRegistration) {
   };
 }
 
-function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number, controller: AbortController): Promise<T> {
   let timeout: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeout = setTimeout(() => reject(new TimeoutError()), Math.max(0, timeoutMs));
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new TimeoutError());
+    }, Math.max(0, timeoutMs));
   });
   promise.catch(() => undefined);
   return Promise.race([promise, timeoutPromise]).finally(() => {

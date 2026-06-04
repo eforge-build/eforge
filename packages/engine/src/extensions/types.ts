@@ -69,8 +69,14 @@ export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'befo
 export interface ExtensionActionContextShape {
   invocationId: string;
   actionId: string;
+  /**
+   * Caller-declared display provenance from the HTTP request. This is not an
+   * authenticated identity and must not be used for authorization decisions.
+   */
   requestedBy: ExtensionActionRequestedBy;
   cwd: string;
+  /** Aborted when the daemon action timeout elapses; handlers should stop side effects promptly. */
+  signal: AbortSignal;
   logger: { debug(message: string): void; info(message: string): void; warn(message: string): void; error(message: string): void };
 }
 export interface ExtensionActionSpec {

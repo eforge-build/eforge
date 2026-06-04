@@ -14,6 +14,9 @@ export const missingRequiredFieldPayloads: InvalidEventWireParityFixture[] = [
   { label: 'gap_close:complete missing required passed field', payload: { type: 'gap_close:complete', timestamp: '2025-01-01T00:00:00.000Z' }, expectedErrorPath: '' },
   { label: 'extension:event-handler:failed missing extensionName', payload: { type: 'extension:event-handler:failed', timestamp: '2025-01-01T00:00:00.000Z', extensionPath: '/x.js', pattern: '*', triggeringEventType: 'plan:build:failed', message: 'boom' }, expectedErrorPath: '' },
   { label: 'extension:event-handler:timeout missing timeoutMs', payload: { type: 'extension:event-handler:timeout', timestamp: '2025-01-01T00:00:00.000Z', extensionName: 'x', extensionPath: '/x.js', pattern: '*', triggeringEventType: 'plan:build:failed' }, expectedErrorPath: '' },
+  // --- eforge:region plan-03-daemon-action-routes ---
+  { label: 'extension:action:start missing action provenance', payload: { type: 'extension:action:start', timestamp: '2025-01-01T00:00:00.000Z', invocationId: 'inv-1', extensionName: 'x', extensionPath: '/x.js', requestedBy: { host: 'console' } }, expectedErrorPath: '' },
+  // --- eforge:endregion plan-03-daemon-action-routes ---
   { label: 'any event missing timestamp (required envelope field)', payload: { type: 'session:start', sessionId: 'sess-1' }, expectedErrorPath: '' },
 ];
 
@@ -23,6 +26,10 @@ export const wrongLiteralPayloads: InvalidEventWireParityFixture[] = [
   { label: 'agent:start with invalid harness value', payload: { type: 'agent:start', timestamp: '2025-01-01T00:00:00.000Z', agentId: 'agent-1', agent: 'builder', model: 'claude-sonnet-4-5', harness: 'unknown-harness', harnessSource: 'tier', tier: 'standard', tierSource: 'tier' }, expectedErrorPath: '' },
   { label: 'queue:prd:complete with invalid status literal', payload: { type: 'queue:prd:complete', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-1', status: 'in-progress' }, expectedErrorPath: '' },
   { label: 'agent:activity missing required attribution field', payload: { type: 'agent:activity', timestamp: '2025-01-01T00:00:00.000Z', agentId: 'agt-abc', agent: 'builder', totals: { filesChanged: 1, additions: 5, deletions: 0 } }, expectedErrorPath: '' },
+  // --- eforge:region plan-03-daemon-action-routes ---
+  { label: 'extension:action:start with invalid requested-by host', payload: { type: 'extension:action:start', timestamp: '2025-01-01T00:00:00.000Z', invocationId: 'inv-1', actionId: 'x.echo', extensionName: 'x', extensionPath: '/x.js', requestedBy: { host: 'browser' } }, expectedErrorPath: '' },
+  { label: 'extension:action:complete with forbidden raw payload field', payload: { type: 'extension:action:complete', timestamp: '2025-01-01T00:00:01.000Z', invocationId: 'inv-1', actionId: 'x.echo', extensionName: 'x', extensionPath: '/x.js', requestedBy: { host: 'console' }, durationMs: 12, payload: { raw: true } }, expectedErrorPath: '/payload' },
+  // --- eforge:endregion plan-03-daemon-action-routes ---
 ];
 
 export const landingActionPayloads: InvalidEventWireParityFixture[] = [

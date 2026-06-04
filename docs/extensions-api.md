@@ -214,7 +214,7 @@ registerTool(tool: ExtensionTool): void
 
 ### Extension contribution contracts
 
-The SDK also exposes contract-only registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; runtime manifest projection, action dispatch, Console rendering, and host integration wiring are deferred to later platform modules.
+The SDK also exposes registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; the daemon exposes safe manifest projection and action invocation routes, while Console rendering and host integration wiring are separate platform modules.
 
 ```ts
 registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
@@ -242,7 +242,7 @@ const sayHi = defineExtensionAction({
 
 Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `IntegrationCommand`, and `ExtensionDeepLink`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
 
-**Runtime status:** engine registry/runtime support. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Console rendering and host command/deep-link dispatch are separate platform layers.
+**Runtime status:** engine registry/runtime support plus daemon manifest/action routes. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input or output payloads. Console rendering and host command/deep-link dispatch are separate platform layers.
 
 ---
 
@@ -1029,10 +1029,10 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
-| `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher; daemon HTTP route wiring is separate |
-| `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Manifest/management metadata projection; Console rendering is separate |
-| `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Manifest/management metadata projection; host integration wiring is separate |
-| `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Manifest/management metadata projection; host integration wiring is separate |
+| `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route |
+| `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console rendering is separate |
+| `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integration wiring is separate |
+| `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Daemon contribution manifest projection; host integration wiring is separate |
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 

@@ -6,7 +6,11 @@ import { createSessionPlanRoutes } from './session-plans.js';
 import { createSessionPlanSetRoutes } from './session-plan-sets.js';
 
 export const EXTENSION_CONTENT_ROUTE_KEYS = [
-  'extensionList','extensionShow','extensionValidate','extensionNew','extensionReload','extensionTest','extensionTrust','extensionUntrust','extensionInstall','extensionUpdate','extensionRemove','extensionPromote','extensionDemote',
+  'extensionList','extensionShow','extensionValidate',
+  // --- eforge:region plan-03-daemon-action-routes ---
+  'extensionContributionManifest','extensionActionInvoke',
+  // --- eforge:endregion plan-03-daemon-action-routes ---
+  'extensionNew','extensionReload','extensionTest','extensionTrust','extensionUntrust','extensionInstall','extensionUpdate','extensionRemove','extensionPromote','extensionDemote',
   'playbookList','playbookShow','playbookSave','playbookRun','playbookPromote','playbookDemote','playbookValidate','playbookCopy','sessionPlanCreateFromPlaybook',
   'sessionPlanList','sessionPlanShow','sessionPlanCreate','sessionPlanSetSection','sessionPlanSkipDimension','sessionPlanSetStatus','sessionPlanSelectDimensions','sessionPlanReadiness','sessionPlanMigrateLegacy',
   'sessionPlanSetList','sessionPlanSetShow','sessionPlanSetValidate',

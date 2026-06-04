@@ -175,7 +175,7 @@ describe('/eforge:extend workflow content', () => {
       'beforeFinalMerge',
       'beforeEnqueue',
       'beforeValidation',
-      'supported policy-gate or reviewer-perspective subset',
+      'supported policy-gate, reviewer-perspective, or extension-action subset',
       'Approval workflow/UI/state and `modify` policy decisions',
       'require-approval` blocks',
       'unsandboxed trusted code',

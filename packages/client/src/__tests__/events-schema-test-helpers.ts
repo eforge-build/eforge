@@ -67,6 +67,55 @@ export const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
+// --- eforge:region plan-03-daemon-action-routes ---
+export const extensionActionVariants: EforgeEvent[] = [
+  {
+    type: 'extension:action:start',
+    timestamp: '2025-01-01T00:00:00.000Z',
+    invocationId: 'inv-1',
+    actionId: 'tools.echo',
+    extensionName: 'tools',
+    extensionPath: '/project/.eforge/extensions/tools.js',
+    requestedBy: { host: 'console', surface: 'actions', sessionId: 'sess-1' },
+  },
+  {
+    type: 'extension:action:complete',
+    timestamp: '2025-01-01T00:00:01.000Z',
+    invocationId: 'inv-1',
+    actionId: 'tools.echo',
+    extensionName: 'tools',
+    extensionPath: '/project/.eforge/extensions/tools.js',
+    requestedBy: { host: 'console', surface: 'actions', sessionId: 'sess-1' },
+    durationMs: 12,
+  },
+  {
+    type: 'extension:action:failed',
+    timestamp: '2025-01-01T00:00:02.000Z',
+    invocationId: 'inv-2',
+    actionId: 'tools.echo',
+    extensionName: 'tools',
+    extensionPath: '/project/.eforge/extensions/tools.js',
+    requestedBy: { host: 'cli' },
+    durationMs: 4,
+    errorCode: 'invalid-input',
+    message: 'Action input failed schema validation',
+    validationErrors: [{ path: '/message', message: 'Expected string' }],
+  },
+  {
+    type: 'extension:action:timeout',
+    timestamp: '2025-01-01T00:00:03.000Z',
+    invocationId: 'inv-3',
+    actionId: 'tools.slow',
+    extensionName: 'tools',
+    extensionPath: '/project/.eforge/extensions/tools.js',
+    requestedBy: { host: 'pi', surface: 'command' },
+    durationMs: 5,
+    timeoutMs: 5,
+    message: 'Action handler timed out after 5ms',
+  },
+];
+// --- eforge:endregion plan-03-daemon-action-routes ---
+
 export const extensionDiagnosticVariants: EforgeEvent[] = [
   {
     type: 'extension:event-handler:failed',

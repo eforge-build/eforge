@@ -195,6 +195,12 @@ export const IGNORED_EVENT_TYPES = [
   'planning:module:build-config:invalid',
   'extension:event-handler:failed',
   'extension:event-handler:timeout',
+  // --- eforge:region plan-03-daemon-action-routes ---
+  'extension:action:start',
+  'extension:action:complete',
+  'extension:action:failed',
+  'extension:action:timeout',
+  // --- eforge:endregion plan-03-daemon-action-routes ---
   'extension:agent-context:applied',
   'extension:agent-context:failed',
   'extension:agent-context:timeout',

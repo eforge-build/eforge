@@ -399,6 +399,342 @@
           "type": "object",
           "required": [
             "type",
+            "invocationId",
+            "actionId",
+            "extensionName",
+            "extensionPath",
+            "requestedBy"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:action:start",
+              "type": "string"
+            },
+            "invocationId": {
+              "type": "string"
+            },
+            "actionId": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "requestedBy": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "host"
+              ],
+              "properties": {
+                "host": {
+                  "anyOf": [
+                    {
+                      "const": "console",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pi",
+                      "type": "string"
+                    },
+                    {
+                      "const": "claude",
+                      "type": "string"
+                    },
+                    {
+                      "const": "mcp",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cli",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "surface": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "invocationId",
+            "actionId",
+            "extensionName",
+            "extensionPath",
+            "requestedBy",
+            "durationMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:action:complete",
+              "type": "string"
+            },
+            "invocationId": {
+              "type": "string"
+            },
+            "actionId": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "requestedBy": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "host"
+              ],
+              "properties": {
+                "host": {
+                  "anyOf": [
+                    {
+                      "const": "console",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pi",
+                      "type": "string"
+                    },
+                    {
+                      "const": "claude",
+                      "type": "string"
+                    },
+                    {
+                      "const": "mcp",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cli",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "surface": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                }
+              }
+            },
+            "durationMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "invocationId",
+            "actionId",
+            "extensionName",
+            "extensionPath",
+            "requestedBy",
+            "durationMs",
+            "errorCode",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:action:failed",
+              "type": "string"
+            },
+            "invocationId": {
+              "type": "string"
+            },
+            "actionId": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "requestedBy": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "host"
+              ],
+              "properties": {
+                "host": {
+                  "anyOf": [
+                    {
+                      "const": "console",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pi",
+                      "type": "string"
+                    },
+                    {
+                      "const": "claude",
+                      "type": "string"
+                    },
+                    {
+                      "const": "mcp",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cli",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "surface": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                }
+              }
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "errorCode": {
+              "anyOf": [
+                {
+                  "const": "invalid-input",
+                  "type": "string"
+                },
+                {
+                  "const": "handler-error",
+                  "type": "string"
+                },
+                {
+                  "const": "invalid-output",
+                  "type": "string"
+                },
+                {
+                  "const": "output-schema-failed",
+                  "type": "string"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "validationErrors": {
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "path",
+                  "message"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "invocationId",
+            "actionId",
+            "extensionName",
+            "extensionPath",
+            "requestedBy",
+            "durationMs",
+            "timeoutMs",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:action:timeout",
+              "type": "string"
+            },
+            "invocationId": {
+              "type": "string"
+            },
+            "actionId": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "requestedBy": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "host"
+              ],
+              "properties": {
+                "host": {
+                  "anyOf": [
+                    {
+                      "const": "console",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pi",
+                      "type": "string"
+                    },
+                    {
+                      "const": "claude",
+                      "type": "string"
+                    },
+                    {
+                      "const": "mcp",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cli",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "surface": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                }
+              }
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "timeoutMs": {
+              "type": "number"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "extensionName",
             "extensionPath",
             "role",

@@ -10,6 +10,7 @@
  */
 
 import { Type, type Static } from '@sinclair/typebox';
+import { ExtensionActionInvokeErrorCodeSchema, ExtensionActionRequestedBySchema } from './extension-contributions.js';
 import { MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH, validateEforgeEventSemanticFields, validateReviewIssueMetadataBoundsForEvent } from './event-validation.js';
 import { formatSchemaError, safeParseWithSchema } from './schema-utils.js';
 import type { SafeParseResult } from './schema-utils.js';
@@ -897,6 +898,30 @@ const StackSyncTriggerSchema = Type.Optional(Type.Union([
   Type.Literal('scheduled'), Type.Literal('retry-deferred'),
 ]));
 
+// --- eforge:region plan-03-daemon-action-routes ---
+const ExtensionActionValidationErrorSchema = Type.Object({
+  path: Type.String(),
+  message: Type.String(),
+}, { additionalProperties: false });
+
+const ExtensionActionFailedErrorCodeSchema = Type.Union([
+  Type.Literal('invalid-input'),
+  Type.Literal('handler-error'),
+  Type.Literal('invalid-output'),
+  Type.Literal('output-schema-failed'),
+]);
+
+const ExtensionActionEventBaseFields = {
+  invocationId: Type.String(),
+  actionId: Type.String(),
+  extensionName: Type.String(),
+  extensionPath: Type.String(),
+  requestedBy: ExtensionActionRequestedBySchema,
+} as const;
+
+void ExtensionActionInvokeErrorCodeSchema;
+// --- eforge:endregion plan-03-daemon-action-routes ---
+
 const EforgeEventVariantsSchema = Type.Union([
   // Session lifecycle
   Type.Object({ type: Type.Literal('session:start'), sessionId: Type.String() }),
@@ -977,6 +1002,33 @@ const EforgeEventVariantsSchema = Type.Union([
     triggeringEventType: Type.String(),
     timeoutMs: Type.Number(),
   }),
+
+  // --- eforge:region plan-03-daemon-action-routes ---
+  Type.Object({
+    type: Type.Literal('extension:action:start'),
+    ...ExtensionActionEventBaseFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:action:complete'),
+    ...ExtensionActionEventBaseFields,
+    durationMs: Type.Number(),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:action:failed'),
+    ...ExtensionActionEventBaseFields,
+    durationMs: Type.Number(),
+    errorCode: ExtensionActionFailedErrorCodeSchema,
+    message: Type.String(),
+    validationErrors: Type.Optional(Type.Array(ExtensionActionValidationErrorSchema)),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:action:timeout'),
+    ...ExtensionActionEventBaseFields,
+    durationMs: Type.Number(),
+    timeoutMs: Type.Number(),
+    message: Type.String(),
+  }),
+  // --- eforge:endregion plan-03-daemon-action-routes ---
 
   // Native extension agent-context hook diagnostics and tool decisions
   Type.Object({

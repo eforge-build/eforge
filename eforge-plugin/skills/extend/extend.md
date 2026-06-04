@@ -51,12 +51,12 @@ Runtime-supported capability families:
 
 Runtime-deferred capability families:
 
-- `registerAction`, `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink` are contract-only SDK methods for extension-authored actions and host-facing contributions; runtime manifest projection, action dispatch, Console rendering, and host wiring are deferred.
+- `registerAction`, `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink` are SDK methods for extension-authored actions and host-facing contributions; daemon manifest projection and action invocation are runtime-supported, while Console rendering and host command/deep-link UX are deferred.
 - `beforeEnqueue` and `beforeValidation` policy gates.
 - Approval workflow/UI/state and `modify` policy decisions.
 - `registerValidationProvider` validation providers.
 
-If user intent maps to the supported policy-gate or reviewer-perspective subset, explain that the capability executes at runtime and note the parallel-review condition for reviewer perspectives. If user intent maps to deferred APIs, state whether the current SDK provides only a type contract or a captured registration, and that it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, render Console UI, invoke actions, or validate builds at runtime.
+If user intent maps to the supported policy-gate, reviewer-perspective, or extension-action subset, explain that the capability executes at runtime and note the parallel-review condition for reviewer perspectives or daemon invocation boundary for actions. If user intent maps to deferred APIs, state whether the current SDK provides only a type contract or a captured registration, and that it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, render Console UI, provide host command/deep-link UX, or validate builds at runtime.
 
 ### Step 4: Scope selection
 

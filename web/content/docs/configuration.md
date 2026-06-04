@@ -155,7 +155,7 @@ Precedence is `project-local > project-team > user`. Use project-local extension
 ```yaml
 extensions:
   enabled: true                  # default
-  eventHookTimeoutMs: 5000       # native onEvent timeout in ms
+  eventHookTimeoutMs: 5000       # native onEvent and extension action timeout in ms
   agentContextHookTimeoutMs: 5000 # optional onAgentRun timeout; defaults to eventHookTimeoutMs
   profileRouterTimeoutMs: 5000   # optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   policyGateTimeoutMs: 5000      # optional policy gate timeout; defaults to eventHookTimeoutMs

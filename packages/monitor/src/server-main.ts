@@ -16,8 +16,9 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive, isPersistedDaemonEventType } from '@eforge-build/client';
+import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
+import { writeDaemonEvent } from './daemon-events.js';
 import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
 import { EforgeEngine, type SchedulerControl, type SchedulerInputEvent, type ProfileUsageProvider } from '@eforge-build/engine/eforge';
 import { withHooks } from '@eforge-build/engine/hooks';
@@ -184,29 +185,7 @@ export interface ReconciliationReport {
  * Best-effort: any DB error is silently swallowed to avoid crashing the daemon
  * on a non-critical event write failure.
  */
-export function writeDaemonEvent(
-  db: MonitorDB,
-  event: { type: string } & Record<string, unknown>,
-  daemonSessionId: string,
-): void {
-  try {
-    if (!isPersistedDaemonEventType(event.type)) return;
-
-    const now = new Date().toISOString();
-    // Embed daemonSessionId in the JSON payload so consumers can correlate
-    // events back to this daemon instance. Preserve any explicit sessionId
-    // on the event (e.g. `daemon:orphan:reaped` carries the orphan run's
-    // sessionId so consumers can correlate back to the original run).
-    db.insertDaemonEvent({
-      type: event.type,
-      data: JSON.stringify({ sessionId: daemonSessionId, ...event, timestamp: now }),
-      timestamp: now,
-    });
-  } catch {
-    // Best-effort: DB may be closed or temporarily unavailable during shutdown
-  }
-}
-
+export { writeDaemonEvent };
 
 /**
  * Reconcile orphaned queue state on daemon startup.
@@ -790,7 +769,7 @@ async function main(): Promise<void> {
 
   let server: Awaited<ReturnType<typeof startServer>>;
   try {
-    server = await startServer(db, preferredPort, { cwd, workerTracker, daemonState, config });
+    server = await startServer(db, preferredPort, { cwd, workerTracker, daemonState, config, daemonSessionId });
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       // Another server won the race — exit cleanly

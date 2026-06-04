@@ -19,8 +19,14 @@ export type ExtensionActionSideEffect =
 export interface ExtensionActionContext {
   invocationId: string;
   actionId: string;
+  /**
+   * Caller-declared display provenance from the HTTP request. This is not an
+   * authenticated identity and must not be used for authorization decisions.
+   */
   requestedBy: ExtensionActionRequestedBy;
   cwd: string;
+  /** Aborted when the daemon action timeout elapses; handlers should stop side effects promptly. */
+  signal: AbortSignal;
   logger: ExtensionLogger;
 }
 

@@ -10,11 +10,6 @@ import {
 } from '../routes/index.js';
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'DELETE', 'OPTIONS']);
-const CONTRACT_ONLY_ROUTE_KEYS = new Set([
-  'extensionActionInvoke',
-  'extensionContributionManifest',
-]);
-
 describe('monitor route aggregation', () => {
   it('registers one route key for every client daemon route', async () => {
     const db = openDatabase(':memory:');
@@ -25,7 +20,7 @@ describe('monitor route aggregation', () => {
       const routeKeys = getMonitorRouteKeysFromRoutes(routes);
 
       expect(new Set(routeKeys).size).toBe(routeKeys.length);
-      const runtimeRouteKeys = Object.keys(API_ROUTES).filter((key) => !CONTRACT_ONLY_ROUTE_KEYS.has(key));
+      const runtimeRouteKeys = Object.keys(API_ROUTES);
       expect([...routeKeys].sort()).toEqual(runtimeRouteKeys.sort());
 
       for (const route of routes) {

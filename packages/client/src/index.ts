@@ -361,9 +361,12 @@ export {
   ensureDaemon,
   daemonRequest,
   daemonRequestIfRunning,
+  daemonRequestWithStatus,
+  daemonRequestWithStatusIfRunning,
   isAgentWorktreeCwd,
   DaemonInWorktreeError,
 } from './daemon-client.js';
+export type { DaemonRequestWithStatusResult } from './daemon-client.js';
 
 export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './api-version.js';
 

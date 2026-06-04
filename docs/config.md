@@ -21,7 +21,7 @@ plugins:
 
 extensions:
   enabled: true               # Discover and load native eforge extensions
-  eventHookTimeoutMs: 5000    # Native onEvent handler timeout in ms (positive integer)
+  eventHookTimeoutMs: 5000    # Native onEvent and extension action timeout in ms (positive integer)
   agentContextHookTimeoutMs: 5000 # Optional onAgentRun handler timeout; defaults to eventHookTimeoutMs
   profileRouterTimeoutMs: 5000 # Optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   policyGateTimeoutMs: 5000 # Optional policy gate timeout; defaults to eventHookTimeoutMs
@@ -366,7 +366,7 @@ extensions:
 |-------|---------|-------------|
 | `extensions.enabled` | `true` | Enables native extension loading at runtime. When `false`, extension directories and explicit paths are not loaded; management commands may still report discovered candidates with `enabled: false` for visibility. |
 | `extensions.include` | unset | Optional allowlist for auto-discovered extension names. Only listed names are considered. |
-| `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
+| `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation and extension-authored action invocation. Must be a positive integer. |
 | `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.profileRouterTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `registerProfileRouter` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.policyGateTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each policy-gate handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
