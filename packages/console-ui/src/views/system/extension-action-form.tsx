@@ -142,7 +142,7 @@ export function InvocationResult({ invocation }: { invocation: InvocationState }
       {preview && (
         <details className="mt-1">
           <summary className="cursor-pointer">Output preview</summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 text-[11px] text-foreground">{preview}</pre>
+          <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 text-xs text-foreground">{preview}</pre>
         </details>
       )}
     </div>

@@ -632,6 +632,10 @@
                   "type": "string"
                 },
                 {
+                  "const": "daemon-unavailable",
+                  "type": "string"
+                },
+                {
                   "const": "handler-error",
                   "type": "string"
                 },
