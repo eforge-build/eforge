@@ -37,6 +37,8 @@ export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
   outputDir?: string;
   /** Override max conversation turns (default: review tier default). */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -122,6 +124,7 @@ export async function* runArchitectureReview(
       disallowedTools: mergeMutationDisallowedTools(options.disallowedTools),
     },
     'architecture-reviewer',
+    options.lane,
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {
       yield event;

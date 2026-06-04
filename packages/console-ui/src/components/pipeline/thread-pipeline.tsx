@@ -15,6 +15,32 @@ import { AgentDetailSheet } from './agent-detail-sheet';
 import { buildReviewCycleDetail } from './review-cycle-detail-model';
 import { ReviewCycleDetailSheet } from './review-cycle-detail-sheet';
 
+const VALIDATION_PHASE_LANES = new Set(['validation', 'final-validation']);
+
+function validationLaneForStart(startedAt: string, events: StoredEvent[]): 'validation' | 'final-validation' {
+  const startMs = new Date(startedAt).getTime();
+  let gapCloseCompleted = false;
+
+  for (const { event } of events) {
+    const eventMs = new Date(event.timestamp).getTime();
+    if (Number.isNaN(eventMs) || eventMs > startMs) continue;
+    if (event.type === 'gap_close:complete') gapCloseCompleted = true;
+  }
+
+  return gapCloseCompleted ? 'final-validation' : 'validation';
+}
+
+function validationCommandsForLane(lane: string, validationCommands: ValidationCommandSpan[] | undefined, events: StoredEvent[]): ValidationCommandSpan[] | undefined {
+  if (!VALIDATION_PHASE_LANES.has(lane) || !validationCommands || validationCommands.length === 0) return undefined;
+  const spans = validationCommands.filter((span) => validationLaneForStart(span.startedAt, events) === lane);
+  return spans.length > 0 ? spans : undefined;
+}
+
+function validationCommandLaneIds(validationCommands: ValidationCommandSpan[] | undefined, events: StoredEvent[]): string[] {
+  if (!validationCommands || validationCommands.length === 0) return [];
+  return Array.from(new Set(validationCommands.map((span) => validationLaneForStart(span.startedAt, events))));
+}
+
 interface ThreadPipelineProps {
   agentThreads: AgentThread[];
   startTime: number | null;
@@ -116,11 +142,13 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
 
     // Seed from orchestration (preserves declared plan order), then artifacts,
     // then planStatuses, then thread-only lane keys (phase lanes that have no
-    // planStatuses entry but do have live agent threads).
+    // planStatuses entry but do have live agent threads), then validation-command
+    // phase lanes (commands are emitted without planId but belong to validation).
     for (const plan of orchestration?.plans ?? []) add(plan.id);
     for (const plan of planArtifacts ?? []) add(plan.id);
     for (const id of Object.keys(planStatuses)) add(id);
     for (const id of threadsByPlan.keys()) add(id);
+    for (const id of validationCommandLaneIds(validationCommands, events)) add(id);
 
     // Sort the full set by lane registry order. Within the same order tier,
     // preserve the insertion order (orchestration-declared plans first).
@@ -132,7 +160,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     });
 
     return ids;
-  }, [orchestration, planArtifacts, planStatuses, threadsByPlan]);
+  }, [orchestration, planArtifacts, planStatuses, threadsByPlan, validationCommands, events]);
 
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;
@@ -249,7 +277,6 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 prdSource={!hasPlanningLane && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : null}
                 compileActiveStages={activeStages}
                 compileCompletedStages={completedStages}
-                validationCommands={validationCommands}
                 onAgentSelect={handleAgentSelect}
               />
             )}
@@ -266,7 +293,6 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 onStageHover={setHoveredStage}
                 eventsByAgent={eventsByAgent}
                 prdSource={{ label: prdSource.label, content: prdSource.content ?? '' }}
-                validationCommands={validationCommands}
                 onAgentSelect={handleAgentSelect}
               />
             )}
@@ -290,6 +316,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}
                 decisions={decisions?.[planId]}
+                validationCommands={validationCommandsForLane(planId, validationCommands, events)}
                 prdSource={planId === 'planning' && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : undefined}
                 disablePreview={planId === 'planning'}
                 onDecisionSelect={handleDecisionSelect}

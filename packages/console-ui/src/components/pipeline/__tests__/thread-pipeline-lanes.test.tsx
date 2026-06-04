@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { PlanPreviewProvider } from '@/components/preview';
 import { ThreadPipeline } from '../thread-pipeline';
-import type { AgentThread } from '@/lib/run-state';
+import type { AgentThread, ValidationCommandSpan } from '@/lib/run-state';
 
 const review = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
 const orchestration = {
@@ -83,6 +83,31 @@ describe('ThreadPipeline lane ordering', () => {
     expect(screen.getByText('Plan 01')).toBeTruthy();
     // Validation lane renders with laneLabel('validation') = 'Validation'
     expect(screen.getByText('Validation')).toBeTruthy();
+  });
+
+  it('renders validation commands on the Validation lane instead of requiring a Compile row', () => {
+    const validationCommands: ValidationCommandSpan[] = [
+      {
+        command: 'pnpm type-check',
+        startedAt: '2025-01-01T00:05:00.000Z',
+        endedAt: '2025-01-01T00:05:20.000Z',
+        status: 'passed',
+        exitCode: 0,
+      },
+    ];
+
+    renderPipeline({
+      orchestration,
+      startTime: Date.parse('2025-01-01T00:05:00.000Z'),
+      endTime: Date.parse('2025-01-01T00:05:20.000Z'),
+      planStatuses: { 'plan-01': 'complete' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      validationCommands,
+    });
+
+    expect(screen.getByText('Validation')).toBeTruthy();
+    expect(screen.getByText(/pnpm type-check/)).toBeTruthy();
+    expect(screen.queryByText('Compile')).toBeNull();
   });
 
   it('does not group planning or validation threads under __global__/Compile', () => {

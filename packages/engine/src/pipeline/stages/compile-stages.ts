@@ -355,6 +355,7 @@ registerCompileStage({
           phase: 'compile',
           stage: 'plan-evaluate',
           harness: planEvaluatorHarness,
+          lane: 'planning',
         }),
       },
     });
@@ -406,7 +407,7 @@ registerCompileStage({
       reviewer: {
         role: 'architecture-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'architecture-review', harness: archReviewerHarness }),
+        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'architecture-review', harness: archReviewerHarness, lane: 'planning' }),
       },
       evaluator: {
         role: 'architecture-evaluator',
@@ -431,6 +432,7 @@ registerCompileStage({
           phase: 'compile',
           stage: 'architecture-evaluate',
           harness: archEvaluatorHarness,
+          lane: 'planning',
         }),
       },
     });
@@ -542,7 +544,7 @@ registerCompileStage({
       reviewer: {
         role: 'cohesion-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'cohesion-review', harness: cohesionReviewerHarness }),
+        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'cohesion-review', harness: cohesionReviewerHarness, lane: 'planning' }),
       },
       evaluator: {
         role: 'cohesion-evaluator',
@@ -567,6 +569,7 @@ registerCompileStage({
           phase: 'compile',
           stage: 'cohesion-evaluate',
           harness: cohesionEvaluatorHarness,
+          lane: 'planning',
         }),
       },
     });
