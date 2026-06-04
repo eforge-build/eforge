@@ -24,6 +24,8 @@ daemon SSE
   → selectors                (src/lib/selectors/ and src/lib/run-state/selectors/)
   → views
 
+Lane-model behavior (planning vs validation vs gap-close lanes, PRD pill on the planning lane) is verified end-to-end by `multi-plan-gap-close.e2e.test.tsx` against `fixtures/multi-plan-gap-close.json`.
+
 daemon REST (session plans + plan sets)
   → API_ROUTES.sessionPlanList     GET /api/session-plan/list[?includeSubmitted=true]
   → API_ROUTES.sessionPlanShow     GET /api/session-plan/show?session=:session

@@ -1,0 +1,741 @@
+[
+  {
+    "event": {
+      "type": "session:start",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:00:00.000Z"
+    },
+    "eventId": "gc-001"
+  },
+  {
+    "event": {
+      "type": "session:profile",
+      "sessionId": "sess-gc-001",
+      "profileName": "default",
+      "source": "project",
+      "scope": "project",
+      "config": null,
+      "timestamp": "2024-02-01T10:00:01.000Z"
+    },
+    "eventId": "gc-002"
+  },
+  {
+    "event": {
+      "type": "phase:start",
+      "sessionId": "sess-gc-001",
+      "runId": "run-gc-001",
+      "planSet": "gap-close-feature",
+      "command": "build",
+      "timestamp": "2024-02-01T10:00:02.000Z"
+    },
+    "eventId": "gc-003"
+  },
+  {
+    "event": {
+      "type": "planning:start",
+      "sessionId": "sess-gc-001",
+      "source": "orchestration.yaml",
+      "timestamp": "2024-02-01T10:00:03.000Z"
+    },
+    "eventId": "gc-004"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pc-001",
+      "agent": "pipeline-composer",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:00:05.000Z"
+    },
+    "eventId": "gc-005"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pc-001",
+      "agent": "pipeline-composer",
+      "result": {
+        "durationMs": 30000,
+        "durationApiMs": 28000,
+        "numTurns": 1,
+        "totalCostUsd": 0.005,
+        "usage": { "input": 1000, "output": 500, "total": 1500, "cacheRead": 200, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:00:35.000Z"
+    },
+    "eventId": "gc-006"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pc-001",
+      "agent": "pipeline-composer",
+      "timestamp": "2024-02-01T10:00:36.000Z"
+    },
+    "eventId": "gc-007"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pl-001",
+      "agent": "planner",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:00:40.000Z"
+    },
+    "eventId": "gc-008"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pl-001",
+      "agent": "planner",
+      "result": {
+        "durationMs": 60000,
+        "durationApiMs": 55000,
+        "numTurns": 2,
+        "totalCostUsd": 0.02,
+        "usage": { "input": 5000, "output": 2000, "total": 7000, "cacheRead": 1000, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:01:40.000Z"
+    },
+    "eventId": "gc-009"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pl-001",
+      "agent": "planner",
+      "timestamp": "2024-02-01T10:01:41.000Z"
+    },
+    "eventId": "gc-010"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pr-001",
+      "agent": "plan-reviewer",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:01:45.000Z"
+    },
+    "eventId": "gc-011"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pr-001",
+      "agent": "plan-reviewer",
+      "result": {
+        "durationMs": 30000,
+        "durationApiMs": 28000,
+        "numTurns": 1,
+        "totalCostUsd": 0.01,
+        "usage": { "input": 2000, "output": 1000, "total": 3000, "cacheRead": 500, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:02:15.000Z"
+    },
+    "eventId": "gc-012"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "planning",
+      "agentId": "agent-pr-001",
+      "agent": "plan-reviewer",
+      "timestamp": "2024-02-01T10:02:16.000Z"
+    },
+    "eventId": "gc-013"
+  },
+  {
+    "event": {
+      "type": "planning:complete",
+      "sessionId": "sess-gc-001",
+      "plans": [
+        {
+          "id": "plan-01",
+          "name": "Plan One",
+          "dependsOn": [],
+          "branch": "feature/plan-01",
+          "body": "Implement feature A",
+          "filePath": ".eforge/plans/plan-01.md"
+        },
+        {
+          "id": "plan-02",
+          "name": "Plan Two",
+          "dependsOn": ["plan-01"],
+          "branch": "feature/plan-02",
+          "body": "Implement feature B",
+          "filePath": ".eforge/plans/plan-02.md"
+        }
+      ],
+      "timestamp": "2024-02-01T10:02:30.000Z"
+    },
+    "eventId": "gc-014"
+  },
+
+  {
+    "event": {
+      "type": "plan:status:change",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "status": "running",
+      "timestamp": "2024-02-01T10:03:00.000Z"
+    },
+    "eventId": "gc-015"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "agentId": "agent-b1-001",
+      "agent": "builder",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:03:05.000Z"
+    },
+    "eventId": "gc-016"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "agentId": "agent-b1-001",
+      "agent": "builder",
+      "result": {
+        "durationMs": 120000,
+        "durationApiMs": 110000,
+        "numTurns": 3,
+        "totalCostUsd": 0.03,
+        "usage": { "input": 8000, "output": 4000, "total": 12000, "cacheRead": 2000, "cacheCreation": 100 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:05:05.000Z"
+    },
+    "eventId": "gc-017"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "agentId": "agent-b1-001",
+      "agent": "builder",
+      "timestamp": "2024-02-01T10:05:06.000Z"
+    },
+    "eventId": "gc-018"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "agentId": "agent-rv1-001",
+      "agent": "reviewer",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:05:10.000Z"
+    },
+    "eventId": "gc-019"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "agentId": "agent-rv1-001",
+      "agent": "reviewer",
+      "result": {
+        "durationMs": 60000,
+        "durationApiMs": 55000,
+        "numTurns": 1,
+        "totalCostUsd": 0.01,
+        "usage": { "input": 3000, "output": 1500, "total": 4500, "cacheRead": 800, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:06:10.000Z"
+    },
+    "eventId": "gc-020"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "agentId": "agent-rv1-001",
+      "agent": "reviewer",
+      "timestamp": "2024-02-01T10:06:11.000Z"
+    },
+    "eventId": "gc-021"
+  },
+  {
+    "event": {
+      "type": "plan:status:change",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-01",
+      "status": "completed",
+      "timestamp": "2024-02-01T10:06:30.000Z"
+    },
+    "eventId": "gc-022"
+  },
+
+  {
+    "event": {
+      "type": "plan:status:change",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "status": "running",
+      "timestamp": "2024-02-01T10:07:00.000Z"
+    },
+    "eventId": "gc-023"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "agentId": "agent-b2-001",
+      "agent": "builder",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:07:05.000Z"
+    },
+    "eventId": "gc-024"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "agentId": "agent-b2-001",
+      "agent": "builder",
+      "result": {
+        "durationMs": 90000,
+        "durationApiMs": 85000,
+        "numTurns": 2,
+        "totalCostUsd": 0.02,
+        "usage": { "input": 6000, "output": 3000, "total": 9000, "cacheRead": 1500, "cacheCreation": 50 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:08:35.000Z"
+    },
+    "eventId": "gc-025"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "agentId": "agent-b2-001",
+      "agent": "builder",
+      "timestamp": "2024-02-01T10:08:36.000Z"
+    },
+    "eventId": "gc-026"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "agentId": "agent-rv2-001",
+      "agent": "reviewer",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:08:40.000Z"
+    },
+    "eventId": "gc-027"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "agentId": "agent-rv2-001",
+      "agent": "reviewer",
+      "result": {
+        "durationMs": 45000,
+        "durationApiMs": 42000,
+        "numTurns": 1,
+        "totalCostUsd": 0.008,
+        "usage": { "input": 2500, "output": 1200, "total": 3700, "cacheRead": 600, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:09:25.000Z"
+    },
+    "eventId": "gc-028"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "agentId": "agent-rv2-001",
+      "agent": "reviewer",
+      "timestamp": "2024-02-01T10:09:26.000Z"
+    },
+    "eventId": "gc-029"
+  },
+  {
+    "event": {
+      "type": "plan:status:change",
+      "sessionId": "sess-gc-001",
+      "planId": "plan-02",
+      "status": "completed",
+      "timestamp": "2024-02-01T10:09:40.000Z"
+    },
+    "eventId": "gc-030"
+  },
+
+  {
+    "event": {
+      "type": "prd_validation:start",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:10:00.000Z"
+    },
+    "eventId": "gc-031"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "validation",
+      "agentId": "agent-pv-001",
+      "agent": "prd-validator",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:10:05.000Z"
+    },
+    "eventId": "gc-032"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "validation",
+      "agentId": "agent-pv-001",
+      "agent": "prd-validator",
+      "result": {
+        "durationMs": 45000,
+        "durationApiMs": 42000,
+        "numTurns": 1,
+        "totalCostUsd": 0.01,
+        "usage": { "input": 3000, "output": 1500, "total": 4500, "cacheRead": 700, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:10:50.000Z"
+    },
+    "eventId": "gc-033"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "validation",
+      "agentId": "agent-pv-001",
+      "agent": "prd-validator",
+      "timestamp": "2024-02-01T10:10:51.000Z"
+    },
+    "eventId": "gc-034"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "validation",
+      "agentId": "agent-vf-001",
+      "agent": "validation-fixer",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:10:55.000Z"
+    },
+    "eventId": "gc-035"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "validation",
+      "agentId": "agent-vf-001",
+      "agent": "validation-fixer",
+      "result": {
+        "durationMs": 60000,
+        "durationApiMs": 55000,
+        "numTurns": 2,
+        "totalCostUsd": 0.015,
+        "usage": { "input": 4000, "output": 2000, "total": 6000, "cacheRead": 900, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:11:55.000Z"
+    },
+    "eventId": "gc-036"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "validation",
+      "agentId": "agent-vf-001",
+      "agent": "validation-fixer",
+      "timestamp": "2024-02-01T10:11:56.000Z"
+    },
+    "eventId": "gc-037"
+  },
+  {
+    "event": {
+      "type": "prd_validation:complete",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:12:00.000Z"
+    },
+    "eventId": "gc-038"
+  },
+
+  {
+    "event": {
+      "type": "gap_close:start",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:12:30.000Z"
+    },
+    "eventId": "gc-039"
+  },
+  {
+    "event": {
+      "type": "plan:status:change",
+      "sessionId": "sess-gc-001",
+      "planId": "gap-close",
+      "status": "running",
+      "timestamp": "2024-02-01T10:12:35.000Z"
+    },
+    "eventId": "gc-040"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "gap-close",
+      "agentId": "agent-gcb-001",
+      "agent": "builder",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:12:40.000Z"
+    },
+    "eventId": "gc-041"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "gap-close",
+      "agentId": "agent-gcb-001",
+      "agent": "builder",
+      "result": {
+        "durationMs": 90000,
+        "durationApiMs": 85000,
+        "numTurns": 2,
+        "totalCostUsd": 0.025,
+        "usage": { "input": 7000, "output": 3500, "total": 10500, "cacheRead": 1800, "cacheCreation": 80 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:14:10.000Z"
+    },
+    "eventId": "gc-042"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "gap-close",
+      "agentId": "agent-gcb-001",
+      "agent": "builder",
+      "timestamp": "2024-02-01T10:14:11.000Z"
+    },
+    "eventId": "gc-043"
+  },
+  {
+    "event": {
+      "type": "plan:status:change",
+      "sessionId": "sess-gc-001",
+      "planId": "gap-close",
+      "status": "completed",
+      "timestamp": "2024-02-01T10:14:30.000Z"
+    },
+    "eventId": "gc-044"
+  },
+  {
+    "event": {
+      "type": "gap_close:complete",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:14:35.000Z"
+    },
+    "eventId": "gc-045"
+  },
+
+  {
+    "event": {
+      "type": "prd_validation:start",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:15:00.000Z"
+    },
+    "eventId": "gc-046"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-gc-001",
+      "planId": "final-validation",
+      "agentId": "agent-fpv-001",
+      "agent": "prd-validator",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-02-01T10:15:05.000Z"
+    },
+    "eventId": "gc-047"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-gc-001",
+      "planId": "final-validation",
+      "agentId": "agent-fpv-001",
+      "agent": "prd-validator",
+      "result": {
+        "durationMs": 40000,
+        "durationApiMs": 38000,
+        "numTurns": 1,
+        "totalCostUsd": 0.008,
+        "usage": { "input": 2500, "output": 1200, "total": 3700, "cacheRead": 600, "cacheCreation": 0 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-02-01T10:15:45.000Z"
+    },
+    "eventId": "gc-048"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-gc-001",
+      "planId": "final-validation",
+      "agentId": "agent-fpv-001",
+      "agent": "prd-validator",
+      "timestamp": "2024-02-01T10:15:46.000Z"
+    },
+    "eventId": "gc-049"
+  },
+  {
+    "event": {
+      "type": "prd_validation:complete",
+      "sessionId": "sess-gc-001",
+      "timestamp": "2024-02-01T10:16:00.000Z"
+    },
+    "eventId": "gc-050"
+  },
+
+  {
+    "event": {
+      "type": "session:end",
+      "sessionId": "sess-gc-001",
+      "result": { "status": "completed", "summary": "Build succeeded with gap-close" },
+      "timestamp": "2024-02-01T10:16:30.000Z"
+    },
+    "eventId": "gc-051"
+  }
+]
