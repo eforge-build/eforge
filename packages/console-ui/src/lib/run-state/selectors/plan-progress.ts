@@ -5,6 +5,7 @@
  * data derived from RunState.
  */
 import type { RunState, PipelineStage, BuildStageSpec } from '../types';
+import { laneLabel, laneOrder } from '../lane-registry';
 
 /** Status counts across all plans in the run. */
 export interface PlanStatusCounts {
@@ -182,16 +183,8 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
     .map(({ agent, tokens, running }) => ({ agent, tokens, running }));
 }
 
-/**
- * Friendly display names for dynamically-added lifecycle lanes that never appear
- * in `earlyOrchestration` (e.g. the gap-close stage, which is compiled on demand
- * when PRD validation finds gaps). Keep in sync with `abbreviatePlanId` in
- * `components/pipeline/pipeline-colors.ts`, which labels the same lanes in the
- * run-detail pipeline.
- */
-const LIFECYCLE_LANE_NAMES: Record<string, string> = {
-  'gap-close': 'Gap Close',
-};
+// Lane labels and ordering are now sourced from the single lane registry
+// (lib/run-state/lane-registry.ts). See laneLabel() / laneOrder().
 
 /**
  * Returns per-plan lanes for the mini swimlane, ordered the same way as
@@ -242,24 +235,31 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
 
   const lanes = orchPlans.map((plan) => makeLane(plan.id, plan.name));
 
-  // Append dynamically-added lanes (e.g. gap-close) that have a status or live
-  // agents but were never part of the compiled orchestration.
+  // Append dynamically-added lanes (e.g. gap-close, validation, final-validation)
+  // that have a status or live agents but were never part of the compiled
+  // orchestration. Exclude 'planning' — it has its own dedicated row via
+  // selectPlanningLane. Order by the lane registry instead of alphabetically.
   const known = new Set(orchPlans.map((plan) => plan.id));
   const extras = new Set<string>();
   for (const id of Object.keys(state.planStatuses)) if (!known.has(id)) extras.add(id);
   for (const id of threadsByPlan.keys()) if (!known.has(id)) extras.add(id);
-  for (const id of Array.from(extras).sort()) {
-    lanes.push(makeLane(id, LIFECYCLE_LANE_NAMES[id] ?? id));
+  extras.delete('planning');
+  for (const id of Array.from(extras).sort((a, b) => laneOrder(a) - laneOrder(b) || a.localeCompare(b))) {
+    lanes.push(makeLane(id, laneLabel(id)));
   }
 
   return lanes;
 }
 
 /**
- * Returns the planning-phase lane summary built from global (plan-less)
- * agent threads, aggregating tokens per agent role.
+ * Returns the planning-phase lane summary built from agents with
+ * `planId === 'planning'`, aggregating tokens per agent role.
+ *
+ * Re-scoped from `!t.planId` to `t.planId === 'planning'` so that
+ * validation-fixer / prd-validator threads (planId 'validation' /
+ * 'final-validation') are excluded and rendered in their own phase lanes.
  */
 export function selectPlanningLane(state: RunState): PlanningLane {
-  const agents = aggregateLaneAgents(state.agentThreads.filter((t) => !t.planId));
+  const agents = aggregateLaneAgents(state.agentThreads.filter((t) => t.planId === 'planning'));
   return { agents, running: agents.some((a) => a.running) };
 }

@@ -1,6 +1,7 @@
 import type { AgentRole } from '@/lib/run-state';
 import type { AgentThread, StoredEvent } from '@/lib/run-state';
 import type { StageStatus } from './agent-stage-map';
+import { laneLabel } from '@/lib/run-state/lane-registry';
 
 /** Map agent roles to pipeline-stage color classes */
 export const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
@@ -60,12 +61,11 @@ export const DEPTH_PILL_CLASS = [
 
 export const planPillClassFor = (d: number) => DEPTH_PILL_CLASS[d % DEPTH_PILL_CLASS.length];
 
-export function abbreviatePlanId(id: string): string {
-  if (id === 'gap-close') return 'Gap Close';
-  const match = id.match(/^plan-(\d+)/);
-  if (match) return `Plan ${match[1]}`;
-  return id;
-}
+/**
+ * Abbreviates a lane / plan ID to a human-readable label.
+ * Delegates to the single lane registry for all known lane keys.
+ */
+export const abbreviatePlanId = laneLabel;
 
 export function getAgentColor(agent: string) {
   return AGENT_COLORS[agent as AgentRole] ?? FALLBACK_COLOR;

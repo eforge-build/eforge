@@ -24,6 +24,8 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   scope?: string;
   /** Override max conversation turns (default: planning tier default) */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
   /** Continuation context when restarting after hitting max turns or a dropped submission. */
   continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string; reason: 'max_turns' | 'dropped_submission' };
   /** Plan output directory (defaults to 'eforge/plans'). */
@@ -284,6 +286,7 @@ ${existingPlans}`;
     for await (const event of harness.run(
       { prompt, cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, customTools, ...pickSdkOptions(options) },
       'planner',
+      options.lane,
     )) {
       if (event.type === 'agent:message') {
         if (!skipEmitted) {

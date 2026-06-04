@@ -54,3 +54,7 @@ export type {
   PlanningLane,
 } from './selectors/plan-progress';
 export { selectStackLayersForRun } from './selectors/stack-layers';
+
+// Lane registry
+export { LANE_REGISTRY, laneLabel, laneOrder } from './lane-registry';
+export type { LaneEntry } from './lane-registry';

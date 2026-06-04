@@ -24,6 +24,8 @@ daemon SSE
   → selectors                (src/lib/selectors/ and src/lib/run-state/selectors/)
   → views
 
+Lane-model behavior (planning vs validation vs gap-close lanes, PRD pill on the planning lane) is verified end-to-end by `multi-plan-gap-close.e2e.test.tsx` against `fixtures/multi-plan-gap-close.json`.
+
 daemon REST (session plans + plan sets)
   → API_ROUTES.sessionPlanList     GET /api/session-plan/list[?includeSubmitted=true]
   → API_ROUTES.sessionPlanShow     GET /api/session-plan/show?session=:session
@@ -58,6 +60,25 @@ The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all
 The reducer implementation is shared with `packages/monitor-ui/` (dual-reducer constraint) to keep both dashboards in sync during the transition period.
 
 The Planning Workspace (`/console/plans`) uses REST requests rather than SSE and browses two read-only artifact kinds side by side: flat session plans and grouped session plan sets. On load it fetches both `API_ROUTES.sessionPlanList` and `API_ROUTES.sessionPlanSetList` (filtering to active artifacts by default, or including handed-off/submitted artifacts when the Include handed off toggle is enabled - the flag is forwarded to both list routes). The combined list is modeled as a discriminated union in `planning-artifacts.ts`, with selection keys encoded as `plan:<session>` and `plan-set:<planSetId>` so the two id spaces cannot collide. After the user selects an artifact, the detail fetch is dispatched by kind: flat plans call `API_ROUTES.sessionPlanShow` (metadata, readiness detail, markdown body via `SessionPlanDetail`), and plan sets call `API_ROUTES.sessionPlanSetShow` (manifest metadata, validation diagnostics, umbrella anchor content or a `missing-anchor` diagnostic, and per-child summary metadata via `SessionPlanSetDetail`). Plan-set child markdown is never fetched; only the summary returned by the show route is displayed. No daemon state is derived from the list responses alone, and the workspace exposes no mutation controls for either artifact kind.
+
+## Lane model
+
+The pipeline swimlane groups agent threads into lanes keyed by the agent-event `planId`. A single ordered lane registry (`src/lib/run-state/lane-registry.ts`) is the source of truth for display labels and sort order.
+
+| Lane ID | Label | Order | Kind |
+|---------|-------|-------|------|
+| `planning` | Planning | 0 | phase |
+| `plan-NN-*` | Plan NN | 1 | plan |
+| `validation` | Validation | 2 | phase |
+| `gap-close` | Gap Close | 3 | phase |
+| `final-validation` | Final Validation | 4 | phase |
+
+- **Phase lanes** are orchestrator-assigned lifecycle phases that do not appear in `earlyOrchestration.plans`. They render only when they have agent threads (activity-gated - no synthetic `planStatuses` entries).
+- **Plan lanes** are per-PRD build lanes declared by the orchestrator. Within order tier 1, they are sub-sorted by orchestration declaration order.
+- The `planning` lane has a dedicated row in the Now card (`selectPlanningLane`) and is excluded from `selectPlanLanes` extras to avoid duplication.
+- The PRD source pill renders on the planning lane when planning threads exist; otherwise it falls back to the Compile/Source row.
+
+Consumers (`plan-progress.ts`, `pipeline-colors.ts`, `thread-pipeline.tsx`) call `laneLabel(id)` and `laneOrder(id)` instead of maintaining local label/order maps.
 
 ## Adding a new control surface
 

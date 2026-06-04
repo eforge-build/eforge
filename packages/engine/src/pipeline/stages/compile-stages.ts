@@ -69,6 +69,7 @@ async function* runPlannerAttempt(
       stage: 'planner',
       ...(input.plannerOptions.continuationContext && { continuationContext: input.plannerOptions.continuationContext }),
       harness: plannerHarness,
+      lane: 'planning',
     })) {
       // Capture expedition modules from the planner's architecture submission.
       // The planner emits this event directly after writing architecture.md +
@@ -176,6 +177,7 @@ async function* runModulePlannerAttempt(
       phase: 'compile',
       stage: 'module-planner',
       harness: modulePlannerHarness,
+      lane: 'planning',
     })) {
       modTracker.handleEvent(event);
 
@@ -235,6 +237,7 @@ registerCompileStage({
     stage: 'pipeline-composer',
     harness: composerHarness,
     validationProviders: ctx.extensionValidationProviders,
+    lane: 'planning',
   };
   const composerRetryPolicy = DEFAULT_RETRY_POLICIES['pipeline-composer'] as RetryPolicy<PipelineComposerOptions>;
   yield* withRetry(
@@ -326,6 +329,7 @@ registerCompileStage({
           phase: 'compile',
           stage: 'plan-review',
           harness: planReviewerHarness,
+          lane: 'planning',
         }),
       },
       evaluator: {

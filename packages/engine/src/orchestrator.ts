@@ -50,6 +50,7 @@ export type ValidationFixer = (
   failures: Array<{ command: string; exitCode: number; output: string }>,
   attempt: number,
   maxAttempts: number,
+  lane?: string,
 ) => AsyncGenerator<EforgeEvent>;
 
 /**
@@ -61,6 +62,7 @@ export type ValidationFixer = (
 export type PrdValidator = (
   cwd: string,
   context?: { validationCommandEvidence?: Array<{ command: string; exitCode: number; output?: string }> },
+  lane?: string,
 ) => AsyncGenerator<EforgeEvent>;
 
 export type AcceptanceUnknownResolver = (

@@ -39,6 +39,8 @@ export interface DependencyDetectorOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: implementation tier default). */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -78,6 +80,7 @@ export async function* runDependencyDetector(
   for await (const event of harness.run(
     { prompt, cwd: process.cwd(), maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.implementation, tools: 'none', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
     'dependency-detector',
+    options.lane,
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {
       yield event;

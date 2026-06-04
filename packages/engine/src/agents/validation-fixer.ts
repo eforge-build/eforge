@@ -14,6 +14,8 @@ export interface ValidationFixerOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: implementation tier default) */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 export interface ValidationRepairFixerOptions extends SdkPassthroughConfig {
@@ -62,6 +64,7 @@ export async function* runValidationFixer(
         ...pickSdkOptions(options),
       },
       'validation-fixer',
+      options.lane,
     )) {
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
