@@ -624,6 +624,7 @@ function extractResultData(result: SDKResultMessage, resultText?: string): Agent
     totalCostUsd: result.total_cost_usd ?? 0,
     usage: normalizeUsage(aggregate),
     modelUsage,
+    harness: 'claude-sdk',
     resultText,
   };
 }

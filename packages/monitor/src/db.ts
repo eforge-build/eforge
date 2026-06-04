@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DAEMON_EVENT_TYPES } from '@eforge-build/client';
-import type { DailySpend, RunInfo, SessionMetadata } from '@eforge-build/client';
+import type { DailySpend, ModelSpend, RunInfo, SessionMetadata } from '@eforge-build/client';
 
 /** Raw DB row shape for the `runs` table — snake_case columns as returned by SQLite. */
 interface RunRow {
@@ -182,6 +182,12 @@ export interface MonitorDB {
    * callers fill gaps. Ordered oldest -> newest.
    */
   getDailySpend(windowDays: number): DailySpend[];
+  /**
+   * Per-model token + dollar spend aggregated over the last `windowDays` days
+   * (inclusive of today). Ordered by cost descending. Empty when no agent
+   * results carry per-model usage in the window.
+   */
+  getModelSpend(windowDays: number): ModelSpend[];
   close(): void;
 }
 
@@ -419,6 +425,28 @@ export function openDatabase(dbPath: string): MonitorDB {
          AND timestamp >= ?
        GROUP BY date
        ORDER BY date ASC`,
+    ),
+    // Per-model token + cost rollup over the window. modelUsage is a JSON object
+    // keyed by model id on agent:result; json_each flattens it to one row per
+    // model so we can sum each model's entry across every result event. The
+    // harness/provider live alongside modelUsage on the result, so the same
+    // model run under different harnesses aggregates as distinct rows. Tokens
+    // follow the DailySpend convention (inputTokens already includes cache).
+    getModelSpend: db.prepare(
+      `SELECT
+         m.key AS model,
+         json_extract(events.data, '$.result.harness') AS harness,
+         json_extract(events.data, '$.result.provider') AS provider,
+         COALESCE(SUM(json_extract(m.value, '$.inputTokens')), 0) AS inputTokens,
+         COALESCE(SUM(json_extract(m.value, '$.outputTokens')), 0) AS outputTokens,
+         COALESCE(SUM(json_extract(m.value, '$.inputTokens') + json_extract(m.value, '$.outputTokens')), 0) AS tokensTotal,
+         COALESCE(SUM(json_extract(m.value, '$.cacheReadInputTokens')), 0) AS cacheReadTokens,
+         COALESCE(SUM(json_extract(m.value, '$.costUSD')), 0) AS costUsd
+       FROM events, json_each(events.data, '$.result.modelUsage') AS m
+       WHERE events.type = 'agent:result'
+         AND events.timestamp >= ?
+       GROUP BY m.key, harness, provider
+       ORDER BY costUsd DESC`,
     ),
     getMaxEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events`,
@@ -773,6 +801,14 @@ export function openDatabase(dbPath: string): MonitorDB {
       start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
       const rows = stmts.getDailySpend.all(start.toISOString()) as unknown as DailySpend[];
       return rows;
+    },
+    getModelSpend(windowDays) {
+      // Same local start-of-day ISO cutoff as getDailySpend so the per-model
+      // window aligns exactly with the daily rollup.
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - (Math.max(1, windowDays) - 1));
+      return stmts.getModelSpend.all(start.toISOString()) as unknown as ModelSpend[];
     },
 
     close() {

@@ -13,7 +13,7 @@
     },
     {
       "path": "packages/client/src/events.schemas.ts",
-      "noGrowthCeiling": 2753,
+      "noGrowthCeiling": 2791,
       "category": "implementation"
     },
     {
@@ -108,7 +108,7 @@
     },
     {
       "path": "packages/client/src/types.ts",
-      "noGrowthCeiling": 812,
+      "noGrowthCeiling": 830,
       "category": "implementation"
     },
     {
@@ -118,7 +118,7 @@
     },
     {
       "path": "packages/monitor/src/db.ts",
-      "noGrowthCeiling": 783,
+      "noGrowthCeiling": 819,
       "category": "implementation"
     },
     {
@@ -158,7 +158,7 @@
     },
     {
       "path": "packages/engine/src/harnesses/claude-sdk.ts",
-      "noGrowthCeiling": 629,
+      "noGrowthCeiling": 630,
       "category": "implementation"
     },
     {
