@@ -8,8 +8,7 @@
  */
 
 import type {
-  RunInfo,
-  EforgeEvent,
+  RunInfo, EforgeEvent,
   ExtensionEntry, ExtensionTrustState,
 } from '@eforge-build/client/browser';
 import { getEventSummary, isTransientTransportError } from '@eforge-build/client/browser';
