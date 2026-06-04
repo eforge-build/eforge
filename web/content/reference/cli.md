@@ -87,6 +87,20 @@ Check running builds
 Manage PRD queue
 
 
+#### `priority`
+
+**Full command:** `eforge queue priority`
+
+Update the priority for a pending or waiting PRD queue item
+
+
+#### `remove`
+
+**Full command:** `eforge queue remove`
+
+Remove a non-running PRD queue item
+
+
 #### `list`
 
 **Full command:** `eforge queue list`

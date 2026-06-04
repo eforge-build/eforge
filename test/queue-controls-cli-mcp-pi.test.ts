@@ -167,6 +167,16 @@ describe('CLI queue controls', () => {
     expect(queue?.commands.find((command) => command.name() === 'remove')?.registeredArguments.map((arg) => arg.name())).toEqual(['prdId']);
   });
 
+  it('uses semantic client helpers without raw route or priority body construction', async () => {
+    const source = await readFile(join(REPO_ROOT, 'packages/eforge/src/cli/queue-control.ts'), 'utf-8');
+
+    expect(source).toMatch(/apiUpdateQueuePriority\s*\(\s*\{\s*cwd:\s*process\.cwd\(\),\s*prdId,\s*priority\s*\}\s*\)/s);
+    expect(source).toMatch(/apiRemoveQueueItem\s*\(\s*\{\s*cwd:\s*process\.cwd\(\),\s*prdId\s*\}\s*\)/s);
+    expect(source).not.toContain('body: { priority }');
+    expect(source).not.toContain("'/api/");
+    expect(source).not.toContain('"/api/');
+  });
+
   it('updates queue priority through the daemon helper and prints the returned id and priority', async () => {
     const cwd = makeTempDir();
     const prdPath = await writeQueuePrd(cwd, 'cli-priority', { priority: 20 });
@@ -199,6 +209,7 @@ describe('CLI queue controls', () => {
 
   it.each([
     ['validation failure', ['queue', 'priority', 'cli-priority', '1.5'], 'finite integer'],
+    ['blank validation failure', ['queue', 'priority', 'cli-priority', '   '], 'finite integer'],
     ['not-found failure', ['queue', 'priority', 'missing-prd', '4'], "missing-prd"],
   ])('prints daemon message and exits non-zero on priority %s', async (_name, argv, expectedMessage) => {
     const cwd = makeTempDir();
@@ -224,15 +235,33 @@ describe('CLI queue controls', () => {
     expect(result.stderr).toContain('cli-failed');
   });
 
-  it('prints daemon-down errors without waiting for a daemon startup timeout', async () => {
+  it.each([
+    ['not-found failure', async (cwd: string) => { await writeQueuePrd(cwd, 'cli-remove'); }, ['queue', 'remove', 'missing-prd'], 'missing-prd'],
+    ['conflict failure', async (cwd: string) => {
+      await writeQueuePrd(cwd, 'cli-parent');
+      await writeQueuePrd(cwd, 'cli-child', { dependsOn: ['cli-parent'] });
+    }, ['queue', 'remove', 'cli-parent'], 'cli-child'],
+  ])('prints daemon message and exits non-zero on remove %s', async (_name, setup, argv, expectedMessage) => {
     const cwd = makeTempDir();
-    writeLockfile(cwd, { pid: process.pid, port: 1, startedAt: new Date().toISOString() });
+    await setup(cwd);
+    await startDaemon(cwd);
+
+    const result = await runCli(cwd, argv);
+
+    expect(result.exitCode).toBeGreaterThan(0);
+    expect(result.stderr).toContain('Error:');
+    expect(result.stderr).toContain(expectedMessage);
+  });
+
+  it('prints daemon-down errors without waiting for a daemon startup timeout', async () => {
+    const cwd = join(makeTempDir(), 'agent-run-worktrees', '__merge__');
+    await mkdir(cwd, { recursive: true });
 
     const result = await runCli(cwd, ['queue', 'remove', 'missing-prd']);
 
     expect(result.exitCode).toBeGreaterThan(0);
     expect(result.stderr).toContain('Error:');
-    expect(result.stderr).toMatch(/daemon|ECONNREFUSED|connect/i);
+    expect(result.stderr).toContain('Refusing to spawn eforge daemon from agent worktree');
   });
 });
 

@@ -316,6 +316,22 @@ describe('queue-control race safety', () => {
     },
   );
 
+  it.each(['queue', 'waiting'] as const)(
+    'fails root removal when a %s dependent is added immediately before deletion',
+    async (dependentLocation) => {
+      const dir = makeTempDir();
+      writePrdFile(dir, 'queue', 'p');
+
+      const err = await expectQueueControlFailure(removeQueuedPrd(removeOptions(dir, 'p', {
+        beforeMainRemoval: () => writePrdFile(dir, dependentLocation, 'late-dep', '\ndepends_on: ["p"]'),
+      })));
+
+      expect(err.kind).toBe('conflict');
+      expect(err.message).toContain('late-dep');
+      expect(existsSync(queuePath(dir, 'p'))).toBe(true);
+    },
+  );
+
   it.each(['waiting', 'failed', 'skipped'] as const)(
     'fails %s removal after the file is deleted post-location instead of reporting success',
     async (location) => {

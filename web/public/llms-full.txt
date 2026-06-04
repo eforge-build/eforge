@@ -89,6 +89,20 @@ Check running builds
 Manage PRD queue
 
 
+#### `priority`
+
+**Full command:** `eforge queue priority`
+
+Update the priority for a pending or waiting PRD queue item
+
+
+#### `remove`
+
+**Full command:** `eforge queue remove`
+
+Remove a non-running PRD queue item
+
+
 #### `list`
 
 **Full command:** `eforge queue list`
@@ -1193,7 +1207,7 @@ Both surfaces are kept in parity per `AGENTS.md`.
 
 ## MCP tools (Claude Code)
 
-Total tools: 18
+Total tools: 20
 
 | Tool name | Description |
 |-----------|-------------|
@@ -1201,6 +1215,8 @@ Total tools: 18
 | `eforge_auto_build` | Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued. |
 | `eforge_status` | Get the current run status including plan progress, session state, event summary, and the daemon vs CLI version. |
 | `eforge_queue_list` | List all PRDs currently in the eforge queue with their metadata. |
+| `eforge_queue_priority` | Update priority for a pending or waiting PRD queue item. Lower numbers run earlier; cancel running builds by session id instead. |
+| `eforge_queue_remove` | Remove a non-running PRD queue item, including failed recovery sidecars. Refuses running items and live-dependent conflicts. |
 | `eforge_config` | Show resolved eforge configuration or validate eforge/config.yaml. Config merges three tiers: user (~/.config/eforge/config.yaml), project (eforge/config.yaml), and project-local (.eforge/config.yaml, gitignored). Pass verbose: true with action "show" to see per-tier file presence. |
 | `eforge_profile` | Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile; "use" writes the active-profile marker to switch profiles; "create" writes a new profile (pass `agents.tiers` with self-contained tier recipes; optionally pass `metadata` with `description`, `whenToUse`, and `tags` — descriptive only, does not affect runtime behavior); "delete" removes a profile (refuses when active unless force: true). |
 | `eforge_extension` | Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope. |
@@ -1218,13 +1234,15 @@ Total tools: 18
 
 ## Native tools (Pi extension)
 
-Total tools: 19
+Total tools: 21
 
 | Tool name | Description |
 |-----------|-------------|
 | `eforge_build` | Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status. |
 | `eforge_status` | Get the current run status including plan progress, session state, event summary, and the daemon vs Pi-extension version. |
 | `eforge_queue_list` | List all PRDs currently in the eforge queue with their metadata. |
+| `eforge_queue_priority` | Update priority for a pending or waiting PRD queue item. Lower numbers run earlier; cancel running builds by session id instead. |
+| `eforge_queue_remove` | Remove a non-running PRD queue item, including failed recovery sidecars. Refuses running items and live-dependent conflicts. |
 | `eforge_config` | Show resolved eforge configuration or validate eforge/config.yaml. |
 | `eforge_profile` | Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml (optionally pass `metadata` with `description`, `whenToUse`, and `tags` — descriptive only, does not affect runtime behavior); "delete" removes a profile (refuses when active unless force: true). |
 | `eforge_extension` | Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope. |

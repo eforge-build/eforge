@@ -337,6 +337,14 @@ export async function removeQueuedPrd(opts: RemoveQueuedPrdOptions): Promise<Que
         );
       }
       await runQueueControlRaceHook(opts, 'beforeMainRemoval');
+      const finalDependents = await findLiveDependents(opts.cwd, absQueueDir, opts.prdId);
+      if (finalDependents.length > 0) {
+        throw new QueueControlError(
+          'conflict',
+          `Cannot remove '${opts.prdId}': live queue items depend on it (${finalDependents.join(', ')}). ` +
+            'Remove the dependents first, or wait for future cascade controls.',
+        );
+      }
       await removeMainPrdFile(fresh);
     } finally {
       await releasePrd(opts.prdId, opts.cwd);
@@ -352,6 +360,14 @@ export async function removeQueuedPrd(opts: RemoveQueuedPrdOptions): Promise<Que
       );
     }
     await runQueueControlRaceHook(opts, 'beforeMainRemoval');
+    const finalDependents = await findLiveDependents(opts.cwd, absQueueDir, opts.prdId);
+    if (finalDependents.length > 0) {
+      throw new QueueControlError(
+        'conflict',
+        `Cannot remove '${opts.prdId}': live queue items depend on it (${finalDependents.join(', ')}). ` +
+          'Remove the dependents first, or wait for future cascade controls.',
+      );
+    }
     await removeMainPrdFile(fresh);
   }
 
