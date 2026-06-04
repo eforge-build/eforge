@@ -24,6 +24,20 @@ Key constraints from architecture:
 - `packages/engine/src/extensions/index.ts` is shared with `daemon-action-routes`; this module owns all new exports required by daemon routes.
 - `packages/client/src/types.ts` is shared with `platform-contracts`; this module owns only existing extension-management projection metadata and registration summary additions.
 
+## Recovery Guidance for Resume
+
+The previous resumed attempt for this plan failed after three review rounds. Plan 01 is already merged on the feature branch; resume this plan by repairing the preserved plan-02 work, not by reworking the platform-contracts slice.
+
+Critical retry guidance from final evaluation:
+- Do **not** blanket-reject symbol keys in TypeBox schema documents. Legitimate TypeBox metadata symbols such as Optional/Readonly markers may be present on schemas that serialize correctly.
+- Separate user JSON-data validation from schema-document validation.
+- Reject symbol-keyed user JSON data in action outputs, action `inputDefaults`, and Console contribution block/default payloads.
+- Continue tolerating TypeBox internal schema metadata symbols when validating action/command input schemas and action output schemas.
+- Add tests for both sides: symbol-keyed user data is rejected, while TypeBox schemas using optional/readonly metadata remain accepted.
+- Treat action logger/debug contract expansion as follow-up unless it is strictly required by the current plan's already-promised runtime contract.
+
+Accepted fixes from the failed attempt can be preserved when still applicable: safe non-2xx action helper parsing, manifest diagnostic `code`/`name` projection, and corresponding focused client/manifest tests.
+
 ## Scope
 
 ### In Scope
