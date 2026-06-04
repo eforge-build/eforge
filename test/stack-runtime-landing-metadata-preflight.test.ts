@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  initialLandingBaseDecision,
+  preflightLandingBase,
+} from '@eforge-build/engine/stacking/landing-base';
+import {
   collectEvents,
   createFakeGhForStack,
   createGitSpiceAdapter,
@@ -212,14 +216,42 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
     expect(events).toContainEqual(expect.objectContaining({ type: 'stack:landing:update', status: 'complete', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' }));
   });
 
+  it('preserves repaired base metadata when retarget repair fails after parent integration proof', async () => {
+    const { parentSha } = setupStackRepo({ parentIntegrated: false, deleteParentRemote: false });
+    const provider = makeStubProvider({
+      restackBranch: async () => {
+        const currentBranch = git(['branch', '--show-current']);
+        git(['checkout', 'main']);
+        git(['merge', '--ff-only', 'eforge/parent-prd']);
+        git(['push', 'origin', 'main']);
+        git(['push', 'origin', '--delete', 'eforge/parent-prd']);
+        git(['checkout', currentBranch]);
+        return makeResult('git-spice', ['branch', 'restack']);
+      },
+      retargetBranch: async (_cwd, branch, target) => {
+        throw new GitSpiceCommandError('git-spice', ['branch', 'onto', target, '--branch', branch], 1, 'retarget failed');
+      },
+    });
+    await seedLayer(cwd);
+
+    const events = await collectEvents(executeStackLanding(landingOptions(provider, { stackContext: childContext(parentSha) })));
+    const failed = events.find((e) => e.type === 'stack:landing:update' && (e as { status?: string }).status === 'failed');
+    const landing = (await loadStackState(cwd)).layers.find((l) => l.prdId === 'test-prd')?.landing;
+
+    expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'onto', 'main', '--branch', 'eforge/test-prd'], exitCode: 1 }));
+    expect(failed).toMatchObject({ originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' });
+    expect(landing).toMatchObject({ status: 'failed', originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' });
+  });
+
   it.each(['main', 'develop'])('repairs a missing integrated parent base by tracking against %s before restacking', async (trunkBranch) => {
-    const { parentSha } = setupStackRepo({ parentIntegrated: true, deleteParentRemote: true });
+    const { parentSha } = setupStackRepo({ parentIntegrated: trunkBranch === 'main', deleteParentRemote: false });
     if (trunkBranch !== 'main') {
       const currentBranch = git(['branch', '--show-current']);
-      git(['checkout', '-b', trunkBranch, 'main']);
+      git(['checkout', '-b', trunkBranch, 'eforge/parent-prd']);
       git(['push', '-u', 'origin', trunkBranch]);
       git(['checkout', currentBranch]);
     }
+    git(['push', 'origin', '--delete', 'eforge/parent-prd']);
     const binDir = join(cwd, `bin-stack-repair-${trunkBranch}`);
     makeFakeGhForMetadata(binDir, 'success');
     const origPath = process.env.PATH;
@@ -267,6 +299,58 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
     } finally {
       process.env.PATH = origPath;
     }
+  });
+
+  it('fails closed when final preflight sees repaired parent is no longer on remote trunk', async () => {
+    const { parentSha } = setupStackRepo({ parentIntegrated: true, deleteParentRemote: true });
+    const rootSha = git(['rev-parse', `${parentSha}^`]);
+    let submitCalled = false;
+    const provider = makeStubProvider({
+      syncRepo: async () => makeResult('git-spice', ['repo', 'sync']),
+      trackBranch: async (_cwd, base) => makeResult('git-spice', ['branch', 'track', '--base', base]),
+      restackBranch: async () => {
+        git(['push', '--force', 'origin', `${rootSha}:main`]);
+        return makeResult('git-spice', ['branch', 'restack']);
+      },
+      submitBranch: async () => { submitCalled = true; return makeResult('git-spice', ['branch', 'submit']); },
+    });
+    await seedLayer(cwd);
+
+    const events = await collectEvents(executeStackLanding(landingOptions(provider, { stackContext: childContext(parentSha) })));
+
+    expect(submitCalled).toBe(false);
+    expect(events.at(-1)).toMatchObject({ type: 'stack:landing:update', status: 'failed', reason: expect.stringContaining('not an ancestor') });
+  });
+
+  it('retargets by default when preflighting a missing integrated parent base directly', async () => {
+    const { parentSha } = setupStackRepo({ parentIntegrated: true, deleteParentRemote: true });
+    const stackContext = childContext(parentSha);
+    const retargets: string[] = [];
+    const provider = makeStubProvider({
+      retargetBranch: async (_cwd, branch, target) => {
+        retargets.push(`${branch}:${target}`);
+        return makeResult('git-spice', ['branch', 'onto', target, '--branch', branch]);
+      },
+    });
+
+    const result = await preflightLandingBase({
+      cwd,
+      mergeWorktreePath: cwd,
+      stackContext,
+      provider,
+      decision: initialLandingBaseDecision(stackContext, 'main'),
+    });
+
+    expect(retargets).toEqual(['eforge/test-prd:main']);
+    expect(result).toMatchObject({
+      ok: true,
+      decision: {
+        originalBaseBranch: 'eforge/parent-prd',
+        effectiveBaseBranch: 'main',
+        baseRepairReason: 'parent-artifact-already-integrated',
+      },
+      retargetResult: { args: ['branch', 'onto', 'main', '--branch', 'eforge/test-prd'] },
+    });
   });
 
   it('fails closed and skips submit when a missing parent base is not proven integrated', async () => {

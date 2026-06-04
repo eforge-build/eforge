@@ -26,6 +26,8 @@ export interface StackLandingBaseMetadata {
 
 export type LandingBaseDecision = StackLandingBaseMetadata;
 
+export type LandingBaseRepairMode = 'decision-only' | 'retarget';
+
 export type LandingBasePreflightResult =
   | { ok: true; decision: LandingBaseDecision; retargetResult?: ProviderCommandResult }
   | { ok: false; decision: LandingBaseDecision; reason: string };
@@ -34,6 +36,16 @@ export type LandingFreshnessCheckResult =
   | { kind: 'fresh'; remote: string; branch: string; fetchedBaseSha: string; headSha: string }
   | { kind: 'stale'; remote: string; branch: string; fetchedBaseSha: string; headSha: string; reason: string }
   | { kind: 'failed'; remote: string; branch: string; reason: string; error?: unknown };
+
+const retargetFailures = new WeakMap<object, { repairedDecision: LandingBaseDecision; retargetError: unknown }>();
+
+export function landingBaseRetargetFailureDecision(error: unknown): LandingBaseDecision | undefined {
+  return typeof error === 'object' && error !== null ? retargetFailures.get(error)?.repairedDecision : undefined;
+}
+
+export function landingBaseRetargetFailureError(error: unknown): unknown | undefined {
+  return typeof error === 'object' && error !== null ? retargetFailures.get(error)?.retargetError : undefined;
+}
 
 export function initialLandingBaseDecision(stackContext: StackBaseContext, fallbackBase: string): LandingBaseDecision {
   const effectiveBaseBranch = stackContext.baseBranch ?? fallbackBase;
@@ -77,8 +89,10 @@ export async function preflightLandingBase(options: {
   stackContext: StackBaseContext;
   provider: StackProviderAdapter;
   decision: LandingBaseDecision;
+  repairMode?: LandingBaseRepairMode;
 }): Promise<LandingBasePreflightResult> {
   const { cwd, mergeWorktreePath, stackContext, provider } = options;
+  const repairMode = options.repairMode ?? 'retarget';
   const decision = { ...options.decision };
   if (stackContext.parentPrdId === undefined) return { ok: true, decision };
   const remote = stackContext.trunkRemote ?? 'origin';
@@ -104,8 +118,17 @@ export async function preflightLandingBase(options: {
     effectiveBaseBranch: trunkBranch,
     baseRepairReason: 'parent-artifact-already-integrated',
   };
-  const retargetResult = await provider.retargetBranch(mergeWorktreePath, stackContext.branch, trunkBranch);
-  return { ok: true, decision: repairedDecision, retargetResult };
+  if (repairMode === 'decision-only') return { ok: true, decision: repairedDecision };
+  try {
+    const retargetResult = await provider.retargetBranch(mergeWorktreePath, stackContext.branch, trunkBranch);
+    return { ok: true, decision: repairedDecision, retargetResult };
+  } catch (retargetError) {
+    const thrown = typeof retargetError === 'object' && retargetError !== null
+      ? retargetError
+      : new Error(String(retargetError));
+    retargetFailures.set(thrown, { repairedDecision, retargetError });
+    throw thrown;
+  }
 }
 
 export async function proveLandingHeadFreshness(options: {

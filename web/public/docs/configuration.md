@@ -372,7 +372,7 @@ Within a single build, plans run in parallel automatically as their dependencies
 | `landing.action` | Behavior |
 |-------|----------|
 | `merge` | Merges the artifact branch into the resolved base branch automatically. This is the engine default. |
-| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch before validation, and checks freshness again immediately before PR creation. For stacked builds the base is normally the parent artifact branch; landing can retarget a child to trunk when stale-parent repair proves the parent artifact is already integrated. Requires the `gh` CLI. |
+| `pr` | Opens a GitHub pull request from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch before validation, and checks freshness again immediately before PR creation. For stacked builds the base is normally the parent artifact branch; landing can use trunk as the effective base when stale-parent repair proves the parent artifact is already integrated. Requires the `gh` CLI. |
 | `leave` | Leaves the artifact branch in place without merging or creating a PR. Useful when you want to inspect the output or handle the branch manually. |
 
 ```yaml
@@ -407,7 +407,7 @@ landing:
 
 ## Stacked PRs
 
-When `stacking.enabled: true`, each build's artifact branch normally targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk, then gates PR submission on provider sync/restack and a remote-base freshness proof.
+When `stacking.enabled: true`, each build's artifact branch normally targets the parent artifact branch instead of the trunk, creating a stack of pull requests. Requires git-spice to be installed. During landing, eforge can repair a missing integrated parent by choosing trunk as the effective base for an initially untracked child or by retargeting a child that is already tracked, then gates PR submission on provider sync/restack and a remote-base freshness proof.
 
 ```yaml
 stacking:
@@ -485,7 +485,7 @@ build:
 
 **What it does not do:** `trunkSync` only fetches and selects a base ref. It does not checkout, pull, reset, rebase, or move local branch refs or your working tree. Only FETCH_HEAD is updated as part of the fetch. Direct PR base sync is separate: direct non-stacked PR publication later fetches `origin/<baseBranch>`, rebases the artifact branch before validation, and runs a final pre-PR freshness guard.
 
-**Scope:** only applies to queued root builds whose candidate base is the trunk branch. Child stacked PRDs use the parent artifact ref unchanged. Builds queued from a non-trunk feature branch are not retargeted. Direct PR base sync applies later only to direct non-stacked `landing.action: pr` publication, including non-trunk feature bases.
+**Scope:** only applies to queued root builds whose candidate base is the trunk branch. Child stacked PRDs use the parent artifact ref unchanged during `trunkSync`. Builds queued from a non-trunk feature branch are not retargeted by `trunkSync`. Direct PR base sync applies later only to direct non-stacked `landing.action: pr` publication, including non-trunk feature bases.
 
 ### Disabling trunk sync
 
