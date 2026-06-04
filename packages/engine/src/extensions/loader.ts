@@ -125,6 +125,10 @@ function createEmptyRegistry(candidates: NativeExtensionCandidate[]): NativeExte
     validationProviders: [],
     tools: [],
     prdEnrichers: [],
+    actions: [],
+    consoleContributions: [],
+    integrationCommands: [],
+    deepLinks: [],
     diagnostics: [],
   };
 }
@@ -142,6 +146,10 @@ function registrationCounts(registry: NativeExtensionRegistry): RegistrationCoun
     validationProviders: registry.validationProviders.length,
     tools: registry.tools.length,
     prdEnrichers: registry.prdEnrichers.length,
+    actions: registry.actions.length,
+    consoleContributions: registry.consoleContributions.length,
+    integrationCommands: registry.integrationCommands.length,
+    deepLinks: registry.deepLinks.length,
   };
 }
 
@@ -156,6 +164,10 @@ function diffRegistrationCounts(before: RegistrationCounts, after: RegistrationC
     validationProviders: after.validationProviders - before.validationProviders,
     tools: after.tools - before.tools,
     prdEnrichers: after.prdEnrichers - before.prdEnrichers,
+    actions: after.actions - before.actions,
+    consoleContributions: after.consoleContributions - before.consoleContributions,
+    integrationCommands: after.integrationCommands - before.integrationCommands,
+    deepLinks: after.deepLinks - before.deepLinks,
   };
 }
 

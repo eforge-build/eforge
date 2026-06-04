@@ -3,6 +3,7 @@ import { API_ROUTES } from '../routes.js';
 import {
   parseExtensionActionInvokeResponse,
   parseExtensionContributionManifest,
+  safeParseExtensionActionInvokeResponse,
   type ExtensionActionInvokeRequest,
   type ExtensionActionInvokeResponse,
   type ExtensionContributionManifestResponse,
@@ -23,13 +24,13 @@ export async function apiInvokeExtensionAction(opts: {
   cwd: string;
   body: ExtensionActionInvokeRequest;
 }): Promise<ExtensionActionInvokeResponse> {
-  const { data } = await daemonRequestWithStatus<unknown>(
+  const result = await daemonRequestWithStatus<unknown>(
     opts.cwd,
     'POST',
     API_ROUTES.extensionActionInvoke,
     opts.body,
   );
-  return parseExtensionActionInvokeResponse(data);
+  return parseActionInvokeDaemonResponse(result);
 }
 
 export async function apiInvokeExtensionActionIfRunning(opts: {
@@ -42,6 +43,19 @@ export async function apiInvokeExtensionActionIfRunning(opts: {
     API_ROUTES.extensionActionInvoke,
     opts.body,
   );
-  return result ? parseExtensionActionInvokeResponse(result.data) : null;
+  return result ? parseActionInvokeDaemonResponse(result) : null;
+}
+
+function parseActionInvokeDaemonResponse(result: { data: unknown; status: number; ok: boolean }): ExtensionActionInvokeResponse {
+  const parsed = safeParseExtensionActionInvokeResponse(result.data);
+  if (parsed.success) return parsed.data;
+  if (!result.ok) {
+    throw new Error(`Failed to invoke extension action: HTTP ${result.status} ${formatResponseBody(result.data)}`);
+  }
+  return parseExtensionActionInvokeResponse(result.data);
+}
+
+function formatResponseBody(data: unknown): string {
+  return typeof data === 'string' ? data : JSON.stringify(data);
 }
 // --- eforge:endregion plan-01-platform-contracts ---

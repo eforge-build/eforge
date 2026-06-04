@@ -1,4 +1,5 @@
 import type { EforgeEvent } from './events.js';
+import type { ConsoleContributionManifestEntry, ExtensionActionManifestEntry, ExtensionDeepLinkManifestEntry, IntegrationCommandManifestEntry } from './extension-contributions.js';
 
 // GET /api/health
 export interface HealthResponse {
@@ -181,16 +182,15 @@ export interface ExtensionShadow {
 }
 
 export interface ExtensionRegistrationSummary {
-  eventHooks: number;
-  agentRunHooks: number;
-  policyGates: number;
-  profileRouters: number;
-  inputSources: number;
-  reviewerPerspectives: number;
-  validationProviders: number;
-  tools: number;
-  prdEnrichers: number;
+  eventHooks: number; agentRunHooks: number; policyGates: number; profileRouters: number; inputSources: number; reviewerPerspectives: number; validationProviders: number; tools: number; prdEnrichers: number;
+  // --- eforge:region plan-02-engine-registry-runtime ---
+  actions: number; consoleContributions: number; integrationCommands: number; deepLinks: number;
+  // --- eforge:endregion plan-02-engine-registry-runtime ---
 }
+
+// --- eforge:region plan-02-engine-registry-runtime ---
+export type ExtensionActionDetail = ExtensionActionManifestEntry; export type ConsoleContributionDetail = ConsoleContributionManifestEntry; export type IntegrationCommandDetail = IntegrationCommandManifestEntry; export type ExtensionDeepLinkDetail = ExtensionDeepLinkManifestEntry;
+// --- eforge:endregion plan-02-engine-registry-runtime ---
 
 export interface ExtensionEntry {
   name: string;
@@ -223,6 +223,9 @@ export interface ExtensionEntry {
   reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
   /** Metadata for each validation provider registered by this extension. Absent when the extension has no registered providers. */
   validationProviderDetails?: ValidationProviderDetail[];
+  // --- eforge:region plan-02-engine-registry-runtime ---
+  actionDetails?: ExtensionActionDetail[]; consoleContributionDetails?: ConsoleContributionDetail[]; integrationCommandDetails?: IntegrationCommandDetail[]; deepLinkDetails?: ExtensionDeepLinkDetail[];
+  // --- eforge:endregion plan-02-engine-registry-runtime ---
   /** Package provenance, populated for directory-layout extensions with a `package.json`. */
   package?: ExtensionPackageProvenance;
   /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
@@ -282,14 +285,10 @@ export type ExtensionTestDiagnosticEvent = Extract<
 >;
 
 export type ExtensionTestDeferredRegistrationFamily =
-  | 'agentRunHooks'
-  | 'policyGates'
-  | 'profileRouters'
-  | 'inputSources'
-  | 'reviewerPerspectives'
-  | 'validationProviders'
-  | 'tools'
-  | 'prdEnrichers';
+  | 'agentRunHooks' | 'policyGates' | 'profileRouters' | 'inputSources' | 'reviewerPerspectives' | 'validationProviders' | 'tools' | 'prdEnrichers'
+  // --- eforge:region plan-02-engine-registry-runtime ---
+  | 'actions' | 'consoleContributions' | 'integrationCommands' | 'deepLinks';
+  // --- eforge:endregion plan-02-engine-registry-runtime ---
 
 export interface ExtensionTestDeferredRegistrationSummary {
   family: ExtensionTestDeferredRegistrationFamily;

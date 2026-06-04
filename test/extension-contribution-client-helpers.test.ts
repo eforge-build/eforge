@@ -27,16 +27,17 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function startServer() {
+async function startServer(opts: { untypedInvokeResponse?: boolean } = {}) {
   const requests: RecordedRequest[] = [];
   const manifest = {
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
+    generatedAt: '2026-06-03T00:00:00.000Z',
     actions: [],
     consoleContributions: [],
     integrationCommands: [],
     deepLinks: [],
   };
-  const invokeResponse = { ok: false as const, error: { code: 'invalid-input' as const, message: 'Bad input' } };
+  const invokeResponse = { ok: false as const, invocationId: 'invoke-1', error: { code: 'invalid-input' as const, message: 'Bad input' } };
 
   const server = createServer(async (req, res) => {
     const body = await readBody(req);
@@ -60,6 +61,11 @@ async function startServer() {
       return;
     }
     if (url === API_ROUTES.extensionActionInvoke) {
+      if (opts.untypedInvokeResponse) {
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(invokeResponse));
       return;
@@ -129,5 +135,15 @@ describe('extension contribution Node client helpers', () => {
     const invokeRequest = serverState.requests.find((req) => req.url === API_ROUTES.extensionActionInvoke);
     expect(invokeRequest?.method).toBe('POST');
     expect(invokeRequest?.body).toBe(JSON.stringify(body));
+  });
+
+  it('throws action HTTP status and body on untyped non-2xx responses', async () => {
+    serverState = await startServer({ untypedInvokeResponse: true });
+    writeLockfile(tmpDir, { pid: process.pid, port: serverState.port, startedAt: new Date().toISOString() });
+
+    await expect(apiInvokeExtensionActionIfRunning({
+      cwd: tmpDir,
+      body: { actionId: 'example.action', input: {}, requestedBy: { host: 'cli' } },
+    })).rejects.toThrow('Failed to invoke extension action: HTTP 404 Not found');
   });
 });

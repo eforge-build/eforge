@@ -66,7 +66,7 @@ export type ConsoleContributionBlock =
 
 export interface ConsoleContribution {
   id: string;
-  title?: string;
+  title: string;
   description?: string;
   blocks: ConsoleContributionBlock[];
 }

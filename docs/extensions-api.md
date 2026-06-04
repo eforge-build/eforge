@@ -242,7 +242,7 @@ const sayHi = defineExtensionAction({
 
 Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `IntegrationCommand`, and `ExtensionDeepLink`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
 
-**Runtime status:** contract only. Registration capture, manifest projection, action invocation, Console contribution rendering, and host command/deep-link dispatch are not wired at runtime yet.
+**Runtime status:** engine registry/runtime support. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Console rendering and host command/deep-link dispatch are separate platform layers.
 
 ---
 
@@ -1014,7 +1014,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, and `registerValidationProvider` per-plan `validate`-stage execution. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. Extension-authored actions, Console contributions, integration commands, deep links, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred runtime phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan `validate`-stage execution, and engine-side extension action/contribution registry support. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred runtime phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -1029,14 +1029,14 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
-| `registerAction` / `ExtensionAction` | Yes | No | No (contract only; daemon action dispatch is deferred) |
-| `registerConsoleContribution` / `ConsoleContribution` | Yes | No | No (contract only; Console rendering is deferred) |
-| `registerIntegrationCommand` / `IntegrationCommand` | Yes | No | No (contract only; host integration wiring is deferred) |
-| `registerDeepLink` / `ExtensionDeepLink` | Yes | No | No (contract only; host integration wiring is deferred) |
+| `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher; daemon HTTP route wiring is separate |
+| `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Manifest/management metadata projection; Console rendering is separate |
+| `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Manifest/management metadata projection; host integration wiring is separate |
+| `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Manifest/management metadata projection; host integration wiring is separate |
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, and reviewer perspective examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Extension-authored actions, Console contributions, integration commands, deep links, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, reviewer perspective, validation-provider, and contribution-family examples can be loaded and validated at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
 
 ---
 

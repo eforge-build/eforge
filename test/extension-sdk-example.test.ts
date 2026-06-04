@@ -131,6 +131,7 @@ const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
   });
   const contribution: sdk.ConsoleContribution = sdk.defineConsoleContribution({
     id: 'hello-panel',
+    title: 'Hello panel',
     blocks: [{ rendererId: 'action-button', content: 'Say hi', action: { actionId: 'say-hi' } }],
   });
   const command: sdk.IntegrationCommand = sdk.defineIntegrationCommand({

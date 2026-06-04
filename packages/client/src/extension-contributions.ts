@@ -111,7 +111,7 @@ export const ConsoleContributionManifestEntrySchema = Type.Object({
   localId: Type.String(),
   extensionName: Type.String(),
   extensionPath: Type.String(),
-  title: Type.Optional(Type.String()),
+  title: Type.String(),
   description: Type.Optional(Type.String()),
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
   blocks: Type.Array(ConsoleContributionBlockSchema),
@@ -142,14 +142,17 @@ export const ExtensionDeepLinkManifestEntrySchema = Type.Object({
 }, { additionalProperties: false });
 
 export const ExtensionContributionDiagnosticSchema = Type.Object({
-  extensionName: Type.String(),
-  extensionPath: Type.String(),
+  extensionName: Type.Optional(Type.String()),
+  extensionPath: Type.Optional(Type.String()),
   severity: Type.Union([Type.Literal('info'), Type.Literal('warning'), Type.Literal('error')]),
   message: Type.String(),
+  code: Type.String(),
+  name: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
 export const ExtensionContributionManifestResponseSchema = Type.Object({
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
+  generatedAt: Type.String(),
   actions: Type.Array(ExtensionActionManifestEntrySchema),
   consoleContributions: Type.Array(ConsoleContributionManifestEntrySchema),
   integrationCommands: Type.Array(IntegrationCommandManifestEntrySchema),
@@ -175,11 +178,13 @@ export const ExtensionActionInvokeErrorCodeSchema = Type.Union([
 
 export const ExtensionActionInvokeSuccessResponseSchema = Type.Object({
   ok: Type.Literal(true),
-  output: Type.Optional(ExtensionJsonValueSchema),
+  invocationId: Type.String(),
+  output: ExtensionJsonValueSchema,
 }, { additionalProperties: false });
 
 export const ExtensionActionInvokeFailureResponseSchema = Type.Object({
   ok: Type.Literal(false),
+  invocationId: Type.String(),
   error: Type.Object({
     code: ExtensionActionInvokeErrorCodeSchema,
     message: Type.String(),

@@ -1,8 +1,20 @@
+import {
+  validateActionBindingJson,
+  validateActionSpec,
+  validateConsoleContributionSpec,
+  validateDeepLinkSpec,
+  validateIntegrationCommandSpec,
+} from './contribution-validation.js';
+import { buildDuplicateContributionDiagnostic, resolveExtensionContributionId } from './ids.js';
 import type {
+  ActionRegistration,
+  ConsoleContributionRegistration,
+  DeepLinkRegistration,
   EforgeExtensionAPIShape,
   EventPattern,
   ExtensionHandler,
   ExtensionTool,
+  IntegrationCommandRegistration,
   InputSourceAdapter,
   NativeExtensionDiagnostic,
   NativeExtensionRecorderState,
@@ -28,6 +40,10 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     validationProviders: [],
     tools: [],
     prdEnrichers: [],
+    actions: [],
+    consoleContributions: [],
+    integrationCommands: [],
+    deepLinks: [],
     diagnostics: [],
   };
 
@@ -38,6 +54,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       message,
       name,
       path: extensionPath,
+      extensionName,
     });
   };
 
@@ -169,38 +186,40 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.tools.push({ kind: 'tool', extensionName, extensionPath, name: tool.name, value: tool as unknown as ExtensionTool });
     },
+    // --- eforge:region plan-02-engine-registry-runtime ---
     registerAction(action: unknown): void {
-      addDiagnostic(
-        'registerAction is accepted by the runtime API, but action capture/execution is not enabled in this engine build',
-        'extension:unsupported-registration',
-        isObject(action) && typeof action.id === 'string' ? action.id : undefined,
-        'warning',
-      );
+      const result = validateActionSpec(action);
+      if (!result.ok || result.value === undefined || result.id === undefined) {
+        addDiagnostic(result.message ?? 'registerAction registration is invalid', 'extension:invalid-registration', result.id);
+        return;
+      }
+      state.actions.push({ kind: 'action', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
     },
     registerConsoleContribution(contribution: unknown): void {
-      addDiagnostic(
-        'registerConsoleContribution is accepted by the runtime API, but console contribution capture is not enabled in this engine build',
-        'extension:unsupported-registration',
-        isObject(contribution) && typeof contribution.id === 'string' ? contribution.id : undefined,
-        'warning',
-      );
+      const result = validateConsoleContributionSpec(contribution);
+      if (!result.ok || result.value === undefined || result.id === undefined) {
+        addDiagnostic(result.message ?? 'registerConsoleContribution registration is invalid', 'extension:invalid-registration', result.id);
+        return;
+      }
+      state.consoleContributions.push({ kind: 'consoleContribution', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
     },
     registerIntegrationCommand(command: unknown): void {
-      addDiagnostic(
-        'registerIntegrationCommand is accepted by the runtime API, but integration command capture is not enabled in this engine build',
-        'extension:unsupported-registration',
-        isObject(command) && typeof command.id === 'string' ? command.id : undefined,
-        'warning',
-      );
+      const result = validateIntegrationCommandSpec(command);
+      if (!result.ok || result.value === undefined || result.id === undefined) {
+        addDiagnostic(result.message ?? 'registerIntegrationCommand registration is invalid', 'extension:invalid-registration', result.id);
+        return;
+      }
+      state.integrationCommands.push({ kind: 'integrationCommand', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
     },
     registerDeepLink(deepLink: unknown): void {
-      addDiagnostic(
-        'registerDeepLink is accepted by the runtime API, but deep link capture is not enabled in this engine build',
-        'extension:unsupported-registration',
-        isObject(deepLink) && typeof deepLink.id === 'string' ? deepLink.id : undefined,
-        'warning',
-      );
+      const result = validateDeepLinkSpec(deepLink);
+      if (!result.ok || result.value === undefined || result.id === undefined) {
+        addDiagnostic(result.message ?? 'registerDeepLink registration is invalid', 'extension:invalid-registration', result.id);
+        return;
+      }
+      state.deepLinks.push({ kind: 'deepLink', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
     },
+    // --- eforge:endregion plan-02-engine-registry-runtime ---
   };
 
   return { api, state };
@@ -219,9 +238,90 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
   mergeNamedRegistrations(target.prdEnrichers, source.prdEnrichers, 'PRD enricher', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.reviewerPerspectives, source.reviewerPerspectives, 'reviewer perspective', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.validationProviders, source.validationProviders, 'validation provider', diagnostics, target.diagnostics);
+  // --- eforge:region plan-02-engine-registry-runtime ---
+  mergeIdRegistrations(target.actions, source.actions, 'action', diagnostics, target.diagnostics);
+  const acceptedActions = new Set(target.actions.map(actionLookupKey));
+  mergeBoundIdRegistrations(target.consoleContributions, source.consoleContributions, 'Console contribution', acceptedActions, diagnostics, target.diagnostics);
+  mergeBoundIdRegistrations(target.integrationCommands, source.integrationCommands, 'integration command', acceptedActions, diagnostics, target.diagnostics);
+  mergeBoundIdRegistrations(target.deepLinks, source.deepLinks, 'deep link', acceptedActions, diagnostics, target.diagnostics);
+  // --- eforge:endregion plan-02-engine-registry-runtime ---
   mergeNamedRegistrations(target.tools, source.tools, 'tool', diagnostics, target.diagnostics);
   return diagnostics;
 }
+
+
+// --- eforge:region plan-02-engine-registry-runtime ---
+function mergeIdRegistrations<T extends { id: string; extensionName: string; extensionPath: string }>(
+  target: T[],
+  source: T[],
+  label: string,
+  diagnostics: NativeExtensionDiagnostic[],
+  allDiagnostics: NativeExtensionDiagnostic[],
+): void {
+  const existing = new Map(target.map((entry) => [entry.id, entry]));
+  for (const registration of source) {
+    const duplicate = existing.get(registration.id);
+    if (duplicate) {
+      const diagnostic = buildDuplicateContributionDiagnostic(label, registration, duplicate);
+      diagnostics.push(diagnostic);
+      allDiagnostics.push(diagnostic);
+      continue;
+    }
+    target.push(registration);
+    existing.set(registration.id, registration);
+  }
+}
+
+function mergeBoundIdRegistrations<T extends (ConsoleContributionRegistration | IntegrationCommandRegistration | DeepLinkRegistration)>(
+  target: T[],
+  source: T[],
+  label: string,
+  acceptedActions: Set<string>,
+  diagnostics: NativeExtensionDiagnostic[],
+  allDiagnostics: NativeExtensionDiagnostic[],
+): void {
+  const filtered: T[] = [];
+  for (const registration of source) {
+    const invalidBinding = findInvalidBinding(registration, acceptedActions);
+    if (invalidBinding !== undefined) {
+      const diagnostic: NativeExtensionDiagnostic = {
+        severity: 'error',
+        code: 'extension:invalid-registration',
+        message: `${label} "${registration.id}" references unknown local action "${invalidBinding}" from extension "${registration.extensionName}"`,
+        name: registration.id,
+        path: registration.extensionPath,
+        extensionName: registration.extensionName,
+      };
+      diagnostics.push(diagnostic);
+      allDiagnostics.push(diagnostic);
+      continue;
+    }
+    filtered.push(registration);
+  }
+  mergeIdRegistrations(target, filtered, label, diagnostics, allDiagnostics);
+}
+
+function findInvalidBinding(registration: ConsoleContributionRegistration | IntegrationCommandRegistration | DeepLinkRegistration, acceptedActions: Set<string>): string | undefined {
+  const bindings: Array<{ actionId: string; inputDefaults?: Record<string, unknown> }> = [];
+  if (registration.kind === 'consoleContribution') {
+    for (const block of registration.value.blocks) if ('action' in block) bindings.push(block.action);
+  } else if (registration.kind === 'integrationCommand') {
+    bindings.push(registration.value.action);
+  } else if (registration.value.action !== undefined) {
+    bindings.push(registration.value.action);
+  }
+  for (const binding of bindings) {
+    const json = validateActionBindingJson(binding);
+    if (!json.ok) return binding.actionId;
+    if (!acceptedActions.has(`${registration.extensionName}\0${registration.extensionPath}\0${binding.actionId}`)) return binding.actionId;
+  }
+  return undefined;
+}
+
+function actionLookupKey(action: ActionRegistration): string {
+  return `${action.extensionName}\0${action.extensionPath}\0${action.localId}`;
+}
+// --- eforge:endregion plan-02-engine-registry-runtime ---
 
 function mergeNamedRegistrations<T extends { name: string; extensionName: string; extensionPath: string }>(
   target: T[],

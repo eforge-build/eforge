@@ -581,6 +581,10 @@ describe('native extension loader', () => {
     expect(projection.totals).toEqual({
       eventHooks: 1,
       agentRunHooks: 1,
+      actions: 0,
+      consoleContributions: 0,
+      integrationCommands: 0,
+      deepLinks: 0,
       policyGates: 3,
       profileRouters: 1,
       inputSources: 1,

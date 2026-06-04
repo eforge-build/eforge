@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { lstat, mkdir, open, realpath, unlink } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import type { ReviewIssue } from './events.js';
@@ -80,12 +80,13 @@ export async function writeValidationRecoveryCheckpoint(
 ): Promise<ValidationRecoveryCheckpointReference> {
   const paths = resolveValidationRecoveryCheckpointPaths(options);
   await mkdir(paths.directory, { recursive: true });
+  await assertCheckpointDirectorySafe(paths.artifactRoot, paths.directory);
 
   const patch = await captureCheckpointPatch(resolve(options.worktreePath));
-  await writeFile(paths.patchPath, patch.content, 'utf8');
+  await writeCheckpointFileSafely(paths.artifactRoot, paths.patchPath, patch.content);
 
   const metadata = buildCheckpointMetadata(options, paths, patch);
-  await writeFile(paths.metadataPath, `${stableJsonStringify(metadata)}\n`, 'utf8');
+  await writeCheckpointFileSafely(paths.artifactRoot, paths.metadataPath, `${stableJsonStringify(metadata)}\n`);
 
   return {
     artifactRoot: paths.artifactRoot,
@@ -230,6 +231,54 @@ async function formatUntrackedFilePatch(worktreePath: string, file: string): Pro
     }
   } catch (error) {
     return `# Unable to capture untracked file ${file}: ${errorMessage(error)}\n`;
+  }
+}
+
+async function assertCheckpointDirectorySafe(artifactRoot: string, directory: string): Promise<void> {
+  const resolvedRoot = resolve(artifactRoot);
+  const resolvedDirectory = resolve(directory);
+  if (!isSameOrInside(resolvedDirectory, resolvedRoot)) {
+    throw new Error('Validation recovery checkpoint directory escapes artifact root');
+  }
+  const realRoot = await realpath(resolvedRoot);
+  const realDirectory = await realpath(resolvedDirectory);
+  if (!isSameOrInside(realDirectory, realRoot)) {
+    throw new Error('Validation recovery checkpoint directory resolves outside artifact root');
+  }
+  let current = resolvedRoot;
+  const rel = relative(resolvedRoot, resolvedDirectory);
+  for (const segment of rel.split('/').filter(Boolean)) {
+    current = join(current, segment);
+    const stat = await lstat(current);
+    if (stat.isSymbolicLink()) {
+      throw new Error('Validation recovery checkpoint directory contains a symlink');
+    }
+    if (!stat.isDirectory()) {
+      throw new Error('Validation recovery checkpoint path component is not a directory');
+    }
+  }
+}
+
+async function writeCheckpointFileSafely(artifactRoot: string, filePath: string, content: string): Promise<void> {
+  const resolvedFile = resolve(filePath);
+  if (!isSameOrInside(resolvedFile, resolve(artifactRoot))) {
+    throw new Error('Validation recovery checkpoint file escapes artifact root');
+  }
+  await assertCheckpointDirectorySafe(artifactRoot, dirname(resolvedFile));
+  try {
+    const existing = await lstat(resolvedFile);
+    if (existing.isSymbolicLink()) throw new Error('Validation recovery checkpoint file is a symlink');
+    if (!existing.isFile()) throw new Error('Validation recovery checkpoint path is not a regular file');
+    await unlink(resolvedFile);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | ((constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0);
+  const handle = await open(resolvedFile, flags, 0o600);
+  try {
+    await handle.writeFile(content, 'utf8');
+  } finally {
+    await handle.close();
   }
 }
 

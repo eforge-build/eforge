@@ -1,12 +1,9 @@
 import type { Scope } from '@eforge-build/scopes';
 import type {
-  ConsoleContribution,
-  ExtensionAction,
-  ExtensionDeepLink,
-  IntegrationCommand,
-  ValidationProviderSpec as SdkValidationProviderSpec,
-} from '@eforge-build/extension-sdk';
-import type { TObject, TSchema } from '@sinclair/typebox';
+  ExtensionActionRequestedBy,
+  ExtensionActionSideEffect,
+  ExtensionJsonValue,
+} from '@eforge-build/client';
 
 /**
  * Package provenance attached to directory-layout extensions that have a `package.json`.
@@ -62,11 +59,42 @@ export interface ReviewerPerspectiveApplicability {
   fn?: (changedFiles: string[], changedLines: number) => boolean | Promise<boolean>;
 }
 export interface ReviewerPerspectiveSpec { key: string; label: string; description: string; promptFragment: string; appliesTo?: ReviewerPerspectiveApplicability; }
-export type ValidationProviderSpec = Omit<SdkValidationProviderSpec, 'validate'> & { validate?: ExtensionHandler };
+export interface ValidationProviderSpec { name: string; description: string; validate?: ExtensionHandler; commands?: string[] }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
 export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
 export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
+
+// --- eforge:region plan-02-engine-registry-runtime ---
+export interface ExtensionActionContextShape {
+  invocationId: string;
+  actionId: string;
+  requestedBy: ExtensionActionRequestedBy;
+  cwd: string;
+  logger: { debug(message: string): void; info(message: string): void; warn(message: string): void; error(message: string): void };
+}
+export interface ExtensionActionSpec {
+  id: string;
+  title: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  sideEffects?: ExtensionActionSideEffect[];
+  handler: (input: Record<string, unknown>, ctx: ExtensionActionContextShape) => ExtensionJsonValue | Promise<ExtensionJsonValue> | unknown;
+}
+export interface ExtensionActionBindingSpec { actionId: string; inputDefaults?: Record<string, unknown> }
+export type ConsoleContributionBlockSpec =
+  | { rendererId: 'text'; title?: string; content: string }
+  | { rendererId: 'markdown'; title?: string; content: string }
+  | { rendererId: 'status-badge'; title?: string; content: string; status: string }
+  | { rendererId: 'link'; title?: string; content: string; href: string }
+  | { rendererId: 'action-button'; title?: string; content: string; action: ExtensionActionBindingSpec }
+  | { rendererId: 'action-form'; title?: string; content: string; action: ExtensionActionBindingSpec };
+export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[] }
+export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; action: ExtensionActionBindingSpec }
+export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; action?: ExtensionActionBindingSpec }
+// --- eforge:endregion plan-02-engine-registry-runtime ---
+
 export interface EforgeExtensionAPIShape {
   onEvent(pattern: EventPattern, handler: ExtensionHandler): void;
   onAgentRun(handler: ExtensionHandler): void;
@@ -79,10 +107,10 @@ export interface EforgeExtensionAPIShape {
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
   registerValidationProvider(spec: ValidationProviderSpec): void;
   registerTool(tool: ExtensionTool): void;
-  registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(action: ExtensionAction<TInput, TOutput>): void;
-  registerConsoleContribution(contribution: ConsoleContribution): void;
-  registerIntegrationCommand(command: IntegrationCommand): void;
-  registerDeepLink(deepLink: ExtensionDeepLink): void;
+  registerAction(action: ExtensionActionSpec): void;
+  registerConsoleContribution(contribution: ConsoleContributionSpec): void;
+  registerIntegrationCommand(command: IntegrationCommandSpec): void;
+  registerDeepLink(deepLink: ExtensionDeepLinkSpec): void;
 }
 export type EforgeExtensionFactoryShape = (api: EforgeExtensionAPIShape) => void | Promise<void>;
 
@@ -110,6 +138,7 @@ export interface NativeExtensionDiagnostic {
   message: string;
   name?: string;
   path?: string;
+  extensionName?: string;
   scope?: NativeExtensionScope;
   source?: NativeExtensionSource;
   /** Current content hash (included in trust-related diagnostics for project-team extensions). */
@@ -191,6 +220,13 @@ export type ValidationProviderRegistration = BaseExtensionRegistration<'validati
 export type ToolRegistration = BaseExtensionRegistration<'tool', ExtensionTool> & { name: string };
 export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', PrdEnricherSpec> & { name: string };
 
+// --- eforge:region plan-02-engine-registry-runtime ---
+export type ActionRegistration = BaseExtensionRegistration<'action', ExtensionActionSpec> & { localId: string; id: string };
+export type ConsoleContributionRegistration = BaseExtensionRegistration<'consoleContribution', ConsoleContributionSpec> & { localId: string; id: string };
+export type IntegrationCommandRegistration = BaseExtensionRegistration<'integrationCommand', IntegrationCommandSpec> & { localId: string; id: string };
+export type DeepLinkRegistration = BaseExtensionRegistration<'deepLink', ExtensionDeepLinkSpec> & { localId: string; id: string };
+// --- eforge:endregion plan-02-engine-registry-runtime ---
+
 export interface NativeExtensionRecorderState {
   eventHooks: EventHookRegistration[];
   agentRunHooks: AgentRunRegistration[];
@@ -201,6 +237,12 @@ export interface NativeExtensionRecorderState {
   validationProviders: ValidationProviderRegistration[];
   tools: ToolRegistration[];
   prdEnrichers: PrdEnricherRegistration[];
+  // --- eforge:region plan-02-engine-registry-runtime ---
+  actions: ActionRegistration[];
+  consoleContributions: ConsoleContributionRegistration[];
+  integrationCommands: IntegrationCommandRegistration[];
+  deepLinks: DeepLinkRegistration[];
+  // --- eforge:endregion plan-02-engine-registry-runtime ---
   diagnostics: NativeExtensionDiagnostic[];
 }
 
@@ -225,6 +267,12 @@ export interface LoadedNativeExtension {
     validationProviders: number;
     tools: number;
     prdEnrichers: number;
+    // --- eforge:region plan-02-engine-registry-runtime ---
+    actions: number;
+    consoleContributions: number;
+    integrationCommands: number;
+    deepLinks: number;
+    // --- eforge:endregion plan-02-engine-registry-runtime ---
   };
 }
 

@@ -23,6 +23,7 @@ const base = {
 function manifest() {
   return {
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
+    generatedAt: '2026-06-03T00:00:00.000Z',
     actions: [{
       ...base,
       id: 'example.say-hi',
@@ -35,6 +36,7 @@ function manifest() {
       ...base,
       id: 'example.panel',
       localId: 'panel',
+      title: 'Panel',
       schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
       blocks: [{ rendererId: 'text', content: 'Hello' }],
     }],
@@ -57,6 +59,8 @@ function manifest() {
       extensionPath: '/repo/.eforge/extensions/example',
       severity: 'warning',
       message: 'Heads up',
+      code: 'extension:invalid-registration',
+      name: 'example',
     }],
   };
 }
@@ -79,7 +83,11 @@ describe('extension contribution schemas', () => {
     }
   });
 
-  it('rejects invalid console blocks and non-JSON-safe schema documents', () => {
+  it('rejects invalid console blocks, missing Console titles, and non-JSON-safe schema documents', () => {
+    const missingTitle = manifest();
+    delete (missingTitle.consoleContributions[0] as Partial<(typeof missingTitle.consoleContributions)[number]>).title;
+    expect(safeParseExtensionContributionManifest(missingTitle).success).toBe(false);
+
     const missingHref = manifest();
     missingHref.consoleContributions[0].blocks = [{ rendererId: 'link', content: 'x' } as never];
     expect(safeParseExtensionContributionManifest(missingHref).success).toBe(false);
@@ -107,10 +115,11 @@ describe('extension contribution schemas', () => {
   });
 
   it('accepts invocation success and every failure code', () => {
-    expect(safeParseExtensionActionInvokeResponse({ ok: true, output: { value: 1 } }).success).toBe(true);
+    expect(safeParseExtensionActionInvokeResponse({ ok: true, invocationId: 'invoke-1', output: { value: 1 } }).success).toBe(true);
+    expect(safeParseExtensionActionInvokeResponse({ ok: true }).success).toBe(false);
     const codes = ExtensionActionInvokeErrorCodeSchema.anyOf.map((schema) => schema.const);
     for (const code of codes) {
-      expect(Value.Check(ExtensionActionInvokeResponseSchema, { ok: false, error: { code, message: 'nope' } })).toBe(true);
+      expect(Value.Check(ExtensionActionInvokeResponseSchema, { ok: false, invocationId: 'invoke-1', error: { code, message: 'nope' } })).toBe(true);
     }
   });
 

@@ -2,6 +2,7 @@ import { API_ROUTES } from './routes.js';
 import {
   parseExtensionActionInvokeResponse,
   parseExtensionContributionManifest,
+  safeParseExtensionActionInvokeResponse,
   type ExtensionActionInvokeRequest,
   type ExtensionActionInvokeResponse,
   type ExtensionContributionManifestResponse,
@@ -30,7 +31,21 @@ export async function invokeExtensionAction(
     headers,
     body: JSON.stringify(body),
   });
-  const json = await res.json() as unknown;
+  const text = await res.text();
+  const json = parseJsonText(text);
+  const parsed = safeParseExtensionActionInvokeResponse(json);
+  if (parsed.success) return parsed.data;
+  if (!res.ok) {
+    throw new Error(`Failed to invoke extension action: HTTP ${res.status} ${text}`);
+  }
   return parseExtensionActionInvokeResponse(json);
+}
+
+function parseJsonText(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
 }
 // --- eforge:endregion plan-01-platform-contracts ---

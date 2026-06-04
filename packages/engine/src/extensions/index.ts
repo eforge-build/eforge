@@ -60,6 +60,14 @@ export type {
   ValidationProviderRegistration,
   ToolRegistration,
   PrdEnricherRegistration,
+  ActionRegistration,
+  ConsoleContributionRegistration,
+  IntegrationCommandRegistration,
+  DeepLinkRegistration,
+  ExtensionActionSpec,
+  ConsoleContributionSpec,
+  IntegrationCommandSpec,
+  ExtensionDeepLinkSpec,
 } from './types.js';
 export { discoverNativeExtensions } from './discovery.js';
 export { createExtensionRecorder, mergeRecorderState } from './recorder.js';
@@ -119,6 +127,18 @@ export type {
 } from './policy-gate-runtime.js';
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
+// --- eforge:region plan-02-engine-registry-runtime ---
+export { EXTENSION_LOCAL_CONTRIBUTION_ID_RE, isValidExtensionLocalContributionId, resolveExtensionContributionId } from './ids.js';
+export {
+  buildExtensionContributionManifest,
+  buildActionDetails,
+  buildConsoleContributionDetails,
+  buildIntegrationCommandDetails,
+  buildDeepLinkDetails,
+} from './manifest.js';
+export { dispatchExtensionAction } from './action-runtime.js';
+export type { DispatchExtensionActionOptions, DispatchExtensionActionResult } from './action-runtime.js';
+// --- eforge:endregion plan-02-engine-registry-runtime ---
 export {
   parseExtensionEventFixtureFile,
   replayNativeExtensionEvents,
