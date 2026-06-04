@@ -34,6 +34,7 @@ const CHECK_STEPS: Step[] = [
 	{ label: "Build workspace", command: "pnpm", args: ["build"], timeout: 120_000 },
 	{ label: "Type check", command: "pnpm", args: ["type-check"], timeout: 120_000 },
 	{ label: "Test", command: "pnpm", args: ["test"], timeout: 180_000 },
+	{ label: "Maintainability check", command: "pnpm", args: ["maintainability:check"], timeout: 60_000 },
 	{ label: "Docs drift/link check", command: "node", args: ["packages/docs-gen/dist/cli.js", "check"], timeout: 30_000 },
 ];
 
@@ -1004,7 +1005,7 @@ async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevSt
 		{ value: DEV_ACTION.PLAN, label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
 		{ value: DEV_ACTION.TAIL_EVENTS, label: "Tail monitor events", description: "Live eforge monitor events" },
 		{ value: DEV_ACTION.TAIL_EXTENSION_EVENTS, label: "Tail extension events", description: "Preset for extension events" },
-		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, docs drift/link check" },
+		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, maintainability, docs drift/link check" },
 		{ value: DEV_ACTION.PR, label: "Show PR readiness", description: "Branch, diff, docs drift, and next steps" },
 		{ value: DEV_ACTION.LAND, label: "Land current branch", description: "Commit, check, and open a PR or fast-forward merge" },
 		{ value: DEV_ACTION.RESTART, label: "Rebuild + restart daemon", description: "Use after local engine/CLI changes" },

@@ -55,7 +55,7 @@ export async function createMonitorContext(
   const queuePaths = cwd ? buildQueuePaths(cwd, options) : undefined;
 
   try {
-    db.cleanupOldSessions(options.config?.monitor?.retentionCount ?? 20);
+    db.cleanupOldSessions(options.config?.monitor?.retentionCount ?? 100);
   } catch {
     // Best-effort cleanup must not block daemon startup.
   }

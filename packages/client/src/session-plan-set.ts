@@ -4,8 +4,8 @@
  * These mirror the JSON-safe summary, diagnostic, and listing shapes produced by
  * `@eforge-build/input`, but are declared independently here so the client and
  * browser-safe (`console-ui`) consumers can import them without pulling in the
- * Node-only input package. `routes.ts` owns the route constants; this module
- * owns the request/response shapes for the three read-only operations.
+ * Node-only input package. `routes/route-map.ts` owns the route constants; this
+ * module owns the request/response shapes for the three read-only operations.
  */
 
 /** Lifecycle status of a session plan set and its children. */

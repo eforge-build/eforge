@@ -499,8 +499,8 @@ describe('resolveConfig new build fields', () => {
 });
 
 describe('monitor config', () => {
-  it('DEFAULT_CONFIG.monitor.retentionCount equals 20', () => {
-    expect(DEFAULT_CONFIG.monitor.retentionCount).toBe(20);
+  it('DEFAULT_CONFIG.monitor.retentionCount equals 100', () => {
+    expect(DEFAULT_CONFIG.monitor.retentionCount).toBe(100);
   });
 
   it('resolveConfig preserves monitor.retentionCount', () => {

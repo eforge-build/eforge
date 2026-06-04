@@ -866,7 +866,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   }),
   prdQueue: Object.freeze({ dir: '.eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
-  monitor: Object.freeze({ retentionCount: 20 }),
+  monitor: Object.freeze({ retentionCount: 100 }),
   hooks: Object.freeze([]),
   tools: Object.freeze({ toolbelts: {} }),
   stacking: Object.freeze({ enabled: false, provider: 'git-spice' as const, gitSpice: Object.freeze({}) as { command?: string }, sync: Object.freeze({ afterBuild: false }) }),

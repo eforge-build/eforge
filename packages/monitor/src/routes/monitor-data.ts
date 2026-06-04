@@ -14,5 +14,10 @@ export function createMonitorDataRoutes(context: MonitorContext): RouteDefinitio
     } }),
     defineRoute({ routeKey: 'sessionMetadata', method: 'GET', pattern: API_ROUTES.sessionMetadata, security: readSecurity, handler: (ctx) => sendJson(ctx.res, context.db.getSessionMetadataBatch()) }),
     defineRoute({ routeKey: 'runs', method: 'GET', pattern: API_ROUTES.runs, security: readSecurity, handler: (ctx) => sendJson(ctx.res, context.db.getRuns()) }),
+    defineRoute({ routeKey: 'spend', method: 'GET', pattern: API_ROUTES.spend, security: readSecurity, handler: (ctx) => {
+      const raw = Number(ctx.query.get('days'));
+      const windowDays = Number.isFinite(raw) && raw >= 1 ? Math.min(90, Math.floor(raw)) : 7;
+      sendJson(ctx.res, { windowDays, days: context.db.getDailySpend(windowDays) });
+    } }),
   ];
 }

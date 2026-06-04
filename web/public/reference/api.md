@@ -1,5 +1,5 @@
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/client/src/routes.ts -->
+<!-- Source: packages/client/src/routes/route-map.ts -->
 
 # eforge Daemon HTTP API Reference
 
@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 72
+Total routes: 73
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -81,6 +81,7 @@ Total routes: 72
 | `sessionPlanSetValidate` | `/api/session-plan-set/validate` |
 | `sessionPlanShow` | `/api/session-plan/show` |
 | `sessionPlanSkipDimension` | `/api/session-plan/skip-dimension` |
+| `spend` | `/api/spend` |
 | `stackLayers` | `/api/stack/layers` |
 | `stackSync` | `/api/stack/sync` |
 | `stackSyncStatus` | `/api/stack/sync/status` |

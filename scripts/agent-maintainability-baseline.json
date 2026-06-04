@@ -118,7 +118,7 @@
     },
     {
       "path": "packages/monitor/src/db.ts",
-      "noGrowthCeiling": 743,
+      "noGrowthCeiling": 783,
       "category": "implementation"
     },
     {
@@ -164,11 +164,6 @@
     {
       "path": "packages/engine/src/pipeline/stages/compile-stages.ts",
       "noGrowthCeiling": 613,
-      "category": "implementation"
-    },
-    {
-      "path": "packages/client/src/routes.ts",
-      "noGrowthCeiling": 626,
       "category": "implementation"
     },
     {

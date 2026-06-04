@@ -6,9 +6,9 @@
 import * as React from 'react';
 import { Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import type { NowMetricsPanel } from '@/lib/selectors/metrics';
-import { formatDuration } from '@/lib/format';
+import { ChartContainer, ChartTooltip, type ChartConfig } from '@/components/ui/chart';
+import type { MetricsRunBar, NowMetricsPanel, RunOutcome } from '@/lib/selectors/metrics';
+import { formatDuration, formatRelativeTime } from '@/lib/format';
 
 interface MetricsPanelProps {
   model: NowMetricsPanel;
@@ -21,6 +21,56 @@ const SUCCESS_CONFIG: ChartConfig = {
 };
 
 const DURATION_CONFIG: ChartConfig = { durationMin: { label: 'Duration', color: 'var(--color-blue)' } };
+
+const OUTCOME_LABEL: Record<RunOutcome, string> = {
+  completed: 'Landed',
+  failed: 'Failed',
+  running: 'Running',
+  other: 'Other',
+};
+
+/**
+ * Tooltip for a single duration bar. Reads the full run from the bar payload so
+ * it can show the plan name, outcome, and formatted duration rather than the
+ * raw build id and unformatted minutes recharts hands the generic tooltip.
+ */
+function DurationTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: MetricsRunBar }> }) {
+  if (!active || !payload || payload.length === 0) return null;
+  const bar = payload[0]?.payload;
+  if (!bar) return null;
+  const durationLabel = formatDuration(bar.durationMin * 60_000);
+  const startedMs = new Date(bar.startedAt).getTime();
+  const whenLabel = Number.isNaN(startedMs) ? null : formatRelativeTime(Date.now() - startedMs);
+  return (
+    <div
+      // Float above the hovered bar (centered on the cursor) instead of sitting
+      // on top of the 80px-tall chart, which would hide the bar being inspected.
+      style={{ transform: 'translate(-50%, calc(-100% - 10px))' }}
+      className="grid w-[15rem] max-w-[15rem] gap-1.5 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md"
+    >
+      <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+        <span className="h-2 w-2 shrink-0 rounded-[2px]" style={{ backgroundColor: bar.color }} />
+        <span className="min-w-0 truncate">{bar.label}</span>
+      </div>
+      <div className="grid gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Outcome</span>
+          <span className="font-medium text-foreground">{OUTCOME_LABEL[bar.outcome]}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">{bar.outcome === 'running' ? 'Elapsed' : 'Duration'}</span>
+          <span className="font-mono font-medium tabular-nums text-foreground">{durationLabel}</span>
+        </div>
+        {whenLabel && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Started</span>
+            <span className="font-mono tabular-nums text-foreground">{whenLabel}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function LandRateDonut({ model }: { model: NowMetricsPanel }) {
   const pct = model.landRate != null ? Math.round(model.landRate * 100) : null;
@@ -82,11 +132,9 @@ function ThroughputBars({ model }: { model: NowMetricsPanel }) {
           <YAxis hide />
           <ChartTooltip
             cursor={false}
-            content={
-              <ChartTooltipContent
-                formatter={(v, name) => (name === 'durationMin' ? formatDuration(Number(v) * 60_000) : String(v))}
-              />
-            }
+            offset={0}
+            allowEscapeViewBox={{ x: true, y: true }}
+            content={<DurationTooltip />}
           />
           <Bar dataKey="durationMin" radius={1} isAnimationActive={false}>
             {model.runBars.map((bar) => (

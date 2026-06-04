@@ -328,12 +328,12 @@ describe('CLI --after flag wiring', () => {
   });
 
   it('EnqueueRequest exposes optional afterQueueId field', () => {
-    const routesSource = readRepoFile('packages/client/src/routes.ts');
-    expect(routesSource).toContain('afterQueueId?: string');
+    const routeCoreSource = readRepoFile('packages/client/src/routes/core.ts');
+    expect(routeCoreSource).toContain('afterQueueId?: string');
     // Should be inside the EnqueueRequest interface
-    const enqueueRequestBlock = routesSource.slice(
-      routesSource.indexOf('export interface EnqueueRequest {'),
-      routesSource.indexOf('}', routesSource.indexOf('export interface EnqueueRequest {')),
+    const enqueueRequestBlock = routeCoreSource.slice(
+      routeCoreSource.indexOf('export interface EnqueueRequest {'),
+      routeCoreSource.indexOf('}', routeCoreSource.indexOf('export interface EnqueueRequest {')),
     );
     expect(enqueueRequestBlock).toContain('afterQueueId?: string');
   });

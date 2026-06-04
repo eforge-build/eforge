@@ -520,6 +520,8 @@ export type {
   QueueItem,
   SessionMetadata,
   RunInfo,
+  DailySpend,
+  SpendSummary,
   BuildStageSpec,
   ReviewProfileConfig,
   RunSummary,

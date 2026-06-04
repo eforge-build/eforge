@@ -25,7 +25,7 @@ export async function generateApi(opts: {
   repoRoot: string;
 }): Promise<void> {
   const header = buildProvenanceHeader({
-    sourceFiles: ['packages/client/src/routes.ts'],
+    sourceFiles: ['packages/client/src/routes/route-map.ts'],
   });
 
   // Sort routes alphabetically for deterministic output
