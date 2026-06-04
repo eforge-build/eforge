@@ -41,6 +41,10 @@ function makeRegistry(opts: {
       validationProviders: opts.validationProviders.length,
       tools: 0,
       prdEnrichers: 0,
+      actions: 0,
+      consoleContributions: 0,
+      integrationCommands: 0,
+      deepLinks: 0,
     },
   };
   return {
@@ -55,6 +59,10 @@ function makeRegistry(opts: {
     validationProviders: opts.validationProviders,
     tools: [],
     prdEnrichers: [],
+    actions: [],
+    consoleContributions: [],
+    integrationCommands: [],
+    deepLinks: [],
     diagnostics: [],
   };
 }
@@ -204,6 +212,10 @@ describe('validation provider projection', () => {
         validationProviders: 1,
         tools: 0,
         prdEnrichers: 0,
+        actions: 0,
+        consoleContributions: 0,
+        integrationCommands: 0,
+        deepLinks: 0,
       },
     };
 
@@ -232,6 +244,10 @@ describe('validation provider projection', () => {
       ],
       tools: [],
       prdEnrichers: [],
+      actions: [],
+      consoleContributions: [],
+      integrationCommands: [],
+      deepLinks: [],
       diagnostics: [],
     };
 

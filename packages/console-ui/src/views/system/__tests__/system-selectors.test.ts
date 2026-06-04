@@ -6,6 +6,7 @@ import {
   selectSessionPlanReadinessCounts,
   selectConfigSourceRows,
   selectModelTotals,
+  selectExtensionContributionManifestSummary,
 } from '@/lib/selectors';
 import type {
   AgentRuntimeProfileInfo,
@@ -65,6 +66,44 @@ describe('selectExtensionDiagnosticCounts', () => {
     expect(result.errors).toBe(2);
     expect(result.warnings).toBe(2);
     expect(result.total).toBe(4);
+  });
+});
+
+describe('selectExtensionContributionManifestSummary', () => {
+  it('counts manifest families, renderers, and diagnostics', () => {
+    const result = selectExtensionContributionManifestSummary({
+      schemaVersion: 1,
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      actions: [{ id: 'ext.echo', localId: 'echo', extensionName: 'ext', extensionPath: '/ext.js', title: 'Echo', inputSchema: { type: 'object', properties: {} } }],
+      consoleContributions: [{
+        id: 'ext.panel',
+        localId: 'panel',
+        extensionName: 'ext',
+        extensionPath: '/ext.js',
+        title: 'Panel',
+        schemaVersion: 1,
+        blocks: [
+          { rendererId: 'text', content: 'hello' },
+          { rendererId: 'markdown', content: '**hello**' },
+          { rendererId: 'status-badge', content: 'ready', status: 'success' },
+          { rendererId: 'link', content: 'docs', href: 'https://example.test' },
+          { rendererId: 'action-button', content: 'Run', action: { actionId: 'ext.echo' } },
+          { rendererId: 'action-form', content: 'Configure', action: { actionId: 'ext.echo' } },
+        ],
+      }],
+      integrationCommands: [{ id: 'ext.cmd', localId: 'cmd', extensionName: 'ext', extensionPath: '/ext.js', label: 'Run', action: { actionId: 'ext.echo' } }],
+      deepLinks: [{ id: 'ext.link', localId: 'link', extensionName: 'ext', extensionPath: '/ext.js', label: 'Open' }],
+      diagnostics: [{ severity: 'warning', code: 'W1', message: 'heads up' }],
+    });
+
+    expect(result.families).toEqual({ actions: 1, consoleContributions: 1, integrationCommands: 1, deepLinks: 1 });
+    expect(result.renderers.text).toBe(1);
+    expect(result.renderers.markdown).toBe(1);
+    expect(result.renderers['status-badge']).toBe(1);
+    expect(result.renderers.link).toBe(1);
+    expect(result.renderers['action-button']).toBe(1);
+    expect(result.renderers['action-form']).toBe(1);
+    expect(result.diagnostics.warnings).toBe(1);
   });
 });
 

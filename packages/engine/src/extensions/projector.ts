@@ -1,4 +1,5 @@
-import type { ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary, ValidationProviderDetail } from '@eforge-build/client';
+import type { ConsoleContributionDetail, ExtensionActionDetail, ExtensionDeepLinkDetail, IntegrationCommandDetail, ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary, ValidationProviderDetail } from '@eforge-build/client';
+import { buildActionDetails, buildConsoleContributionDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
 import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionInstallProvenance, NativeExtensionPackageProvenance, NativeExtensionRegistry } from './types.js';
 
 export interface NativeExtensionRegistryProjection {
@@ -12,6 +13,10 @@ export interface NativeExtensionRegistryProjection {
     registrations: Record<string, number>;
     reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
     validationProviderDetails?: ValidationProviderDetail[];
+    actionDetails?: ExtensionActionDetail[];
+    consoleContributionDetails?: ConsoleContributionDetail[];
+    integrationCommandDetails?: IntegrationCommandDetail[];
+    deepLinkDetails?: ExtensionDeepLinkDetail[];
     packageProvenance?: NativeExtensionPackageProvenance;
     installProvenance?: NativeExtensionInstallProvenance;
   }>;
@@ -44,6 +49,10 @@ export interface NativeExtensionRegistryProjection {
     validationProviders: number;
     tools: number;
     prdEnrichers: number;
+    actions: number;
+    consoleContributions: number;
+    integrationCommands: number;
+    deepLinks: number;
   };
 }
 
@@ -117,6 +126,10 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
     extensions: registry.extensions.map((extension) => {
       const reviewerPerspectiveDetails = buildReviewerPerspectiveDetails(registry, extension.name, extension.path);
       const validationProviderDetails = buildValidationProviderDetails(registry, extension.name, extension.path);
+      const actionDetails = buildActionDetails(registry, extension.name, extension.path);
+      const consoleContributionDetails = buildConsoleContributionDetails(registry, extension.name, extension.path);
+      const integrationCommandDetails = buildIntegrationCommandDetails(registry, extension.name, extension.path);
+      const deepLinkDetails = buildDeepLinkDetails(registry, extension.name, extension.path);
       return {
         name: extension.name,
         path: extension.path,
@@ -127,6 +140,10 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         registrations: { ...extension.registrations },
         ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
         ...(validationProviderDetails !== undefined && { validationProviderDetails }),
+        ...(actionDetails !== undefined && { actionDetails }),
+        ...(consoleContributionDetails !== undefined && { consoleContributionDetails }),
+        ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
+        ...(deepLinkDetails !== undefined && { deepLinkDetails }),
         ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
         ...(extension.installProvenance !== undefined && { installProvenance: { ...extension.installProvenance } }),
       };
@@ -143,6 +160,10 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       validationProviders: registry.validationProviders.length,
       tools: registry.tools.length,
       prdEnrichers: registry.prdEnrichers.length,
+      actions: registry.actions.length,
+      consoleContributions: registry.consoleContributions.length,
+      integrationCommands: registry.integrationCommands.length,
+      deepLinks: registry.deepLinks.length,
     },
   };
 }

@@ -97,10 +97,10 @@ async function runCli(tmpDir: string, args: string[]): Promise<{ stdout: string;
 }
 
 describe('extension CLI commands', () => {
-  it('registers extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote subcommands', () => {
+  it('registers extension management and contribution subcommands', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['demote', 'install', 'list', 'new', 'promote', 'reload', 'remove', 'show', 'test', 'trust', 'untrust', 'update', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['contributions', 'demote', 'install', 'list', 'new', 'promote', 'reload', 'remove', 'show', 'test', 'trust', 'untrust', 'update', 'validate']);
   });
 
   it('extension install --scope project --trust --trusted-by --json prints the raw package response with provenance', async () => {

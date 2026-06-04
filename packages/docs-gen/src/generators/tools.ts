@@ -68,8 +68,10 @@ function extractStringLiteralValue(
 }
 
 function extractMcpTools(repoRoot: string): ToolEntry[] {
-  const filePath = resolve(repoRoot, 'packages', 'eforge', 'src', 'cli', 'mcp-proxy.ts');
-  if (!existsSync(filePath)) return [];
+  const filePaths = [
+    resolve(repoRoot, 'packages', 'eforge', 'src', 'cli', 'mcp-proxy.ts'),
+    resolve(repoRoot, 'packages', 'eforge', 'src', 'cli', 'mcp-extension-contributions.ts'),
+  ];
 
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
@@ -80,69 +82,68 @@ function extractMcpTools(repoRoot: string): ToolEntry[] {
     },
   });
 
-  const sourceFile = project.addSourceFileAtPath(filePath);
   const tools: ToolEntry[] = [];
 
-  // Import SyntaxKind from ts-morph's bundled typescript
-  // ts-morph wraps TypeScript; getDescendantsOfKind accepts the TS SyntaxKind numeric value.
-  // We use the string-based AST walker approach to avoid importing ts directly.
-  sourceFile.forEachDescendant((node) => {
-    // We're looking for CallExpression where expression text is 'createDaemonTool'
-    if (node.getKindName() !== 'CallExpression') return;
+  for (const filePath of filePaths) {
+    if (!existsSync(filePath)) continue;
+    const sourceFile = project.addSourceFileAtPath(filePath);
 
-    const callText = node.getText();
-    if (!callText.startsWith('createDaemonTool(')) return;
+    // Import SyntaxKind from ts-morph's bundled typescript
+    // ts-morph wraps TypeScript; getDescendantsOfKind accepts the TS SyntaxKind numeric value.
+    // We use the string-based AST walker approach to avoid importing ts directly.
+    sourceFile.forEachDescendant((node) => {
+      // We're looking for CallExpression where expression text is 'createDaemonTool'
+      if (node.getKindName() !== 'CallExpression') return;
 
-    // Get the arguments of the call expression
-    // ts-morph CallExpression has getArguments()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const callExpr = node as any;
-    const args: unknown[] = callExpr.getArguments?.() ?? [];
-    if (args.length < 3) return;
+      const callText = node.getText();
+      if (!callText.startsWith('createDaemonTool(')) return;
 
-    // Third argument is the options object
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const optObj = args[2] as any;
-    if (optObj.getKindName?.() !== 'ObjectLiteralExpression') return;
+      // Get the arguments of the call expression
+      // ts-morph CallExpression has getArguments()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const callExpr = node as any;
+      const args: unknown[] = callExpr.getArguments?.() ?? [];
+      if (args.length < 3) return;
 
-    let name: string | undefined;
-    let description: string | undefined;
+      // Third argument is the options object
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const optObj = args[2] as any;
+      if (optObj.getKindName?.() !== 'ObjectLiteralExpression') return;
 
-    const nameProp = optObj.getProperty?.('name');
-    const descProp = optObj.getProperty?.('description');
+      let name: string | undefined;
+      let description: string | undefined;
 
-    if (nameProp?.getKindName?.() === 'PropertyAssignment') {
-      const init = nameProp.getInitializer?.();
-      if (init?.getKindName?.() === 'StringLiteral') {
-        name = init.getLiteralValue?.() as string | undefined;
+      const nameProp = optObj.getProperty?.('name');
+      const descProp = optObj.getProperty?.('description');
+
+      if (nameProp?.getKindName?.() === 'PropertyAssignment') {
+        const init = nameProp.getInitializer?.();
+        if (init?.getKindName?.() === 'StringLiteral') {
+          name = init.getLiteralValue?.() as string | undefined;
+        }
       }
-    }
 
-    if (descProp?.getKindName?.() === 'PropertyAssignment') {
-      const init = descProp.getInitializer?.();
-      if (init?.getKindName?.() === 'StringLiteral') {
-        description = init.getLiteralValue?.() as string | undefined;
+      if (descProp?.getKindName?.() === 'PropertyAssignment') {
+        const init = descProp.getInitializer?.();
+        if (init?.getKindName?.() === 'StringLiteral') {
+          description = init.getLiteralValue?.() as string | undefined;
+        }
       }
-    }
 
-    if (name) {
-      tools.push({ name, description: description ?? '' });
-    }
-  });
+      if (name) {
+        tools.push({ name, description: description ?? '' });
+      }
+    });
+  }
 
   return tools;
 }
 
 function extractPiTools(repoRoot: string): ToolEntry[] {
-  const filePath = resolve(
-    repoRoot,
-    'packages',
-    'pi-eforge',
-    'extensions',
-    'eforge',
-    'index.ts',
-  );
-  if (!existsSync(filePath)) return [];
+  const filePaths = [
+    resolve(repoRoot, 'packages', 'pi-eforge', 'extensions', 'eforge', 'index.ts'),
+    resolve(repoRoot, 'packages', 'pi-eforge', 'extensions', 'eforge', 'extension-contributions.ts'),
+  ];
 
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
@@ -153,49 +154,53 @@ function extractPiTools(repoRoot: string): ToolEntry[] {
     },
   });
 
-  const sourceFile = project.addSourceFileAtPath(filePath);
   const tools: ToolEntry[] = [];
 
-  sourceFile.forEachDescendant((node) => {
-    if (node.getKindName() !== 'CallExpression') return;
+  for (const filePath of filePaths) {
+    if (!existsSync(filePath)) continue;
+    const sourceFile = project.addSourceFileAtPath(filePath);
 
-    const callText = node.getText();
-    if (!callText.includes('.registerTool(')) return;
+    sourceFile.forEachDescendant((node) => {
+      if (node.getKindName() !== 'CallExpression') return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const callExpr = node as any;
-    const args: unknown[] = callExpr.getArguments?.() ?? [];
-    if (args.length < 1) return;
+      const callText = node.getText();
+      if (!callText.includes('.registerTool(')) return;
 
-    // First argument is the options object
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const optObj = args[0] as any;
-    if (optObj.getKindName?.() !== 'ObjectLiteralExpression') return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const callExpr = node as any;
+      const args: unknown[] = callExpr.getArguments?.() ?? [];
+      if (args.length < 1) return;
 
-    let name: string | undefined;
-    let description: string | undefined;
+      // First argument is the options object
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const optObj = args[0] as any;
+      if (optObj.getKindName?.() !== 'ObjectLiteralExpression') return;
 
-    const nameProp = optObj.getProperty?.('name');
-    const descProp = optObj.getProperty?.('description');
+      let name: string | undefined;
+      let description: string | undefined;
 
-    if (nameProp?.getKindName?.() === 'PropertyAssignment') {
-      const init = nameProp.getInitializer?.();
-      if (init?.getKindName?.() === 'StringLiteral') {
-        name = init.getLiteralValue?.() as string | undefined;
+      const nameProp = optObj.getProperty?.('name');
+      const descProp = optObj.getProperty?.('description');
+
+      if (nameProp?.getKindName?.() === 'PropertyAssignment') {
+        const init = nameProp.getInitializer?.();
+        if (init?.getKindName?.() === 'StringLiteral') {
+          name = init.getLiteralValue?.() as string | undefined;
+        }
       }
-    }
 
-    if (descProp?.getKindName?.() === 'PropertyAssignment') {
-      const init = descProp.getInitializer?.();
-      if (init?.getKindName?.() === 'StringLiteral') {
-        description = init.getLiteralValue?.() as string | undefined;
+      if (descProp?.getKindName?.() === 'PropertyAssignment') {
+        const init = descProp.getInitializer?.();
+        if (init?.getKindName?.() === 'StringLiteral') {
+          description = init.getLiteralValue?.() as string | undefined;
+        }
       }
-    }
 
-    if (name) {
-      tools.push({ name, description: description ?? '' });
-    }
-  });
+      if (name) {
+        tools.push({ name, description: description ?? '' });
+      }
+    });
+  }
 
   return tools;
 }
@@ -236,7 +241,9 @@ export async function generateTools(opts: {
   const header = buildProvenanceHeader({
     sourceFiles: [
       'packages/eforge/src/cli/mcp-proxy.ts',
+      'packages/eforge/src/cli/mcp-extension-contributions.ts',
       'packages/pi-eforge/extensions/eforge/index.ts',
+      'packages/pi-eforge/extensions/eforge/extension-contributions.ts',
       'eforge-plugin/skills/',
       'packages/pi-eforge/skills/',
     ],

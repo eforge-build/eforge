@@ -37,6 +37,7 @@ const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
   // eforge CLI — MCP tool integration (out of scope for plan-03)
   'packages/eforge/src/cli/mcp-proxy.ts',
   'packages/eforge/src/cli/mcp-tool-factory.ts',
+  'packages/eforge/src/cli/mcp-extension-contributions.ts',
 
   // engine — TypeBox-to-Zod adapter for Claude Agent SDK tool() registration.
   // This is the only permitted Zod import in engine source after plan-03.

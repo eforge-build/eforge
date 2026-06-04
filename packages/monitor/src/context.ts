@@ -25,6 +25,7 @@ export interface MonitorContext {
   planOutputDir: string;
   uiRoots: MonitorUiRoots;
   versionInfo: MonitorVersionInfo;
+  daemonSessionId: string;
   cachedGitRemote: string | null;
   apiRoutes: typeof API_ROUTES;
   resolveSessionId(id: string): string;
@@ -53,6 +54,7 @@ export async function createMonitorContext(
     consoleUiDir: options.uiDirs?.consoleUiDir ?? DEFAULT_UI_ROOTS.consoleUiDir,
   };
   const queuePaths = cwd ? buildQueuePaths(cwd, options) : undefined;
+  const daemonSessionId = options.daemonSessionId ?? `daemon-${process.pid}-${Date.now()}`;
 
   try {
     db.cleanupOldSessions(options.config?.monitor?.retentionCount ?? 100);
@@ -80,6 +82,7 @@ export async function createMonitorContext(
     planOutputDir,
     uiRoots,
     versionInfo,
+    daemonSessionId,
     cachedGitRemote,
     apiRoutes: API_ROUTES,
     resolveSessionId(id) {

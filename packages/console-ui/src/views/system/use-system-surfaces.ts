@@ -16,6 +16,7 @@ import {
   fetchSystemProfileShow,
   fetchSystemExtensionList,
   fetchSystemExtensionValidate,
+  fetchSystemExtensionContributionManifest,
   fetchSystemPlaybookList,
   fetchSystemSessionPlanList,
   fetchSystemModelProviders,
@@ -40,6 +41,7 @@ function makeInitialState(): SystemSurfacesState {
     extensions: {
       list: { status: 'idle' },
       validate: { status: 'idle' },
+      contributions: { status: 'idle' },
     },
     playbooks: {
       list: { status: 'idle' },
@@ -90,6 +92,7 @@ export function useSystemSurfaces() {
       extensions: {
         list: { status: 'loading', data: prev.extensions.list.data },
         validate: { status: 'loading', data: prev.extensions.validate.data },
+        contributions: { status: 'loading', data: prev.extensions.contributions.data },
       },
       playbooks: {
         list: { status: 'loading', data: prev.playbooks.list.data },
@@ -201,6 +204,23 @@ export function useSystemSurfaces() {
       .catch((err) => {
         if (signal.aborted) return;
         setState((prev) => ({ ...prev, extensions: { ...prev.extensions, validate: { status: 'error', error: errorMessage(err), data: prev.extensions.validate.data, updatedAt: prev.extensions.validate.updatedAt } } }));
+      });
+
+    fetchSystemExtensionContributionManifest(signal)
+      .then((data) => {
+        if (signal.aborted) return;
+        const status = data.actions.length === 0
+          && data.consoleContributions.length === 0
+          && data.integrationCommands.length === 0
+          && data.deepLinks.length === 0
+          && (data.diagnostics?.length ?? 0) === 0
+          ? 'empty'
+          : 'success';
+        setState((prev) => ({ ...prev, extensions: { ...prev.extensions, contributions: { status, data, updatedAt: now } } }));
+      })
+      .catch((err) => {
+        if (signal.aborted) return;
+        setState((prev) => ({ ...prev, extensions: { ...prev.extensions, contributions: { status: 'error', error: errorMessage(err), data: prev.extensions.contributions.data, updatedAt: prev.extensions.contributions.updatedAt } } }));
       });
 
     fetchSystemPlaybookList(signal)

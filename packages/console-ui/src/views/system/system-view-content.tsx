@@ -9,6 +9,7 @@ import { DaemonSection } from './daemon-section';
 import { ConfigSection } from './config-section';
 import { ProfilesSection } from './profiles-section';
 import { ExtensionsSection } from './extensions-section';
+import { ExtensionContributionsSection } from './extension-contributions-section';
 import { PlaybooksSection } from './playbooks-section';
 import { SessionPlansSection } from './session-plans-section';
 import { ModelsSection } from './models-section';
@@ -92,6 +93,10 @@ export function SystemViewContent({ state, onRefresh, projectState }: SystemView
         <ExtensionsSection
           list={state.extensions.list}
           validate={state.extensions.validate}
+        />
+
+        <ExtensionContributionsSection
+          manifest={state.extensions.contributions}
         />
 
         <PlaybooksSection

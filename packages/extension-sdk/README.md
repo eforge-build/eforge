@@ -63,7 +63,7 @@ The eforge daemon discovers and loads native extensions from three scopes:
 
 Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox. Project/team extensions require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading; any content change invalidates the stored hash and blocks the extension until re-trusted. Trust/untrust commands only discover and hash project/team candidates and update `.eforge/extension-trust.json`; they do not import the module or execute its factory. Later validate, test, reload, or build operations may load and execute trusted extension code.
 
-Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, and `registerValidationProvider` per-plan validate-stage execution are wired. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions remain deferred.
+Loader-time registration capture is available today for runtime-wired families: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution routes, Console System rendering for declarative contributions, and host discovery/invocation for actions, integration commands, and action-backed deep links are wired. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, session-plan extraction, and playbook extraction remain separate, deferred, or unsupported runtime phases.
 
 ## Registration methods
 
@@ -80,8 +80,49 @@ Loader-time registration capture is available today: the daemon calls each defau
 | `registerPrdEnricher(spec)` | Enrich PRD/build-source content before queue write | Yes | Yes (fail-open) |
 | `registerReviewerPerspective(spec)` | Add custom reviewer perspective | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Yes (per-plan `validate` build stage) |
+| `registerAction(action)` | Register an extension-authored action | Yes | Engine action dispatcher via daemon action invocation route |
+| `registerConsoleContribution(contribution)` | Register a Console contribution | Yes | Manifest/management metadata projection; Console renders declarative panels under `/console/system` |
+| `registerIntegrationCommand(command)` | Register a host integration command | Yes | Manifest/management metadata projection; host integrations can invoke action-backed commands |
+| `registerDeepLink(deepLink)` | Register a host deep-link | Yes | Manifest/management metadata projection; host integrations can invoke action-backed deep links |
 
-All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, tool availability tuning, `registerProfileRouter` pre-build dispatch, `beforeQueueDispatch` / `beforePlanMerge` / `beforeFinalMerge` policy gates, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, and `registerValidationProvider` per-plan validate-stage execution are wired; `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions land in subsequent runtime phases.
+All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, tool availability tuning, `registerProfileRouter` pre-build dispatch, `beforeQueueDispatch` / `beforePlanMerge` / `beforeFinalMerge` policy gates, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side action/contribution registry support, daemon contribution routes, Console System rendering for declarative contributions, and host discovery/invocation for actions, integration commands, and action-backed deep links are wired. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, session-plan extraction, and playbook extraction land in separate or subsequent phases or remain unsupported.
+
+### Actions and host contributions
+
+Use `registerAction` for daemon-invoked work and bind it to declarative surfaces with `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink`. Local action IDs are resolved to effective namespaced manifest IDs by eforge, so author examples can bind to the local ID while hosts see stable manifest metadata.
+
+```ts
+import {
+  Type,
+  defineConsoleContribution,
+  defineEforgeExtension,
+  defineExtensionAction,
+} from "@eforge-build/extension-sdk";
+
+const echoStatus = defineExtensionAction({
+  id: "echo-status",
+  title: "Echo status",
+  inputSchema: Type.Object({ message: Type.String() }),
+  outputSchema: Type.Object({ ok: Type.Boolean(), message: Type.String() }),
+  sideEffects: ["none"],
+  handler: ({ message }) => ({ ok: true, message }),
+});
+
+export default defineEforgeExtension((eforge) => {
+  eforge.registerAction(echoStatus);
+  eforge.registerConsoleContribution(defineConsoleContribution({
+    id: "status-panel",
+    title: "Status panel",
+    blocks: [{
+      rendererId: "action-button",
+      content: "Echo a safe default status.",
+      action: { actionId: "echo-status", inputDefaults: { message: "Hello" } },
+    }],
+  }));
+});
+```
+
+Action inputs require object-root TypeBox input schemas, action handlers must return JSON-safe outputs, and optional output schemas are enforced when present. Action handlers run as trusted unsandboxed Node code and reuse `extensions.eventHookTimeoutMs`; lifecycle events include provenance/duration/error metadata but omit raw input payloads and raw output payloads. Console contributions render inside `/console/system` using closed renderer IDs only; raw HTTP routes are unsupported, and arbitrary Console JavaScript, React bundles, or independently loaded frontend plugins are deferred/unsupported. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, session-plan extraction, and playbook extraction remain deferred. See [`examples/extensions/action-contribution.ts`](../../examples/extensions/action-contribution.ts) for a complete safe sample with a command and deep link.
 
 `registerProfileRouter` routers run before each queued PRD build. Per-router timeout is controlled by `extensions.profileRouterTimeoutMs`, which defaults to `extensions.eventHookTimeoutMs`. Routers are invoked sequentially in registration order using `selectBuildProfile` (preferred) or the deprecated `resolve` method. A `null`/`undefined` result defers to the next router. Routers that throw or time out emit `queue:profile:*` diagnostics and the next router is consulted (fail-open). An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are invoked. See [`examples/extensions/profile-router.ts`](../../examples/extensions/profile-router.ts) for a three-tier fallback example.
 
@@ -281,4 +322,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` review-cycle dispatch, and `registerValidationProvider` validate-stage execution are available. Runtime execution of remaining deferred capability families (approval workflow) will build on this stable contract.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` review-cycle dispatch, and `registerValidationProvider` validate-stage execution are available. Extension-authored actions, Console contributions, integration commands, and deep links have engine registry/runtime support, daemon manifest/action routes, Console System rendering, and host discovery/invocation for action-backed contributions.

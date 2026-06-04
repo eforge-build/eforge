@@ -16,6 +16,7 @@ import { withSessionId, withRunId, runSession } from '@eforge-build/engine/sessi
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { registerPlaybookCommand } from './playbook.js';
+import { registerExtensionContributionCommands } from './extension-contributions.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
@@ -1340,6 +1341,8 @@ export function createProgram(abortController?: AbortController, version?: strin
         process.exit(exitCode);
       }
     });
+
+  registerExtensionContributionCommands(extension);
 
   // Config commands
   const config = program

@@ -11,6 +11,8 @@ Autonomous plan-build-review CLI for code generation.
 
 ### `enqueue`
 
+**Full command:** `eforge enqueue`
+
 Normalize input and add it to the PRD queue
 
 
@@ -28,6 +30,8 @@ Normalize input and add it to the PRD queue
 | `--after <queue-id>` | Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact |
 
 ### `build`
+
+**Full command:** `eforge build`
 
 Compile + build + validate in one step
 
@@ -58,6 +62,8 @@ Compile + build + validate in one step
 
 ### `monitor`
 
+**Full command:** `eforge monitor`
+
 Start or connect to the monitor dashboard
 
 
@@ -69,20 +75,28 @@ Start or connect to the monitor dashboard
 
 ### `status`
 
+**Full command:** `eforge status`
+
 Check running builds
 
 
 ### `queue`
+
+**Full command:** `eforge queue`
 
 Manage PRD queue
 
 
 #### `list`
 
+**Full command:** `eforge queue list`
+
 Show PRDs in the queue
 
 
 #### `run`
+
+**Full command:** `eforge queue run`
 
 Process PRDs from the queue
 
@@ -105,6 +119,8 @@ Process PRDs from the queue
 
 #### `exec`
 
+**Full command:** `eforge queue exec`
+
 Build a single PRD directly (subprocess entry point for the queue scheduler)
 
 
@@ -123,10 +139,14 @@ Build a single PRD directly (subprocess entry point for the queue scheduler)
 
 ### `extension`
 
+**Full command:** `eforge extension`
+
 Manage native eforge extensions
 
 
 #### `list`
+
+**Full command:** `eforge extension list`
 
 List discovered native extensions
 
@@ -139,6 +159,8 @@ List discovered native extensions
 
 #### `show`
 
+**Full command:** `eforge extension show`
+
 Show one native extension by name
 
 
@@ -150,6 +172,8 @@ Show one native extension by name
 
 #### `validate`
 
+**Full command:** `eforge extension validate`
+
 Validate configured native extensions, or a single extension name/path
 
 
@@ -160,6 +184,8 @@ Validate configured native extensions, or a single extension name/path
 | `--json` | Output JSON |
 
 #### `test`
+
+**Full command:** `eforge extension test`
 
 Dry-run native extension event hooks against fixture or monitor events
 
@@ -175,6 +201,8 @@ Dry-run native extension event hooks against fixture or monitor events
 
 #### `new`
 
+**Full command:** `eforge extension new`
+
 Scaffold a native eforge extension
 
 
@@ -189,6 +217,8 @@ Scaffold a native eforge extension
 
 #### `reload`
 
+**Full command:** `eforge extension reload`
+
 Reload native extension discovery and restart the daemon watcher when running
 
 
@@ -199,6 +229,8 @@ Reload native extension discovery and restart the daemon watcher when running
 | `--json` | Output JSON |
 
 #### `trust`
+
+**Full command:** `eforge extension trust`
 
 Trust a project-team native extension by name or path
 
@@ -212,6 +244,8 @@ Trust a project-team native extension by name or path
 
 #### `untrust`
 
+**Full command:** `eforge extension untrust`
+
 Remove trust for a project-team native extension by name or path
 
 
@@ -222,6 +256,8 @@ Remove trust for a project-team native extension by name or path
 | `--json` | Output JSON |
 
 #### `install`
+
+**Full command:** `eforge extension install`
 
 Install a native extension package from an npm package, local path, or tarball
 
@@ -239,6 +275,8 @@ Install a native extension package from an npm package, local path, or tarball
 
 #### `update`
 
+**Full command:** `eforge extension update`
+
 Update an installed extension package to the latest version
 
 
@@ -252,6 +290,8 @@ Update an installed extension package to the latest version
 
 #### `remove`
 
+**Full command:** `eforge extension remove`
+
 Remove an installed extension package
 
 
@@ -263,6 +303,8 @@ Remove an installed extension package
 | `--json` | Output JSON |
 
 #### `promote`
+
+**Full command:** `eforge extension promote`
 
 Promote a project-local extension to project-team scope
 
@@ -278,6 +320,8 @@ Promote a project-local extension to project-team scope
 
 #### `demote`
 
+**Full command:** `eforge extension demote`
+
 Demote a project-team extension to project-local scope
 
 
@@ -288,22 +332,67 @@ Demote a project-team extension to project-local scope
 | `--force` | Overwrite an existing extension at project-local scope |
 | `--json` | Output JSON |
 
+#### `contributions`
+
+**Full command:** `eforge extension contributions`
+
+Discover and invoke extension-provided host contributions
+
+
+##### `list`
+
+**Full command:** `eforge extension contributions list`
+
+List extension-provided actions, integration commands, and deep links
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--kind <kind>` | Contribution kind: action, command, deep-link, or all |
+| `--json` | Output JSON |
+
+##### `invoke`
+
+**Full command:** `eforge extension contributions invoke`
+
+Invoke an extension action, integration command, or action-backed deep link
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--kind <kind>` | Contribution kind: action, command, or deep-link |
+| `--input-json <json>` | JSON object input for the action |
+| `--input-file <path>` | Path to a JSON object input file |
+| `--json` | Output JSON |
+
 ### `config`
+
+**Full command:** `eforge config`
 
 Manage eforge configuration
 
 
 #### `validate`
 
+**Full command:** `eforge config validate`
+
 Validate eforge/config.yaml configuration
 
 
 #### `show`
 
+**Full command:** `eforge config show`
+
 Show resolved eforge configuration
 
 
 ### `debug-composer`
+
+**Full command:** `eforge debug-composer`
 
 Run only the pipeline-composer stage under one or more backend profiles and dump the request payload each backend constructs (system prompt, tools, model, thinking) for side-by-side diffing. Use --backend <name> to select profiles; repeat to compare multiple.
 
@@ -318,10 +407,14 @@ Run only the pipeline-composer stage under one or more backend profiles and dump
 
 ### `daemon`
 
+**Full command:** `eforge daemon`
+
 Manage persistent daemon server
 
 
 #### `start`
+
+**Full command:** `eforge daemon start`
 
 Start the persistent daemon server
 
@@ -334,6 +427,8 @@ Start the persistent daemon server
 
 #### `stop`
 
+**Full command:** `eforge daemon stop`
+
 Stop the persistent daemon server
 
 
@@ -345,15 +440,21 @@ Stop the persistent daemon server
 
 #### `status`
 
+**Full command:** `eforge daemon status`
+
 Show daemon status
 
 
 #### `kill`
 
+**Full command:** `eforge daemon kill`
+
 Force-kill the daemon (SIGKILL)
 
 
 ### `recover`
+
+**Full command:** `eforge recover`
 
 Analyse a failed build and write recovery sidecar files
 
@@ -368,6 +469,8 @@ Analyse a failed build and write recovery sidecar files
 
 ### `apply-recovery`
 
+**Full command:** `eforge apply-recovery`
+
 Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)
 
 
@@ -379,6 +482,8 @@ Apply the recovery verdict for a failed build plan (requeue, enqueue successor, 
 | `--no-monitor` | Disable web monitor |
 
 ### `resume`
+
+**Full command:** `eforge resume`
 
 Queue a compiled build resume for scheduler dispatch
 
@@ -396,15 +501,21 @@ Queue a compiled build resume for scheduler dispatch
 
 ### `playbook`
 
+**Full command:** `eforge playbook`
+
 Manage playbooks
 
 
 #### `list`
 
+**Full command:** `eforge playbook list`
+
 List all available playbooks with source and shadow chain
 
 
 #### `new`
+
+**Full command:** `eforge playbook new`
 
 Scaffold a new playbook (non-interactive, for scripts)
 
@@ -421,10 +532,14 @@ Scaffold a new playbook (non-interactive, for scripts)
 
 #### `edit`
 
+**Full command:** `eforge playbook edit`
+
 Open a playbook in $EDITOR, validate, and save to the same tier
 
 
 #### `run`
+
+**Full command:** `eforge playbook run`
 
 Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:playbook run <name> for interactive planning)
 
@@ -437,15 +552,21 @@ Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbook
 
 #### `promote`
 
+**Full command:** `eforge playbook promote`
+
 Promote a playbook from project-local to project-team (stages with git add)
 
 
 #### `demote`
 
+**Full command:** `eforge playbook demote`
+
 Demote a playbook from project-team to project-local (.eforge/playbooks/)
 
 
 ### `play`
+
+**Full command:** `eforge play`
 
 Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns requires-agent for planning playbooks
 
@@ -458,15 +579,21 @@ Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; ret
 
 ### `mcp-proxy`
 
+**Full command:** `eforge mcp-proxy`
+
 Run the MCP stdio proxy server (used by Claude Code plugin)
 
 
 ### `stack`
 
+**Full command:** `eforge stack`
+
 Stack management commands
 
 
 #### `sync`
+
+**Full command:** `eforge stack sync`
 
 Sync the git-spice stack with remote and restack eligible branches
 

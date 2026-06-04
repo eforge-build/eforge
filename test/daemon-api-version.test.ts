@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 51 for resume-build queued response contract changes', () => {
-    expect(DAEMON_API_VERSION).toBe(51);
+  it('is 52 for extension contribution manifest and action invocation route contracts', () => {
+    expect(DAEMON_API_VERSION).toBe(52);
   });
 });

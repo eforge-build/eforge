@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as sdk from '@eforge-build/extension-sdk';
 
+import actionContribution from '../examples/extensions/action-contribution.js';
 import agentTools from '../examples/extensions/agent-tools.js';
 
 // Import example default exports so TypeScript verifies they conform to the
@@ -29,6 +30,7 @@ import validationProvider from '../examples/extensions/validation-provider.js';
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
+  'action-contribution.ts',
   'agent-context.ts',
   'agent-tools.ts',
   'issue-tracker.ts',
@@ -39,6 +41,9 @@ const importedExampleFiles = [
   'slack-webhook-notifier.ts',
   'validation-provider.ts',
 ].sort();
+
+const _factoryCheckActionContribution: sdk.EforgeExtensionFactory = actionContribution;
+void _factoryCheckActionContribution;
 
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
@@ -114,6 +119,55 @@ const _policyGateStub: sdk.EforgeExtensionFactory = (api) => {
 };
 void _policyGateStub;
 
+const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
+  const action = sdk.defineExtensionAction({
+    id: 'say-hi',
+    title: 'Say hi',
+    inputSchema: sdk.Type.Object({ name: sdk.Type.String() }),
+    outputSchema: sdk.Type.Object({ greeting: sdk.Type.String() }),
+    sideEffects: ['none'],
+    handler: (input, ctx) => {
+      const _requestedBy: sdk.ExtensionActionRequestedBy = ctx.requestedBy;
+      const _host: sdk.ExtensionActionRequestedByHost = _requestedBy.host;
+      void _host;
+      return { greeting: `Hello ${input.name}` };
+    },
+  });
+  const contribution: sdk.ConsoleContribution = sdk.defineConsoleContribution({
+    id: 'hello-panel',
+    title: 'Hello panel',
+    blocks: [{ rendererId: 'action-button', content: 'Say hi', action: { actionId: 'say-hi' } }],
+  });
+  const command: sdk.IntegrationCommand = sdk.defineIntegrationCommand({
+    id: 'hello-command',
+    label: 'Say hi',
+    inputSchema: sdk.Type.Object({ name: sdk.Type.String() }),
+    action: { actionId: 'say-hi', inputDefaults: { name: 'world' } },
+  });
+  const deepLink: sdk.ExtensionDeepLink = sdk.defineExtensionDeepLink({
+    id: 'hello-link',
+    label: 'Hello link',
+    urlTemplate: 'https://example.test/{id}',
+    action: { actionId: 'say-hi' },
+  });
+
+  api.registerAction(action);
+  api.registerConsoleContribution(contribution);
+  api.registerIntegrationCommand(command);
+  api.registerDeepLink(deepLink);
+};
+void _contributionApiStub;
+
+const _objectRootActionSchemaStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerAction({
+    id: 'bad-input-schema',
+    title: 'Bad input schema',
+    // @ts-expect-error Extension actions must use object-root TypeBox input schemas.
+    inputSchema: sdk.Type.String(),
+    handler: () => null,
+  });
+};
+void _objectRootActionSchemaStub;
 
 // Compile-time examples: old one-argument input source remains compatible
 const _oldInputSourceStub: sdk.EforgeExtensionFactory = (api) => {
@@ -260,6 +314,54 @@ describe('extension examples', () => {
       .filter((file) => file.endsWith('.ts'))
       .sort();
     expect(importedExampleFiles).toEqual(exampleFiles);
+  });
+
+  it('action contribution example registers one action, Console contribution, host command, and deep link', async () => {
+    const actions: sdk.ExtensionAction[] = [];
+    const consoleContributions: sdk.ConsoleContribution[] = [];
+    const integrationCommands: sdk.IntegrationCommand[] = [];
+    const deepLinks: sdk.ExtensionDeepLink[] = [];
+    const api = {
+      registerAction(action: sdk.ExtensionAction) {
+        actions.push(action);
+      },
+      registerConsoleContribution(contribution: sdk.ConsoleContribution) {
+        consoleContributions.push(contribution);
+      },
+      registerIntegrationCommand(command: sdk.IntegrationCommand) {
+        integrationCommands.push(command);
+      },
+      registerDeepLink(deepLink: sdk.ExtensionDeepLink) {
+        deepLinks.push(deepLink);
+      },
+    } as unknown as sdk.EforgeExtensionAPI;
+
+    actionContribution(api);
+
+    expect(actions).toHaveLength(1);
+    expect(consoleContributions).toHaveLength(1);
+    expect(integrationCommands).toHaveLength(1);
+    expect(deepLinks).toHaveLength(1);
+
+    const [action] = actions as [sdk.ExtensionAction];
+    const [consoleContribution] = consoleContributions as [sdk.ConsoleContribution];
+    const [integrationCommand] = integrationCommands as [sdk.IntegrationCommand];
+    const [deepLink] = deepLinks as [sdk.ExtensionDeepLink];
+
+    expect(action.id).toBe('echo-status');
+    expect(action.inputSchema.type).toBe('object');
+    expect(action.outputSchema?.type).toBe('object');
+    expect(consoleContribution.blocks.some((block) => block.rendererId === 'action-button')).toBe(true);
+    expect(consoleContribution.blocks.some((block) => block.rendererId === 'action-form')).toBe(true);
+    expect(integrationCommand.action.actionId).toBe('echo-status');
+    expect(deepLink.action?.actionId).toBe('echo-status');
+    await expect(
+      Promise.resolve(action.handler({ message: 'hello', dryRun: false }, {} as sdk.ExtensionActionContext)),
+    ).resolves.toEqual({
+      ok: true,
+      message: 'hello',
+      dryRun: false,
+    });
   });
 
   it('agent tools example registers provenance and injects the tool only for builder runs with the effective name in prompt text', async () => {
@@ -420,6 +522,18 @@ type _TypeExports = [
   sdk.ValidationProviderSpec,
   sdk.EforgeEvent,
   sdk.AgentRole,
+  sdk.ExtensionAction,
+  sdk.ExtensionActionBinding,
+  sdk.ExtensionActionContext,
+  sdk.ExtensionActionOutput,
+  sdk.ExtensionActionRequestedBy,
+  sdk.ExtensionActionRequestedByHost,
+  sdk.ExtensionActionSideEffect,
+  sdk.ConsoleContribution,
+  sdk.ConsoleContributionBlock,
+  sdk.ConsoleContributionRendererId,
+  sdk.IntegrationCommand,
+  sdk.ExtensionDeepLink,
   sdk.TSchema,
   sdk.TObject,
   sdk.Static<sdk.TObject>,

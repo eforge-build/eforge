@@ -6,6 +6,8 @@ import type {
   AgentRuntimeProfileInfo,
   ExtensionDiagnostic,
   ExtensionListResponse,
+  ExtensionContributionManifestResponse,
+  ConsoleContributionRendererId,
   PlaybookListEntry,
   SessionPlanListEntryWire,
   ConfigShowVerboseResponse,
@@ -50,6 +52,10 @@ export interface ExtensionRegistrationTotals {
   validationProviders: number;
   tools: number;
   prdEnrichers: number;
+  actions: number;
+  consoleContributions: number;
+  integrationCommands: number;
+  deepLinks: number;
 }
 
 /** Count extension diagnostics by severity. */
@@ -70,6 +76,44 @@ export function selectExtensionRegistrationTotals(
   response: ExtensionListResponse,
 ): ExtensionRegistrationTotals {
   return { ...response.totals };
+}
+
+export interface ExtensionContributionManifestSummary {
+  families: {
+    actions: number;
+    consoleContributions: number;
+    integrationCommands: number;
+    deepLinks: number;
+  };
+  renderers: Partial<Record<ConsoleContributionRendererId, number>>;
+  diagnostics: ExtensionDiagnosticCounts;
+}
+
+export function selectExtensionContributionManifestSummary(
+  manifest: ExtensionContributionManifestResponse,
+): ExtensionContributionManifestSummary {
+  const renderers: Partial<Record<ConsoleContributionRendererId, number>> = {};
+  for (const contribution of manifest.consoleContributions) {
+    for (const block of contribution.blocks) {
+      renderers[block.rendererId] = (renderers[block.rendererId] ?? 0) + 1;
+    }
+  }
+  let errors = 0;
+  let warnings = 0;
+  for (const diagnostic of manifest.diagnostics ?? []) {
+    if (diagnostic.severity === 'error') errors++;
+    if (diagnostic.severity === 'warning') warnings++;
+  }
+  return {
+    families: {
+      actions: manifest.actions.length,
+      consoleContributions: manifest.consoleContributions.length,
+      integrationCommands: manifest.integrationCommands.length,
+      deepLinks: manifest.deepLinks.length,
+    },
+    renderers,
+    diagnostics: { errors, warnings, total: manifest.diagnostics?.length ?? 0 },
+  };
 }
 
 // ---------------------------------------------------------------------------

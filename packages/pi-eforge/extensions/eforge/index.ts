@@ -83,6 +83,7 @@ import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
 import { handleStackSyncCommand } from './stack-sync-command';
+import { registerExtensionContributionTool, registerExtensionContributionsCommand } from './extension-contributions';
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type LandingAction,
@@ -882,6 +883,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       return jsonResult(result.data);
     },
   });
+
+  registerExtensionContributionTool(pi);
 
   // ------------------------------------------------------------------
   // Tool: eforge_models
@@ -2207,6 +2210,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       await handlePlaybookCommand(pi, _latestCtx, args ?? "");
     },
   });
+
+  registerExtensionContributionsCommand(pi, () => _latestCtx);
 
 
 

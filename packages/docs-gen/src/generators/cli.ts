@@ -38,11 +38,14 @@ function optionsTable(cmd: Command): string[] {
   return lines;
 }
 
-function renderCommand(cmd: Command, level: number): string[] {
+function renderCommand(cmd: Command, level: number, ancestors: string[] = []): string[] {
   const h = '#'.repeat(Math.min(level, 6));
   const lines: string[] = [];
+  const commandPath = [...ancestors, cmd.name()];
 
   lines.push(`${h} \`${cmd.name()}\``);
+  lines.push('');
+  lines.push(`**Full command:** \`eforge ${commandPath.join(' ')}\``);
   lines.push('');
 
   if (cmd.description()) {
@@ -62,7 +65,7 @@ function renderCommand(cmd: Command, level: number): string[] {
   // Recurse into subcommands
   for (const sub of cmd.commands as Command[]) {
     lines.push('');
-    lines.push(...renderCommand(sub, level + 1));
+    lines.push(...renderCommand(sub, level + 1, commandPath));
   }
 
   return lines;

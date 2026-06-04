@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 216
+Total variants: 220
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -25,6 +25,10 @@ Total variants: 216
 | `planning:module:build-config:invalid` | `errors`, `moduleId`, `reason` |
 | `extension:event-handler:failed` | `extensionName`, `extensionPath`, `message`, `pattern`, `stack`, `triggeringEventType` |
 | `extension:event-handler:timeout` | `extensionName`, `extensionPath`, `pattern`, `timeoutMs`, `triggeringEventType` |
+| `extension:action:start` | `actionId`, `extensionName`, `extensionPath`, `invocationId`, `requestedBy` |
+| `extension:action:complete` | `actionId`, `durationMs`, `extensionName`, `extensionPath`, `invocationId`, `requestedBy` |
+| `extension:action:failed` | `actionId`, `durationMs`, `errorCode`, `extensionName`, `extensionPath`, `invocationId`, `message`, `requestedBy`, `validationErrors` |
+| `extension:action:timeout` | `actionId`, `durationMs`, `extensionName`, `extensionPath`, `invocationId`, `message`, `requestedBy`, `timeoutMs` |
 | `extension:agent-context:applied` | `extensionName`, `extensionPath`, `fragmentCount`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `promptCharCount`, `role`, `stage`, `tier`, `toolbelt` |
 | `extension:agent-context:failed` | `extensionName`, `extensionPath`, `harness`, `message`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stack`, `stage`, `tier`, `toolbelt` |
 | `extension:agent-context:timeout` | `extensionName`, `extensionPath`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stage`, `tier`, `timeoutMs`, `toolbelt` |

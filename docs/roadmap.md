@@ -25,7 +25,7 @@
 
 **Goal**: Make eforge an extensible forge: a small build-engine kernel surrounded by trusted, typed extension mechanisms and reusable input surfaces.
 
-- **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, and `modify` policy decisions remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
+- **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, session-plan extraction, and playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
 - **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, and wrapper apps without treating every surface as engine functionality.
 - **Bundled reference workflow extensions** - Move session plans and playbooks toward extension-shaped implementations, then expose them as bundled defaults before deprecating direct built-in surfaces.
 

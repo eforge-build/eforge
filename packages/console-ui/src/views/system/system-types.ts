@@ -12,6 +12,15 @@ import type {
   ProfileShowResponse,
   ExtensionListResponse,
   ExtensionValidateResponse,
+  ExtensionContributionManifestResponse,
+  ExtensionActionManifestEntry,
+  ConsoleContributionManifestEntry,
+  ConsoleContributionBlock,
+  ExtensionActionBindingManifest,
+  ExtensionActionRequestedBy,
+  ExtensionActionInvokeResponse,
+  ExtensionJsonObject,
+  ExtensionJsonValue,
   PlaybookListResponse,
   SessionPlanListResponse,
   ModelProvidersResponse,
@@ -29,6 +38,15 @@ export type {
   ProfileShowResponse,
   ExtensionListResponse,
   ExtensionValidateResponse,
+  ExtensionContributionManifestResponse,
+  ExtensionActionManifestEntry,
+  ConsoleContributionManifestEntry,
+  ConsoleContributionBlock,
+  ExtensionActionBindingManifest,
+  ExtensionActionRequestedBy,
+  ExtensionActionInvokeResponse,
+  ExtensionJsonObject,
+  ExtensionJsonValue,
   PlaybookListResponse,
   SessionPlanListResponse,
   ModelProvidersResponse,
@@ -73,6 +91,7 @@ export interface SystemSurfacesState {
   extensions: {
     list: Loadable<ExtensionListResponse>;
     validate: Loadable<ExtensionValidateResponse>;
+    contributions: Loadable<ExtensionContributionManifestResponse>;
   };
   playbooks: {
     list: Loadable<PlaybookListResponse>;
@@ -96,6 +115,7 @@ export type SystemSurfaceKey =
   | 'profiles.active'
   | 'extensions.list'
   | 'extensions.validate'
+  | 'extensions.contributions'
   | 'playbooks.list'
   | 'sessionPlans.list'
   | 'models.pi.providers'

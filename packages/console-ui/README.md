@@ -82,9 +82,12 @@ Consumers (`plan-progress.ts`, `pipeline-colors.ts`, `thread-pipeline.tsx`) call
 
 ## Adding a new control surface
 
-- **Top-level Console route** - add route metadata and a nav item to `src/lib/navigation.ts` (update `ConsoleRouteBaseId`, `consoleRouteOrder`, `ROUTE_LABELS`, `toConsolePath`, `parseConsoleRoute`, and `buildNavItems`). `ControlSurfaceLinks` renders internal nav buttons automatically from `buildNavItems()`, so no direct edits to `src/components/header/control-surface-links.tsx` are needed for standard routes.
+- **Source-owned top-level Console route** - add route metadata and a nav item to `src/lib/navigation.ts` (update `ConsoleRouteBaseId`, `consoleRouteOrder`, `ROUTE_LABELS`, `toConsolePath`, `parseConsoleRoute`, and `buildNavItems`). `ControlSurfaceLinks` renders internal nav buttons automatically from `buildNavItems()`, so no direct edits to `src/components/header/control-surface-links.tsx` are needed for standard routes.
+- **Daemon-manifest declarative contribution** - register the contribution with the extension manifest and render it under `/console/system` in the Extensions/System area. These contributions use the Console-owned declarative renderer set and do not require edits to `src/lib/navigation.ts` or new top-level routes.
 - **Non-route or external links** - add them directly to `src/components/header/control-surface-links.tsx` (e.g., the Monitor back-link that points outside the Console).
 - **System route entry** - add a panel or section under `src/views/system/`. The system route is the home for configuration and diagnostic surfaces that do not need top-level navigation prominence.
+
+Arbitrary extension-supplied frontend bundles, React components, browser JavaScript, and extension-owned HTTP routes are deferred beyond the current declarative contribution model.
 
 ## Dev
 

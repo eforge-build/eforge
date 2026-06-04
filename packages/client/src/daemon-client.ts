@@ -181,7 +181,42 @@ export async function daemonRequestIfRunning<T = unknown>(
   if (path !== API_ROUTES.version) {
     await verifyApiVersion(cwd);
   }
-  return daemonRequestWithPort<T>(lock.port, method, path, body);
+  const result = await daemonRequestWithPort<T>(lock.port, method, path, body);
+  return { data: result.data, port: result.port };
+}
+
+export interface DaemonRequestWithStatusResult<T = unknown> {
+  data: T;
+  port: number;
+  status: number;
+  ok: boolean;
+}
+
+export async function daemonRequestWithStatusIfRunning<T = unknown>(
+  cwd: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<DaemonRequestWithStatusResult<T> | null> {
+  const lock = readLockfile(cwd);
+  if (!lock || !(await isServerAlive(lock))) return null;
+  if (path !== API_ROUTES.version) {
+    await verifyApiVersion(cwd);
+  }
+  return daemonRequestWithPort<T>(lock.port, method, path, body, { preserveStatus: true });
+}
+
+export async function daemonRequestWithStatus<T = unknown>(
+  cwd: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<DaemonRequestWithStatusResult<T>> {
+  if (path !== API_ROUTES.version) {
+    await verifyApiVersion(cwd);
+  }
+  const port = await ensureDaemon(cwd);
+  return daemonRequestWithPort<T>(port, method, path, body, { preserveStatus: true });
 }
 
 async function daemonRequestWithPort<T = unknown>(
@@ -189,7 +224,8 @@ async function daemonRequestWithPort<T = unknown>(
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ data: T; port: number }> {
+  optionsOverride?: { preserveStatus?: boolean },
+): Promise<DaemonRequestWithStatusResult<T>> {
   const url = `http://127.0.0.1:${port}${path}`;
   const options: RequestInit = {
     method,
@@ -201,14 +237,14 @@ async function daemonRequestWithPort<T = unknown>(
   }
   const res = await fetch(url, options);
   const text = await res.text();
-  if (!res.ok) {
+  if (!res.ok && !optionsOverride?.preserveStatus) {
     const truncated = text.length > 200 ? text.slice(0, 200) + '...' : text;
     throw new Error(`Daemon returned ${res.status}: ${truncated}`);
   }
   try {
-    return { data: JSON.parse(text) as T, port };
+    return { data: JSON.parse(text) as T, port, status: res.status, ok: res.ok };
   } catch {
-    return { data: text as T, port };
+    return { data: text as T, port, status: res.status, ok: res.ok };
   }
 }
 

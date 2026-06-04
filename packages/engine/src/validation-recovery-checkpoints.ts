@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, realpath, unlink } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import type { ReviewIssue } from './events.js';
@@ -78,13 +79,14 @@ export async function writeValidationRecoveryCheckpoint(
   options: WriteValidationRecoveryCheckpointOptions,
 ): Promise<ValidationRecoveryCheckpointReference> {
   const paths = resolveValidationRecoveryCheckpointPaths(options);
-  await mkdir(paths.directory, { recursive: true });
+  await ensureCheckpointDirectory(paths.artifactRoot, paths.directory);
+  await assertCheckpointDirectorySafe(paths.artifactRoot, paths.directory);
 
   const patch = await captureCheckpointPatch(resolve(options.worktreePath));
-  await writeFile(paths.patchPath, patch.content, 'utf8');
+  await writeCheckpointFileSafely(paths.artifactRoot, paths.patchPath, patch.content);
 
   const metadata = buildCheckpointMetadata(options, paths, patch);
-  await writeFile(paths.metadataPath, `${stableJsonStringify(metadata)}\n`, 'utf8');
+  await writeCheckpointFileSafely(paths.artifactRoot, paths.metadataPath, `${stableJsonStringify(metadata)}\n`);
 
   return {
     artifactRoot: paths.artifactRoot,
@@ -158,7 +160,7 @@ async function captureCheckpointPatch(worktreePath: string): Promise<PatchCaptur
   const raw = sections.length > 0
     ? `${sections.join('\n\n')}\n`
     : '# No worktree changes were present before validation repair.\n';
-  return boundPatch(raw);
+  return boundPatch(redactPatchSecrets(raw));
 }
 
 async function captureTrackedDiff(worktreePath: string): Promise<string> {
@@ -192,29 +194,129 @@ async function captureUntrackedFiles(worktreePath: string): Promise<string> {
 }
 
 async function formatUntrackedFilePatch(worktreePath: string, file: string): Promise<string> {
-  const fullPath = join(worktreePath, file);
+  const fullPath = resolve(worktreePath, file);
+  if (!isSameOrInside(fullPath, worktreePath)) {
+    return `# Untracked path outside worktree omitted: ${file}\n`;
+  }
   try {
-    const info = await stat(fullPath);
+    const info = await lstat(fullPath);
+    if (info.isSymbolicLink()) return `# Untracked symlink omitted: ${file}\n`;
     if (!info.isFile()) return `# Untracked non-file omitted: ${file}\n`;
-    if (info.size > MAX_UNTRACKED_FILE_BYTES) {
-      return `# Untracked file omitted because it exceeds ${MAX_UNTRACKED_FILE_BYTES} bytes: ${file} (${info.size} bytes)\n`;
+
+    const handle = await open(fullPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const openedInfo = await handle.stat();
+      if (!openedInfo.isFile()) return `# Untracked non-file omitted: ${file}\n`;
+      if (openedInfo.size > MAX_UNTRACKED_FILE_BYTES) {
+        return `# Untracked file omitted because it exceeds ${MAX_UNTRACKED_FILE_BYTES} bytes: ${file} (${openedInfo.size} bytes)\n`;
+      }
+      if (!isSameOrInside(resolve(worktreePath, file), worktreePath)) {
+        return `# Untracked path outside worktree omitted: ${file}\n`;
+      }
+      const content = await handle.readFile();
+      if (content.includes(0)) return `# Binary untracked file omitted: ${file} (${openedInfo.size} bytes)\n`;
+      const text = content.toString('utf8');
+      const lines = text.length === 0 ? [] : text.replace(/\n$/u, '').split('\n');
+      return [
+        `diff --git a/${file} b/${file}`,
+        'new file mode 100644',
+        '--- /dev/null',
+        `+++ b/${file}`,
+        `@@ -0,0 +1,${lines.length} @@`,
+        ...lines.map((line) => `+${line}`),
+        '',
+      ].join('\n');
+    } finally {
+      await handle.close();
     }
-    const content = await readFile(fullPath);
-    if (content.includes(0)) return `# Binary untracked file omitted: ${file} (${info.size} bytes)\n`;
-    const text = content.toString('utf8');
-    const lines = text.length === 0 ? [] : text.replace(/\n$/u, '').split('\n');
-    return [
-      `diff --git a/${file} b/${file}`,
-      'new file mode 100644',
-      '--- /dev/null',
-      `+++ b/${file}`,
-      `@@ -0,0 +1,${lines.length} @@`,
-      ...lines.map((line) => `+${line}`),
-      '',
-    ].join('\n');
   } catch (error) {
     return `# Unable to capture untracked file ${file}: ${errorMessage(error)}\n`;
   }
+}
+
+async function assertCheckpointDirectorySafe(artifactRoot: string, directory: string): Promise<void> {
+  const resolvedRoot = resolve(artifactRoot);
+  const resolvedDirectory = resolve(directory);
+  if (!isSameOrInside(resolvedDirectory, resolvedRoot)) {
+    throw new Error('Validation recovery checkpoint directory escapes artifact root');
+  }
+  const realRoot = await realpath(resolvedRoot);
+  const realDirectory = await realpath(resolvedDirectory);
+  if (!isSameOrInside(realDirectory, realRoot)) {
+    throw new Error('Validation recovery checkpoint directory resolves outside artifact root');
+  }
+  await assertNoSymlinkDirectoryComponents(resolvedRoot, resolvedDirectory);
+}
+
+async function ensureCheckpointDirectory(artifactRoot: string, directory: string): Promise<void> {
+  const resolvedRoot = resolve(artifactRoot);
+  const resolvedDirectory = resolve(directory);
+  if (!isSameOrInside(resolvedDirectory, resolvedRoot)) {
+    throw new Error('Validation recovery checkpoint directory escapes artifact root');
+  }
+  let current = resolvedRoot;
+  const rel = relative(resolvedRoot, resolvedDirectory);
+  for (const segment of rel.split('/').filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      await assertDirectoryComponentSafe(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      await mkdir(current);
+      await assertDirectoryComponentSafe(current);
+    }
+  }
+}
+
+async function assertNoSymlinkDirectoryComponents(resolvedRoot: string, resolvedDirectory: string): Promise<void> {
+  let current = resolvedRoot;
+  const rel = relative(resolvedRoot, resolvedDirectory);
+  for (const segment of rel.split('/').filter(Boolean)) {
+    current = join(current, segment);
+    await assertDirectoryComponentSafe(current);
+  }
+}
+
+async function assertDirectoryComponentSafe(path: string): Promise<void> {
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink()) {
+    throw new Error('Validation recovery checkpoint directory contains a symlink');
+  }
+  if (!stat.isDirectory()) {
+    throw new Error('Validation recovery checkpoint path component is not a directory');
+  }
+}
+
+async function writeCheckpointFileSafely(artifactRoot: string, filePath: string, content: string): Promise<void> {
+  const resolvedFile = resolve(filePath);
+  if (!isSameOrInside(resolvedFile, resolve(artifactRoot))) {
+    throw new Error('Validation recovery checkpoint file escapes artifact root');
+  }
+  await assertCheckpointDirectorySafe(artifactRoot, dirname(resolvedFile));
+  try {
+    const existing = await lstat(resolvedFile);
+    if (existing.isSymbolicLink()) throw new Error('Validation recovery checkpoint file is a symlink');
+    if (!existing.isFile()) throw new Error('Validation recovery checkpoint path is not a regular file');
+    await unlink(resolvedFile);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | ((constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0);
+  const handle = await open(resolvedFile, flags, 0o600);
+  try {
+    await handle.writeFile(content, 'utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+function redactPatchSecrets(content: string): string {
+  return content
+    .replace(/https:\/\/[^\s/@]+@/g, 'https://[redacted]@')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\bgh[oprsu]_[A-Za-z0-9_]+\b/g, '[redacted]')
+    .replace(/\bsk-[A-Za-z0-9]{20,}\b/g, '[redacted]')
+    .replace(/\b([A-Za-z0-9_.-]*(?:token|password|secret|api[_-]?key|authorization)[A-Za-z0-9_.-]*)\s*[:=]\s*[^\s]+/gi, '$1=[redacted]');
 }
 
 function boundPatch(content: string): PatchCapture {

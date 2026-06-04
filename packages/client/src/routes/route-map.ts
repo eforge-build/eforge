@@ -40,6 +40,8 @@ export const API_ROUTES = {
   extensionRemove: '/api/extensions/remove',
   extensionPromote: '/api/extensions/promote',
   extensionDemote: '/api/extensions/demote',
+  extensionContributionManifest: '/api/extensions/contributions',
+  extensionActionInvoke: '/api/extensions/actions/invoke',
   queue: '/api/queue',
   queueRecoveryAnalyze: '/api/queue/recovery/analyze',
   queueRecoveryApply: '/api/queue/recovery/apply',

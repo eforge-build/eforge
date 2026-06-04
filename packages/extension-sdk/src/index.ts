@@ -84,6 +84,27 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
+export type {
+  ConsoleContribution,
+  ConsoleContributionBlock,
+  ConsoleContributionRendererId,
+  ExtensionAction,
+  ExtensionActionBinding,
+  ExtensionActionContext,
+  ExtensionActionOutput,
+  ExtensionActionRequestedBy,
+  ExtensionActionRequestedByHost,
+  ExtensionActionSideEffect,
+  ExtensionDeepLink,
+  IntegrationCommand,
+} from './contributions.js';
+export {
+  defineConsoleContribution,
+  defineExtensionAction,
+  defineExtensionDeepLink,
+  defineIntegrationCommand,
+} from './contributions.js';
+
 // TypeBox re-exports
 export { Type } from './schema.js';
 export type { TSchema, TObject, Static } from './schema.js';

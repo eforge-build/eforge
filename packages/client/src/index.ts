@@ -112,6 +112,10 @@ export {
   apiDemoteExtensionIfRunning,
 } from './api/extensions.js';
 
+export * from './extension-contributions.js';
+export * from './api/extension-contributions.js';
+export * from './api/extension-contribution-dispatch.js';
+
 export {
   dispatchEforgeExtensionAction,
   EFORGE_EXTENSION_ACTIONS,
@@ -356,9 +360,12 @@ export {
   ensureDaemon,
   daemonRequest,
   daemonRequestIfRunning,
+  daemonRequestWithStatus,
+  daemonRequestWithStatusIfRunning,
   isAgentWorktreeCwd,
   DaemonInWorktreeError,
 } from './daemon-client.js';
+export type { DaemonRequestWithStatusResult } from './daemon-client.js';
 
 export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './api-version.js';
 
@@ -485,6 +492,10 @@ export type {
   ReviewerPerspectiveApplicabilitySummary,
   ReviewerPerspectiveDetail,
   ValidationProviderDetail,
+  ExtensionActionDetail,
+  ConsoleContributionDetail,
+  IntegrationCommandDetail,
+  ExtensionDeepLinkDetail,
   ExtensionEntry,
   ExtensionListResponse,
   ExtensionShowResponse,

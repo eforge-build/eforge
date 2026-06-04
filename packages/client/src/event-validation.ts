@@ -37,7 +37,23 @@ export function validateReviewIssueMetadataBoundsForEvent(value: unknown): Schem
   }
 }
 
+const ACTION_EVENT_FORBIDDEN_FIELDS = new Set(['input', 'output', 'rawInput', 'rawOutput', 'payload']);
+const ACTION_EVENT_TYPES = new Set([
+  'extension:action:start',
+  'extension:action:complete',
+  'extension:action:failed',
+  'extension:action:timeout',
+]);
+
 export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaError | undefined {
+  if (ACTION_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
+    for (const field of ACTION_EVENT_FORBIDDEN_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(event, field)) {
+        return validationError(`/${field}`, 'extension action events must not include raw input, output, or payload fields');
+      }
+    }
+  }
+
   if (
     event.type === 'extension:policy:decision' &&
     (event.decision === 'block' || event.decision === 'require-approval') &&

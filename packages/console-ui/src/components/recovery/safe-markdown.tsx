@@ -6,6 +6,7 @@ interface SafeMarkdownProps {
   /** Raw markdown source to render. */
   markdown: string;
   className?: string;
+  forbidResourceLoading?: boolean;
 }
 
 /**
@@ -16,12 +17,15 @@ interface SafeMarkdownProps {
  * inline event-handler attributes are stripped. Mirrors the rendering pattern
  * used by the legacy Monitor recovery sidecar sheet.
  */
-export function SafeMarkdown({ markdown, className }: SafeMarkdownProps) {
+export function SafeMarkdown({ markdown, className, forbidResourceLoading = false }: SafeMarkdownProps) {
   const html = React.useMemo(() => {
     const marked = new Marked({ gfm: true });
     const raw = marked.parse(markdown, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  }, [markdown]);
+    return DOMPurify.sanitize(raw, forbidResourceLoading ? {
+      FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'object', 'embed', 'svg', 'style', 'link'],
+      FORBID_ATTR: ['src', 'srcset', 'style'],
+    } : undefined);
+  }, [markdown, forbidResourceLoading]);
 
   return (
     <div

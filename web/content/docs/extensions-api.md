@@ -1,6 +1,6 @@
 ---
 title: Extensions API Reference
-description: Type-level reference for the @eforge-build/extension-sdk package.
+description: Type-level reference for extension hooks, actions, Console contributions, commands, and deep links in @eforge-build/extension-sdk.
 ---
 
 # Extensions API Reference
@@ -214,6 +214,56 @@ registerTool(tool: ExtensionTool): void
 ```
 
 **Runtime status:** registration is captured at load time for provenance. Agent tool injection and execution happen only when an `onAgentRun` handler returns the tool for a specific run.
+
+---
+
+### Extension contribution contracts
+
+The SDK also exposes registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; the daemon exposes safe manifest projection and action invocation routes, Console renders declarative contributions under `/console/system`, and host integrations can list and invoke actions, integration commands, and action-backed deep links through the shared contribution dispatcher.
+
+#### `registerAction(action)`
+
+Registers an extension-authored action handler. Action handlers run as trusted unsandboxed Node code. Action inputs require object-root TypeBox input schemas (`Type.Object(...)`). Action handlers must return JSON-safe outputs; optional output schemas are validated before eforge reports a successful invocation.
+
+#### `registerConsoleContribution(contribution)`
+
+Registers declarative Console metadata rendered under `/console/system`. Blocks must use one of the closed renderer IDs: `text`, `markdown`, `status-badge`, `link`, `action-button`, or `action-form`. Action blocks bind to a local action ID with optional JSON-safe input defaults.
+
+#### `registerIntegrationCommand(command)`
+
+Registers a host-discoverable command. Commands are manifest metadata plus an action binding; CLI, MCP/Claude, and Pi hosts invoke the bound action through the daemon-owned dispatcher.
+
+#### `registerDeepLink(deepLink)`
+
+Registers a host-discoverable deep link. Action-backed deep links can be invoked through generic contribution surfaces; URL-only deep links are listable navigation metadata and are not generic invocations.
+
+```ts
+registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
+  action: ExtensionAction<TInput, TOutput>,
+): void
+registerConsoleContribution(contribution: ConsoleContribution): void
+registerIntegrationCommand(command: IntegrationCommand): void
+registerDeepLink(deepLink: ExtensionDeepLink): void
+```
+
+Use the identity helpers to preserve TypeBox inference when defining contributions:
+
+```ts
+import { Type, defineExtensionAction } from "@eforge-build/extension-sdk";
+
+const sayHi = defineExtensionAction({
+  id: "say-hi",
+  title: "Say hi",
+  inputSchema: Type.Object({ name: Type.String() }),
+  outputSchema: Type.Object({ greeting: Type.String() }),
+  sideEffects: ["none"],
+  handler: (input) => ({ greeting: `Hello ${input.name}` }),
+});
+```
+
+Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `IntegrationCommand`, and `ExtensionDeepLink`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
+
+**Runtime status:** engine registry/runtime support plus daemon manifest/action routes, Console System rendering for declarative contributions, and CLI, MCP/Claude, and Pi host dispatch for action-backed contributions. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input payloads or raw output payloads.
 
 ---
 
@@ -985,7 +1035,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, and `registerValidationProvider` per-plan validate-stage execution. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution manifest/action invocation routes, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, session-plan extraction, playbook extraction, raw extension-owned HTTP routes, and arbitrary frontend plugin bundles are intentionally deferred or unsupported runtime phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -1000,10 +1050,14 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
+| `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route |
+| `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console renders declarative panels under `/console/system` |
+| `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed commands |
+| `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed deep links |
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, policy-gate, input-source/enricher, reviewer perspective, and validation-provider examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, session-plan extraction, playbook extraction, raw extension-owned HTTP routes, and arbitrary frontend plugin bundles are future or unsupported runtime work.
 
 ---
 

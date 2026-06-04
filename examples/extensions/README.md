@@ -15,6 +15,7 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 | `issue-tracker.ts` | `registerInputSource(...)` x3 | Runtime-supported input source dispatch via `eforge://input/<adapter>/<id>` |
 | `reviewer-perspective.ts` | `registerReviewerPerspective(...)` | Runtime-supported parallel review-cycle dispatch; perspective runs when diff includes matching UI/TSX files |
 | `validation-provider.ts` | `registerValidationProvider(...)` | Runtime-supported per-plan validate-stage execution; demonstrates both function-form (programmatic) and command-form (subprocess) providers |
+| `action-contribution.ts` | `registerAction(...)`, `registerConsoleContribution(...)`, `registerIntegrationCommand(...)`, `registerDeepLink(...)` | Runtime-supported action dispatcher, Console System rendering, and host discovery/invocation for action-backed contributions |
 
 ### `minimal-event-logger.ts`
 
@@ -95,6 +96,12 @@ For the full URI syntax, failure policy (`null` return is fatal to enqueue), and
 Registers two validation providers using `registerValidationProvider`. Demonstrates both the function form (`type-check-gate`, using `ctx.exec.run` to invoke `pnpm type-check` programmatically) and the command form (`lint-gate`, using the `commands` array for simpler exit-code-is-failure subprocess dispatch). The function-form provider returns structured `ValidationProviderResult` objects and includes annotation guidance fields (`fix`, `retryGuidance`, `failureKind`, `repairClass`, and `metadata`) so recovery does not have to parse prose. The command-form provider demonstrates the simpler generic failure path: non-zero exit code output becomes the message, but command form cannot attach structured annotations or shell features such as quoted args, redirects, pipes, or env-var expansion.
 
 > **Runtime note:** `registerValidationProvider` is runtime-supported. Providers execute during the per-plan `validate` build stage, after the implement stage and before the review stage, when `validate` is included in the build pipeline. Normal failures (structured `{ status: 'failed' }` results and command-form non-zero exits) are recoverable using `review.maxRounds`; after each recovery attempt, the provider suite reruns from the first provider. Narrow or unspecified structured failures use the review-fixer path first, `repairClass: 'structural'` routes to the validation-fixer path, and every automated repair is evaluator-gated with a checkpoint under `.eforge/validation-recovery/`. Non-empty string returns, thrown errors/rejections, timeouts, and unexpected return shapes are hard failures that bypass recovery. Unresolved recoverable failures still emit `plan:build:failed`. See [`docs/extensions.md`](../../docs/extensions.md) — "Validation providers" and [`docs/extensions-api.md`](../../docs/extensions-api.md) — `registerValidationProvider`.
+
+### `action-contribution.ts`
+
+Registers one JSON-safe `echo-status` action with TypeBox object-root input and output schemas, then binds it to a declarative Console contribution, a host integration command, and an action-backed deep link. The Console contribution uses closed renderer IDs (`markdown`, `status-badge`, `action-button`, and `action-form`) and renders under `/console/system`; it does not ship browser JavaScript or a React bundle.
+
+The example intentionally avoids raw HTTP routes, daemon route literals, network calls, filesystem writes, and secrets. Local action IDs such as `echo-status` are resolved to effective namespaced manifest IDs by eforge. Host integrations can discover the command/deep link through the shared contribution surfaces, while URL-only deep links (not used in this sample) are listable navigation metadata rather than generic action invocations.
 
 ### `reviewer-perspective.ts`
 

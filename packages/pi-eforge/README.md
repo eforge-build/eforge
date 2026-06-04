@@ -22,8 +22,8 @@ Then, in your project:
 
 ## What this package provides
 
-- Native Pi tools for eforge daemon operations
-- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), and playbook management (`/eforge:playbook`) with interactive TUI panels and selectors
+- Native Pi tools for eforge daemon operations, including `eforge_extension_contribution` for discovering and invoking extension-provided actions, integration commands, and action-backed deep links
+- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), extension contribution browsing (`/eforge:extensions`), and playbook management (`/eforge:playbook`) with interactive TUI panels and selectors
 - Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:update`)
 - The `/eforge:plan` skill for structured handoff planning before build execution
 - The `/eforge:extend` skill for assisted eforge TypeScript extension authoring

@@ -62,4 +62,12 @@ describe('extension content route source contracts', () => {
       expect(staticFeatureImports, file).toEqual([]);
     }
   });
+
+  it('does not import server-main from extension content route modules', () => {
+    for (const file of CONTENT_ROUTE_FILES) {
+      const serverMainImports = productionLines(file).filter((line) => /^import\s/.test(line))
+        .filter((line) => /server-main\.js['"]/.test(line));
+      expect(serverMainImports, file).toEqual([]);
+    }
+  });
 });

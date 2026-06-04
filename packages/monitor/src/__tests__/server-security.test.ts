@@ -11,10 +11,12 @@ describe('startServer route security', () => {
   it('rejects sensitive reads for non-local or cross-site requests', async () => {
     const { server, db } = await start();
     try {
-      const path = `${API_ROUTES.readRecoverySidecar}?prdId=missing`;
-      await expectForbidden(server, 'GET', path, { Host: 'example.com' });
-      await expectForbidden(server, 'GET', path, { Host: `localhost:${server.port}`, Origin: 'http://evil.example' });
-      await expectForbidden(server, 'GET', path, { Host: `localhost:${server.port}`, 'Sec-Fetch-Site': 'cross-site' });
+      const paths = [`${API_ROUTES.readRecoverySidecar}?prdId=missing`, API_ROUTES.extensionContributionManifest];
+      for (const path of paths) {
+        await expectForbidden(server, 'GET', path, { Host: 'example.com' });
+        await expectForbidden(server, 'GET', path, { Host: `localhost:${server.port}`, Origin: 'http://evil.example' });
+        await expectForbidden(server, 'GET', path, { Host: `localhost:${server.port}`, 'Sec-Fetch-Site': 'cross-site' });
+      }
     } finally {
       await server.stop();
       db.close();
@@ -25,6 +27,8 @@ describe('startServer route security', () => {
     const { server, db } = await start();
     try {
       await expectForbidden(server, 'POST', API_ROUTES.stackSync, { Host: 'example.com' }, '{');
+      await expectForbidden(server, 'POST', API_ROUTES.extensionActionInvoke, { Host: 'example.com' }, '{');
+      await expectForbidden(server, 'POST', API_ROUTES.extensionActionInvoke, { Host: `localhost:${server.port}`, 'Sec-Fetch-Site': 'cross-site' }, '{');
     } finally {
       await server.stop();
       db.close();

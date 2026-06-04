@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Highlighter } from 'shiki';
 import { Marked, Renderer } from 'marked';
+import DOMPurify from 'dompurify';
 import { splitPlanContent } from '@/lib/plan-content';
 import { getHighlighter } from '@/lib/shiki';
 
@@ -65,7 +66,7 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
       }
 
       if (!cancelled) {
-        setHighlightedHtml(html);
+        setHighlightedHtml(DOMPurify.sanitize(html));
         setLoading(false);
       }
     }

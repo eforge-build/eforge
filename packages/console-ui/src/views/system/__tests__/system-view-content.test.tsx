@@ -48,9 +48,10 @@ function makeState(overrides: Partial<SystemSurfacesState> = {}): SystemSurfaces
       list: empty({
         extensions: [],
         diagnostics: [],
-        totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0 },
+        totals: emptyTotals(),
       }),
       validate: success({ valid: true, extensions: [], diagnostics: [] }),
+      contributions: empty(emptyManifest()),
     },
     playbooks: {
       list: empty({ playbooks: [], warnings: [] }),
@@ -87,6 +88,37 @@ function makeState(overrides: Partial<SystemSurfacesState> = {}): SystemSurfaces
     sessionPlans: { ...state.sessionPlans, ...overrides.sessionPlans },
     models: { ...state.models, ...overrides.models },
   };
+}
+
+function emptyManifest() {
+  return {
+    schemaVersion: 1 as const,
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    actions: [],
+    consoleContributions: [],
+    integrationCommands: [],
+    deepLinks: [],
+    diagnostics: [],
+  };
+}
+
+function manifestWithContribution() {
+  return {
+    ...emptyManifest(),
+    consoleContributions: [{
+      id: 'demo.panel',
+      localId: 'panel',
+      extensionName: 'demo',
+      extensionPath: '/demo.js',
+      title: 'Demo contribution',
+      schemaVersion: 1 as const,
+      blocks: [{ rendererId: 'text' as const, content: 'Contribution body' }],
+    }],
+  };
+}
+
+function emptyTotals() {
+  return { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 };
 }
 
 function makeProjectStateWithTelemetry(): ConsoleProjectState {
@@ -127,6 +159,27 @@ describe('SystemViewContent', () => {
     fireEvent.click(screen.getByRole('button', { name: /refresh system data/i }));
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders extension contributions immediately after the Extensions section', () => {
+    const state = makeState();
+    state.extensions.contributions = success(manifestWithContribution());
+    render(<SystemViewContent state={state} onRefresh={() => {}} />);
+
+    const extensionsHeading = screen.getByRole('heading', { name: 'Extensions' });
+    const contributionsHeading = screen.getByRole('heading', { name: 'Extension Console contributions' });
+    expect(extensionsHeading.compareDocumentPosition(contributionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Demo contribution')).toBeDefined();
+    expect(screen.getByText('Contribution body')).toBeDefined();
+  });
+
+  it('renders stale contribution data alongside manifest refresh errors', () => {
+    const state = makeState();
+    state.extensions.contributions = { status: 'error', error: 'manifest refresh failed', data: manifestWithContribution() };
+    render(<SystemViewContent state={state} onRefresh={() => {}} />);
+
+    expect(screen.getByRole('alert').textContent).toContain('manifest refresh failed');
+    expect(screen.getByText('Demo contribution')).toBeDefined();
   });
 
   it('shows section errors without blanking successful sections', () => {

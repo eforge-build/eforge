@@ -21,6 +21,7 @@ import {
 import { compilePattern } from '../hooks.js';
 import { loadNativeExtensions } from './loader.js';
 import { withNativeEventHooks } from './event-runtime.js';
+import { buildActionDetails, buildConsoleContributionDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
 import type {
   EventHookRegistration,
   NativeExtensionCandidate,
@@ -68,6 +69,10 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
   validationProviders: 0,
   tools: 0,
   prdEnrichers: 0,
+  actions: 0,
+  consoleContributions: 0,
+  integrationCommands: 0,
+  deepLinks: 0,
 };
 
 // reviewerPerspectives is intentionally excluded: perspectives are runtime-supported
@@ -83,6 +88,10 @@ const DEFERRED_FAMILIES = [
   'validationProviders',
   'tools',
   'prdEnrichers',
+  'actions',
+  'consoleContributions',
+  'integrationCommands',
+  'deepLinks',
 ] as const satisfies readonly ExtensionTestDeferredRegistrationFamily[];
 
 type ReplayDiagnosticEvent = Extract<
@@ -348,6 +357,10 @@ function selectRegistry(registry: NativeExtensionRegistry, options: Pick<NativeE
     validationProviders: registry.validationProviders.filter(matches),
     tools: registry.tools.filter(matches),
     prdEnrichers: registry.prdEnrichers.filter(matches),
+    actions: registry.actions.filter(matches),
+    consoleContributions: registry.consoleContributions.filter(matches),
+    integrationCommands: registry.integrationCommands.filter(matches),
+    deepLinks: registry.deepLinks.filter(matches),
     diagnostics: registry.diagnostics.filter((diagnostic) => {
       if (options.name && diagnostic.name !== options.name) return false;
       if (options.path && diagnostic.path !== options.path) return false;
@@ -448,6 +461,10 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
     const loaded = loadedByKey.get(`${candidate.name}\0${candidate.path}`);
     const reviewerPerspectiveDetails = collectReviewerPerspectiveDetails(registry, candidate.name, candidate.path);
     const validationProviderDetails = collectValidationProviderDetails(registry, candidate.name, candidate.path);
+    const actionDetails = buildActionDetails(registry, candidate.name, candidate.path);
+    const consoleContributionDetails = buildConsoleContributionDetails(registry, candidate.name, candidate.path);
+    const integrationCommandDetails = buildIntegrationCommandDetails(registry, candidate.name, candidate.path);
+    const deepLinkDetails = buildDeepLinkDetails(registry, candidate.name, candidate.path);
     return {
       name: candidate.name,
       path: candidate.path,
@@ -478,6 +495,10 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       diagnostics: candidate.diagnostics.map(normalizeDiagnostic),
       ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
       ...(validationProviderDetails !== undefined && { validationProviderDetails }),
+      ...(actionDetails !== undefined && { actionDetails }),
+      ...(consoleContributionDetails !== undefined && { consoleContributionDetails }),
+      ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
+      ...(deepLinkDetails !== undefined && { deepLinkDetails }),
       ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
       ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;

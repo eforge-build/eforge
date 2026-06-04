@@ -4,19 +4,19 @@ Zero-dependency HTTP client for the eforge daemon.
 
 ## Consumers
 
-- Root CLI (`packages/eforge/src/cli/index.ts`, `packages/eforge/src/cli/mcp-proxy.ts`)
+- Root CLI (`packages/eforge/src/cli/index.ts`, `packages/eforge/src/cli/mcp-proxy.ts`, `packages/eforge/src/cli/mcp-extension-contributions.ts`)
 - Monitor (`packages/monitor/src/index.ts`, `packages/monitor/src/server-main.ts`, `packages/monitor/src/registry.ts`)
 - Console UI (`packages/console-ui/`, via `@eforge-build/client/browser`)
-- Pi extension (`packages/pi-eforge/extensions/eforge/index.ts`)
+- Pi extension (`packages/pi-eforge/extensions/eforge/index.ts`, `packages/pi-eforge/extensions/eforge/extension-contributions.ts`)
 
 ## What's included
 
 - **Lockfile operations** - read, write, update, remove the daemon lockfile
-- **Daemon client** - `ensureDaemon`, `daemonRequest`, `daemonRequestIfRunning`
+- **Daemon client** - `ensureDaemon`, `daemonRequest`, `daemonRequestIfRunning`, and status-preserving `daemonRequestWithStatus` helpers for routes that return typed non-2xx bodies
 - **Route contract** - `API_ROUTES` constant map + `ApiRoute` type + `buildPath(pattern, params)` helper. Single source of truth for every daemon HTTP path; consumers reference these constants (or the typed helpers below) instead of inlining `/api/...` literals
-- **Typed per-route helpers** - `api/queue.ts`, `api/queue-recovery.ts`, `api/profile.ts`, `api/status.ts`, `api/config.ts`, `api/models.ts`, `api/daemon.ts`, `api/recover.ts`, `api/recovery-sidecar.ts`, `api/apply-recovery.ts`, `api/playbook.ts`, `api/session-plan.ts`, `api/session-plan-set.ts`, `api/extensions.ts` expose one function per route. Each standard helper (e.g. `apiEnqueue`, `apiHealth`, `apiListProfiles`) wraps `daemonRequest<ResponseType>`, which **auto-starts the daemon** if no live daemon is found. For callers that must never auto-start the daemon (e.g. the Pi extension, which uses non-starting helpers for all daemon-backed operations), every route also has a `*IfRunning` variant (e.g. `apiGetQueueIfRunning`, `apiHealthIfRunning`, `apiListProfilesIfRunning`) that returns `null` when no daemon is running instead of spawning one. The `*IfRunning` variants also perform API version verification when a live daemon is found, so callers get the same stale-daemon diagnostics as the standard helpers
+- **Typed per-route helpers** - `api/queue.ts`, `api/queue-recovery.ts`, `api/profile.ts`, `api/status.ts`, `api/config.ts`, `api/models.ts`, `api/daemon.ts`, `api/recover.ts`, `api/recovery-sidecar.ts`, `api/apply-recovery.ts`, `api/playbook.ts`, `api/session-plan.ts`, `api/session-plan-set.ts`, `api/extensions.ts`, and `api/extension-contributions.ts` expose one function per route. `api/extension-contribution-dispatch.ts` builds on the contribution manifest/action helpers to list and invoke host-facing action, integration-command, and action-backed deep-link targets. Each standard helper (e.g. `apiEnqueue`, `apiHealth`, `apiListProfiles`) wraps `daemonRequest<ResponseType>`, which **auto-starts the daemon** if no live daemon is found. For callers that must never auto-start the daemon (e.g. the Pi extension, which uses non-starting helpers for all daemon-backed operations), every route also has a `*IfRunning` variant (e.g. `apiGetQueueIfRunning`, `apiHealthIfRunning`, `apiListProfilesIfRunning`) that returns `null` when no daemon is running instead of spawning one. The `*IfRunning` variants also perform API version verification when a live daemon is found, so callers get the same stale-daemon diagnostics as the standard helpers
 - **Session stream** - `subscribeWithSnapshot()` async-generator for consuming any daemon SSE stream with reconnect/backoff. Yields `{ kind: 'snapshot' }` on every connect (from `stream:hello`), `{ kind: 'event' }` for JSON events, and `{ kind: 'named' }` for other named SSE events. `aggregateSessionSummary()` computes a `SessionSummary` from a flat event array. SSE callers use `API_ROUTES.events` + `buildPath()` to build the URL
-- **Request/response types** - TypeScript interfaces for every daemon HTTP endpoint, paired per route
+- **Request/response types** - TypeScript interfaces and TypeBox schemas for daemon HTTP endpoints, including extension contribution manifest and action invocation contracts
 - **API version** - `DAEMON_API_VERSION` constant for version negotiation
 
 ## Rationale

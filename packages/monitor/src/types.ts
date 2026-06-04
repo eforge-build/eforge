@@ -34,6 +34,7 @@ export interface StartServerOptions {
   config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'>;
   agentRuntimes?: AgentRuntimeRegistry | AgentHarness;
   uiDirs?: { monitorUiDir?: string; consoleUiDir?: string };
+  daemonSessionId?: string;
 }
 
 export interface MonitorVersionInfo {

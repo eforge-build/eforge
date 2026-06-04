@@ -681,6 +681,13 @@ describe('isPersistedDaemonEventType', () => {
     expect(isPersistedDaemonEventType('daemon:run:upsert')).toBe(true);
   });
 
+  it('returns true for extension action lifecycle event types', () => {
+    expect(isPersistedDaemonEventType('extension:action:start')).toBe(true);
+    expect(isPersistedDaemonEventType('extension:action:complete')).toBe(true);
+    expect(isPersistedDaemonEventType('extension:action:failed')).toBe(true);
+    expect(isPersistedDaemonEventType('extension:action:timeout')).toBe(true);
+  });
+
   it('returns false for daemon:heartbeat — LIVE-ONLY, must not be persisted', () => {
     expect(isPersistedDaemonEventType('daemon:heartbeat')).toBe(false);
   });

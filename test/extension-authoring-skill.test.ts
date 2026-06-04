@@ -151,7 +151,10 @@ describe('/eforge:extend workflow content', () => {
     const end = source.indexOf('### Step 4: Scope selection', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
-    return source.slice(start, end).trim();
+    return source
+      .slice(start, end)
+      .replaceAll('mcp__eforge__eforge_extension_contribution', 'eforge_extension_contribution')
+      .trim();
   }
 
   it('documents the required authoring workflow in both skills', () => {
@@ -175,7 +178,7 @@ describe('/eforge:extend workflow content', () => {
       'beforeFinalMerge',
       'beforeEnqueue',
       'beforeValidation',
-      'supported policy-gate or reviewer-perspective subset',
+      'supported policy-gate, reviewer-perspective, validation-provider, or extension-action subset',
       'Approval workflow/UI/state and `modify` policy decisions',
       'require-approval` blocks',
       'unsandboxed trusted code',
