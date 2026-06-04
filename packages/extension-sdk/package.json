@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./project-storage": {
+      "types": "./dist/project-storage.d.ts",
+      "import": "./dist/project-storage.js"
     }
   },
   "types": "./dist/index.d.ts",

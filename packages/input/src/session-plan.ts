@@ -19,16 +19,14 @@
  *   normalizeBuildSource      — detect session-plan paths and convert to build source
  *   createSessionPlan         — create a fresh SessionPlan with canonical frontmatter
  *   setSessionPlanSection     — append-or-replace a ## section in the plan body
- *   skipDimension             — add or update an entry in skipped_dimensions
- *   unskipDimension           — remove an entry from skipped_dimensions
+ *   skipDimension / unskipDimension — update entries in skipped_dimensions
  *   setSessionPlanStatus      — update status and optional metadata fields
  *   setSessionPlanDimensions  — apply planning_type/depth and write dimension lists
- *   resolveSessionPlanPath    — resolve session id to absolute path within .eforge/session-plans/
- *   loadSessionPlan           — read and parse a session plan by session id
- *   writeSessionPlan          — serialize and atomically write a session plan to disk
+ *   resolveSessionPlanPath / loadSessionPlan / writeSessionPlan — safe project-local storage I/O
  */
 import { readFile, readdir, writeFile, mkdir, rename } from 'node:fs/promises';
 import { resolve, basename, dirname, sep } from 'node:path';
+import { resolveProjectLocalStoragePath } from '@eforge-build/extension-sdk/project-storage';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 import { playbookToPlanSeed, type Playbook } from './playbook.js';
@@ -126,7 +124,7 @@ export interface SessionPlanListEntry {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
+export function resolveSessionPlanStorageRoot(cwd: string): string { return resolveProjectLocalStoragePath({ cwd, segments: ['session-plans'] }); }
 /** Parse YAML frontmatter from a Markdown file. Returns [frontmatter, body]. */
 function splitFrontmatter(raw: string): [Record<string, unknown>, string] {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)/);
@@ -428,7 +426,7 @@ export interface ListSessionPlansOpts {
 }
 /** List session plans filtered by statuses. Skips unparseable files. Results sorted by session ID. */
 export async function listSessionPlans(opts: ListSessionPlansOpts): Promise<SessionPlanListEntry[]> {
-  const sessionPlansDir = resolve(opts.cwd, '.eforge', 'session-plans');
+  const sessionPlansDir = resolveSessionPlanStorageRoot(opts.cwd);
 
   let filenames: string[];
   try {
@@ -868,7 +866,7 @@ export function resolveSessionPlanPath(opts: ResolveSessionPlanPathOpts): string
     );
   }
 
-  const sessionPlansDir = resolve(opts.cwd, '.eforge', 'session-plans');
+  const sessionPlansDir = resolveSessionPlanStorageRoot(opts.cwd);
   const filePath = resolve(sessionPlansDir, `${opts.session}.md`);
 
   // Guard against path traversal: the resolved path must start with the
@@ -937,7 +935,7 @@ export interface WriteSessionPlanOpts {
  * Uses a temporary-file-then-rename strategy for atomic writes.
  */
 export async function writeSessionPlan(opts: WriteSessionPlanOpts): Promise<void> {
-  const sessionPlansDir = resolve(opts.cwd, '.eforge', 'session-plans');
+  const sessionPlansDir = resolveSessionPlanStorageRoot(opts.cwd);
   const guardPrefix = sessionPlansDir.endsWith(sep)
     ? sessionPlansDir
     : sessionPlansDir + sep;

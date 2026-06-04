@@ -7,7 +7,7 @@ import { stat as fsStat, readFile as fsReadFile } from 'node:fs/promises';
 declare const EFORGE_VERSION: string;
 
 import { EforgeEngine } from '@eforge-build/engine/eforge';
-import { preprocessBuildSource, normalizeBuildSource, FatalPreprocessingError } from '@eforge-build/input';
+import { preprocessBuildSource, FatalPreprocessingError } from '@eforge-build/input';
 import { QueueExecExitCode, queueExecExitCode } from '@eforge-build/engine/prd-queue';
 import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
@@ -504,7 +504,8 @@ export function createProgram(abortController?: AbortController, version?: strin
           const sourceStat = await fsStat(resolvedSourcePath).catch(() => null);
           if (sourceStat?.isFile()) {
             const rawContent = await fsReadFile(resolvedSourcePath, 'utf-8');
-            const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawContent });
+            const { createSessionPlanningWorkflowAdapter } = await import('@eforge-build/input');
+            const normalized = createSessionPlanningWorkflowAdapter().flat.normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawContent });
             inheritedAgentProfile = normalized.agentProfile;
           }
         } catch {

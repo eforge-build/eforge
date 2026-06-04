@@ -398,6 +398,9 @@ importers:
 
   packages/input:
     dependencies:
+      '@eforge-build/extension-sdk':
+        specifier: workspace:*
+        version: link:../extension-sdk
       '@eforge-build/scopes':
         specifier: workspace:*
         version: link:../scopes

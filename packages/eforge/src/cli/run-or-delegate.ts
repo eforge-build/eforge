@@ -22,7 +22,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { resolveTrunkBranch, isTrunkBranch } from '@eforge-build/engine/branch-policy';
-import { preprocessBuildSource, normalizeBuildSource, FatalPreprocessingError } from '@eforge-build/input';
+import { preprocessBuildSource, FatalPreprocessingError } from '@eforge-build/input';
 import {
   validatePlanSet,
   parseOrchestrationConfig,
@@ -367,7 +367,8 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     const sourceStat = await fsStat(resolvedSourcePath).catch(() => null);
     if (sourceStat?.isFile()) {
       const rawContent = await fsReadFile(resolvedSourcePath, 'utf-8');
-      const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawContent });
+      const { createSessionPlanningWorkflowAdapter } = await import('@eforge-build/input');
+      const normalized = createSessionPlanningWorkflowAdapter().flat.normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawContent });
       inheritedAgentProfile = normalized.agentProfile;
     }
   } catch {

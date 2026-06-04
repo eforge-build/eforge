@@ -4,13 +4,14 @@ Reusable build-input protocols for eforge - playbook and session-plan artifacts 
 
 ## Consumers
 
-- `@eforge-build/monitor` - daemon playbook routes and `normalizeBuildSource` for session-plan source paths before enqueue
-- `@eforge-build/eforge` - in-process normalization for CLI build commands that accept session plans or playbooks as input
+- `@eforge-build/monitor` - daemon playbook routes, session-plan compatibility routes, and adapter-backed normalization for session-plan source paths before enqueue
+- `@eforge-build/eforge` - in-process adapter-backed normalization for CLI build commands that accept session plans or playbooks as input
 - Future wrapper apps that need to compile playbooks or session plans to build source independently of the daemon
 
 ## Dependencies
 
 - Depends on `@eforge-build/scopes` for scope directory lookup and named-set resolution
+- Depends on `@eforge-build/extension-sdk` for the project-local storage path helper used by session-plan and plan-set path resolution
 - Does **NOT** depend on `@eforge-build/engine`
 
 The engine consumes normalized PRD/build source; it has no knowledge of where that source originated. This keeps the engine input-agnostic.
@@ -156,6 +157,27 @@ This is a read-only protocol. It does **not** create, add, update, or delete pla
 - `normalizeBuildSource(input)` - single chokepoint for session-plan handling: if a source path matches `**/.eforge/session-plans/*.md`, parses the plan and converts it to ordinary build source; other paths pass through unchanged
 
 The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match this pattern are returned unchanged.
+
+### Bundled session-planning workflow adapter
+
+`createSessionPlanningWorkflowAdapter()` returns the built-in adapter that bundles the project-local session-planning protocol behind one workflow-shaped boundary. It is internal to eforge's shipped session-planning flow: daemon services use it as a compatibility shim for client-owned HTTP routes and wire response shapes, and CLI/daemon enqueue paths use it to normalize session-plan files before the engine sees them. It is not a native extension registration API for user-authored session-plan extraction.
+
+The adapter descriptor is exported as `SESSION_PLANNING_WORKFLOW_ADAPTER_DESCRIPTOR`:
+
+```ts
+{
+  id: 'builtin:session-planning',
+  kind: 'workflow-input-adapter',
+  sourceScope: 'project-local',
+}
+```
+
+The adapter exposes two surfaces:
+
+- `flat` - project-local flat session-plan operations for `.eforge/session-plans/<session>.md`: storage-root and path resolution, list, load, create, section mutation, dimension skip/selection, status mutation, readiness, legacy migration, and `normalizeBuildSource`.
+- `planSets` - read-only session-plan-set operations: list, load, and validate. Plan sets remain read-only; the adapter does not create, mutate, enqueue, or delete plan sets.
+
+The build engine still receives only normalized build source and has no dependency on this adapter or package.
 
 ## Boundary
 

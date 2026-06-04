@@ -13,6 +13,8 @@
  * decisions during a structured planning conversation. They are project-local
  * only and compile to ordinary build source for the engine queue via
  * `sessionPlanToBuildSource` or the boundary helper `normalizeBuildSource`.
+ * The bundled session-planning workflow adapter exposes the same project-local
+ * boundary as domain operations without importing daemon client contracts.
  *
  * ## Boundary normalization
  *
@@ -111,6 +113,7 @@ export {
   setSessionPlanDimensions,
 
   // Path resolution and I/O
+  resolveSessionPlanStorageRoot,
   resolveSessionPlanPath,
   loadSessionPlan,
   writeSessionPlan,
@@ -207,6 +210,33 @@ export type {
   LoadSessionPlanSetOpts,
   ValidateSessionPlanSetOpts,
 } from './session-plan-set.js';
+
+// ---------------------------------------------------------------------------
+// Session planning workflow adapter exports
+// ---------------------------------------------------------------------------
+
+export {
+  SESSION_PLANNING_WORKFLOW_ADAPTER_DESCRIPTOR,
+  SessionPlanReadinessError,
+  isSessionPlanReadinessError,
+  createSessionPlanningWorkflowAdapter,
+} from './session-planning-workflow.js';
+
+export type {
+  SessionPlanReadinessDetail,
+  SessionPlanningListEntry,
+  SessionPlanningCreateAndWriteOptions,
+  SessionPlanningSetSectionOptions,
+  SessionPlanningSkipDimensionOptions,
+  SessionPlanningSetStatusOptions,
+  SessionPlanningSelectDimensionsOptions,
+  SessionPlanningLoadResult,
+  SessionPlanningCreateResult,
+  SessionPlanningMutationResult,
+  SessionPlanningSetStatusResult,
+  SessionPlanningMigrateLegacyResult,
+  SessionPlanningWorkflowAdapter,
+} from './session-planning-workflow.js';
 
 // ---------------------------------------------------------------------------
 // Acceptance criteria quality exports
