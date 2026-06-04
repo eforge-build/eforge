@@ -1,0 +1,91 @@
+name: reduce-low-value-test-suite-latency-and-maintenance-burden
+description: Reduce low-value test suite latency and maintenance burden by
+  replacing timer-heavy waits with deterministic synchronization and
+  consolidating repeated playbook/command coverage.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm vitest run test/artifact-aware-scheduler.test.ts
+    test/auto-build-resume-after-failure.test.ts test/watch-queue.test.ts
+    test/periodic-file-check.test.ts
+    packages/monitor/src/__tests__/streams-stream-hub.test.ts --reporter verbose
+  - pnpm vitest run test/pi-playbook-commands.test.ts test/cli-playbook.test.ts
+    test/playbook-api-run-profile.test.ts test/prd-frontmatter-onsuccess.test.ts
+    test/onsuccess-override-precedence.test.ts --reporter verbose
+plans:
+  - id: plan-01-deterministic-timer-tests
+    name: Replace Timer-Heavy Tests with Deterministic Synchronization
+    depends_on: []
+    branch: reduce-low-value-test-suite-latency-and-maintenance-burden/plan-01-deterministic-timer-tests
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Async scheduler, watch, stream, and periodic-file-check tests require
+          careful event ordering and small testability seams without changing
+          runtime behavior.
+      reviewer:
+        effort: high
+        rationale: Review must verify that latency reductions preserve scheduler
+          dependency and stream reaction coverage.
+  - id: plan-02-consolidate-playbook-test-matrices
+    name: Consolidate Playbook and Command Test Matrices
+    depends_on: []
+    branch: reduce-low-value-test-suite-latency-and-maintenance-burden/plan-02-consolidate-playbook-test-matrices
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Consolidation changes many assertions; the builder must preserve
+          route, command, and landing propagation coverage while deleting only
+          redundant tests.
+      reviewer:
+        effort: high
+        rationale: Review must verify that each removed or table-driven case still has
+          adjacent coverage.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a multi-file conservative test-suite thinning/refactor with
+    coverage-preservation judgment, matching excursion scope. A planner plus
+    plan review is appropriate to avoid over-deleting valuable tests. Build runs
+    implementation, then a review cycle focused on code/test quality, followed
+    by a test cycle to execute the targeted Vitest and maintainability checks
+    after review fixes. No docs stages are needed because the PRD does not
+    request user-facing API or documentation changes.
+diff_base_ref: d709846c1f0253057919b8d8c51c5de445b01bcd
