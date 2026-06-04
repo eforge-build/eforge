@@ -18,9 +18,7 @@ import {
 import { runPlanner } from '../../agents/planner.js';
 import { runModulePlanner } from '../../agents/module-planner.js';
 import { runPlanReview } from '../../agents/plan-reviewer.js';
-import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from '../../agents/plan-evaluator.js';
-import { runCohesionReview } from '../../agents/cohesion-reviewer.js';
-import { runArchitectureReview } from '../../agents/architecture-reviewer.js';
+import { runPlanEvaluate } from '../../agents/plan-evaluator.js';
 import { parseBuildConfigBlock } from '../../agents/common.js';
 import { composePipeline, type PipelineComposerOptions } from '../../agents/pipeline-composer.js';
 import { compileExpedition } from '../../compiler.js';
@@ -34,6 +32,10 @@ import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker, createStageSpanWiring } from '../span-wiring.js';
 import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
 import { runReviewCycle } from '../runners.js';
+import {
+  runArchitectureReviewCycleStage,
+  runCohesionReviewCycleStage,
+} from './compile-review-cycles.js';
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (extracted from long stage bodies)
@@ -374,71 +376,7 @@ registerCompileStage({
   predecessors: ['planner'],
   parallelizable: false,
 }, async function* architectureReviewCycleStage(ctx) {
-  // Only meaningful in expedition mode
-  if (ctx.expeditionModules.length === 0) return;
-
-  const cwd = ctx.cwd;
-  const planDir = resolve(cwd, ctx.config.plan.outputDir, ctx.planSetName);
-  const verbose = ctx.verbose;
-  const abortController = ctx.abortController;
-  const sourceContent = ctx.sourceContent;
-  const planSetName = ctx.planSetName;
-
-  // Read architecture content for review — if the planner didn't produce
-  // architecture.md, something went wrong; skip rather than reviewing nothing.
-  let architectureContent: string;
-  try {
-    architectureContent = await readFile(resolve(planDir, 'architecture.md'), 'utf-8');
-  } catch {
-    return;
-  }
-
-  const { harness: archReviewerHarness, toolbeltSummary: archReviewerTb } = ctx.agentRuntimes.forRoleResolved('architecture-reviewer');
-  const { harness: archEvaluatorHarness, toolbeltSummary: archEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('architecture-evaluator');
-  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, undefined, archReviewerTb);
-  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, undefined, archEvaluatorTb);
-  const planSetPath = `${ctx.config.plan.outputDir}/${planSetName}`;
-  const evaluationCommitMessage = `plan(${planSetName}): planning artifacts`;
-
-  try {
-    yield* runReviewCycle({
-      tracing: ctx.tracing,
-      cwd,
-      reviewer: {
-        role: 'architecture-reviewer',
-        metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'architecture-review', harness: archReviewerHarness, lane: 'planning' }),
-      },
-      evaluator: {
-        role: 'architecture-evaluator',
-        metadata: { planSet: planSetName },
-        prepareInput: async () => ({
-          evaluationSnapshot: await prepareEvaluationSnapshot(cwd, 'HEAD~1'),
-          evaluatorOptions: { allowedPathPrefix: planSetPath, commitMessage: evaluationCommitMessage },
-        }),
-        run: (input) => runArchitectureEvaluate({
-          ...archEvaluatorConfig,
-          planSetName,
-          sourceContent,
-          cwd,
-          verbose,
-          abortController,
-          outputDir: ctx.config.plan.outputDir,
-          evaluationSnapshot: input.evaluationSnapshot,
-          allowedPathPrefix: planSetPath,
-          commitMessage: evaluationCommitMessage,
-          modelTracker: ctx.modelTracker,
-          continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
-          phase: 'compile',
-          stage: 'architecture-evaluate',
-          harness: archEvaluatorHarness,
-          lane: 'planning',
-        }),
-      },
-    });
-  } catch (err) {
-    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Architecture review skipped: ${(err as Error).message}` };
-  }
+  yield* runArchitectureReviewCycleStage(ctx);
 });
 
 registerCompileStage({
@@ -512,70 +450,7 @@ registerCompileStage({
   predecessors: ['planner', 'module-planning'],
   parallelizable: false,
 }, async function* cohesionReviewCycleStage(ctx) {
-  // Only meaningful in expedition mode
-  if (ctx.expeditionModules.length === 0) return;
-
-  const cwd = ctx.cwd;
-  const planDir = resolve(cwd, ctx.config.plan.outputDir, ctx.planSetName);
-  const verbose = ctx.verbose;
-  const abortController = ctx.abortController;
-  const sourceContent = ctx.sourceContent;
-  const planSetName = ctx.planSetName;
-
-  // Read architecture content for cohesion review
-  let architectureContent = '';
-  try {
-    architectureContent = await readFile(resolve(planDir, 'architecture.md'), 'utf-8');
-  } catch {
-    // Architecture file may not exist
-  }
-
-  const { harness: cohesionReviewerHarness, toolbeltSummary: cohesionReviewerTb } = ctx.agentRuntimes.forRoleResolved('cohesion-reviewer');
-  const { harness: cohesionEvaluatorHarness, toolbeltSummary: cohesionEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('cohesion-evaluator');
-  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, undefined, cohesionReviewerTb);
-  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, undefined, cohesionEvaluatorTb);
-  const modulesPath = `${ctx.config.plan.outputDir}/${planSetName}/modules`;
-  const evaluationCommitMessage = `plan(${planSetName}): planning artifacts`;
-
-  try {
-    yield* runReviewCycle({
-      tracing: ctx.tracing,
-      cwd,
-      reviewer: {
-        role: 'cohesion-reviewer',
-        metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'cohesion-review', harness: cohesionReviewerHarness, lane: 'planning' }),
-      },
-      evaluator: {
-        role: 'cohesion-evaluator',
-        metadata: { planSet: planSetName },
-        prepareInput: async () => ({
-          evaluationSnapshot: await prepareEvaluationSnapshot(cwd, 'HEAD~1'),
-          evaluatorOptions: { allowedPathPrefix: modulesPath, commitMessage: evaluationCommitMessage },
-        }),
-        run: (input) => runCohesionEvaluate({
-          ...cohesionEvaluatorConfig,
-          planSetName,
-          sourceContent,
-          cwd,
-          verbose,
-          abortController,
-          outputDir: ctx.config.plan.outputDir,
-          evaluationSnapshot: input.evaluationSnapshot,
-          allowedPathPrefix: modulesPath,
-          commitMessage: evaluationCommitMessage,
-          modelTracker: ctx.modelTracker,
-          continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
-          phase: 'compile',
-          stage: 'cohesion-evaluate',
-          harness: cohesionEvaluatorHarness,
-          lane: 'planning',
-        }),
-      },
-    });
-  } catch (err) {
-    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
-  }
+  yield* runCohesionReviewCycleStage(ctx);
 });
 
 registerCompileStage({
