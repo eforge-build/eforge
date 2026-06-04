@@ -367,18 +367,19 @@ describe('direct PR base sync', () => {
     const { origin, repo } = initOriginAndRepo(tmp);
     createFeature(repo);
     const validationScript = join(tmp, 'advance-on-validation.js');
+    const validationClone = join(tmp, 'validation-advance-main');
+    execFileSync('git', ['clone', origin, validationClone], { env: GIT_ENV });
+    git(validationClone, ['config', 'user.email', 'test@example.com']);
+    git(validationClone, ['config', 'user.name', 'Test']);
     writeFileSync(validationScript, `
 const { execFileSync } = require('child_process');
-const { mkdtempSync, writeFileSync } = require('fs');
+const { writeFileSync } = require('fs');
 const { join } = require('path');
-const { tmpdir } = require('os');
 const env = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.com' };
-const origin = ${JSON.stringify(origin)};
-const clone = mkdtempSync(join(tmpdir(), 'eforge-advance-'));
-execFileSync('git', ['clone', origin, clone], { env });
-execFileSync('git', ['-C', clone, 'config', 'user.email', 'test@example.com'], { env });
-execFileSync('git', ['-C', clone, 'config', 'user.name', 'Test'], { env });
+const clone = ${JSON.stringify(validationClone)};
+execFileSync('git', ['-C', clone, 'fetch', 'origin', 'main'], { env });
 execFileSync('git', ['-C', clone, 'checkout', 'main'], { env });
+execFileSync('git', ['-C', clone, 'reset', '--hard', 'origin/main'], { env });
 writeFileSync(join(clone, 'advance-' + Date.now() + '.txt'), 'advanced\\n');
 execFileSync('git', ['-C', clone, 'add', '.'], { env });
 execFileSync('git', ['-C', clone, 'commit', '-m', 'advance main'], { env });
