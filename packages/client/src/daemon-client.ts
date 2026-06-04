@@ -185,7 +185,6 @@ export async function daemonRequestIfRunning<T = unknown>(
   return { data: result.data, port: result.port };
 }
 
-// --- eforge:region plan-01-platform-contracts ---
 export interface DaemonRequestWithStatusResult<T = unknown> {
   data: T;
   port: number;
@@ -219,7 +218,6 @@ export async function daemonRequestWithStatus<T = unknown>(
   const port = await ensureDaemon(cwd);
   return daemonRequestWithPort<T>(port, method, path, body, { preserveStatus: true });
 }
-// --- eforge:endregion plan-01-platform-contracts ---
 
 async function daemonRequestWithPort<T = unknown>(
   port: number,

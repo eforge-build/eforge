@@ -1,6 +1,5 @@
 import type { NativeExtensionDiagnostic } from './types.js';
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 export const EXTENSION_LOCAL_CONTRIBUTION_ID_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
 export function isValidExtensionLocalContributionId(value: unknown): value is string {
@@ -25,4 +24,3 @@ export function buildDuplicateContributionDiagnostic(
     extensionName: duplicate.extensionName,
   };
 }
-// --- eforge:endregion plan-02-engine-registry-runtime ---

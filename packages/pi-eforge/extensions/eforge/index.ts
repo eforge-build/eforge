@@ -83,9 +83,7 @@ import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
 import { handleStackSyncCommand } from './stack-sync-command';
-// --- eforge:region plan-05-host-integration-surfaces ---
 import { registerExtensionContributionTool, registerExtensionContributionsCommand } from './extension-contributions';
-// --- eforge:endregion plan-05-host-integration-surfaces ---
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type LandingAction,
@@ -886,9 +884,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:region plan-05-host-integration-surfaces ---
   registerExtensionContributionTool(pi);
-  // --- eforge:endregion plan-05-host-integration-surfaces ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_models
@@ -2215,9 +2211,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- eforge:region plan-05-host-integration-surfaces ---
   registerExtensionContributionsCommand(pi, () => _latestCtx);
-  // --- eforge:endregion plan-05-host-integration-surfaces ---
 
 
 

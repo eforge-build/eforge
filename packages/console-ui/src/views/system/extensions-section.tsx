@@ -75,12 +75,10 @@ export function ExtensionsSection({ list, validate }: ExtensionsSectionProps) {
               {totals.validationProviders > 0 && <Badge variant="outline">validation providers: {totals.validationProviders}</Badge>}
               {totals.tools > 0 && <Badge variant="outline">tools: {totals.tools}</Badge>}
               {totals.prdEnrichers > 0 && <Badge variant="outline">prd enrichers: {totals.prdEnrichers}</Badge>}
-              {/* --- eforge:region plan-04-console-contribution-rendering --- */}
               {totals.actions > 0 && <Badge variant="outline">actions: {totals.actions}</Badge>}
               {totals.consoleContributions > 0 && <Badge variant="outline">Console contributions: {totals.consoleContributions}</Badge>}
               {totals.integrationCommands > 0 && <Badge variant="outline">integration commands: {totals.integrationCommands}</Badge>}
               {totals.deepLinks > 0 && <Badge variant="outline">deep links: {totals.deepLinks}</Badge>}
-              {/* --- eforge:endregion plan-04-console-contribution-rendering --- */}
             </div>
           </div>
         )}
@@ -109,12 +107,10 @@ export function ExtensionsSection({ list, validate }: ExtensionsSectionProps) {
                     </Badge>
                   ) : null}
                   {ext.format && <Badge variant="outline" className="text-xs">{ext.format}</Badge>}
-                  {/* --- eforge:region plan-04-console-contribution-rendering --- */}
                   {(ext.actionDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">actions: {ext.actionDetails?.length}</Badge>}
                   {(ext.consoleContributionDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">Console panels: {ext.consoleContributionDetails?.length}</Badge>}
                   {(ext.integrationCommandDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">commands: {ext.integrationCommandDetails?.length}</Badge>}
                   {(ext.deepLinkDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">deep links: {ext.deepLinkDetails?.length}</Badge>}
-                  {/* --- eforge:endregion plan-04-console-contribution-rendering --- */}
                 </div>
                 {ext.diagnostics.length > 0 && (
                   <ul className="pl-3 space-y-0.5">

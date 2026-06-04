@@ -84,7 +84,6 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
-// --- eforge:region plan-01-platform-contracts ---
 export type {
   ConsoleContribution,
   ConsoleContributionBlock,
@@ -105,7 +104,6 @@ export {
   defineExtensionDeepLink,
   defineIntegrationCommand,
 } from './contributions.js';
-// --- eforge:endregion plan-01-platform-contracts ---
 
 // TypeBox re-exports
 export { Type } from './schema.js';

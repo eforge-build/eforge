@@ -26,7 +26,6 @@ import type {
   NativeExtensionRegistry,
 } from './types.js';
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 export function buildExtensionContributionManifest(registry: NativeExtensionRegistry): ExtensionContributionManifestResponse {
   const manifest = {
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
@@ -165,4 +164,3 @@ function omitUndefined<T extends Record<string, unknown>>(value: T): T {
   }
   return value;
 }
-// --- eforge:endregion plan-02-engine-registry-runtime ---

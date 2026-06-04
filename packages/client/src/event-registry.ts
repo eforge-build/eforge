@@ -186,12 +186,10 @@ const eventRegistry = {
       `Extension ${e.extensionName} event hook timed out after ${e.timeoutMs}ms (${e.pattern} on ${e.triggeringEventType})`,
   },
 
-  // --- eforge:region plan-03-daemon-action-routes ---
   'extension:action:start': { scope: 'daemon', persist: true, summary: (e) => `Extension action ${e.actionId} started for ${e.extensionName}` },
   'extension:action:complete': { scope: 'daemon', persist: true, summary: (e) => `Extension action ${e.actionId} completed for ${e.extensionName}` },
   'extension:action:failed': { scope: 'daemon', persist: true, summary: (e) => `Extension action ${e.actionId} failed for ${e.extensionName}: ${e.errorCode}` },
   'extension:action:timeout': { scope: 'daemon', persist: true, summary: (e) => `Extension action ${e.actionId} timed out for ${e.extensionName} after ${e.timeoutMs}ms` },
-  // --- eforge:endregion plan-03-daemon-action-routes ---
 
   'extension:agent-context:applied': {
     scope: 'session',

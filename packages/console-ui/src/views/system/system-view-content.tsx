@@ -90,7 +90,6 @@ export function SystemViewContent({ state, onRefresh, projectState }: SystemView
           active={state.profiles.active}
         />
 
-        {/* --- eforge:region plan-04-console-contribution-rendering --- */}
         <ExtensionsSection
           list={state.extensions.list}
           validate={state.extensions.validate}
@@ -99,7 +98,6 @@ export function SystemViewContent({ state, onRefresh, projectState }: SystemView
         <ExtensionContributionsSection
           manifest={state.extensions.contributions}
         />
-        {/* --- eforge:endregion plan-04-console-contribution-rendering --- */}
 
         <PlaybooksSection
           list={state.playbooks.list}

@@ -65,7 +65,6 @@ export interface PrdEnricherSpec { name: string; description: string; enrich: Ex
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
 export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 export interface ExtensionActionContextShape {
   invocationId: string;
   actionId: string;
@@ -99,7 +98,6 @@ export type ConsoleContributionBlockSpec =
 export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[] }
 export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; action: ExtensionActionBindingSpec }
 export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; action?: ExtensionActionBindingSpec }
-// --- eforge:endregion plan-02-engine-registry-runtime ---
 
 export interface EforgeExtensionAPIShape {
   onEvent(pattern: EventPattern, handler: ExtensionHandler): void;
@@ -226,12 +224,10 @@ export type ValidationProviderRegistration = BaseExtensionRegistration<'validati
 export type ToolRegistration = BaseExtensionRegistration<'tool', ExtensionTool> & { name: string };
 export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', PrdEnricherSpec> & { name: string };
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 export type ActionRegistration = BaseExtensionRegistration<'action', ExtensionActionSpec> & { localId: string; id: string };
 export type ConsoleContributionRegistration = BaseExtensionRegistration<'consoleContribution', ConsoleContributionSpec> & { localId: string; id: string };
 export type IntegrationCommandRegistration = BaseExtensionRegistration<'integrationCommand', IntegrationCommandSpec> & { localId: string; id: string };
 export type DeepLinkRegistration = BaseExtensionRegistration<'deepLink', ExtensionDeepLinkSpec> & { localId: string; id: string };
-// --- eforge:endregion plan-02-engine-registry-runtime ---
 
 export interface NativeExtensionRecorderState {
   eventHooks: EventHookRegistration[];
@@ -243,12 +239,10 @@ export interface NativeExtensionRecorderState {
   validationProviders: ValidationProviderRegistration[];
   tools: ToolRegistration[];
   prdEnrichers: PrdEnricherRegistration[];
-  // --- eforge:region plan-02-engine-registry-runtime ---
   actions: ActionRegistration[];
   consoleContributions: ConsoleContributionRegistration[];
   integrationCommands: IntegrationCommandRegistration[];
   deepLinks: DeepLinkRegistration[];
-  // --- eforge:endregion plan-02-engine-registry-runtime ---
   diagnostics: NativeExtensionDiagnostic[];
 }
 
@@ -273,12 +267,10 @@ export interface LoadedNativeExtension {
     validationProviders: number;
     tools: number;
     prdEnrichers: number;
-    // --- eforge:region plan-02-engine-registry-runtime ---
     actions: number;
     consoleContributions: number;
     integrationCommands: number;
     deepLinks: number;
-    // --- eforge:endregion plan-02-engine-registry-runtime ---
   };
 }
 

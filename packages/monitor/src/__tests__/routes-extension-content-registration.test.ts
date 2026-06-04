@@ -5,9 +5,7 @@ import { routeMethodsByKey, startContentRouteHarness } from './route-test-harnes
 
 const EXPECTED_ROUTE_KEYS = [
   'extensionList', 'extensionShow', 'extensionValidate',
-  // --- eforge:region plan-03-daemon-action-routes ---
   'extensionContributionManifest', 'extensionActionInvoke',
-  // --- eforge:endregion plan-03-daemon-action-routes ---
   'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
   'extensionRemove', 'extensionPromote', 'extensionDemote',
   'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',
@@ -20,9 +18,7 @@ const EXPECTED_ROUTE_KEYS = [
 
 const GET_ROUTE_KEYS = new Set([
   'extensionList', 'extensionShow', 'extensionValidate',
-  // --- eforge:region plan-03-daemon-action-routes ---
   'extensionContributionManifest',
-  // --- eforge:endregion plan-03-daemon-action-routes ---
   'playbookList', 'playbookShow',
   'sessionPlanList', 'sessionPlanShow', 'sessionPlanReadiness',
   'sessionPlanSetList', 'sessionPlanSetShow', 'sessionPlanSetValidate',
@@ -30,9 +26,7 @@ const GET_ROUTE_KEYS = new Set([
 
 const SECURED_ROUTE_KEYS = new Set([
   'extensionList', 'extensionShow', 'extensionValidate',
-  // --- eforge:region plan-03-daemon-action-routes ---
   'extensionContributionManifest', 'extensionActionInvoke',
-  // --- eforge:endregion plan-03-daemon-action-routes ---
   'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
   'extensionRemove', 'extensionPromote', 'extensionDemote',
   'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',

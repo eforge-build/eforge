@@ -8,7 +8,6 @@ import {
 } from '@eforge-build/client';
 import { startContentRouteHarness, type RouteHarness } from './route-test-harness.js';
 
-// --- eforge:region plan-03-daemon-action-routes ---
 async function seedExtension(cwd: string, body: string, timeoutMs = 1000): Promise<void> {
   const dir = join(cwd, '.eforge', 'extensions');
   await mkdir(dir, { recursive: true });
@@ -206,4 +205,3 @@ function actionEvents(harness: RouteHarness): Array<Record<string, any>> {
     .filter((event) => event.type.startsWith('extension:action:'))
     .map((event) => JSON.parse(event.data));
 }
-// --- eforge:endregion plan-03-daemon-action-routes ---

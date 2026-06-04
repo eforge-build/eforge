@@ -27,9 +27,7 @@ import type {
   ResumeBuildRequest,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
-// --- eforge:region plan-05-host-integration-surfaces ---
 import { registerExtensionContributionMcpTool } from './mcp-extension-contributions.js';
-// --- eforge:endregion plan-05-host-integration-surfaces ---
 
 declare const EFORGE_VERSION: string;
 
@@ -459,9 +457,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // --- eforge:region plan-05-host-integration-surfaces ---
   registerExtensionContributionMcpTool(server, cwd);
-  // --- eforge:endregion plan-05-host-integration-surfaces ---
 
   // Tool: eforge_models
   createDaemonTool(server, cwd, {

@@ -186,7 +186,6 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.tools.push({ kind: 'tool', extensionName, extensionPath, name: tool.name, value: tool as unknown as ExtensionTool });
     },
-    // --- eforge:region plan-02-engine-registry-runtime ---
     registerAction(action: unknown): void {
       const result = validateActionSpec(action);
       if (!result.ok || result.value === undefined || result.id === undefined) {
@@ -219,7 +218,6 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.deepLinks.push({ kind: 'deepLink', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
     },
-    // --- eforge:endregion plan-02-engine-registry-runtime ---
   };
 
   return { api, state };
@@ -238,19 +236,16 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
   mergeNamedRegistrations(target.prdEnrichers, source.prdEnrichers, 'PRD enricher', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.reviewerPerspectives, source.reviewerPerspectives, 'reviewer perspective', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.validationProviders, source.validationProviders, 'validation provider', diagnostics, target.diagnostics);
-  // --- eforge:region plan-02-engine-registry-runtime ---
   mergeIdRegistrations(target.actions, source.actions, 'action', diagnostics, target.diagnostics);
   const acceptedActions = new Set(target.actions.map(actionLookupKey));
   mergeBoundIdRegistrations(target.consoleContributions, source.consoleContributions, 'Console contribution', acceptedActions, diagnostics, target.diagnostics);
   mergeBoundIdRegistrations(target.integrationCommands, source.integrationCommands, 'integration command', acceptedActions, diagnostics, target.diagnostics);
   mergeBoundIdRegistrations(target.deepLinks, source.deepLinks, 'deep link', acceptedActions, diagnostics, target.diagnostics);
-  // --- eforge:endregion plan-02-engine-registry-runtime ---
   mergeNamedRegistrations(target.tools, source.tools, 'tool', diagnostics, target.diagnostics);
   return diagnostics;
 }
 
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 function mergeIdRegistrations<T extends { id: string; extensionName: string; extensionPath: string }>(
   target: T[],
   source: T[],
@@ -321,7 +316,6 @@ function findInvalidBinding(registration: ConsoleContributionRegistration | Inte
 function actionLookupKey(action: ActionRegistration): string {
   return `${action.extensionName}\0${action.extensionPath}\0${action.localId}`;
 }
-// --- eforge:endregion plan-02-engine-registry-runtime ---
 
 function mergeNamedRegistrations<T extends { name: string; extensionName: string; extensionPath: string }>(
   target: T[],

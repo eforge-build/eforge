@@ -11,7 +11,6 @@ import type {
   IntegrationCommandSpec,
 } from './types.js';
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 const SIDE_EFFECTS = new Set<ExtensionActionSideEffect>([
   'none',
   'local-read',
@@ -223,4 +222,3 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function fail(id: string | undefined, message: string): RegistrationValidationResult<never> {
   return { ok: false, id, message };
 }
-// --- eforge:endregion plan-02-engine-registry-runtime ---

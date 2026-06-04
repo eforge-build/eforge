@@ -898,7 +898,6 @@ const StackSyncTriggerSchema = Type.Optional(Type.Union([
   Type.Literal('scheduled'), Type.Literal('retry-deferred'),
 ]));
 
-// --- eforge:region plan-03-daemon-action-routes ---
 const ExtensionActionValidationErrorSchema = Type.Object({
   path: Type.String(),
   message: Type.String(),
@@ -921,7 +920,6 @@ const ExtensionActionEventBaseFields = {
 } as const;
 
 void ExtensionActionInvokeErrorCodeSchema;
-// --- eforge:endregion plan-03-daemon-action-routes ---
 
 const EforgeEventVariantsSchema = Type.Union([
   // Session lifecycle
@@ -1004,7 +1002,6 @@ const EforgeEventVariantsSchema = Type.Union([
     timeoutMs: Type.Number(),
   }),
 
-  // --- eforge:region plan-03-daemon-action-routes ---
   Type.Object({
     type: Type.Literal('extension:action:start'),
     ...ExtensionActionEventBaseFields,
@@ -1029,7 +1026,6 @@ const EforgeEventVariantsSchema = Type.Union([
     timeoutMs: Type.Number(),
     message: Type.String(),
   }),
-  // --- eforge:endregion plan-03-daemon-action-routes ---
 
   // Native extension agent-context hook diagnostics and tool decisions
   Type.Object({

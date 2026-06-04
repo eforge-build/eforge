@@ -5,7 +5,6 @@ import type {
   ExtensionActionRequestedByHost,
 } from '@eforge-build/client';
 
-// --- eforge:region plan-01-platform-contracts ---
 export type { ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
 
 export type ExtensionActionSideEffect =
@@ -113,4 +112,3 @@ export function defineIntegrationCommand<TInput extends TObject | undefined = TO
 export function defineExtensionDeepLink(deepLink: ExtensionDeepLink): ExtensionDeepLink {
   return deepLink;
 }
-// --- eforge:endregion plan-01-platform-contracts ---

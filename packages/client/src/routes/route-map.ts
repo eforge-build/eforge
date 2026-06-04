@@ -40,10 +40,8 @@ export const API_ROUTES = {
   extensionRemove: '/api/extensions/remove',
   extensionPromote: '/api/extensions/promote',
   extensionDemote: '/api/extensions/demote',
-  // --- eforge:region plan-01-platform-contracts ---
   extensionContributionManifest: '/api/extensions/contributions',
   extensionActionInvoke: '/api/extensions/actions/invoke',
-  // --- eforge:endregion plan-01-platform-contracts ---
   queue: '/api/queue',
   queueRecoveryAnalyze: '/api/queue/recovery/analyze',
   queueRecoveryApply: '/api/queue/recovery/apply',

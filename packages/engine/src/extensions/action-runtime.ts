@@ -6,7 +6,6 @@ import type { TSchema } from '@sinclair/typebox';
 import { validateJsonSafeValue, jsonSafeClone } from './contribution-validation.js';
 import type { ActionRegistration, NativeExtensionRegistry } from './types.js';
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 export interface DispatchExtensionActionOptions {
   actionId: string;
   input: Record<string, unknown>;
@@ -162,4 +161,3 @@ function logHandlerError(action: ActionRegistration, err: unknown): void {
 }
 
 class TimeoutError extends Error {}
-// --- eforge:endregion plan-02-engine-registry-runtime ---

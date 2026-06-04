@@ -12,7 +12,6 @@ import {
 
 import { useTempDir } from './test-tmpdir.js';
 
-// --- eforge:region plan-02-engine-registry-runtime ---
 async function makeTree(root: string): Promise<ScopeResolverOpts> {
   process.env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
   const opts = { cwd: root, configDir: resolve(root, 'eforge') };
@@ -290,4 +289,3 @@ describe('extension contribution registry runtime', () => {
     expect(JSON.stringify(manifest)).not.toContain('function extension');
   });
 });
-// --- eforge:endregion plan-02-engine-registry-runtime ---

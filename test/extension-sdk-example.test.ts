@@ -119,7 +119,6 @@ const _policyGateStub: sdk.EforgeExtensionFactory = (api) => {
 };
 void _policyGateStub;
 
-// --- eforge:region plan-01-platform-contracts ---
 const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
   const action = sdk.defineExtensionAction({
     id: 'say-hi',
@@ -169,7 +168,6 @@ const _objectRootActionSchemaStub: sdk.EforgeExtensionFactory = (api) => {
   });
 };
 void _objectRootActionSchemaStub;
-// --- eforge:endregion plan-01-platform-contracts ---
 
 // Compile-time examples: old one-argument input source remains compatible
 const _oldInputSourceStub: sdk.EforgeExtensionFactory = (api) => {

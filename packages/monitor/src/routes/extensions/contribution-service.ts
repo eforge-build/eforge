@@ -14,7 +14,6 @@ import {
   type ExtensionActionEventProvenance,
 } from './action-events.js';
 
-// --- eforge:region plan-03-daemon-action-routes ---
 export interface LoadedContributionRuntime {
   config: { extensions: unknown };
   registry: unknown;
@@ -146,4 +145,3 @@ function statusForFailure(kind: Exclude<ExtensionActionInvokeErrorCode, 'unknown
   if (kind === 'invalid-input') return 400;
   return 500;
 }
-// --- eforge:endregion plan-03-daemon-action-routes ---

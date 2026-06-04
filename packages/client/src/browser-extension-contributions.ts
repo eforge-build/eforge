@@ -8,7 +8,6 @@ import {
   type ExtensionContributionManifestResponse,
 } from './extension-contributions.js';
 
-// --- eforge:region plan-01-platform-contracts ---
 export async function fetchExtensionContributionManifest(init?: RequestInit): Promise<ExtensionContributionManifestResponse> {
   const res = await fetch(API_ROUTES.extensionContributionManifest, { ...init, method: 'GET' });
   if (!res.ok) {
@@ -48,4 +47,3 @@ function parseJsonText(text: string): unknown {
     return text;
   }
 }
-// --- eforge:endregion plan-01-platform-contracts ---

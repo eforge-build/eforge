@@ -127,7 +127,6 @@ export type {
 } from './policy-gate-runtime.js';
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
-// --- eforge:region plan-02-engine-registry-runtime ---
 export { EXTENSION_LOCAL_CONTRIBUTION_ID_RE, isValidExtensionLocalContributionId, resolveExtensionContributionId } from './ids.js';
 export {
   buildExtensionContributionManifest,
@@ -138,7 +137,6 @@ export {
 } from './manifest.js';
 export { dispatchExtensionAction } from './action-runtime.js';
 export type { DispatchExtensionActionOptions, DispatchExtensionActionResult } from './action-runtime.js';
-// --- eforge:endregion plan-02-engine-registry-runtime ---
 export {
   parseExtensionEventFixtureFile,
   replayNativeExtensionEvents,

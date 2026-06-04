@@ -9,7 +9,6 @@ import {
   type ExtensionContributionManifestResponse,
 } from '../extension-contributions.js';
 
-// --- eforge:region plan-01-platform-contracts ---
 export async function apiGetExtensionContributionManifest(opts: { cwd: string }): Promise<ExtensionContributionManifestResponse> {
   const { data } = await daemonRequest<unknown>(opts.cwd, 'GET', API_ROUTES.extensionContributionManifest);
   return parseExtensionContributionManifest(data);
@@ -58,4 +57,3 @@ function parseActionInvokeDaemonResponse(result: { data: unknown; status: number
 function formatResponseBody(data: unknown): string {
   return typeof data === 'string' ? data : JSON.stringify(data);
 }
-// --- eforge:endregion plan-01-platform-contracts ---

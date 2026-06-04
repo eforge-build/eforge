@@ -100,7 +100,6 @@ export {
   fetchResumeEligibility,
 } from './browser-recovery.js';
 
-// --- eforge:region plan-01-platform-contracts ---
 export {
   fetchExtensionContributionManifest,
   invokeExtensionAction,
@@ -154,7 +153,6 @@ export type {
   ExtensionJsonValue,
   IntegrationCommandManifestEntry,
 } from './extension-contributions.js';
-// --- eforge:endregion plan-01-platform-contracts ---
 
 export type {
   SessionPlanSetStatusWire,

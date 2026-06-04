@@ -67,7 +67,6 @@ export const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
-// --- eforge:region plan-03-daemon-action-routes ---
 export const extensionActionVariants: EforgeEvent[] = [
   {
     type: 'extension:action:start',
@@ -114,7 +113,6 @@ export const extensionActionVariants: EforgeEvent[] = [
     message: 'Action handler timed out after 5ms',
   },
 ];
-// --- eforge:endregion plan-03-daemon-action-routes ---
 
 export const extensionDiagnosticVariants: EforgeEvent[] = [
   {

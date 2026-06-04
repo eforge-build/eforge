@@ -1,7 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
 
-// --- eforge:region plan-01-platform-contracts ---
 export const EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION = 1;
 
 export const ExtensionJsonValueSchema = Type.Recursive((Self) => Type.Union([
@@ -243,4 +242,3 @@ export function safeParseExtensionActionInvokeResponse(value: unknown): SafePars
 export function parseExtensionActionInvokeResponse(value: unknown): ExtensionActionInvokeResponse {
   return parseWithSchema(ExtensionActionInvokeResponseSchema, value);
 }
-// --- eforge:endregion plan-01-platform-contracts ---

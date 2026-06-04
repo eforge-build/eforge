@@ -7,7 +7,6 @@ import { sendJson, sendJsonError } from '../../http/response.js';
 import { localMutation, localOnly, rejectCrossSiteBrowser } from '../../http/security.js';
 import { failureBody, getContributionManifest, invokeExtensionAction } from './contribution-service.js';
 
-// --- eforge:region plan-03-daemon-action-routes ---
 export function createExtensionContributionRoutes(context: MonitorContext): RouteDefinition[] {
   return [
     defineRoute({
@@ -71,4 +70,3 @@ function isJsonContentType(value: string | string[] | undefined): boolean {
   const contentTypes = Array.isArray(value) ? value : value ? [value] : [];
   return contentTypes.some((contentType) => contentType.split(';', 1)[0]?.trim().toLowerCase() === 'application/json');
 }
-// --- eforge:endregion plan-03-daemon-action-routes ---

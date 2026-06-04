@@ -3,7 +3,6 @@ import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEv
 import { safeParseEforgeEvent } from '../events.schemas.js';
 import { extensionActionVariants, expectJsonRoundTrip } from './events-schema-test-helpers.js';
 
-// --- eforge:region plan-03-daemon-action-routes ---
 const actionTypes = [
   'extension:action:start',
   'extension:action:complete',
@@ -54,4 +53,3 @@ describe('extension action lifecycle event schemas', () => {
     }
   });
 });
-// --- eforge:endregion plan-03-daemon-action-routes ---
