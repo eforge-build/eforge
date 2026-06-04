@@ -1,0 +1,124 @@
+name: add-queued-prd-priority-and-removal-controls
+description: Add first-class queued PRD priority mutation and non-running
+  removal controls across the daemon API, shared client, CLI, MCP/Pi
+  integrations, Console UI, docs, and tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-core-queue-control
+    name: Core Queue Control API, Engine Helpers, and Scheduler Reconciliation
+    depends_on: []
+    branch: add-queued-prd-priority-and-removal-controls/plan-01-core-queue-control
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan touches the daemon route contract, queue filesystem
+          mutation safety, and scheduler reconciliation order. It needs careful
+          handling of live locks, dependency refusals, and no-growth ceilings on
+          oversized engine files.
+      reviewer:
+        effort: high
+        rationale: Local mutation security, path-safe deletion, and daemon API contract
+          changes require thorough review.
+  - id: plan-02-host-queue-controls
+    name: CLI, MCP, and Pi Queue Control Surfaces
+    depends_on:
+      - plan-01-core-queue-control
+    branch: add-queued-prd-priority-and-removal-controls/plan-02-host-queue-controls
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-03-console-queue-controls
+    name: Console Queue Priority and Removal Actions
+    depends_on:
+      - plan-01-core-queue-control
+    branch: add-queued-prd-priority-and-removal-controls/plan-03-console-queue-controls
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: This plan adds interactive row actions, confirmation state, async
+          error handling, and queue refresh wiring across the Now dashboard
+          stack and loose queue renderers.
+  - id: plan-04-queue-control-docs
+    name: Queue Control Documentation and Generated References
+    depends_on:
+      - plan-02-host-queue-controls
+      - plan-03-console-queue-controls
+    branch: add-queued-prd-priority-and-removal-controls/plan-04-queue-control-docs
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - code
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is broad cross-package work touching engine queue helpers,
+    daemon/client route contracts, scheduler reconciliation, CLI/MCP/Pi
+    integrations, Console UI, docs, and tests, but it is cohesive and can be
+    planned by one planner, so excursion is appropriate rather than expedition.
+    A plan review gate is included because the API and scheduler semantics are
+    detailed and risk-prone. Build runs implementation and documentation
+    authoring together, then syncs docs, writes tests, performs iterative
+    code/API review, and finishes with test execution to catch regressions after
+    review fixes. Review uses focused API and code perspectives with strict
+    evaluation because the change adds public daemon/client contracts and
+    filesystem deletion/reordering behavior.
+diff_base_ref: a5d42d63b607aa03d6e8a61efd00c2cda0ced4a9
