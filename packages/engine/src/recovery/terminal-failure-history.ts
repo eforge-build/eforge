@@ -10,7 +10,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
-import type { BuildFailureSummary, FailingPlanEntry, LandedCommit, PlanSummaryEntry, ReviewIssue } from '../events.js';
+import type { AcceptanceCriteriaConflict, AcceptanceCriterionVerdict, BuildFailureSummary, FailingPlanEntry, LandedCommit, PlanSummaryEntry, ReviewIssue } from '../events.js';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -74,6 +74,8 @@ export interface AuthoritativeTerminalEvent {
   message: string;
   planId?: string;
   sourceEventType?: string;
+  sourceEventId?: number;
+  sourceEventTimestamp?: string;
   landing?: { status: string; action?: string; reason?: string };
   validationPassed?: boolean;
   prdValidationPassed?: boolean;
@@ -102,17 +104,145 @@ export function findAuthoritativeTerminalEvent(
   const message = typeof failure.message === 'string' ? failure.message : '';
   const planId = typeof failure.planId === 'string' ? failure.planId : undefined;
   const sourceEventType = typeof failure.sourceEventType === 'string' ? failure.sourceEventType : undefined;
+  const sourceEventId = Number.isInteger(failure.sourceEventId) ? failure.sourceEventId as number : undefined;
+  const sourceEventTimestamp = typeof failure.sourceEventTimestamp === 'string' ? failure.sourceEventTimestamp : undefined;
   const landingRaw = failure.landing && typeof failure.landing === 'object' ? failure.landing as Record<string, unknown> : undefined;
   const landing = landingRaw && typeof landingRaw.status === 'string'
-    ? { status: landingRaw.status, action: typeof landingRaw.action === 'string' ? landingRaw.action : undefined, reason: typeof landingRaw.reason === 'string' ? landingRaw.reason : undefined }
+    ? { status: landingRaw.status, ...(typeof landingRaw.action === 'string' ? { action: landingRaw.action } : {}), ...(typeof landingRaw.reason === 'string' ? { reason: landingRaw.reason } : {}) }
     : undefined;
   return {
-    id: row.id, timestamp: row.timestamp, scope, message, planId, sourceEventType, landing,
+    id: row.id, timestamp: row.timestamp, scope, message,
+    ...(planId !== undefined ? { planId } : {}),
+    ...(sourceEventType !== undefined ? { sourceEventType } : {}),
+    ...(sourceEventId !== undefined ? { sourceEventId } : {}),
+    ...(sourceEventTimestamp !== undefined ? { sourceEventTimestamp } : {}),
+    ...(landing !== undefined ? { landing } : {}),
     ...(typeof failure.validationPassed === 'boolean' ? { validationPassed: failure.validationPassed } : {}),
     ...(typeof failure.prdValidationPassed === 'boolean' ? { prdValidationPassed: failure.prdValidationPassed } : {}),
     ...(typeof failure.acceptanceValidationPassed === 'boolean' ? { acceptanceValidationPassed: failure.acceptanceValidationPassed } : {}),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Acceptance validation evidence extraction
+// ---------------------------------------------------------------------------
+
+
+type AcceptanceValidationSummary = NonNullable<BuildFailureSummary['acceptanceValidation']>;
+
+type AcceptanceValidationParseResult =
+  | { ok: true; acceptanceValidation: AcceptanceValidationSummary }
+  | { ok: false; reason: string };
+
+function isAcceptanceVerdict(value: unknown): value is AcceptanceCriterionVerdict {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.criterion === 'string' && record.criterion.length > 0 &&
+    (record.verdict === 'pass' || record.verdict === 'fail' || record.verdict === 'unknown') &&
+    typeof record.evidence === 'string' && record.evidence.length > 0;
+}
+
+function isAcceptanceConflict(value: unknown): value is AcceptanceCriteriaConflict {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.criterion === 'string' && record.criterion.length > 0 &&
+    typeof record.evidence === 'string' && record.evidence.length > 0 &&
+    typeof record.conflictsWith === 'string' && record.conflictsWith.length > 0 &&
+    (record.scope === 'narrow' || record.scope === 'broad' || record.scope === 'unknown') &&
+    (record.recommendedAction === 'revise_acceptance_criteria' || record.recommendedAction === 'manual_review');
+}
+
+export function parseAcceptanceValidationPayload(data: string, options: { legacyCompatible?: boolean } = {}): AcceptanceValidationParseResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch (error) {
+    return { ok: false, reason: `invalid JSON: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  if (!parsed || typeof parsed !== 'object') return { ok: false, reason: 'payload is not an object' };
+  const record = parsed as Record<string, unknown>;
+  if (record.passed !== false) return { ok: false, reason: 'payload passed is not false' };
+  if (!Array.isArray(record.verdicts)) return { ok: false, reason: 'payload verdicts is not an array' };
+
+  const verdicts = options.legacyCompatible
+    ? record.verdicts.flatMap((verdict): AcceptanceCriterionVerdict[] => {
+      if (!verdict || typeof verdict !== 'object') return [];
+      const r = verdict as Record<string, unknown>;
+      if (typeof r.criterion !== 'string' || r.criterion.length === 0 || typeof r.evidence !== 'string' || r.evidence.length === 0) return [];
+      const normalizedVerdict = r.verdict === 'pass' || r.verdict === 'fail' || r.verdict === 'unknown'
+        ? r.verdict
+        : 'unknown';
+      return [{ criterion: r.criterion, verdict: normalizedVerdict, evidence: r.evidence }];
+    })
+    : record.verdicts.filter(isAcceptanceVerdict);
+  if (verdicts.length === 0) return { ok: false, reason: 'payload contains zero schema-valid verdicts' };
+
+  const pass = verdicts.filter((verdict) => verdict.verdict === 'pass').length;
+  const fail = verdicts.filter((verdict) => verdict.verdict === 'fail').length;
+  const unknown = verdicts.filter((verdict) => verdict.verdict === 'unknown').length;
+  const waivers = Array.isArray(record.waivers)
+    ? record.waivers.filter((waiver): waiver is string => typeof waiver === 'string' && waiver.trim().length > 0)
+    : [];
+  const conflicts = Array.isArray(record.acceptanceConflicts)
+    ? record.acceptanceConflicts.filter(isAcceptanceConflict)
+    : [];
+
+  return {
+    ok: true,
+    acceptanceValidation: {
+      passed: false,
+      total: verdicts.length,
+      pass,
+      fail,
+      unknown,
+      verdicts,
+      ...(waivers.length > 0 ? { waivers } : {}),
+      ...(conflicts.length > 0 ? { conflicts } : {}),
+    },
+  };
+}
+
+function buildAcceptanceLookupPlaceholder(
+  runId: string,
+  terminal: AuthoritativeTerminalEvent,
+  reason: string,
+  sourceRow?: { id: number; timestamp: string; type: string },
+): AcceptanceValidationSummary {
+  const terminalSourceParts = [
+    terminal.sourceEventType ? `terminal source event type=${terminal.sourceEventType}` : undefined,
+    terminal.sourceEventId !== undefined ? `terminal source event id=${terminal.sourceEventId}` : undefined,
+    terminal.sourceEventTimestamp ? `terminal source event timestamp=${terminal.sourceEventTimestamp}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+  const terminalSourceDetails = terminalSourceParts.length > 0 ? terminalSourceParts.join(', ') : 'terminal source details were not present';
+  const selectedSourceDetails = sourceRow
+    ? `selected source row type=${sourceRow.type}, selected source row id=${sourceRow.id}, selected source row timestamp=${sourceRow.timestamp}`
+    : 'no source event row was found';
+  const evidence = `Acceptance validation evidence lookup failed for run_id=${runId}; build:terminal-failure event id=${terminal.id}; attempted latest acceptance_validation:complete where run_id=${runId} and id <= ${terminal.id}; ${terminalSourceDetails}; ${selectedSourceDetails}; reason=${reason}; inspect monitor.db events for this run manually.`;
+  return {
+    passed: false,
+    total: 1,
+    pass: 0,
+    fail: 0,
+    unknown: 1,
+    verdicts: [{ criterion: 'Acceptance validation evidence lookup failed', verdict: 'unknown', evidence }],
+  };
+}
+
+export function extractAuthoritativeAcceptanceValidation(
+  db: DatabaseSync,
+  runId: string,
+  terminal: AuthoritativeTerminalEvent,
+): AcceptanceValidationSummary {
+  const row = db.prepare(
+    `SELECT id, type, data, timestamp FROM events WHERE run_id = ? AND type = 'acceptance_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
+  ).get(runId, terminal.id) as { id: number; type: string; data: string; timestamp: string } | undefined;
+  if (!row) return buildAcceptanceLookupPlaceholder(runId, terminal, 'no acceptance_validation:complete row found at or before terminal event id');
+
+  const parsed = parseAcceptanceValidationPayload(row.data);
+  if (parsed.ok) return parsed.acceptanceValidation;
+  return buildAcceptanceLookupPlaceholder(runId, terminal, parsed.reason, row);
+}
+
 
 // ---------------------------------------------------------------------------
 // Plan status reconstruction (shared between authoritative and fallback paths)
@@ -319,6 +449,7 @@ export function buildAuthoritativeFragment(
   landingInfo?: { status: string; action?: string; reason?: string },
   reviewFailure?: ReviewFailureDetails,
   lifecyclePlanErrorMap: Map<string, PlanErrorEntry> = new Map(),
+  options: { acceptanceValidation?: BuildFailureSummary['acceptanceValidation'] } = {},
 ): Partial<BuildFailureSummary> {
   // failingPlan: use planId for plan-scoped failures; synthetic compat ID for others
   const failingPlanId = terminal.planId ?? (terminal.scope !== 'plan' ? terminal.scope : 'unknown');
@@ -356,6 +487,8 @@ export function buildAuthoritativeFragment(
       authoritative: true,
       ...(terminal.planId ? { planId: terminal.planId } : {}),
       ...(terminal.sourceEventType ? { sourceEventType: terminal.sourceEventType } : {}),
+      ...(terminal.sourceEventId !== undefined ? { sourceEventId: terminal.sourceEventId } : {}),
+      ...(terminal.sourceEventTimestamp ? { sourceEventTimestamp: terminal.sourceEventTimestamp } : {}),
       ...(terminal.landing ? { landing: terminal.landing } : {}),
       ...(landingInfo && !terminal.landing ? { landing: landingInfo } : {}),
     },
@@ -363,6 +496,7 @@ export function buildAuthoritativeFragment(
     ...(terminal.landing ? { landing: terminal.landing } : {}),
     ...(landingInfo && !terminal.landing ? { landing: landingInfo } : {}),
     ...(reviewFailure !== undefined ? { reviewFailure } : {}),
+    ...(options.acceptanceValidation !== undefined ? { acceptanceValidation: options.acceptanceValidation } : {}),
   };
 }
 
