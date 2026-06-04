@@ -31,6 +31,7 @@ export interface StreamHub extends Omit<MonitorStreamHub, 'attachSession' | 'att
   attachDaemon(req: IncomingMessage, res: ServerResponse): void;
   subscriberCount(): number;
   buildHeartbeatObject(): unknown;
+  flush(): void;
 }
 
 export function createStreamHub(context: MonitorContext, options: StreamHubOptions = {}): StreamHub {
@@ -42,23 +43,12 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
   let stopped = false;
 
   const pollTimer = setInterval(() => {
-    if (stopped) return;
-    scanDaemonReactions();
-    deliverSessionSubscribers();
-    deliverDaemonSubscribers();
+    runPollCycle();
   }, options.pollIntervalMs ?? POLL_INTERVAL_MS);
   unrefTimer(pollTimer);
 
   const heartbeatTimer = setInterval(() => {
-    if (stopped || daemonSubscribers.size === 0) return;
-    const heartbeat = buildHeartbeatObject();
-    for (const subscriber of daemonSubscribers) {
-      try {
-        writeJsonDataFrame(subscriber.res, heartbeat);
-      } catch {
-        // Subscriber may have disconnected.
-      }
-    }
+    emitDaemonHeartbeat();
   }, options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS);
   unrefTimer(heartbeatTimer);
 
@@ -72,6 +62,25 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
 
   function buildHeartbeatObject(): unknown {
     return buildDaemonHeartbeat(context, heartbeatOptions());
+  }
+
+  function runPollCycle(): void {
+    if (stopped) return;
+    scanDaemonReactions();
+    deliverSessionSubscribers();
+    deliverDaemonSubscribers();
+  }
+
+  function emitDaemonHeartbeat(): void {
+    if (stopped || daemonSubscribers.size === 0) return;
+    const heartbeat = buildHeartbeatObject();
+    for (const subscriber of daemonSubscribers) {
+      try {
+        writeJsonDataFrame(subscriber.res, heartbeat);
+      } catch {
+        // Subscriber may have disconnected.
+      }
+    }
   }
 
   function scanDaemonReactions(): void {
@@ -138,6 +147,10 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
     subscriberCount,
     stop,
     buildHeartbeatObject,
+    flush(): void {
+      runPollCycle();
+      emitDaemonHeartbeat();
+    },
   };
 }
 

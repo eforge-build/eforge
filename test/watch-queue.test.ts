@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -34,40 +34,34 @@ afterAll(() => {
 });
 
 describe('abortableSleep', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns false when timer completes normally', async () => {
-    const result = await abortableSleep(10);
-    expect(result).toBe(false);
+    vi.useFakeTimers();
+    const result = abortableSleep(10);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(result).resolves.toBe(false);
   });
 
   it('returns true when aborted before timer fires', async () => {
+    vi.useFakeTimers();
     const controller = new AbortController();
-    const start = Date.now();
+    const result = abortableSleep(5000, controller.signal);
 
-    // Abort after 10ms, sleep for 5000ms
-    setTimeout(() => controller.abort(), 10);
-    const result = await abortableSleep(5000, controller.signal);
-    const elapsed = Date.now() - start;
+    controller.abort();
 
-    expect(result).toBe(true);
-    // Should resolve well before the 5000ms timer
-    expect(elapsed).toBeLessThan(500);
+    await expect(result).resolves.toBe(true);
   });
 
   it('returns true immediately if signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
 
-    const start = Date.now();
-    const result = await abortableSleep(5000, controller.signal);
-    const elapsed = Date.now() - start;
-
-    expect(result).toBe(true);
-    expect(elapsed).toBeLessThan(50);
-  });
-
-  it('returns false with no signal provided', async () => {
-    const result = await abortableSleep(10, undefined);
-    expect(result).toBe(false);
+    await expect(abortableSleep(5000, controller.signal)).resolves.toBe(true);
   });
 });
 
@@ -94,12 +88,10 @@ describe('watchQueue', () => {
     const { engine } = await createTestEngine();
     const abortController = new AbortController();
 
-    // Abort after a short delay to let the watcher start
-    setTimeout(() => abortController.abort(), 200);
-
     const events: EforgeEvent[] = [];
     for await (const event of engine.watchQueue({ abortController })) {
       events.push(event);
+      if (event.type === 'queue:start') abortController.abort();
     }
 
     const types = events.map((e) => e.type);
@@ -117,44 +109,38 @@ describe('watchQueue', () => {
     const events: EforgeEvent[] = [];
     let discoveredSeen = false;
 
-    const abortTimer = setTimeout(() => abortController.abort(), 5000);
+    for await (const event of engine.watchQueue({
+      abortController,
+      onInjectEventRegister: (inject) => {
+        capturedInject = inject;
+      },
+    })) {
+      events.push(event);
 
-    try {
-      for await (const event of engine.watchQueue({
-        abortController,
-        onInjectEventRegister: (inject) => {
-          capturedInject = inject;
-        },
-      })) {
-        events.push(event);
-
-        // After queue:start, write a PRD and inject a mutation event
-        if (event.type === 'queue:start' && capturedInject && !discoveredSeen) {
-          const prdContent = [
-            '---',
-            'title: Inject Test PRD',
-            'status: pending',
-            '---',
-            '',
-            '# Inject Test PRD',
-            '',
-            'Do something.',
-          ].join('\n');
-          await writeFile(join(queueDir, 'inject-test-prd.md'), prdContent);
-          capturedInject({
-            type: 'queue:mutation',
-            reason: 'external',
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        if (event.type === 'queue:prd:discovered') {
-          discoveredSeen = true;
-          abortController.abort();
-        }
+      // After queue:start, write a PRD and inject a mutation event
+      if (event.type === 'queue:start' && capturedInject && !discoveredSeen) {
+        const prdContent = [
+          '---',
+          'title: Inject Test PRD',
+          'status: pending',
+          '---',
+          '',
+          '# Inject Test PRD',
+          '',
+          'Do something.',
+        ].join('\n');
+        await writeFile(join(queueDir, 'inject-test-prd.md'), prdContent);
+        capturedInject({
+          type: 'queue:mutation',
+          reason: 'external',
+          timestamp: new Date().toISOString(),
+        });
       }
-    } finally {
-      clearTimeout(abortTimer);
+
+      if (event.type === 'queue:prd:discovered') {
+        discoveredSeen = true;
+        abortController.abort();
+      }
     }
 
     expect(discoveredSeen).toBe(true);
@@ -197,53 +183,48 @@ describe('watchQueue', () => {
     let sawComplete = false;
     let injectedInitial = false;
 
-    const abortTimer = setTimeout(() => abortController.abort(), 15000);
+    for await (const event of engine.watchQueue({
+      abortController,
+      onInjectEventRegister: (inject) => {
+        capturedInject = inject;
+      },
+    })) {
+      events.push(event);
 
-    try {
-      for await (const event of engine.watchQueue({
-        abortController,
-        onInjectEventRegister: (inject) => {
-          capturedInject = inject;
-        },
-      })) {
-        events.push(event);
+      // After queue:start, inject the PRD for the first time
+      if (event.type === 'queue:start' && capturedInject && !injectedInitial) {
+        injectedInitial = true;
+        await writeFile(join(queueDir, 'requeue-prd.md'), prdContent);
+        capturedInject({
+          type: 'queue:mutation',
+          reason: 'enqueue',
+          timestamp: new Date().toISOString(),
+        });
+      }
 
-        // After queue:start, inject the PRD for the first time
-        if (event.type === 'queue:start' && capturedInject && !injectedInitial) {
-          injectedInitial = true;
-          setTimeout(async () => {
-            await writeFile(join(queueDir, 'requeue-prd.md'), prdContent);
-            capturedInject!({
-              type: 'queue:mutation',
-              reason: 'enqueue',
-              timestamp: new Date().toISOString(),
-            });
-          }, 100);
-        }
-
-        if (event.type === 'queue:prd:discovered') {
-          discoveredCount++;
-          if (discoveredCount >= 2) {
-            // Second discovery means the re-queue logic worked
-            abortController.abort();
-          }
-        }
-
-        if (event.type === 'queue:prd:complete' && !sawComplete && capturedInject) {
-          sawComplete = true;
-          // PRD failed — write it back to queue/ and inject a mutation event
-          setTimeout(async () => {
-            await writeFile(join(queueDir, 'requeue-prd.md'), prdContent + '\n');
-            capturedInject!({
-              type: 'queue:mutation',
-              reason: 'enqueue',
-              timestamp: new Date().toISOString(),
-            });
-          }, 200);
+      if (event.type === 'queue:prd:discovered') {
+        discoveredCount++;
+        if (discoveredCount >= 2) {
+          // Second discovery means the re-queue logic worked
+          abortController.abort();
         }
       }
-    } finally {
-      clearTimeout(abortTimer);
+
+      if (event.type === 'queue:prd:complete' && !sawComplete && capturedInject) {
+        sawComplete = true;
+        // The scheduler emits completion on the bus before yielding it, but the
+        // async onComplete continuation may still be finalizing running state.
+        // Wait one turn before re-injecting so re-discovery happens after that
+        // completion handler has had a chance to settle.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        // PRD failed — write it back to queue/ and inject a mutation event
+        await writeFile(join(queueDir, 'requeue-prd.md'), prdContent + '\n');
+        capturedInject({
+          type: 'queue:mutation',
+          reason: 'enqueue',
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
 
     // Should have been discovered twice: once via first inject, once after re-queue
@@ -261,9 +242,6 @@ describe('watchQueue', () => {
     let capturedInject: ((event: SchedulerInputEvent) => void) | null = null;
     const events: EforgeEvent[] = [];
 
-    // Abort after a short delay
-    setTimeout(() => abortController.abort(), 200);
-
     for await (const event of engine.watchQueue({
       abortController,
       onInjectEventRegister: (inject) => {
@@ -271,6 +249,7 @@ describe('watchQueue', () => {
       },
     })) {
       events.push(event);
+      if (event.type === 'queue:start') abortController.abort();
     }
 
     // Generator has finished — capturedInject should now be a no-op

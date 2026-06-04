@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AutoBuildState } from '@eforge-build/client';
 import { createMonitorContext } from '../context.js';
 import { openDatabase, type MonitorDB } from '../db.js';
@@ -23,7 +23,7 @@ function controller(calls: string[]) {
 }
 async function start(db: MonitorDB, calls: string[] = []): Promise<{ url: string; hub: StreamHub }> {
   const context = await createMonitorContext(db, 0, { daemonState: { autoBuildController: controller(calls) } });
-  const hub = createStreamHub(context, { pollIntervalMs: 20, heartbeatIntervalMs: 1000, clock: { now: () => Date.parse(ts) } });
+  const hub = createStreamHub(context, { pollIntervalMs: 20, heartbeatIntervalMs: 60_000, clock: { now: () => Date.parse(ts) } });
   hubs.push(hub);
   const server = createServer((req, res) => {
     if (req.url === '/daemon') hub.attachDaemon(req, res);
@@ -50,8 +50,6 @@ async function readBlocks(url: string, count = 1): Promise<{ blocks: string[]; c
   }
   return { blocks, cancel: () => controller.abort() };
 }
-function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
-
 afterEach(async () => {
   for (const hub of hubs.splice(0)) hub.stop();
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
@@ -65,8 +63,7 @@ describe('stream hub lifecycle and reactions', () => {
     const session = await readBlocks(url); const daemon = await readBlocks(`${url}/daemon`);
     expect(hub.subscriberCount()).toBe(2);
     session.cancel(); daemon.cancel();
-    await delay(50);
-    expect(hub.subscriberCount()).toBe(0);
+    await vi.waitFor(() => expect(hub.subscriberCount()).toBe(0));
   });
 
   it('broadcasts named frames only to session subscribers', async () => {
@@ -74,12 +71,14 @@ describe('stream hub lifecycle and reactions', () => {
     const { url, hub } = await start(db);
     const sessionPromise = readBlocks(url, 2);
     const daemonPromise = readBlocks(`${url}/daemon`, 2);
-    await delay(30);
+    await vi.waitFor(() => expect(hub.subscriberCount()).toBe(2));
     hub.broadcast('monitor:shutdown-pending', 'soon');
+    hub.flush();
     const session = await sessionPromise;
     const daemon = await daemonPromise;
     session.cancel(); daemon.cancel();
     expect(session.blocks[1]).toContain('event: monitor:shutdown-pending');
+    expect(daemon.blocks[1]).toContain('"type":"daemon:heartbeat"');
     expect(daemon.blocks.join('\n')).not.toContain('monitor:shutdown-pending');
   });
 
@@ -94,26 +93,26 @@ describe('stream hub lifecycle and reactions', () => {
 
   it('reacts once for post-start enqueue:complete with zero subscribers', async () => {
     const db = tempDb(); const calls: string[] = [];
-    await start(db, calls);
+    const { hub } = await start(db, calls);
     db.insertDaemonEvent({ type: 'enqueue:complete', data: event(), timestamp: ts });
-    await delay(80);
+    hub.flush();
     expect(calls).toEqual(['enqueue']);
   });
 
   it('does not react to pre-existing enqueue:complete rows', async () => {
     const db = tempDb(); const calls: string[] = [];
     db.insertDaemonEvent({ type: 'enqueue:complete', data: event(), timestamp: ts });
-    await start(db, calls);
-    await delay(60);
+    const { hub } = await start(db, calls);
+    hub.flush();
     expect(calls).toEqual([]);
   });
 
   it('advances past malformed rows and reacts to the later valid row once', async () => {
     const db = tempDb(); const calls: string[] = [];
-    await start(db, calls);
+    const { hub } = await start(db, calls);
     db.insertDaemonEvent({ type: 'enqueue:complete', data: '{', timestamp: ts });
     db.insertDaemonEvent({ type: 'enqueue:complete', data: event({ id: 'prd-2' }), timestamp: ts });
-    await delay(80);
+    hub.flush();
     expect(calls).toEqual(['enqueue']);
   });
 });
