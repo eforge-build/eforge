@@ -1,4 +1,4 @@
-import { analyzeAcceptanceCriteriaItem, normalizeCriterionText, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
+import { analyzeAcceptanceCriteriaItem, extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
 
 export const AC_INVENTORY_VERSION = 1;
 export const AC_EXTRACTION_MIN_CONFIDENCE = 0.7;
@@ -176,6 +176,36 @@ export function parseAcceptanceCriteriaExtractorOutput(
   const parsed = parseJsonObject(text);
   if (parsed.diagnostic) throw invalidInventoryError([parsed.diagnostic]);
   const result = validateCanonicalAcceptanceCriteriaInventory(parsed.value, source, { ...options, requireIds: false });
+  if (!result.valid) throw invalidInventoryError(result.diagnostics);
+  return result.inventory;
+}
+
+export interface DeriveAcceptanceCriteriaInventoryOptions {
+  allowFallbackSections?: boolean;
+  allowNoAcceptanceCriteria?: boolean;
+}
+
+export function deriveAcceptanceCriteriaInventoryFromPrdBody(
+  body: string,
+  options: DeriveAcceptanceCriteriaInventoryOptions = {},
+): CanonicalAcceptanceCriteriaInventory {
+  const visibleBody = stripAcceptanceCriteriaInventoryBlock(body);
+  const criteria = extractExpectedAcceptanceCriteria(visibleBody, { allowFallbackSections: options.allowFallbackSections });
+  const inventory: CanonicalAcceptanceCriteriaInventory = {
+    version: AC_INVENTORY_VERSION,
+    criteria: criteria.map((criterion, index): CanonicalAcceptanceCriterion => ({
+      id: expectedId(index),
+      text: normalizeCriterionText(criterion.text),
+      raw: criterion.raw.trim(),
+      sourceQuote: criterion.raw.trim(),
+      confidence: 1,
+    })),
+  };
+
+  const result = validateCanonicalAcceptanceCriteriaInventory(inventory, visibleBody, {
+    allowNoAcceptanceCriteria: options.allowNoAcceptanceCriteria ?? true,
+    requireIds: true,
+  });
   if (!result.valid) throw invalidInventoryError(result.diagnostics);
   return result.inventory;
 }

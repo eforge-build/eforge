@@ -8,6 +8,7 @@ import { startServer, type DaemonState, type MonitorServer, type StartServerOpti
 import { API_ROUTES, type PlaybookRunRequest } from '@eforge-build/client';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 import { upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
+import { requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 
 import { setupPlaybookApiProject, postJson as post, invalidAcPlaybookRaw } from './playbook-api-helpers.js';
 import { validPlaybookRaw } from './playbook-helpers.js';
@@ -115,7 +116,10 @@ describe('POST /api/playbook/run', () => {
   it('returns { kind: "enqueued", id } for an autonomous playbook and creates a PRD', async () => {
     const { tmpDir, configDir } = await init();
 
-    await writeTeamPlaybook(configDir, 'my-feature', validPlaybookRaw({ mode: 'autonomous' }));
+    await writeTeamPlaybook(configDir, 'my-feature', validPlaybookRaw({
+      mode: 'autonomous',
+      acceptanceCriteria: '- `pnpm type-check` exits 0.',
+    }));
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
@@ -134,6 +138,14 @@ describe('POST /api/playbook/run', () => {
     await expect(access(queueFile)).resolves.toBeUndefined();
     const content = await readFile(queueFile, 'utf-8');
     expect(content).toContain('title:');
+    expect(content.match(/<!-- eforge:acceptance-criteria-inventory/g) ?? []).toHaveLength(1);
+    expect(content.match(/eforge:end-acceptance-criteria-inventory -->/g) ?? []).toHaveLength(1);
+    const inventory = requireAcceptanceCriteriaInventoryFromPrd(content);
+    expect(inventory.criteria).toHaveLength(1);
+    expect(inventory.criteria[0]!).toEqual(expect.objectContaining({
+      id: 'ac-001',
+      text: '`pnpm type-check` exits 0.',
+    }));
 
     // Enqueue is filesystem-only — no commit should have been created.
     // The initial empty commit is still the latest commit.
