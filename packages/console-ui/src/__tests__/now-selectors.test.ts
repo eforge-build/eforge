@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import type { RunInfo, QueueItem, EforgeEvent } from '@eforge-build/client/browser';
+import type { RunInfo, QueueItem, EforgeEvent, ExtensionEntry } from '@eforge-build/client/browser';
 import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import type { ConsoleActivityEntry } from '@/lib/types';
 import { selectQueueSummary } from '@/lib/selectors/queue';
@@ -349,6 +349,93 @@ describe('selectNowAttentionItems', () => {
     };
     const { items } = selectNowAttentionItems(state, {}, now);
     expect(items).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Extension trust attention items
+// ---------------------------------------------------------------------------
+
+function makeExtensionEntry(overrides: Partial<ExtensionEntry> = {}): ExtensionEntry {
+  return {
+    name: 'sample-ext',
+    path: '/repo/eforge/extensions/sample-ext.ts',
+    scope: 'project-team',
+    source: 'project-team',
+    status: 'loaded',
+    shadows: [],
+    registrations: {
+      eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0,
+      reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0,
+      consoleContributions: 0, integrationCommands: 0, deepLinks: 0,
+    },
+    diagnostics: [],
+    ...overrides,
+  };
+}
+
+describe('selectNowAttentionItems — extension trust', () => {
+  const now = Date.now();
+  const baseState = { ...initialConsoleProjectState, connectionStatus: 'connected' as const };
+
+  it('creates a warning item with a Trust action for an untrusted project-team extension', () => {
+    const ext = makeExtensionEntry({ name: 'alpha', path: '/repo/a.ts', trustState: 'untrusted' });
+    const { items } = selectNowAttentionItems(baseState, {}, now, [ext]);
+    const item = items.find((i) => i.extensionTrust);
+    expect(item?.severity).toBe('warning');
+    expect(item?.extensionTrust).toEqual({
+      name: 'alpha',
+      path: '/repo/a.ts',
+      trustState: 'untrusted',
+      actionLabel: 'Trust',
+    });
+  });
+
+  it('creates a warning item with a Re-trust action for a changed project-team extension', () => {
+    const ext = makeExtensionEntry({ name: 'beta', path: '/repo/b.ts', trustState: 'changed' });
+    const { items } = selectNowAttentionItems(baseState, {}, now, [ext]);
+    const item = items.find((i) => i.extensionTrust);
+    expect(item?.severity).toBe('warning');
+    expect(item?.extensionTrust).toEqual({
+      name: 'beta',
+      path: '/repo/b.ts',
+      trustState: 'changed',
+      actionLabel: 'Re-trust',
+    });
+  });
+
+  it('creates no extension trust items for trusted or not-required extensions', () => {
+    const exts = [
+      makeExtensionEntry({ name: 'trusted', path: '/repo/t.ts', trustState: 'trusted' }),
+      makeExtensionEntry({ name: 'nr', path: '/repo/nr.ts', trustState: 'not-required' }),
+    ];
+    const { items } = selectNowAttentionItems(baseState, {}, now, exts);
+    expect(items.filter((i) => i.extensionTrust)).toHaveLength(0);
+  });
+
+  it('creates a warning item for a legacy coarse-untrusted entry with no trustState', () => {
+    const ext = makeExtensionEntry({ name: 'legacy', path: '/repo/l.ts', trust: 'untrusted', trustState: undefined });
+    const { items } = selectNowAttentionItems(baseState, {}, now, [ext]);
+    const item = items.find((i) => i.extensionTrust);
+    expect(item?.extensionTrust?.actionLabel).toBe('Trust');
+    expect(item?.extensionTrust?.path).toBe('/repo/l.ts');
+  });
+
+  it('ignores non-project-team extensions even when coarse-untrusted', () => {
+    const ext = makeExtensionEntry({ name: 'user-ext', path: '/repo/u.ts', scope: 'user', trust: 'untrusted', trustState: undefined });
+    const { items } = selectNowAttentionItems(baseState, {}, now, [ext]);
+    expect(items.filter((i) => i.extensionTrust)).toHaveLength(0);
+  });
+
+  it('includes extension trust items in hiddenCount once the strip is full', () => {
+    // Five untrusted extensions plus an already-full set of system/queue items
+    // would overflow; here five extensions alone fit, a sixth is hidden.
+    const exts = Array.from({ length: 6 }, (_, i) =>
+      makeExtensionEntry({ name: `ext-${i}`, path: `/repo/ext-${i}.ts`, trustState: 'untrusted' }),
+    );
+    const { items, hiddenCount } = selectNowAttentionItems(baseState, {}, now, exts);
+    expect(items).toHaveLength(5);
+    expect(hiddenCount).toBe(1);
   });
 });
 

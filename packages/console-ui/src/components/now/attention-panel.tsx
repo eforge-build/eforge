@@ -8,6 +8,7 @@ import {
   asConfidence,
 } from '@/components/recovery/verdict-chip';
 import type { NowAttentionItem } from '@/lib/selectors/now';
+import { TrustConfirmDialog } from '@/components/extensions/trust-confirm-dialog';
 import { cn } from '@/lib/utils';
 
 interface AttentionPanelProps {
@@ -21,6 +22,17 @@ interface AttentionPanelProps {
    * dialog). The attention strip owns the recovery action for failed PRDs.
    */
   onRecover?: (recovery: NonNullable<NowAttentionItem['recovery']>) => void;
+  /**
+   * Trust controls for extension-trust items. When provided, items carrying an
+   * `extensionTrust` payload render a Trust/Re-trust button (disabled while that
+   * path's mutation is pending) and any per-path error. The strip owns the trust
+   * action so the user never has to leave Now to clear the warning.
+   */
+  extensionTrust?: {
+    pendingPath: string | null;
+    errors: Record<string, string>;
+    onTrust: (payload: NonNullable<NowAttentionItem['extensionTrust']>) => void;
+  };
 }
 
 const SEVERITY_RANK: Record<NowAttentionItem['severity'], number> = {
@@ -106,6 +118,53 @@ function RecoveryRow({
   );
 }
 
+/** An untrusted/changed project-team extension, trusted directly from the strip. */
+function ExtensionTrustRow({
+  item,
+  controls,
+}: {
+  item: NowAttentionItem;
+  controls?: NonNullable<AttentionPanelProps['extensionTrust']>;
+}) {
+  const trust = item.extensionTrust!;
+  const pending = controls?.pendingPath === trust.path;
+  // Any in-flight trust mutation disables every trust control: the mutation hook
+  // serializes trust calls, so other rows would silently no-op if left clickable.
+  const anyPending = controls?.pendingPath != null;
+  const error = controls?.errors[trust.path];
+  return (
+    <li className="flex items-start gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
+      <SeverityTag severity={item.severity} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-foreground">{item.message}</p>
+        {item.detail && <p className="truncate text-xs text-muted-foreground">{item.detail}</p>}
+        {error && (
+          <p className="mt-0.5 text-xs text-destructive" role="alert">{error}</p>
+        )}
+      </div>
+      {controls?.onTrust && (
+        <TrustConfirmDialog
+          name={trust.name}
+          path={trust.path}
+          trustState={trust.trustState}
+          actionLabel={trust.actionLabel}
+          onConfirm={() => controls.onTrust(trust)}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 text-xs"
+            disabled={anyPending}
+          >
+            {pending ? 'Trusting…' : trust.actionLabel}
+          </Button>
+        </TrustConfirmDialog>
+      )}
+    </li>
+  );
+}
+
 /** A daemon/stream health alert (no per-PRD action). */
 function HealthRow({ item }: { item: NowAttentionItem }) {
   return (
@@ -119,7 +178,7 @@ function HealthRow({ item }: { item: NowAttentionItem }) {
   );
 }
 
-export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover }: AttentionPanelProps) {
+export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust }: AttentionPanelProps) {
   if (items.length === 0) return null;
 
   return (
@@ -130,7 +189,9 @@ export function AttentionPanel({ items, hiddenCount, title = 'Attention', onReco
       <CardContent className="px-4 pb-4">
         <ul className="space-y-2">
           {items.map((item) =>
-            item.recovery ? (
+            item.extensionTrust ? (
+              <ExtensionTrustRow key={item.id} item={item} controls={extensionTrust} />
+            ) : item.recovery ? (
               <RecoveryRow key={item.id} recovery={item.recovery} onRecover={onRecover} />
             ) : (
               <HealthRow key={item.id} item={item} />

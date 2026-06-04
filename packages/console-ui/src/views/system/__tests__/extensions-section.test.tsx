@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import * as React from 'react';
 import { ExtensionsSection } from '../extensions-section';
 import type { ExtensionTrustControls } from '../extensions-section';
@@ -44,6 +44,13 @@ function staticTrust(overrides: Partial<ExtensionTrustControls> = {}): Extension
   return { pendingPath: null, errors: {}, successes: {}, onTrust: vi.fn(), ...overrides };
 }
 
+/** Open the trust confirmation dialog from a row control and confirm it. */
+function confirmTrust(triggerName: string, confirmName: string = triggerName): void {
+  fireEvent.click(screen.getByRole('button', { name: triggerName }));
+  const dialog = screen.getByRole('alertdialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: confirmName }));
+}
+
 describe('ExtensionsSection trust controls', () => {
   it('renders Trust for untrusted and Re-trust for changed project-team rows', () => {
     const list = listOf([makeExtension('alpha', 'untrusted'), makeExtension('beta', 'changed')]);
@@ -59,11 +66,16 @@ describe('ExtensionsSection trust controls', () => {
     expect(screen.queryByRole('button', { name: 'Re-trust' })).toBeNull();
   });
 
-  it('dispatches onTrust with the selected extension path', () => {
+  it('dispatches onTrust with the selected extension path only after confirmation', () => {
     const onTrust = vi.fn();
     const list = listOf([makeExtension('alpha', 'untrusted')]);
     render(<ExtensionsSection list={list} validate={validateOk} trust={staticTrust({ onTrust })} />);
+    // Opening the dialog must not trust yet.
     fireEvent.click(screen.getByRole('button', { name: 'Trust' }));
+    expect(onTrust).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText('/repo/eforge/extensions/alpha.ts')).toBeDefined();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Trust' }));
     expect(onTrust).toHaveBeenCalledWith('/repo/eforge/extensions/alpha.ts');
   });
 
@@ -134,7 +146,7 @@ describe('ExtensionsSection + useExtensionTrustMutation integration', () => {
     const onRefresh = vi.fn();
     render(<TrustHarness list={listOf([makeExtension('alpha', 'untrusted')])} onRefresh={onRefresh} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Trust' }));
+    confirmTrust('Trust');
 
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(screen.getByText('Trusted alpha.')).toBeDefined();
@@ -150,7 +162,7 @@ describe('ExtensionsSection + useExtensionTrustMutation integration', () => {
     const onRefresh = vi.fn();
     render(<TrustHarness list={listOf([makeExtension('alpha', 'untrusted')])} onRefresh={onRefresh} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Trust' }));
+    confirmTrust('Trust');
 
     await waitFor(() => {
       const alerts = screen.getAllByRole('alert').map((el) => el.textContent);

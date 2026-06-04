@@ -6,6 +6,7 @@ import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SystemSection } from './system-section';
+import { TrustConfirmDialog } from '@/components/extensions/trust-confirm-dialog';
 import {
   selectExtensionDiagnosticCounts,
   extensionNeedsTrust,
@@ -129,28 +130,31 @@ export function ExtensionsSection({ list, validate, trust }: ExtensionsSectionPr
                   {(ext.consoleContributionDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">Console panels: {ext.consoleContributionDetails?.length}</Badge>}
                   {(ext.integrationCommandDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">commands: {ext.integrationCommandDetails?.length}</Badge>}
                   {(ext.deepLinkDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">deep links: {ext.deepLinkDetails?.length}</Badge>}
-                  {/* --- eforge:region plan-01-system-extension-trust-actions --- */}
                   {trust && extensionNeedsTrust(ext) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      disabled={trust.pendingPath === ext.path}
-                      onClick={() => trust.onTrust(ext.path)}
+                    <TrustConfirmDialog
+                      name={ext.name}
+                      path={ext.path}
+                      trustState={ext.trustState}
+                      actionLabel={extensionTrustActionLabel(ext)}
+                      onConfirm={() => trust.onTrust(ext.path)}
                     >
-                      {trust.pendingPath === ext.path ? 'Trusting…' : extensionTrustActionLabel(ext)}
-                    </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        disabled={trust.pendingPath !== null}
+                      >
+                        {trust.pendingPath === ext.path ? 'Trusting…' : extensionTrustActionLabel(ext)}
+                      </Button>
+                    </TrustConfirmDialog>
                   )}
-                  {/* --- eforge:endregion plan-01-system-extension-trust-actions --- */}
                 </div>
-                {/* --- eforge:region plan-01-system-extension-trust-actions --- */}
                 {trust?.errors[ext.path] && (
                   <p className="text-xs text-destructive" role="alert">{trust.errors[ext.path]}</p>
                 )}
                 {trust?.successes[ext.path] && (
                   <p className="text-xs text-muted-foreground">{trust.successes[ext.path]}</p>
                 )}
-                {/* --- eforge:endregion plan-01-system-extension-trust-actions --- */}
                 {ext.diagnostics.length > 0 && (
                   <ul className="pl-3 space-y-0.5">
                     {ext.diagnostics.map((d, i) => (
