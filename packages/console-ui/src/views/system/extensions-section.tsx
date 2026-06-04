@@ -4,13 +4,31 @@
  */
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { SystemSection } from './system-section';
-import { selectExtensionDiagnosticCounts } from '@/lib/selectors';
+import {
+  selectExtensionDiagnosticCounts,
+  extensionNeedsTrust,
+  extensionTrustActionLabel,
+} from '@/lib/selectors';
 import type { Loadable, ExtensionListResponse, ExtensionValidateResponse } from './system-types';
+
+/**
+ * Trust mutation controls threaded down from the System route. When absent, no
+ * trust buttons render. Keyed by extension path so each row reflects its own
+ * pending/error/success state.
+ */
+export interface ExtensionTrustControls {
+  pendingPath: string | null;
+  errors: Record<string, string>;
+  successes: Record<string, string>;
+  onTrust: (path: string) => void;
+}
 
 interface ExtensionsSectionProps {
   list: Loadable<ExtensionListResponse>;
   validate: Loadable<ExtensionValidateResponse>;
+  trust?: ExtensionTrustControls;
 }
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -22,7 +40,7 @@ const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'destructive' | 
   excluded: 'outline',
 };
 
-export function ExtensionsSection({ list, validate }: ExtensionsSectionProps) {
+export function ExtensionsSection({ list, validate, trust }: ExtensionsSectionProps) {
   const isLoading = list.status === 'loading' || validate.status === 'loading';
   const listError = list.status === 'error' ? list.error : undefined;
   const validateError = validate.status === 'error' ? validate.error : undefined;
@@ -111,7 +129,28 @@ export function ExtensionsSection({ list, validate }: ExtensionsSectionProps) {
                   {(ext.consoleContributionDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">Console panels: {ext.consoleContributionDetails?.length}</Badge>}
                   {(ext.integrationCommandDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">commands: {ext.integrationCommandDetails?.length}</Badge>}
                   {(ext.deepLinkDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">deep links: {ext.deepLinkDetails?.length}</Badge>}
+                  {/* --- eforge:region plan-01-system-extension-trust-actions --- */}
+                  {trust && extensionNeedsTrust(ext) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      disabled={trust.pendingPath === ext.path}
+                      onClick={() => trust.onTrust(ext.path)}
+                    >
+                      {trust.pendingPath === ext.path ? 'Trusting…' : extensionTrustActionLabel(ext)}
+                    </Button>
+                  )}
+                  {/* --- eforge:endregion plan-01-system-extension-trust-actions --- */}
                 </div>
+                {/* --- eforge:region plan-01-system-extension-trust-actions --- */}
+                {trust?.errors[ext.path] && (
+                  <p className="text-xs text-destructive" role="alert">{trust.errors[ext.path]}</p>
+                )}
+                {trust?.successes[ext.path] && (
+                  <p className="text-xs text-muted-foreground">{trust.successes[ext.path]}</p>
+                )}
+                {/* --- eforge:endregion plan-01-system-extension-trust-actions --- */}
                 {ext.diagnostics.length > 0 && (
                   <ul className="pl-3 space-y-0.5">
                     {ext.diagnostics.map((d, i) => (

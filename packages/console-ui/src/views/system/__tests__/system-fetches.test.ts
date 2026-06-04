@@ -16,6 +16,7 @@ import {
   fetchSystemSessionPlanList,
   fetchSystemModelProviders,
   fetchSystemModelList,
+  trustSystemExtension,
 } from '../system-fetches';
 
 function makeFetchMock(status: number, body: unknown) {
@@ -174,6 +175,29 @@ describe('system-fetches', () => {
     const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toContain(API_ROUTES.modelList);
     expect(url).toContain('harness=claude-sdk');
+  });
+
+  it('trustSystemExtension POSTs path and console-ui provenance to the trust route', async () => {
+    const mockBody = { extension: { name: 'policy', path: '/repo/eforge/extensions/policy.ts' }, message: 'Trusted policy.' };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    const result = await trustSystemExtension('/repo/eforge/extensions/policy.ts');
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const url = call[0] as string;
+    const init = call[1] as RequestInit;
+    expect(url).toBe(API_ROUTES.extensionTrust);
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body as string)).toEqual({
+      path: '/repo/eforge/extensions/policy.ts',
+      trustedBy: 'console-ui',
+    });
+    expect(result).toEqual(mockBody);
+  });
+
+  it('trustSystemExtension rejects with the daemon error message on a non-2xx response', async () => {
+    globalThis.fetch = makeFetchMock(409, { error: 'Ambiguous' });
+    await expect(trustSystemExtension('/repo/eforge/extensions/policy.ts')).rejects.toThrow('Ambiguous');
   });
 
   it('returns error message from HTTP status text on 500 response', async () => {

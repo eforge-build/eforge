@@ -5,6 +5,7 @@
 import type {
   AgentRuntimeProfileInfo,
   ExtensionDiagnostic,
+  ExtensionEntry,
   ExtensionListResponse,
   ExtensionContributionManifestResponse,
   ConsoleContributionRendererId,
@@ -114,6 +115,35 @@ export function selectExtensionContributionManifestSummary(
     renderers,
     diagnostics: { errors, warnings, total: manifest.diagnostics?.length ?? 0 },
   };
+}
+
+/**
+ * Whether a project-team extension needs trust. True when the richer
+ * `trustState` is `untrusted` or `changed`, or — for legacy payloads without a
+ * `trustState` — when the coarse `trust` field is `untrusted`. Extensions in any
+ * scope other than `project-team` never need Console-driven trust.
+ */
+export function extensionNeedsTrust(ext: ExtensionEntry): boolean {
+  if (ext.scope !== 'project-team') return false;
+  if (ext.trustState) {
+    return ext.trustState === 'untrusted' || ext.trustState === 'changed';
+  }
+  return ext.trust === 'untrusted';
+}
+
+/** Select the project-team extensions that need trust from a list response. */
+export function selectExtensionsNeedingTrust(
+  response: ExtensionListResponse,
+): ExtensionEntry[] {
+  return response.extensions.filter(extensionNeedsTrust);
+}
+
+/**
+ * Action label for a trust control: `changed` extensions are re-trusted,
+ * untrusted (and legacy coarse-untrusted) extensions are trusted.
+ */
+export function extensionTrustActionLabel(ext: ExtensionEntry): 'Trust' | 'Re-trust' {
+  return ext.trustState === 'changed' ? 'Re-trust' : 'Trust';
 }
 
 // ---------------------------------------------------------------------------
