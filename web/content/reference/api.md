@@ -1,5 +1,5 @@
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/client/src/routes.ts -->
+<!-- Source: packages/client/src/routes/route-map.ts -->
 
 # eforge Daemon HTTP API Reference
 

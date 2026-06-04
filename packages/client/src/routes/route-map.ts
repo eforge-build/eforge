@@ -1,0 +1,101 @@
+/**
+ * Central API route map for the eforge daemon HTTP API.
+ *
+ * Single source of truth for all `/api/...` path patterns. Consumers import
+ * these constants instead of embedding literal strings, so a route rename
+ * surfaces as a compile-time error everywhere.
+ *
+ * Patterns with `:param` placeholders are resolved at call-time with
+ * `buildPath(pattern, params)`.
+ */
+export const API_ROUTES = {
+  keepAlive: '/api/keep-alive',
+  enqueue: '/api/enqueue',
+  cancel: '/api/cancel/:sessionId',
+  daemonStop: '/api/daemon/stop',
+  autoBuildGet: '/api/auto-build',
+  autoBuildSet: '/api/auto-build',
+  profileList: '/api/profile/list',
+  profileShow: '/api/profile/show',
+  profileUse: '/api/profile/use',
+  profileCreate: '/api/profile/create',
+  profileDelete: '/api/profile/:name',
+  modelProviders: '/api/models/providers',
+  modelList: '/api/models/list',
+  projectContext: '/api/project-context',
+  health: '/api/health',
+  version: '/api/version',
+  configShow: '/api/config/show',
+  configValidate: '/api/config/validate',
+  extensionList: '/api/extensions/list',
+  extensionShow: '/api/extensions/show',
+  extensionValidate: '/api/extensions/validate',
+  extensionTest: '/api/extensions/test',
+  extensionTrust: '/api/extensions/trust',
+  extensionUntrust: '/api/extensions/untrust',
+  extensionNew: '/api/extensions/new',
+  extensionReload: '/api/extensions/reload',
+  extensionInstall: '/api/extensions/install',
+  extensionUpdate: '/api/extensions/update',
+  extensionRemove: '/api/extensions/remove',
+  extensionPromote: '/api/extensions/promote',
+  extensionDemote: '/api/extensions/demote',
+  queue: '/api/queue',
+  queueRecoveryAnalyze: '/api/queue/recovery/analyze',
+  queueRecoveryApply: '/api/queue/recovery/apply',
+  sessionMetadata: '/api/session-metadata',
+  runs: '/api/runs',
+  spend: '/api/spend',
+  events: '/api/events/:runId',
+  runSummary: '/api/run-summary/:id',
+  runState: '/api/run-state/:id',
+  plans: '/api/plans/:runId',
+  diff: '/api/diff/:sessionId/:planId',
+  recover: '/api/recover',
+  readRecoverySidecar: '/api/recovery/sidecar',
+  applyRecovery: '/api/recover/apply',
+  resumeBuild: '/api/recover/resume-build',
+  resumeEligibility: '/api/recover/resume-eligibility',
+  schedulerKick: '/api/scheduler/kick',
+  playbookList: '/api/playbook/list',
+  playbookShow: '/api/playbook/show',
+  playbookSave: '/api/playbook/save',
+  playbookRun: '/api/playbook/run',
+  playbookPromote: '/api/playbook/promote',
+  playbookDemote: '/api/playbook/demote',
+  playbookValidate: '/api/playbook/validate',
+  playbookCopy: '/api/playbook/copy',
+  sessionPlanList: '/api/session-plan/list',
+  sessionPlanShow: '/api/session-plan/show',
+  sessionPlanCreate: '/api/session-plan/create',
+  sessionPlanSetSection: '/api/session-plan/set-section',
+  sessionPlanSkipDimension: '/api/session-plan/skip-dimension',
+  sessionPlanSetStatus: '/api/session-plan/set-status',
+  sessionPlanSelectDimensions: '/api/session-plan/select-dimensions',
+  sessionPlanReadiness: '/api/session-plan/readiness',
+  sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
+  sessionPlanCreateFromPlaybook: '/api/session-plan/create-from-playbook',
+  sessionPlanSetList: '/api/session-plan-set/list',
+  sessionPlanSetShow: '/api/session-plan-set/show',
+  sessionPlanSetValidate: '/api/session-plan-set/validate',
+  daemonEvents: '/api/daemon-events',
+  stackLayers: '/api/stack/layers',
+  stackSync: '/api/stack/sync',
+  stackSyncStatus: '/api/stack/sync/status',
+} as const;
+
+export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];
+
+/**
+ * Resolve a route pattern with `:param` placeholders into a concrete path.
+ *
+ * @example
+ * buildPath(API_ROUTES.cancel, { sessionId: 'abc-123' })
+ * // => '/api/cancel/abc-123'
+ */
+export function buildPath(pattern: string, params: Record<string, string>): string {
+  return Object.entries(params).reduce(
+    (path, [key, value]) => path.replace(`:${key}`, encodeURIComponent(value)),
+    pattern,
+  );
+}

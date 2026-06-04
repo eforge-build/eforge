@@ -167,11 +167,6 @@
       "category": "implementation"
     },
     {
-      "path": "packages/client/src/routes.ts",
-      "noGrowthCeiling": 627,
-      "category": "implementation"
-    },
-    {
       "path": "packages/eforge/src/cli/run-or-delegate.ts",
       "noGrowthCeiling": 618,
       "category": "implementation"

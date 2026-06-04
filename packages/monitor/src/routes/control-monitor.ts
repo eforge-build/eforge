@@ -27,6 +27,7 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'queue',
   'sessionMetadata',
   'runs',
+  'spend',
   'runSummary',
   'runState',
   'plans',
