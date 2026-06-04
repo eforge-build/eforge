@@ -1,0 +1,114 @@
+name: fix-recovery-actions-ux-after-successor-enqueue-or-resume
+description: Fix recovery Actions UX after successor enqueue or resume by adding
+  durable recovery applied metadata, idempotent split apply, an audited
+  accept-success recovery action, Console completion states, and a forward-only
+  queue preview.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm --filter @eforge-build/console-ui test
+  - pnpm test -- apply-recovery
+plans:
+  - id: plan-01-durable-recovery-applied-state
+    name: Durable Recovery Applied State and Split Idempotency
+    depends_on: []
+    branch: fix-recovery-actions-ux-after-successor-enqueue-or-resume/plan-01-durable-recovery-applied-state
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan changes client-owned wire shapes, engine filesystem
+          mutation semantics, daemon projection, and recovery tests in one
+          dependency layer.
+      reviewer:
+        effort: high
+        rationale: The review must verify idempotency, additive API compatibility, and
+          daemon/client wire-shape ownership.
+  - id: plan-02-accept-success-recovery-backend
+    name: Accept Build as Successful Backend Recovery Action
+    depends_on:
+      - plan-01-durable-recovery-applied-state
+    branch: fix-recovery-actions-ux-after-successor-enqueue-or-resume/plan-02-accept-success-recovery-backend
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: This plan adds a new audited recovery API that coordinates sidecar
+          idempotency, git cleanup, landing behavior, artifact/completion
+          records, and skipped dependent moves.
+      reviewer:
+        effort: high
+        rationale: The mutating route accepts user input and invokes
+          filesystem/git/landing operations, so review must inspect validation,
+          idempotency, and command-boundary safety.
+  - id: plan-03-console-recovery-completion-ux
+    name: Console Recovery Completion UX and Queue Preview
+    depends_on:
+      - plan-02-accept-success-recovery-backend
+    branch: fix-recovery-actions-ux-after-successor-enqueue-or-resume/plan-03-console-recovery-completion-ux
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - - validate
+      - doc-sync
+      - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a deep but cohesive recovery UX/API bugfix crossing
+    client-owned contracts, engine recovery helpers, monitor projections/routes,
+    Console components/selectors, tests, and docs. A single planner can sequence
+    the shared contract foundation and dependent UI/backend changes, so
+    excursion is appropriate rather than expedition. The compile plan-review
+    gate is included because the work has many acceptance criteria and
+    idempotency constraints. The build runs implementation with doc authoring,
+    writes tests, runs the registered maintainability validation provider, syncs
+    docs, executes test cycles, and finishes with strict review focused on code
+    correctness and API/wire-shape compatibility.
+diff_base_ref: eb387929f759b24c4e750e926e8cb7b0a96f42be
