@@ -4,7 +4,7 @@ import { ProfileBadge } from '@/components/profile/profile-badge';
 import type { OrchestrationConfig, EforgeEvent, BuildStageSpec, ReviewProfileConfig } from '@/lib/run-state';
 import type { SessionProfile } from '@/lib/run-state';
 
-/** CSS class map for orchestration mode badges — mirrors monitor-ui/sidebar.tsx */
+/** CSS class map for orchestration mode badges. */
 const profileBadgeClasses: Record<string, string> = {
   errand: 'bg-green/20 text-green border-green/30',
   excursion: 'bg-yellow/20 text-yellow border-yellow/30',

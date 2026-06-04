@@ -15,7 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      // Package-local @/ alias — maps to console-ui src, not monitor-ui src.
+      // Package-local @/ alias — maps to Console source files.
       { find: /^@\/(.*)$/, replacement: resolve(root, 'src/$1') },
       // Resolve workspace client package from source for tests.
       {

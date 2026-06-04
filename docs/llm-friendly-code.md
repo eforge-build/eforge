@@ -62,7 +62,7 @@ All HTTP route constants, route path builders, and daemon wire shapes (run info,
 
 - Import `API_ROUTES` and `buildPath()` for route constants; do **not** inline `/api/...` strings.
 - Import named per-route helpers (`apiEnqueue`, `apiCancel`, `apiHealth`, etc.) instead of calling `fetch` with inlined paths.
-- For browser bundles (`packages/console-ui/src`, `packages/monitor-ui/src/lib/api.ts`), import from `@eforge-build/client/browser`.
+- For browser bundles (for example, `packages/console-ui/src`), import from `@eforge-build/client/browser`.
 - Do **not** re-declare wire-shape interfaces in monitor packages — use the exported types from `@eforge-build/client`.
 
 Bump `DAEMON_API_VERSION` in `packages/client/src/api-version-const.ts` when making breaking HTTP API changes (`api-version.ts` re-exports it for Node consumers).

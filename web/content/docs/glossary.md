@@ -53,9 +53,9 @@ Fire-and-forget shell commands triggered by eforge events. Configured in `eforge
 
 A TypeScript extension adapter that resolves `eforge://input/<adapter>/<id>` URIs into PRD content. Adapters fetch issues or PRs from GitHub, Linear, Jira, or any custom source. See [Extensions - Input sources and PRD enrichers](/docs/extensions#input-sources-and-prd-enrichers).
 
-## Monitor
+## Console dashboard
 
-The web UI running locally at `http://localhost:<port>` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, and queue management. See [Integrations - Monitor UI](/docs/integrations#monitor-ui).
+The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, and queue management. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
 
 ## Playbook
 

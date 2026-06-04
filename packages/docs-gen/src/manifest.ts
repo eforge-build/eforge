@@ -73,7 +73,7 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Integrations guide',
       url: '/docs/integrations.md',
-      description: 'Use shell hooks, input sources, Langfuse tracing, and the monitor UI',
+      description: 'Use shell hooks, input sources, Langfuse tracing, and the Console dashboard',
     },
     {
       title: 'Troubleshooting guide',

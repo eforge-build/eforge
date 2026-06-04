@@ -156,7 +156,7 @@ export interface ProfileRouterResult {
   /**
    * Optional human-readable explanation of why this profile was selected.
    * Flows into the `queue:profile:selected` wire event so users can see
-   * the router's reasoning in the monitor UI and event log.
+   * the router's reasoning in Console and the event log.
    */
   reason?: string;
   /**
@@ -419,7 +419,7 @@ export interface ReviewerPerspectiveSpec {
    * with a built-in perspective name (`code`, `security`, `api`, `docs`, `test`, `verify`).
    */
   key: string;
-  /** Human-readable label shown in review output and monitor UI. */
+  /** Human-readable label shown in review output and Console. */
   label: string;
   /**
    * Human-readable description of what this reviewer perspective checks.

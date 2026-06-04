@@ -352,8 +352,8 @@ The `afterQueueId` is the internal queue id resolved above — never the title a
 
 When `landingAutoMergeOverride` is set (not `undefined`), append `landingAutoMerge: <landingAutoMergeOverride>` to the call body in all four cases above. Omit `landingAutoMerge` when `landingAutoMergeOverride` is `undefined` — omitting the key defers to the `landing.pr.autoMerge` policy.
 
-On **`kind: 'enqueued'`** response: Report the enqueue confirmation and point at the monitor UI.
-> "Playbook `{name}` enqueued as `{id}`. {If afterQueueId: 'It will start after `{build-title}` completes.'} Watch progress in the monitor UI."
+On **`kind: 'enqueued'`** response: Report the enqueue confirmation and point at Console.
+> "Playbook `{name}` enqueued as `{id}`. {If afterQueueId: 'It will start after `{build-title}` completes.'} Watch progress in Console."
 
 If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
 > "The build you selected has already finished. Running `{name}` now instead."

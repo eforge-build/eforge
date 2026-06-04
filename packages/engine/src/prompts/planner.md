@@ -465,7 +465,7 @@ Tailor build and review config to each plan's complexity. A simple plan may need
 
 **Perspective list guidance:** Keep explicit `perspectives` lists small (1-2 entries) and risk-based. Broad lists cause unnecessary review cost and slow the cycle. Do NOT include `security` unless the plan explicitly touches authentication, secrets, crypto, sandboxing, network trust boundaries, subprocess execution, or dependency files. Do NOT include `verify` unless the plan changes build commands, config, package dependencies, test infrastructure, or uses sharded builders. When in doubt, omit `perspectives` and let the engine infer them from the changeset.
 
-### Rationale Fields (optional, surfaced in monitor UI)
+### Rationale Fields (optional, surfaced in Console)
 
 When your build or review choices differ from the pipeline-composer defaults, or when the plan-set split needs explanation, record the reasoning in these optional fields:
 

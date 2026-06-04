@@ -1,9 +1,8 @@
 /**
  * Format helpers used by run-state handlers.
  *
- * Ported from packages/monitor-ui/src/lib/format.ts — only the symbols the
- * reducer subsystem needs. UI-only formatters (formatRelativeTime,
- * formatRunDuration, escapeHtml, shortenPath) are left in monitor-ui.
+ * Contains only the symbols the reducer subsystem needs. UI-only formatting
+ * belongs in view/components code.
  */
 
 export function formatDuration(ms: number): string {

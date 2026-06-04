@@ -2,8 +2,7 @@
  * Summary statistics selector for the run-state subsystem.
  *
  * Provides aggregated statistics (duration, token counts, cost, plan counts,
- * file changes, review issues) for display in SummaryCards. Ported from
- * packages/monitor-ui/src/lib/reducer.ts (getSummaryStats).
+ * file changes, review issues) for display in SummaryCards from Console run state.
  */
 import type { RunState } from '../types';
 import { formatDuration } from '../format';

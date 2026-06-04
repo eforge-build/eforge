@@ -13,8 +13,7 @@ interface SheetPanelProps {
 }
 
 /**
- * Convenience wrapper that adapts monitor-ui's SheetContent API
- * (`{open, onClose, title, description}`) to console-ui's Radix-based Sheet.
+ * Convenience wrapper around Console's Radix-based Sheet.
  */
 export function SheetPanel({ open, onClose, title, description, className, children }: SheetPanelProps) {
   return (

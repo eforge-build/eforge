@@ -935,8 +935,8 @@ type PolicyDecision =
 ```
 
 - `allow` - the operation proceeds normally.
-- `block` - the operation is rejected. `reason` is surfaced in logs and the monitor UI.
-- `require-approval` - currently blocks the operation because no approval workflow, approval state, or monitor UI exists in this MVP.
+- `block` - the operation is rejected. `reason` is surfaced in logs and Console.
+- `require-approval` - currently blocks the operation because no approval workflow, approval state, or Console approval UI exists in this MVP.
 
 A `modify` variant (mutating the diff inline) is intentionally absent. `modify` decisions remain deferred; no policy gate in the current scope explicitly allows mutation.
 
