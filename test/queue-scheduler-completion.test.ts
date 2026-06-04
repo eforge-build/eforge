@@ -67,6 +67,38 @@ describe('QueueScheduler — queue:prd:complete (completed)', () => {
 });
 
 describe('QueueScheduler — queue:prd:complete (skipped)', () => {
+  it('requeues a skipped root PRD when its file is rediscovered', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    const prdPath = await writeQueuedPrdFile(cwd, 'needs-revision');
+    const prd = makeQueuedPrd('needs-revision', [], prdPath);
+
+    spawnPrdChild.mockImplementation(() => new Promise<'completed' | 'failed' | 'skipped' | 'already-claimed'>(() => {}));
+
+    const scheduler = makeScheduler([prd]);
+    scheduler.pause();
+    await scheduler.start();
+    expect(spawnPrdChild).not.toHaveBeenCalled();
+
+    const state = (scheduler as unknown as { prdState: Map<string, { status: string }> }).prdState.get('needs-revision');
+    expect(state).toBeDefined();
+    state!.status = 'skipped';
+
+    bus.emit('queue:mutation', {
+      type: 'queue:mutation',
+      reason: 'apply-recovery',
+      timestamp: new Date().toISOString(),
+    } satisfies SchedulerInputEvent);
+
+    await vi.waitFor(() => expect(state!.status).toBe('pending'));
+
+    scheduler.resume();
+    await waitForSpawnCallCount(spawnPrdChild, 1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('needs-revision');
+
+    eventQueue.removeProducer();
+  });
+
   it('does not spawn dependent PRD after upstream is terminally skipped', async () => {
     const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 
@@ -82,6 +114,8 @@ describe('QueueScheduler — queue:prd:complete (skipped)', () => {
 
     await waitForSpawnCallCount(spawnPrdChild, 1);
     expect(spawnPrdChild.mock.calls[0][0].id).toBe('foundation');
+
+    await movePrdToSubdir(foundationPath, 'skipped', cwd);
 
     const skippedEvent: SchedulerInputEvent = {
       type: 'queue:prd:complete',

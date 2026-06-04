@@ -444,7 +444,7 @@ export class QueueScheduler {
 
   /**
    * Re-scan the queue directory, discover new PRDs not yet in prdState,
-   * and reset re-queued PRDs (failed/blocked → pending). Emits
+   * and reset re-queued PRDs (failed/blocked/skipped → pending). Emits
    * `queue:prd:discovered` for each newly discovered or re-queued PRD.
    * After updating prdState, reconciles queue locks so any newly-pending
    * PRD with a live lock is immediately marked as running.
@@ -470,7 +470,7 @@ export class QueueScheduler {
         } as EforgeEvent);
       } else {
         const existing = this.prdState.get(prd.id)!;
-        if (existing.status === 'failed' || existing.status === 'blocked') {
+        if (existing.status === 'failed' || existing.status === 'blocked' || existing.status === 'skipped') {
           // Re-queued PRD: reset state to pending.
           const deps = prd.frontmatter.depends_on ?? [];
           existing.status = 'pending';

@@ -6,8 +6,8 @@
  * flag, and the latest error text). The parent owns the daemon mutation
  * callbacks and the post-success queue refresh — this component never inspects
  * queue filesystem paths, daemon wire shapes, or calls fetch directly. Numeric
- * validation is intentionally deferred to the daemon: the input value is passed
- * through `Number()` and any rejection surfaces as row-local error text.
+ * validation rejects empty or non-integer values locally before invoking the
+ * daemon; daemon rejections still surface as row-local error text.
  */
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
@@ -68,7 +68,13 @@ export function QueueRowActions({
 
   async function handleSetPriority() {
     if (!onSetPriority) return;
-    await runAction(() => onSetPriority(itemId, Number(priorityValue)));
+    const trimmedPriority = priorityValue.trim();
+    const parsedPriority = Number(trimmedPriority);
+    if (trimmedPriority === '' || !Number.isInteger(parsedPriority)) {
+      setError('Priority must be an integer.');
+      return;
+    }
+    await runAction(() => onSetPriority(itemId, parsedPriority));
   }
 
   async function handleConfirmRemove() {

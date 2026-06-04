@@ -530,6 +530,7 @@ describe('helper import discipline', () => {
     ).rejects.toThrow(/version.mismatch/i);
 
     // The stale-version check must short-circuit before the queue-control route is hit.
-    expect(testServer.requests.some((r) => r.url.includes('/api/queue/prd-1'))).toBe(false);
+    const queuePriorityPath = buildPath(API_ROUTES.queuePriority, { prdId: 'prd-1' });
+    expect(testServer.requests.some((r) => r.url === queuePriorityPath)).toBe(false);
   });
 });
