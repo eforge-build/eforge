@@ -1,6 +1,6 @@
 # Stacked PRs with git-spice
 
-Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, root PRD artifact branches target trunk, while child PRD artifact branches normally target the parent artifact branch. During landing, eforge can repair a missing integrated parent by retargeting only the child artifact branch to trunk. It also runs provider repo sync, branch restack, and a remote-base freshness proof before submitting the PR.
+Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, root PRD artifact branches target trunk, while child PRD artifact branches normally target the parent artifact branch. During landing, eforge can repair a missing integrated parent by choosing trunk as the effective base before tracking an untracked child, or by retargeting a child that was already tracked earlier in the landing flow. It also runs provider repo sync, branch restack, and a remote-base freshness proof before submitting the PR.
 
 ## Concepts
 
@@ -174,7 +174,7 @@ When sync runs while active eforge builds are in progress, branches whose worktr
 
 Before a stacked build lands, eforge checks whether the child artifact branch's stacked base still exists on the remote. This remote-base preflight protects git-spice submission from stale parent branches that were deleted after their PR merged. After preflight and any repair, eforge runs provider repo sync and branch restack, rechecks the effective base, fetches the latest remote effective base, and proves that fetched commit is an ancestor of `HEAD` before PR submission.
 
-If the parent remote branch is missing and eforge can prove that the parent artifact commit is already an ancestor of trunk, stale-parent landing repair is automatic and branch-scoped: eforge retargets and restacks only the child artifact branch onto trunk, then submits the child PR against trunk. This avoids running a whole-stack restack while preserving the proof that the parent layer is already integrated.
+If the parent remote branch is missing and eforge can prove that the parent artifact commit is already an ancestor of trunk, stale-parent landing repair is automatic and branch-scoped. For an initially untracked child, eforge treats trunk as the effective base, tracks the child against trunk, restacks, and submits the child PR against trunk. If the parent branch disappears after the child has already been tracked, eforge retargets and restacks only the child artifact branch onto trunk. This avoids running a whole-stack restack while preserving the proof that the parent layer is already integrated.
 
 If eforge cannot prove the parent artifact commit is an ancestor of trunk, landing fails closed with an actionable error instead of guessing or mutating the rest of the stack. Restore, submit, or repair the parent branch, or verify the parent changes are integrated before rerunning the build.
 

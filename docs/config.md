@@ -116,7 +116,7 @@ build:
 # landing:
 #   action: pr                # pr | merge | leave (default: merge)
 #                             #   pr: open a PR from the artifact branch targeting the resolved base branch
-#                             #       (current base branch for non-stacked builds; parent artifact branch for stacked builds unless stale-parent repair retargets to trunk)
+#                             #       (current base branch for non-stacked builds; parent artifact branch for stacked builds unless stale-parent repair lands against trunk)
 #                             #       Direct non-stacked PRs fetch and rebase onto origin/<baseBranch> before validation,
 #                             #       then run a final pre-PR freshness guard immediately before PR creation.
 #                             #       Stacked PR landing uses provider repo sync, branch restack,
@@ -143,8 +143,9 @@ build:
 #   enabled: false            # Default false. Set to true to enable git-spice stacking.
 #                             # When enabled, artifact branch PRs target the parent artifact branch
 #                             # instead of the trunk, forming a linear stack. During landing,
-#                             # eforge can repair a missing integrated parent by retargeting
-#                             # only the child artifact branch to trunk, then gates PR submission
+#                             # eforge can repair a missing integrated parent by using trunk
+#                             # as the effective base for initially untracked children or by
+#                             # retargeting a child that is already tracked, then gates PR submission
 #                             # on provider sync/restack and a remote-base freshness proof.
 #                             # git-spice must be installed; see docs/stacking.md for setup.
 #   provider: git-spice       # Only "git-spice" is supported in v1.
@@ -254,7 +255,7 @@ build:
 
 **Local-ahead-only** cases (local trunk has commits the remote does not yet have) emit a diagnostic and use the local trunk ref, since the local trunk is not stale relative to the remote.
 
-**Feature-branch builds** (queued from a non-trunk branch) and **child stacked PRDs** are never retargeted to remote trunk. `trunkSync` only applies to queued root builds whose candidate base is the trunk branch. Direct PR base sync is separate: direct non-stacked PR publication targets the resolved base branch, including non-trunk feature bases, and syncs against `origin/<baseBranch>` later in the build.
+**Feature-branch builds** (queued from a non-trunk branch) and **child stacked PRDs** are never retargeted to remote trunk by `trunkSync`. `trunkSync` only applies to queued root builds whose candidate base is the trunk branch. Direct PR base sync is separate: direct non-stacked PR publication targets the resolved base branch, including non-trunk feature bases, and syncs against `origin/<baseBranch>` later in the build.
 
 **Fetch-unavailable fallback:** when the configured remote is missing, the remote trunk branch does not exist on the remote, the fetch fails for any reason, or FETCH_HEAD cannot be resolved after the fetch, trunk sync is skipped. The build continues with the original candidate base and emits a `planning:progress` diagnostic. The `onDiverged` policy applies only to true local/remote divergence - not to network failures or unavailable remotes.
 
