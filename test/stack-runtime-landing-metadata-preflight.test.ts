@@ -147,10 +147,12 @@ describe('executeStackLanding — PR metadata editing', () => {
 });
 
 describe('executeStackLanding — landing-time base preflight and repair', () => {
-  function childContext(parentSha: string): StackBaseContext {
+  function childContext(parentSha: string, overrides: Partial<StackBaseContext> = {}): StackBaseContext {
+    const trunkBranch = overrides.trunkBranch ?? 'main';
     return makeStackContext({
       parentPrdId: 'parent-prd', baseBranch: 'eforge/parent-prd', originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: 'eforge/parent-prd',
-      parentArtifactRef: 'eforge/parent-prd', parentArtifactCommit: parentSha, trunkBranch: 'main', trunkRemote: 'origin', trunkIntegrationRef: 'refs/remotes/origin/main',
+      parentArtifactRef: 'eforge/parent-prd', parentArtifactCommit: parentSha, trunkBranch, trunkRemote: 'origin', trunkIntegrationRef: `refs/remotes/origin/${trunkBranch}`,
+      ...overrides,
     });
   }
 
@@ -193,6 +195,7 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
 
     const events = await collectEvents(executeStackLanding(landingOptions(provider, { stackContext: childContext(parentSha) })));
     const retargetIdx = events.findIndex((e) => e.type === 'stack:provider:command' && e.args.includes('onto'));
+    const trackIdx = events.findIndex((e) => e.type === 'stack:provider:command' && e.args.includes('track'));
     const restackIndexes = events
       .map((event, index) => ({ event, index }))
       .filter(({ event }) => event.type === 'stack:provider:command' && event.args.includes('restack'))
@@ -202,46 +205,65 @@ describe('executeStackLanding — landing-time base preflight and repair', () =>
     expect(calls).toEqual(['sync', 'track:eforge/parent-prd', 'restack', 'retarget:eforge/test-prd:main', 'restack', 'submit']);
     expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'onto', 'main', '--branch', 'eforge/test-prd'] }));
     expect(restackIndexes).toHaveLength(2);
+    expect(retargetIdx).toBeGreaterThan(trackIdx);
     expect(retargetIdx).toBeGreaterThan(restackIndexes[0]);
     expect(restackIndexes[1]).toBeGreaterThan(retargetIdx);
     expect(submitIdx).toBeGreaterThan(restackIndexes[1]);
     expect(events).toContainEqual(expect.objectContaining({ type: 'stack:landing:update', status: 'complete', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' }));
   });
 
-  it('repairs a missing integrated parent base and reports effective trunk metadata', async () => {
+  it.each(['main', 'develop'])('repairs a missing integrated parent base by tracking against %s before restacking', async (trunkBranch) => {
     const { parentSha } = setupStackRepo({ parentIntegrated: true, deleteParentRemote: true });
-    const binDir = join(cwd, 'bin-stack-repair');
+    if (trunkBranch !== 'main') {
+      const currentBranch = git(['branch', '--show-current']);
+      git(['checkout', '-b', trunkBranch, 'main']);
+      git(['push', '-u', 'origin', trunkBranch]);
+      git(['checkout', currentBranch]);
+    }
+    const binDir = join(cwd, `bin-stack-repair-${trunkBranch}`);
     makeFakeGhForMetadata(binDir, 'success');
     const origPath = process.env.PATH;
     process.env.PATH = `${binDir}:${origPath}`;
     const calls: string[] = [];
     const trackBases: string[] = [];
+    let tracked = false;
     const provider = makeStubProvider({
-      retargetBranch: async (_cwd, branch, target) => { calls.push(`retarget:${branch}:${target}`); return makeResult('git-spice', ['branch', 'onto', target, '--branch', branch]); },
+      retargetBranch: async (_cwd, branch, target) => {
+        if (!tracked) throw new Error(`branch not tracked: ${branch}`);
+        calls.push(`retarget:${branch}:${target}`);
+        return makeResult('git-spice', ['branch', 'onto', target, '--branch', branch]);
+      },
       syncRepo: async () => { calls.push('sync'); return makeResult('git-spice', ['repo', 'sync']); },
-      trackBranch: async (_cwd, base) => { calls.push(`track:${base}`); trackBases.push(base); return makeResult('git-spice', ['branch', 'track', '--base', base]); },
+      trackBranch: async (_cwd, base) => { calls.push(`track:${base}`); trackBases.push(base); tracked = true; return makeResult('git-spice', ['branch', 'track', '--base', base]); },
       restackBranch: async () => { calls.push('restack'); return makeResult('git-spice', ['branch', 'restack']); },
       submitBranch: async () => { calls.push('submit'); return makeResult('git-spice', ['branch', 'submit'], 'https://github.com/owner/repo/pull/42'); },
     });
     await seedLayer(cwd);
     try {
       const events = await collectEvents(executeStackLanding(landingOptions(provider, {
-        stackContext: childContext(parentSha), prAutoMergePolicy: 'always',
+        stackContext: childContext(parentSha, { trunkBranch }), prAutoMergePolicy: 'always',
         metadataFactory: async ({ effectiveBaseBranch }) => ({ title: 't', body: `## Build metadata\n- Base branch: \`${effectiveBaseBranch}\`` }),
       })));
+      const providerEvents = events.filter((e) => e.type === 'stack:provider:command');
+      const syncIdx = providerEvents.findIndex((e) => e.args.join(' ') === 'repo sync');
+      const trackIdx = providerEvents.findIndex((e) => e.args.join(' ') === `branch track --base ${trunkBranch}`);
+      const restackIdx = providerEvents.findIndex((e) => e.args.includes('restack'));
+      const ontoIdx = providerEvents.findIndex((e) => e.args.join(' ') === `branch onto ${trunkBranch} --branch eforge/test-prd`);
       const complete = events.find((e) => e.type === 'stack:landing:update' && (e as { status?: string }).status === 'complete');
       const landing = (await loadStackState(cwd)).layers.find((l) => l.prdId === 'test-prd')?.landing;
       const body = readFileSync(join(cwd, 'gh-pr-body.log'), 'utf-8');
-      expect(trackBases).toEqual(['main']);
-      expect(calls).toEqual(['retarget:eforge/test-prd:main', 'sync', 'track:main', 'restack', 'submit']);
-      expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'onto', 'main', '--branch', 'eforge/test-prd'] }));
-      expect(events).toContainEqual(expect.objectContaining({ type: 'stack:provider:command', args: ['branch', 'track', '--base', 'main'] }));
-      expect(complete).toMatchObject({ originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' });
-      expect(landing).toMatchObject({ originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: 'main', baseRepairReason: 'parent-artifact-already-integrated' });
-      expect(body).toContain('Base branch: `main`');
+      expect(trackBases).toEqual([trunkBranch]);
+      expect(calls).toEqual(['sync', `track:${trunkBranch}`, 'restack', 'submit']);
+      expect(syncIdx).toBeGreaterThanOrEqual(0);
+      expect(trackIdx).toBeGreaterThan(syncIdx);
+      expect(restackIdx).toBeGreaterThan(trackIdx);
+      expect(ontoIdx).toBe(-1);
+      expect(complete).toMatchObject({ originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: trunkBranch, baseRepairReason: 'parent-artifact-already-integrated' });
+      expect(landing).toMatchObject({ originalBaseBranch: 'eforge/parent-prd', effectiveBaseBranch: trunkBranch, baseRepairReason: 'parent-artifact-already-integrated' });
+      expect(body).toContain(`Base branch: \`${trunkBranch}\``);
       expect(body.split('\n').find((line) => line.includes('Base branch:'))).not.toContain('eforge/parent-prd');
-      expect(events).toContainEqual(expect.objectContaining({ type: 'landing:auto-merge:start', baseBranch: 'main' }));
-      expect(events).toContainEqual(expect.objectContaining({ type: 'landing:auto-merge:complete', baseBranch: 'main' }));
+      expect(events).toContainEqual(expect.objectContaining({ type: 'landing:auto-merge:start', baseBranch: trunkBranch }));
+      expect(events).toContainEqual(expect.objectContaining({ type: 'landing:auto-merge:complete', baseBranch: trunkBranch }));
     } finally {
       process.env.PATH = origPath;
     }
