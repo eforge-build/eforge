@@ -7832,6 +7832,21 @@
                     }
                   }
                 },
+                "harness": {
+                  "anyOf": [
+                    {
+                      "const": "claude-sdk",
+                      "type": "string"
+                    },
+                    {
+                      "const": "pi",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "provider": {
+                  "type": "string"
+                },
                 "resultText": {
                   "type": "string"
                 }

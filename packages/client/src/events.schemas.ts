@@ -15,12 +15,16 @@ import { MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH, validateEforgeEventSemanticFie
 import { formatSchemaError, safeParseWithSchema } from './schema-utils.js';
 import type { SafeParseResult } from './schema-utils.js';
 
+// --- eforge:region constants ---
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
+// --- eforge:endregion constants ---
+
+// --- eforge:region supporting-schemas ---
 // ---------------------------------------------------------------------------
 // Supporting schemas
 // ---------------------------------------------------------------------------
@@ -510,6 +514,18 @@ const AgentResultDataSchema = Type.Object({
       costUSD: Type.Number(),
     }),
   ),
+  /**
+   * Harness that produced this result (`claude-sdk` or `pi`). All entries in
+   * `modelUsage` share it — a single agent runs on one harness. Optional so
+   * historical events emitted before this field still parse.
+   */
+  harness: Type.Optional(Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')])),
+  /**
+   * Provider routing the model, when the harness distinguishes one (e.g. Pi's
+   * `anthropic` / `openrouter`). Omitted for claude-sdk, which routes Anthropic
+   * directly.
+   */
+  provider: Type.Optional(Type.String()),
   resultText: Type.Optional(Type.String()),
 });
 
@@ -643,6 +659,9 @@ const AutoBuildDetailFields = {
   reason: Type.Optional(Type.String()),
 };
 
+// --- eforge:endregion supporting-schemas ---
+
+// --- eforge:region queue-event-schemas ---
 // ---------------------------------------------------------------------------
 // Queue event schemas
 // ---------------------------------------------------------------------------
@@ -696,6 +715,9 @@ const queueEventVariants = [
 
 const QueueEventSchema = Type.Union([...queueEventVariants]);
 
+// --- eforge:endregion queue-event-schemas ---
+
+// --- eforge:region event-envelope ---
 // ---------------------------------------------------------------------------
 // Base schema (sessionId, runId, timestamp envelope)
 // ---------------------------------------------------------------------------
@@ -706,8 +728,11 @@ const EventEnvelopeSchema = Type.Object({
   timestamp: Type.String(),
 });
 
+// --- eforge:endregion event-envelope ---
+
+// --- eforge:region agent-event-fields ---
 // ---------------------------------------------------------------------------
-// All EforgeEvent discriminant variants as TypeBox schemas
+// Shared agent event field groups
 // ---------------------------------------------------------------------------
 
 const agentStartFields = {
@@ -755,6 +780,9 @@ const agentStartFields = {
   projectMcpServerNames: Type.Optional(Type.Array(Type.String())),
 };
 
+// --- eforge:endregion agent-event-fields ---
+
+// --- eforge:region decision-schemas ---
 // ---------------------------------------------------------------------------
 // Build-phase orchestrator decision schema
 // ---------------------------------------------------------------------------
@@ -921,6 +949,12 @@ const ExtensionActionEventBaseFields = {
 
 void ExtensionActionInvokeErrorCodeSchema;
 
+// --- eforge:endregion decision-schemas ---
+
+// --- eforge:region event-variants ---
+// ---------------------------------------------------------------------------
+// All EforgeEvent discriminant variants as TypeBox schemas
+// ---------------------------------------------------------------------------
 const EforgeEventVariantsSchema = Type.Union([
   // Session lifecycle
   Type.Object({ type: Type.Literal('session:start'), sessionId: Type.String() }),
@@ -2346,12 +2380,18 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
 ]);
 
+// --- eforge:endregion event-variants ---
+
+// --- eforge:region root-schema ---
 // ---------------------------------------------------------------------------
 // Root schema: envelope + discriminated variant
 // ---------------------------------------------------------------------------
 
 export const EforgeEventSchema = Type.Intersect([EventEnvelopeSchema, EforgeEventVariantsSchema]);
 
+// --- eforge:endregion root-schema ---
+
+// --- eforge:region derived-types ---
 // ---------------------------------------------------------------------------
 // Derived types — single source of truth
 // ---------------------------------------------------------------------------
@@ -2747,3 +2787,5 @@ export function safeParseDaemonStreamSnapshot(value: unknown): SafeParseResult<D
 export function safeParseSessionStreamSnapshot(value: unknown): SafeParseResult<SessionStreamSnapshot> {
   return safeParseWithSchema(SessionStreamSnapshotSchema, value);
 }
+
+// --- eforge:endregion derived-types ---

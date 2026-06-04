@@ -64,18 +64,48 @@ function insertUsage(
   });
 }
 
-function insertResult(db: MonitorDB, runId: string, totalCostUsd: number, timestamp: string): void {
+type ModelUsage = Record<
+  string,
+  { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number; costUSD: number }
+>;
+
+function insertResult(
+  db: MonitorDB,
+  runId: string,
+  totalCostUsd: number,
+  timestamp: string,
+  modelUsage: ModelUsage = {},
+  attribution: { harness?: 'claude-sdk' | 'pi'; provider?: string } = {},
+): void {
   db.insertEvent({
     runId,
     type: 'agent:result',
     data: JSON.stringify({
       type: 'agent:result',
       agent: 'builder',
-      result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} },
+      result: {
+        durationMs: 1,
+        durationApiMs: 1,
+        numTurns: 1,
+        totalCostUsd,
+        usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 },
+        modelUsage,
+        ...attribution,
+      },
       timestamp,
     }),
     timestamp,
   });
+}
+
+/** Shorthand for a single per-model usage entry. */
+function mu(
+  inputTokens: number,
+  outputTokens: number,
+  cacheReadInputTokens: number,
+  costUSD: number,
+): ModelUsage[string] {
+  return { inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens: 0, costUSD };
 }
 
 describe('MonitorDB.getDailySpend', () => {
@@ -171,5 +201,82 @@ describe('MonitorDB.getDailySpend', () => {
     db.insertEvent({ runId: 'run-x', type: 'agent:stop', data: JSON.stringify({ type: 'agent:stop', agent: 'builder', timestamp: ts }), timestamp: ts });
 
     expect(db.getDailySpend(7)).toEqual([]);
+  });
+});
+
+describe('MonitorDB.getModelSpend', () => {
+  let db: MonitorDB;
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+    db = openDatabase(join(tempDir, 'test.db'));
+  });
+
+  afterEach(() => {
+    db.close();
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('returns an empty array when no results carry per-model usage', () => {
+    const ts = tsDaysAgo(0);
+    insertRun(db, 'run-1', ts);
+    insertResult(db, 'run-1', 1.0, ts); // modelUsage defaults to {}
+    expect(db.getModelSpend(7)).toEqual([]);
+  });
+
+  it('aggregates per model across results and orders by cost descending', () => {
+    const ts = tsDaysAgo(0);
+    insertRun(db, 'run-1', ts);
+    insertResult(db, 'run-1', 3, ts, {
+      'claude-opus-4-7': mu(1000, 200, 900, 2.0),
+      'claude-sonnet-4-6': mu(400, 80, 300, 1.0),
+    });
+    insertResult(db, 'run-1', 2, ts, {
+      'claude-opus-4-7': mu(500, 100, 450, 2.0),
+    });
+
+    const models = db.getModelSpend(7);
+    expect(models.map((m) => m.model)).toEqual(['claude-opus-4-7', 'claude-sonnet-4-6']);
+    expect(models[0]).toMatchObject({
+      model: 'claude-opus-4-7',
+      inputTokens: 1500,
+      outputTokens: 300,
+      tokensTotal: 1800,
+      cacheReadTokens: 1350,
+      costUsd: 4,
+    });
+    expect(models[1]).toMatchObject({ model: 'claude-sonnet-4-6', inputTokens: 400, tokensTotal: 480, costUsd: 1 });
+  });
+
+  it('excludes results outside the window', () => {
+    insertRun(db, 'run-old', tsDaysAgo(10));
+    insertResult(db, 'run-old', 9, tsDaysAgo(10), { 'claude-opus-4-7': mu(100, 20, 0, 9) });
+    insertRun(db, 'run-now', tsDaysAgo(0));
+    insertResult(db, 'run-now', 1, tsDaysAgo(0), { 'claude-sonnet-4-6': mu(50, 10, 0, 1) });
+
+    const models = db.getModelSpend(7);
+    expect(models.map((m) => m.model)).toEqual(['claude-sonnet-4-6']);
+  });
+
+  it('reports the same model under different harnesses as distinct rows', () => {
+    const ts = tsDaysAgo(0);
+    insertRun(db, 'run-1', ts);
+    insertResult(db, 'run-1', 6, ts, { 'claude-opus-4-8': mu(1000, 200, 0, 6) }, { harness: 'claude-sdk' });
+    insertResult(db, 'run-1', 4, ts, { 'claude-opus-4-8': mu(500, 100, 0, 4) }, { harness: 'pi', provider: 'openrouter' });
+
+    const models = db.getModelSpend(7);
+    expect(models).toHaveLength(2);
+    expect(models[0]).toMatchObject({ model: 'claude-opus-4-8', harness: 'claude-sdk', provider: null, costUsd: 6 });
+    expect(models[1]).toMatchObject({ model: 'claude-opus-4-8', harness: 'pi', provider: 'openrouter', costUsd: 4 });
+  });
+
+  it('returns null harness/provider for results without attribution', () => {
+    const ts = tsDaysAgo(0);
+    insertRun(db, 'run-legacy', ts);
+    insertResult(db, 'run-legacy', 2, ts, { 'claude-opus-4-7': mu(100, 20, 0, 2) });
+
+    const models = db.getModelSpend(7);
+    expect(models[0]).toMatchObject({ harness: null, provider: null });
   });
 });

@@ -1023,6 +1023,8 @@ export class PiHarness implements AgentHarness {
             totalCost,
           ),
         },
+        harness: 'pi',
+        provider: model.provider,
         resultText: resultText || undefined,
       };
 
