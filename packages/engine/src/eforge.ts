@@ -29,6 +29,7 @@ import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
+import { finalizeFailedQueuedResumeSidecars } from './recovery/failed-resume-sidecar-finalization.js';
 import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
@@ -1525,17 +1526,10 @@ export class EforgeEngine {
         const wasAborted = abortController?.signal.aborted === true;
         const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
         const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
-        const isCompiledResumePrd = (() => {
-          try {
-            return getCompiledResumeFrontmatter(prd.frontmatter) !== undefined;
-          } catch {
-            return prd.frontmatter.resume_mode !== undefined ||
-              prd.frontmatter.resume_from !== undefined ||
-              prd.frontmatter.resume_set_name !== undefined ||
-              prd.frontmatter.resume_feature_branch !== undefined ||
-              prd.frontmatter.resume_base_branch !== undefined;
-          }
-        })();
+        let compiledResume: ReturnType<typeof getCompiledResumeFrontmatter>;
+        try { compiledResume = getCompiledResumeFrontmatter(prd.frontmatter); } catch { compiledResume = undefined; }
+        const isCompiledResumePrd = compiledResume !== undefined || prd.frontmatter.resume_mode !== undefined || prd.frontmatter.resume_from !== undefined || prd.frontmatter.resume_set_name !== undefined || prd.frontmatter.resume_feature_branch !== undefined || prd.frontmatter.resume_base_branch !== undefined;
+        const finalizeFailedResumeSidecars = (degradedReason?: string) => compiledResume === undefined ? Promise.resolve() : finalizeFailedQueuedResumeSidecars({ cwd, queueDir: config.prdQueue.dir, prdId, setName: compiledResume.setName, featureBranch: compiledResume.featureBranch, baseBranch: compiledResume.baseBranch, trunkBranch: config.build.trunkBranch, agentRuntimes, config, verbose: options.verbose, abortController, resumeSessionId: prdSessionId, ...(degradedReason !== undefined ? { degradedReason, activationReached: true } : {}) });
 
         let status: 'completed' | 'failed' | 'skipped' | 'already-claimed';
         let moveTo: 'failed' | 'skipped' | null;
@@ -1581,11 +1575,13 @@ export class EforgeEngine {
               if (status === 'completed') {
                 const finalization = await finalizeQueuedResumeSuccess({ cwd, prdId, queueDir: config.prdQueue.dir });
                 if (finalization.status === 'blocked') {
-                  await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+                  const rollback = await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+                  if (rollback.status === 'rolled-back') await finalizeFailedResumeSidecars(finalization.reason);
                   resumeStatus = 'failed';
                 }
               } else {
-                await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+                const rollback = await rollbackQueuedResume({ cwd, prdId, queueDir: config.prdQueue.dir });
+                if (rollback.status === 'rolled-back') await finalizeFailedResumeSidecars();
               }
             } catch {
               resumeStatus = 'failed';
@@ -2637,6 +2633,8 @@ export class EforgeEngine {
     let tracing: ReturnType<typeof createTracingContext> | undefined;
     let queuedResumeStarted = false;
     let queuedResumeFinalized = false;
+    let resumeActivationReached = false;
+    let queuedResumeFinalizationFailure: string | undefined;
 
     try {
       validatePlanSetName(setName);
@@ -2679,6 +2677,7 @@ export class EforgeEngine {
       const { summary, diffStat, artifactBasePath } = eligibility;
       const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans);
 
+      resumeActivationReached = true;
       yield { timestamp: ts(), type: 'build:resume:start', prdId, setName, featureBranch };
       yield {
         timestamp: ts(), type: 'build:resume:state',
@@ -2984,6 +2983,7 @@ export class EforgeEngine {
         } else if (queueResumeFinalization.status === 'blocked') {
           status = 'failed';
           buildSummary = queueResumeFinalization.reason;
+          queuedResumeFinalizationFailure = queueResumeFinalization.reason;
         }
       }
 
@@ -2997,6 +2997,8 @@ export class EforgeEngine {
           if (rollback.status === 'blocked') {
             status = 'failed';
             buildSummary = `Queued resume rollback blocked: ${rollback.reason}`;
+          } else if (rollback.status === 'rolled-back' && resumeActivationReached) {
+            await finalizeFailedQueuedResumeSidecars({ cwd, queueDir: this.config.prdQueue.dir, prdId, setName, featureBranch, baseBranch: baseBranch ?? this.config.build.trunkBranch ?? 'main', trunkBranch: this.config.build.trunkBranch, agentRuntimes: this.agentRuntimes, config: this.config, verbose: options.verbose, abortController: options.abortController, activationReached: true, resumeRunId: runId, ...(queuedResumeFinalizationFailure !== undefined ? { degradedReason: queuedResumeFinalizationFailure } : {}) });
           }
         } catch (err) {
           status = 'failed';
