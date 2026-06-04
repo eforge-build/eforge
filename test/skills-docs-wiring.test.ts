@@ -682,3 +682,41 @@ describe('packages/pi-eforge/skills/eforge-plan/SKILL.md — AC quality guidance
   });
 });
 
+
+
+// ---------------------------------------------------------------------------
+// Manual-only acceptance criteria guidance (plan-01-manual-only-ac-gate)
+// ---------------------------------------------------------------------------
+
+describe('manual-only AC prompt and skill guidance', () => {
+  const piPlan = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
+  const pluginPlan = readRepoFile('eforge-plugin/skills/plan/plan.md');
+  const formatterPrompt = readRepoFile('packages/engine/src/prompts/formatter.md');
+  const extractorPrompt = readRepoFile('packages/engine/src/prompts/acceptance-criteria-extractor.md');
+  const validatorPrompt = readRepoFile('packages/engine/src/prompts/prd-validator.md');
+
+  it('Pi and Claude Code plan skills contain manual-only examples and notes guidance', () => {
+    for (const raw of [piPlan, pluginPlan]) {
+      expect(raw).toContain('Manually verify dashboard rendering in the browser.');
+      expect(raw).toContain('Visually inspect UI');
+      expect(raw).toContain('manual-only');
+      expect(raw).toContain('Manual Verification Notes');
+    }
+  });
+
+  it('formatter prompt forbids manual-only/visual-only ACs and preserves notes', () => {
+    expect(formatterPrompt).toMatch(/manual-only.*visual-only/s);
+    expect(formatterPrompt).toContain('Manual Verification Notes');
+    expect(formatterPrompt).toMatch(/concrete automatable outcome|automatable criterion/s);
+  });
+
+  it('acceptance criteria extractor prompt omits manual-only notes and emits warnings', () => {
+    expect(extractorPrompt).toMatch(/Omit manual-only or visual-only notes/);
+    expect(extractorPrompt).toMatch(/warnings?.*omitted|omitted.*warning/s);
+  });
+
+  it('PRD validator prompt treats Manual Verification Notes as informational and Expected AC as authoritative', () => {
+    expect(validatorPrompt).toMatch(/Expected Acceptance Criteria[\s\S]*authoritative/);
+    expect(validatorPrompt).toMatch(/Manual Verification Notes[\s\S]*informational and non-gating/);
+  });
+});

@@ -179,6 +179,7 @@ Each criterion must be **flat, standalone, atomic, and objectively validatable**
 - **No grouping labels** — bullets ending with `:` are headers, not criteria. Do not write `- Tests cover:` or `- Targeted validation passes:`. Write each sub-item as its own standalone bullet.
 - **No bare command fragments** — `` - `pnpm type-check`. `` cannot be verified without an expected outcome. Write the outcome: `` - `pnpm type-check` exits 0. ``
 - **No vague criteria** — `- Works correctly.` and `- Improves reliability.` cannot be objectively verified. Name the specific behavior, command, event, file, or API response.
+- **No manual-only or visual-only checks** — `- Manually verify dashboard rendering in the browser.` and `- Visually inspect UI for layout regressions.` are manual-only and cannot be hard-gated Acceptance Criteria unless they include objective automation evidence. Replace them with automatable criteria or move the details to `## Manual Verification Notes`, which are informational and non-gating.
 
 **Valid examples:**
 - `` - `pnpm type-check` exits 0. ``
@@ -186,12 +187,15 @@ Each criterion must be **flat, standalone, atomic, and objectively validatable**
 - `- Engine emits an \`enqueue:failed\` event when AC content contains grouping labels.`
 - `- The readiness route returns \`ready: false\` with \`acDiagnostics\` for invalid AC content.`
 - `- The queue directory contains zero new markdown files when enqueue is rejected.`
+- `- Manually verify by running \`pnpm test\` and confirming it exits 0.`
 
 **Invalid examples (session plan cannot be marked ready; enqueue will fail):**
 - `- Tests cover:` — grouping label (ends with `:`)
 - `` - `pnpm type-check`. `` — bare command fragment (no outcome)
 - `- Works correctly.` — vague (no specific, verifiable behavior)
 - `- Improves reliability.` — vague (no measurable outcome)
+- `- Manually verify dashboard rendering in the browser.` — manual-only (move to `## Manual Verification Notes` or replace with an automatable outcome)
+- `- Visually inspect UI for layout regressions.` — manual-only/visual-only (move to `## Manual Verification Notes` or replace with an automatable outcome)
 
 ### Step 6: Profile Signal
 

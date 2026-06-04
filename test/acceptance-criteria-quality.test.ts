@@ -79,6 +79,48 @@ describe('analyzeAcceptanceCriteriaItem — bare command fragments', () => {
   });
 });
 
+describe('analyzeAcceptanceCriteriaItem — manual-only criteria', () => {
+  it('reports manual-only for manual dashboard browser verification', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Manually verify dashboard rendering in the browser.');
+    expect(d).not.toBeNull();
+    expect(d!.kind).toBe('manual-only');
+    expect(d!.suggestion).toMatch(/automatable/i);
+    expect(d!.suggestion).toMatch(/manual verification notes/i);
+  });
+
+  it('reports manual-only for visual layout inspection', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Visually inspect the dashboard for layout regressions.');
+    expect(d).not.toBeNull();
+    expect(d!.kind).toBe('manual-only');
+  });
+
+  it('reports manual-only when visual inspection is described as passing', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Manually verify the dashboard passes visual inspection in the browser.');
+    expect(d).not.toBeNull();
+    expect(d!.kind).toBe('manual-only');
+  });
+
+  it('does NOT report manual-only when manual wording includes objective command evidence', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Manually verify by running `pnpm test` and confirming it exits 0.');
+    expect(d).toBeNull();
+  });
+
+  it('does NOT report manual-only when manual wording includes a named event emission', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Manually verify Engine emits an `enqueue:failed` event when AC quality fails.');
+    expect(d).toBeNull();
+  });
+
+  it('does NOT report manual-only when manual wording includes a route status assertion', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Manually verify the readiness route returns status 409 for manual-only ACs.');
+    expect(d).toBeNull();
+  });
+
+  it('does NOT report manual-only when manual wording includes a concrete path content assertion', () => {
+    const d = analyzeAcceptanceCriteriaItem('- Manually verify packages/input/src/acceptance-criteria-quality.ts contains the manual-only diagnostic.');
+    expect(d).toBeNull();
+  });
+});
+
 describe('analyzeAcceptanceCriteriaItem — vague criteria', () => {
   it('reports vague for "Works correctly."', () => {
     const d = analyzeAcceptanceCriteriaItem('- Works correctly.');
@@ -181,6 +223,13 @@ describe('analyzeAcceptanceCriteria', () => {
     expect(result.diagnostics.some((d) => d.kind === 'vague')).toBe(true);
   });
 
+  it('returns valid: false with diagnostics for manual-only criteria', () => {
+    const content = '- Manually verify dashboard rendering in the browser.';
+    const result = analyzeAcceptanceCriteria(content);
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics.some((d) => d.kind === 'manual-only')).toBe(true);
+  });
+
   it('skips non-list prose lines', () => {
     const content = [
       'The implementation is accepted when:',
@@ -248,6 +297,18 @@ describe('analyzeAcceptanceCriteriaInBody', () => {
     expect(result).not.toBeNull();
     expect(result!.valid).toBe(false);
     expect(result!.diagnostics[0].kind).toBe('bare-command');
+  });
+
+  it('returns invalid result for a body with manual-only AC', () => {
+    const body = [
+      '## Acceptance Criteria',
+      '',
+      '- Manually verify dashboard rendering in the browser.',
+    ].join('\n');
+    const result = analyzeAcceptanceCriteriaInBody(body);
+    expect(result).not.toBeNull();
+    expect(result!.valid).toBe(false);
+    expect(result!.diagnostics[0].kind).toBe('manual-only');
   });
 
   it('stops reading the AC section at the next heading of equal depth', () => {
@@ -345,6 +406,34 @@ describe('EforgeEngine.enqueue — canonical extractor quality gate', () => {
     expect(events.map((event) => event.type)).not.toContain('enqueue:complete');
 
     // Queue directory should have zero queued markdown files
+    const queueDir = resolve(tmpDir, '.eforge', 'queue');
+    let queueFiles: string[] = [];
+    try {
+      queueFiles = (await readdir(queueDir)).filter((f) => f.endsWith('.md'));
+    } catch {
+      queueFiles = [];
+    }
+    expect(queueFiles).toHaveLength(0);
+  });
+
+  it('emits enqueue:failed for extractor output with manual-only AC', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const formattedBody = makePrdBody(['- Manually verify dashboard rendering in the browser.']);
+    const engine = await makeEngine(tmpDir, formattedBody, JSON.stringify({
+      version: 1,
+      criteria: [{ text: 'Manually verify dashboard rendering in the browser.', sourceQuote: 'Manually verify dashboard rendering in the browser.', confidence: 0.95 }],
+    }));
+
+    const events = [];
+    for await (const e of engine.enqueue('test input')) events.push(e);
+
+    const failed = events.find((event) => event.type === 'enqueue:failed');
+    expect(failed).toBeDefined();
+    expect(failed?.error).toMatch(/manual-only|manual or visual/i);
+    expect(events.map((event) => event.type)).not.toContain('enqueue:complete');
+
     const queueDir = resolve(tmpDir, '.eforge', 'queue');
     let queueFiles: string[] = [];
     try {

@@ -12,6 +12,7 @@ import {
   AC_EXTRACTION_MIN_CONFIDENCE,
   appendAcceptanceCriteriaInventoryBlock,
   parseAcceptanceCriteriaExtractorOutput,
+  validateCanonicalAcceptanceCriteriaInventory,
   readAcceptanceCriteriaInventoryBlock,
   requireAcceptanceCriteriaInventoryFromPrd,
   stripAcceptanceCriteriaInventoryBlock,
@@ -137,8 +138,8 @@ describe('canonical acceptance criteria inventory', () => {
     expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text: 'Something concrete happens.', sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: AC_EXTRACTION_MIN_CONFIDENCE - 0.01 }] }), CANONICAL_SOURCE)).toThrow(/confidence/);
   });
 
-  it('rejects duplicate, grouping-label, bare-command, and vague criteria', () => {
-    const cases = ['Tests cover:', '`pnpm type-check`.', 'Works correctly.'];
+  it('rejects duplicate, grouping-label, bare-command, manual-only, and vague criteria', () => {
+    const cases = ['Tests cover:', '`pnpm type-check`.', 'Manually verify dashboard rendering in the browser.', 'Works correctly.'];
     for (const text of cases) {
       expect(() => parseAcceptanceCriteriaExtractorOutput(JSON.stringify({ version: 1, criteria: [{ text, sourceQuote: 'Engine emits `enqueue:complete` after writing the PRD.', confidence: 0.95 }] }), CANONICAL_SOURCE)).toThrow();
     }
@@ -639,6 +640,29 @@ describe('extractExpectedAcceptanceCriteria — grouped parent bullets', () => {
     const d = analyzeAcceptanceCriteriaItem('- Targeted validation passes:');
     expect(d).not.toBeNull();
     expect(d!.kind).toBe('grouping-label');
+  });
+
+  it('reports manual-only diagnostics via the engine quality analyzer', () => {
+    expect(analyzeAcceptanceCriteriaItem('- Manually verify dashboard rendering in the browser.')?.kind).toBe('manual-only');
+    expect(analyzeAcceptanceCriteriaItem('- Visually inspect the dashboard for layout regressions.')?.kind).toBe('manual-only');
+    expect(analyzeAcceptanceCriteriaItem('- Manually verify the dashboard passes visual inspection in the browser.')?.kind).toBe('manual-only');
+    expect(analyzeAcceptanceCriteriaItem('- Manually verify by running `pnpm test` and confirming it exits 0.')).toBeNull();
+    expect(analyzeAcceptanceCriteriaItem('- Manually verify Engine emits an `enqueue:failed` event when AC quality fails.')).toBeNull();
+    expect(analyzeAcceptanceCriteriaItem('- Manually verify the readiness route returns status 409 for manual-only ACs.')).toBeNull();
+    expect(analyzeAcceptanceCriteriaItem('- Manually verify packages/input/src/acceptance-criteria-quality.ts contains the manual-only diagnostic.')).toBeNull();
+  });
+
+  it('returns a quality diagnostic for manual-only canonical criteria', () => {
+    const result = validateCanonicalAcceptanceCriteriaInventory({
+      version: 1,
+      criteria: [{ text: 'Manually verify dashboard rendering in the browser.', sourceQuote: 'Manually verify dashboard rendering in the browser.', confidence: 0.95 }],
+    }, '# Feature\n\n## Acceptance Criteria\n\n- Manually verify dashboard rendering in the browser.');
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.diagnostics.some((diagnostic) => diagnostic.kind === 'quality')).toBe(true);
+      expect(result.diagnostics.some((diagnostic) => /manual or visual|manual-only/i.test(diagnostic.message))).toBe(true);
+    }
   });
 });
 

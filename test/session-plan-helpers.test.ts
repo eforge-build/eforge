@@ -436,6 +436,20 @@ describe('getReadinessDetail', () => {
     expect(detail.acDiagnostics![0].kind).toBe('bare-command');
   });
 
+  it('returns ready: false and acDiagnostics for manual-only AC', () => {
+    const plan = parseSessionPlan(makePlanRaw({
+      required_dimensions: ['scope', 'acceptance-criteria'],
+      body: '\n# Test Plan\n\n## Scope\n\nReal scope.\n\n## Acceptance Criteria\n\n- Manually verify dashboard rendering in the browser.\n',
+    }));
+    const detail = getReadinessDetail(plan);
+
+    expect(detail.ready).toBe(false);
+    expect(detail.acDiagnostics).toBeDefined();
+    expect(detail.acDiagnostics![0].kind).toBe('manual-only');
+    expect(detail.coveredDimensions).toContain('acceptance-criteria');
+    expect(detail.missingDimensions).not.toContain('acceptance-criteria');
+  });
+
   it('returns ready: true and no acDiagnostics for valid command AC ("`pnpm type-check` exits 0.")', () => {
     const plan = parseSessionPlan(makePlanRaw({
       required_dimensions: ['scope', 'acceptance-criteria'],

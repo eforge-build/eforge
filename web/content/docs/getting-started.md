@@ -95,7 +95,7 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 ## What Happens Next
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
-2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria into a hidden queue artifact and rejects malformed, ungrounded, duplicate, low-confidence, bare-command, grouping-label, or vague criteria before writing the queue file.
+2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria into a hidden queue artifact and rejects malformed, ungrounded, duplicate, low-confidence, bare-command, grouping-label, vague, manual-only, or visual-only criteria before writing the queue file.
 3. **Planning** - A planner agent assesses complexity and selects a workflow profile (Errand, Excursion, or Expedition), then writes a detailed plan or set of plans.
 4. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 5. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
