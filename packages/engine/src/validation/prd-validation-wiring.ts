@@ -130,7 +130,7 @@ function createPrdValidator(
   expectedAcceptanceCriteria: ExpectedAcceptanceCriterion[],
 ): PrdValidator {
   const { config, tracing, verbose, abortController, agentRuntimes, orchConfig } = options;
-  return async function* (validatorCwd, validatorContext) {
+  return async function* (validatorCwd, validatorContext, lane) {
     let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
     try {
       built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.diffBaseRef ?? orchConfig.baseBranch });
@@ -180,6 +180,7 @@ function createPrdValidator(
         harness: agentRuntimes.forRole('prd-validator'),
         expectedAcceptanceCriteria,
         validationCommandEvidence: validatorContext?.validationCommandEvidence,
+        lane,
       })) {
         prdTracker.handleEvent(event);
         yield event;

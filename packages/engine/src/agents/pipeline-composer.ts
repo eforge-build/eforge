@@ -32,6 +32,8 @@ export interface PipelineComposerOptions extends SdkPassthroughConfig {
    * `validate` build stage so providers run.
    */
   validationProviders?: ValidationProviderRegistration[];
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -140,6 +142,7 @@ export async function* composePipeline(
         ...pickSdkOptions(options),
       },
       'pipeline-composer',
+      options.lane,
     )) {
       if (isAlwaysYieldedAgentEvent(event) || verbose) {
         yield event;

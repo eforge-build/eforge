@@ -23,6 +23,8 @@ export interface ModulePlannerOptions extends SdkPassthroughConfig {
   maxTurns?: number;
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -51,6 +53,7 @@ export async function* runModulePlanner(
   for await (const event of options.harness.run(
     { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
     'module-planner',
+    options.lane,
   )) {
     // Always yield agent:result + tool events for tracing; gate streaming text on verbose
     if (isAlwaysYieldedAgentEvent(event) || options.verbose) {

@@ -35,6 +35,8 @@ export interface PlanReviewerOptions extends SdkPassthroughConfig {
   outputDir?: string;
   /** Override max conversation turns (default: review tier default). */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -118,6 +120,7 @@ export async function* runPlanReview(
       disallowedTools: mergeMutationDisallowedTools(options.disallowedTools),
     },
     'plan-reviewer',
+    options.lane,
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {
       yield event;

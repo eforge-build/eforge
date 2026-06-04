@@ -694,7 +694,7 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
     // Attempt fix if retries remain and a fixer is available
     if (attempt < maxRetries && validationFixer && !signal?.aborted) {
-      for await (const event of validationFixer(mergeWorktreePath, failures, attempt + 1, maxRetries)) {
+      for await (const event of validationFixer(mergeWorktreePath, failures, attempt + 1, maxRetries, ctx.gapClosePerformed ? 'final-validation' : 'validation')) {
         if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
         yield event;
       }
@@ -782,7 +782,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     const validatorContext = ctx.validationCommandEvidence !== undefined
       ? { validationCommandEvidence: ctx.validationCommandEvidence }
       : undefined;
-    for await (const event of prdValidator(ctx.mergeWorktreePath, validatorContext)) {
+    for await (const event of prdValidator(ctx.mergeWorktreePath, validatorContext, ctx.gapClosePerformed ? 'final-validation' : 'validation')) {
       if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
       // Buffer acceptance_validation:complete long enough to synthesize expected
       // unknown verdicts and optionally run the acceptance unknown resolver before

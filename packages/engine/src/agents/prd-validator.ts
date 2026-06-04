@@ -13,6 +13,8 @@ export interface PrdValidatorOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: implementation tier default). */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
   /** Expected acceptance criteria inventory for prompt injection. When non-empty, the criteria are
    *  listed in the prompt so the validator knows which ACs to produce verdicts for. */
   expectedAcceptanceCriteria?: import('../validation/acceptance-criteria.js').ExpectedAcceptanceCriterion[];
@@ -65,6 +67,7 @@ export async function* runPrdValidator(
         ...pickSdkOptions(options),
       },
       'prd-validator',
+      options.lane,
     )) {
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;

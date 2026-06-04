@@ -573,6 +573,7 @@ export class EforgeEngine {
               abortController,
               phase: 'standalone',
               harness: this.agentRuntimes.forRole('dependency-detector'),
+              lane: 'planning',
             });
             let depResult = await depGen.next();
             while (!depResult.done) {
@@ -762,7 +763,7 @@ export class EforgeEngine {
       };
 
       // Create validation fixer closure
-      const validationFixer: ValidationFixer = async function* (fixerCwd, failures, attempt, maxAttempts) {
+      const validationFixer: ValidationFixer = async function* (fixerCwd, failures, attempt, maxAttempts, lane) {
         const fixerSpan = tracing!.createSpan('validation-fixer', { attempt, maxAttempts });
         fixerSpan.setInput({ failures: failures.map((f) => f.command) });
         const fixerTracker = createToolTracker(fixerSpan);
@@ -778,6 +779,7 @@ export class EforgeEngine {
             abortController,
             phase: 'standalone',
             harness: agentRuntimes.forRole('validation-fixer'),
+            lane,
           })) {
             fixerTracker.handleEvent(event);
             yield event;
@@ -2807,7 +2809,7 @@ export class EforgeEngine {
       };
 
       // Validation fixer closure
-      const validationFixer: ValidationFixer = async function* (fixerCwd, failures, attempt, maxAttempts) {
+      const validationFixer: ValidationFixer = async function* (fixerCwd, failures, attempt, maxAttempts, lane) {
         const fixerSpan = tracing!.createSpan('validation-fixer', { attempt, maxAttempts });
         fixerSpan.setInput({ failures: failures.map((f) => f.command) });
         const fixerTracker = createToolTracker(fixerSpan);
@@ -2823,6 +2825,7 @@ export class EforgeEngine {
             abortController,
             phase: 'standalone',
             harness: agentRuntimes.forRole('validation-fixer'),
+            lane,
           })) {
             fixerTracker.handleEvent(event);
             yield event;
