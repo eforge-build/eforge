@@ -1,0 +1,195 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { createProgram } from '../packages/eforge/src/cli/index.js';
+import { parseJsonObjectInput } from '../packages/eforge/src/cli/extension-contributions.js';
+import { readRepoFile } from './extension-tooling-wiring-helpers.js';
+
+function commandNames(command: { commands?: Array<{ name(): string; commands?: Array<{ name(): string }> }> } | undefined): string[] {
+  return command?.commands?.map((child) => child.name()) ?? [];
+}
+
+function normalizedSkillText(relativePath: string): string {
+  return readRepoFile(relativePath)
+    .replace(/mcp__eforge__eforge_extension_contribution/g, 'eforge_extension_contribution')
+    .replace(/Claude\/MCP|Claude Code|MCP|Pi/g, 'HOST')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+describe('host contribution CLI surface', () => {
+  it('registers extension contributions list and invoke commands on the real Commander program', () => {
+    const program = createProgram(undefined, 'test');
+    const extension = program.commands.find((command) => command.name() === 'extension');
+    const contributions = extension?.commands.find((command) => command.name() === 'contributions');
+
+    expect(extension, 'extension command').toBeDefined();
+    expect(contributions, 'extension contributions command group').toBeDefined();
+    expect(commandNames(contributions)).toContain('list');
+    expect(commandNames(contributions)).toContain('invoke');
+  });
+
+  it('uses shared client helpers and JSON object input flags without route literals', () => {
+    const source = readRepoFile('packages/eforge/src/cli/extension-contributions.ts');
+
+    expect(source).toContain('listEforgeExtensionContributions');
+    expect(source).toContain('invokeEforgeExtensionContribution');
+    expect(source).toContain('--input-json <json>');
+    expect(source).toContain('--input-file <path>');
+    expect(source).toContain("requestedBy: { host: 'cli' }");
+    expect(source).not.toContain('/api/');
+    expect(source).not.toContain('@eforge-build/monitor');
+    expect(source).not.toContain('@eforge-build/engine');
+  });
+
+  it('wires focused contribution commands from the bounded CLI entrypoint', () => {
+    const source = readRepoFile('packages/eforge/src/cli/index.ts');
+    const importIndex = source.indexOf('registerExtensionContributionCommands');
+    const callIndex = source.indexOf('registerExtensionContributionCommands(extension)');
+    const configIndex = source.indexOf('// Config commands');
+
+    expect(importIndex).toBeGreaterThanOrEqual(0);
+    expect(callIndex).toBeGreaterThan(importIndex);
+    expect(callIndex).toBeLessThan(configIndex);
+  });
+
+  it('parses invoke input from JSON text or files and rejects non-object forms before invocation', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'eforge-contribution-cli-input-'));
+    try {
+      const inputFile = join(dir, 'input.json');
+      await writeFile(inputFile, JSON.stringify({ fromFile: true }), 'utf-8');
+
+      await expect(parseJsonObjectInput({})).resolves.toEqual({});
+      await expect(parseJsonObjectInput({ inputJson: '{"fromJson":true}' })).resolves.toEqual({ fromJson: true });
+      await expect(parseJsonObjectInput({ inputFile })).resolves.toEqual({ fromFile: true });
+      await expect(parseJsonObjectInput({ inputJson: '{}', inputFile })).rejects.toThrow('--input-json and --input-file are mutually exclusive');
+      await expect(parseJsonObjectInput({ inputJson: '[]' })).rejects.toThrow('"input" must be a JSON object');
+      await expect(parseJsonObjectInput({ inputJson: 'null' })).rejects.toThrow('"input" must be a JSON object');
+      await expect(parseJsonObjectInput({ inputJson: 'not-json' })).rejects.toThrow('Invalid JSON input:');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('host contribution MCP surface', () => {
+  it('registers a daemon-backed MCP tool for list and invoke with typed user errors', () => {
+    const source = readRepoFile('packages/eforge/src/cli/mcp-extension-contributions.ts');
+
+    expect(source).toContain('eforge_extension_contribution');
+    expect(source).toContain('createDaemonTool');
+    expect(source).toContain('listEforgeExtensionContributions');
+    expect(source).toContain('invokeEforgeExtensionContribution');
+    expect(source).toContain("host: 'mcp'");
+    expect(source).toContain('McpUserError');
+    expect(source).toContain('list');
+    expect(source).toContain('invoke');
+    expect(source).not.toContain('/api/');
+    expect(source).not.toContain('dispatchEforgeExtensionAction');
+  });
+
+  it('registers the contribution tool after extension management and before models', () => {
+    const source = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
+    const extensionToolIndex = source.indexOf('eforge_extension');
+    const contributionIndex = source.indexOf('registerExtensionContributionMcpTool(server, cwd)');
+    const modelsIndex = source.indexOf('eforge_models', contributionIndex);
+
+    expect(contributionIndex).toBeGreaterThan(extensionToolIndex);
+    expect(modelsIndex).toBeGreaterThan(contributionIndex);
+  });
+});
+
+describe('host contribution Pi surface', () => {
+  it('registers passive Pi tool and native command surfaces', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/extension-contributions.ts');
+
+    expect(source).toContain('eforge_extension_contribution');
+    expect(source).toContain('eforge:extensions');
+    expect(source).toContain("host: 'pi'");
+    expect(source).toContain('listEforgeExtensionContributionsIfRunning');
+    expect(source).toContain('invokeEforgeExtensionContributionIfRunning');
+    expect(source).toContain('DAEMON_NOT_RUNNING_GUIDANCE');
+    expect(source).not.toContain('ensureDaemon');
+    expect(source).not.toContain('daemonRequest(');
+    expect(source).not.toContain('/api/');
+  });
+
+  it('wires the Pi registration helpers from the bounded extension entrypoint', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+    expect(source).toContain('registerExtensionContributionTool');
+    expect(source).toContain('registerExtensionContributionsCommand');
+    expect(source).toContain('registerExtensionContributionTool(pi)');
+    expect(source).toContain('registerExtensionContributionsCommand(pi, () => _latestCtx)');
+  });
+
+  it('documents the Pi tool and native command without bumping the Pi package version', () => {
+    const readme = readRepoFile('packages/pi-eforge/README.md');
+    const packageJson = JSON.parse(readRepoFile('packages/pi-eforge/package.json')) as { version: string };
+
+    expect(readme).toContain('eforge_extension_contribution');
+    expect(readme).toContain('/eforge:extensions');
+    expect(packageJson.version).toBe('0.7.21');
+  });
+});
+
+describe('host contribution client exports and source discipline', () => {
+  it('exports dispatcher helpers from @eforge-build/client and the source index', async () => {
+    const client = await import('@eforge-build/client');
+    const source = readRepoFile('packages/client/src/index.ts');
+    const platformExport = source.indexOf('./api/extension-contributions.js');
+    const dispatcherExport = source.indexOf('./api/extension-contribution-dispatch.js');
+
+    expect(client.EXTENSION_HOST_CONTRIBUTION_KINDS).toEqual(['action', 'command', 'deep-link']);
+    for (const name of [
+      'summarizeExtensionContributionManifest',
+      'resolveExtensionContributionInvocation',
+      'listEforgeExtensionContributions',
+      'listEforgeExtensionContributionsIfRunning',
+      'invokeEforgeExtensionContribution',
+      'invokeEforgeExtensionContributionIfRunning',
+    ] as const) {
+      expect(client[name], name).toBeTypeOf('function');
+    }
+    expect(dispatcherExport).toBeGreaterThan(platformExport);
+  });
+
+  it('keeps contribution invocation separate from extension-management dispatch', () => {
+    const source = readRepoFile('packages/client/src/api/extension-tool-dispatch.ts');
+
+    expect(source).not.toContain('extensionContribution');
+    expect(source).not.toContain('integrationCommand');
+    expect(source).not.toContain('deepLink');
+    expect(source).not.toContain('invokeEforgeExtensionContribution');
+  });
+});
+
+describe('host contribution skill parity and plugin versioning', () => {
+  it('updates Claude and Pi extension-authoring skills with host contribution guidance', () => {
+    const pluginSkill = readRepoFile('eforge-plugin/skills/extend/extend.md');
+    const piSkill = readRepoFile('packages/pi-eforge/skills/eforge-extend/SKILL.md');
+
+    for (const text of [pluginSkill, piSkill]) {
+      expect(text).toContain('registerAction');
+      expect(text).toContain('registerConsoleContribution');
+      expect(text).toContain('registerIntegrationCommand');
+      expect(text).toContain('registerDeepLink');
+      expect(text).toMatch(/raw .*HTTP routes/i);
+      expect(text).toMatch(/arbitrary frontend bundles/i);
+    }
+    expect(pluginSkill).toContain('mcp__eforge__eforge_extension_contribution');
+    expect(piSkill).toContain('eforge_extension_contribution');
+    expect(normalizedSkillText('eforge-plugin/skills/extend/extend.md')).toContain('eforge_extension_contribution');
+    expect(normalizedSkillText('packages/pi-eforge/skills/eforge-extend/SKILL.md')).toContain('eforge_extension_contribution');
+  });
+
+  it('bumps the Claude plugin patch version above the plan baseline', () => {
+    const plugin = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
+    const [major, minor, patch] = plugin.version.split('.').map(Number);
+    const actual = major * 1_000_000 + minor * 1_000 + patch;
+    const baseline = 0 * 1_000_000 + 25 * 1_000 + 44;
+
+    expect(actual).toBeGreaterThan(baseline);
+  });
+});

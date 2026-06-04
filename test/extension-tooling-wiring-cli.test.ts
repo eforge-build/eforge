@@ -209,11 +209,11 @@ describe('CLI extension command registration', () => {
     }
   }
 
-  it('registers eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote commands on the actual Commander program', () => {
+  it('registers eforge extension management and contribution commands on the actual Commander program', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
     expect(extension).toBeDefined();
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['demote', 'install', 'list', 'new', 'promote', 'reload', 'remove', 'show', 'test', 'trust', 'untrust', 'update', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['contributions', 'demote', 'install', 'list', 'new', 'promote', 'reload', 'remove', 'show', 'test', 'trust', 'untrust', 'update', 'validate']);
   });
 
   it('declares the required show, validate, trust, untrust, install, update, remove, promote, and demote arguments', () => {

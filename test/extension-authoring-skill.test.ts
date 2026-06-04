@@ -151,7 +151,10 @@ describe('/eforge:extend workflow content', () => {
     const end = source.indexOf('### Step 4: Scope selection', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
-    return source.slice(start, end).trim();
+    return source
+      .slice(start, end)
+      .replaceAll('mcp__eforge__eforge_extension_contribution', 'eforge_extension_contribution')
+      .trim();
   }
 
   it('documents the required authoring workflow in both skills', () => {

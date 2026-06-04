@@ -219,7 +219,7 @@ registerTool(tool: ExtensionTool): void
 
 ### Extension contribution contracts
 
-The SDK also exposes registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; the daemon exposes safe manifest projection and action invocation routes, Console renders declarative contributions under `/console/system`, and host integration wiring is a separate platform module.
+The SDK also exposes registration methods for extension-authored actions and host-facing contributions. These methods are available on `EforgeExtensionAPI` for author-facing type safety; the daemon exposes safe manifest projection and action invocation routes, Console renders declarative contributions under `/console/system`, and host integrations can list and invoke actions, integration commands, and action-backed deep links through the shared contribution dispatcher.
 
 ```ts
 registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
@@ -247,7 +247,7 @@ const sayHi = defineExtensionAction({
 
 Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `IntegrationCommand`, and `ExtensionDeepLink`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
 
-**Runtime status:** engine registry/runtime support plus daemon manifest/action routes and Console System rendering for declarative contributions. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input or output payloads. Host command/deep-link dispatch is a separate platform layer.
+**Runtime status:** engine registry/runtime support plus daemon manifest/action routes, Console System rendering for declarative contributions, and CLI, MCP/Claude, and Pi host dispatch for action-backed contributions. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input or output payloads.
 
 ---
 
@@ -1036,8 +1036,8 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
 | `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route |
 | `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console renders declarative panels under `/console/system` |
-| `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integration wiring is separate |
-| `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Daemon contribution manifest projection; host integration wiring is separate |
+| `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed commands |
+| `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed deep links |
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 

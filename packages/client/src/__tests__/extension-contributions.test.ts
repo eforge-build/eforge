@@ -101,10 +101,12 @@ describe('extension contribution schemas', () => {
     expect(safeParseExtensionContributionManifest(nonObjectInputSchema).success).toBe(false);
   });
 
-  it('validates requestedBy host values', () => {
+  it('validates requestedBy host values and non-blank action ids', () => {
     for (const host of ['console', 'pi', 'claude', 'mcp', 'cli']) {
       expect(safeParseExtensionActionInvokeRequest({ actionId: 'a', input: {}, requestedBy: { host } }).success).toBe(true);
     }
+    expect(safeParseExtensionActionInvokeRequest({ actionId: '', input: {}, requestedBy: { host: 'cli' } }).success).toBe(false);
+    expect(safeParseExtensionActionInvokeRequest({ actionId: '   ', input: {}, requestedBy: { host: 'cli' } }).success).toBe(false);
     expect(safeParseExtensionActionInvokeRequest({ actionId: 'a', input: {}, requestedBy: { host: 'web' } }).success).toBe(false);
   });
 

@@ -288,6 +288,37 @@ Demote a project-team extension to project-local scope
 | `--force` | Overwrite an existing extension at project-local scope |
 | `--json` | Output JSON |
 
+#### `contributions`
+
+Discover and invoke extension-provided host contributions
+
+
+##### `list`
+
+List extension-provided actions, integration commands, and deep links
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--kind <kind>` | Contribution kind: action, command, deep-link, or all |
+| `--json` | Output JSON |
+
+##### `invoke`
+
+Invoke an extension action, integration command, or action-backed deep link
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--kind <kind>` | Contribution kind: action, command, or deep-link |
+| `--input-json <json>` | JSON object input for the action |
+| `--input-file <path>` | Path to a JSON object input file |
+| `--json` | Output JSON |
+
 ### `config`
 
 Manage eforge configuration

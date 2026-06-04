@@ -42,6 +42,13 @@ export async function invokeExtensionAction(
   request: ExtensionActionInvokeRequest,
   invocationId: string,
 ): Promise<{ status: number; body: ExtensionActionInvokeResponse }> {
+  if (request.actionId.trim().length === 0) {
+    return {
+      status: 400,
+      body: failureBody(invocationId, 'invalid-request', 'Action id must be a non-empty string'),
+    };
+  }
+
   const runtime = await loadContributionRuntime(context);
   const action = findAction(runtime.manifest, request.actionId);
   if (!action) {

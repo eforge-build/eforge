@@ -106,7 +106,7 @@ The main `@eforge-build/eforge` npm package is the standalone CLI and daemon run
 
 The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. If you already have user-scope profiles in `~/.config/eforge/profiles/`, it offers to activate one of those instead of creating a new project profile. Otherwise it walks you through a Quick setup (one harness/provider with suggested tier models, including an optional separate implementation model) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code, use the recommended Pi path when you want Claude Code as the host surface while builds execute through a Pi profile; choose `claude-sdk` only when you intentionally want the Anthropic Claude Agent SDK. In Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
 
-The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), and playbook management (`/eforge:playbook`) with interactive TUI panels and selectors. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations - exploring scope, code impact, architecture, design decisions, documentation, and risks - before handing off to `/eforge:build`. Both surfaces also expose `/eforge:extend` for assisted eforge TypeScript extension authoring and `/eforge:playbook` for creating, editing, running, and managing reusable automation playbooks that encode recurring workflows as named, version-controlled templates.
+The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), extension contribution browsing (`/eforge:extensions`), and playbook management (`/eforge:playbook`) with interactive TUI panels and selectors. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations - exploring scope, code impact, architecture, design decisions, documentation, and risks - before handing off to `/eforge:build`. Both surfaces also expose `/eforge:extend` for assisted eforge TypeScript extension authoring and `/eforge:playbook` for creating, editing, running, and managing reusable automation playbooks that encode recurring workflows as named, version-controlled templates.
 
 Standalone CLI:
 
@@ -127,6 +127,10 @@ npx @eforge-build/eforge play docs-sync
 npx @eforge-build/eforge playbook list
 npx @eforge-build/eforge playbook run docs-sync --after q-abc
 npx @eforge-build/eforge playbook promote tech-debt-sweep
+
+# Discover and invoke extension host contributions
+npx @eforge-build/eforge extension contributions list
+npx @eforge-build/eforge extension contributions invoke <id> --kind command
 ```
 
 > **Note**: Planning-mode playbooks require an interactive agent. Running a planning playbook via the standalone CLI returns `requires-agent` guidance rather than starting the investigation workflow. Use `/eforge:playbook run` in Claude Code or Pi to start the investigation-first planning workflow.

@@ -26,6 +26,8 @@ export const ExtensionActionRequestedBySchema = Type.Object({
   host: ExtensionActionRequestedByHostSchema,
   surface: Type.Optional(Type.String()),
   sessionId: Type.Optional(Type.String()),
+  commandId: Type.Optional(Type.String()),
+  deepLinkId: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
 export const ExtensionActionSideEffectSchema = Type.Union([
@@ -161,7 +163,7 @@ export const ExtensionContributionManifestResponseSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const ExtensionActionInvokeRequestSchema = Type.Object({
-  actionId: Type.String(),
+  actionId: Type.String({ minLength: 1, pattern: '\\S' }),
   input: ExtensionJsonObjectSchema,
   requestedBy: ExtensionActionRequestedBySchema,
 }, { additionalProperties: false });
