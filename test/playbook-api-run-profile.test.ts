@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type DaemonState, type MonitorServer, type StartServerOptions } from '@eforge-build/monitor/server';
-import { API_ROUTES } from '@eforge-build/client';
+import { API_ROUTES, type PlaybookRunRequest } from '@eforge-build/client';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 import { upsertArtifact, upsertCompletion } from '@eforge-build/engine/artifacts';
 
@@ -61,6 +61,46 @@ async function expectNoMarkdownFiles(dir: string): Promise<void> {
   }
 }
 
+// --- eforge:region playbook-api-run-profile-helpers ---
+
+async function writeTeamPlaybook(configDir: string, fileName: string, raw: string): Promise<void> {
+  const teamDir = resolve(configDir, 'playbooks');
+  await mkdir(teamDir, { recursive: true });
+  await writeFile(resolve(teamDir, `${fileName}.md`), raw, 'utf-8');
+}
+
+async function runPlaybook(body: PlaybookRunRequest): Promise<Response> {
+  return post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, body);
+}
+
+function queueRoot(tmpDir: string): string {
+  return resolve(tmpDir, '.eforge', 'queue');
+}
+
+async function expectRequiresAgentBody(res: Response, name: string): Promise<void> {
+  expect(res.status).toBe(200);
+  const data = await res.json() as { kind: string; mode: string; name: string; message?: string };
+  expect(data).toEqual(expect.objectContaining({
+    kind: 'requires-agent',
+    mode: 'planning',
+    name,
+  }));
+}
+
+async function expectNoQueueMarkdown(tmpDir: string): Promise<void> {
+  const queueDir = queueRoot(tmpDir);
+  await expectNoMarkdownFiles(queueDir);
+  await expectNoMarkdownFiles(resolve(queueDir, 'waiting'));
+}
+
+async function readFrontmatter(filePath: string): Promise<string> {
+  const content = await readFile(filePath, 'utf-8');
+  const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
+  expect(frontmatter).toBeDefined();
+  return frontmatter!;
+}
+// --- eforge:endregion playbook-api-run-profile-helpers ---
+
 // --- eforge:region playbook-api-run-profile-suite ---
 describe('POST /api/playbook/run', () => {
   it('returns 404 when the named playbook does not exist', async () => {
@@ -75,14 +115,11 @@ describe('POST /api/playbook/run', () => {
   it('returns { kind: "enqueued", id } for an autonomous playbook and creates a PRD', async () => {
     const { tmpDir, configDir } = await init();
 
-    // Write an autonomous playbook to the team dir
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+    await writeTeamPlaybook(configDir, 'my-feature', validPlaybookRaw({ mode: 'autonomous' }));
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+    const res = await runPlaybook({
       name: 'my-feature',
     });
     expect(res.status).toBe(200);
@@ -113,10 +150,7 @@ describe('POST /api/playbook/run', () => {
   it('returns { kind: "requires-agent", mode: "planning", name, message } for a planning-mode playbook and does not write a session plan or enqueue', async () => {
     const { tmpDir, configDir } = await init();
 
-    // Write a planning-mode playbook
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+    await writeTeamPlaybook(configDir, 'my-planning', validPlaybookRaw({ name: 'my-planning', mode: 'planning' }));
 
     const sessionPlanDir = resolve(tmpDir, '.eforge', 'session-plans');
     await mkdir(sessionPlanDir, { recursive: true });
@@ -125,7 +159,7 @@ describe('POST /api/playbook/run', () => {
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+    const res = await runPlaybook({
       name: 'my-planning',
     });
     expect(res.status).toBe(200);
@@ -147,29 +181,42 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  it('returns requires-agent for a planning-mode playbook even when afterQueueId is provided', async () => {
+  it.each([
+    {
+      scenario: 'afterQueueId is provided',
+      playbookName: 'my-planning',
+      raw: validPlaybookRaw({ name: 'my-planning', mode: 'planning' }),
+      body: { name: 'my-planning', afterQueueId: 'missing-upstream' },
+    },
+    {
+      scenario: 'acceptance criteria are invalid',
+      playbookName: 'planning-bad-ac',
+      raw: invalidAcPlaybookRaw({ name: 'planning-bad-ac', mode: 'planning' }),
+      body: { name: 'planning-bad-ac' },
+    },
+    {
+      scenario: 'profile is missing',
+      playbookName: 'my-planning',
+      raw: validPlaybookRaw({ name: 'my-planning', mode: 'planning', profile: 'missing-profile' }),
+      body: { name: 'my-planning' },
+    },
+    {
+      scenario: 'valid landingAction is provided',
+      playbookName: 'my-planning',
+      raw: validPlaybookRaw({ name: 'my-planning', mode: 'planning' }),
+      body: { name: 'my-planning', landingAction: 'pr' },
+    },
+  ])('returns requires-agent for a planning-mode playbook when $scenario', async ({ playbookName, raw, body }) => {
     const { tmpDir, configDir } = await init();
 
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
+    await writeTeamPlaybook(configDir, playbookName, raw);
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'my-planning',
-      afterQueueId: 'missing-upstream',
-    });
+    const res = await runPlaybook(body);
 
-    expect(res.status).toBe(200);
-    const data = await res.json() as { kind: string; mode: string; name: string };
-    expect(data).toEqual(expect.objectContaining({
-      kind: 'requires-agent',
-      mode: 'planning',
-      name: 'my-planning',
-    }));
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    await expect(readdir(queueDir)).rejects.toThrow();
+    await expectRequiresAgentBody(res, body.name);
+    await expect(readdir(queueRoot(tmpDir))).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
@@ -221,43 +268,14 @@ describe('POST /api/playbook/run', () => {
   });
 
 
-  it('returns requires-agent for a planning-mode playbook with invalid acceptance criteria (AC gate must not apply to planning mode)', async () => {
-    const { tmpDir, configDir } = await init();
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    // Write a planning-mode playbook with deliberately invalid AC (grouping label + bare command)
-    await writeFile(resolve(teamDir, 'planning-bad-ac.md'), invalidAcPlaybookRaw({ name: 'planning-bad-ac', mode: 'planning' }), 'utf-8');
-
-    await start(tmpDir, { daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'planning-bad-ac',
-    });
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as { kind: string; mode: string; name: string };
-    expect(data.kind).toBe('requires-agent');
-    expect(data.mode).toBe('planning');
-    expect(data.name).toBe('planning-bad-ac');
-
-    // No queue files and no auto-build wake
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    await expect(readdir(queueDir)).rejects.toThrow();
-    expect(autoBuildWakeReasons).toEqual([]);
-  });
-
   it('returns 400 and does not enqueue when autonomous playbook has invalid acceptance criteria', async () => {
     const { tmpDir, configDir } = await init();
 
-    // Write a playbook with invalid AC directly to the playbooks directory
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybookRaw({ vague: true }), 'utf-8');
+    await writeTeamPlaybook(configDir, 'bad-ac', invalidAcPlaybookRaw({ vague: true }));
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+    const res = await runPlaybook({
       name: 'bad-ac',
     });
     expect(res.status).toBe(400);
@@ -279,54 +297,37 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  it('returns AC-quality 400 before dependency 404 when afterQueueId is missing-upstream and AC is invalid', async () => {
+  it.each([
+    {
+      scenario: 'dependency validation would 404',
+      playbookName: 'bad-ac',
+      raw: invalidAcPlaybookRaw({ name: 'bad-ac' }),
+      body: { name: 'bad-ac', afterQueueId: 'missing-upstream' },
+      absentErrorText: 'missing-upstream',
+    },
+    {
+      scenario: 'profile validation would 400',
+      playbookName: 'bad-ac-missing-profile',
+      raw: invalidAcPlaybookRaw({ name: 'bad-ac-missing-profile', profile: 'nonexistent-profile' }),
+      body: { name: 'bad-ac-missing-profile' },
+      absentErrorText: 'nonexistent-profile',
+    },
+  ])('returns AC-quality 400 before $scenario', async ({ playbookName, raw, body, absentErrorText }) => {
     const { tmpDir, configDir } = await init();
 
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'bad-ac.md'), invalidAcPlaybookRaw(), 'utf-8');
+    await writeTeamPlaybook(configDir, playbookName, raw);
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    // AC gate must fire before the dependency validation (which would return 404)
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'bad-ac',
-      afterQueueId: 'missing-upstream',
-    });
+    const res = await runPlaybook(body);
     expect(res.status).toBe(400);
 
     const data = await res.json() as { error: string };
     expect(data.error).toContain('Acceptance criteria quality issues');
-    expect(autoBuildWakeReasons).toEqual([]);
-  });
-
-  it('returns AC-quality 400 before profile 400 when autonomous playbook has both invalid AC and a missing profile', async () => {
-    const { tmpDir, configDir } = await init();
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    // Playbook with invalid AC AND a profile that does not exist
-    await writeFile(resolve(teamDir, 'bad-ac-missing-profile.md'), invalidAcPlaybookRaw({ name: 'bad-ac-missing-profile', profile: 'nonexistent-profile' }), 'utf-8');
-
-    await start(tmpDir, { daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'bad-ac-missing-profile',
-    });
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error: string };
-    // Must get the AC-quality error, not the missing-profile error
-    expect(data.error).toContain('Acceptance criteria quality issues');
-    expect(data.error).not.toContain('nonexistent-profile');
-
-    // No queue files and no auto-build wake
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    const queueExists = await readdir(queueDir).then(() => true).catch(() => false);
-    if (queueExists) {
-      const files = await readdir(queueDir);
-      expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
+    if (absentErrorText) {
+      expect(data.error).not.toContain(absentErrorText);
     }
+    await expectNoQueueMarkdown(tmpDir);
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
@@ -514,32 +515,6 @@ describe('POST /api/playbook/validate', () => {
 
 
 describe('POST /api/playbook/run — profile field', () => {
-  it('does not validate missing profile for a planning-mode playbook', async () => {
-    const { tmpDir, configDir } = await init();
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning', profile: 'missing-profile' }), 'utf-8');
-
-    await start(tmpDir, { daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'my-planning',
-    });
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as { kind: string; mode: string; name: string };
-    expect(data).toEqual(expect.objectContaining({
-      kind: 'requires-agent',
-      mode: 'planning',
-      name: 'my-planning',
-    }));
-
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    await expect(readdir(queueDir)).rejects.toThrow();
-    expect(autoBuildWakeReasons).toEqual([]);
-  });
-
   it('creates queued PRD with profile: frontmatter when autonomous playbook has a known profile', async () => {
     const { tmpDir, configDir } = await init();
 
@@ -547,13 +522,11 @@ describe('POST /api/playbook/run — profile field', () => {
     await mkdir(profilesDir, { recursive: true });
     await writeFile(resolve(profilesDir, 'docs-heavy.yaml'), '# test profile\n', 'utf-8');
 
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ profile: 'docs-heavy' }), 'utf-8');
+    await writeTeamPlaybook(configDir, 'my-feature', validPlaybookRaw({ profile: 'docs-heavy' }));
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+    const res = await runPlaybook({
       name: 'my-feature',
     });
     expect(res.status).toBe(200);
@@ -563,9 +536,7 @@ describe('POST /api/playbook/run — profile field', () => {
 
     // Verify the queued PRD contains profile: docs-heavy in frontmatter
     const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
-    const content = await readFile(queueFile, 'utf-8');
-    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
-    expect(frontmatter).toBeDefined();
+    const frontmatter = await readFrontmatter(queueFile);
     expect(frontmatter).toContain('profile: docs-heavy');
   });
 
@@ -596,13 +567,11 @@ describe('POST /api/playbook/run — profile field', () => {
   it('persists landingAction in PRD frontmatter when valid landingAction value is provided for autonomous playbook', async () => {
     const { tmpDir, configDir } = await init();
 
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw({ mode: 'autonomous' }), 'utf-8');
+    await writeTeamPlaybook(configDir, 'my-feature', validPlaybookRaw({ mode: 'autonomous' }));
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+    const res = await runPlaybook({
       name: 'my-feature',
       landingAction: 'leave',
     });
@@ -614,9 +583,7 @@ describe('POST /api/playbook/run — profile field', () => {
 
     // Verify the queued PRD contains landing: leave in frontmatter
     const queueFile = resolve(tmpDir, '.eforge', 'queue', `${data.id}.md`);
-    const content = await readFile(queueFile, 'utf-8');
-    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
-    expect(frontmatter).toBeDefined();
+    const frontmatter = await readFrontmatter(queueFile);
     expect(frontmatter).toContain('landing: leave');
   });
 
@@ -644,32 +611,6 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  it('returns requires-agent for a planning-mode playbook even when valid landingAction is provided', async () => {
-    const { tmpDir, configDir } = await init();
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-planning.md'), validPlaybookRaw({ name: 'my-planning', mode: 'planning' }), 'utf-8');
-
-    await start(tmpDir, { daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
-      name: 'my-planning',
-      landingAction: 'pr',
-    });
-    expect(res.status).toBe(200);
-
-    const data = await res.json() as { kind: string; mode: string; name: string };
-    expect(data.kind).toBe('requires-agent');
-    expect(data.mode).toBe('planning');
-    expect(data.name).toBe('my-planning');
-
-    // No PRD should have been enqueued
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    await expect(readdir(queueDir)).rejects.toThrow();
-    expect(autoBuildWakeReasons).toEqual([]);
-  });
-
   it('returns 400 with migration error when old onSuccess wire value is sent in request body', async () => {
     const { tmpDir, configDir } = await init();
 
@@ -679,10 +620,13 @@ describe('POST /api/playbook/run — profile field', () => {
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, {
+    type LegacyOnSuccessPlaybookRunRequest = Pick<PlaybookRunRequest, 'name'> & { onSuccess: string };
+    const legacyBody: LegacyOnSuccessPlaybookRunRequest = {
       name: 'my-feature',
       onSuccess: 'leave-branch',
-    });
+    };
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, legacyBody);
     expect(res.status).toBe(400);
 
     const data = await res.json() as { error: string };
@@ -784,26 +728,25 @@ describe('POST /api/playbook/run — profile field', () => {
     expect(autoBuildWakeReasons).toContain('playbook-enqueue');
   });
 
-  it('returns 404 and does not enqueue when autonomous upstream is in failed/ directory', async () => {
+  it.each([
+    { terminalDir: 'failed', upstreamId: 'failed-upstream', title: 'Failed Upstream' },
+    { terminalDir: 'skipped', upstreamId: 'skipped-upstream', title: 'Skipped Upstream' },
+  ])('returns 404 and does not enqueue when autonomous upstream is in $terminalDir/ directory', async ({ terminalDir, upstreamId, title }) => {
     const { tmpDir, configDir } = await init();
 
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
+    await writeTeamPlaybook(configDir, 'my-dependent', validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }));
 
-    // Write an upstream PRD to the failed/ directory
-    const failedDir = resolve(tmpDir, '.eforge', 'queue', 'failed');
-    await mkdir(failedDir, { recursive: true });
-    const upstreamId = 'failed-upstream';
+    const terminalQueueDir = resolve(tmpDir, '.eforge', 'queue', terminalDir);
+    await mkdir(terminalQueueDir, { recursive: true });
     await writeFile(
-      resolve(failedDir, `${upstreamId}.md`),
-      `---\ntitle: Failed Upstream\ncreated: 2026-01-01\n---\n\n# Failed Upstream\n`,
+      resolve(terminalQueueDir, `${upstreamId}.md`),
+      `---\ntitle: ${title}\ncreated: 2026-01-01\n---\n\n# ${title}\n`,
       'utf-8',
     );
 
     await start(tmpDir, { daemonState: makeDaemonState() });
 
-    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
+    const res = await runPlaybook({
       name: 'my-dependent',
       afterQueueId: upstreamId,
     });
@@ -812,47 +755,9 @@ describe('POST /api/playbook/run — profile field', () => {
     const data = await res.json() as { error: string };
     expect(data.error).toContain(upstreamId);
 
-    // No dependent should have been written
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    const files = await readdir(queueDir);
+    const files = await readdir(queueRoot(tmpDir));
     expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
-    await expectNoMarkdownFiles(resolve(queueDir, 'waiting'));
-    expect(autoBuildWakeReasons).toEqual([]);
-  });
-
-  it('returns 404 and does not enqueue when autonomous upstream is in skipped/ directory', async () => {
-    const { tmpDir, configDir } = await init();
-
-    const teamDir = resolve(configDir, 'playbooks');
-    await mkdir(teamDir, { recursive: true });
-    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw({ name: 'my-dependent', mode: 'autonomous' }), 'utf-8');
-
-    // Write an upstream PRD to the skipped/ directory
-    const skippedDir = resolve(tmpDir, '.eforge', 'queue', 'skipped');
-    await mkdir(skippedDir, { recursive: true });
-    const upstreamId = 'skipped-upstream';
-    await writeFile(
-      resolve(skippedDir, `${upstreamId}.md`),
-      `---\ntitle: Skipped Upstream\ncreated: 2026-01-01\n---\n\n# Skipped Upstream\n`,
-      'utf-8',
-    );
-
-    await start(tmpDir, { daemonState: makeDaemonState() });
-
-    const res = await post(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, {
-      name: 'my-dependent',
-      afterQueueId: upstreamId,
-    });
-    expect(res.status).toBe(404);
-
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain(upstreamId);
-
-    // No dependent should have been written
-    const queueDir = resolve(tmpDir, '.eforge', 'queue');
-    const files = await readdir(queueDir);
-    expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(0);
-    await expectNoMarkdownFiles(resolve(queueDir, 'waiting'));
+    await expectNoMarkdownFiles(resolve(queueRoot(tmpDir), 'waiting'));
     expect(autoBuildWakeReasons).toEqual([]);
   });
 

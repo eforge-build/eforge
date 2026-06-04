@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
 import { withPeriodicFileCheck } from '@eforge-build/engine/pipeline';
@@ -15,7 +15,6 @@ vi.mock('node:child_process', () => ({
   execFile: execFileMock,
 }));
 
-// Short interval for tests (real timers)
 const TEST_INTERVAL_MS = 50;
 
 /** Create a minimal BuildStageContext for testing. */
@@ -28,17 +27,28 @@ function makeCtx(overrides: Partial<BuildStageContext> = {}): BuildStageContext 
   } as unknown as BuildStageContext;
 }
 
-/** Create an async generator that yields the given events with optional delays. */
-async function* asyncIterableFrom(events: EforgeEvent[], delayMs = 0): AsyncGenerator<EforgeEvent> {
-  for (const event of events) {
-    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
-    yield event;
-  }
+/** Create an async generator that yields the given events immediately. */
+async function* asyncIterableFrom(events: EforgeEvent[]): AsyncGenerator<EforgeEvent> {
+  for (const event of events) yield event;
 }
 
-/** Helper to sleep for a given duration. */
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
+async function expectNextEvent(iterator: AsyncIterator<EforgeEvent>): Promise<EforgeEvent> {
+  const result = await iterator.next();
+  expect(result.done).toBe(false);
+  return result.value;
+}
+
+async function expectDone(iterator: AsyncIterator<EforgeEvent>): Promise<void> {
+  const result = await iterator.next();
+  expect(result.done).toBe(true);
 }
 
 /** Set up the promisified execFile mock to resolve with the given stdout. */
@@ -66,9 +76,26 @@ function mockGitDiffError(): void {
   mockedExecFilePromisified.mockRejectedValue(new Error('git failed'));
 }
 
+function gitNameOnlyCallCount(): number {
+  return mockedExecFilePromisified.mock.calls.filter((args) => (args[1] as string[]).includes('--name-only')).length;
+}
+
+function controlledInner(release: Promise<void>): AsyncGenerator<EforgeEvent> {
+  return (async function* (): AsyncGenerator<EforgeEvent> {
+    yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
+    await release;
+    yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
+  })();
+}
+
 describe('withPeriodicFileCheck', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mockedExecFilePromisified.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('passes through inner events unchanged', async () => {
@@ -79,7 +106,6 @@ describe('withPeriodicFileCheck', () => {
     ];
 
     const ctx = makeCtx();
-    // Events yield immediately so no timer fires
     const wrapped = withPeriodicFileCheck(asyncIterableFrom(innerEvents), ctx, TEST_INTERVAL_MS);
 
     const collected: EforgeEvent[] = [];
@@ -87,7 +113,6 @@ describe('withPeriodicFileCheck', () => {
       collected.push(event);
     }
 
-    // All inner events should pass through
     expect(collected.map((e) => e.type)).toEqual([
       'plan:build:implement:start',
       'plan:build:implement:progress',
@@ -95,35 +120,30 @@ describe('withPeriodicFileCheck', () => {
     ]);
   });
 
-  it('emits file change events when timer fires and file list differs', async () => {
+  it('emits file change events when the interval elapses and file list differs', async () => {
     mockGitDiff('src/foo.ts\nsrc/bar.ts\n');
 
+    const gate = deferred();
     const ctx = makeCtx();
+    const iterator = withPeriodicFileCheck(controlledInner(gate.promise), ctx, TEST_INTERVAL_MS)[Symbol.asyncIterator]();
 
-    // Create a generator that yields one event, then waits long enough for a timer tick
-    async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
-      // Wait longer than the test interval so the periodic timer fires
-      await sleep(TEST_INTERVAL_MS * 3);
-      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
-    }
+    expect((await expectNextEvent(iterator)).type).toBe('plan:build:implement:start');
 
-    const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
+    const fileEventPromise = iterator.next();
+    await vi.advanceTimersByTimeAsync(TEST_INTERVAL_MS);
+    const fileResult = await fileEventPromise;
 
-    const collected: EforgeEvent[] = [];
-    for await (const event of wrapped) {
-      collected.push(event);
-    }
-
-    const types = collected.map((e) => e.type);
-    expect(types).toContain('plan:build:files_changed');
-
-    const fileEvent = collected.find((e) => e.type === 'plan:build:files_changed');
-    expect(fileEvent).toBeDefined();
-    if (fileEvent && fileEvent.type === 'plan:build:files_changed') {
-      expect(fileEvent.files).toEqual(['src/bar.ts', 'src/foo.ts']); // sorted
+    expect(fileResult.done).toBe(false);
+    const fileEvent = fileResult.value;
+    expect(fileEvent.type).toBe('plan:build:files_changed');
+    if (fileEvent.type === 'plan:build:files_changed') {
+      expect(fileEvent.files).toEqual(['src/bar.ts', 'src/foo.ts']);
       expect(fileEvent.planId).toBe('test-plan');
     }
+
+    gate.resolve();
+    expect((await expectNextEvent(iterator)).type).toBe('plan:build:implement:complete');
+    await expectDone(iterator);
   });
 
   it('includes diffs and baseBranch in emitted file change events', async () => {
@@ -134,81 +154,78 @@ describe('withPeriodicFileCheck', () => {
 
     mockGitDiffWithContent('src/foo.ts\nsrc/bar.ts\n', fullDiff);
 
+    const gate = deferred();
     const ctx = makeCtx();
+    const iterator = withPeriodicFileCheck(controlledInner(gate.promise), ctx, TEST_INTERVAL_MS)[Symbol.asyncIterator]();
 
-    async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
-      await sleep(TEST_INTERVAL_MS * 3);
-      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
-    }
+    expect((await expectNextEvent(iterator)).type).toBe('plan:build:implement:start');
 
-    const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
+    const fileEventPromise = iterator.next();
+    await vi.advanceTimersByTimeAsync(TEST_INTERVAL_MS);
+    const fileResult = await fileEventPromise;
 
-    const collected: EforgeEvent[] = [];
-    for await (const event of wrapped) {
-      collected.push(event);
-    }
-
-    const fileEvent = collected.find((e) => e.type === 'plan:build:files_changed');
-    expect(fileEvent).toBeDefined();
-    if (fileEvent && fileEvent.type === 'plan:build:files_changed') {
+    expect(fileResult.done).toBe(false);
+    const fileEvent = fileResult.value;
+    expect(fileEvent.type).toBe('plan:build:files_changed');
+    if (fileEvent.type === 'plan:build:files_changed') {
       expect(fileEvent.baseBranch).toBe('main');
       expect(fileEvent.diffs).toBeDefined();
       expect(fileEvent.diffs!.length).toBeGreaterThan(0);
-      // Each diff entry should have path and diff content
       for (const d of fileEvent.diffs!) {
         expect(d.path).toBeTruthy();
         expect(d.diff).toContain('diff --git');
       }
     }
+
+    gate.resolve();
+    expect((await expectNextEvent(iterator)).type).toBe('plan:build:implement:complete');
+    await expectDone(iterator);
   });
 
   it('does not re-emit when file list is unchanged (deduplication)', async () => {
-    // Return the same file list every time
     mockGitDiff('src/foo.ts\n');
 
+    const gate = deferred();
     const ctx = makeCtx();
+    const iterator = withPeriodicFileCheck(controlledInner(gate.promise), ctx, TEST_INTERVAL_MS)[Symbol.asyncIterator]();
 
-    async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
-      // Wait long enough for multiple timer ticks
-      await sleep(TEST_INTERVAL_MS * 5);
-      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
-    }
+    expect((await expectNextEvent(iterator)).type).toBe('plan:build:implement:start');
 
-    const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
+    const fileEventPromise = iterator.next();
+    await vi.advanceTimersByTimeAsync(TEST_INTERVAL_MS);
+    const fileResult = await fileEventPromise;
+    expect(fileResult.done).toBe(false);
+    expect(fileResult.value.type).toBe('plan:build:files_changed');
 
-    const collected: EforgeEvent[] = [];
-    for await (const event of wrapped) {
-      collected.push(event);
-    }
+    const completionPromise = iterator.next();
+    await vi.advanceTimersByTimeAsync(TEST_INTERVAL_MS * 3);
+    expect(gitNameOnlyCallCount()).toBeGreaterThanOrEqual(2);
+    gate.resolve();
+    const completionResult = await completionPromise;
 
-    // Should only emit files_changed once since the list didn't change
-    const fileEvents = collected.filter((e) => e.type === 'plan:build:files_changed');
-    expect(fileEvents.length).toBe(1);
+    expect(completionResult.done).toBe(false);
+    expect(completionResult.value.type).toBe('plan:build:implement:complete');
+    await expectDone(iterator);
   });
 
   it('is silent on git failure', async () => {
     mockGitDiffError();
 
+    const gate = deferred();
     const ctx = makeCtx();
+    const iterator = withPeriodicFileCheck(controlledInner(gate.promise), ctx, TEST_INTERVAL_MS)[Symbol.asyncIterator]();
 
-    async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
-      await sleep(TEST_INTERVAL_MS * 3);
-      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
-    }
+    expect((await expectNextEvent(iterator)).type).toBe('plan:build:implement:start');
 
-    const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
+    const completionPromise = iterator.next();
+    await vi.advanceTimersByTimeAsync(TEST_INTERVAL_MS);
+    expect(gitNameOnlyCallCount()).toBeGreaterThanOrEqual(1);
+    gate.resolve();
+    const completionResult = await completionPromise;
 
-    const collected: EforgeEvent[] = [];
-    for await (const event of wrapped) {
-      collected.push(event);
-    }
-
-    // Should only have inner events, no files_changed and no errors
-    const types = collected.map((e) => e.type);
-    expect(types).toEqual(['plan:build:implement:start', 'plan:build:implement:complete']);
+    expect(completionResult.done).toBe(false);
+    expect(completionResult.value.type).toBe('plan:build:implement:complete');
+    await expectDone(iterator);
   });
 
   it('calls iterator.return() on early termination via break', async () => {
@@ -222,7 +239,6 @@ describe('withPeriodicFileCheck', () => {
     }
 
     const inner = neverEnding();
-    // Patch the return method
     const origReturn = inner.return.bind(inner);
     inner.return = async (value: any) => {
       returnSpy(value);
@@ -232,7 +248,6 @@ describe('withPeriodicFileCheck', () => {
     const ctx = makeCtx();
     const wrapped = withPeriodicFileCheck(inner, ctx, TEST_INTERVAL_MS);
 
-    // Consume only the first event then break
     for await (const _event of wrapped) {
       break;
     }

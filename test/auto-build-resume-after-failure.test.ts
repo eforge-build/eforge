@@ -38,6 +38,29 @@ function makeQueuedPrd(id: string, dependsOn: string[] = []): QueuedPrd {
   };
 }
 
+async function waitForSpawnCount(spawnPrdChild: ReturnType<typeof vi.fn>, expectedCount: number): Promise<void> {
+  await vi.waitFor(() => expect(spawnPrdChild).toHaveBeenCalledTimes(expectedCount));
+}
+
+async function waitForProcessed(scheduler: QueueScheduler, expectedCount: number): Promise<void> {
+  await vi.waitFor(() => expect(scheduler.processed).toBe(expectedCount));
+}
+
+async function waitForQueuedEvent(
+  eventQueue: AsyncEventQueue<EforgeEvent>,
+  predicate: (event: EforgeEvent) => boolean,
+  description: string,
+): Promise<{ found: EforgeEvent; events: EforgeEvent[] }> {
+  const events: EforgeEvent[] = [];
+  const found = await vi.waitFor(() => {
+    events.push(...eventQueue.drainAvailable());
+    const event = events.find(predicate);
+    expect(event, description).toBeDefined();
+    return event!;
+  });
+  return { found, events };
+}
+
 async function createTestEnv(parallelism = 2): Promise<{
   cwd: string;
   queueDir: string;
@@ -93,9 +116,7 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
     const prdA = makeQueuedPrd('prd-a');
     const prdB = makeQueuedPrd('prd-b');
 
-    // prd-c will be added to the queue directory (simulates a queued PRD)
     const prdContent = '---\ntitle: PRD C\nstatus: pending\n---\n\n# PRD C\n\nDo something.';
-    await writeFile(join(cwd, queueDir, 'prd-c.md'), prdContent);
 
     // a fails, b completes
     spawnPrdChild
@@ -107,8 +128,7 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
     await scheduler.start();
 
     // a and b are launched immediately (parallelism=2)
-    await new Promise((r) => setTimeout(r, 50));
-    expect(spawnPrdChild).toHaveBeenCalledTimes(2);
+    await waitForSpawnCount(spawnPrdChild, 2);
 
     // Pause the scheduler (simulating maybePauseOnFailure behavior)
     scheduler.pause();
@@ -124,7 +144,7 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
     bus.emit('queue:prd:complete', failEvent);
 
     // Wait for onComplete to finalize state
-    await new Promise((r) => setTimeout(r, 200));
+    await waitForProcessed(scheduler, 1);
 
     // onComplete should have run: prd-a processed, state finalized
     expect(scheduler.processed).toBe(1);
@@ -140,44 +160,53 @@ describe('scheduler pause/resume — failure + independent pending PRD', () => {
       timestamp: new Date().toISOString(),
     };
     bus.emit('queue:prd:complete', bCompleteEvent);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(scheduler.processed).toBe(2);
+    await waitForProcessed(scheduler, 2);
 
-    // While still suspended, inject a mutation to trigger discovery of prd-c
+    // While still suspended, add prd-c and inject a mutation to trigger discovery.
+    await writeFile(join(cwd, queueDir, 'prd-c.md'), prdContent);
     const mutationEvent: SchedulerInputEvent = {
       type: 'queue:mutation',
       reason: 'enqueue',
       timestamp: new Date().toISOString(),
     };
+    eventQueue.drainAvailable();
     bus.emit('queue:mutation', mutationEvent);
-    await new Promise((r) => setTimeout(r, 100));
 
     // prd-c should have been discovered but NOT dequeued (still suspended)
-    const eventsWhilePaused = eventQueue.drainAvailable();
-    const typesWhilePaused = eventsWhilePaused.map((e) => e.type);
-    expect(typesWhilePaused).toContain('queue:prd:discovered');
-    // prd-b may or may not have been dequeued before pause — we only check prd-c was NOT
+    const { events: eventsWhilePaused } = await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'queue:prd:discovered' && event.prdId === 'prd-c',
+      'discovered event for prd-c while paused',
+    );
     const dequeuedIds = eventsWhilePaused
       .filter((e) => e.type === 'daemon:scheduler:dequeued')
       .map((e) => (e as { prdId: string }).prdId);
     expect(dequeuedIds).not.toContain('prd-c');
+    expect(spawnPrdChild.mock.calls.some(([prd]) => prd.id === 'prd-c')).toBe(false);
 
     // Resume the scheduler
     scheduler.resume();
     expect(scheduler.isSuspended).toBe(false);
 
     // Wait for discovery tick triggered by resume()
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => {
+      expect(spawnPrdChild.mock.calls.some(([prd]) => prd.id === 'prd-c')).toBe(true);
+    });
 
     // prd-c should now be dequeued
-    const eventsAfterResume = eventQueue.drainAvailable();
+    const { events: eventsAfterResume } = await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'daemon:scheduler:dequeued' && event.prdId === 'prd-c',
+      'dequeued event for prd-c after resume',
+    );
     const typesAfterResume = eventsAfterResume.map((e) => e.type);
     expect(typesAfterResume).toContain('daemon:scheduler:resumed');
     expect(typesAfterResume).toContain('daemon:scheduler:dequeued');
-    const dequeuedAfterResume = eventsAfterResume
-      .filter((e) => e.type === 'daemon:scheduler:dequeued')
-      .map((e) => (e as { prdId: string }).prdId);
-    expect(dequeuedAfterResume).toContain('prd-c');
+    const resumedIndex = eventsAfterResume.findIndex((e) => e.type === 'daemon:scheduler:resumed');
+    const prdCDequeuedIndex = eventsAfterResume.findIndex(
+      (e) => e.type === 'daemon:scheduler:dequeued' && (e as { prdId: string }).prdId === 'prd-c',
+    );
+    expect(prdCDequeuedIndex).toBeGreaterThan(resumedIndex);
 
     eventQueue.removeProducer();
   });
@@ -209,25 +238,33 @@ describe('scheduler pause/resume — queue:mutation ignored while suspended', ()
       reason: 'enqueue',
       timestamp: new Date().toISOString(),
     };
+    eventQueue.drainAvailable();
     bus.emit('queue:mutation', mutationEvent);
 
     // Wait for discovery
-    await new Promise((r) => setTimeout(r, 200));
+    const { events: pausedEvents } = await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'queue:prd:discovered' && event.prdId === 'prd-y',
+      'discovered event for prd-y while paused',
+    );
 
     // PRDs discovered but not launched
     expect(spawnPrdChild).not.toHaveBeenCalled();
-    const pausedEvents = eventQueue.drainAvailable();
     const pausedTypes = pausedEvents.map((e) => e.type);
     expect(pausedTypes).toContain('queue:prd:discovered');
     expect(pausedTypes).not.toContain('daemon:scheduler:dequeued');
 
     // Resume
     scheduler.resume();
-    await new Promise((r) => setTimeout(r, 200));
+    await waitForSpawnCount(spawnPrdChild, 2);
 
     // Both PRDs should now be launched (parallelism=2)
     expect(spawnPrdChild).toHaveBeenCalledTimes(2);
-    const resumeEvents = eventQueue.drainAvailable();
+    const { events: resumeEvents } = await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'daemon:scheduler:dequeued' && event.prdId === 'prd-y',
+      'dequeued event for prd-y after resume',
+    );
     const resumeTypes = resumeEvents.map((e) => e.type);
     expect(resumeTypes).toContain('daemon:scheduler:resumed');
     expect(resumeTypes.filter((t) => t === 'daemon:scheduler:dequeued').length).toBe(2);
@@ -253,8 +290,7 @@ describe('scheduler pause/resume — onComplete runs while suspended', () => {
     await scheduler.start();
 
     // foundation spawned; pause before the completion arrives
-    await new Promise((r) => setTimeout(r, 50));
-    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    await waitForSpawnCount(spawnPrdChild, 1);
 
     scheduler.pause();
 
@@ -267,8 +303,13 @@ describe('scheduler pause/resume — onComplete runs while suspended', () => {
     };
     bus.emit('queue:prd:complete', failEvent);
 
-    // Wait for onComplete
-    await new Promise((r) => setTimeout(r, 200));
+    // Wait for onComplete to finish its async completion-index/filesystem work
+    // and propagate the in-memory blocked status while still suspended.
+    await waitForProcessed(scheduler, 1);
+    await vi.waitFor(() => {
+      const prdState = (scheduler as unknown as { prdState: Map<string, { status: string }> }).prdState;
+      expect(prdState.get('dependent')?.status).toBe('blocked');
+    });
 
     // onComplete ran: foundation counted as processed
     expect(scheduler.processed).toBe(1);

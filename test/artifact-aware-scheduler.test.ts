@@ -47,15 +47,33 @@ async function recordArtifact(cwd: string, id: string): Promise<void> {
 }
 
 async function waitForCompletionRecord(cwd: string, prdId: string) {
-  const deadline = Date.now() + 2_000;
-  let lastRegistry = await loadCompletionRegistry(cwd);
-  while (Date.now() < deadline) {
-    const record = lastRegistry.completions[prdId];
-    if (record !== undefined) return record;
-    await new Promise((r) => setTimeout(r, 20));
-    lastRegistry = await loadCompletionRegistry(cwd);
-  }
-  throw new Error(`Timed out waiting for completion record '${prdId}' in ${JSON.stringify(lastRegistry)}`);
+  return vi.waitFor(async () => {
+    const registry = await loadCompletionRegistry(cwd);
+    const record = registry.completions[prdId];
+    expect(record, `completion record '${prdId}' in ${JSON.stringify(registry)}`).toBeDefined();
+    return record!;
+  });
+}
+
+async function waitForSpawnIds(spawnPrdChild: ReturnType<typeof vi.fn>, expectedIds: string[]): Promise<void> {
+  await vi.waitFor(() => {
+    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(expectedIds);
+  });
+}
+
+async function waitForQueuedEvent(
+  eventQueue: AsyncEventQueue<EforgeEvent>,
+  predicate: (event: EforgeEvent) => boolean,
+  description: string,
+): Promise<{ found: EforgeEvent; events: EforgeEvent[] }> {
+  const events: EforgeEvent[] = [];
+  const found = await vi.waitFor(() => {
+    events.push(...eventQueue.drainAvailable());
+    const event = events.find(predicate);
+    expect(event, description).toBeDefined();
+    return event!;
+  });
+  return { found, events };
 }
 
 async function env(stackingEnabled = true) {
@@ -103,12 +121,12 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    await waitForSpawnIds(spawnPrdChild, ['foundation']);
+    eventQueue.drainAvailable();
 
     await recordArtifact(cwd, 'foundation');
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForSpawnIds(spawnPrdChild, ['foundation', 'feature']);
 
     expect(spawnPrdChild.mock.calls.map((call) => call[0].id).filter((id) => id === 'feature')).toHaveLength(1);
     eventQueue.removeProducer();
@@ -123,9 +141,14 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 50));
+    await waitForSpawnIds(spawnPrdChild, ['foundation']);
+    eventQueue.drainAvailable();
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'daemon:scheduler:dependency-blocked' && event.prdId === 'feature',
+      'dependency-blocked event for feature without artifact',
+    );
 
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     eventQueue.removeProducer();
@@ -140,16 +163,20 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation']);
+    await waitForSpawnIds(spawnPrdChild, ['foundation']);
+    eventQueue.drainAvailable();
 
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
-    await new Promise((r) => setTimeout(r, 100));
+    await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'daemon:scheduler:dependency-blocked' && event.prdId === 'feature',
+      'dependency-blocked event for feature before artifact exists',
+    );
     expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation']);
 
     await recordArtifact(cwd, 'foundation');
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'completed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForSpawnIds(spawnPrdChild, ['foundation', 'feature']);
 
     expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toEqual(['foundation', 'feature']);
     eventQueue.removeProducer();
@@ -165,7 +192,7 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForSpawnIds(spawnPrdChild, ['foundation']);
 
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     expect(spawnPrdChild.mock.calls[0][0].id).toBe('foundation');
@@ -181,12 +208,18 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([foundation, feature]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 50));
+    await waitForSpawnIds(spawnPrdChild, ['foundation']);
     // In production the parent cleanup path moves failed PRDs out of the
     // queue root before the scheduler observes queue:prd:complete.
     await rm(foundation.filePath);
     bus.emit('queue:prd:complete', { type: 'queue:prd:complete', prdId: 'foundation', status: 'failed', timestamp: new Date().toISOString() } satisfies SchedulerInputEvent);
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForCompletionRecord(cwd, 'foundation');
+    await vi.waitFor(() => expect(scheduler.processed).toBe(1));
+    await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'daemon:scheduler:dependency-blocked' && event.prdId === 'feature',
+      'dependency-blocked event for feature',
+    );
 
     expect(spawnPrdChild).toHaveBeenCalledTimes(1);
     scheduler.finalizeBlockedAsSkipped();
@@ -207,10 +240,14 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([feature]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
+    const { events } = await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'daemon:scheduler:dependency-blocked' && event.prdId === 'feature',
+      'dependency-blocked event for failed-upstream',
+    );
 
     expect(spawnPrdChild).not.toHaveBeenCalled();
-    expect(eventQueue.drainAvailable()).toContainEqual(expect.objectContaining({
+    expect(events).toContainEqual(expect.objectContaining({
       type: 'daemon:scheduler:dependency-blocked',
       prdId: 'feature',
       blockedBy: ['failed-upstream'],
@@ -228,7 +265,7 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([child]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForSpawnIds(spawnPrdChild, ['child']);
 
     expect(spawnPrdChild).toHaveBeenCalledOnce();
     expect(spawnPrdChild.mock.calls[0][0].frontmatter.stack_parent).toBe('parent');
@@ -245,10 +282,13 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([child]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
+    const { events } = await waitForQueuedEvent(
+      eventQueue,
+      (event) => event.type === 'queue:prd:complete' && event.prdId === 'child' && event.status === 'failed',
+      'failed completion event for ambiguous child',
+    );
 
     expect(spawnPrdChild).not.toHaveBeenCalled();
-    const events = eventQueue.drainAvailable();
     expect(events).toContainEqual(expect.objectContaining({ type: 'queue:prd:complete', prdId: 'child', status: 'failed' }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'plan:error:set', error: expect.stringContaining('multiple depends_on') }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'plan:error:set', error: expect.stringContaining('stack_parent') }));
@@ -266,7 +306,7 @@ describe('QueueScheduler artifact-aware readiness', () => {
 
     const scheduler = makeScheduler([child]);
     await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForSpawnIds(spawnPrdChild, ['child']);
 
     expect(spawnPrdChild).toHaveBeenCalledOnce();
     expect(spawnPrdChild.mock.calls[0][0].id).toBe('child');
@@ -301,112 +341,71 @@ describe('QueueScheduler — completion index recording', () => {
     eventQueue.removeProducer();
   });
 
-  it('records a failed entry with artifactAvailable: false when upstream fails', async () => {
-    const { cwd, bus, eventQueue, makeScheduler } = await env();
-    const foundation = prd('ci-foundation-fail', cwd);
-    await writePrdFile(foundation);
+  it.each(['failed', 'skipped'] as const)(
+    'records a %s entry with artifactAvailable: false when upstream is terminal',
+    async (status) => {
+      const { cwd, bus, eventQueue, makeScheduler } = await env();
+      const foundation = prd(`ci-foundation-${status}`, cwd);
+      await writePrdFile(foundation);
 
-    const scheduler = makeScheduler([foundation]);
-    await scheduler.start();
+      const scheduler = makeScheduler([foundation]);
+      await scheduler.start();
 
-    // Remove the PRD file to simulate cleanup before event, then emit failed
-    await rm(foundation.filePath, { force: true });
-    bus.emit('queue:prd:complete', {
-      type: 'queue:prd:complete',
-      prdId: 'ci-foundation-fail',
-      status: 'failed',
-      timestamp: new Date().toISOString(),
-    } satisfies SchedulerInputEvent);
+      // Remove the PRD file to simulate cleanup before the terminal event.
+      await rm(foundation.filePath, { force: true });
+      bus.emit('queue:prd:complete', {
+        type: 'queue:prd:complete',
+        prdId: `ci-foundation-${status}`,
+        status,
+        timestamp: new Date().toISOString(),
+      } satisfies SchedulerInputEvent);
 
-    const record = await waitForCompletionRecord(cwd, 'ci-foundation-fail');
-    expect(record).toBeDefined();
-    expect(record?.status).toBe('failed');
-    expect(record?.artifactAvailable).toBe(false);
-    eventQueue.removeProducer();
-  });
+      const record = await waitForCompletionRecord(cwd, `ci-foundation-${status}`);
+      expect(record).toBeDefined();
+      expect(record?.status).toBe(status);
+      expect(record?.artifactAvailable).toBe(false);
+      eventQueue.removeProducer();
+    },
+  );
 
-  it('records a skipped entry with artifactAvailable: false when upstream is skipped', async () => {
-    const { cwd, bus, eventQueue, makeScheduler } = await env();
-    const foundation = prd('ci-foundation-skip', cwd);
-    await writePrdFile(foundation);
+  it.each(['failed', 'skipped'] as const)(
+    'blocks a dependent when completion index says upstream %s (even with stale artifact)',
+    async (status) => {
+      const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
+      const upstreamId = `ci-stale-${status}`;
+      await recordArtifact(cwd, upstreamId);
+      const now = new Date().toISOString();
+      const { upsertCompletion } = await import('@eforge-build/engine/artifacts');
+      await upsertCompletion(cwd, {
+        prdId: upstreamId,
+        status,
+        artifactAvailable: false,
+        completedAt: now,
+        updatedAt: now,
+      });
 
-    const scheduler = makeScheduler([foundation]);
-    await scheduler.start();
+      const feature = prd(`ci-feature-blocked-${status}`, cwd, [upstreamId]);
+      await writePrdFile(feature);
 
-    await rm(foundation.filePath, { force: true });
-    bus.emit('queue:prd:complete', {
-      type: 'queue:prd:complete',
-      prdId: 'ci-foundation-skip',
-      status: 'skipped',
-      timestamp: new Date().toISOString(),
-    } satisfies SchedulerInputEvent);
+      const scheduler = makeScheduler([feature]);
+      await scheduler.start();
+      const { events } = await waitForQueuedEvent(
+        eventQueue,
+        (event) => event.type === 'daemon:scheduler:dependency-blocked' && event.prdId === feature.id,
+        `dependency-blocked event for completion-index ${status}`,
+      );
 
-    const record = await waitForCompletionRecord(cwd, 'ci-foundation-skip');
-    expect(record).toBeDefined();
-    expect(record?.status).toBe('skipped');
-    expect(record?.artifactAvailable).toBe(false);
-    eventQueue.removeProducer();
-  });
-
-  it('blocks a dependent when completion index says upstream failed (even with stale artifact)', async () => {
-    const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
-    // Stale artifact exists from a prior run
-    await recordArtifact(cwd, 'ci-stale-failed');
-    // Completion index supersedes stale artifact — upstream failed this run
-    const now = new Date().toISOString();
-    const { upsertCompletion } = await import('@eforge-build/engine/artifacts');
-    await upsertCompletion(cwd, {
-      prdId: 'ci-stale-failed',
-      status: 'failed',
-      artifactAvailable: false,
-      completedAt: now,
-      updatedAt: now,
-    });
-
-    const feature = prd('ci-feature-blocked', cwd, ['ci-stale-failed']);
-    await writePrdFile(feature);
-
-    const scheduler = makeScheduler([feature]);
-    await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
-
-    // Dependent must not be spawned — completion index blocked it.
-    expect(spawnPrdChild).not.toHaveBeenCalled();
-    expect(eventQueue.drainAvailable()).toContainEqual(expect.objectContaining({
-      type: 'daemon:scheduler:dependency-blocked',
-      prdId: 'ci-feature-blocked',
-      blockedBy: ['ci-stale-failed'],
-    }));
-    scheduler.finalizeBlockedAsSkipped();
-    expect(scheduler.skipped).toBe(1);
-    eventQueue.removeProducer();
-  });
-
-  it('blocks a dependent when completion index says upstream skipped (even with stale artifact)', async () => {
-    const { cwd, eventQueue, spawnPrdChild, makeScheduler } = await env();
-    await recordArtifact(cwd, 'ci-stale-skipped');
-    const now = new Date().toISOString();
-    const { upsertCompletion } = await import('@eforge-build/engine/artifacts');
-    await upsertCompletion(cwd, {
-      prdId: 'ci-stale-skipped',
-      status: 'skipped',
-      artifactAvailable: false,
-      completedAt: now,
-      updatedAt: now,
-    });
-
-    const feature = prd('ci-feature-blocked-skip', cwd, ['ci-stale-skipped']);
-    await writePrdFile(feature);
-
-    const scheduler = makeScheduler([feature]);
-    await scheduler.start();
-    await new Promise((r) => setTimeout(r, 150));
-
-    expect(spawnPrdChild).not.toHaveBeenCalled();
-    scheduler.finalizeBlockedAsSkipped();
-    expect(scheduler.skipped).toBe(1);
-    eventQueue.removeProducer();
-  });
+      expect(spawnPrdChild).not.toHaveBeenCalled();
+      expect(events).toContainEqual(expect.objectContaining({
+        type: 'daemon:scheduler:dependency-blocked',
+        prdId: feature.id,
+        blockedBy: [upstreamId],
+      }));
+      scheduler.finalizeBlockedAsSkipped();
+      expect(scheduler.skipped).toBe(1);
+      eventQueue.removeProducer();
+    },
+  );
 });
 
 describe('EforgeEngine.runQueue — completion index recording', () => {
