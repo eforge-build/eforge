@@ -370,12 +370,12 @@ describe('selectPlanningLane', () => {
     expect(selectPlanningLane(initialRunState)).toEqual({ agents: [], running: false });
   });
 
-  it('aggregates plan-less agents by role in start order, summing tokens', () => {
+  it('aggregates planning-lane agents by role in start order, summing tokens', () => {
     const state = makeRunState({
       agentThreads: [
-        { agent: 'planner', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:05:00.000Z', totalTokens: 4_900_000 },
-        { agent: 'plan-reviewer', startedAt: '2026-05-24T10:05:00.000Z', endedAt: '2026-05-24T10:06:00.000Z', totalTokens: 100_000 },
-        { agent: 'plan-reviewer', startedAt: '2026-05-24T10:07:00.000Z', endedAt: null, totalTokens: 84_500 },
+        { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:05:00.000Z', totalTokens: 4_900_000 },
+        { planId: 'planning', agent: 'plan-reviewer', startedAt: '2026-05-24T10:05:00.000Z', endedAt: '2026-05-24T10:06:00.000Z', totalTokens: 100_000 },
+        { planId: 'planning', agent: 'plan-reviewer', startedAt: '2026-05-24T10:07:00.000Z', endedAt: null, totalTokens: 84_500 },
         { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:08:00.000Z', endedAt: null, totalTokens: 1000 },
       ] as RunState['agentThreads'],
     });
@@ -385,6 +385,129 @@ describe('selectPlanningLane', () => {
       { agent: 'planner', tokens: 4_900_000, running: false },
       { agent: 'plan-reviewer', tokens: 184_500, running: true },
     ]);
+  });
+
+  it('includes planning agents and excludes validation/final-validation threads', () => {
+    const state = makeRunState({
+      agentThreads: [
+        { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:05:00.000Z', totalTokens: 1_000_000 },
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T10:06:00.000Z', endedAt: null, totalTokens: 500_000 },
+        { planId: 'final-validation', agent: 'prd-validator', startedAt: '2026-05-24T10:07:00.000Z', endedAt: null, totalTokens: 200_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lane = selectPlanningLane(state);
+    expect(lane.agents).toEqual([
+      { agent: 'planner', tokens: 1_000_000, running: false },
+    ]);
+    expect(lane.running).toBe(false);
+  });
+
+  it('excludes plan-less threads (no planId) from the planning lane', () => {
+    const state = makeRunState({
+      agentThreads: [
+        { agent: 'planner', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:05:00.000Z', totalTokens: 1_000_000 },
+        { planId: 'planning', agent: 'plan-reviewer', startedAt: '2026-05-24T10:06:00.000Z', endedAt: null, totalTokens: 100_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lane = selectPlanningLane(state);
+    // Only the thread with planId 'planning' is included
+    expect(lane.agents).toEqual([
+      { agent: 'plan-reviewer', tokens: 100_000, running: true },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectPlanLanes - lane registry ordering and exclusion
+// ---------------------------------------------------------------------------
+describe('selectPlanLanes - lane registry', () => {
+  it('orders extras as plans, then validation, then gap-close, then final-validation', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
+        { planId: 'final-validation', agent: 'prd-validator', startedAt: '2026-05-24T11:10:00.000Z', endedAt: null, totalTokens: 30_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes.map((l) => l.planId)).toEqual(['plan-01', 'validation', 'gap-close', 'final-validation']);
+  });
+
+  it('omits gap-close and final-validation lanes when no threads carry those lane ids', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    expect(lanes.map((l) => l.planId)).toEqual(['plan-01', 'validation']);
+    // gap-close and final-validation are absent
+    expect(lanes.find((l) => l.planId === 'gap-close')).toBeUndefined();
+    expect(lanes.find((l) => l.planId === 'final-validation')).toBeUndefined();
+  });
+
+  it('does NOT emit a planning lane, but DOES emit validation/gap-close/final-validation when their threads exist', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'planning', agent: 'planner', startedAt: '2026-05-24T09:00:00.000Z', endedAt: '2026-05-24T09:05:00.000Z', totalTokens: 100_000 },
+        { planId: 'plan-01', agent: 'builder', startedAt: '2026-05-24T10:00:00.000Z', endedAt: '2026-05-24T10:02:00.000Z', totalTokens: 100_000 },
+        { planId: 'validation', agent: 'validation-fixer', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
+        { planId: 'final-validation', agent: 'prd-validator', startedAt: '2026-05-24T11:10:00.000Z', endedAt: null, totalTokens: 30_000 },
+      ] as RunState['agentThreads'],
+    });
+    const lanes = selectPlanLanes(state);
+    const ids = lanes.map((l) => l.planId);
+    expect(ids).not.toContain('planning');
+    expect(ids).toContain('validation');
+    expect(ids).toContain('gap-close');
+    expect(ids).toContain('final-validation');
+  });
+
+  it('labels phase lanes via the lane registry', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', 'gap-close': 'implement', 'validation': 'implement', 'final-validation': 'implement' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+    });
+    const lanes = selectPlanLanes(state);
+    const gapClose = lanes.find((l) => l.planId === 'gap-close');
+    const validation = lanes.find((l) => l.planId === 'validation');
+    const finalValidation = lanes.find((l) => l.planId === 'final-validation');
+    expect(gapClose?.planName).toBe('Gap Close');
+    expect(validation?.planName).toBe('Validation');
+    expect(finalValidation?.planName).toBe('Final Validation');
   });
 });
 

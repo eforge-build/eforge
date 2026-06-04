@@ -5,6 +5,7 @@ import type { AgentThread, StoredEvent, DecisionPoint, Decision } from '@/lib/ru
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
+import { laneOrder } from '@/lib/run-state/lane-registry';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -108,21 +109,35 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     const ids: string[] = [];
     const seen = new Set<string>();
     const add = (id: string) => {
-      if (seen.has(id)) return;
+      if (seen.has(id) || id === '__global__') return;
       seen.add(id);
       ids.push(id);
     };
 
+    // Seed from orchestration (preserves declared plan order), then artifacts,
+    // then planStatuses, then thread-only lane keys (phase lanes that have no
+    // planStatuses entry but do have live agent threads).
     for (const plan of orchestration?.plans ?? []) add(plan.id);
     for (const plan of planArtifacts ?? []) add(plan.id);
-    for (const id of Object.keys(planStatuses).sort()) add(id);
+    for (const id of Object.keys(planStatuses)) add(id);
+    for (const id of threadsByPlan.keys()) add(id);
+
+    // Sort the full set by lane registry order. Within the same order tier,
+    // preserve the insertion order (orchestration-declared plans first).
+    const orderByIndex = new Map(ids.map((id, i) => [id, i]));
+    ids.sort((a, b) => {
+      const orderDiff = laneOrder(a) - laneOrder(b);
+      if (orderDiff !== 0) return orderDiff;
+      return (orderByIndex.get(a) ?? 0) - (orderByIndex.get(b) ?? 0);
+    });
 
     return ids;
-  }, [orchestration, planArtifacts, planStatuses]);
+  }, [orchestration, planArtifacts, planStatuses, threadsByPlan]);
 
   const globalThreads = threadsByPlan.get('__global__') ?? EMPTY_THREADS;
   const hasGlobalThreads = globalThreads.length > 0;
   const hasPrdSource = prdSource !== null && prdSource !== undefined;
+  const hasPlanningLane = orderedPlanIds.includes('planning');
   const hasThreadContent = orderedPlanIds.length > 0 || hasGlobalThreads || hasPrdSource;
 
   const { activeStages, completedStages } = useMemo(() => {
@@ -231,14 +246,14 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 hoveredStage={hoveredStage}
                 onStageHover={setHoveredStage}
                 eventsByAgent={eventsByAgent}
-                prdSource={prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : null}
+                prdSource={!hasPlanningLane && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : null}
                 compileActiveStages={activeStages}
                 compileCompletedStages={completedStages}
                 validationCommands={validationCommands}
                 onAgentSelect={handleAgentSelect}
               />
             )}
-            {!hasGlobalThreads && prdSource && (
+            {!hasGlobalThreads && !hasPlanningLane && prdSource && (
               <PlanRow
                 key="__resume_source__"
                 planId="Source"
@@ -275,6 +290,8 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}
                 decisions={decisions?.[planId]}
+                prdSource={planId === 'planning' && prdSource ? { label: prdSource.label, content: prdSource.content ?? '' } : undefined}
+                disablePreview={planId === 'planning'}
                 onDecisionSelect={handleDecisionSelect}
                 onAgentSelect={handleAgentSelect}
                 onStageSelect={(stage) => handleStageSelect(planId, stage)}
