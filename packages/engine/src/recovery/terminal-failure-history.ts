@@ -127,7 +127,6 @@ export function findAuthoritativeTerminalEvent(
 // Acceptance validation evidence extraction
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-acceptance-recovery-evidence ---
 
 type AcceptanceValidationSummary = NonNullable<BuildFailureSummary['acceptanceValidation']>;
 
@@ -244,7 +243,6 @@ export function extractAuthoritativeAcceptanceValidation(
   return buildAcceptanceLookupPlaceholder(runId, terminal, parsed.reason, row);
 }
 
-// --- eforge:endregion plan-01-acceptance-recovery-evidence ---
 
 // ---------------------------------------------------------------------------
 // Plan status reconstruction (shared between authoritative and fallback paths)

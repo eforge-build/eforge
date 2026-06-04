@@ -73,7 +73,6 @@ function escapeTableCell(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
 }
 
-// --- eforge:region plan-01-acceptance-recovery-evidence ---
 function acceptanceNextStep(verdict: AcceptanceCriterionVerdict): string {
   switch (verdict.verdict) {
     case 'fail':
@@ -84,7 +83,6 @@ function acceptanceNextStep(verdict: AcceptanceCriterionVerdict): string {
       return 'No action required.';
   }
 }
-// --- eforge:endregion plan-01-acceptance-recovery-evidence ---
 
 function buildMarkdown(
   prdId: string,
