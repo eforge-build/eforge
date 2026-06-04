@@ -20,7 +20,13 @@ export function SafeMarkdown({ markdown, className, forbidResourceLoading = fals
   const html = React.useMemo(() => {
     const marked = new Marked({ gfm: true });
     const raw = marked.parse(markdown, { async: false }) as string;
-    return DOMPurify.sanitize(raw, forbidResourceLoading ? {
+    // Wrap GFM tables in a horizontal scroll container so wide issue tables
+    // (Severity/Category/File/Line/Description/Fix) size to their content and
+    // scroll rather than starving short columns into vertical letters.
+    const wrapped = raw
+      .replace(/<table>/g, '<div class="plan-table-scroll"><table>')
+      .replace(/<\/table>/g, '</table></div>');
+    return DOMPurify.sanitize(wrapped, forbidResourceLoading ? {
       FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'object', 'embed', 'svg', 'style', 'link'],
       FORBID_ATTR: ['src', 'srcset', 'style'],
     } : undefined);

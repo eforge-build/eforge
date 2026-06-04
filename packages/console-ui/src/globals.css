@@ -193,24 +193,45 @@
 
   .plan-prose pre {
     border: 1px solid var(--color-border);
+    overflow-x: auto;
+  }
+
+  /* Horizontal scroll wrapper injected around GFM tables (see SafeMarkdown).
+     The wrapper is clamped to the container and scrolls; the inner table sizes
+     to its content so columns are not starved. */
+  .plan-prose .plan-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .plan-prose table {
     border-collapse: collapse;
-    display: block;
-    overflow-x: auto;
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
   }
 
   .plan-prose th,
   .plan-prose td {
     border: 1px solid var(--color-border);
     padding: 0.35rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+    /* Wrap prose at word boundaries; override the container's `anywhere`
+       so headers and file paths do not shatter character-by-character. */
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  /* Cap wide prose columns so they wrap to a readable width instead of
+     forcing the table absurdly wide; short columns size to their content. */
+  .plan-prose td {
+    max-width: 32rem;
   }
 
   .plan-prose th {
     background: var(--color-bg-tertiary);
     color: var(--color-text-bright);
     font-weight: 600;
+    white-space: nowrap;
   }
 }
