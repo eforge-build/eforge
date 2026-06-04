@@ -1,5 +1,5 @@
-import { access, readFile, stat } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
 import type { MonitorContext } from '../context.js';
 import { HttpRouteError } from '../http/route-errors.js';
 import { isWithinDir } from './control-validation.js';
@@ -110,8 +110,8 @@ async function discoverInheritedAgentProfile(context: MonitorContext, source: st
     rawSourceContent = await readFile(resolvedSourcePath, 'utf-8');
   } catch { return undefined; }
   try {
-    const { normalizeBuildSource } = await import('@eforge-build/input');
-    return normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent }).agentProfile;
+    const { createSessionPlanningWorkflowAdapter } = await import('@eforge-build/input');
+    return createSessionPlanningWorkflowAdapter().flat.normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent }).agentProfile;
   } catch (err) {
     throw new HttpRouteError(400, err instanceof Error ? err.message : 'Failed to parse source');
   }
@@ -120,16 +120,21 @@ async function discoverInheritedAgentProfile(context: MonitorContext, source: st
 export async function markSessionPlanSubmittedAfterEnqueue(context: MonitorContext, source: string, eforgeSessionId: string): Promise<void> {
   const cwd = context.cwd;
   if (!cwd) return;
-  const sessionPlansDir = resolve(cwd, '.eforge', 'session-plans');
+  const { createSessionPlanningWorkflowAdapter } = await import('@eforge-build/input');
+  const adapter = createSessionPlanningWorkflowAdapter();
+  const storageRoot = adapter.flat.resolveStorageRoot(cwd);
   const absSource = resolve(cwd, source);
-  if (!isWithinDir(absSource, sessionPlansDir) || !absSource.endsWith('.md')) return;
-  try { await access(absSource); } catch { return; }
+  if (!isWithinDir(absSource, storageRoot) || dirname(absSource) !== storageRoot || !absSource.endsWith('.md')) return;
   const sessionId = basename(absSource, '.md');
   if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sessionId)) return;
+  const adapterPath = adapter.flat.resolvePath({ cwd, session: sessionId });
+  if (adapterPath !== absSource) return;
   try {
-    const { loadSessionPlan, setSessionPlanStatus, writeSessionPlan } = await import('@eforge-build/input');
-    const plan = await loadSessionPlan({ cwd, session: sessionId });
-    await writeSessionPlan({ cwd, plan: setSessionPlanStatus(plan, 'submitted', { eforge_session: eforgeSessionId }) });
+    const sourceFileStat = await stat(adapterPath);
+    if (!sourceFileStat.isFile()) return;
+  } catch { return; }
+  try {
+    await adapter.flat.setStatus({ cwd, session: sessionId, status: 'submitted', eforge_session: eforgeSessionId });
   } catch (err) {
     process.stderr.write(`[eforge] Failed to auto-submit session plan: ${err instanceof Error ? err.message : String(err)}\n`);
   }

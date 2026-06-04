@@ -51,6 +51,29 @@ Policy gate and validation-provider runtime behavior is controlled by native ext
 
 ---
 
+## Project-local storage helper
+
+### `resolveProjectLocalStoragePath(opts)`
+
+Resolve safe path segments under the project-local `.eforge/` storage root. This SDK helper is useful for extension tooling and helper libraries that need a deterministic location for project-local state without depending on extension runtime loading.
+
+```ts
+import { resolveProjectLocalStoragePath } from "@eforge-build/extension-sdk";
+
+const cachePath = resolveProjectLocalStoragePath({
+  cwd: process.cwd(),
+  segments: ["extensions", "my-extension", "cache.json"],
+});
+```
+
+**Type:** `(opts: { cwd: string; segments: readonly string[] }) => string`
+
+**Behavior:** validates each segment lexically, rejects empty segments, `.`/`..`, path separators, absolute paths, and null bytes, then returns an absolute path contained under `<cwd>/.eforge/`. The helper performs no filesystem I/O: it does not create directories, read files, write files, or test whether the path exists. Callers own any I/O and should continue treating extension code as trusted, unsandboxed project code.
+
+This helper does not add a native session-plan workflow API. The bundled session-planning adapter is internal to `@eforge-build/input`; user-authored session-plan extraction remains future/deferred work.
+
+---
+
 ## `EforgeExtensionAPI` methods
 
 ### `onEvent(pattern, handler)`
@@ -1035,7 +1058,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution manifest/action invocation routes, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, session-plan extraction, playbook extraction, raw extension-owned HTTP routes, and arbitrary frontend plugin bundles are intentionally deferred or unsupported runtime phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution manifest/action invocation routes, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The bundled session-planning adapter is internal/built-in and is not a user-authored native extension workflow registration API. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, session-plan extraction, playbook extraction, raw extension-owned HTTP routes, and arbitrary frontend plugin bundles are intentionally deferred or unsupported runtime phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|

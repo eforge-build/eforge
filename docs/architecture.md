@@ -26,7 +26,7 @@ graph TD
     end
 
     subgraph Input ["@eforge-build/input"]
-        InputArtifacts["Playbooks / Session Plans<br/>normalizeBuildSource"]
+        InputArtifacts["Playbooks / Session Plans<br/>bundled session-planning adapter<br/>normalizeBuildSource"]
     end
 
     subgraph Scopes ["@eforge-build/scopes"]
@@ -53,7 +53,7 @@ graph TD
     PiPkg -->|"daemon client"| Client
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
-    Monitor -->|"playbook routes + normalizeBuildSource"| Input
+    Monitor -->|"playbook routes + session-plan adapter"| Input
     Plugin -->|"MCP tools"| EforgeEngine
     PiPkg -->|"native Pi tools"| EforgeEngine
     EforgeEngine --> Pipeline
@@ -80,6 +80,7 @@ flowchart TD
     input["@eforge-build/input"]
     engine["@eforge-build/engine"]
     scopes["@eforge-build/scopes"]
+    extensionSdk["@eforge-build/extension-sdk"]
 
     wrappers --> client
     wrappers --> input
@@ -93,16 +94,17 @@ flowchart TD
     monitor --> input
     engine --> scopes
     input --> scopes
+    input --> extensionSdk
 ```
 
 **Allowed dependency edges:**
 
 - `engine` MAY depend on `scopes`. MUST NOT depend on `input`.
-- `input` MAY depend on `scopes`. MUST NOT depend on `engine`.
+- `input` MAY depend on `scopes` and `extension-sdk` for shared project-local storage helpers. MUST NOT depend on `engine`.
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
 
-Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow the same `client` → `monitor` → `input` chain as playbooks: `API_ROUTES.sessionPlan*` constants live in `@eforge-build/client`, the daemon routes implement the handlers in `packages/monitor/`, and the MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against those constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
+Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow a `client` → `monitor compatibility shim` → `input bundled adapter` → `input helpers` chain: `API_ROUTES.sessionPlan*` constants and response types live in `@eforge-build/client`, the daemon routes keep local HTTP security/request validation/error mapping in `packages/monitor/`, and the bundled session-planning adapter in `@eforge-build/input` owns session-plan domain behavior before reaching lower-level input helpers. The MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against the client constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
 
 **Why:** Keeping the engine input-agnostic means future wrapper apps can reuse `@eforge-build/input` protocols without pulling in engine internals.
 
@@ -116,7 +118,7 @@ Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool f
 
 ### Monitor
 
-`packages/monitor/` provides the local web dashboard host. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves the Console React SPA over SSE at `/console/`, redirects root UI requests to Console, runs as a detached process, and survives CLI exit. Playbook daemon routes import from `@eforge-build/input`; session-plan source paths are normalized via `normalizeBuildSource` from `@eforge-build/input` before reaching engine queue helpers.
+`packages/monitor/` provides the local web dashboard host. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves the Console React SPA over SSE at `/console/`, redirects root UI requests to Console, runs as a detached process, and survives CLI exit. Playbook daemon routes import from `@eforge-build/input`; session-plan and session-plan-set services lazily call the bundled session-planning adapter from `@eforge-build/input`, and session-plan source paths are adapter-normalized before reaching engine queue helpers.
 
 ### Plugin
 

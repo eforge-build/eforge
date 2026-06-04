@@ -72,7 +72,7 @@ When the session plan is ready to build:
 /eforge:build
 ```
 
-With no arguments, `/eforge:build` looks for active session plans. Ready session-plan files are submitted by file path as build source; the daemon converts the session plan into a normalized PRD, enqueues it, and marks the session plan `submitted` with the resulting session ID.
+With no arguments, `/eforge:build` looks for active session plans. Ready session-plan files are submitted by file path as build source; eforge's bundled session-planning adapter converts the session plan into normalized build source, the daemon enqueues it, and the session plan is marked `submitted` with the resulting session ID.
 
 Or enqueue directly with a prompt:
 

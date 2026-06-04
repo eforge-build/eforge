@@ -63,6 +63,41 @@ describe('extension content route source contracts', () => {
     }
   });
 
+  it('keeps session-plan services behind the bundled workflow adapter', () => {
+    const flatService = readRouteFile('session-plan-service.ts');
+    expect(flatService).toContain("await import('@eforge-build/input')");
+    expect(flatService).toContain('createSessionPlanningWorkflowAdapter');
+    expect(flatService).toMatch(/\.flat\.(?:list|load|create|setSection|skipDimension|setStatus|selectDimensions|readiness|migrateLegacy)\b/);
+    for (const helperName of [
+      'loadSessionPlan',
+      'writeSessionPlan',
+      'getReadinessDetail',
+      'setSessionPlanSection',
+      'skipDimension(plan',
+      'setSessionPlanStatus',
+      'setSessionPlanDimensions',
+      'migrateBooleanDimensions',
+    ]) {
+      expect(flatService, helperName).not.toContain(helperName);
+    }
+  });
+
+  it('keeps session-plan-set services behind the bundled workflow adapter', () => {
+    const setService = readRouteFile('session-plan-set-service.ts');
+    expect(setService).toContain("await import('@eforge-build/input')");
+    expect(setService).toContain('createSessionPlanningWorkflowAdapter');
+    expect(setService).toMatch(/\.planSets\.(?:list|load|validate)\b/);
+    for (const helperName of [
+      'listSessionPlanSets',
+      'loadSessionPlanSet',
+      'validateSessionPlanSet',
+      'validateLoadedSessionPlanSet',
+    ]) {
+      expect(setService, helperName).not.toMatch(new RegExp(`\\b(?:const|let|var)\\s*\\{[^}]*${helperName}[^}]*\\}\\s*=\\s*await\\s+import`));
+      expect(setService, helperName).not.toMatch(new RegExp(`\\b${helperName}\\s*\\(`));
+    }
+  });
+
   it('does not import server-main from extension content route modules', () => {
     for (const file of CONTENT_ROUTE_FILES) {
       const serverMainImports = productionLines(file).filter((line) => /^import\s/.test(line))

@@ -33,7 +33,7 @@ The compile phase produces `orchestration.yaml` - a dependency graph over the pl
 
 A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, an autonomous playbook, a wrapper-app artifact, or a session-plan file, but the engine sees the normalized build source rather than the original authoring surface.
 
-`/eforge:plan` creates session plans under `.eforge/session-plans/`. A session plan is a driver-side planning artifact: it records the planning type and depth, required and optional dimensions, skipped dimensions with reasons, open questions, readiness, and any inherited `agent_profile` from a planning-mode playbook. When `/eforge:build` uses a ready session-plan file, eforge converts that file into ordinary build source before writing the normalized PRD to the queue.
+`/eforge:plan` creates session plans under `.eforge/session-plans/`. A session plan is a driver-side planning artifact: it records the planning type and depth, required and optional dimensions, skipped dimensions with reasons, open questions, readiness, and any inherited `agent_profile` from a planning-mode playbook. When `/eforge:build` uses a ready session-plan file, eforge's bundled session-planning adapter converts that file into ordinary build source before writing the normalized PRD to the queue.
 
 **Session plans are local and private.** The `.eforge/session-plans/` directory is gitignored — session plans are never committed and are not the shared provenance mechanism. They exist only on the developer's machine.
 
