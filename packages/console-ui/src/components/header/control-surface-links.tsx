@@ -8,7 +8,7 @@ interface ControlSurfaceLinksProps {
 
 /**
  * Top-level Console navigation links rendered in the header control surface.
- * Renders Now, Plans, and System nav buttons plus a Monitor back-link.
+ * Renders Now, Plans, and System nav buttons.
  */
 export function ControlSurfaceLinks({ onNavigate }: ControlSurfaceLinksProps) {
   const navItems = buildNavItems();
@@ -25,13 +25,6 @@ export function ControlSurfaceLinks({ onNavigate }: ControlSurfaceLinksProps) {
           {item.label}
         </button>
       ))}
-      <a
-        href="/"
-        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        aria-label="Go to Monitor"
-      >
-        ← Monitor
-      </a>
     </div>
   );
 }

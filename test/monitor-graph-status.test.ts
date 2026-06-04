@@ -3,7 +3,7 @@ import {
   getStatusStyle,
   resolveNodeStatus,
   type GraphNodeStatus,
-} from '@eforge-build/monitor-ui/components/graph/graph-status';
+} from '@eforge-build/console-ui/components/graph/graph-status';
 
 describe('getStatusStyle', () => {
   const allStatuses: GraphNodeStatus[] = [

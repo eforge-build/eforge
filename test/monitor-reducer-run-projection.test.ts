@@ -5,7 +5,7 @@ import {
   getSummaryStats,
   type RunState,
   type RunAction,
-} from '@eforge-build/monitor-ui/lib/reducer';
+} from '@eforge-build/console-ui/lib/run-state';
 import type { EforgeEvent, ProjectableState } from '@eforge-build/client';
 import { isAlwaysYieldedAgentEvent } from '@eforge-build/client';
 import { dispatch } from './monitor-reducer-helpers';

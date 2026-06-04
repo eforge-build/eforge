@@ -15,16 +15,13 @@ export default defineConfig({
       'test/**/*.test.ts',
       'packages/engine/test/**/*.test.ts',
       'web/__tests__/**/*.test.ts',
-      'packages/monitor-ui/src/**/*.test.tsx',
-      'packages/monitor-ui/src/**/*.test.ts',
-      'packages/monitor-ui/test/**/*.test.ts',
       'packages/client/src/__tests__/**/*.test.ts',
       'packages/monitor/src/__tests__/**/*.test.ts',
     ],
     server: {
       deps: {
         inline: [/^@eforge-build\//, /^@modelcontextprotocol\//],
-        moduleDirectories: ['node_modules', 'packages/engine/node_modules', 'packages/eforge/node_modules'],
+        moduleDirectories: ['node_modules', 'packages/engine/node_modules', 'packages/eforge/node_modules', 'packages/console-ui/node_modules'],
       },
     },
   },
@@ -33,7 +30,7 @@ export default defineConfig({
       { find: /^@eforge-build\/engine\/(.*)$/, replacement: resolve(root, 'packages/engine/src/$1') },
       { find: /^@eforge-build\/monitor\/(.*)$/, replacement: resolve(root, 'packages/monitor/src/$1') },
       { find: '@eforge-build/monitor', replacement: resolve(root, 'packages/monitor/src/index.ts') },
-      { find: /^@eforge-build\/monitor-ui\/(.*)$/, replacement: resolve(root, 'packages/monitor-ui/src/$1') },
+      { find: /^@eforge-build\/console-ui\/(.*)$/, replacement: resolve(root, 'packages/console-ui/src/$1') },
       { find: '@eforge-build/client/browser', replacement: resolve(root, 'packages/client/src/browser.ts') },
       { find: '@eforge-build/client', replacement: resolve(root, 'packages/client/src/index.ts') },
       { find: /^@eforge-build\/scopes\/(.*)$/, replacement: resolve(root, 'packages/scopes/src/$1') },
@@ -42,8 +39,8 @@ export default defineConfig({
       { find: '@eforge-build/extension-sdk', replacement: resolve(root, 'packages/extension-sdk/src/index.ts') },
       { find: /^@eforge-build\/input\/(.*)$/, replacement: resolve(root, 'packages/input/src/$1') },
       { find: '@eforge-build/input', replacement: resolve(root, 'packages/input/src/index.ts') },
-      // @/ alias for monitor-ui src root — used by monitor-ui component test files.
-      { find: /^@\/(.*)$/, replacement: resolve(root, 'packages/monitor-ui/src/$1') },
+      // @/ alias for Console UI source imports used by migrated component helper tests.
+      { find: /^@\/(.*)$/, replacement: resolve(root, 'packages/console-ui/src/$1') },
       // @modelcontextprotocol/sdk is installed in packages/eforge/node_modules only; map sub-paths
       // to the ESM dist so test files can import from it directly.
       {

@@ -1,4 +1,4 @@
-import { eforgeReducer, type RunState } from '@eforge-build/monitor-ui/lib/reducer';
+import { eforgeReducer, type RunState } from '@eforge-build/console-ui/lib/run-state';
 import type { EforgeEvent } from '@eforge-build/client';
 
 export function dispatch(state: RunState, events: Array<{ event: EforgeEvent; eventId: string }>): RunState {

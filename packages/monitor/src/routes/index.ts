@@ -32,7 +32,6 @@ export function createMonitorRouter(
       req,
       res,
       pathname,
-      monitorUiDir: context.uiRoots.monitorUiDir,
       consoleUiDir: context.uiRoots.consoleUiDir,
     }),
   });

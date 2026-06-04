@@ -45,7 +45,6 @@
   },
   "devDependencies": {
     "@eforge-build/console-ui": "workspace:*",
-    "@eforge-build/monitor-ui": "workspace:*",
     "@types/node": "^25.9.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
