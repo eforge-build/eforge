@@ -93,7 +93,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
 
       const runId = run.id;
 
-      // Find agent:start events to extract model IDs
       const agentStmt = db.prepare(
         `SELECT data FROM events WHERE run_id = ? AND type = 'agent:start' ORDER BY id`,
       );
@@ -111,7 +110,6 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
 
       // isLegacyFallback: true when synthesis is based on inferred/fallback evidence
       // (phase:end exists but no authoritative terminal event, or agent:stop fallback).
-      // false when plan:build:failed events provide direct evidence without a phase:end context.
       let isLegacyFallback = false;
 
       // Step 1: Find the latest failed phase:end to bound the authoritative lookup window.
