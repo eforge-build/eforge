@@ -27,6 +27,7 @@ export interface ExtensionHostContributionEntry {
   extensionName: string;
   extensionPath: string;
   actionId?: string;
+  urlTemplate?: string;
   actionBacked: boolean;
   sideEffects?: ExtensionActionSideEffect[];
   inputSchema?: ExtensionJsonObject;
@@ -185,6 +186,7 @@ function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry): ExtensionHostCont
     extensionName: entry.extensionName,
     extensionPath: entry.extensionPath,
     actionId: entry.action?.actionId,
+    urlTemplate: entry.urlTemplate,
     actionBacked: Boolean(entry.action),
     inputDefaults: entry.action?.inputDefaults,
   };

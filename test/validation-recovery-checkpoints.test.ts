@@ -117,6 +117,32 @@ describe('validation recovery checkpoints', () => {
     });
   });
 
+  it('redacts common secrets from checkpoint patches', async () => {
+    const repo = await initRepo();
+    await writeFile(join(repo, 'src.txt'), 'token=plain-secret\nAuthorization: Bearer abcdef123456\nsk-123456789012345678901234\n', 'utf8');
+    await writeFile(join(repo, 'untracked.env'), 'MY_SECRET=untracked-secret\nghp_abcdef123456\n', 'utf8');
+
+    const checkpoint = await writeValidationRecoveryCheckpoint({
+      cwd: repo,
+      worktreePath: repo,
+      planSetName: 'demo-set',
+      planId: 'plan-02',
+      attempt: 1,
+      providerName: 'lint/provider',
+      repairStrategy: 'narrow',
+      repairClass: 'narrow',
+      issues: [issue()],
+      signatures: [],
+    });
+
+    const patch = await readFile(checkpoint.patchPath, 'utf8');
+    expect(patch).toContain('[redacted]');
+    expect(patch).not.toContain('plain-secret');
+    expect(patch).not.toContain('abcdef123456');
+    expect(patch).not.toContain('123456789012345678901234');
+    expect(patch).not.toContain('untracked-secret');
+  });
+
   it('rejects symlinked checkpoint parent directories before writing artifacts', async () => {
     const repo = await initRepo();
     const outside = await mkdtemp(join(tmpdir(), 'eforge-validation-checkpoint-outside-'));

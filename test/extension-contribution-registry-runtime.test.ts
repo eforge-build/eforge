@@ -82,9 +82,10 @@ describe('extension contribution registry runtime', () => {
 
   it('emits invalid and duplicate diagnostics for unsafe contribution registrations', async () => {
     const result = await loadFixture(makeTempDir(), {
-      'first.js': `export default function extension(eforge) {
-        eforge.registerAction({ id: 'dup', title: 'First', inputSchema: { type: 'object', properties: {} }, handler: () => ({ ok: true }) });
-        eforge.registerAction({ id: 'dup', title: 'Second', inputSchema: { type: 'object', properties: {} }, handler: () => ({ ok: true }) });
+      'first.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'dup', title: 'First', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'dup', title: 'Second', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
       }`,
       'bad.js': `export default function extension(eforge) {
         eforge.registerAction({ id: 'bad-schema', title: 'Bad', inputSchema: { type: 'string' }, handler: () => ({}) });
@@ -127,9 +128,10 @@ describe('extension contribution registry runtime', () => {
 
   it('keeps first registrations and emits duplicate diagnostics for all contribution families', async () => {
     const result = await loadFixture(makeTempDir(), {
-      'dupes.js': `export default function extension(eforge) {
-        eforge.registerAction({ id: 'action-one', title: 'First action', inputSchema: { type: 'object', properties: {} }, handler: () => ({ winner: 'first' }) });
-        eforge.registerAction({ id: 'action-one', title: 'Second action', inputSchema: { type: 'object', properties: {} }, handler: () => ({ winner: 'second' }) });
+      'dupes.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'action-one', title: 'First action', inputSchema: Type.Object({}), handler: () => ({ winner: 'first' }) });
+        eforge.registerAction({ id: 'action-one', title: 'Second action', inputSchema: Type.Object({}), handler: () => ({ winner: 'second' }) });
         eforge.registerConsoleContribution({ id: 'panel-one', title: 'First panel', blocks: [{ rendererId: 'text', content: 'first' }] });
         eforge.registerConsoleContribution({ id: 'panel-one', title: 'Second panel', blocks: [{ rendererId: 'text', content: 'second' }] });
         eforge.registerIntegrationCommand({ id: 'command-one', label: 'First command', action: { actionId: 'action-one' } });
@@ -155,13 +157,14 @@ describe('extension contribution registry runtime', () => {
 
   it('rejects invalid registration shapes and unknown action bindings without crashing loading', async () => {
     const result = await loadFixture(makeTempDir(), {
-      'invalids.js': `export default function extension(eforge) {
+      'invalids.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
         eforge.registerAction(null);
         eforge.registerAction({ id: '1bad', title: 'Bad id', inputSchema: { type: 'object' }, handler: () => ({}) });
         eforge.registerAction({ id: 'no-title', title: '   ', inputSchema: { type: 'object' }, handler: () => ({}) });
         eforge.registerAction({ id: 'bad-side-effects', title: 'Bad side effects', inputSchema: { type: 'object' }, sideEffects: ['teleport'], handler: () => ({}) });
         eforge.registerAction({ id: 'no-handler', title: 'No handler', inputSchema: { type: 'object' } });
-        eforge.registerAction({ id: 'valid', title: 'Valid', inputSchema: { type: 'object' }, handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'valid', title: 'Valid', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
         eforge.registerConsoleContribution({ id: 'bad-renderer', title: 'Bad renderer', blocks: [{ rendererId: 'iframe', content: 'no' }] });
         eforge.registerConsoleContribution({ id: 'missing-action', title: 'Missing action', blocks: [{ rendererId: 'action-form', content: 'Run' }] });
         eforge.registerConsoleContribution({ id: 'unknown-action', title: 'Unknown action', blocks: [{ rendererId: 'action-button', content: 'Run', action: { actionId: 'missing' } }] });
@@ -181,8 +184,10 @@ describe('extension contribution registry runtime', () => {
 
   it('rejects non-JSON-safe schema documents during registration', async () => {
     const result = await loadFixture(makeTempDir(), {
-      'schema-docs.js': `export default function extension(eforge) {
-        eforge.registerAction({ id: 'valid', title: 'Valid', inputSchema: { type: 'object', properties: {} }, handler: () => ({ ok: true }) });
+      'schema-docs.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'valid', title: 'Valid', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'plain-json-schema', title: 'Plain JSON schema', inputSchema: { type: 'object' }, handler: () => ({}) });
         eforge.registerAction({ id: 'date-schema', title: 'Date schema', inputSchema: { type: 'object', properties: { created: new Date() } }, handler: () => ({}) });
         eforge.registerAction({ id: 'function-output-schema', title: 'Function output schema', inputSchema: { type: 'object' }, outputSchema: { type: 'object', properties: { value: () => 'no' } }, handler: () => ({}) });
         eforge.registerIntegrationCommand({ id: 'map-command-schema', label: 'Map command schema', inputSchema: { type: 'object', properties: { value: new Map() } }, action: { actionId: 'valid' } });
@@ -191,13 +196,14 @@ describe('extension contribution registry runtime', () => {
 
     expect(result.registry.actions.map((action) => action.id)).toEqual(['schema-docs:valid']);
     expect(result.registry.integrationCommands).toHaveLength(0);
-    expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toHaveLength(3);
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toHaveLength(4);
   });
 
   it('rejects Console blocks that do not match closed renderer shapes', async () => {
     const result = await loadFixture(makeTempDir(), {
-      'blocks.js': `export default function extension(eforge) {
-        eforge.registerAction({ id: 'run', title: 'Run', inputSchema: { type: 'object' }, handler: () => ({ ok: true }) });
+      'blocks.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'run', title: 'Run', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
         eforge.registerConsoleContribution({ id: 'valid', title: 'Valid', blocks: [{ rendererId: 'link', content: 'Docs', href: 'https://example.test' }] });
         eforge.registerConsoleContribution({ id: 'console-relative', title: 'Console relative', blocks: [{ rendererId: 'link', content: 'System', href: '/console/system' }] });
         eforge.registerConsoleContribution({ id: 'extra-field', title: 'Extra', blocks: [{ rendererId: 'text', content: 'Hi', href: 'https://example.test' }] });

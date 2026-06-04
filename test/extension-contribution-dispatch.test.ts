@@ -199,7 +199,7 @@ describe('extension contribution host dispatcher projection', () => {
       'deep-link:shared',
     ]);
     expect(summary.entries.some((entry) => entry.id === 'ext.console')).toBe(false);
-    expect(summary.entries.find((entry) => entry.id === 'ext.url')).toMatchObject({ kind: 'deep-link', actionBacked: false });
+    expect(summary.entries.find((entry) => entry.id === 'ext.url')).toMatchObject({ kind: 'deep-link', actionBacked: false, urlTemplate: 'https://example.invalid/{id}' });
     expect(summary.entries.find((entry) => entry.id === 'ext.command')).toMatchObject({
       kind: 'command',
       actionId: 'ext.run',

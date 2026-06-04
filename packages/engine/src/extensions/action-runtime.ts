@@ -37,7 +37,12 @@ export async function dispatchExtensionAction(
     };
   }
   const started = Date.now();
-  const parsedInput = safeParseWithSchema(action.value.inputSchema as TSchema, options.input);
+  let parsedInput: ReturnType<typeof safeParseWithSchema>;
+  try {
+    parsedInput = safeParseWithSchema(action.value.inputSchema as TSchema, options.input);
+  } catch {
+    return failure('invalid-input', action, options, invocationId, started, 'Action input schema is malformed');
+  }
   if (!parsedInput.success) {
     return failure('invalid-input', action, options, invocationId, started, 'Action input failed schema validation', parsedInput.error.errors);
   }
@@ -67,7 +72,12 @@ export async function dispatchExtensionAction(
   }
   const output = jsonSafeClone(rawOutput) as ExtensionJsonValue;
   if (action.value.outputSchema !== undefined) {
-    const parsedOutput = safeParseWithSchema(action.value.outputSchema as TSchema, output);
+    let parsedOutput: ReturnType<typeof safeParseWithSchema>;
+    try {
+      parsedOutput = safeParseWithSchema(action.value.outputSchema as TSchema, output);
+    } catch {
+      return failure('output-schema-failed', action, options, invocationId, started, 'Action output schema is malformed');
+    }
     if (!parsedOutput.success) {
       return failure('output-schema-failed', action, options, invocationId, started, 'Action output failed schema validation', parsedOutput.error.errors);
     }

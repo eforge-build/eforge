@@ -22,8 +22,8 @@ export function SafeMarkdown({ markdown, className, forbidResourceLoading = fals
     const marked = new Marked({ gfm: true });
     const raw = marked.parse(markdown, { async: false }) as string;
     return DOMPurify.sanitize(raw, forbidResourceLoading ? {
-      FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'object', 'embed', 'svg'],
-      FORBID_ATTR: ['src', 'srcset'],
+      FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'object', 'embed', 'svg', 'style', 'link'],
+      FORBID_ATTR: ['src', 'srcset', 'style'],
     } : undefined);
   }, [markdown, forbidResourceLoading]);
 

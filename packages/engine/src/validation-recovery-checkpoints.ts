@@ -160,7 +160,7 @@ async function captureCheckpointPatch(worktreePath: string): Promise<PatchCaptur
   const raw = sections.length > 0
     ? `${sections.join('\n\n')}\n`
     : '# No worktree changes were present before validation repair.\n';
-  return boundPatch(raw);
+  return boundPatch(redactPatchSecrets(raw));
 }
 
 async function captureTrackedDiff(worktreePath: string): Promise<string> {
@@ -308,6 +308,15 @@ async function writeCheckpointFileSafely(artifactRoot: string, filePath: string,
   } finally {
     await handle.close();
   }
+}
+
+function redactPatchSecrets(content: string): string {
+  return content
+    .replace(/https:\/\/[^\s/@]+@/g, 'https://[redacted]@')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\bgh[oprsu]_[A-Za-z0-9_]+\b/g, '[redacted]')
+    .replace(/\bsk-[A-Za-z0-9]{20,}\b/g, '[redacted]')
+    .replace(/\b([A-Za-z0-9_.-]*(?:token|password|secret|api[_-]?key|authorization)[A-Za-z0-9_.-]*)\s*[:=]\s*[^\s]+/gi, '$1=[redacted]');
 }
 
 function boundPatch(content: string): PatchCapture {

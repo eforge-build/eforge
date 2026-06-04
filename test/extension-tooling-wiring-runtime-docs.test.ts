@@ -154,6 +154,38 @@ describe('extension runtime documentation', () => {
     }
   });
 
+  it('documents action/contribution runtime support, timeout reuse, event privacy, and deferred platform boundaries', () => {
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+      for (const method of [
+        'registerAction',
+        'registerConsoleContribution',
+        'registerIntegrationCommand',
+        'registerDeepLink',
+      ]) {
+        const row = source.split('\n').find((line) => line.startsWith('|') && line.includes(method));
+        expect(row, `${method} support row`).toBeDefined();
+        expect(row).toContain('Yes');
+      }
+      expect(source).toMatch(/(?:object-root TypeBox input schemas?|TypeBox object-root schemas?)/i);
+      expect(source).toMatch(/(?:outputs?[^.\n]*JSON-safe|JSON-safe outputs?)/i);
+      expect(source).toMatch(/output schemas?[^.\n]*(?:enforced|validated|validates|enforces)|(?:enforced|validated|validates|enforces)[^.\n]*(?:returned )?outputs?/i);
+      expect(source).toMatch(/without raw input (?:payloads? )?(?:or|and) (?:raw )?output payloads|omit raw input (?:payloads? )?(?:and|or) (?:raw )?output payloads/i);
+      expect(source).toContain('extensions.eventHookTimeoutMs');
+    }
+
+    for (const source of [docsExtensions, webExtensions, configDocs, webConfigDocs]) {
+      expect(source).toMatch(/(?:extension )?action(?: handlers?| invocations?| invocation)?[^.\n]*extensions\.eventHookTimeoutMs|extensions\.eventHookTimeoutMs[^.\n]*(?:extension )?action(?: handlers?| invocations?| invocation)?/i);
+    }
+
+    for (const source of [docsExtensions, webExtensions, sdkReadme]) {
+      expect(source).toMatch(/(?:raw extension-owned HTTP routes?|raw HTTP routes?)[^.\n]*(?:unsupported|deferred|not supported|do not register)|(?:unsupported|deferred|not supported|do not register)[^.\n]*(?:raw extension-owned HTTP routes?|raw HTTP routes?)/i);
+      expect(source).toMatch(/arbitrary Console JavaScript[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*arbitrary Console JavaScript/i);
+      expect(source).toMatch(/React bundles?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*React bundles?/i);
+      expect(source).toMatch(/session-plan extraction[^.\n]*(?:deferred|future|not shipped)|(?:deferred|future|not shipped)[^.\n]*session-plan extraction/i);
+      expect(source).toMatch(/playbook extraction[^.\n]*(?:deferred|future|not shipped)|(?:deferred|future|not shipped)[^.\n]*playbook extraction/i);
+    }
+  });
+
   it('keeps generated raw mirrors in sync with the public content docs', () => {
     expect(readRepoFile('web/public/docs/extensions.md')).toBe(webExtensions);
     expect(readRepoFile('web/public/docs/extensions-api.md')).toBe(webExtensionsApi);

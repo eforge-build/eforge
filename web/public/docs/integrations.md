@@ -1,6 +1,6 @@
 ---
 title: Integrations
-description: How to use eforge from Claude Code, Pi, the standalone CLI, and external issue trackers.
+description: How to use eforge from Claude Code, Pi, the standalone CLI, extension contributions, and external issue trackers.
 ---
 
 # Integrations
@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution`, and auto-build state. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; the monitor UI uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), and auto-build state. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; the monitor UI uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -119,9 +119,15 @@ eforge stack sync --dry-run
 
 For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands.
 
+## Extension host contributions
+
+Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs.
+
+Action-backed commands and deep links can be invoked generically through those host surfaces. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; extensions do not provide arbitrary frontend bundles.
+
 ## Daemon HTTP API
 
-The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, the monitor UI, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, the monitor UI, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; browser/Console integrations should use `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 

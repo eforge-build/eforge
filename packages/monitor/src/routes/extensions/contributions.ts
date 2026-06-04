@@ -39,7 +39,7 @@ async function handleManifest(ctx: RequestContext, context: MonitorContext): Pro
 async function handleInvoke(ctx: RequestContext, context: MonitorContext): Promise<void> {
   const invocationId = randomUUID();
   if (!context.cwd) {
-    return sendJson(ctx.res, failureBody(invocationId, 'invalid-request', 'Working directory not configured'), 503);
+    return sendJson(ctx.res, failureBody(invocationId, 'daemon-unavailable', 'Working directory not configured'), 503);
   }
 
   if (!isJsonContentType(ctx.req.headers['content-type'])) {
@@ -63,7 +63,7 @@ async function handleInvoke(ctx: RequestContext, context: MonitorContext): Promi
     const result = await invokeExtensionAction(context, parsed.data, invocationId);
     sendJson(ctx.res, result.body, result.status);
   } catch (err) {
-    sendJson(ctx.res, failureBody(invocationId, 'handler-error', err instanceof Error ? err.message : 'Failed to invoke extension action'), 500);
+    sendJson(ctx.res, failureBody(invocationId, 'daemon-unavailable', err instanceof Error ? err.message : 'Extension action runtime unavailable'), 503);
   }
 }
 

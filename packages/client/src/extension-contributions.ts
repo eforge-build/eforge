@@ -172,6 +172,7 @@ export const ExtensionActionInvokeErrorCodeSchema = Type.Union([
   Type.Literal('unknown-action'),
   Type.Literal('invalid-request'),
   Type.Literal('invalid-input'),
+  Type.Literal('daemon-unavailable'),
   Type.Literal('handler-error'),
   Type.Literal('timeout'),
   Type.Literal('invalid-output'),

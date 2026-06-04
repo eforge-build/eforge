@@ -906,6 +906,7 @@ const ExtensionActionValidationErrorSchema = Type.Object({
 
 const ExtensionActionFailedErrorCodeSchema = Type.Union([
   Type.Literal('invalid-input'),
+  Type.Literal('daemon-unavailable'),
   Type.Literal('handler-error'),
   Type.Literal('invalid-output'),
   Type.Literal('output-schema-failed'),

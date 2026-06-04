@@ -77,10 +77,10 @@ export async function invokeExtensionAction(
     const message = sanitizeUnexpectedActionError(err);
     emitExtensionActionFailed(context, provenance, {
       durationMs: Date.now() - started,
-      errorCode: 'handler-error',
+      errorCode: 'daemon-unavailable',
       message,
     });
-    return { status: 500, body: failureBody(invocationId, 'handler-error', message) };
+    return { status: 503, body: failureBody(invocationId, 'daemon-unavailable', message) };
   }
 
   if (result.kind === 'success') {

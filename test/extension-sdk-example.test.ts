@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as sdk from '@eforge-build/extension-sdk';
 
+import actionContribution from '../examples/extensions/action-contribution.js';
 import agentTools from '../examples/extensions/agent-tools.js';
 
 // Import example default exports so TypeScript verifies they conform to the
@@ -29,6 +30,7 @@ import validationProvider from '../examples/extensions/validation-provider.js';
 
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
+  'action-contribution.ts',
   'agent-context.ts',
   'agent-tools.ts',
   'issue-tracker.ts',
@@ -39,6 +41,9 @@ const importedExampleFiles = [
   'slack-webhook-notifier.ts',
   'validation-provider.ts',
 ].sort();
+
+const _factoryCheckActionContribution: sdk.EforgeExtensionFactory = actionContribution;
+void _factoryCheckActionContribution;
 
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
@@ -313,6 +318,54 @@ describe('extension examples', () => {
     expect(importedExampleFiles).toEqual(exampleFiles);
   });
 
+  it('action contribution example registers one action, Console contribution, host command, and deep link', async () => {
+    const actions: sdk.ExtensionAction[] = [];
+    const consoleContributions: sdk.ConsoleContribution[] = [];
+    const integrationCommands: sdk.IntegrationCommand[] = [];
+    const deepLinks: sdk.ExtensionDeepLink[] = [];
+    const api = {
+      registerAction(action: sdk.ExtensionAction) {
+        actions.push(action);
+      },
+      registerConsoleContribution(contribution: sdk.ConsoleContribution) {
+        consoleContributions.push(contribution);
+      },
+      registerIntegrationCommand(command: sdk.IntegrationCommand) {
+        integrationCommands.push(command);
+      },
+      registerDeepLink(deepLink: sdk.ExtensionDeepLink) {
+        deepLinks.push(deepLink);
+      },
+    } as unknown as sdk.EforgeExtensionAPI;
+
+    actionContribution(api);
+
+    expect(actions).toHaveLength(1);
+    expect(consoleContributions).toHaveLength(1);
+    expect(integrationCommands).toHaveLength(1);
+    expect(deepLinks).toHaveLength(1);
+
+    const [action] = actions as [sdk.ExtensionAction];
+    const [consoleContribution] = consoleContributions as [sdk.ConsoleContribution];
+    const [integrationCommand] = integrationCommands as [sdk.IntegrationCommand];
+    const [deepLink] = deepLinks as [sdk.ExtensionDeepLink];
+
+    expect(action.id).toBe('echo-status');
+    expect(action.inputSchema.type).toBe('object');
+    expect(action.outputSchema?.type).toBe('object');
+    expect(consoleContribution.blocks.some((block) => block.rendererId === 'action-button')).toBe(true);
+    expect(consoleContribution.blocks.some((block) => block.rendererId === 'action-form')).toBe(true);
+    expect(integrationCommand.action.actionId).toBe('echo-status');
+    expect(deepLink.action?.actionId).toBe('echo-status');
+    await expect(
+      Promise.resolve(action.handler({ message: 'hello', dryRun: false }, {} as sdk.ExtensionActionContext)),
+    ).resolves.toEqual({
+      ok: true,
+      message: 'hello',
+      dryRun: false,
+    });
+  });
+
   it('agent tools example registers provenance and injects the tool only for builder runs with the effective name in prompt text', async () => {
     let registeredTool: sdk.ExtensionTool | undefined;
     let agentRunHandler: sdk.AgentRunHandler | undefined;
@@ -471,6 +524,18 @@ type _TypeExports = [
   sdk.ValidationProviderSpec,
   sdk.EforgeEvent,
   sdk.AgentRole,
+  sdk.ExtensionAction,
+  sdk.ExtensionActionBinding,
+  sdk.ExtensionActionContext,
+  sdk.ExtensionActionOutput,
+  sdk.ExtensionActionRequestedBy,
+  sdk.ExtensionActionRequestedByHost,
+  sdk.ExtensionActionSideEffect,
+  sdk.ConsoleContribution,
+  sdk.ConsoleContributionBlock,
+  sdk.ConsoleContributionRendererId,
+  sdk.IntegrationCommand,
+  sdk.ExtensionDeepLink,
   sdk.TSchema,
   sdk.TObject,
   sdk.Static<sdk.TObject>,

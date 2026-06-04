@@ -1,4 +1,5 @@
-import type { ExtensionActionSideEffect } from '@eforge-build/client';
+import { safeParseWithSchema, type ExtensionActionSideEffect } from '@eforge-build/client';
+import type { TSchema } from '@sinclair/typebox';
 
 import { isValidExtensionLocalContributionId } from './ids.js';
 import type {
@@ -170,7 +171,19 @@ function validateConsoleContributionBlock(block: unknown): JsonSafeValidationRes
 function validateSchemaDocument(value: unknown, options: { requireObjectRoot?: boolean } = {}): JsonSafeValidationResult {
   if (!isNonArrayObject(value)) return { ok: false, message: 'schema document root must be an object' };
   if (options.requireObjectRoot && value.type !== 'object') return { ok: false, message: 'schema document root type must be "object"' };
-  return validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: false });
+  const jsonSafe = validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: false });
+  if (!jsonSafe.ok) return jsonSafe;
+  return validateTypeBoxSchemaDocument(value);
+}
+
+function validateTypeBoxSchemaDocument(value: Record<string, unknown>): JsonSafeValidationResult {
+  try {
+    safeParseWithSchema(value as TSchema, {});
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error && err.message.trim().length > 0 ? err.message : 'schema cannot be evaluated by TypeBox';
+    return { ok: false, message: `schema must be TypeBox-compatible: ${message}` };
+  }
 }
 
 function hasOnlyAllowedBlockFields(block: Record<string, unknown>): boolean {

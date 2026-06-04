@@ -83,7 +83,7 @@ describe('extension agent-tool documentation', () => {
 
   it('keeps the example import smoke test in sync with examples/extensions/*.ts', () => {
     const smokeTest = read('test/extension-sdk-example.test.ts');
-    for (const file of ['agent-context.ts', 'agent-tools.ts', 'minimal-event-logger.ts', 'profile-router.ts', 'protected-paths.ts', 'slack-webhook-notifier.ts']) {
+    for (const file of ['action-contribution.ts', 'agent-context.ts', 'agent-tools.ts', 'minimal-event-logger.ts', 'profile-router.ts', 'protected-paths.ts', 'slack-webhook-notifier.ts']) {
       expect(smokeTest, `${basename(file)} should be listed in importedExampleFiles`).toContain(file);
     }
   });
