@@ -19,6 +19,7 @@ export type {
   RecoverResponse,
   ReadSidecarRequest,
   RecoveryVerdictSidecar,
+  RecoveryAppliedMetadata,
   ReadSidecarResponse,
   ResumeBuildRequest,
   ResumeBuildResponse,

@@ -56,7 +56,7 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
             while (!next.done) next = await gen.next();
             const result = next.value;
             context.notifyQueueMutation('apply-recovery');
-            return sendJson(ctx.res, { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false });
+            return sendJson(ctx.res, { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false, status: result.status, detail: result.detail });
           }
           case 'abandon': {
             const result = await applyRecoveryAbandon(helperOptions);

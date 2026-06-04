@@ -1,5 +1,6 @@
 import type { EforgeEvent } from './events.js';
 import type { ConsoleContributionManifestEntry, ExtensionActionManifestEntry, ExtensionDeepLinkManifestEntry, IntegrationCommandManifestEntry } from './extension-contributions.js';
+import type { RecoveryAppliedMetadata } from './routes/recovery.js';
 
 // GET /api/health
 export interface HealthResponse {
@@ -523,6 +524,8 @@ export interface QueueItem {
     verdict: 'retry' | 'split' | 'abandon' | 'manual';
     confidence: 'low' | 'medium' | 'high';
   };
+  /** Durable applied-recovery marker; set when the failed item's sidecar carries a valid `applied` object. */
+  recoveryApplied?: RecoveryAppliedMetadata;
 }
 
 // GET /api/session-metadata (values in Record<string, SessionMetadata>)

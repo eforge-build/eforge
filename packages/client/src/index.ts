@@ -336,7 +336,7 @@ export type {
   SessionPlanSetValidateResponse,
 } from './session-plan-set.js';
 
-export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
+export type { ApplyRecoveryRequest, ApplyRecoveryResponse, RecoveryAppliedMetadata } from './routes.js';
 
 export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
 export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';

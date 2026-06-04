@@ -13,9 +13,10 @@ import { rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ModelTracker } from '../model-tracker.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
-import { enqueuePrd, inferTitle } from '../prd-queue.js';
+import { enqueuePrd, inferTitle, loadQueue, getRecoveryContinuationFrontmatter } from '../prd-queue.js';
 import { formatAcceptanceInventoryDiagnostics, requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock, validateCanonicalAcceptanceCriteriaInventory, type CanonicalAcceptanceCriteriaInventory } from '../validation/acceptance-criteria-inventory.js';
 import { deriveSplitRecoveryContinuation } from './continuation.js';
+import { readRecoveryAppliedMetadata, writeRecoveryAppliedMetadata } from './applied-sidecar.js';
 
 export interface ApplyHelperOptions {
   /** Absolute working directory (repo root). */
@@ -90,12 +91,56 @@ export async function applyRecoveryRetry(
  * is stripped before passing to `enqueuePrd`, which rebuilds clean frontmatter with
  * `depends_on: []`.
  */
+export type SplitRecoveryAlreadyApplied = { commitSha: string; successorPrdId: string; status: 'already-applied' };
+
+/**
+ * Idempotency preflight for a `split` apply. Checks the durable applied marker
+ * first, then scans the live queue (root and `waiting/`) for a successor whose
+ * recovery continuation points back at this failed PRD — writing the marker when
+ * one is found so a crash between enqueue and marker-write does not produce a
+ * duplicate successor. Returns the already-applied result when the split is a
+ * no-op, or `undefined` when the apply should proceed.
+ *
+ * This must run before any agent/extractor work (and before validating
+ * `suggestedSuccessorPrd`) so an already-applied split short-circuits cleanly
+ * even when the verdict is missing data or the extractor is unavailable.
+ */
+export async function checkSplitRecoveryIdempotency(
+  options: ApplyHelperOptions,
+): Promise<SplitRecoveryAlreadyApplied | undefined> {
+  const { cwd, prdId, queueDir } = options;
+  const sidecarJsonPath = join(queueDir, 'failed', `${prdId}.recovery.json`);
+
+  // Idempotency: a durable applied marker means the successor was already enqueued.
+  const existingApplied = await readRecoveryAppliedMetadata(sidecarJsonPath);
+  if (existingApplied?.action === 'split' && existingApplied.successorPrdId) {
+    return { commitSha: '', successorPrdId: existingApplied.successorPrdId, status: 'already-applied' };
+  }
+
+  // Crash window: a successor may have been enqueued before the marker was
+  // written. Scan live queue locations for a successor whose recovery
+  // continuation points back at this failed PRD; if found, record the marker
+  // and treat the apply as already-applied rather than enqueueing a duplicate.
+  const scannedSuccessorId = await findLiveSplitSuccessor(cwd, queueDir, prdId);
+  if (scannedSuccessorId) {
+    await writeSplitAppliedMarker(sidecarJsonPath, scannedSuccessorId);
+    return { commitSha: '', successorPrdId: scannedSuccessorId, status: 'already-applied' };
+  }
+
+  return undefined;
+}
+
 export async function applyRecoverySplit(
   options: ApplyHelperOptions,
   verdict: RecoveryVerdict,
   context: { summary?: BuildFailureSummary; acceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory } = {},
-): Promise<{ commitSha: string; successorPrdId: string }> {
+): Promise<{ commitSha: string; successorPrdId: string; status: 'applied' | 'already-applied' }> {
   const { cwd, prdId, queueDir } = options;
+  const sidecarJsonPath = join(queueDir, 'failed', `${prdId}.recovery.json`);
+
+  // Idempotency preflight: durable applied marker or live-successor crash scan.
+  const alreadyApplied = await checkSplitRecoveryIdempotency(options);
+  if (alreadyApplied) return alreadyApplied;
 
   if (!verdict.suggestedSuccessorPrd) {
     throw new Error(`split verdict for ${prdId} is missing suggestedSuccessorPrd`);
@@ -119,6 +164,10 @@ export async function applyRecoverySplit(
     queueDir,
     cwd,
     depends_on: [],
+    // Durable idempotency marker written for every split successor, even when no
+    // continuation (resume) metadata applies, so the crash-window scan can match
+    // the successor back to this failed PRD before the applied marker is written.
+    recovery_split_source: prdId,
     ...(recoveryContinuation !== undefined && {
       recovery_from: recoveryContinuation.sourcePrdId,
       recovery_set_name: recoveryContinuation.setName,
@@ -127,8 +176,57 @@ export async function applyRecoverySplit(
     }),
   });
 
+  // Record the durable applied marker so a repeated apply is idempotent.
+  await writeSplitAppliedMarker(sidecarJsonPath, successorPrdId);
+
   // No git operations needed — queue is filesystem-only
-  return { commitSha: '', successorPrdId };
+  return { commitSha: '', successorPrdId, status: 'applied' };
+}
+
+/**
+ * Scan the live queue (queue root and `waiting/`) for a successor PRD whose
+ * parsed recovery continuation frontmatter points at `prdId`. Running PRDs
+ * remain represented by queue-root files (with locks), so the root scan covers
+ * them. Returns the successor's id, or `undefined` when none is found.
+ *
+ * Uses parsed continuation frontmatter (`getRecoveryContinuationFrontmatter`) —
+ * never slug text — to match successors back to their source PRD.
+ */
+async function findLiveSplitSuccessor(
+  cwd: string,
+  queueDir: string,
+  prdId: string,
+): Promise<string | undefined> {
+  for (const dir of [queueDir, join(queueDir, 'waiting')]) {
+    let prds: Awaited<ReturnType<typeof loadQueue>>;
+    try {
+      prds = await loadQueue(dir, cwd);
+    } catch {
+      continue;
+    }
+    for (const prd of prds) {
+      // Durable split-source marker is written for every split successor, even
+      // those without full continuation metadata, so check it first.
+      if (prd.frontmatter.recovery_split_source === prdId) return prd.id;
+      let continuation: ReturnType<typeof getRecoveryContinuationFrontmatter>;
+      try {
+        continuation = getRecoveryContinuationFrontmatter(prd.frontmatter);
+      } catch {
+        continue; // incomplete continuation frontmatter — not a usable successor match
+      }
+      if (continuation && continuation.sourcePrdId === prdId) return prd.id;
+    }
+  }
+  return undefined;
+}
+
+/** Write the durable split applied marker, preserving all existing sidecar fields. */
+async function writeSplitAppliedMarker(sidecarJsonPath: string, successorPrdId: string): Promise<void> {
+  await writeRecoveryAppliedMetadata(sidecarJsonPath, {
+    action: 'split',
+    appliedAt: new Date().toISOString(),
+    successorPrdId,
+  });
 }
 
 /**

@@ -2590,6 +2590,13 @@ const DaemonQueueItemSchema = Type.Object({
       ]),
     }),
   ),
+  // --- eforge:region plan-01-durable-recovery-applied-state ---
+  // Action-discriminated: a `split` marker requires `successorPrdId`; non-split actions do not enqueue a successor.
+  recoveryApplied: Type.Optional(Type.Union([
+    Type.Object({ action: Type.Literal('split'), appliedAt: Type.String(), successorPrdId: Type.String(), commitSha: Type.Optional(Type.String()) }),
+    Type.Object({ action: Type.Union([Type.Literal('retry'), Type.Literal('abandon'), Type.Literal('accepted-success')]), appliedAt: Type.String(), commitSha: Type.Optional(Type.String()) }),
+  ])),
+  // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 });
 
 /** Shape of a per-session metadata entry as returned by `GET /api/session-metadata`. */

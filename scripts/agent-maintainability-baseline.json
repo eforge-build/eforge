@@ -13,7 +13,7 @@
     },
     {
       "path": "packages/client/src/events.schemas.ts",
-      "noGrowthCeiling": 2791,
+      "noGrowthCeiling": 2799,
       "category": "implementation"
     },
     {
@@ -108,7 +108,7 @@
     },
     {
       "path": "packages/client/src/types.ts",
-      "noGrowthCeiling": 830,
+      "noGrowthCeiling": 833,
       "category": "implementation"
     },
     {

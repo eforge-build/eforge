@@ -328,4 +328,73 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
   });
 });
 
+describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', () => {
+  function snapshotWithQueueItem(queueItem: Record<string, unknown>) {
+    return {
+      cursor: 1,
+      liveness: {
+        type: 'daemon:heartbeat',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        uptime: 1000,
+        queueDepth: 1,
+        runningBuilds: 0,
+        autoBuild: { enabled: true, paused: false, desired: 'enabled', mode: 'running', scheduler: { alive: true, paused: false } },
+        subscribers: 1,
+      },
+      recentActivity: [],
+      runs: [],
+      queue: [queueItem],
+      sessionMetadata: {},
+      autoBuild: {
+        enabled: true,
+        watcher: { running: true, pid: 1234, sessionId: 'watcher-1' },
+        desired: 'enabled',
+        mode: 'running',
+        scheduler: { alive: true, paused: false },
+      },
+      stackLayers: [],
+    };
+  }
+
+  it('accepts a queue item with a split recoveryApplied marker', () => {
+    const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
+      id: 'failed-prd',
+      title: 'Failed PRD',
+      status: 'failed',
+      recoveryVerdict: { verdict: 'split', confidence: 'high' },
+      recoveryApplied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-prd-successor' },
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a queue item with no recoveryApplied marker (optional field)', () => {
+    const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
+      id: 'plain-prd',
+      title: 'Plain PRD',
+      status: 'pending',
+    }));
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a queue item with an invalid recoveryApplied action literal', () => {
+    const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
+      id: 'bad-prd',
+      title: 'Bad PRD',
+      status: 'failed',
+      recoveryApplied: { action: 'teleport', appliedAt: '2025-01-01T00:00:00.000Z' },
+    }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a split recoveryApplied marker missing successorPrdId', () => {
+    const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
+      id: 'split-no-successor',
+      title: 'Split without successor',
+      status: 'failed',
+      recoveryApplied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z' },
+    }));
+    expect(result.success).toBe(false);
+  });
+});
+
 // --- eforge:endregion event-schema-tests ---

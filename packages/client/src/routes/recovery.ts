@@ -17,6 +17,46 @@ export interface ReadSidecarRequest {
   prdId: string;
 }
 
+// --- eforge:region plan-01-durable-recovery-applied-state ---
+/**
+ * Durable record that a recovery verdict was applied to a failed PRD. Persisted
+ * as the optional `applied` field on `<prdId>.recovery.json` so a repeated apply
+ * is idempotent (no duplicate successor enqueue, no repeated Console prompt).
+ *
+ * Action-discriminated: a `split` marker requires `successorPrdId` (the apply
+ * enqueues exactly one successor and idempotent Console UX needs the id);
+ * non-split actions do not carry one. `commitSha` is reserved for the
+ * `accepted-success` action added by plan-02. The union stays forward compatible
+ * with later recovery actions.
+ */
+interface RecoveryAppliedMetadataBase {
+  /** ISO timestamp when the action was applied. */
+  appliedAt: string;
+  /** Commit SHA produced by an `accepted-success` apply (reserved for plan-02). */
+  commitSha?: string;
+}
+
+/**
+ * Applied marker for a `split` verdict. `successorPrdId` is required: a split
+ * apply enqueues exactly one successor, and idempotent Console UX depends on the
+ * identifier being present.
+ */
+export interface RecoverySplitAppliedMetadata extends RecoveryAppliedMetadataBase {
+  action: 'split';
+  /** Successor PRD id enqueued by the `split` apply. */
+  successorPrdId: string;
+}
+
+/** Applied marker for non-split verdicts (no successor is enqueued). */
+export interface RecoveryNonSplitAppliedMetadata extends RecoveryAppliedMetadataBase {
+  action: 'retry' | 'abandon' | 'accepted-success';
+  /** Not used by non-split applies; retained for forward compatibility. */
+  successorPrdId?: undefined;
+}
+
+export type RecoveryAppliedMetadata = RecoverySplitAppliedMetadata | RecoveryNonSplitAppliedMetadata;
+// --- eforge:endregion plan-01-durable-recovery-applied-state ---
+
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
  * Mirrors the shape produced by `writeRecoverySidecar` in the engine (schemaVersion: 1).
@@ -32,6 +72,10 @@ export interface RecoveryVerdictSidecar {
   generatedAt: string;
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
+  // --- eforge:region plan-01-durable-recovery-applied-state ---
+  /** Durable applied marker; absent on sidecars written before a verdict is applied. */
+  applied?: RecoveryAppliedMetadata;
+  // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 }
 
 /** Response for GET /api/recovery/sidecar */
@@ -106,4 +150,15 @@ export interface ApplyRecoveryResponse {
   successorPrdId?: string;
   /** True when the verdict was `manual` and no git changes were made. */
   noAction?: boolean;
+  // --- eforge:region plan-01-durable-recovery-applied-state ---
+  /**
+   * Apply idempotency status. `applied` on first successful apply;
+   * `already-applied` when a durable applied marker or a live successor scan
+   * shows the verdict was applied previously. Absent for verdicts that do not
+   * yet record a durable marker.
+   */
+  status?: 'applied' | 'already-applied';
+  /** Human-readable detail about the apply outcome (e.g. idempotency notice). */
+  detail?: string;
+  // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 }

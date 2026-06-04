@@ -255,6 +255,14 @@ export interface ApplyRecoveryResult {
   successorPrdId?: string;
   noAction: boolean;
   commitSha?: string;
+  /**
+   * Apply idempotency status. `applied` on first successful apply;
+   * `already-applied` when a durable marker or live successor scan shows the
+   * verdict was applied previously. Absent for verdicts without a durable marker.
+   */
+  status?: 'applied' | 'already-applied';
+  /** Human-readable detail about the apply outcome. */
+  detail?: string;
 }
 
 // ---------------------------------------------------------------------------

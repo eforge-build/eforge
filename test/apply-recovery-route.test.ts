@@ -407,6 +407,41 @@ describe('POST /api/recover/apply — split continuation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/recover/apply — split idempotency
+// ---------------------------------------------------------------------------
+
+describe('POST /api/recover/apply — split idempotency', () => {
+  it('repeated split apply returns already-applied with the same successorPrdId and no duplicate successor', async () => {
+    const prdId = 'test-route-split-idempotent';
+    await seedFailedPrd(tmpDir, prdId, 'split', { suggestedSuccessorPrd: '# Idempotent Successor\n\nContinue.' });
+
+    const apply = () => fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId }),
+    });
+
+    const firstRes = await apply();
+    expect(firstRes.status).toBe(200);
+    const first = await firstRes.json() as { verdict: string; successorPrdId: string; status?: string };
+    expect(first.verdict).toBe('split');
+    expect(first.status).toBe('applied');
+    expect(first.successorPrdId).toBeTruthy();
+
+    const secondRes = await apply();
+    expect(secondRes.status).toBe(200);
+    const second = await secondRes.json() as { verdict: string; successorPrdId: string; status?: string };
+    expect(second.status).toBe('already-applied');
+    expect(second.successorPrdId).toBe(first.successorPrdId);
+
+    // Exactly one successor file in the queue root — no `-2` duplicate.
+    const entries = await readdir(join(tmpDir, '.eforge', 'queue'));
+    const successorFiles = entries.filter((e) => e.endsWith('.md'));
+    expect(successorFiles).toEqual([`${first.successorPrdId}.md`]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/recover/apply — split missing suggestedSuccessorPrd → 500
 // ---------------------------------------------------------------------------
 

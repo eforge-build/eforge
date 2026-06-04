@@ -24,6 +24,7 @@ export type {
   RecoverResponse,
   ReadSidecarRequest,
   RecoveryVerdictSidecar,
+  RecoveryAppliedMetadata,
   ReadSidecarResponse,
   ApplyRecoveryRequest,
   ApplyRecoveryResponse,

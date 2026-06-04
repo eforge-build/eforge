@@ -32,6 +32,8 @@ const prdFrontmatterSchema = z.object({
   recovery_set_name: z.string().min(1).optional(),
   recovery_feature_branch: z.string().min(1).optional(),
   recovery_base_branch: z.string().min(1).optional(),
+  /** Source (failed) PRD id of a recovery `split` successor; always written so the crash-window idempotency scan can match a successor back to its failed PRD before the applied marker exists. */
+  recovery_split_source: z.string().min(1).optional(),
   resume_mode: z.literal('compiled').optional(),
   resume_from: z.string().min(1).optional(),
   resume_set_name: z.string().min(1).optional(),
@@ -618,6 +620,7 @@ export interface EnqueuePrdOptions {
   recovery_set_name?: string;
   recovery_feature_branch?: string;
   recovery_base_branch?: string;
+  recovery_split_source?: string;
   acceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory;
 }
 
@@ -669,6 +672,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     recovery_set_name,
     recovery_feature_branch,
     recovery_base_branch,
+    recovery_split_source,
     acceptanceCriteriaInventory,
   } = options;
 
@@ -717,6 +721,7 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(recovery_set_name !== undefined && { recovery_set_name }),
     ...(recovery_feature_branch !== undefined && { recovery_feature_branch }),
     ...(recovery_base_branch !== undefined && { recovery_base_branch }),
+    ...(recovery_split_source !== undefined && { recovery_split_source }),
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -755,17 +760,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (landingAutoMerge !== undefined) {
     fmLines.push(`landing_auto_merge: ${landingAutoMerge}`);
   }
-  if (recovery_from !== undefined) {
-    fmLines.push(`recovery_from: ${recovery_from}`);
-  }
-  if (recovery_set_name !== undefined) {
-    fmLines.push(`recovery_set_name: ${recovery_set_name}`);
-  }
-  if (recovery_feature_branch !== undefined) {
-    fmLines.push(`recovery_feature_branch: ${recovery_feature_branch}`);
-  }
-  if (recovery_base_branch !== undefined) {
-    fmLines.push(`recovery_base_branch: ${recovery_base_branch}`);
+  // Recovery continuation/idempotency frontmatter, serialized in declaration order.
+  for (const [key, value] of Object.entries({ recovery_from, recovery_set_name, recovery_feature_branch, recovery_base_branch, recovery_split_source })) {
+    if (value !== undefined) fmLines.push(`${key}: ${value}`);
   }
 
   const serializedBody = acceptanceCriteriaInventory ? appendAcceptanceCriteriaInventoryBlock(body, acceptanceCriteriaInventory).trimEnd() : body;

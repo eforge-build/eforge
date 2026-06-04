@@ -30,7 +30,7 @@ import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { finalizeFailedQueuedResumeSidecars } from './recovery/failed-resume-sidecar-finalization.js';
-import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd } from './recovery/apply.js';
+import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd, checkSplitRecoveryIdempotency } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
@@ -2491,6 +2491,23 @@ export class EforgeEngine {
           break;
         }
         case 'split': {
+          // Idempotency preflight: a durable applied marker OR a live successor
+          // from a crash window means the successor was already enqueued. Run
+          // this before validating `suggestedSuccessorPrd` and before the
+          // acceptance criteria extractor so a repeated apply short-circuits
+          // cleanly even when verdict data is missing or the extractor fails.
+          const alreadyApplied = await checkSplitRecoveryIdempotency(helperOptions);
+          if (alreadyApplied) {
+            result = {
+              verdict: 'split',
+              noAction: false,
+              commitSha: alreadyApplied.commitSha,
+              successorPrdId: alreadyApplied.successorPrdId,
+              status: alreadyApplied.status,
+              detail: `Split recovery already applied; successor ${alreadyApplied.successorPrdId} exists.`,
+            };
+            break;
+          }
           if (!verdict.suggestedSuccessorPrd) {
             throw new Error(`split verdict for ${prdId} is missing suggestedSuccessorPrd`);
           }
@@ -2512,8 +2529,8 @@ export class EforgeEngine {
             }
             acceptanceCriteriaInventory = extractorResult.value;
           }
-          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary, acceptanceCriteriaInventory });
-          result = { verdict: 'split', noAction: false, commitSha, successorPrdId };
+          const { commitSha, successorPrdId, status } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary, acceptanceCriteriaInventory });
+          result = { verdict: 'split', noAction: false, commitSha, successorPrdId, status };
           break;
         }
         case 'abandon': {
