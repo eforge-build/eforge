@@ -8,8 +8,8 @@
  */
 
 import type {
-  RunInfo,
-  EforgeEvent,
+  RunInfo, EforgeEvent,
+  ExtensionEntry, ExtensionTrustState,
 } from '@eforge-build/client/browser';
 import { getEventSummary, isTransientTransportError } from '@eforge-build/client/browser';
 import type { ConsoleProjectState } from '@/lib/project-state';
@@ -24,6 +24,7 @@ import { queueItemLabelById, selectNowQueueStacks } from './queue-stacks';
 import type { NowQueueStack } from './queue-stacks';
 import { selectNowQueueSummary } from './queue-summary';
 import type { NowQueueSummary } from './queue-summary';
+import { extensionNeedsTrust, extensionTrustActionLabel } from './system';
 
 export { selectNowQueueSummary } from './queue-summary';
 export type { NowQueueItem, NowQueueSummary } from './queue-summary';
@@ -71,6 +72,8 @@ export interface NowAttentionItem {
     verdict?: string;
     confidence?: string;
   };
+  /** Trust action payload for an extension-trust attention item (Now strip owns Trust/Re-trust). */
+  extensionTrust?: { name: string; path: string; trustState?: ExtensionTrustState; actionLabel: 'Trust' | 'Re-trust' };
 }
 
 export type NowBuildLifecyclePhase =
@@ -297,6 +300,9 @@ export function selectNowAttentionItems(
   >,
   activeDetails: Record<string, ActiveSessionDetail>,
   now: number = Date.now(),
+  /** Project-team extension entries (REST-loaded on Now); untrusted/changed surface as trust warnings. */
+  extensions: ExtensionEntry[] = [],
+  /** Keep predicate run on deduped candidates BEFORE the cap (excluded items never displace kept ones; hiddenCount stays accurate). */ keep: (i: NowAttentionItem) => boolean = () => true,
 ): { items: NowAttentionItem[]; hiddenCount: number } {
   const candidates: AttentionCandidate[] = [];
 
@@ -441,6 +447,23 @@ export function selectNowAttentionItems(
     });
   }
 
+  // 8. Project-team extensions needing trust. Reuses the System trust-needed
+  // definition (extensionNeedsTrust) so System rows and Now alerts agree; the
+  // strip owns Trust/Re-trust directly.
+  for (const ext of extensions.filter(extensionNeedsTrust)) {
+    const changed = ext.trustState === 'changed';
+    candidates.push({
+      item: {
+        id: `extension-trust-${ext.path}`,
+        severity: 'warning',
+        message: `${changed ? 'Extension changed since trusted' : 'Untrusted extension'}: ${ext.name}`,
+        detail: changed ? 'Re-trust to apply the updated project-team extension' : 'Trust this project-team extension to enable it',
+        extensionTrust: { name: ext.name, path: ext.path, trustState: ext.trustState, actionLabel: extensionTrustActionLabel(ext) },
+      },
+      dedupKey: `extension-trust:${ext.path}`,
+    });
+  }
+
   // Deduplicate by dedupKey; when two candidates share a key the worst
   // severity wins (critical > warning > info). The first candidate's
   // message/detail is kept since it tends to carry the most context.
@@ -454,7 +477,7 @@ export function selectNowAttentionItems(
     }
   }
 
-  const deduped = Array.from(seen.values());
+  const deduped = Array.from(seen.values()).filter(keep);
   const items = deduped.slice(0, MAX_ATTENTION_ITEMS);
   const hiddenCount = Math.max(0, deduped.length - MAX_ATTENTION_ITEMS);
   return { items, hiddenCount };
@@ -955,6 +978,7 @@ export function selectNowDashboardModel(
   state: ConsoleProjectState,
   activeSessions: { sessions: Record<string, ActiveSessionDetail> },
   now: number = Date.now(),
+  extensions: ExtensionEntry[] = [],
 ): NowDashboardModel {
   const hasSnapshot = state.lastSnapshotAt != null;
   const connectionBanner = selectNowConnectionBanner(state, now);
@@ -963,6 +987,7 @@ export function selectNowDashboardModel(
     state,
     activeSessions.sessions,
     now,
+    extensions,
   );
   // Resolve human-authored PRD titles from the queue so active build cards
   // label the running plan-set identically to the Queue/Attention surfaces.

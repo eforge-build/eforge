@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { API_ROUTES } from '@eforge-build/client/browser';
+import type { ExtensionEntry } from '@eforge-build/client/browser';
 import { NowDashboard } from '@/views/now-dashboard';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
 import { createInitialRunState } from '@/lib/run-state';
@@ -177,5 +179,150 @@ describe('NowDashboard', () => {
     expect(screen.getByText('Stack sync conflict')).toBeDefined();
     expect(screen.getByText('restack conflict on feat/x')).toBeDefined();
     expect(screen.getByRole('button', { name: /retry/i })).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Extension trust attention (REST-backed)
+// ---------------------------------------------------------------------------
+
+function makeExt(overrides: Partial<ExtensionEntry> = {}): ExtensionEntry {
+  return {
+    name: 'alpha',
+    path: '/repo/eforge/extensions/alpha.ts',
+    scope: 'project-team',
+    source: 'project-team',
+    status: 'loaded',
+    shadows: [],
+    registrations: {
+      eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0,
+      reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0,
+      consoleContributions: 0, integrationCommands: 0, deepLinks: 0,
+    },
+    diagnostics: [],
+    ...overrides,
+  };
+}
+
+function extListBody(extensions: ExtensionEntry[]) {
+  return {
+    extensions,
+    diagnostics: [],
+    totals: {
+      eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0,
+      reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0,
+      consoleContributions: 0, integrationCommands: 0, deepLinks: 0,
+    },
+  };
+}
+
+function jsonResponse(body: unknown, ok = true, status = 200, statusText = 'OK') {
+  return { ok, status, statusText, json: () => Promise.resolve(body) } as unknown as Response;
+}
+
+/** Open the trust confirmation dialog from the strip control and confirm it. */
+async function confirmTrust(name: string = 'Trust'): Promise<void> {
+  fireEvent.click(await screen.findByRole('button', { name }));
+  const dialog = screen.getByRole('alertdialog');
+  fireEvent.click(within(dialog).getByRole('button', { name }));
+}
+
+describe('NowDashboard — extension trust attention', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('surfaces an untrusted project-team extension as a warning in Needs attention', async () => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith(API_ROUTES.extensionList)) {
+        return Promise.resolve(jsonResponse(extListBody([makeExt({ trustState: 'untrusted' })])));
+      }
+      return Promise.resolve(jsonResponse({}, false, 500, "Error"));
+    }) as typeof globalThis.fetch;
+
+    render(<NowDashboard projectState={connectedState()} activeSessions={emptyActiveSessions} />);
+
+    await waitFor(() => expect(screen.getByText('Untrusted extension: alpha')).toBeDefined());
+    expect(screen.getByRole('button', { name: 'Trust' })).toBeDefined();
+  });
+
+  it('POSTs to the trust route with the extension path and trustedBy console-ui', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith(API_ROUTES.extensionTrust) && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ extension: makeExt({ trustState: 'trusted' }), message: 'Trusted alpha.' }));
+      }
+      if (url.startsWith(API_ROUTES.extensionList)) {
+        return Promise.resolve(jsonResponse(extListBody([makeExt({ trustState: 'untrusted' })])));
+      }
+      return Promise.resolve(jsonResponse({}, false, 500, "Error"));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    render(<NowDashboard projectState={connectedState()} activeSessions={emptyActiveSessions} />);
+
+    await confirmTrust();
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          typeof url === 'string' && url.startsWith(API_ROUTES.extensionTrust) && init?.method === 'POST',
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse((post![1] as RequestInit).body as string);
+      expect(body).toEqual({ path: '/repo/eforge/extensions/alpha.ts', trustedBy: 'console-ui' });
+    });
+  });
+
+  it('drops the trust warning after a successful trust and refreshed trusted state', async () => {
+    let current: ExtensionEntry[] = [makeExt({ trustState: 'untrusted' })];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith(API_ROUTES.extensionTrust) && init?.method === 'POST') {
+        current = [makeExt({ trustState: 'trusted' })];
+        return Promise.resolve(jsonResponse({ extension: makeExt({ trustState: 'trusted' }), message: 'Trusted alpha.' }));
+      }
+      if (url.startsWith(API_ROUTES.extensionList)) {
+        return Promise.resolve(jsonResponse(extListBody(current)));
+      }
+      return Promise.resolve(jsonResponse({}, false, 500, "Error"));
+    }) as typeof globalThis.fetch;
+
+    render(<NowDashboard projectState={connectedState()} activeSessions={emptyActiveSessions} />);
+
+    await confirmTrust();
+
+    await waitFor(() => expect(screen.queryByText('Untrusted extension: alpha')).toBeNull());
+  });
+
+  it('keeps the warning and shows the daemon error after a failed trust POST', async () => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith(API_ROUTES.extensionTrust) && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ error: 'Daemon refused trust' }, false, 409, 'Conflict'));
+      }
+      if (url.startsWith(API_ROUTES.extensionList)) {
+        return Promise.resolve(jsonResponse(extListBody([makeExt({ trustState: 'untrusted' })])));
+      }
+      return Promise.resolve(jsonResponse({}, false, 500, "Error"));
+    }) as typeof globalThis.fetch;
+
+    render(<NowDashboard projectState={connectedState()} activeSessions={emptyActiveSessions} />);
+
+    await confirmTrust();
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert').map((el) => el.textContent);
+      expect(alerts.some((t) => t?.includes('Daemon refused trust'))).toBe(true);
+    });
+    expect(screen.getByText('Untrusted extension: alpha')).toBeDefined();
   });
 });

@@ -7,10 +7,18 @@ import {
   selectConfigSourceRows,
   selectModelTotals,
   selectExtensionContributionManifestSummary,
+  extensionNeedsTrust,
+  selectExtensionsNeedingTrust,
+  extensionTrustActionLabel,
 } from '@/lib/selectors';
 import type {
   AgentRuntimeProfileInfo,
   ExtensionDiagnostic,
+  ExtensionEntry,
+  ExtensionListResponse,
+  ExtensionScope,
+  ExtensionTrust,
+  ExtensionTrustState,
   PlaybookListEntry,
   SessionPlanListEntryWire,
   ConfigShowVerboseResponse,
@@ -104,6 +112,82 @@ describe('selectExtensionContributionManifestSummary', () => {
     expect(result.renderers['action-button']).toBe(1);
     expect(result.renderers['action-form']).toBe(1);
     expect(result.diagnostics.warnings).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Extension trust selectors
+// ---------------------------------------------------------------------------
+
+function makeExtension(
+  overrides: Partial<ExtensionEntry> & { scope: ExtensionScope } & {
+    name?: string;
+    trustState?: ExtensionTrustState;
+    trust?: ExtensionTrust;
+  },
+): ExtensionEntry {
+  return {
+    name: overrides.name ?? 'ext',
+    path: overrides.path ?? `/repo/eforge/extensions/${overrides.name ?? 'ext'}.ts`,
+    scope: overrides.scope,
+    source: 'project-team',
+    status: 'loaded',
+    shadows: [],
+    registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 },
+    diagnostics: [],
+    ...overrides,
+  };
+}
+
+describe('extensionNeedsTrust', () => {
+  it('returns true for project-team untrusted and changed extensions', () => {
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-team', trustState: 'untrusted' }))).toBe(true);
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-team', trustState: 'changed' }))).toBe(true);
+  });
+
+  it('returns true for legacy project-team coarse untrusted (no trustState)', () => {
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-team', trust: 'untrusted' }))).toBe(true);
+  });
+
+  it('returns false for trusted and not-required project-team extensions', () => {
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-team', trustState: 'trusted' }))).toBe(false);
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-team', trustState: 'not-required' }))).toBe(false);
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-team', trust: 'trusted' }))).toBe(false);
+  });
+
+  it('returns false for non-project-team scopes even when untrusted', () => {
+    expect(extensionNeedsTrust(makeExtension({ scope: 'project-local', trustState: 'untrusted' }))).toBe(false);
+    expect(extensionNeedsTrust(makeExtension({ scope: 'user', trust: 'untrusted' }))).toBe(false);
+    expect(extensionNeedsTrust(makeExtension({ scope: 'external', trustState: 'changed' }))).toBe(false);
+  });
+});
+
+describe('selectExtensionsNeedingTrust', () => {
+  it('selects only project-team untrusted, changed, and legacy-untrusted entries', () => {
+    const response: ExtensionListResponse = {
+      extensions: [
+        makeExtension({ name: 'untrusted-pt', scope: 'project-team', trustState: 'untrusted' }),
+        makeExtension({ name: 'changed-pt', scope: 'project-team', trustState: 'changed' }),
+        makeExtension({ name: 'legacy-pt', scope: 'project-team', trust: 'untrusted' }),
+        makeExtension({ name: 'trusted-pt', scope: 'project-team', trustState: 'trusted' }),
+        makeExtension({ name: 'not-required-pt', scope: 'project-team', trustState: 'not-required' }),
+        makeExtension({ name: 'local-untrusted', scope: 'project-local', trustState: 'untrusted' }),
+        makeExtension({ name: 'user-untrusted', scope: 'user', trust: 'untrusted' }),
+        makeExtension({ name: 'external-changed', scope: 'external', trustState: 'changed' }),
+      ],
+      diagnostics: [],
+      totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 },
+    };
+    const selected = selectExtensionsNeedingTrust(response).map((e) => e.name);
+    expect(selected).toEqual(['untrusted-pt', 'changed-pt', 'legacy-pt']);
+  });
+});
+
+describe('extensionTrustActionLabel', () => {
+  it('maps changed to Re-trust and untrusted/legacy to Trust', () => {
+    expect(extensionTrustActionLabel(makeExtension({ scope: 'project-team', trustState: 'changed' }))).toBe('Re-trust');
+    expect(extensionTrustActionLabel(makeExtension({ scope: 'project-team', trustState: 'untrusted' }))).toBe('Trust');
+    expect(extensionTrustActionLabel(makeExtension({ scope: 'project-team', trust: 'untrusted' }))).toBe('Trust');
   });
 });
 

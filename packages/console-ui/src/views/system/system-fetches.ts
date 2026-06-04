@@ -19,11 +19,45 @@ import type {
   SessionPlanListResponse,
   ModelProvidersResponse,
   ModelListResponse,
+  ExtensionTrustResponse,
 } from '@eforge-build/client/browser';
 import type { SystemModelHarness } from './system-types';
 
 /** Ordered harness list for model catalog fetches. */
 export const SYSTEM_MODEL_HARNESSES = ['pi', 'claude-sdk'] as const satisfies readonly SystemModelHarness[];
+
+/** Stable provenance annotation sent with Console-driven trust mutations. */
+export const CONSOLE_EXTENSION_TRUSTED_BY = 'console-ui';
+
+/**
+ * Trust a project-team extension by path. POSTs `{ path, trustedBy }` to the
+ * daemon trust route with JSON headers, parses a daemon `{ error }` body into a
+ * thrown Error on non-2xx responses, and returns the typed trust response.
+ */
+export async function trustSystemExtension(
+  path: string,
+  signal?: AbortSignal,
+): Promise<ExtensionTrustResponse> {
+  const res = await fetch(API_ROUTES.extensionTrust, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, trustedBy: CONSOLE_EXTENSION_TRUSTED_BY }),
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) {
+    let message = `HTTP ${res.status} ${res.statusText} trusting extension`;
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (body && typeof body.error === 'string' && body.error.length > 0) {
+        message = body.error;
+      }
+    } catch {
+      // Non-JSON error body — fall back to the status-derived message.
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<ExtensionTrustResponse>;
+}
 
 export async function fetchSystemHealth(signal?: AbortSignal): Promise<HealthResponse> {
   const data = await fetchJson<HealthResponse>(API_ROUTES.health, { signal });

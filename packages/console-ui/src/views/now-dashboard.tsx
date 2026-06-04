@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
-import { selectNowDashboardModel } from '@/lib/selectors/now';
+import { selectNowDashboardModel, selectNowAttentionItems } from '@/lib/selectors/now';
 import type { NowAttentionItem } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
 import { AttentionPanel } from '@/components/now/attention-panel';
@@ -12,6 +12,8 @@ import { MetricsPanel } from '@/components/now/metrics-panel';
 import { SpendCard } from '@/components/now/spend-card';
 import { BuildHistoryCard } from '@/components/now/build-history-card';
 import { useSpend } from '@/hooks/use-spend';
+import { useExtensionTrustList } from '@/hooks/use-extension-trust-list';
+import { useExtensionTrustMutation } from '@/hooks/use-extension-trust-mutation';
 import { selectNowSpendPanel } from '@/lib/selectors/spend';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
@@ -23,11 +25,12 @@ import { toConsolePath } from '@/lib/navigation';
 
 /**
  * The "Needs attention" strip carries daemon/stream health plus actionable PRD
- * failures (failed items, with the Recover action, and skipped cascade
- * artifacts). A failed build already ran, so it is not forward queue work — it
- * belongs here as a todo, not in the Queue card. Forward queue waiting/blocked
- * items stay in the Queue card (its stack view already shows the blocking), so
- * they are excluded here to avoid duplicating that surface.
+ * failures. A failed build already ran, so it belongs here as a todo, not in the
+ * Queue card. Forward queue waiting/blocked items stay in the Queue card (its
+ * stack view already shows the blocking), so they are excluded here to avoid
+ * duplicating that surface. Applied as the selector's `keep` predicate so the
+ * exclusion happens before the visible-item cap — a trailing extension trust
+ * warning can never be displaced by queue-blocked items the strip won't render.
  */
 function isStripAttentionItem(item: NowAttentionItem): boolean {
   return (
@@ -56,7 +59,15 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   }, []);
 
   const now = tick;
-  const model = selectNowDashboardModel(projectState, activeSessions, now);
+
+  // Extension trust is a REST read (GET /api/extensions/list), not part of the
+  // SSE snapshot. Untrusted/changed project-team extensions surface as
+  // actionable warnings in the Needs attention strip; the mutation hook trusts
+  // them in place and refreshes the list so a trusted item disappears.
+  const extensionTrustList = useExtensionTrustList();
+  const extensionTrustMutation = useExtensionTrustMutation(extensionTrustList.refresh);
+
+  const model = selectNowDashboardModel(projectState, activeSessions, now, extensionTrustList.extensions);
 
   // Spend is a REST aggregation (GET /api/spend), not part of the SSE snapshot.
   // Refetch when the run count changes so a completed build updates the totals.
@@ -73,11 +84,15 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   const [recoveryItem, setRecoveryItem] =
     React.useState<NonNullable<NowAttentionItem['recovery']> | null>(null);
 
-  // Strip carries daemon/stream health + actionable failures; forward queue
-  // waiting/blocked items stay in the Queue card.
-  const stripItems = React.useMemo(
-    () => model.attention.filter(isStripAttentionItem),
-    [model.attention],
+  // Derive the strip from the uncapped candidate list with the strip filter
+  // applied before the cap, so the visible items and the hidden count both
+  // describe only what the strip will render.
+  const strip = selectNowAttentionItems(
+    projectState,
+    activeSessions.sessions,
+    now,
+    extensionTrustList.extensions,
+    isStripAttentionItem,
   );
 
   return (
@@ -107,10 +122,15 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
           {/* Needs attention — daemon/stream health + actionable PRD failures
               (with the Recover action), leading the live-work column. */}
           <AttentionPanel
-            items={stripItems}
-            hiddenCount={model.attentionHiddenCount}
+            items={strip.items}
+            hiddenCount={strip.hiddenCount}
             title="Needs attention"
             onRecover={setRecoveryItem}
+            extensionTrust={{
+              pendingPath: extensionTrustMutation.pendingPath,
+              errors: extensionTrustMutation.errors,
+              onTrust: (payload) => extensionTrustMutation.onTrust(payload.path),
+            }}
           />
           {model.enqueueCards.length > 0 && (
             <div className="grid grid-cols-1 gap-3">

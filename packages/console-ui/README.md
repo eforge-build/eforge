@@ -42,9 +42,18 @@ daemon REST (Now failed-build recovery)
   → QueueRecoveryDialog        (src/views/now-dashboard.tsx, hosted at page root)
   → API_ROUTES.queue refresh   (src/hooks/use-daemon-events.ts)
   → QUEUE_REFRESH_RECEIVED     (src/lib/project-state.ts)
+
+daemon REST (Now extension trust)
+  → API_ROUTES.extensionList   GET /api/extensions/list (via fetchSystemExtensionList)
+  → useExtensionTrustList      (src/hooks/use-extension-trust-list.ts, stale-preserving)
+  → selectNowAttentionItems    derives warning items via the System trust-needed definition
+  → AttentionPanel             extension Trust/Re-trust rows
+  → API_ROUTES.extensionTrust  POST /api/extensions/trust { path, trustedBy: 'console-ui' }
+      via useExtensionTrustMutation → trustSystemExtension
+  → useExtensionTrustList.refresh  re-reads the list so a trusted item disappears
 ```
 
-The Queue card is forward-only (running / pending / waiting stacks): a failed or skipped PRD already ran, so it is not shown there. Failures that need a decision surface in the **Needs attention** strip (`AttentionPanel`) at the top of the Now dashboard, each carrying an explicit **Recover…** control that opens the recovery dialog hosted at the dashboard root. Failures remain in Build history as the permanent record. Rendering the strip is fetch-free; recovery data loads only when the dialog opens.
+The Queue card is forward-only (running / pending / waiting stacks): a failed or skipped PRD already ran, so it is not shown there. Failures that need a decision surface in the **Needs attention** strip (`AttentionPanel`) at the top of the Now dashboard, each carrying an explicit **Recover…** control that opens the recovery dialog hosted at the dashboard root. Failures remain in Build history as the permanent record. Recovery data loads only when the dialog opens. The strip also carries REST-backed extension trust alerts: untrusted and changed project-team extensions (loaded via `useExtensionTrustList`, route constants only) render warning rows with a **Trust/Re-trust** control that POSTs to `API_ROUTES.extensionTrust` as `console-ui` through `useExtensionTrustMutation`, then refreshes the list so a now-trusted item drops off; a failed mutation keeps the warning visible with the daemon error inline. So the strip mixes stream-derived health and queue state with this REST-backed extension trust data rather than being entirely fetch-free.
 
 The recovery dialog leads with sidecar verdict recovery and compiled-build resume:
 
