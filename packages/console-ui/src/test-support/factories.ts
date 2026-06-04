@@ -147,7 +147,11 @@ type EventPayload = EforgeEvent extends infer E
  * EforgeEvent` cast.
  */
 function synthEvent(payload: EventPayload): EforgeEvent {
-  return { timestamp: '2024-01-15T10:00:00.000Z', ...payload } as EforgeEvent;
+  return eventAt('2024-01-15T10:00:00.000Z', payload);
+}
+
+function eventAt(timestamp: string, payload: EventPayload): EforgeEvent {
+  return { timestamp, ...payload } as EforgeEvent;
 }
 
 /**
@@ -186,6 +190,51 @@ export function failedRunState(error = 'plan-02 implementation aborted: type err
   return foldWith(SAMPLE_BUILD_PLANS_RUNNING_LIMIT, [
     synthEvent({ type: 'plan:build:failed', planId: 'plan-02', error }),
   ]);
+}
+
+/**
+ * Reproduces the validation swimlane regression from real-shaped historical events:
+ * - a compile-phase plan-evaluator emits without planId and therefore lands in
+ *   the synthetic Compile row;
+ * - post-merge validation command spans are unscoped at the event level and
+ *   should still render on the Validation lane;
+ * - the PRD validator is correctly scoped to the `validation` phase lane, and
+ *   the Now card should treat that running agent as active even without a
+ *   planStatuses stage entry.
+ */
+export function validationSwimlaneBugRunState(): RunState {
+  const events: EforgeEvent[] = [
+    eventAt('2024-01-15T10:00:00.000Z', { type: 'session:start', sessionId: 'sess-validation-bug' }),
+    eventAt('2024-01-15T10:00:01.000Z', { type: 'phase:start', sessionId: 'sess-validation-bug', runId: 'run-validation-bug', planSet: 'validation-swimlane-bug', command: 'build' }),
+    eventAt('2024-01-15T10:00:02.000Z', { type: 'planning:start', sessionId: 'sess-validation-bug', label: 'Validation swimlane bug PRD', source: '# Validation swimlane bug repro' }),
+    eventAt('2024-01-15T10:00:03.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role' }),
+    eventAt('2024-01-15T10:00:25.000Z', { type: 'agent:result', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner', result: { durationMs: 22_000, durationApiMs: 20_000, numTurns: 1, totalCostUsd: 0.03, usage: { input: 180_000, output: 45_000, total: 225_000, cacheRead: 20_000, cacheCreation: 0 }, modelUsage: {}, resultText: 'Planning complete.' } }),
+    eventAt('2024-01-15T10:00:25.000Z', { type: 'agent:stop', sessionId: 'sess-validation-bug', planId: 'planning', agentId: 'agent-planner', agent: 'planner' }),
+    eventAt('2024-01-15T10:00:30.000Z', {
+      type: 'planning:complete',
+      sessionId: 'sess-validation-bug',
+      plans: [{ id: 'plan-01', name: 'Acceptance Recovery Evidence', dependsOn: [], branch: 'fix/plan-01', body: 'Implement acceptance evidence', filePath: '.eforge/plans/plan-01.md' }],
+      planConfigs: [{ id: 'plan-01', build: ['implement', 'test-cycle', 'review-cycle'] }],
+    }),
+    eventAt('2024-01-15T10:00:31.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+    eventAt('2024-01-15T10:01:00.000Z', { type: 'agent:result', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator', result: { durationMs: 29_000, durationApiMs: 27_000, numTurns: 1, totalCostUsd: 0.02, usage: { input: 120_000, output: 30_000, total: 150_000, cacheRead: 0, cacheCreation: 0 }, modelUsage: {}, resultText: 'Plan fixes accepted.' } }),
+    eventAt('2024-01-15T10:01:00.000Z', { type: 'agent:stop', sessionId: 'sess-validation-bug', agentId: 'agent-plan-eval', agent: 'plan-evaluator' }),
+    eventAt('2024-01-15T10:01:02.000Z', { type: 'plan:status:change', sessionId: 'sess-validation-bug', planId: 'plan-01', status: 'running' }),
+    eventAt('2024-01-15T10:01:03.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'max', tierSource: 'role' }),
+    eventAt('2024-01-15T10:03:00.000Z', { type: 'agent:result', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder', result: { durationMs: 117_000, durationApiMs: 110_000, numTurns: 3, totalCostUsd: 0.08, usage: { input: 650_000, output: 170_000, total: 820_000, cacheRead: 300_000, cacheCreation: 20_000 }, modelUsage: {}, resultText: 'Implementation complete.' } }),
+    eventAt('2024-01-15T10:03:00.000Z', { type: 'agent:stop', sessionId: 'sess-validation-bug', planId: 'plan-01', agentId: 'agent-builder', agent: 'builder' }),
+    eventAt('2024-01-15T10:03:01.000Z', { type: 'plan:status:change', sessionId: 'sess-validation-bug', planId: 'plan-01', status: 'completed' }),
+    eventAt('2024-01-15T10:03:02.000Z', { type: 'validation:start', sessionId: 'sess-validation-bug', commands: ['pnpm type-check', 'pnpm test'] }),
+    eventAt('2024-01-15T10:03:02.000Z', { type: 'validation:command:start', sessionId: 'sess-validation-bug', command: 'pnpm type-check' }),
+    eventAt('2024-01-15T10:03:08.000Z', { type: 'validation:command:complete', sessionId: 'sess-validation-bug', command: 'pnpm type-check', exitCode: 0, output: 'ok' }),
+    eventAt('2024-01-15T10:03:08.000Z', { type: 'validation:command:start', sessionId: 'sess-validation-bug', command: 'pnpm test' }),
+    eventAt('2024-01-15T10:03:45.000Z', { type: 'validation:command:complete', sessionId: 'sess-validation-bug', command: 'pnpm test', exitCode: 0, output: 'ok' }),
+    eventAt('2024-01-15T10:03:45.000Z', { type: 'validation:complete', sessionId: 'sess-validation-bug', passed: true }),
+    eventAt('2024-01-15T10:03:46.000Z', { type: 'prd_validation:start', sessionId: 'sess-validation-bug' }),
+    eventAt('2024-01-15T10:03:47.000Z', { type: 'agent:start', sessionId: 'sess-validation-bug', planId: 'validation', agentId: 'agent-prd-validator', agent: 'prd-validator', model: 'pi-codex-5-5', harness: 'pi', harnessSource: 'tier', tier: 'balanced', tierSource: 'role' }),
+  ];
+
+  return runStateFromEvents(events.map((event, i) => ({ event, eventId: `validation-bug-${i + 1}` })));
 }
 
 /** Wrap a RunState in an ActiveSessionDetail for a connected, running session. */

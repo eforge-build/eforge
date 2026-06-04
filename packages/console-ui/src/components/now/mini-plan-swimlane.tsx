@@ -48,7 +48,8 @@ function shortPlanLabel(lane: PlanLane): string {
 }
 
 function isLaneActive(lane: PlanLane): boolean {
-  return lane.stage != null && lane.stage !== 'plan' && !lane.isComplete && !lane.isFailed;
+  if (lane.isComplete || lane.isFailed) return false;
+  return lane.agents.some((agent) => agent.running) || (lane.stage != null && lane.stage !== 'plan');
 }
 
 function totalTokens(agents: PlanLaneAgent[]): number {

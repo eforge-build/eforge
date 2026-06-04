@@ -13,6 +13,7 @@ import { collectEvents, filterEvents } from './test-events.js';
 import { composePipeline } from '@eforge-build/engine/agents/pipeline-composer';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
+import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runDependencyDetector } from '@eforge-build/engine/agents/dependency-detector';
 import { runValidationFixer } from '@eforge-build/engine/agents/validation-fixer';
@@ -97,6 +98,22 @@ describe('planning agent lane assignment', () => {
     expect(starts).toHaveLength(1);
     expect(starts[0].planId).toBe('planning');
     expect(starts[0].agent).toBe('plan-reviewer');
+  });
+
+  it('plan-evaluator agent:start carries planId: planning', async () => {
+    const harness = new StubHarness([{ text: '<evaluation>[]</evaluation>' }]);
+
+    const starts = await collectAgentStartEvents(runPlanEvaluate({
+      harness,
+      planSetName: 'test-set',
+      sourceContent: 'Build a widget',
+      cwd: '/tmp',
+      lane: 'planning',
+    }));
+
+    expect(starts).toHaveLength(1);
+    expect(starts[0].planId).toBe('planning');
+    expect(starts[0].agent).toBe('plan-evaluator');
   });
 
   it('module-planner agent:start carries planId: planning', async () => {

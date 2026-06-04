@@ -65,6 +65,20 @@ describe('MiniPlanSwimlane', () => {
     expect(container.textContent).toContain('failed');
   });
 
+  it('treats a phase lane with a running agent and no stage as active', () => {
+    const lane = makeLane({
+      planId: 'validation',
+      planName: 'Validation',
+      stage: undefined,
+      buildStages: [],
+      agents: [{ agent: 'prd-validator', tokens: 250_000, running: true }],
+    });
+    render(<MiniPlanSwimlane lanes={[lane]} planning={emptyPlanning} hasPlanningRow={false} />);
+    expect(screen.getByText('Validation')).toBeDefined();
+    expect(screen.queryByText('waiting')).toBeNull();
+    expect(screen.getByText('prd-validator')).toBeDefined();
+  });
+
   it('collapses a finished PRD lane to a summary and reveals agents on expand', () => {
     const planning: PlanningLane = {
       running: false,

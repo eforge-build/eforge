@@ -11,6 +11,7 @@ import {
   sampleBuildRunState,
   landingRunState,
   failedRunState,
+  validationSwimlaneBugRunState,
   SAMPLE_BUILD_PLANNING_LIMIT,
   SAMPLE_BUILD_PLANS_RUNNING_LIMIT,
 } from '@/test-support/factories';
@@ -68,6 +69,13 @@ export const PlanningPhase: Story = {
 export const PlansRunning: Story = {
   args: {
     card: cardFor(activeSessionDetail({ runState: sampleBuildRunState(SAMPLE_BUILD_PLANS_RUNNING_LIMIT) })),
+  },
+};
+
+/** Regression fixture: Validation has a running prd-validator and should expand as active, not "waiting". */
+export const ValidationLaneActive: Story = {
+  args: {
+    card: cardFor(activeSessionDetail({ runState: validationSwimlaneBugRunState() }), 'validation-swimlane-bug'),
   },
 };
 

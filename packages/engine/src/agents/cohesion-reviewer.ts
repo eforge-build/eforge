@@ -37,6 +37,8 @@ export interface CohesionReviewerOptions extends SdkPassthroughConfig {
   outputDir?: string;
   /** Override max conversation turns (default: review tier default). */
   maxTurns?: number;
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -122,6 +124,7 @@ export async function* runCohesionReview(
       disallowedTools: mergeMutationDisallowedTools(options.disallowedTools),
     },
     'cohesion-reviewer',
+    options.lane,
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {
       yield event;

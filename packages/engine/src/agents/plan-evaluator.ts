@@ -63,6 +63,8 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
     attempt: number;
     maxContinuations: number;
   };
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -98,6 +100,8 @@ export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
     attempt: number;
     maxContinuations: number;
   };
+  /** Orchestrator-assigned lane id forwarded as the harness.run planId arg. */
+  lane?: string;
 }
 
 /**
@@ -290,6 +294,7 @@ The previous evaluator run was interrupted before a final verdict submission was
         ...pickSdkOptions({ ...options, disallowedTools }),
       },
       config.role,
+      options.lane,
     )) {
       if (isAlwaysYieldedAgentEvent(event) || verbose) {
         yield event;
