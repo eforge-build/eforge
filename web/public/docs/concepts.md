@@ -110,7 +110,7 @@ At dispatch time, the daemon also writes a canonical copy of the PRD to `eforge/
 
 The queue supports dependencies and priority. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build. The Console Now dashboard shows failed and skipped terminal rows in the Queue card; failed upstreams with skipped descendants can be inspected before applying daemon-planned recovery.
 
-The **web monitor** (`http://localhost:<port>`) tracks cost, token usage, and pipeline progress in real time. It keeps running after the build completes so you can inspect results.
+The **Console dashboard** (`http://localhost:<port>/console/`) tracks cost, token usage, and pipeline progress in real time. Root UI requests redirect to Console, and the daemon keeps it available after the build completes so you can inspect results.
 
 ## Artifact Branches and Landing Actions
 

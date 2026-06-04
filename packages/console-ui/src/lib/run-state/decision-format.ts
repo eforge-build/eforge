@@ -1,9 +1,8 @@
 /**
  * Decision formatting helpers for the run-state subsystem.
  *
- * Ported from packages/monitor-ui/src/lib/decision-format.ts — only the
- * non-UI functions (decisionSummary, decisionDetail). The Tailwind-class
- * helper decisionKindColor is UI-only and left in monitor-ui.
+ * Contains non-UI functions (decisionSummary, decisionDetail) used by
+ * Console run-state consumers.
  */
 import type { Decision } from './types';
 

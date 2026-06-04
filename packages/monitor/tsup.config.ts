@@ -47,7 +47,6 @@ export default defineConfig({
         await cp(source, target, { recursive: true });
       }
     }
-    await copyUiDist("../monitor-ui/dist", "dist/monitor-ui");
     await copyUiDist("../console-ui/dist", "dist/console-ui");
   },
 });

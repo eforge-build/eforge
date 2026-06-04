@@ -25,16 +25,29 @@ export interface StaticUiRequest {
   req: IncomingMessage;
   res: ServerResponse;
   pathname: string;
-  monitorUiDir: string;
   consoleUiDir: string;
 }
 
 export async function serveStaticUiRequest(input: StaticUiRequest): Promise<void> {
-  if (input.pathname === '/console' || input.pathname === '/console/' || input.pathname.startsWith('/console/')) {
+  if (input.pathname === '/console') {
+    redirectToConsole(input.res);
+    return;
+  }
+  if (input.pathname === '/console/' || input.pathname.startsWith('/console/')) {
     await serveStaticFile(input.res, input.pathname, input.consoleUiDir, '/console');
     return;
   }
-  await serveStaticFile(input.res, input.pathname, input.monitorUiDir, '');
+  redirectToConsole(input.res);
+}
+
+function redirectToConsole(res: ServerResponse): void {
+  if (!res.headersSent) {
+    res.writeHead(302, {
+      Location: '/console/',
+      'Cache-Control': 'no-cache',
+    });
+  }
+  res.end();
 }
 
 export async function serveStaticFile(
@@ -48,6 +61,11 @@ export async function serveStaticFile(
   try {
     relPath = decodeURIComponent(rawRelPath);
   } catch {
+    sendText(res, 400, 'Bad Request', { contentType: 'text/plain' });
+    return;
+  }
+
+  if (relPath.startsWith('//')) {
     sendText(res, 400, 'Bad Request', { contentType: 'text/plain' });
     return;
   }

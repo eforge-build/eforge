@@ -12,7 +12,7 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, hook registration, context objects, and runtime boundaries
 - [Profiles guide](/docs/profiles.md): Create, activate, and route agent runtime profiles across project and user scopes
 - [Playbooks guide](/docs/playbooks.md): Create, manage, and run reusable workflow playbooks
-- [Integrations guide](/docs/integrations.md): Use shell hooks, input sources, Langfuse tracing, and the monitor UI
+- [Integrations guide](/docs/integrations.md): Use shell hooks, input sources, Langfuse tracing, and the Console dashboard
 - [Troubleshooting guide](/docs/troubleshooting.md): Recover from failed builds, docs drift, invalid profiles, and other common issues
 
 ## Canonical reference

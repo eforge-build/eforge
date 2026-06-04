@@ -4,9 +4,7 @@
  * Pure subsystem — no React, no DOM, no fetch dependencies.
  * Depends only on @eforge-build/client for EforgeEvent types.
  *
- * Dual-reducer constraint: this subsystem is a port of
- * packages/monitor-ui/src/lib/reducer.ts (and associated handlers).
- * Both must be kept in sync until monitor-ui is deleted.
+ * Console-owned reducer, handlers, selectors, and formatting helpers.
  */
 
 // Core reducer

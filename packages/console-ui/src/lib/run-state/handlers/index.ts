@@ -11,9 +11,7 @@
  *   const handler = (handlerRegistry as Record<string, ...>)[event.type];
  *   const delta = handler ? handler(event as never, state) : undefined;
  *
- * Ported from packages/monitor-ui/src/lib/reducer/index.ts.
- * Dual-reducer constraint: keep this registry in sync with monitor-ui's
- * equivalent until monitor-ui is deleted (future PRD).
+ * Console-owned handler registry for run-state event folding.
  */
 import type { EforgeEvent } from '../types';
 
@@ -341,7 +339,7 @@ export const IGNORED_EVENT_TYPES = [
   'landing:auto-merge:complete',
   'landing:auto-merge:skipped',
   // build:terminal-failure — run-level authoritative terminal failure event.
-  // Monitor UI rendering is future work; session reducer does not handle it.
+  // Console rendering is handled outside this session reducer.
   'build:terminal-failure',
   // build:resume:* — lifecycle-only resume events. Recovered artifacts and
   // seed-state are handled above.

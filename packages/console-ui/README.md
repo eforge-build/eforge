@@ -1,6 +1,6 @@
 # @eforge-build/console-ui
 
-The active monitoring dashboard for eforge. This package replaces `packages/monitor-ui/`, which is retained as the legacy implementation until the port is fully baked.
+The active monitoring dashboard for eforge. Console replaces the deleted earlier dashboard package and is the canonical local-first control surface served by the monitor daemon at `/console/`.
 
 ## Route table
 
@@ -57,7 +57,7 @@ All mutating, queueing, or worker-spawning actions go through an `AlertDialog` c
 
 The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all active session IDs. Each stream's events are folded through the run-state reducer to produce a `RunState` snapshot. Selectors derive view-ready data from those snapshots without mutating state.
 
-The reducer implementation is shared with `packages/monitor-ui/` (dual-reducer constraint) to keep both dashboards in sync during the transition period.
+The run-state reducer is Console-owned and folds per-session SSE events into view-ready snapshots.
 
 The Planning Workspace (`/console/plans`) uses REST requests rather than SSE and browses two read-only artifact kinds side by side: flat session plans and grouped session plan sets. On load it fetches both `API_ROUTES.sessionPlanList` and `API_ROUTES.sessionPlanSetList` (filtering to active artifacts by default, or including handed-off/submitted artifacts when the Include handed off toggle is enabled - the flag is forwarded to both list routes). The combined list is modeled as a discriminated union in `planning-artifacts.ts`, with selection keys encoded as `plan:<session>` and `plan-set:<planSetId>` so the two id spaces cannot collide. After the user selects an artifact, the detail fetch is dispatched by kind: flat plans call `API_ROUTES.sessionPlanShow` (metadata, readiness detail, markdown body via `SessionPlanDetail`), and plan sets call `API_ROUTES.sessionPlanSetShow` (manifest metadata, validation diagnostics, umbrella anchor content or a `missing-anchor` diagnostic, and per-child summary metadata via `SessionPlanSetDetail`). Plan-set child markdown is never fetched; only the summary returned by the show route is displayed. No daemon state is derived from the list responses alone, and the workspace exposes no mutation controls for either artifact kind.
 
@@ -84,7 +84,7 @@ Consumers (`plan-progress.ts`, `pipeline-colors.ts`, `thread-pipeline.tsx`) call
 
 - **Source-owned top-level Console route** - add route metadata and a nav item to `src/lib/navigation.ts` (update `ConsoleRouteBaseId`, `consoleRouteOrder`, `ROUTE_LABELS`, `toConsolePath`, `parseConsoleRoute`, and `buildNavItems`). `ControlSurfaceLinks` renders internal nav buttons automatically from `buildNavItems()`, so no direct edits to `src/components/header/control-surface-links.tsx` are needed for standard routes.
 - **Daemon-manifest declarative contribution** - register the contribution with the extension manifest and render it under `/console/system` in the Extensions/System area. These contributions use the Console-owned declarative renderer set and do not require edits to `src/lib/navigation.ts` or new top-level routes.
-- **Non-route or external links** - add them directly to `src/components/header/control-surface-links.tsx` (e.g., the Monitor back-link that points outside the Console).
+- **Non-route or external links** - add them directly to `src/components/header/control-surface-links.tsx` when they do not belong in the top-level Console route list.
 - **System route entry** - add a panel or section under `src/views/system/`. The system route is the home for configuration and diagnostic surfaces that do not need top-level navigation prominence.
 
 Arbitrary extension-supplied frontend bundles, React components, browser JavaScript, and extension-owned HTTP routes are deferred beyond the current declarative contribution model.

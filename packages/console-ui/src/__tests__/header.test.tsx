@@ -79,6 +79,15 @@ describe('ConsoleShell header', () => {
     expect(screen.getByLabelText(/active builds count/i)).toBeDefined();
   });
 
+  it('renders Console navigation without an external back link', () => {
+    renderShell();
+
+    expect(screen.getByRole('button', { name: /^now$/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /^plans$/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /^system$/i })).toBeDefined();
+    expect(screen.queryByRole('link', { name: /monitor/i })).toBeNull();
+  });
+
   it('routes header navigation through onNavigate', () => {
     const { onNavigate } = renderShell();
 

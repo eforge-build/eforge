@@ -56,7 +56,7 @@ If the check reports broken internal links, update the link target in the releva
 
 ## Auto-build is disabled or paused
 
-If a PRD is queued but does not start, check whether daemon auto-build is disabled or paused. Auto-build starts from `prdQueue.autoBuild` in config, can be toggled at runtime through the host `eforge_auto_build` tool or the monitor UI, and pauses after a queued build fails so dependents do not cascade.
+If a PRD is queued but does not start, check whether daemon auto-build is disabled or paused. Auto-build starts from `prdQueue.autoBuild` in config, can be toggled at runtime through the host `eforge_auto_build` tool or Console, and pauses after a queued build fails so dependents do not cascade.
 
 **Diagnose:**
 
@@ -67,7 +67,7 @@ If a PRD is queued but does not start, check whether daemon auto-build is disabl
 **Resume safely:**
 
 1. If auto-build paused because a build failed, run `/eforge:recover` first and apply the recovery verdict.
-2. Re-enable auto-build with `eforge_auto_build` `{ "action": "set", "enabled": true }` or the monitor UI.
+2. Re-enable auto-build with `eforge_auto_build` `{ "action": "set", "enabled": true }` or Console.
 3. If you intentionally disabled auto-build to stage queue items, either re-enable it or run `eforge build --queue` / `eforge queue run --all` from the CLI.
 
 For persistent defaults, set `prdQueue.autoBuild: true` in `eforge/config.yaml`. If the watcher is slow to notice new PRDs, tune `prdQueue.watchPollIntervalMs` rather than manually editing queue files.
@@ -124,7 +124,7 @@ The recovery flow:
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>` for verdict-based actions. For compiled-build resume, call `eforge_resume_build` (Pi), `mcp__eforge__eforge_resume_build` (Claude Code), or `eforge resume <prdId> [--set-name <name>] [--profile <name>]` (CLI) with the `prdId`; these commands queue the resume request and return queued metadata rather than a local worker session.
 
-When you are present in the Console Now dashboard, failed rows in the Queue card offer **Recover…**. That dialog leads with the recovery sidecar verdict and a single confirmed primary action (`retry` re-queues the PRD, `split` enqueues the successor PRD and may continue from the preserved feature branch when landed partial work is recorded, `abandon` archives the failed PRD, and `manual` shows manual-review guidance with no apply button), and it offers a confirmed **Resume compiled build** action when compiled artifacts are eligible. Compiled-build resume queues the failed PRD and waits for scheduler dispatch under the same queue controls described above; after dispatch and a successful resume it retires the failed queue item and reactivates skipped descendants automatically, while an activated failed resume returns the PRD to `failed/` with refreshed or degraded recovery evidence when possible. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue for explicit retry/repair and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. When no sidecar exists yet the dialog shows `recovery pending` with a confirmed **Run recovery analysis** action. Every mutating, queueing, or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
+When you are present in the Console Now dashboard, failed builds appear in the Needs attention strip with a **Recover…** action. The root-hosted recovery dialog leads with the recovery sidecar verdict and a single confirmed primary action (`retry` re-queues the PRD, `split` enqueues the successor PRD and may continue from the preserved feature branch when landed partial work is recorded, `abandon` archives the failed PRD, and `manual` shows manual-review guidance with no apply button), and it offers a confirmed **Resume compiled build** action when compiled artifacts are eligible. Compiled-build resume queues the failed PRD and waits for scheduler dispatch under the same queue controls described above; after dispatch and a successful resume it retires the failed queue item and reactivates skipped descendants automatically, while an activated failed resume returns the PRD to `failed/` with refreshed or degraded recovery evidence when possible. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue for explicit retry/repair and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. When no sidecar exists yet the dialog shows `recovery pending` with a confirmed **Run recovery analysis** action. Every mutating, queueing, or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
 
 ## Untrusted project extension blocks loading
 
@@ -144,7 +144,7 @@ If the extension source changes after trust, `extension:trust-changed` appears. 
 
 When a registered profile router returns a profile name that does not exist in any scope, eforge emits `queue:profile:invalid-selection` and the build proceeds under the active profile or engine defaults.
 
-**Diagnose:** check the monitor UI event stream or run `eforge extension show <router-extension-name>` to see recent diagnostics.
+**Diagnose:** check the Console event stream or run `eforge extension show <router-extension-name>` to see recent diagnostics.
 
 **Fix:** update the profile router extension to return a profile name that exists, or create the missing profile with `/eforge:profile-new` in Claude Code or `/eforge:profile:new` in Pi. The `availableProfiles` field in `ProfileRouterContext` lists all currently loadable profile names - use it to guard against stale names.
 
@@ -171,7 +171,7 @@ After an exhausted-retries failure, use `/eforge:recover` to apply the recovery 
 
 ## Extension policy gate `require-approval` blocks a build
 
-Policy gates can return `{ decision: 'require-approval', reason }`. This decision currently blocks the gated operation because no approval workflow exists yet. If a build is stuck on a policy gate, check the monitor UI for `extension:policy:decision` events with `decision: require-approval`.
+Policy gates can return `{ decision: 'require-approval', reason }`. This decision currently blocks the gated operation because no approval workflow exists yet. If a build is stuck on a policy gate, check Console for `extension:policy:decision` events with `decision: require-approval`.
 
 **Short-term fix:** change the extension to return `{ decision: 'allow' }` or `{ decision: 'block', reason }` until an approval workflow is implemented. The `require-approval` decision type is reserved for a future release.
 
@@ -182,4 +182,4 @@ See [Extensions API - Policy gates](/docs/extensions-api) and [Configuration - N
 - [Configuration](/docs/configuration) - validation commands, retry limits, hooks
 - [Extensions](/docs/extensions) - trust model, diagnostics, and status codes
 - [Extensions API](/docs/extensions-api) - policy gate decisions and profile router contracts
-- [Integrations](/docs/integrations) - daemon startup, monitor UI, and restart
+- [Integrations](/docs/integrations) - daemon startup, Console dashboard, and restart

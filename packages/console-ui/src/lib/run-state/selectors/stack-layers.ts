@@ -1,8 +1,7 @@
 /**
  * Stack layer selector for the run-state subsystem.
  *
- * Ported from packages/monitor-ui/src/lib/stack-layers.ts.
- * Filters daemon-wide stack layers to only those referenced by the current
+ * Console-owned selector that filters daemon-wide stack layers to only those referenced by the current
  * session's plan IDs.
  */
 import type { RunState } from '../types';

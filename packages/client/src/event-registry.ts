@@ -6,8 +6,8 @@
  *             'session' (per-session build events, not in the daemon stream)
  *   persist — whether the event is stored in the DB and replayed on reconnect
  *   summary — optional human-readable one-line description (string or function)
- *   project — optional state projection for daemon-scoped events; inlines the
- *             logic from packages/monitor-ui/src/lib/daemon-reducer/handle-*.ts
+ *   project — optional state projection for daemon-scoped events shared by
+ *             Console and other project-state consumers
  *
  * Derive DAEMON_EVENT_TYPES by filtering for daemon-scoped persist:true entries:
  *   const DAEMON_EVENT_TYPES = Object.keys(eventRegistry).filter((k) => {
@@ -25,7 +25,7 @@ import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Minimal state shape the project functions operate on.
-// DaemonState in packages/monitor-ui satisfies this interface structurally.
+// Console and daemon project-state snapshots satisfy this interface structurally.
 // ---------------------------------------------------------------------------
 
 export interface ProjectableState {
@@ -74,7 +74,7 @@ export interface EventMeta<T extends EforgeEvent['type']> {
   persist: boolean;
   /**
    * Optional human-readable one-line summary. Used by the MCP progress
-   * notifications and the monitor UI activity feed.
+   * notifications and Console activity feed.
    *
    * String: static description.
    * Function: computed from the event payload (e.g. includes planId, counts).
@@ -1306,7 +1306,7 @@ const eventRegistry = {
     summary: (e) => `Enqueued: ${e.title}`,
     // daemon:run:upsert remains the single source of truth for DaemonState.runs.
     // This projector only affects DaemonState.queue: it inserts a pending QueueItem
-    // so the monitor UI shows the item immediately, before queue:prd:discovered is
+    // so Console shows the item immediately, before queue:prd:discovered is
     // emitted. Uses event.id as the QueueItem id (not event.planSet or event.filePath).
     // Idempotent: duplicate enqueue:complete events leave only one queue item.
     project(event, state) {

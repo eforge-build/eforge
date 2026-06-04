@@ -202,7 +202,7 @@ When a PR's base branch changes (because an upstream PR merged), GitHub marks al
 
 ## Stack state visibility
 
-The monitor UI shows per-build stacking metadata - stack id, parent PRD id, and PR URL - in the build detail panel when stacking is active. The `git-spice stack status` command (or `gs stack status` if you have the optional alias) shows the full local stack state.
+Console shows per-build stacking metadata - stack id, parent PRD id, and PR URL - in the build detail panel when stacking is active. The `git-spice stack status` command (or `gs stack status` if you have the optional alias) shows the full local stack state.
 
 ### Stack sync status
 

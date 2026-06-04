@@ -86,7 +86,7 @@ export function pickSdkOptions(config: SdkPassthroughConfig): Partial<SdkPassthr
  * Harnesses are responsible for mapping their provider-native name onto
  * `toolUseId` before emission. The shared helper `normalizeToolUseId` in
  * `./harnesses/common.ts` is the single source of truth for that mapping so
- * downstream consumers (monitor UI, CLI renderer, tracing) only ever see the
+ * downstream consumers (Console, CLI renderer, tracing) only ever see the
  * unified `toolUseId` name.
  */
 

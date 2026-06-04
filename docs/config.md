@@ -274,7 +274,7 @@ Stacked PR landing does not use the direct non-stacked PR base sync path. Instea
 
 By default, build success requires both command validation (type-check, tests, etc.) and acceptance validation evidence from the PRD validator. Either requirement can be explicitly waived via `build.validation` with a mandatory reason string.
 
-**Waivers are policy overrides, not evidence.** A waiver declares that the build is intentionally exempt from a specific validation requirement in a known context — for example, a config-only change with no source diff, or a monorepo where tests run in CI rather than per-PRD. The reason string is surfaced in the monitor UI so reviewers can confirm intent. Waivers do not replace the missing evidence; they record that the evidence is not applicable for this build.
+**Waivers are policy overrides, not evidence.** A waiver declares that the build is intentionally exempt from a specific validation requirement in a known context — for example, a config-only change with no source diff, or a monorepo where tests run in CI rather than per-PRD. The reason string is surfaced in Console so reviewers can confirm intent. Waivers do not replace the missing evidence; they record that the evidence is not applicable for this build.
 
 ### `build.validation.allowNoCommands`
 
@@ -287,7 +287,7 @@ build:
     noCommandsReason: "Shared monorepo — type checking and tests run in CI, not per-PRD"
 ```
 
-The waiver reason is surfaced as a `planning:progress` event and in the monitor UI before `validation:complete passed:true` is emitted.
+The waiver reason is surfaced as a `planning:progress` event and in Console before `validation:complete passed:true` is emitted.
 
 ### `build.validation.allowEmptyPrdDiff`
 

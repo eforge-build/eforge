@@ -33,7 +33,7 @@ export interface StartServerOptions {
   daemonState?: DaemonState;
   config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'>;
   agentRuntimes?: AgentRuntimeRegistry | AgentHarness;
-  uiDirs?: { monitorUiDir?: string; consoleUiDir?: string };
+  uiDirs?: { consoleUiDir?: string };
   daemonSessionId?: string;
 }
 
@@ -53,7 +53,6 @@ export interface MonitorQueuePaths {
 }
 
 export interface MonitorUiRoots {
-  monitorUiDir: string;
   consoleUiDir: string;
 }
 

@@ -1,14 +1,5 @@
 /**
- * Reducer for eforge session run state.
- *
- * ## Dual-reducer constraint
- *
- * This file is a port of `packages/monitor-ui/src/lib/reducer.ts` into
- * `packages/console-ui/src/lib/run-state/`. Both reducers must be kept in
- * sync until monitor-ui is deleted (tracked in a future PRD). When adding
- * support for new daemon event types, update BOTH reducers and both handler
- * registries. See `packages/monitor-ui/src/lib/reducer.ts` for the
- * authoritative counterpart.
+ * Console-owned reducer for eforge session run state.
  *
  * ## Action types
  *

@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), and auto-build state. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; the monitor UI uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), and auto-build state. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -127,7 +127,7 @@ Action-backed commands and deep links can be invoked generically through those h
 
 ## Daemon HTTP API
 
-The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, the monitor UI, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; browser/Console integrations should use `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; browser/Console integrations should use `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 
@@ -164,31 +164,27 @@ Example adapters are available at `examples/extensions/issue-tracker.ts` in the 
 
 eforge sends agent trace data to Langfuse when both a public key and secret key are configured. Set them in `eforge/config.yaml` under `langfuse.publicKey`, `langfuse.secretKey`, and optional `langfuse.host`, or use the environment variables `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optional `LANGFUSE_BASE_URL`. The default host is `https://cloud.langfuse.com`. The `langfuse` field is listed in the [Configuration Reference](/reference/config#top-level-fields) top-level fields table.
 
-## Monitor UI
+## Console dashboard
 
-A web-based monitor runs locally alongside the daemon. Access it at:
-
-```
-http://localhost:<port>
-```
-
-Use the active Console dashboard for queue recovery workflows:
+A web-based Console dashboard runs locally alongside the daemon. Access it at the canonical Console URL:
 
 ```
 http://localhost:<port>/console/
 ```
 
+Root UI requests on the same port redirect to Console.
+
 The port is deterministically assigned per project in the 4567-4667 range. The same port persists across daemon restarts for a given project.
 
-The monitor shows:
+Console shows:
 - Active and queued builds with live progress
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Console dashboard Queue card failed-cascade inspection and recovery apply with queue refresh
+- Console Needs attention strip for failed builds with root-hosted recovery dialog actions and queue refresh
 - Extension status and diagnostics
 
-The monitor keeps running after a build completes so you can inspect results and costs.
+The daemon keeps Console available after a build completes so you can inspect results and costs.
 
 ## Where to look next
 

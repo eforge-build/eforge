@@ -11,7 +11,6 @@ import type { AutoBuildQueueMutationReason } from './auto-build-supervisor.js';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_UI_ROOTS: MonitorUiRoots = {
-  monitorUiDir: resolve(__dirname, 'monitor-ui'),
   consoleUiDir: resolve(__dirname, 'console-ui'),
 };
 
@@ -50,7 +49,6 @@ export async function createMonitorContext(
   const relativePlanOutputDir = options.config?.plan?.outputDir ?? options.planOutputDir ?? 'eforge/plans';
   const planOutputDir = cwd ? resolve(cwd, relativePlanOutputDir) : relativePlanOutputDir;
   const uiRoots = {
-    monitorUiDir: options.uiDirs?.monitorUiDir ?? DEFAULT_UI_ROOTS.monitorUiDir,
     consoleUiDir: options.uiDirs?.consoleUiDir ?? DEFAULT_UI_ROOTS.consoleUiDir,
   };
   const queuePaths = cwd ? buildQueuePaths(cwd, options) : undefined;

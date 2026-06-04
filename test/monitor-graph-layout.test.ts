@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { computeGraphLayout } from '@eforge-build/monitor-ui/components/graph/use-graph-layout';
-import type { OrchestrationConfig } from '@eforge-build/engine/events';
+import { computeGraphLayout } from '@eforge-build/console-ui/components/graph/use-graph-layout';
+import type { OrchestrationConfig } from '@eforge-build/console-ui/lib/run-state';
 
 type PlanEntry = OrchestrationConfig['plans'][number];
 

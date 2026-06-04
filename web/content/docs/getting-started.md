@@ -80,7 +80,7 @@ Or enqueue directly with a prompt:
 /eforge:build Add a dark mode toggle to the settings page
 ```
 
-The daemon picks up the queued plan and runs the full pipeline in the background. A web monitor at `http://localhost:<port>` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
+The daemon picks up the queued plan and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
 
 From the standalone CLI:
 

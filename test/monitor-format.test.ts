@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  formatDuration,
-  formatNumber,
-  formatTime,
-  escapeHtml,
-} from '@eforge-build/monitor-ui/lib/format';
+import { formatDuration, formatNumber } from '@eforge-build/console-ui/lib/run-state/format';
 
 describe('formatDuration', () => {
   it('formats seconds', () => {
@@ -32,7 +27,7 @@ describe('formatDuration', () => {
   });
 
   it('handles very large numbers', () => {
-    expect(formatDuration(86400000)).toBe('24h 0m'); // 24 hours
+    expect(formatDuration(86400000)).toBe('24h 0m');
   });
 });
 
@@ -51,34 +46,5 @@ describe('formatNumber', () => {
   it('formats millions with M suffix', () => {
     expect(formatNumber(1000000)).toBe('1.0M');
     expect(formatNumber(2500000)).toBe('2.5M');
-  });
-});
-
-describe('formatTime', () => {
-  it('formats ISO time string', () => {
-    const result = formatTime('2024-01-01T14:30:00Z');
-    // Result depends on locale, just verify it returns something
-    expect(result).toBeTruthy();
-    expect(typeof result).toBe('string');
-  });
-
-  it('handles empty string', () => {
-    expect(formatTime('')).toBe('');
-  });
-});
-
-describe('escapeHtml', () => {
-  it('escapes HTML special characters', () => {
-    expect(escapeHtml('<script>')).toBe('&lt;script&gt;');
-    expect(escapeHtml('a & b')).toBe('a &amp; b');
-    expect(escapeHtml('"hello"')).toBe('&quot;hello&quot;');
-  });
-
-  it('handles empty string', () => {
-    expect(escapeHtml('')).toBe('');
-  });
-
-  it('passes through plain text', () => {
-    expect(escapeHtml('hello world')).toBe('hello world');
   });
 });

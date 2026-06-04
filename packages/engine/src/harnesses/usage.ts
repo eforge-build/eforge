@@ -8,7 +8,7 @@
  * `toModelUsageEntry` (for per-model `AgentResultData.modelUsage` entries)
  * before emitting. The `uncachedInput` parameter name is deliberate — it
  * prevents a caller from accidentally passing a pre-inflated number and
- * keeps the monitor UI formula `cacheRead / input` bounded to `[0, 1]`.
+ * keeps the Console formula `cacheRead / input` bounded to `[0, 1]`.
  */
 
 import type { AgentResultData } from '../events.js';

@@ -27,8 +27,8 @@ import { formatThinking } from '../format';
  * Normalize a raw thinking config object from the wire protocol.
  *
  * The engine emits thinking payloads with snake_case `budget_tokens` (Zod
- * wire schema). The monitor UI expects camelCase `budgetTokens`. This helper
- * maps snake_case → camelCase at extraction time so downstream consumers
+ * wire schema). Console run-state consumers use camelCase `budgetTokens`. This
+ * helper maps snake_case → camelCase at extraction time so downstream consumers
  * (formatThinking, stage hover) always receive the camelCase form.
  *
  * Belt-and-suspenders: if `budgetTokens` is already present, the value is

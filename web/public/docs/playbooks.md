@@ -124,7 +124,7 @@ eforge play docs-sync       # shorthand
 
 `eforge play` is a shorthand for `eforge playbook run`.
 
-After a successful enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in the monitor UI.
+After a successful enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in Console.
 
 ## List playbooks
 

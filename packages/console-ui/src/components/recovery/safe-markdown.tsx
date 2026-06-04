@@ -14,8 +14,7 @@ interface SafeMarkdownProps {
  *
  * Markdown is parsed with `marked` (GFM) and the resulting HTML is passed
  * through `DOMPurify.sanitize` before it is injected, so `<script>` tags and
- * inline event-handler attributes are stripped. Mirrors the rendering pattern
- * used by the legacy Monitor recovery sidecar sheet.
+ * inline event-handler attributes are stripped for Console recovery dialogs.
  */
 export function SafeMarkdown({ markdown, className, forbidResourceLoading = false }: SafeMarkdownProps) {
   const html = React.useMemo(() => {
