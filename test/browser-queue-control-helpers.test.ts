@@ -75,13 +75,19 @@ describe('browser queue-control helpers — route selection', () => {
 });
 
 describe('browser queue-control helpers — error surfacing', () => {
-  it('throws a status-bearing Error for non-2xx priority responses', async () => {
+  it('throws a status-bearing Error carrying the daemon response text for non-2xx priority responses', async () => {
     nextResponse = { ok: false, status: 409, text: 'Queue item is running' };
-    await expect(updateQueuePriority('prd-3', { priority: 1 })).rejects.toThrow('Queue priority request failed (409)');
+    // The contract is that both the status prefix and the daemon response body
+    // are preserved in the Error message, so assert the full composed message.
+    await expect(updateQueuePriority('prd-3', { priority: 1 })).rejects.toThrow(
+      'Queue priority request failed (409): Queue item is running',
+    );
   });
 
-  it('throws a status-bearing Error for non-2xx removal responses', async () => {
+  it('throws a status-bearing Error carrying the daemon response text for non-2xx removal responses', async () => {
     nextResponse = { ok: false, status: 404, text: 'Queue item not found' };
-    await expect(removeQueueItem('prd-4')).rejects.toThrow('Queue removal request failed (404)');
+    await expect(removeQueueItem('prd-4')).rejects.toThrow(
+      'Queue removal request failed (404): Queue item not found',
+    );
   });
 });

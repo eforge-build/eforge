@@ -14,8 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import type { NowQueueItem, NowQueueStack, NowQueueSummary } from '@/lib/selectors/now';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 import { QueueStacks } from './queue-stack-card';
+import { QueueRowActions } from './queue-row-actions';
+import type { QueueRowActionCallbacks } from './queue-row-actions';
 
-interface QueueCardProps {
+interface QueueCardProps extends QueueRowActionCallbacks {
   stacks?: NowQueueStack[];
   summary: NowQueueSummary;
 }
@@ -40,7 +42,15 @@ function isForwardItem(item: NowQueueItem): boolean {
   return s !== 'failed' && s !== 'skipped';
 }
 
-function LooseQueueRow({ item }: { item: NowQueueItem }) {
+function LooseQueueRow({
+  item,
+  onSetPriority,
+  onRemove,
+}: { item: NowQueueItem } & QueueRowActionCallbacks) {
+  const status = item.status.toLowerCase();
+  // Only forward queue work (pending/waiting) is mutable from Console; running
+  // rows keep their status-only presentation.
+  const showActions = status === 'pending' || status === 'waiting';
   return (
     <li className="flex items-start gap-2">
       <Badge variant={statusVariant(item.status)} className="shrink-0 capitalize text-xs">
@@ -54,12 +64,21 @@ function LooseQueueRow({ item }: { item: NowQueueItem }) {
         {item.dependsOn && item.dependsOn.length > 0 && (
           <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
         )}
+        {showActions && (
+          <QueueRowActions
+            itemId={item.id}
+            itemTitle={item.title}
+            initialPriority={item.priority}
+            onSetPriority={onSetPriority}
+            onRemove={onRemove}
+          />
+        )}
       </div>
     </li>
   );
 }
 
-export function QueueCard({ stacks = [], summary }: QueueCardProps) {
+export function QueueCard({ stacks = [], summary, onSetPriority, onRemove }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
 
   // Items already shown in the stacked view; never repeat them in the flat list.
@@ -106,7 +125,7 @@ export function QueueCard({ stacks = [], summary }: QueueCardProps) {
           <p className="text-sm text-muted-foreground">Nothing waiting to build</p>
         ) : (
           <>
-            <QueueStacks stacks={stacks} />
+            <QueueStacks stacks={stacks} onSetPriority={onSetPriority} onRemove={onRemove} />
 
             {looseAll.length > 0 && (
               <div className={stacks.length > 0 ? 'border-t pt-3' : undefined}>
@@ -122,7 +141,12 @@ export function QueueCard({ stacks = [], summary }: QueueCardProps) {
                 )}
                 <ul className="space-y-1.5">
                   {looseVisible.map((item) => (
-                    <LooseQueueRow key={item.id} item={item} />
+                    <LooseQueueRow
+                      key={item.id}
+                      item={item}
+                      onSetPriority={onSetPriority}
+                      onRemove={onRemove}
+                    />
                   ))}
                 </ul>
                 {looseHidden > 0 && !expanded && (

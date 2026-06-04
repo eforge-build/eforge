@@ -160,6 +160,24 @@ describe('selectNowQueueStacks', () => {
 
     expect(stacks).toHaveLength(4);
   });
+
+  it('orders same-status, same-depth items by ascending priority with absent priority last', () => {
+    // base unlocks three sibling pending items at the same depth, so the only
+    // differentiator is priority. This mirrors the engine dispatch order: lower
+    // numeric priority builds first, absent priority sorts last.
+    const queue = makeQueue([
+      { id: 'base', title: 'Base Build', status: 'running' },
+      { id: 'p2', title: 'Priority Two', status: 'pending', dependsOn: ['base'], priority: 2 },
+      { id: 'p1', title: 'Priority One', status: 'pending', dependsOn: ['base'], priority: 1 },
+      { id: 'pNone', title: 'No Priority', status: 'pending', dependsOn: ['base'] },
+    ]);
+
+    const stacks = selectNowQueueStacks(queue);
+
+    expect(stacks).toHaveLength(1);
+    // base first (depth 1); then the siblings by priority ascending, undefined last.
+    expect(stacks[0].items.map((item) => item.id)).toEqual(['base', 'p1', 'p2', 'pNone']);
+  });
 });
 
 // ---------------------------------------------------------------------------
