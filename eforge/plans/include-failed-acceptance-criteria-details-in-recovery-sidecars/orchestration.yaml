@@ -1,0 +1,53 @@
+name: include-failed-acceptance-criteria-details-in-recovery-sidecars
+description: Enrich authoritative acceptance-validation terminal failure
+  recovery sidecars with criterion-level fail/unknown evidence, lookup-failure
+  placeholders, and markdown next-step guidance.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-acceptance-recovery-evidence
+    name: Enrich Acceptance Validation Recovery Evidence
+    depends_on: []
+    branch: include-failed-acceptance-criteria-details-in-recovery-sidecars/plan-01-acceptance-recovery-evidence
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - test-write
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused but non-trivial bugfix spanning recovery
+    event-history synthesis, terminal-failure enrichment, sidecar markdown
+    rendering, and regression tests, so excursion is appropriate. A plan review
+    is useful because the fix depends on preserving legacy fallback behavior
+    while adding authoritative-path enrichment. The build runs implementation,
+    iterative review, targeted test writing, and a test cycle because the PRD
+    has explicit acceptance criteria around new recovery fixtures, sidecar
+    rendering, and type-checking. Review focuses on code and test quality with
+    standard strictness; no security or API-specific review is needed.
+diff_base_ref: e064f9053b1684c216e06132a827b38302f016e0
