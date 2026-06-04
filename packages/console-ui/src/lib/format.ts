@@ -138,3 +138,32 @@ export function formatUsd(n: number): string {
   if (Math.abs(n) >= 1_000) return `$${Math.round(n).toLocaleString()}`;
   return `$${n.toFixed(2)}`;
 }
+
+/**
+ * Shorten a provider model id for a compact label. Drops the redundant
+ * `claude-` family prefix; other providers (e.g. `gpt-5.4`) pass through.
+ *
+ * @example
+ * formatModelLabel('claude-opus-4-7') // "opus-4-7"
+ * formatModelLabel('gpt-5.4')         // "gpt-5.4"
+ */
+export function formatModelLabel(model: string): string {
+  return model.replace(/^claude-/, '');
+}
+
+/**
+ * Compact label for the harness + provider that ran a model. Returns null when
+ * no harness is known (historical spend), so callers can omit the context line.
+ *
+ * @example
+ * formatHarnessLabel('claude-sdk', null)     // "claude-sdk"
+ * formatHarnessLabel('pi', 'openrouter')     // "pi · openrouter"
+ * formatHarnessLabel(null, null)             // null
+ */
+export function formatHarnessLabel(
+  harness: string | null,
+  provider: string | null,
+): string | null {
+  if (!harness) return null;
+  return provider ? `${harness} · ${provider}` : harness;
+}

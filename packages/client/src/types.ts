@@ -561,11 +561,40 @@ export interface DailySpend {
   costUsd: number;
 }
 
+/**
+ * Token + dollar spend aggregated for a single model across the whole window,
+ * derived from `agent:result.result.modelUsage`. `tokensTotal` follows the same
+ * convention as {@link DailySpend} (`inputTokens + outputTokens`, where
+ * `inputTokens` already includes cache tokens), so cache hit rate is
+ * `cacheReadTokens / inputTokens`.
+ */
+export interface ModelSpend {
+  /** Provider model id, e.g. `claude-opus-4-7`. */
+  model: string;
+  /**
+   * Harness that ran the model (`claude-sdk` or `pi`), or null for historical
+   * spend recorded before harness attribution existed. The same model id run
+   * under different harnesses/providers is reported as separate rows.
+   */
+  harness: 'claude-sdk' | 'pi' | null;
+  /** Provider routing the model (e.g. `anthropic`, `openrouter`), or null. */
+  provider: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  tokensTotal: number;
+  cacheReadTokens: number;
+  costUsd: number;
+}
+
 /** Response body for GET /api/spend?days=N. Days are ordered oldest -> newest. */
 export interface SpendSummary {
   /** Size of the lookback window in days (1-90). */
   windowDays: number;
   days: DailySpend[];
+  /** Per-model spend over the whole window, ordered by cost descending. */
+  models: ModelSpend[];
+  /** Per-model spend for today only, ordered by cost descending. */
+  modelsToday: ModelSpend[];
 }
 
 // Types used within orchestration and plan endpoints.

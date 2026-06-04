@@ -5,13 +5,28 @@
  * absent from the wire payload, so this fills gaps to keep the sparkline a
  * continuous run of bars. Pure; no I/O, no Date access (today is passed in).
  */
-import type { SpendSummary } from '@eforge-build/client/browser';
+import type { ModelSpend, SpendSummary } from '@eforge-build/client/browser';
 
 export interface SpendSparkBar {
   /** Local calendar day, `YYYY-MM-DD`. */
   date: string;
   costUsd: number;
   isToday: boolean;
+}
+
+export interface SpendModelRow {
+  /** Provider model id, e.g. `claude-opus-4-7`. */
+  model: string;
+  /** Harness that ran the model, or null for historical (pre-attribution) spend. */
+  harness: 'claude-sdk' | 'pi' | null;
+  /** Provider routing the model (e.g. `anthropic`, `openrouter`), or null. */
+  provider: string | null;
+  costUsd: number;
+  tokensTotal: number;
+  /** Share of the scope's total cost (window or today), 0-100. */
+  sharePct: number;
+  /** Cache hit rate for this model as a percentage, or null when no input. */
+  cachePct: number | null;
 }
 
 export interface NowSpendPanel {
@@ -27,6 +42,10 @@ export interface NowSpendPanel {
   windowDays: number;
   /** One bar per day, oldest -> newest, gaps filled with zero-spend days. */
   bars: SpendSparkBar[];
+  /** Per-model breakdown over the window, ordered by cost descending. */
+  models: SpendModelRow[];
+  /** Per-model breakdown for today only, ordered by cost descending. */
+  modelsToday: SpendModelRow[];
 }
 
 const EMPTY: NowSpendPanel = {
@@ -37,7 +56,25 @@ const EMPTY: NowSpendPanel = {
   windowCostUsd: 0,
   windowDays: 0,
   bars: [],
+  models: [],
+  modelsToday: [],
 };
+
+/**
+ * Map wire per-model rollups into view rows. `totalCostUsd` is the scope's total
+ * (window or today), so each row's share sums to ~100% within its scope.
+ */
+function toModelRows(models: ModelSpend[], totalCostUsd: number): SpendModelRow[] {
+  return models.map((m) => ({
+    model: m.model,
+    harness: m.harness ?? null,
+    provider: m.provider ?? null,
+    costUsd: m.costUsd,
+    tokensTotal: m.tokensTotal,
+    sharePct: totalCostUsd > 0 ? (m.costUsd / totalCostUsd) * 100 : 0,
+    cachePct: m.inputTokens > 0 ? (m.cacheReadTokens / m.inputTokens) * 100 : null,
+  }));
+}
 
 /** Step a `YYYY-MM-DD` day string back by one calendar day (UTC-safe). */
 function prevDay(date: string): string {
@@ -87,6 +124,11 @@ export function selectNowSpendPanel(
     isToday: date === todayStr,
   }));
 
+  // Per-model share is computed against each scope's total so the bars sum to
+  // ~100%. The wire payload already orders models by cost descending.
+  const models = toModelRows(summary.models ?? [], windowCostUsd);
+  const modelsToday = toModelRows(summary.modelsToday ?? [], todayCostUsd);
+
   return {
     hasData: windowCostUsd > 0,
     todayCostUsd,
@@ -95,5 +137,7 @@ export function selectNowSpendPanel(
     windowCostUsd,
     windowDays: span,
     bars,
+    models,
+    modelsToday,
   };
 }

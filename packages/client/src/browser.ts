@@ -236,6 +236,7 @@ export type {
   SessionMetadata,
   RunInfo,
   DailySpend,
+  ModelSpend,
   SpendSummary,
   BuildStageSpec,
   ReviewProfileConfig,
