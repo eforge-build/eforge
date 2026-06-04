@@ -84,6 +84,10 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
+// Project-local storage helpers
+export type { ProjectLocalStoragePathOptions } from './project-storage.js';
+export { resolveProjectLocalStoragePath } from './project-storage.js';
+
 export type {
   ConsoleContribution,
   ConsoleContributionBlock,

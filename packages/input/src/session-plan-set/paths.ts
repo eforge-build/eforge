@@ -7,6 +7,7 @@
  * remains inside the selected plan-set directory.
  */
 import { resolve, isAbsolute, sep } from 'node:path';
+import { resolveProjectLocalStoragePath } from '@eforge-build/extension-sdk/project-storage';
 import { SESSION_PLAN_SET_MANIFEST_FILENAME } from './schema.js';
 
 /** Lower-case slug identifier pattern for plan-set ids. */
@@ -14,7 +15,7 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Resolve the `.eforge/session-plans` root for a project. */
 export function resolveSessionPlanSetsRoot(cwd: string): string {
-  return resolve(cwd, '.eforge', 'session-plans');
+  return resolveProjectLocalStoragePath({ cwd, segments: ['session-plans'] });
 }
 
 /**
