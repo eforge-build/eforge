@@ -1,37 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { abortableSleep, EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
-
-// ---------------------------------------------------------------------------
-// Test environment setup
-// ---------------------------------------------------------------------------
-
-// Point EFORGE_CLI_PATH at a minimal stub that exits immediately with code 1.
-// Without this, spawnPrdChild falls back to process.argv[1] which may be the
-// vitest runner — causing subprocesses to take several seconds to fail, making
-// tests that wait for queue:prd:complete unreliable.
-const CLI_STUB = resolve(fileURLToPath(import.meta.url), '..', 'fixtures', 'cli-stub-fail.mjs');
-let previousCliPath: string | undefined;
-
-beforeAll(() => {
-  previousCliPath = process.env.EFORGE_CLI_PATH;
-  process.env.EFORGE_CLI_PATH = CLI_STUB;
-});
-
-afterAll(() => {
-  if (previousCliPath === undefined) {
-    delete process.env.EFORGE_CLI_PATH;
-  } else {
-    process.env.EFORGE_CLI_PATH = previousCliPath;
-  }
-});
 
 describe('abortableSleep', () => {
   afterEach(() => {
@@ -123,6 +98,7 @@ describe('watchQueue', () => {
           '---',
           'title: Inject Test PRD',
           'status: pending',
+          'profile: watch-queue-missing-profile',
           '---',
           '',
           '# Inject Test PRD',
@@ -162,7 +138,8 @@ describe('watchQueue', () => {
     //   2. After queue:start, inject the PRD for the first time (first discovery).
     //   3. After queue:prd:complete fires (PRD fails), inject again (second discovery).
     //
-    // EFORGE_CLI_PATH must be set so the subprocess exits immediately (see beforeAll).
+    // The PRD uses a deliberately missing profile so failure is handled by
+    // preflight without spawning a child process.
     const { engine, queueDir } = await createTestEngine();
     const abortController = new AbortController();
 
@@ -170,6 +147,7 @@ describe('watchQueue', () => {
       '---',
       'title: Requeue PRD',
       'status: pending',
+      'profile: watch-queue-missing-profile',
       '---',
       '',
       '# Requeue PRD',
