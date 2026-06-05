@@ -134,7 +134,7 @@ describe('moveFailedWithSidecar', () => {
 
 
     const sidecarJson = JSON.parse(await readFile(jsonPath, 'utf-8'));
-    expect(sidecarJson.schemaVersion).toBe(2);
+    expect(sidecarJson.schemaVersion).toBe(3);
     expect(sidecarJson.verdict.verdict).toBe('manual');
 
 
@@ -298,7 +298,7 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
     const md = await readFile(mdPath, 'utf-8');
 
 
-    expect(md).toContain('## Failing Plans');
+    expect(md).toContain('### Failing Plans');
 
 
 
@@ -327,16 +327,16 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
     const parsed = JSON.parse(raw);
 
 
-    expect(parsed.summary.failingPlans).toBeDefined();
-    expect(Array.isArray(parsed.summary.failingPlans)).toBe(true);
-    expect(parsed.summary.failingPlans).toHaveLength(2);
+    expect(parsed.boundedEvidence.failingPlans).toBeDefined();
+    expect(Array.isArray(parsed.boundedEvidence.failingPlans)).toBe(true);
+    expect(parsed.boundedEvidence.failingPlans).toHaveLength(2);
 
-    const failingPlanIds = parsed.summary.failingPlans.map((p: { planId: string }) => p.planId);
+    const failingPlanIds = parsed.boundedEvidence.failingPlans.map((p: { planId: string }) => p.planId);
     expect(failingPlanIds).toContain('plan-04-queue-view');
     expect(failingPlanIds).toContain('plan-06-static-serving-package-integration');
   });
 
-  it('JSON sidecar contains all 7 plans in summary.plans when verdict is fallback manual', async () => {
+  it('JSON sidecar contains all 7 plans in boundedEvidence.plans when verdict is fallback manual', async () => {
     const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
     const dir = makeTestDir();
 
@@ -353,14 +353,14 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
     const raw = await readFile(jsonPath, 'utf-8');
     const parsed = JSON.parse(raw);
 
-    expect(parsed.summary.plans).toHaveLength(7);
-    const planIds = parsed.summary.plans.map((p: { planId: string }) => p.planId);
+    expect(parsed.boundedEvidence.plans).toHaveLength(7);
+    const planIds = parsed.boundedEvidence.plans.map((p: { planId: string }) => p.planId);
     expect(planIds).toContain('plan-01-console-shell');
     expect(planIds).toContain('plan-04-queue-view');
     expect(planIds).toContain('plan-06-static-serving-package-integration');
   });
 
-  it('JSON sidecar schemaVersion is 2 and verdict is manual for fallback path', async () => {
+  it('JSON sidecar schemaVersion is 3 and verdict is manual for fallback path', async () => {
     const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
     const dir = makeTestDir();
 
@@ -377,10 +377,10 @@ describe('multi-plan sidecar content when verdict is fallback manual', () => {
     const raw = await readFile(jsonPath, 'utf-8');
     const parsed = JSON.parse(raw);
 
-    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.schemaVersion).toBe(3);
     expect(parsed.verdict.verdict).toBe('manual');
 
-    expect(parsed.summary.failingPlan.planId).toBe('plan-06-static-serving-package-integration');
+    expect(parsed.boundedEvidence.failingPlan.planId).toBe('plan-06-static-serving-package-integration');
   });
 });
 // --- eforge:endregion daemon-recovery-sidecars-suite ---

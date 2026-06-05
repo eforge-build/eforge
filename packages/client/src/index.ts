@@ -17,6 +17,8 @@ export type {
   RecoverRequest,
   RecoverResponse,
   ReadSidecarRequest,
+  RecoverySidecarReport,
+  RecoverySidecarBoundedEvidence,
   RecoveryVerdictSidecar,
   ReadSidecarResponse,
   QueueControlStatus,

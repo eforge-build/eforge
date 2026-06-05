@@ -31,7 +31,7 @@ Call `mcp__eforge__eforge_read_recovery_sidecar` with `{ prdId }`.
 
 > No recovery analysis found for `{prdId}`. Would you like me to run the analysis now? (yes / no)
 
-  If the user agrees, call `mcp__eforge__eforge_recover` with `{ setName, prdId }` — source `setName` from `summary.setName` in a prior sidecar if available, otherwise ask the user to supply it. Then loop back to Step 2.
+  If the user agrees, call `mcp__eforge__eforge_recover` with `{ setName, prdId }` — source `setName` from the top-level sidecar `setName` field in a prior sidecar if available, otherwise ask the user to supply it. Then loop back to Step 2.
 
   If the user declines, stop here.
 
@@ -93,7 +93,7 @@ The daemon applies the action in-process and returns synchronously. Report the r
 - **split**: "Successor PRD `{successorPrdId}` enqueued. If landed partial work was recorded in the sidecar, it will continue from the preserved feature branch while targeting the original base branch. Commit: `{commitSha}`."
 - **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
 
-**Compiled-build resume**: On confirmation for resume, call `mcp__eforge__eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar reports a set name that differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The tool queues a compiled resume request for scheduler dispatch, preserves normal queue controls (parallelism, pause state, dependency gating, and profile routing), and returns queued metadata such as the PRD id, set name, branches, moved descendants, and optional profile. It does not start a background resume worker immediately and does not return a session id or PID. Report:
+**Compiled-build resume**: On confirmation for resume, call `mcp__eforge__eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar top-level `setName` differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The tool queues a compiled resume request for scheduler dispatch, preserves normal queue controls (parallelism, pause state, dependency gating, and profile routing), and returns queued metadata such as the PRD id, set name, branches, moved descendants, and optional profile. It does not start a background resume worker immediately and does not return a session id or PID. Report:
 
 > Queued compiled-build resume for PRD `{prdId}`. It will wait for scheduler dispatch under the current queue controls.
 

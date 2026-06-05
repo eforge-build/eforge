@@ -123,12 +123,16 @@ describe('POST /api/recover', () => {
 });
 
 describe('GET /api/recovery/sidecar', () => {
-  function makeV2Sidecar(prdId = 'test-prd') {
+  function makeV3Sidecar(prdId = 'test-prd') {
+    const generatedAt = new Date().toISOString();
     return {
-      schemaVersion: 2,
-      summary: { prdId, setName: 'test-set', featureBranch: 'eforge/test-set', baseBranch: 'main', plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [], failedAt: new Date(0).toISOString(), partial: true },
+      schemaVersion: 3,
+      generatedAt,
+      prdId,
+      setName: 'test-set',
       verdict: { verdict: 'manual', confidence: 'low', rationale: 'Missing context', completedWork: [], remainingWork: [], risks: [], partial: true, recoveryError: 'context was incomplete' },
-      generatedAt: new Date().toISOString(),
+      report: { operatorSummary: 'Missing context', recommendedAction: 'Review manually.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      boundedEvidence: { identity: { prdId, setName: 'test-set', featureBranch: 'eforge/test-set', baseBranch: 'main', failedAt: new Date(0).toISOString(), partial: true }, plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [] },
     };
   }
 
@@ -147,16 +151,17 @@ describe('GET /api/recovery/sidecar', () => {
     await setupServer();
   });
 
-  it('reads v2 sidecar (schemaVersion: 2, partial: true)', async () => {
-    const v2Sidecar = makeV2Sidecar();
-    await writeSidecarFiles('test-prd', JSON.stringify(v2Sidecar, null, 2));
+  it('reads v3 sidecar (schemaVersion: 3, partial: true)', async () => {
+    const v3Sidecar = makeV3Sidecar();
+    await writeSidecarFiles('test-prd', JSON.stringify(v3Sidecar, null, 2));
 
     const res = await fetchSidecar('test-prd');
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { markdown: string; json: typeof v2Sidecar };
-    expect(data.json.schemaVersion).toBe(2);
+    const data = await res.json() as { markdown: string; json: typeof v3Sidecar };
+    expect(data.json.schemaVersion).toBe(3);
     expect(data.json.verdict.partial).toBe(true);
+    expect(data.json.setName).toBe('test-set');
     expect(data.markdown).toContain('Recovery Analysis');
   });
 
@@ -183,17 +188,18 @@ describe('GET /api/recovery/sidecar', () => {
   });
 
   it.each([
-    ['summary', { summary: { prdId: 'invalid-summary' } }, 'Recovery sidecar summary is invalid for prdId: invalid-summary'],
-    ['verdict', { verdict: { verdict: 'unknown', confidence: 'low', rationale: 'bad', completedWork: [], remainingWork: [], risks: [] } }, 'Recovery sidecar verdict is invalid for prdId: invalid-verdict'],
+    ['boundedEvidence', { boundedEvidence: { identity: { prdId: 'invalid-summary' } } }, 'Recovery sidecar v3 contract is invalid for prdId: invalid-summary'],
+    ['verdict', { verdict: { verdict: 'unknown', confidence: 'low', rationale: 'bad', completedWork: [], remainingWork: [], risks: [] } }, 'Recovery sidecar v3 contract is invalid for prdId: invalid-verdict'],
   ])('returns 500 for schema-invalid sidecar %s and remains usable', async (_field, overrides, expectedError) => {
     const prdId = expectedError.includes('invalid-summary') ? 'invalid-summary' : 'invalid-verdict';
-    const sidecar = { ...makeV2Sidecar(prdId), ...overrides };
+    const sidecar = { ...makeV3Sidecar(prdId), ...overrides };
     await writeSidecarFiles(prdId, JSON.stringify(sidecar, null, 2));
 
     const res = await fetchSidecar(prdId);
 
     expect(res.status).toBe(500);
-    await expect(res.json()).resolves.toEqual({ error: expectedError });
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain(expectedError);
     await expect(fetchSidecar('missing-after-invalid-sidecar').then((r) => r.status)).resolves.toBe(404);
   });
 });

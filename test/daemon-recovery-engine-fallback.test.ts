@@ -108,7 +108,7 @@ describe('recovery analyst parse error -> manual-verdict sidecar', () => {
     expect(sidecarContent.verdict.verdict).toBe('manual');
     expect(sidecarContent.verdict.recoveryError).toBeDefined();
     expect(sidecarContent.verdict.recoveryError).toBeTruthy();
-    expect(sidecarContent.schemaVersion).toBe(2);
+    expect(sidecarContent.schemaVersion).toBe(3);
   });
 });
 
@@ -172,10 +172,10 @@ describe('EforgeEngine.recover() with no state.json + populated event db', () =>
 
     const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
 
-    expect(sidecarContent.summary.partial).toBeUndefined();
+    expect(sidecarContent.boundedEvidence.identity.partial).toBeUndefined();
 
-    expect(sidecarContent.summary.failingPlan.planId).toBe('plan-01-foundation');
-    expect(sidecarContent.schemaVersion).toBe(2);
+    expect(sidecarContent.boundedEvidence.failingPlan.planId).toBe('plan-01-foundation');
+    expect(sidecarContent.schemaVersion).toBe(3);
   });
 });
 
@@ -302,8 +302,8 @@ describe('EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst ou
     expect(sidecarContent.verdict.recoveryError).toBeTruthy();
 
 
-    expect(sidecarContent.summary.plans).toHaveLength(7);
-    const planIds: string[] = sidecarContent.summary.plans.map((p: { planId: string }) => p.planId);
+    expect(sidecarContent.boundedEvidence.plans).toHaveLength(7);
+    const planIds: string[] = sidecarContent.boundedEvidence.plans.map((p: { planId: string }) => p.planId);
     const expectedPlanIds = [
       'plan-01-console-shell',
       'plan-02-activity-audit-view',
@@ -316,15 +316,15 @@ describe('EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst ou
     expect(new Set(planIds)).toEqual(new Set(expectedPlanIds));
 
 
-    expect(sidecarContent.summary.failingPlans).toBeDefined();
-    expect(Array.isArray(sidecarContent.summary.failingPlans)).toBe(true);
-    expect(sidecarContent.summary.failingPlans).toHaveLength(2);
-    const failingIds: string[] = sidecarContent.summary.failingPlans.map((p: { planId: string }) => p.planId);
+    expect(sidecarContent.boundedEvidence.failingPlans).toBeDefined();
+    expect(Array.isArray(sidecarContent.boundedEvidence.failingPlans)).toBe(true);
+    expect(sidecarContent.boundedEvidence.failingPlans).toHaveLength(2);
+    const failingIds: string[] = sidecarContent.boundedEvidence.failingPlans.map((p: { planId: string }) => p.planId);
     expect(new Set(failingIds)).toEqual(new Set(['plan-04-queue-view', 'plan-06-static-serving']));
 
 
     const md = await readFile(complete!.sidecarMdPath!, 'utf-8');
-    expect(md).toContain('## Failing Plans');
+    expect(md).toContain('### Failing Plans');
     expect(md).toContain('plan-04-queue-view');
     expect(md).toContain('plan-06-static-serving');
   });
@@ -354,13 +354,13 @@ describe('EforgeEngine.recover() with no state.json AND no event db', () => {
 
     const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
 
-    expect(sidecarContent.summary.partial).toBe(true);
+    expect(sidecarContent.boundedEvidence.identity.partial).toBe(true);
 
     expect(sidecarContent.verdict.verdict).toBe('manual');
     expect(sidecarContent.verdict.recoveryError).toBeDefined();
     expect(typeof sidecarContent.verdict.recoveryError).toBe('string');
     expect(sidecarContent.verdict.recoveryError.length).toBeGreaterThan(0);
-    expect(sidecarContent.schemaVersion).toBe(2);
+    expect(sidecarContent.schemaVersion).toBe(3);
 
     expect(sidecarContent.verdict.recommendationSource).toBe('manual-fallback');
     expect(typeof sidecarContent.verdict.recommendationRationale).toBe('string');

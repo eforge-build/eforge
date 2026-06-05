@@ -47,10 +47,19 @@ function sidecarFixture(verdict: string, confidence: string): ReadSidecarRespons
   return {
     markdown: '# Recovery report\n\nRoot cause analysis for the failed build.',
     json: {
-      schemaVersion: 1,
+      schemaVersion: 3,
       generatedAt: '2026-01-01T00:00:00Z',
-      summary: { prdId: 'failed-prd', setName: 'demo-set' },
+      prdId: 'failed-prd',
+      setName: 'demo-set',
       verdict: { verdict, confidence },
+      report: { operatorSummary: 'Root cause analysis.', recommendedAction: 'Retry.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      boundedEvidence: {
+        identity: { prdId: 'failed-prd', setName: 'demo-set', featureBranch: 'eforge/demo-set', baseBranch: 'main', failedAt: '2026-01-01T00:00:00Z' },
+        plans: [],
+        failingPlan: { planId: 'plan-01' },
+        landedCommits: [],
+        modelsUsed: [],
+      },
     },
   } as unknown as ReadSidecarResponse;
 }
@@ -61,12 +70,10 @@ function applyFixture(verdict: ApplyRecoveryResponse['verdict']): ApplyRecoveryR
 
 function appliedSidecarFixture(): ReadSidecarResponse {
   return {
+    ...sidecarFixture('split', 'high'),
     markdown: '# Recovery report\n\nAlready applied.',
     json: {
-      schemaVersion: 1,
-      generatedAt: '2026-01-01T00:00:00Z',
-      summary: { prdId: 'failed-prd', setName: 'demo-set' },
-      verdict: { verdict: 'split', confidence: 'high' },
+      ...sidecarFixture('split', 'high').json,
       applied: { action: 'split', appliedAt: '2026-01-02T00:00:00Z', successorPrdId: 'successor-prd' },
     },
   } as unknown as ReadSidecarResponse;

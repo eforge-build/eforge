@@ -92,7 +92,7 @@ describe('EforgeEngine.recover', () => {
     expect(mdContent.length).toBeGreaterThan(0);
 
     const parsed = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
-    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.schemaVersion).toBe(3);
     expect(parsed.verdict.verdict).toBe('split');
   });
 
@@ -116,7 +116,7 @@ describe('EforgeEngine.recover', () => {
     await expect(readFile(complete!.sidecarMdPath!, 'utf-8')).resolves.toBeTruthy();
     const json = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
     expect(json.verdict.verdict).toBe('manual');
-    expect(json.schemaVersion).toBe(2);
+    expect(json.schemaVersion).toBe(3);
   });
 
   it.each(['retry', 'split', 'abandon', 'manual'] as const)('writes sidecars for %s verdict', async (verdict) => {
@@ -162,7 +162,7 @@ describe('EforgeEngine.recover', () => {
     expect(complete!.sidecarJsonPath).toBeDefined();
 
     const json = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
-    expect(json.schemaVersion).toBe(2);
+    expect(json.schemaVersion).toBe(3);
     expect(json.verdict.verdict).toBe(verdict);
   });
 
@@ -607,8 +607,7 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
 
     expect(md).toContain('**Verdict Source:** deterministic');
 
-    expect(md).toContain('**Deterministic Rationale:**');
-    expect(md).toMatch(/error_transient_transport|zero tool use/i);
+    expect(md).toMatch(/All failed plans .*error_transient_transport.*zero tool use/i);
   });
 
   it('sidecar JSON records verdictInvalidationReason when analyst verdict fails invariant check', async () => {

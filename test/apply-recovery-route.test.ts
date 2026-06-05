@@ -54,6 +54,33 @@ async function pathExists(p: string): Promise<boolean> {
 
 const RECOVERY_AC_SENTENCE = 'The successor must persist canonical acceptance criteria before recovery queueing completes.';
 
+function recoverySidecarFromLegacy(legacy: { generatedAt?: string; summary: Record<string, unknown>; verdict: Record<string, unknown>; applied?: unknown }): Record<string, unknown> {
+  const summary = legacy.summary;
+  const generatedAt = legacy.generatedAt ?? new Date().toISOString();
+  const prdId = String(summary.prdId);
+  const setName = String(summary.setName ?? prdId);
+  return {
+    schemaVersion: 3,
+    generatedAt,
+    prdId,
+    setName,
+    verdict: legacy.verdict,
+    report: { operatorSummary: String(legacy.verdict.rationale ?? 'Test rationale.'), recommendedAction: 'Apply the test recovery verdict.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName, featureBranch: String(summary.featureBranch ?? `eforge/${setName}`), baseBranch: String(summary.baseBranch ?? 'main'), failedAt: String(summary.failedAt ?? generatedAt) },
+      plans: Array.isArray(summary.plans) ? summary.plans : [],
+      failingPlan: summary.failingPlan ?? { planId: 'plan-01' },
+      landedCommits: Array.isArray(summary.landedCommits) ? summary.landedCommits : [],
+      modelsUsed: Array.isArray(summary.modelsUsed) ? summary.modelsUsed : [],
+      ...(summary.terminalFailure && typeof summary.terminalFailure === 'object' ? { terminalFailure: summary.terminalFailure } : {}),
+      ...(summary.acceptanceValidation && typeof summary.acceptanceValidation === 'object' ? { acceptanceValidation: summary.acceptanceValidation } : {}),
+      ...(Array.isArray(summary.validationCommands) ? { validationCommands: summary.validationCommands } : {}),
+      ...(typeof summary.diffStat === 'string' ? { diffStat: summary.diffStat } : {}),
+    },
+    ...(legacy.applied !== undefined ? { applied: legacy.applied } : {}),
+  };
+}
+
 function bodyWithRecoveryAcceptanceCriteria(body: string): string {
   return `${body.trimEnd()}\n\n## Acceptance Criteria\n\n- ${RECOVERY_AC_SENTENCE}\n`;
 }
@@ -153,7 +180,7 @@ async function seedFailedPrd(
         );
       }
       const sidecarJson = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         generatedAt: new Date().toISOString(),
         summary: {
           prdId,
@@ -172,7 +199,7 @@ async function seedFailedPrd(
       };
       await writeFile(
         join(failedDir, `${prdId}.recovery.json`),
-        JSON.stringify(sidecarJson, null, 2),
+        JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
       );
     }
   }
@@ -460,7 +487,7 @@ describe('POST /api/recover/apply — split missing successor', () => {
       `## Recovery Report\n\nVerdict: split`,
     );
     const sidecarJson = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       summary: {
         prdId,
@@ -487,7 +514,7 @@ describe('POST /api/recover/apply — split missing successor', () => {
     };
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify(sidecarJson, null, 2),
+      JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
     );
     execFileSync('git', ['add', '--', failedDir], { cwd: tmpDir });
     execFileSync('git', ['commit', '-m', `chore: seed split no-successor ${prdId}`], { cwd: tmpDir });
@@ -563,7 +590,7 @@ describe('accept-success recovery routes', () => {
     await writeFile(join(failedDir, `${prdId}.md`), `---\ntitle: ${prdId}\n${opts.landing ? `landing: ${opts.landing}\n` : ''}${opts.landingAutoMerge !== undefined ? `landing_auto_merge: ${opts.landingAutoMerge}\n` : ''}---\n# ${prdId}`);
     await writeFile(join(failedDir, `${prdId}.recovery.md`), '## Recovery');
     const sidecar = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       summary: {
         prdId, setName, featureBranch: feature, baseBranch: 'main',
@@ -575,7 +602,7 @@ describe('accept-success recovery routes', () => {
       },
       verdict: { verdict: 'manual', confidence: 'low', rationale: 'm', completedWork: [], remainingWork: [], risks: [] },
     };
-    await writeFile(join(failedDir, `${prdId}.recovery.json`), JSON.stringify(sidecar, null, 2));
+    await writeFile(join(failedDir, `${prdId}.recovery.json`), JSON.stringify(recoverySidecarFromLegacy(sidecar), null, 2));
   }
 
   function setupOriginRemote(dir: string, name: string): void {

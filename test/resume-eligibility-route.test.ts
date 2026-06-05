@@ -238,12 +238,13 @@ describe('GET /api/recover/resume-eligibility — eligible', () => {
     const resolvedSet = 'resolved-set';
     createFeatureBranchWithArtifacts(tmpDir, resolvedSet);
 
-    // Write a recovery sidecar whose summary.setName differs from the prdId.
+    // Write a recovery sidecar whose top-level setName differs from the prdId.
     const failedDir = join(tmpDir, '.eforge', 'queue', 'failed');
+    const generatedAt = new Date().toISOString();
     await mkdir(failedDir, { recursive: true });
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify({ schemaVersion: 2, summary: { prdId, setName: resolvedSet } }),
+      JSON.stringify({ schemaVersion: 3, generatedAt, prdId, setName: resolvedSet, verdict: { verdict: 'manual', confidence: 'low', rationale: 'resume metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'resume metadata', recommendedAction: 'Resume.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: resolvedSet, featureBranch: `eforge/${resolvedSet}`, baseBranch: 'main', failedAt: generatedAt }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [{ sha: 'abc', subject: 'work', author: 'Test', date: generatedAt }], modelsUsed: [] } }),
     );
 
     await setupServer();

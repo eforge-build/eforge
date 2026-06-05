@@ -36,6 +36,25 @@ function makePlans(
 
 const makeTempDir = useTempDir('eforge-resume-compiled-build-');
 
+function minimalV3Sidecar(prdId: string, setName: string, failingPlanId = 'old-plan'): string {
+  const generatedAt = new Date().toISOString();
+  return JSON.stringify({
+    schemaVersion: 3,
+    generatedAt,
+    prdId,
+    setName,
+    verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] },
+    report: { operatorSummary: 'old', recommendedAction: 'Review manually.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: generatedAt },
+      plans: [],
+      failingPlan: { planId: failingPlanId },
+      landedCommits: [],
+      modelsUsed: [],
+    },
+  });
+}
+
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' }).trim();
 }
@@ -271,8 +290,19 @@ depends_on: ["${prdId}"]
       completions: { [prdId]: { prdId, status: 'failed', artifactAvailable: false, completedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } },
     }));
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
-      summary: { setName },
-      verdict: { verdict: 'resume', confidence: 'high' },
+      schemaVersion: 3,
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      prdId,
+      setName,
+      verdict: { verdict: 'manual', confidence: 'high', rationale: 'Resume queued work.', completedWork: [], remainingWork: [], risks: [] },
+      report: { operatorSummary: 'Resume queued work.', recommendedAction: 'Resume the compiled build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      boundedEvidence: {
+        identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: '2026-01-01T00:00:00.000Z' },
+        plans: [],
+        failingPlan: { planId: 'plan-01' },
+        landedCommits: [],
+        modelsUsed: [],
+      },
     }));
 
     const engine = await EforgeEngine.create({
@@ -336,9 +366,21 @@ created: 2026-01-01
 # Queued Ineligible PRD
 `);
     const originalRecoveryMd = '# Recovery\n';
+    const generatedAt = '2026-01-01T00:00:00.000Z';
     const originalRecoveryJson = JSON.stringify({
-      summary: { setName, failingPlan: { planId: 'old-plan' } },
-      verdict: { verdict: 'resume', confidence: 'high' },
+      schemaVersion: 3,
+      generatedAt,
+      prdId,
+      setName,
+      verdict: { verdict: 'manual', confidence: 'high', rationale: 'Resume rollback fixture.', completedWork: [], remainingWork: [], risks: [] },
+      report: { operatorSummary: 'Resume rollback fixture.', recommendedAction: 'Review manually.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      boundedEvidence: {
+        identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: generatedAt },
+        plans: [],
+        failingPlan: { planId: 'old-plan' },
+        landedCommits: [],
+        modelsUsed: [],
+      },
     });
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), originalRecoveryMd);
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), originalRecoveryJson);
@@ -407,12 +449,12 @@ depends_on: ["${prdId}"]
     });
 
     expect(result.status).toBe('refreshed');
-    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary };
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as any;
     const md = readFileSync(join(failedDir, `${prdId}.recovery.md`), 'utf-8');
-    expect(parsed.summary.setName).toBe(setName);
-    expect(parsed.summary.failingPlan.planId).toBe('plan-07');
-    expect(parsed.summary.featureBranch).toBe(featureBranch);
-    expect(parsed.summary.baseBranch).toBe(baseBranch);
+    expect(parsed.setName).toBe(setName);
+    expect(parsed.boundedEvidence.failingPlan.planId).toBe('plan-07');
+    expect(parsed.boundedEvidence.identity.featureBranch).toBe(featureBranch);
+    expect(parsed.boundedEvidence.identity.baseBranch).toBe(baseBranch);
     expect(md).toContain(featureBranch);
     expect(md).toContain(baseBranch);
   });
@@ -442,9 +484,9 @@ depends_on: ["${prdId}"]
     });
 
     expect(result.status).toBe('degraded');
-    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary; verdict: { verdict: string; confidence: string; rationale: string; partial?: boolean; recoveryError?: string } };
-    expect(parsed.summary.partial).toBe(true);
-    expect(parsed.summary.failingPlan.planId).toBe('unknown');
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as any;
+    expect(parsed.boundedEvidence.identity.partial).toBe(true);
+    expect(parsed.boundedEvidence.failingPlan.planId).toBe('unknown');
     expect(parsed.verdict.verdict).toBe('manual');
     expect(parsed.verdict.confidence).toBe('low');
     expect(parsed.verdict.partial).toBe(true);
@@ -486,7 +528,7 @@ depends_on: ["${prdId}"]
     seedRecoveryRunSelectionFixture(cwd, setName, 'failed');
     seedFailedQueuedResumePrd(cwd, prdId, setName);
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Old recovery for old-plan\n');
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({ schemaVersion: 2, summary: { prdId, setName, failingPlan: { planId: 'old-plan' } }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] } }));
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), minimalV3Sidecar(prdId, setName));
 
     const harness = new RoleRecordingStubHarness([{ error: new Error('resume builder failure') }, { text: recoveryAnalystManualXml('plan-01') }]);
     const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness, config: { landing: { ...DEFAULT_CONFIG.landing, action: 'leave' }, build: { ...DEFAULT_CONFIG.build, postMergeCommands: [], cleanupPlanFiles: false, validation: { ...DEFAULT_CONFIG.build.validation, allowNoCommands: true, noCommandsReason: 'direct failed resume sidecar test' } } } });
@@ -509,10 +551,10 @@ depends_on: ["${prdId}"]
 
     expect(events.some((event) => event.type === 'build:resume:start')).toBe(true);
     expect(events.some((event) => event.type === 'build:resume:complete')).toBe(false);
-    const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary; verdict: { verdict: string; rationale: string } };
+    const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as any;
     const md = readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), 'utf-8');
-    expect(parsed.summary.setName).toBe(setName);
-    expect(parsed.summary.failingPlan.planId).toBe('plan-01');
+    expect(parsed.setName).toBe(setName);
+    expect(parsed.boundedEvidence.failingPlan.planId).toBe('plan-01');
     expect(harness.roles).toEqual(['builder', 'recovery-analyst']);
     expect(parsed.verdict.verdict).toBe('manual');
     expect(parsed.verdict.rationale).toBe('Manual review for plan-01');
@@ -527,7 +569,7 @@ depends_on: ["${prdId}"]
     createFeatureBranchWithArtifacts(cwd, setName);
     seedFailedQueuedResumePrd(cwd, prdId, setName);
     const oldMd = '# Old recovery stays authoritative until manual cleanup\n';
-    const oldJson = JSON.stringify({ schemaVersion: 2, summary: { prdId, setName, failingPlan: { planId: 'old-plan' } }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] } });
+    const oldJson = minimalV3Sidecar(prdId, setName);
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), oldMd);
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), oldJson);
 
@@ -581,9 +623,9 @@ depends_on: ["${prdId}"]
     });
 
     expect(result.status).toBe('degraded');
-    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary; verdict: { verdict: string; confidence: string; recoveryError?: string } };
-    expect(parsed.summary.partial).toBe(true);
-    expect(parsed.summary.failingPlan.planId).toBe('unknown');
+    const parsed = JSON.parse(readFileSync(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as any;
+    expect(parsed.boundedEvidence.identity.partial).toBe(true);
+    expect(parsed.boundedEvidence.failingPlan.planId).toBe('unknown');
     expect(parsed.verdict.verdict).toBe('manual');
     expect(parsed.verdict.confidence).toBe('low');
     expect(parsed.verdict.recoveryError).toBe(reason);
@@ -597,7 +639,7 @@ depends_on: ["${prdId}"]
     seedRecoveryRunSelectionFixture(cwd, setName, 'failed');
     seedFailedQueuedResumePrd(cwd, prdId, setName, 'root');
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Old scheduler recovery\n');
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({ schemaVersion: 2, summary: { prdId, setName, failingPlan: { planId: 'old-plan' } }, verdict: { verdict: 'manual', confidence: 'low', rationale: 'old', completedWork: [], remainingWork: [], risks: [] } }));
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), minimalV3Sidecar(prdId, setName));
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'waiting', 'child-prd.md'), `---
 title: Child PRD
 created: 2026-01-01
@@ -636,10 +678,10 @@ process.exit(1);
           expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
           expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
           expect(existsSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
-          const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as { summary: BuildFailureSummary };
+          const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as any;
           const md = readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), 'utf-8');
-          expect(parsed.summary.setName).toBe(setName);
-          expect(parsed.summary.failingPlan.planId).toBe('plan-07');
+          expect(parsed.setName).toBe(setName);
+          expect(parsed.boundedEvidence.failingPlan.planId).toBe('plan-07');
           expect(harness.calls.some((call) => call.prompt.includes('plan-07'))).toBe(true);
           expect(md).toContain(setName);
           expect(md).toContain('plan-07');

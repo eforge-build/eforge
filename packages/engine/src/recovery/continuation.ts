@@ -17,7 +17,8 @@ export function hasPartialLandedOrMergedWork(summary: BuildFailureSummary): bool
   const plans = Array.isArray(summary.plans) ? summary.plans : [];
   return plans.some((plan) => {
     const mergedAt = (plan as { mergedAt?: unknown }).mergedAt;
-    return typeof mergedAt === 'string' && mergedAt.trim().length > 0;
+    if (typeof mergedAt === 'string' && mergedAt.trim().length > 0) return true;
+    return plan.status === 'merged' || (typeof plan.commitSha === 'string' && plan.commitSha.length > 0);
   });
 }
 

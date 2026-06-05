@@ -99,13 +99,13 @@ export function QueueRecoveryDialog({
     fetchRecoverySidecar({ prdId })
       .then((response) => {
         if (cancelled) return;
-        // A parseable but old/malformed sidecar may be missing verdict/summary.
+        // A parseable but malformed sidecar may be missing v3 verdict/setName.
         // Narrow before treating it as loaded so render never crashes.
         const verdictValue = response?.json?.verdict?.verdict;
-        const setNameValue = response?.json?.summary?.setName;
+        const setNameValue = response?.json?.setName;
         if (typeof verdictValue !== 'string' || typeof setNameValue !== 'string') {
           setReportStatus('error');
-          setReportError('Recovery report is malformed: missing verdict or summary fields.');
+          setReportError('Recovery report is malformed: missing verdict or setName fields.');
           return;
         }
         setSidecar(response);
@@ -159,7 +159,7 @@ export function QueueRecoveryDialog({
   const sidecarVerdict = sidecar?.json.verdict.verdict;
   const effectiveVerdict = asVerdict(sidecarVerdict ?? verdict);
   const effectiveConfidence = asConfidence(sidecar?.json.verdict.confidence ?? confidence);
-  const setName = sidecar?.json.summary.setName;
+  const setName = sidecar?.json.setName;
   const appliedMetadata = sidecar?.json.applied;
 
   const handleApplySidecar = async () => {

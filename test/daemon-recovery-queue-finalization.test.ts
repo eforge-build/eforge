@@ -298,7 +298,7 @@ describe('sidecar verdict source metadata — deterministic path', () => {
     expect(sidecarContent.verdict.verdictInvalidationReason).toBeTruthy();
 
 
-    expect(md).toContain('**⚠ Analyst Verdict Rejected:**');
+    expect(md).toContain('**Analyst Verdict Rejected:**');
     expect(md).toContain('plan-01-alpha');
   });
 });

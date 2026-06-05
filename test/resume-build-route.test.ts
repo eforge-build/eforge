@@ -122,7 +122,7 @@ async function writeFailedPrd(cwd: string, prdId: string, opts: { profile?: stri
   if (opts.setName) {
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify({ schemaVersion: 1, summary: { prdId, setName: opts.setName, featureBranch: `eforge/${opts.setName}`, baseBranch: 'main' } }),
+      JSON.stringify({ schemaVersion: 3, generatedAt: new Date().toISOString(), prdId, setName: opts.setName, verdict: { verdict: 'manual', confidence: 'low', rationale: 'resume metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'resume metadata', recommendedAction: 'Resume.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: opts.setName, featureBranch: `eforge/${opts.setName}`, baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] } }),
       'utf-8',
     );
   }

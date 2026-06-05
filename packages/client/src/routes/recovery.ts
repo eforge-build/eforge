@@ -1,4 +1,4 @@
-import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
+import type { RecoveryVerdict } from '../events.js';
 
 /** POST /api/recover */
 export interface RecoverRequest {
@@ -64,22 +64,66 @@ export type RecoveryAppliedMetadata =
   | RecoveryNonSplitAppliedMetadata
   | AcceptSuccessAppliedSummary;
 
+export interface RecoverySidecarReport {
+  operatorSummary: string;
+  recommendedAction: string;
+  rootFailure?: {
+    planId?: string;
+    scope?: string;
+    stage?: string;
+    message?: string;
+  };
+  keyEvidence: string[];
+  completedWork: string[];
+  remainingWork: string[];
+  risks: string[];
+  evidenceOmissions?: string[];
+}
+
+export interface RecoverySidecarBoundedEvidence {
+  identity: {
+    prdId: string;
+    setName: string;
+    featureBranch: string;
+    baseBranch: string;
+    failedAt: string;
+    partial?: boolean;
+  };
+  plans: Array<{ planId: string; status: string; error?: string; terminalSubtype?: string; commitSha?: string }>;
+  failingPlan: { planId: string; errorMessage?: string; terminalSubtype?: string };
+  failingPlans?: Array<{ planId: string; errorMessage?: string; terminalSubtype?: string }>;
+  landedCommits: Array<{ sha: string; subject: string; author: string; date: string }>;
+  modelsUsed: string[];
+  terminalFailure?: Record<string, string | boolean | number | undefined>;
+  acceptanceValidation?: {
+    passed: boolean;
+    total: number;
+    pass: number;
+    fail: number;
+    unknown: number;
+    verdicts: Array<{ criterion: string; verdict: 'pass' | 'fail' | 'unknown'; evidence: string }>;
+    omittedEvidenceCount?: number;
+  };
+  validationCommands?: Array<{ command: string; exitCode: number; outputPreview?: string; truncated?: boolean }>;
+  landing?: { status: string; action?: string; reason?: string };
+  reviewFailure?: unknown;
+  diffStat?: string;
+  evidenceOmissions?: string[];
+}
+
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
- * Mirrors the current engine sidecar shape produced by `writeRecoverySidecar`
- * (schemaVersion: 2), including the optional `applied` marker.
- *
- * `summary` and `verdict` use the shared wire types from @eforge-build/client so
- * new optional fields (e.g. failingPlans, commitSha, testPassed) are automatically
- * reflected here without requiring separate maintenance of this interface.
- * Legacy sidecars without the new optional fields still parse because all added
- * fields are optional.
+ * Current concise v3 contract: top-level identity, verdict, operator report,
+ * bounded evidence, generated timestamp, and optional durable `applied` marker.
  */
 export interface RecoveryVerdictSidecar {
   schemaVersion: number;
   generatedAt: string;
-  summary: BuildFailureSummary;
+  prdId: string;
+  setName: string;
   verdict: RecoveryVerdict;
+  report: RecoverySidecarReport;
+  boundedEvidence: RecoverySidecarBoundedEvidence;
   /** Durable applied marker; absent on sidecars written before a verdict is applied. */
   applied?: RecoveryAppliedMetadata;
 }
@@ -107,7 +151,7 @@ export interface ResumeBuildResponse {
 
 /**
  * Query params for GET /api/recover/resume-eligibility. When `setName` is omitted
- * the daemon resolves it from the recovery sidecar (`summary.setName`), else `prdId`.
+ * the daemon resolves it from the recovery sidecar (`setName`), else `prdId`.
  */
 export interface ResumeEligibilityRequest {
   prdId: string;

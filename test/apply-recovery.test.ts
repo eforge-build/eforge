@@ -26,6 +26,35 @@ import type { ApplyRecoveryResult } from '@eforge-build/engine/schemas';
 const execAsync = promisify(execFile);
 const RECOVERY_AC_SENTENCE = 'The successor must persist canonical acceptance criteria before recovery queueing completes.';
 
+function recoverySidecarFromLegacy(legacy: { generatedAt?: string; summary: Record<string, unknown>; verdict: Record<string, unknown>; applied?: unknown }): Record<string, unknown> {
+  const summary = legacy.summary;
+  const generatedAt = legacy.generatedAt ?? new Date().toISOString();
+  const prdId = String(summary.prdId);
+  const setName = String(summary.setName ?? prdId);
+  return {
+    schemaVersion: 3,
+    generatedAt,
+    prdId,
+    setName,
+    verdict: legacy.verdict,
+    report: { operatorSummary: String(legacy.verdict.rationale ?? 'Test rationale.'), recommendedAction: 'Apply the test recovery verdict.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName, featureBranch: String(summary.featureBranch ?? `eforge/${setName}`), baseBranch: String(summary.baseBranch ?? 'main'), failedAt: String(summary.failedAt ?? generatedAt), ...(summary.partial !== undefined ? { partial: summary.partial } : {}) },
+      plans: Array.isArray(summary.plans) ? summary.plans : [],
+      failingPlan: summary.failingPlan ?? { planId: 'plan-01' },
+      ...(Array.isArray(summary.failingPlans) ? { failingPlans: summary.failingPlans } : {}),
+      landedCommits: Array.isArray(summary.landedCommits) ? summary.landedCommits : [],
+      modelsUsed: Array.isArray(summary.modelsUsed) ? summary.modelsUsed : [],
+      ...(summary.terminalFailure !== undefined ? { terminalFailure: summary.terminalFailure } : {}),
+      ...(summary.acceptanceValidation !== undefined ? { acceptanceValidation: summary.acceptanceValidation } : {}),
+      ...(summary.validationCommands !== undefined ? { validationCommands: summary.validationCommands } : {}),
+      ...(summary.landing !== undefined ? { landing: summary.landing } : {}),
+      ...(typeof summary.diffStat === 'string' ? { diffStat: summary.diffStat } : {}),
+    },
+    ...(legacy.applied !== undefined ? { applied: legacy.applied } : {}),
+  };
+}
+
 function bodyWithRecoveryAcceptanceCriteria(body: string): string {
   return `${body.trimEnd()}\n\n## Acceptance Criteria\n\n- ${RECOVERY_AC_SENTENCE}\n`;
 }
@@ -104,7 +133,7 @@ async function seedFailedPrd(
     );
   }
   const sidecarJson = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date().toISOString(),
     summary: {
       prdId,
@@ -123,7 +152,7 @@ async function seedFailedPrd(
   };
   await writeFile(
     join(failedDir, `${prdId}.recovery.json`),
-    JSON.stringify(sidecarJson, null, 2),
+    JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
     'utf-8',
   );
 
@@ -633,7 +662,7 @@ describe('applyRecovery — error paths', () => {
 
     // Write a split verdict with NO suggestedSuccessorPrd
     const sidecarJson = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       summary: {
         prdId,
@@ -659,7 +688,7 @@ describe('applyRecovery — error paths', () => {
     };
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify(sidecarJson, null, 2),
+      JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
       'utf-8',
     );
 
@@ -743,7 +772,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     }
 
     const sidecarJson = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       summary: {
         prdId,
@@ -765,7 +794,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
 
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify(sidecarJson, null, 2),
+      JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
       'utf-8',
     );
 
@@ -814,7 +843,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
 
     // Sidecar with verdictInvalidationReason from analyst invalidation path
     const sidecarJson = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       summary: {
         prdId,
@@ -844,7 +873,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
 
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify(sidecarJson, null, 2),
+      JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
       'utf-8',
     );
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
@@ -872,7 +901,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
 
     // Classic v2 sidecar without any plan-02 metadata
     const legacySidecarJson = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       summary: {
         prdId,
@@ -900,7 +929,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
 
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify(legacySidecarJson, null, 2),
+      JSON.stringify(recoverySidecarFromLegacy(legacySidecarJson), null, 2),
       'utf-8',
     );
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
@@ -956,7 +985,7 @@ describe('applyRecovery — split idempotency', () => {
     expect(applied!.successorPrdId).toBe(result.successorPrdId);
     // Unrelated sidecar fields are preserved.
     expect(json.schemaVersion).toBeDefined();
-    expect(json.summary).toBeDefined();
+    expect(json.boundedEvidence).toBeDefined();
     expect(json.verdict).toBeDefined();
   });
 

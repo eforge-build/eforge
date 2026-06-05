@@ -1,6 +1,4 @@
 import { join, resolve } from 'node:path';
-import { readFile } from 'node:fs/promises';
-
 import { validatePlanSetName } from '../plan.js';
 import type { BuildFailureSummary } from '../events.js';
 import {
@@ -8,6 +6,7 @@ import {
   type RequeueCompiledResumeResult,
 } from '../queue/resume-cascade.js';
 import { buildFailureSummary } from '../recovery/failure-summary.js';
+import { tryReadRecoverySidecarProjection } from '../recovery/sidecar-read.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
 
 export interface QueuedCompiledResumeMetadata {
@@ -115,17 +114,12 @@ export async function prepareFailedPrdForQueuedCompiledResume(
 }
 
 async function readResumeSetName(opts: { prdId: string; failedDir: string }): Promise<string> {
-  const sidecarSummary = await readRecoverySidecarSummary(opts.failedDir, opts.prdId);
-  return nonEmpty(sidecarSummary?.setName) ?? opts.prdId;
+  const projection = await tryReadRecoverySidecarProjection(opts.failedDir, opts.prdId);
+  return nonEmpty(projection?.sidecar.setName) ?? opts.prdId;
 }
 
 async function readRecoverySidecarSummary(failedDir: string, prdId: string): Promise<BuildFailureSummary | undefined> {
-  try {
-    const parsed = JSON.parse(await readFile(join(failedDir, `${prdId}.recovery.json`), 'utf-8')) as { summary?: BuildFailureSummary };
-    return parsed.summary;
-  } catch {
-    return undefined;
-  }
+  return (await tryReadRecoverySidecarProjection(failedDir, prdId))?.summary;
 }
 
 function nonEmpty(value: string | undefined): string | undefined {
