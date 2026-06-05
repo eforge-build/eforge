@@ -310,6 +310,75 @@ describe('authoritative terminal failure precedence', () => {
     expect(summary.acceptanceValidation!.conflicts).toHaveLength(1);
   });
 
+  it('preserves authoritative acceptance-validation details when PRD validation also failed', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-auth-acceptance-prd-failed.db');
+    const db = openDatabase(dbPath);
+    const failedVerdict = { criterion: 'AC-010 reports the acceptance regression', verdict: 'fail', evidence: 'Validation command showed the regression remained' };
+    const acceptanceConflict = {
+      criterion: 'AC-010 reports the acceptance regression',
+      evidence: 'Acceptance text conflicts with the PRD recovery behavior',
+      conflictsWith: 'PRD requires preserving authoritative recovery evidence',
+      scope: 'unknown',
+      recommendedAction: 'manual_review',
+    };
+
+    makeBaseRun(db, 'run-auth-acceptance-prd-failed-01', 'auth-acceptance-prd-failed-set', dir);
+    db.insertEvent({
+      runId: 'run-auth-acceptance-prd-failed-01',
+      type: 'prd_validation:complete',
+      data: JSON.stringify({ type: 'prd_validation:complete', passed: false, gaps: [{ description: 'Missing PRD recovery evidence requirement' }] }),
+      timestamp: new Date('2026-01-01T10:05:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-auth-acceptance-prd-failed-01',
+      type: 'acceptance_validation:complete',
+      data: JSON.stringify({
+        type: 'acceptance_validation:complete',
+        passed: false,
+        verdicts: [failedVerdict, { criterion: 'AC-011 remains unknown', verdict: 'unknown', evidence: 'Manual review required' }],
+        acceptanceConflicts: [acceptanceConflict],
+      }),
+      timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-auth-acceptance-prd-failed-01',
+      type: 'build:terminal-failure',
+      data: JSON.stringify({
+        type: 'build:terminal-failure',
+        runId: 'run-auth-acceptance-prd-failed-01',
+        failure: {
+          scope: 'acceptance-validation',
+          message: 'Acceptance criteria validation failed',
+          authoritative: true,
+          sourceEventType: 'acceptance_validation:complete',
+          sourceEventId: 2,
+          sourceEventTimestamp: new Date('2026-01-01T10:20:00.000Z').toISOString(),
+          acceptanceValidationPassed: false,
+        },
+      }),
+      timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString(),
+    });
+    insertPhaseEnd(db, 'run-auth-acceptance-prd-failed-01', 'failed');
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'auth-acceptance-prd-failed-set', prdId: 'auth-acceptance-prd-failed-prd', cwd: dir, dbPath });
+
+    expect(summary.terminalFailure).toEqual(expect.objectContaining({
+      scope: 'acceptance-validation',
+      authoritative: true,
+      sourceEventType: 'acceptance_validation:complete',
+    }));
+    expect(summary.partial).toBeUndefined();
+    expect(summary.acceptanceValidation).toBeDefined();
+    expect(summary.acceptanceValidation!.passed).toBe(false);
+    expect(summary.acceptanceValidation!.verdicts).toContainEqual(failedVerdict);
+    expect(summary.acceptanceValidation!.conflicts).toContainEqual(acceptanceConflict);
+    expect(summary.failingPlan.planId).not.toBe('prd-validation');
+  });
+
   it('emits placeholder acceptance-validation evidence when authoritative source lookup cannot parse a source row', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
