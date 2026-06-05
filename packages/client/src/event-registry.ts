@@ -16,8 +16,8 @@
  *   });
  *
  * The _Exhaustive type check at the bottom verifies every EforgeEvent['type']
- * has an entry, so adding a new event type to events.schemas.ts forces an
- * update here.
+ * has an entry, so adding a new event variant to the exported schema/type
+ * contract forces an update here.
  */
 
 import type { EforgeEvent, StackLayerWire } from './events.js';

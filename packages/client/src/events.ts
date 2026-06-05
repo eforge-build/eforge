@@ -1,9 +1,9 @@
 /**
  * Wire event types for the eforge daemon SSE stream.
  *
- * Types are derived from TypeBox schemas in `events.schemas.ts` (the wire-protocol
- * source of truth) and re-exported here so engine code continues to import from
- * './events.js' without changes.
+ * Types are derived from TypeBox schemas exposed by `events.schemas.ts` (a
+ * compatibility facade over `events/` implementation modules) and re-exported
+ * here so engine code continues to import from './events.js' without changes.
  *
  * The engine re-exports these types from `@eforge-build/client` so callers
  * that already depend on the client do not need to add the engine as a

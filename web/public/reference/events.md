@@ -1,10 +1,10 @@
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/client/src/events.schemas.ts -->
+<!-- Source: packages/client/src/events.schemas.ts (facade), packages/client/src/events/ -->
 
 # eforge Event Protocol Reference
 
 All events emitted on the eforge SSE stream conform to the `EforgeEvent` discriminated
-union defined in `packages/client/src/events.schemas.ts`.
+union exposed by `packages/client/src/events.schemas.ts` and implemented under `packages/client/src/events/`.
 
 Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected
 with one of the variant objects below. The `type` field discriminates the variant.
