@@ -249,8 +249,8 @@ export interface EforgeExtensionAPI {
    *   name: 'my-ext:context-injector',
    *   description: 'Injects project context into PRD content',
    *   async enrich({ content, ctx }) {
-   *     const extra = await ctx.exec.run('cat', ['CONTEXT.md']);
-   *     return { content: content + '\n\n' + extra.stdout };
+   *     // During enqueue preprocessing, ctx.exec.run is unavailable.
+   *     return { content: content + `\n\nSource kind: ${ctx.sourceKind}` };
    *   },
    * });
    * ```

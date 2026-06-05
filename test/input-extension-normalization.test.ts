@@ -60,6 +60,7 @@ function makeEnricher(
   name: string,
   enrichImpl: (content: string) => Promise<unknown>,
 ): PrdEnricherRegistrationLike {
+  const wrapped = (input: { content: string }) => enrichImpl(input.content);
   return {
     extensionName: `ext-enricher-${name}`,
     extensionPath: `/path/to/ext-enricher-${name}`,
@@ -67,7 +68,7 @@ function makeEnricher(
     value: {
       name,
       description: `${name} enricher`,
-      enrich: enrichImpl as unknown as (...args: never[]) => unknown,
+      enrich: wrapped as unknown as (...args: never[]) => unknown,
     },
   };
 }
@@ -711,6 +712,42 @@ describe('preprocessBuildSource — agentProfile from session-plan file', () => 
     });
 
     expect(result.agentProfile).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Input source transform context
+// ---------------------------------------------------------------------------
+
+describe('preprocessBuildSource — input-source context', () => {
+  it('passes cwd, source provenance, and adapter metadata while one-argument adapters still work', async () => {
+    const tmpDir = makeTempDir();
+    let received: Record<string, unknown> | undefined;
+    const contextFetch = (async (id: string, ctx?: unknown) => {
+      received = ctx as Record<string, unknown>;
+      return `ctx:${id}`;
+    }) as unknown as (sourceId: string) => Promise<unknown>;
+    const contextAware = makeInputSource('ctx', contextFetch);
+    const oneArg = makeInputSource('one', async (id) => `one:${id}`);
+
+    await expect(preprocessBuildSource({
+      source: 'eforge://input/ctx/DOC-1', inputSources: [contextAware], prdEnrichers: [], cwd: tmpDir, timeoutMs: 5000,
+    })).resolves.toMatchObject({ content: 'ctx:DOC-1' });
+    expect(received).toMatchObject({
+      cwd: tmpDir,
+      originalSource: 'eforge://input/ctx/DOC-1',
+      sourceKind: 'extension-reference',
+      adapterId: 'ctx',
+      sourceId: 'DOC-1',
+      extensionName: 'ext-ctx',
+      extensionPath: '/path/to/ext-ctx',
+    });
+    expect(typeof received?.logger).toBe('object');
+    expect(typeof received?.exec).toBe('object');
+
+    await expect(preprocessBuildSource({
+      source: 'eforge://input/one/DOC-2', inputSources: [oneArg], prdEnrichers: [], cwd: tmpDir, timeoutMs: 5000,
+    })).resolves.toMatchObject({ content: 'one:DOC-2' });
   });
 });
 

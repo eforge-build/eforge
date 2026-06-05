@@ -112,6 +112,8 @@ export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
  * not create separate monitor event variants in this scope.
  */
 export interface EventHookContext extends EforgeExtensionContext {
+  /** Absolute path to the project working directory for lifecycle side effects. */
+  cwd: string;
   /**
    * The raw event that triggered the hook (same object as the handler's first
    * argument, provided here for convenience in shared helper functions).
@@ -289,6 +291,12 @@ export interface FinalMergePolicyGateContext extends EforgeExtensionContext {
 export interface InputTransformContext extends EforgeExtensionContext {
   /** Absolute path to the project working directory. */
   cwd: string;
+  /** Source identifier for the current build input, when known. */
+  sourceId?: string;
+  /** Extension name for the active adapter/enricher invocation, when known. */
+  extensionName?: string;
+  /** Extension path for the active adapter/enricher invocation, when known. */
+  extensionPath?: string;
   /** The raw input content as originally provided (before any transformations). */
   originalSource: string;
   /**
@@ -305,8 +313,8 @@ export interface InputTransformContext extends EforgeExtensionContext {
    */
   sourcePath?: string;
   /**
-   * The adapter or source identifier that produced this input, when
-   * `sourceKind` is `'extension-reference'`. Absent for inline or file sources.
+   * The adapter name that produced this input, when `sourceKind` is
+   * `'extension-reference'`. Absent for inline or file sources.
    */
   adapterId?: string;
 }

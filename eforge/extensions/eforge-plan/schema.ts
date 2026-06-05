@@ -101,12 +101,14 @@ export const TraceLandingResultSchema = Type.Union([
     commitSha: Type.Optional(Type.String()),
     status: Type.String(),
     landedAt: Type.Optional(Type.String()),
+    prUrl: Type.Optional(Type.String()),
   }),
   Type.Object({
     featureBranch: Type.Optional(Type.String()),
     commitSha: Type.String(),
     status: Type.String(),
     landedAt: Type.Optional(Type.String()),
+    prUrl: Type.Optional(Type.String()),
   }),
 ]);
 
@@ -115,6 +117,10 @@ export const TraceLastEventMetadataSchema = Type.Object({
   timestamp: Type.Optional(Type.String()),
   sessionId: Type.Optional(Type.String()),
   runId: Type.Optional(Type.String()),
+  source: Type.Optional(Type.String()),
+  filePath: Type.Optional(Type.String()),
+  path: Type.Optional(Type.String()),
+  id: Type.Optional(Type.String()),
   cursor: Type.Optional(Type.Number()),
 });
 

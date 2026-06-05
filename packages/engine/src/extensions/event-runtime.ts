@@ -30,6 +30,7 @@ export interface EventHookExecResult {
 
 export interface EventHookContext {
   event: EforgeEvent;
+  cwd: string;
   extensionName: string;
   extensionPath: string;
   pattern: string;
@@ -107,6 +108,7 @@ function createContext(
 ): EventHookContext {
   return {
     event,
+    cwd: options.cwd,
     extensionName: registration.extensionName,
     extensionPath: registration.extensionPath,
     pattern: registration.value.pattern,

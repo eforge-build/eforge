@@ -121,7 +121,7 @@ export async function upsertBuildRun(
   epicId?: string,
 ): Promise<TraceSidecar> {
   return updateTrace(cwd, itemId, epicId, (trace) => {
-    trace.buildRuns = upsertBy(trace.buildRuns, entry, (candidate) => candidate.sessionId === entry.sessionId);
+    trace.buildRuns = upsertBy(trace.buildRuns, entry, (candidate) => candidate.runId === entry.runId);
     trace.buildRunIds = uniqueStrings(trace.buildRuns.map((candidate) => candidate.runId));
     trace.buildSessionIds = uniqueStrings([
       ...trace.buildRuns.map((candidate) => candidate.sessionId),
@@ -271,13 +271,18 @@ function normalizeLandingResult(record: Record<string, unknown>): TraceLandingRe
   if (!status || (!featureBranch && !commitSha)) {
     return [];
   }
-  return [{ status, ...(featureBranch ? { featureBranch } : {}), ...(commitSha ? { commitSha } : {}), ...optionalTraceFields(record, ['landedAt']) }];
+  const landedAt = stringOrUndefined(record.landedAt);
+  const prUrl = stringOrUndefined(record.prUrl);
+  if (featureBranch) {
+    return [{ status, featureBranch, ...(commitSha ? { commitSha } : {}), ...(landedAt ? { landedAt } : {}), ...(prUrl ? { prUrl } : {}) }];
+  }
+  return commitSha ? [{ status, commitSha, ...(landedAt ? { landedAt } : {}), ...(prUrl ? { prUrl } : {}) }] : [];
 }
 
 function normalizeLastEventMetadata(value: unknown): TraceLastEventMetadata | undefined {
   const record = asRecord(value);
   const lastEvent = {
-    ...optionalTraceFields(record, ['type', 'timestamp', 'sessionId', 'runId']),
+    ...optionalTraceFields(record, ['type', 'timestamp', 'sessionId', 'runId', 'source', 'filePath', 'path', 'id']),
     ...(typeof record.cursor === 'number' && Number.isFinite(record.cursor) ? { cursor: record.cursor } : {}),
   };
   return Object.keys(lastEvent).length > 0 ? lastEvent : undefined;

@@ -389,11 +389,13 @@ export async function preprocessBuildSource(
     }
 
     // Fetch with timeout
-    const fetchFn = registration.value.fetch as unknown as (sourceId: string) => Promise<unknown>;
+    const fetchFn = registration.value.fetch as unknown as (sourceId: string, ctx?: Record<string, unknown>) => Promise<unknown>;
 
     let fetchResult: unknown;
     try {
-      fetchResult = await withTimeout(() => fetchFn(sourceId), timeoutMs);
+      // --- eforge:region plan-02-eforge-plan-registration ---
+      fetchResult = await withTimeout(() => fetchFn(sourceId, { cwd, originalSource: source, sourceKind: 'extension-reference', adapterId: adapterName, sourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath, logger: { debug() {}, info() {}, warn() {}, error() {} }, exec: { async run() { throw new Error('Input transform exec.run is unavailable during preprocessing'); } } }), timeoutMs);
+      // --- eforge:endregion plan-02-eforge-plan-registration ---
     } catch (err) {
       if (err instanceof TimeoutError) {
         const failedEvent: InputSourceFailedEvent = {
@@ -502,11 +504,12 @@ export async function preprocessBuildSource(
 
   for (const registration of prdEnrichers) {
     const inputLength = content.length;
-    const enrichFn = registration.value.enrich as unknown as (content: string) => Promise<unknown>;
+    const enrichFn = registration.value.enrich as unknown as (input: Record<string, unknown>) => Promise<unknown>;
+    const ctx = { cwd, originalSource: source, sourceKind: ref ? 'extension-reference' : sourcePath ? 'file' : 'inline', sourcePath, adapterId: provenance.adapterName, sourceId: enricherSourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath, logger: { debug() {}, info() {}, warn() {}, error() {} }, exec: { async run() { throw new Error('Input transform exec.run is unavailable during preprocessing'); } } };
 
     let enrichResult: unknown;
     try {
-      enrichResult = await withTimeout(() => enrichFn(content), timeoutMs);
+      enrichResult = await withTimeout(() => enrichFn({ content, sourceId: enricherSourceId, ctx }), timeoutMs);
     } catch (err) {
       if (err instanceof TimeoutError) {
         events.push({
