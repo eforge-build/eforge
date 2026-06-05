@@ -13,7 +13,7 @@ Backlog items and local epics are Markdown files under:
 .backlog/epics/<epic-id>.md
 ```
 
-`.backlog/` is gitignored, so this is local working memory by default. The item and epic formats are frontmatter plus human-readable sections.
+`.backlog/` is gitignored, so this is local working memory by default. The item and epic formats are frontmatter plus human-readable sections. `/backlog analyze-all` also asks the agent to refresh the volatile structured recommendation artifact `.backlog/recommendations.json` after each full semantic analysis pass, then automatically regenerates and opens the same HTML dashboard produced by `/backlog html` with those recommendations included.
 
 Item frontmatter supports dependency tracking with `depends_on`, an array of backlog item IDs. An item is shown as blocked until each dependency is `shipped` or `superseded`.
 
@@ -57,7 +57,7 @@ Epic human-readable sections:
 /backlog epic unlink <id>
 /backlog review                  Show open, blocked, and analysis-due counts
 /backlog analyze <id>            Ask the agent to analyze one item against git/docs/code evidence
-/backlog analyze-all             Ask the agent to analyze every open item
+/backlog analyze-all             Ask the agent to analyze every open item, refresh .backlog/recommendations.json, then regenerate/open the HTML view
 /backlog promote <id>            Prefill the editor with an /eforge:plan prompt
 /backlog curate                  Ask the agent to review and curate backlog items without enqueuing builds
 ```
@@ -66,7 +66,7 @@ Slash-command completions are registered for the top-level subcommands above and
 
 The list browser supports `↑↓/j/k` navigation, `enter` to view the selected item with markdown formatting, `b`/`←` to return from detail view, `/` to search from the list view, `r` to toggle ready-only filtering, `a` to analyze the selected item, `p` to promote it, `s` to choose a status, `!` to choose a priority, and `q`/`esc` to close. Status and priority changes use in-browser pickers and keep the current detail view open after saving.
 
-The HTML view is a self-contained, offline dashboard with summary counts, client-side search/filtering, local epic chips, dependency/dependent cards, blocked and ready highlighting, missing epic/dependency markers, and cycle warnings when detected. It is written under `.backlog/view/`, opened automatically by default, and remains local/gitignored with the rest of `.backlog/`.
+The HTML view is a self-contained, offline dashboard with summary counts, client-side search/filtering, local epic chips, dependency/dependent cards, blocked and ready highlighting, missing epic/dependency markers, and cycle warnings when detected. Cards can be grouped three ways via the `Status` / `Epic` / `Recommended` toggle. When `.backlog/recommendations.json` is present it also renders a recommendations panel (summary plus a numbered next-up rail, with parallel lanes, blocked chains, and rationale in a collapsible disclosure) and projects those recommendations onto the board: a `Next N` rank badge and parallel-lane chips on each card, the unblock action on blocked cards, and a `Recommended` grouping mode with Next up / Blocked / Other open / Closed columns. It is written under `.backlog/view/`, opened automatically by default, and remains local/gitignored with the rest of `.backlog/`.
 
 ## Tests
 
@@ -89,5 +89,6 @@ The extension also registers tools for agent-assisted backlog maintenance:
 - `backlog_epic_show`
 - `backlog_epic_update`
 - `backlog_epic_link`
+- `backlog_write_recommendations`
 
-Use these for lightweight capture and curation only. `backlog_list` accepts `readyOnly`, `blockedOnly`, and `epic`; `backlog_add` accepts `dependsOn` and `epic`; `backlog_update` accepts `dependsOn`, `addDependsOn`, `removeDependsOn`, and `epic`. `backlog_epic_link` links one item to one local epic or unlinks it when no epic ID is provided. Promote an item to `/eforge:plan` when it becomes buildable work.
+Use these for lightweight capture and curation only. `backlog_list` accepts `readyOnly`, `blockedOnly`, and `epic`; `backlog_add` accepts `dependsOn` and `epic`; `backlog_update` accepts `dependsOn`, `addDependsOn`, `removeDependsOn`, and `epic`. `backlog_epic_link` links one item to one local epic or unlinks it when no epic ID is provided. `backlog_write_recommendations` is only for the volatile `.backlog/recommendations.json` artifact and should be used at the end of `/backlog analyze-all`. Promote an item to `/eforge:plan` when it becomes buildable work.

@@ -104,6 +104,16 @@ describe('runGapCloser two-stage flow', () => {
     expect(backend.calls[0].tools).toBe('coding');
   });
 
+  it('emits the plan generation gap-closer agent on the gap-close lane', async () => {
+    const backend = new StubHarness([{ text: '## Overview\nFix it\n\n## Files\n- src/a.ts: change' }]);
+
+    const events = await collectEvents(runGapCloser(makeOptions(backend)));
+
+    const starts = filterEvents(events, 'agent:start').filter((event) => event.agent === 'gap-closer');
+    expect(starts).toHaveLength(1);
+    expect(starts[0].planId).toBe('gap-close');
+  });
+
   it('passes generated plan to runBuildPipeline with planId gap-close', async () => {
     const backend = new StubHarness([{ text: '## Overview\nFix dark mode\n\n## Files\n- src/theme.ts: Add dark classes' }]);
 

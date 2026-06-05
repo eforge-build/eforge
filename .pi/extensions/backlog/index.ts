@@ -1,10 +1,10 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, type AutocompleteItem } from "@earendil-works/pi-tui";
 import { showBacklogBrowser, showBacklogItem, showPanel, type BacklogBrowserAction, type BacklogBrowserMutationHandlers } from "./browser";
 import { handleEpicCommand, registerEpicTools } from "./epic-runtime";
 import { validateLocalEpic } from "./epic-store";
 import { writeBacklogHtml } from "./html";
-import { AddParams, ListParams, ShowParams, UpdateParams } from "./schemas";
+import { AddParams, ListParams, ShowParams, UpdateParams, RecommendationsParams } from "./schemas";
 import {
 	BACKLOG_ACTIONS,
 	CLOSED_STATUSES,
@@ -34,6 +34,7 @@ import {
 	type BacklogStatus,
 	type BacklogSummary,
 } from "./store";
+import { RECOMMENDATIONS_RELATIVE_PATH, buildRecommendationInstructions, recommendationsPath, writeRecommendations } from "./recommendations";
 
 // --- eforge:region command-runtime ---
 async function handleBrowserAction(pi: ExtensionAPI, ctx: ExtensionContext, action: BacklogBrowserAction | undefined): Promise<void> {
@@ -132,7 +133,7 @@ function backlogArgumentCompletions(prefix: string): AutocompleteItem[] | null {
 			epic: "Manage local backlog epics and item links",
 			review: "Show review-due summary",
 			analyze: "Ask the agent to analyze one item",
-			"analyze-all": "Ask the agent to analyze every open item",
+			"analyze-all": "Analyze every open item and refresh backlog recommendations",
 			promote: "Prefill /eforge:plan for an item",
 			curate: "Ask the agent to curate backlog items",
 		});
@@ -311,6 +312,8 @@ function buildPromotePrompt(item: BacklogItem): string {
 	return `/eforge:plan ${item.title}\n\nBacklog source: ${item.id}\n\nClaim:\n${claim || "TBD"}\n\nUse the backlog item at .backlog/items/${item.id}.md as context. Validate assumptions before marking the plan ready.`;
 }
 
+const ANALYZE_ALL_SCOPE = "Analyze every open backlog item.";
+
 function buildAnalyzeInstructions(scope: string): string {
 	return `${scope}\n\nAnalyze backlog staleness semantically, not by date alone. The stale_after field is only a review reminder.\n\nFor each item you analyze:\n- call backlog_show before changing it;\n- use last_checked, updated, or created as the start point for git/history inspection;\n- inspect recent git history, docs, and relevant code when cheap;\n- decide whether the item is still valid, shipped, superseded, genuinely stale, blocked, or needs claim/evidence/tag/dependency updates;\n- use backlog_update with evidence for any status, claim, tag, dependency, lastChecked, or staleAfter changes;\n- if still valid, set lastChecked to ${today()} and choose a future staleAfter/review date;\n- do not enqueue builds.\n\nStart with backlog_list includeClosed=false unless a specific item ID is provided.`;
 }
@@ -319,8 +322,8 @@ function buildAnalyzePrompt(id: string): string {
 	return buildAnalyzeInstructions(`Analyze backlog item ${id}.`);
 }
 
-function buildAnalyzeAllPrompt(): string {
-	return buildAnalyzeInstructions("Analyze every open backlog item.");
+export function buildAnalyzeAllPrompt(): string {
+	return `${buildAnalyzeInstructions(ANALYZE_ALL_SCOPE)}\n\n${buildRecommendationInstructions()}\n\nAfter the analysis turn completes, the backlog extension will automatically run the equivalent of /backlog html to refresh and open the local HTML view.`;
 }
 
 function buildCuratorPrompt(): string {
@@ -329,6 +332,29 @@ function buildCuratorPrompt(): string {
 
 function createDetails(item: BacklogItem | BacklogItem[] | BacklogSummary | BacklogSummary[]): Record<string, unknown> {
 	return { backlog: item };
+}
+
+function messagesContainAnalyzeAllPrompt(messages: unknown): boolean {
+	return textFromUnknown(messages).includes(ANALYZE_ALL_SCOPE);
+}
+
+function textFromUnknown(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (Array.isArray(value)) return value.map(textFromUnknown).join("\n");
+	if (!value || typeof value !== "object") return "";
+	const record = value as Record<string, unknown>;
+	return [record.text, record.content, record.message].map(textFromUnknown).filter(Boolean).join("\n");
+}
+
+async function refreshHtmlAfterAnalyzeAll(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+	try {
+		const result = await writeBacklogHtml(ctx.cwd);
+		await openGeneratedHtml(pi, ctx, result.path);
+		ctx.ui.notify(`Backlog HTML view refreshed after analyze-all: ${result.path}`, "info");
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		ctx.ui.notify(`Could not refresh backlog HTML view after analyze-all: ${message}`, "warning");
+	}
 }
 
 export default function backlogExtension(pi: ExtensionAPI): void {
@@ -448,7 +474,37 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 		},
 	});
 
+	pi.registerTool({
+		name: "backlog_write_recommendations",
+		label: "Backlog Recommendations",
+		description: "Write the volatile .backlog/recommendations.json artifact after backlog analysis.",
+		promptSnippet: "Refresh .backlog/recommendations.json with current structured backlog recommendations.",
+		promptGuidelines: [
+			"Use backlog_write_recommendations as the final step of /backlog analyze-all after semantic item analysis and backlog_update calls are complete.",
+			"Do not use backlog_write_recommendations for durable backlog capture; use it only for the volatile recommendations artifact.",
+		],
+		parameters: RecommendationsParams,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const result = await withFileMutationQueue(recommendationsPath(ctx.cwd), () => writeRecommendations(ctx.cwd, params.recommendations));
+			return {
+				content: [{ type: "text", text: `Updated ${result.relativePath} (${result.bytes} bytes)` }],
+				details: { recommendations: result },
+			};
+		},
+		renderCall(_args, theme) {
+			return new Text(`${theme.fg("toolTitle", theme.bold("backlog_write_recommendations "))}${theme.fg("muted", RECOMMENDATIONS_RELATIVE_PATH)}`, 0, 0);
+		},
+		renderResult(result, _options, theme) {
+			const recommendations = (result.details as { recommendations?: { relativePath?: string; bytes?: number } } | undefined)?.recommendations;
+			return new Text(recommendations ? `${theme.fg("success", "✓")} ${theme.fg("accent", recommendations.relativePath ?? RECOMMENDATIONS_RELATIVE_PATH)} ${theme.fg("muted", `${recommendations.bytes ?? 0} bytes`)}` : "Recommendations updated", 0, 0);
+		},
+	});
+
 	registerEpicTools(pi);
+
+	pi.on("agent_end", async (event, ctx) => {
+		if (messagesContainAnalyzeAllPrompt(event.messages)) await refreshHtmlAfterAnalyzeAll(pi, ctx);
+	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		const items = await listItems(ctx.cwd).catch(() => []);

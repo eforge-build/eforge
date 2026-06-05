@@ -26,6 +26,42 @@ export const ListParams = Type.Object({
 
 export const ShowParams = Type.Object({ id: Type.String() });
 
+const RecommendationItemRefParams = Type.Object({
+	id: Type.String({ description: "Backlog item ID" }),
+	title: Type.Optional(Type.String()),
+	rationale: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const RecommendationsParams = Type.Object({
+	recommendations: Type.Object({
+		schemaVersion: Type.Literal(1),
+		refreshedAt: Type.String({ description: "YYYY-MM-DD date or ISO timestamp" }),
+		summary: Type.Optional(Type.String()),
+		activeWork: Type.Array(RecommendationItemRefParams),
+		readyCandidates: Type.Array(RecommendationItemRefParams),
+		recommendedNextSequence: Type.Array(Type.Object({
+			id: Type.String({ description: "Backlog item ID" }),
+			rank: Type.Integer({ minimum: 1 }),
+			title: Type.Optional(Type.String()),
+			rationale: Type.Optional(Type.String()),
+			dependenciesSatisfied: Type.Optional(Type.Array(Type.String())),
+		}, { additionalProperties: false })),
+		safeParallelizableGroups: Type.Array(Type.Object({
+			name: Type.String(),
+			itemIds: Type.Array(Type.String()),
+			rationale: Type.Optional(Type.String()),
+			cautions: Type.Optional(Type.Array(Type.String())),
+		}, { additionalProperties: false })),
+		blockedChains: Type.Array(Type.Object({
+			itemId: Type.String(),
+			blockedBy: Type.Array(Type.String()),
+			nextUnblockAction: Type.Optional(Type.String()),
+			rationale: Type.Optional(Type.String()),
+		}, { additionalProperties: false })),
+		rationaleAndAssumptions: Type.Array(Type.String()),
+	}, { additionalProperties: false }),
+});
+
 export const UpdateParams = Type.Object({
 	id: Type.String(),
 	status: Type.Optional(StringEnum(STATUS_VALUES)),
