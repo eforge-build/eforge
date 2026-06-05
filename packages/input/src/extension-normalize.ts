@@ -590,7 +590,6 @@ export async function preprocessBuildSource(
     provenance.enrichersApplied.push(registration.name);
     content = extracted;
   }
-
   return {
     content,
     sourcePath,
