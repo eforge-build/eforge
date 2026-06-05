@@ -1,0 +1,57 @@
+name: preserve-authoritative-acceptance-validation-details-in-recovery-sidecars
+description: Fix recovery event-history synthesis so authoritative
+  acceptance-validation terminal failures preserve acceptanceValidation details
+  even when PRD validation also failed, with regression coverage for legacy
+  fallback separation.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test -- test/recovery-terminal-failure.test.ts
+    test/recovery-failure-summary.test.ts
+plans:
+  - id: plan-01-authoritative-acceptance-recovery
+    name: Preserve Authoritative Acceptance Validation Recovery Evidence
+    depends_on: []
+    branch: preserve-authoritative-acceptance-validation-details-in-recovery-sidecars/plan-01-authoritative-acceptance-recovery
+    build:
+      - test-write
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "Excursion fits this focused but subtle recovery bugfix: one
+    implementation file and one regression-test file, with important semantic
+    preservation between authoritative terminal failures and legacy fallback
+    behavior. Plan review is included to guard against accidentally changing
+    legacy behavior. The build runs implementation, regression test authoring,
+    the registered maintainability validation gate, review-cycle for code/test
+    correctness, and test-cycle to verify the targeted recovery tests after
+    review fixes. Strict code and test review is appropriate because the change
+    affects authoritative recovery evidence and sidecar correctness."
+diff_base_ref: ceddae7a130785581c1db06c687fd6116b5843a8
