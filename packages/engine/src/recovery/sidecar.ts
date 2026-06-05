@@ -1,4 +1,3 @@
-// --- eforge:region plan-02-concise-recovery-sidecar-contract ---
 /**
  * Writes recovery sidecar files alongside a failed PRD:
  *   <prdId>.recovery.md   — concise operator report with detailed evidence below
@@ -51,4 +50,3 @@ export async function writeRecoverySidecar({
 
   return { mdPath, jsonPath };
 }
-// --- eforge:endregion plan-02-concise-recovery-sidecar-contract ---

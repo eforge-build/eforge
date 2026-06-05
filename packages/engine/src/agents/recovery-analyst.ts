@@ -15,9 +15,7 @@ import { getRecoveryVerdictSchemaYaml } from '../schemas.js';
 import { parseRecoveryVerdictBlock } from './common.js';
 import { determineRecoveryRecommendation } from '../recovery/recommendation.js';
 import { truncateText } from '../recovery/text-bounds.js';
-// --- eforge:region plan-01-bound-recovery-analyst-context ---
 import { prepareRecoveryAnalystPromptContext } from '../recovery/analyst-context.js';
-// --- eforge:endregion plan-01-bound-recovery-analyst-context ---
 
 // ---------------------------------------------------------------------------
 // Options
@@ -95,12 +93,10 @@ export async function* runRecoveryAnalyst(
     ? failingPlanIds.join(', ')
     : '(none identified — use partial context indicators in the summary)';
 
-  // --- eforge:region plan-01-bound-recovery-analyst-context ---
   const promptContext = prepareRecoveryAnalystPromptContext({ prdContent, summary });
   const contextNotes = promptContext.notes.length > 0
     ? promptContext.notes.map(note => `- ${note}`).join('\n')
     : '- No recovery analyst prompt input truncation or evidence omission was applied.';
-  // --- eforge:endregion plan-01-bound-recovery-analyst-context ---
 
   const prompt = await loadPrompt(
     'recovery-analyst',
