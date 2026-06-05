@@ -124,22 +124,8 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
       if (failedPhaseRow) {
         const authTerminal = findAuthoritativeTerminalEvent(db, runId, failedPhaseRow.id);
         if (authTerminal) {
-          if (authTerminal.scope === 'acceptance-validation') {
-            const prdValidationRow = db.prepare(`SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'prd_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as EventHistoryRow | undefined;
-            const parsedPrdValidation = prdValidationRow ? parseEventData(prdValidationRow.data) : undefined;
-            if (parsedPrdValidation?.passed === false) {
-              const errorMessage = `PRD validation failed: ${Array.isArray(parsedPrdValidation.gaps) ? parsedPrdValidation.gaps.length : 0} gap(s) found`;
-              return {
-                prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main',
-                plans: [{ planId: 'prd-validation', status: 'failed', error: errorMessage }],
-                failingPlan: { planId: 'prd-validation', errorMessage },
-                landedCommits: [] as LandedCommit[], diffStat: '', modelsUsed,
-                failedAt: failedPhaseRow.timestamp, partial: true,
-                terminalFailure: { stage: 'prd-validation', scope: 'prd-validation', message: errorMessage, authoritative: false, eventType: 'prd_validation:complete' },
-              };
-            }
-          }
-
+          // Authoritative terminal events are the source of truth here; PRD-validation
+          // preference applies only in the no-authoritative legacy fallback below.
           const maps = reconstructPlanMaps(db, runId);
           const valStartRow = db.prepare(`SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as { id: number } | undefined;
           const valCmds = extractValidationCommands(db, runId, valStartRow?.id ?? 0, failedPhaseRow.id);
