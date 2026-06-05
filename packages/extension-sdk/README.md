@@ -191,15 +191,18 @@ eforge.registerInputSource({
 });
 ```
 
-The `fetch` method signature accepts an optional `InputTransformContext` for context-aware adapters:
+The `fetch` method signature accepts an optional `InputTransformContext` for context-aware adapters. During enqueue preprocessing this context is limited to cwd/provenance metadata plus stub helpers: `ctx.exec.run` is unavailable and throws, and `ctx.logger` is a no-op logger rather than event-hook logging.
 
 ```ts
 interface InputTransformContext extends EforgeExtensionContext {
-  cwd: string;           // project working directory
+  cwd: string;            // project working directory
   originalSource: string; // raw input as originally provided
   sourceKind: 'inline' | 'file' | 'extension-reference';
-  sourcePath?: string;   // set when sourceKind is 'file'
-  adapterId?: string;    // set when sourceKind is 'extension-reference'
+  sourcePath?: string;    // set when sourceKind is 'file'
+  adapterId?: string;     // adapter name for extension-reference sources
+  sourceId?: string;      // remaining URI id for extension-reference sources
+  extensionName?: string; // registering extension for extension-reference sources
+  extensionPath?: string; // registering extension path for extension-reference sources
 }
 ```
 
@@ -222,7 +225,7 @@ eforge.registerPrdEnricher({
 });
 ```
 
-Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:failed` and the unchanged content carries forward. Provenance events: `extension:prd-enricher:applied` and `extension:prd-enricher:failed`.
+Enricher preprocessing uses the same limited `InputTransformContext` as input-source adapters: do not call `ctx.exec.run`, and do not rely on logger output. Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:failed` and the unchanged content carries forward. Provenance events: `extension:prd-enricher:applied` and `extension:prd-enricher:failed`.
 
 See [`examples/extensions/issue-tracker.ts`](../../examples/extensions/issue-tracker.ts) for a worked example with GitHub, Linear, and Jira adapters.
 

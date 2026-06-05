@@ -464,7 +464,7 @@ interface InputSourceAdapter {
    *
    * Returns raw content (string), a structured InputSourceResult, or null if
    * the identifier was not found. Returning null is fatal to enqueue.
-   * The optional ctx argument provides cwd, logger, and source provenance.
+   * The optional ctx argument provides cwd and source provenance during enqueue preprocessing.
    */
   fetch: (id: string, ctx?: InputTransformContext) => Promise<string | InputSourceResult | null>;
 }
@@ -498,10 +498,18 @@ interface InputTransformContext extends EforgeExtensionContext {
   sourceKind: 'inline' | 'file' | 'extension-reference';
   /** Absolute path to the source file when sourceKind is 'file'. */
   sourcePath?: string;
-  /** The adapter or source identifier that produced this input when sourceKind is 'extension-reference'. */
+  /** The adapter that produced this input when sourceKind is 'extension-reference'. */
   adapterId?: string;
+  /** The remaining URI id passed to the input source adapter when sourceKind is 'extension-reference'. */
+  sourceId?: string;
+  /** Name of the extension that registered the adapter when sourceKind is 'extension-reference'. */
+  extensionName?: string;
+  /** Path of the extension that registered the adapter when sourceKind is 'extension-reference'. */
+  extensionPath?: string;
 }
 ```
+
+**Preprocessing context limits:** although `InputTransformContext` extends `EforgeExtensionContext` for typing convenience, enqueue preprocessing receives only cwd/provenance metadata plus stub helpers. `ctx.exec.run` is unavailable during preprocessing and throws if called. `ctx.logger` is a no-op logger, so its behavior is not equivalent to event-hook or policy-gate logging.
 
 **URI dispatch:** the runtime parses `eforge://input/<adapter>/<id>` URIs and looks up the registered adapter whose `name` exactly matches `<adapter>`. The remaining `<id>` path is passed to `fetch`. Example URIs:
 - `eforge://input/github/acme/backend#42` — adapter `github`, id `acme/backend#42`
@@ -554,7 +562,7 @@ interface PrdEnrichmentInput {
   content: string;
   /** The source identifier (e.g. file path, issue id) for this PRD content. */
   sourceId: string;
-  /** Runtime context providing cwd, logger, and source provenance. */
+  /** Runtime context providing cwd and source provenance during preprocessing. */
   ctx: InputTransformContext;
 }
 ```
@@ -568,7 +576,7 @@ interface PrdEnrichmentResult {
 }
 ```
 
-**Behavior:** enrichers always run for every preprocessed source. Gate behavior inside `enrich` using `input.ctx.sourceKind`, `input.ctx.adapterId`, or `input.ctx.sourcePath` if you need to act only for specific source types.
+**Behavior:** enrichers always run for every preprocessed source. Gate behavior inside `enrich` using `input.ctx.sourceKind`, `input.ctx.adapterId`, or `input.ctx.sourcePath` if you need to act only for specific source types. The preprocessing context has the same limits as input-source adapters: `ctx.exec.run` throws, and `ctx.logger` is a no-op logger rather than event-hook logging.
 
 **Failure policy:** enricher failures are fail-open. A thrown error emits `extension:prd-enricher:failed` with the enricher name, source id, and error message; the unchanged content carries forward.
 

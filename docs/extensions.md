@@ -343,7 +343,7 @@ Input sources and PRD enrichers run during the enqueue preprocessing stage, befo
 
 **`registerInputSource` — URI-based artifact fetching**
 
-Input source adapters are selected by `name` against the `<adapter>` segment of an `eforge://input/<adapter>/<id>` URI. The runtime calls `adapter.fetch(id, ctx)` with the remaining `<id>` path and an `InputTransformContext`.
+Input source adapters are selected by `name` against the `<adapter>` segment of an `eforge://input/<adapter>/<id>` URI. The runtime calls `adapter.fetch(id, ctx)` with the remaining `<id>` path and an `InputTransformContext`. During enqueue preprocessing this context is limited to cwd/provenance metadata plus stub helpers: `ctx.exec.run` is unavailable and throws, and `ctx.logger` is a no-op logger rather than event-hook logging.
 
 URI examples:
 - `eforge://input/github/acme/backend#42` — adapter `github`, id `acme/backend#42`
@@ -358,7 +358,7 @@ Provenance events emitted per adapter call:
 
 **`registerPrdEnricher` — content augmentation before queue write**
 
-PRD enrichers run in registration order after input source preprocessing completes. Each enricher receives `{ content, sourceId, ctx }` and may return `{ content }` to replace the content, or `null`/`undefined` to pass it through unchanged. Enrichers always run for every preprocessed source; gate behavior inside `enrich` using `ctx.sourceKind`, `ctx.adapterId`, or `ctx.sourcePath` if needed.
+PRD enrichers run in registration order after input source preprocessing completes. Each enricher receives `{ content, sourceId, ctx }` and may return `{ content }` to replace the content, or `null`/`undefined` to pass it through unchanged. Enrichers always run for every preprocessed source; gate behavior inside `enrich` using `ctx.sourceKind`, `ctx.adapterId`, or `ctx.sourcePath` if needed. The preprocessing context has the same limits as input-source adapters: `ctx.exec.run` throws, and `ctx.logger` is a no-op logger.
 
 Enricher failures are fail-open: a thrown error emits `extension:prd-enricher:failed` with the enricher name, source id, and error message, and the unchanged content carries forward.
 
