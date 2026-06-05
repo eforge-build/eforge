@@ -89,6 +89,31 @@ describe('canonical acceptance criteria inventory', () => {
     expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
   });
 
+  it('parses prose-prefixed extractor JSON', () => {
+    const inventory = parseAcceptanceCriteriaExtractorOutput(`Here is the extraction:\n${validExtractorJson()}`, CANONICAL_SOURCE);
+    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
+  });
+
+  it('parses prose-suffixed extractor JSON', () => {
+    const inventory = parseAcceptanceCriteriaExtractorOutput(`${validExtractorJson()}\nDone.`, CANONICAL_SOURCE);
+    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
+  });
+
+  it('parses fenced extractor JSON surrounded by prose', () => {
+    const inventory = parseAcceptanceCriteriaExtractorOutput([
+      'Here is the extraction:',
+      '```json',
+      validExtractorJson(),
+      '```',
+      'Done.',
+    ].join('\n'), CANONICAL_SOURCE);
+    expect(inventory.criteria.map((c) => c.id)).toEqual(['ac-001', 'ac-002']);
+  });
+
+  it('rejects extractor output with no balanced JSON object', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput('I do not see acceptance criteria.', CANONICAL_SOURCE)).toThrow(/JSON object/);
+  });
+
   it('accepts source quotes grounded after whitespace normalization', () => {
     const source = [
       '# Feature',
@@ -113,6 +138,10 @@ describe('canonical acceptance criteria inventory', () => {
   it('rejects non-object and missing criteria extractor payloads', () => {
     expect(() => parseAcceptanceCriteriaExtractorOutput('[]', CANONICAL_SOURCE)).toThrow(/JSON object/);
     expect(() => parseAcceptanceCriteriaExtractorOutput('{"version":1}', CANONICAL_SOURCE)).toThrow(/criteria array/);
+  });
+
+  it('continues canonical schema validation after extracting prose-wrapped JSON', () => {
+    expect(() => parseAcceptanceCriteriaExtractorOutput('Here is the extraction:\n{"version":1}\nDone.', CANONICAL_SOURCE)).toThrow(/criteria array/);
   });
 
   it('rejects ungrounded source quotes', () => {
@@ -192,9 +221,11 @@ describe('canonical acceptance criteria inventory', () => {
     const withBlock = appendAcceptanceCriteriaInventoryBlock(CANONICAL_SOURCE, inventory);
     const secondBlock = appendAcceptanceCriteriaInventoryBlock('# Other PRD', inventory);
     const malformedBlock = `${CANONICAL_SOURCE}\n\n<!-- eforge:acceptance-criteria-inventory\nnot json\neforge:end-acceptance-criteria-inventory -->`;
+    const proseWrappedBlock = `${CANONICAL_SOURCE}\n\n<!-- eforge:acceptance-criteria-inventory\nHere is the persisted inventory:\n${JSON.stringify(inventory)}\nDone.\neforge:end-acceptance-criteria-inventory -->`;
     const wrongIdBlock = withBlock.replace('"id":"ac-001"', '"id":"ac-999"');
 
     expect(() => requireAcceptanceCriteriaInventoryFromPrd(malformedBlock)).toThrow(/re-enqueue/);
+    expect(() => requireAcceptanceCriteriaInventoryFromPrd(proseWrappedBlock)).toThrow(/re-enqueue/);
     expect(() => requireAcceptanceCriteriaInventoryFromPrd(`${withBlock}\n${secondBlock}`)).toThrow(/multiple.*re-enqueue|re-enqueue.*multiple/i);
     expect(() => requireAcceptanceCriteriaInventoryFromPrd(wrongIdBlock)).toThrow(/id.*re-enqueue|re-enqueue.*id/i);
   });

@@ -27,6 +27,18 @@ describe('acceptance unknown resolver parsing', () => {
     expect(parsed).toEqual([{ criterion: 'ac-001', verdict: 'pass', evidence: { type: 'file', path: 'src/cli.ts', excerpt: 'prints success' } }]);
   });
 
+  it('parses prose-wrapped fenced resolver JSON', () => {
+    const parsed = parseAcceptanceUnknownResolverOutput([
+      'Resolver result:',
+      '```json',
+      JSON.stringify({ verdicts: [{ criterion: 'ac-001', verdict: 'pass', evidence: { type: 'file', path: 'src/cli.ts', excerpt: 'prints success' } }] }),
+      '```',
+      'Done.',
+    ].join('\n'), UNKNOWN);
+
+    expect(parsed).toEqual([{ criterion: 'ac-001', verdict: 'pass', evidence: { type: 'file', path: 'src/cli.ts', excerpt: 'prints success' } }]);
+  });
+
   it('rejects malformed JSON and unknown criterion references', () => {
     expect(() => parseAcceptanceUnknownResolverOutput('```json\n{bad}\n```', UNKNOWN)).toThrow(/malformed JSON/);
     expect(() => parseAcceptanceUnknownResolverOutput(JSON.stringify({

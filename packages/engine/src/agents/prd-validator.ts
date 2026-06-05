@@ -3,6 +3,7 @@ import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PrdValidationGap, type AcceptanceCriterionVerdict, type AcceptanceCriteriaConflict } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
+import { findJsonObjectText } from '../validation/json-object-extractor.js';
 
 export interface PrdValidatorOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -289,43 +290,4 @@ function parseAcceptanceConflict(rawConflict: unknown): AcceptanceCriteriaConfli
 
   if (!criterion || !evidence || !conflictsWith) return undefined;
   return { criterion, evidence, conflictsWith, scope, recommendedAction };
-}
-
-function findJsonObjectText(text: string): string | undefined {
-  const fencedBlocks = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]);
-  for (const block of fencedBlocks) {
-    const objectText = findBalancedObject(block);
-    if (objectText) return objectText;
-  }
-  return findBalancedObject(text);
-}
-
-function findBalancedObject(text: string): string | undefined {
-  const start = text.indexOf('{');
-  if (start === -1) return undefined;
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < text.length; index++) {
-    const char = text[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = inString;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (char === '{') depth++;
-    if (char === '}') depth--;
-    if (depth === 0) return text.slice(start, index + 1);
-  }
-
-  return undefined;
 }

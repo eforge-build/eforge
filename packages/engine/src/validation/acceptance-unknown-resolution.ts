@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { AcceptanceCriterionVerdict, EforgeEvent } from '../events.js';
 import { validateReadOnlyArgv, validateReadOnlyPathArg } from './read-only-command-validation.js';
 import { matchVerdictsToExpected, normalizeCriterionMatchText, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
+import { findJsonObjectText } from './json-object-extractor.js';
 
 export type AcceptanceValidationEvent = Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>;
 
@@ -264,35 +265,3 @@ function formatResolutionEvidence(evidence: AcceptanceUnknownResolverEvidence): 
   return `Acceptance unknown resolver command evidence (${evidence.argv?.join(' ')}): ${body}`;
 }
 
-function findJsonObjectText(text: string): string | null {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) return fenced[1].trim();
-
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-    } else if (ch === '{') {
-      depth++;
-    } else if (ch === '}') {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return null;
-}
