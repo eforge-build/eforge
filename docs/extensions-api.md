@@ -896,12 +896,10 @@ interface ExtensionExecApi {
 
 ### `EventHookContext`
 
-Context for `onEvent` handlers. Extends `EforgeExtensionContext` and adds `cwd` plus an `event` field carrying the raw `EforgeEvent` that triggered the hook (the same object as the handler's first argument, exposed here for convenience in shared helpers). Runtime event hooks receive the enriched event object, including available `sessionId` and `runId` correlation fields:
+Context for `onEvent` handlers. Extends `EforgeExtensionContext` and adds an `event` field carrying the raw `EforgeEvent` that triggered the hook (the same object as the handler's first argument, exposed here for convenience in shared helpers). Runtime event hooks receive the enriched event object, including available `sessionId` and `runId` correlation fields:
 
 ```ts
 interface EventHookContext extends EforgeExtensionContext {
-  /** Absolute path to the project working directory for lifecycle side effects. */
-  cwd: string;
   event: EforgeEvent;
 }
 ```

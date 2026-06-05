@@ -1,6 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { EforgeEvent } from '../../../packages/extension-sdk/src/index.js';
-import { updateBacklogItemFrontmatter } from './markdown-store.js';
+import { readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
 import {
   listTraceSidecars,
   updateLastEventMetadata,
@@ -51,17 +52,25 @@ export function decideLifecycleUpdate(event: EforgeEvent | Record<string, unknow
 export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<LifecycleDecision> {
   const traces = await listTraceSidecars(cwd);
   const decision = decideLifecycleUpdate(event, traces, cwd);
-  if (decision.correlation.kind !== 'single' || !decision.correlation.itemId) {
+  let itemId = decision.correlation.kind === 'single' ? decision.correlation.itemId : undefined;
+  let epicId = itemId ? traces.find((candidate) => candidate.itemId === itemId)?.epicId : undefined;
+  let bootstrapped = false;
+  if (!itemId && decision.correlation.kind === 'none') {
+    const bootstrap = await bootstrapItemFromQueuedPrd(cwd, event);
+    itemId = bootstrap?.itemId;
+    epicId = bootstrap?.epicId;
+    bootstrapped = itemId !== undefined;
+  }
+  if (!itemId) {
     return decision;
   }
-  const itemId = decision.correlation.itemId;
-  const trace = traces.find((candidate) => candidate.itemId === itemId);
-  await applyTraceMutation(cwd, itemId, trace?.epicId, decision.trace);
-  await updateLastEventMetadata(cwd, itemId, lastEventMetadata(event), trace?.epicId);
+  const traceMutation = decision.trace ?? (bootstrapped ? traceMutationForEvent(event) : undefined);
+  await applyTraceMutation(cwd, itemId, epicId, traceMutation);
+  await updateLastEventMetadata(cwd, itemId, lastEventMetadata(event), epicId);
   if (decision.status === 'shipped') {
     await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
   }
-  return decision;
+  return decision.correlation.kind === 'single' ? decision : { ...decision, correlation: { kind: 'single', itemId, reason: 'bootstrapped from queued eforge-plan PRD' }, trace: traceMutation };
 }
 
 export function eventCorrelationKeys(event: EforgeEvent | Record<string, unknown>, cwd?: string): Set<string> {
@@ -163,6 +172,31 @@ function directInputItemId(event: EforgeEvent | Record<string, unknown>): string
   const source = stringValue(valueAt(event, 'source'));
   if (!source?.startsWith('eforge://input/eforge-plan/')) return undefined;
   return decodeURIComponent(source.slice('eforge://input/eforge-plan/'.length));
+}
+
+async function bootstrapItemFromQueuedPrd(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<{ itemId: string; epicId?: string } | undefined> {
+  if (valueAt(event, 'type') !== 'enqueue:complete') return undefined;
+  const filePath = stringValue(valueAt(event, 'filePath'));
+  if (!filePath) return undefined;
+  try {
+    const raw = await readFile(isAbsolute(filePath) ? filePath : resolve(cwd, filePath), 'utf-8');
+    const itemId = extractSourceItemId(raw);
+    if (!itemId) return undefined;
+    const item = await readBacklogItem(cwd, itemId);
+    return item ? { itemId: item.id, epicId: item.epic } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractSourceItemId(markdown: string): string | undefined {
+  return firstRegexCapture(markdown, /source_item_id:\s*["']?([^"'\s]+)/i)
+    ?? firstRegexCapture(markdown, /Backlog item id:\s*([^\s]+)/i);
+}
+
+function firstRegexCapture(value: string, pattern: RegExp): string | undefined {
+  const match = value.match(pattern);
+  return match?.[1];
 }
 
 function timestampOf(event: EforgeEvent | Record<string, unknown>): string {

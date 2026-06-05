@@ -127,6 +127,10 @@ export interface PreprocessingProvenance {
   adapterName?: string;
   /** For `eforge://input/...` sources: the resolved source id. */
   sourceId?: string;
+  /** For `eforge://input/...` sources: the matched adapter extension name. */
+  extensionName?: string;
+  /** For `eforge://input/...` sources: the matched adapter extension path. */
+  extensionPath?: string;
   /** Names of enrichers that changed the content. */
   enrichersApplied: string[];
   /** Names of enrichers that failed (fail-open: content unchanged). */
@@ -387,6 +391,9 @@ export async function preprocessBuildSource(
       events.push(failedEvent);
       throw new FatalPreprocessingError(failedEvent);
     }
+
+    provenance.extensionName = registration.extensionName;
+    provenance.extensionPath = registration.extensionPath;
 
     // Fetch with timeout
     const fetchFn = registration.value.fetch as unknown as (sourceId: string, ctx?: Record<string, unknown>) => Promise<unknown>;

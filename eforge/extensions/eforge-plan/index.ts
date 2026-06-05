@@ -14,6 +14,7 @@ import { projectKanbanBoard } from './kanban.js';
 import {
   listBacklogEpics,
   listBacklogItems,
+  readBacklogEpic,
   readBacklogItem,
   updateBacklogItemFrontmatter,
   writeBacklogEpic,
@@ -70,7 +71,9 @@ const upsertEpic = defineExtensionAction({
   async handler(input, ctx) {
     const id = input.id ?? slugify(input.title);
     const now = new Date().toISOString();
-    const epic = await writeBacklogEpic(ctx.cwd, { id, status: normalizedStatus(input.status, 'candidate'), priority: input.priority, tags: input.tags ?? [], updated: now, body: input.body ?? `# ${input.title}\n\n` });
+    const existing = await readBacklogEpic(ctx.cwd, id);
+    const body = input.body ?? (existing ? undefined : `# ${input.title}\n\n`);
+    const epic = await writeBacklogEpic(ctx.cwd, { id, status: normalizedStatus(input.status, 'candidate'), priority: input.priority, tags: input.tags ?? [], updated: now, body });
     return { epicId: epic.id, status: epic.status, path: `.backlog/epics/${epic.id}.md` };
   },
 });
@@ -124,7 +127,7 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'board', label: 'Open eforge-plan board', action: { actionId: 'render-board-markdown' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote', label: 'Promote eforge-plan item', action: { actionId: 'promote-item' } }));
   for (const pattern of ['enqueue:start', 'enqueue:complete', 'queue:prd:start', 'queue:prd:complete', 'session:start', 'session:end', 'landing:complete', 'landing:auto-merge:complete'] as const) {
-    eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(resolveHookCwd(ctx), event); });
+    eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(await resolveHookCwd(ctx), event); });
   }
 });
 
@@ -169,8 +172,10 @@ function slugify(value: string): string {
   return slug || 'backlog-item';
 }
 
-function resolveHookCwd(ctx: EventHookContext): string {
-  return ctx.cwd;
+async function resolveHookCwd(ctx: EventHookContext): Promise<string> {
+  const result = await ctx.exec.run(process.execPath, ['-e', 'process.stdout.write(process.cwd())']);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to resolve lifecycle hook cwd.');
+  return result.stdout.trim();
 }
 
 export async function loadItemSectionsForDisplay(cwd: string, itemId: string): Promise<Record<string, string>> {

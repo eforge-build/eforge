@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
+import type { EforgeEvent, EventHookContext } from '../../../../packages/extension-sdk/src/index.js';
 import eforgePlanExtension from '../index.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
@@ -64,5 +65,29 @@ describe('eforge-plan extension registration', () => {
     expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
     expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
     expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:start', 'session:end', 'session:start']);
+  });
+
+  it('runs lifecycle hooks with event contexts that do not expose cwd', async () => {
+    await withTempProject(async (cwd) => {
+      const state = load();
+      const hook = state.eventHooks.find((entry) => entry.value.pattern === 'session:start');
+      expect(hook).toBeDefined();
+      const calls: Array<{ command: string; args?: string[] }> = [];
+      const ctx = {
+        event: { type: 'session:start', sessionId: 'session-one' } as EforgeEvent,
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        exec: {
+          async run(command: string, args?: string[]) {
+            calls.push({ command, args });
+            return { stdout: cwd, stderr: '', exitCode: 0 };
+          },
+        },
+      } satisfies EventHookContext;
+
+      await (hook!.value.handler as unknown as (event: EforgeEvent, ctx: EventHookContext) => Promise<void>)(ctx.event, ctx);
+
+      expect('cwd' in ctx).toBe(false);
+      expect(calls).toEqual([{ command: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'] }]);
+    });
   });
 });

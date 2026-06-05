@@ -112,8 +112,6 @@ export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
  * not create separate monitor event variants in this scope.
  */
 export interface EventHookContext extends EforgeExtensionContext {
-  /** Absolute path to the project working directory for lifecycle side effects. */
-  cwd: string;
   /**
    * The raw event that triggered the hook (same object as the handler's first
    * argument, provided here for convenience in shared helper functions).
