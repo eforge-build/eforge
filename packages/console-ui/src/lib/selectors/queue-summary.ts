@@ -1,6 +1,6 @@
 import type { QueueItem } from '@eforge-build/client/browser';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
-import { compareQueueItems, sortQueueItemsTopologically } from './queue-stacks';
+import { sortQueueItemsTopologically } from './queue-stacks';
 
 export interface NowQueueItem {
   id: string;
@@ -63,19 +63,22 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
     if (item.recoveryVerdict) withRecoveryVerdictCount++;
   }
 
-  const displayable = queue.filter((item) => item.status.toLowerCase() !== 'running');
-  const failed = displayable.filter((item) => item.status.toLowerCase() === 'failed').sort(compareQueueItems);
-  const skipped = displayable.filter((item) => item.status.toLowerCase() === 'skipped').sort(compareQueueItems);
-  const activeQueue = displayable.filter((item) => {
+  // Forward-only preview. `topItems`/`allItems`/`total`/`hiddenCount` describe
+  // the work the queue card shows, which is pending/waiting rows only. Running
+  // rows surface as active build cards and failed/skipped rows surface in the
+  // Needs attention strip, so they must never consume one of the four preview
+  // slots ahead of real forward work. The status counts above stay computed
+  // over the full queue input.
+  const forward = queue.filter((item) => {
     const status = item.status.toLowerCase();
-    return status !== 'failed' && status !== 'skipped';
+    return status === 'pending' || status === 'waiting';
   });
-  const sorted = [...failed, ...skipped, ...sortQueueItemsTopologically(activeQueue)];
+  const sorted = sortQueueItemsTopologically(forward);
 
   const allItems = sorted.map(toNowQueueItem);
 
   return {
-    total: displayable.length,
+    total: allItems.length,
     byStatus,
     runningCount,
     pendingCount,
@@ -86,6 +89,6 @@ export function selectNowQueueSummary(queue: QueueItem[]): NowQueueSummary {
     withRecoveryVerdictCount,
     topItems: allItems.slice(0, MAX_QUEUE_ITEMS),
     allItems,
-    hiddenCount: Math.max(0, displayable.length - MAX_QUEUE_ITEMS),
+    hiddenCount: Math.max(0, allItems.length - MAX_QUEUE_ITEMS),
   };
 }

@@ -33,6 +33,32 @@ describe('recovery and resume route modules', () => {
     expect(res.status).toBe(200); expect(await res.json()).toMatchObject({ markdown: '# recovery' });
   });
 
+  it('returns the durable applied marker from the recovery sidecar when present', async () => {
+    harness = await startControlRouteHarness();
+    const failed = join(harness.cwd, '.eforge', 'queue', 'failed');
+    await mkdir(failed, { recursive: true });
+    await writeFile(join(failed, 'prd-applied.recovery.md'), '# recovery');
+    await writeFile(join(failed, 'prd-applied.recovery.json'), JSON.stringify({ schemaVersion: 2, generatedAt: new Date(0).toISOString(), summary: { prdId: 'prd-applied', setName: 'set-1', featureBranch: 'eforge/set-1', baseBranch: 'main', plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [], failedAt: new Date(0).toISOString() }, verdict: { verdict: 'split', confidence: 'high', rationale: 'Partial work landed.', completedWork: [], remainingWork: [], risks: [], suggestedSuccessorPrd: '# Successor\n\nContinue.' }, applied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'prd-applied-successor' } }));
+    const res = await harness.get(`${API_ROUTES.readRecoverySidecar}?prdId=prd-applied`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { json: { applied?: { action?: string; successorPrdId?: string } } };
+    expect(body.json.applied).toEqual({ action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'prd-applied-successor' });
+  });
+
+  it('rejects cross-site accept-success preview and apply requests', async () => {
+    harness = await startControlRouteHarness();
+    const preview = await harness.rawGet(`${API_ROUTES.acceptRecoverySuccessPreview}?prdId=prd-1`, { host: 'evil.example' });
+    expect(preview.status).toBe(403);
+    const apply = await harness.rawPost(API_ROUTES.acceptRecoverySuccess, JSON.stringify({ prdId: 'prd-1' }), { host: 'evil.example', 'content-type': 'application/json' });
+    expect(apply.status).toBe(403);
+  });
+
+  it('validates accept-success preview requests', async () => {
+    harness = await startControlRouteHarness();
+    expect((await harness.get(API_ROUTES.acceptRecoverySuccessPreview)).status).toBe(400);
+    expect((await harness.get(`${API_ROUTES.acceptRecoverySuccessPreview}?prdId=ghost`)).status).toBe(404);
+  });
+
   it('validates resume requeue requests without spawning a worker', async () => {
     const calls: unknown[] = [];
     harness = await startControlRouteHarness({ serverOptions: { workerTracker: { spawnWorker: (command, args) => { calls.push([command, args]); return { sessionId: 'resume-1', pid: 9 }; }, cancelWorker: () => false } } });

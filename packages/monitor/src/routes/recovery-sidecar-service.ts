@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { parseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
 import type { BuildFailureSummary, RecoveryVerdict, RecoveryVerdictSidecar } from '@eforge-build/client';
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
+import { parseRecoveryAppliedMetadata, parseAcceptSuccessAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
 import type { MonitorContext } from '../context.js';
 import { HttpRouteError } from '../http/route-errors.js';
 import { isWithinDir } from './control-validation.js';
@@ -36,7 +37,39 @@ function parseRecoverySidecar(jsonContent: string, prdId: string): RecoveryVerdi
   if (!summary.success) throw new HttpRouteError(500, `Recovery sidecar summary is invalid for prdId: ${prdId}`);
   const verdict = safeParseEforgeEvent({ type: 'recovery:complete', timestamp: sidecar.generatedAt, prdId, verdict: sidecar.verdict });
   if (!verdict.success) throw new HttpRouteError(500, `Recovery sidecar verdict is invalid for prdId: ${prdId}`);
-  return { schemaVersion: sidecar.schemaVersion, generatedAt: sidecar.generatedAt, summary: sidecar.summary, verdict: sidecar.verdict } as RecoveryVerdictSidecar;
+  const result = { schemaVersion: sidecar.schemaVersion, generatedAt: sidecar.generatedAt, summary: sidecar.summary, verdict: sidecar.verdict } as RecoveryVerdictSidecar;
+  // Preserve the optional durable applied marker only when its required metadata
+  // fields (action literal, appliedAt, and split-specific successorPrdId) are
+  // valid. Validate and normalize via the shared parser so contract-invalid known
+  // fields (e.g. `commitSha: 123`, or `successorPrdId` on a non-split marker)
+  // never reach the wire. Forward-compatible unknown keys are copied through, but
+  // the validated known fields always overlay them. Legacy sidecars without the
+  // marker parse unchanged, and a malformed marker is omitted entirely.
+  if (typeof sidecar.applied === 'object' && sidecar.applied !== null) {
+    const appliedObj = sidecar.applied as Record<string, unknown>;
+    // The rich `accepted-success` marker (keyed by `acceptedAt`) is validated by
+    // its own parser; all other actions use the base `appliedAt`-keyed parser.
+    const acceptApplied = parseAcceptSuccessAppliedMetadata(appliedObj);
+    if (acceptApplied !== undefined) {
+      const KNOWN_ACCEPT_FIELDS = new Set(['action', 'acceptedAt', 'reasonCategory', 'reason', 'cleanup', 'landing', 'dependents']);
+      const forwardCompat: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(appliedObj)) {
+        if (!KNOWN_ACCEPT_FIELDS.has(key)) forwardCompat[key] = value;
+      }
+      result.applied = { ...forwardCompat, ...acceptApplied } as RecoveryVerdictSidecar['applied'];
+    } else {
+      const parsedApplied = parseRecoveryAppliedMetadata(appliedObj);
+      if (parsedApplied !== undefined) {
+        const KNOWN_APPLIED_FIELDS = new Set(['action', 'appliedAt', 'successorPrdId', 'commitSha']);
+        const forwardCompat: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(appliedObj)) {
+          if (!KNOWN_APPLIED_FIELDS.has(key)) forwardCompat[key] = value;
+        }
+        result.applied = { ...forwardCompat, ...parsedApplied } as RecoveryVerdictSidecar['applied'];
+      }
+    }
+  }
+  return result;
 }
 
 export interface RecoveryApplySidecarData {

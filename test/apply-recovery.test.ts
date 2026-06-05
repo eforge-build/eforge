@@ -494,7 +494,7 @@ describe('applyRecovery — split', () => {
     expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
   });
 
-  it('omits recovery frontmatter when no partial landed or merged evidence exists', async () => {
+  it('omits continuation frontmatter (but keeps the split-source marker) when no partial landed or merged evidence exists', async () => {
     const dir = makeTempDir();
     const prdId = 'test-split-fresh-successor';
     seedGitRepo(dir);
@@ -504,7 +504,13 @@ describe('applyRecovery — split', () => {
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
     const content = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
 
-    expect(content).not.toMatch(/^recovery_/m);
+    // No resume continuation metadata is written without landed/merged evidence...
+    expect(content).not.toMatch(/^recovery_from:/m);
+    expect(content).not.toMatch(/^recovery_set_name:/m);
+    expect(content).not.toMatch(/^recovery_feature_branch:/m);
+    expect(content).not.toMatch(/^recovery_base_branch:/m);
+    // ...but the durable split-source idempotency marker is always present.
+    expect(content).toMatch(new RegExp(`^recovery_split_source: ${prdId}$`, 'm'));
     expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
     expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(true);
     expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(true);
@@ -907,5 +913,184 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     expect(result.verdict).toBe('retry');
     expect(result.noAction).toBe(false);
     expect(result.commitSha).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// split idempotency (durable applied marker + crash-window successor scan)
+// ---------------------------------------------------------------------------
+
+describe('applyRecovery — split idempotency', () => {
+  const makeTempDir = useTempDir('eforge-apply-recovery-split-idempotency-');
+
+  /** Read the recovery sidecar JSON for a failed PRD. */
+  async function readSidecarJson(dir: string, prdId: string): Promise<Record<string, unknown>> {
+    const raw = await readFile(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8');
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  /** Count `.md` files directly in the queue root (excludes subdirectories). */
+  async function countQueueRootPrds(dir: string): Promise<number> {
+    const entries = await readdir(join(dir, '.eforge', 'queue'));
+    return entries.filter((e) => e.endsWith('.md')).length;
+  }
+
+  it('writes a durable applied marker on first split apply', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-marker';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', { suggestedSuccessorPrd: '# Marker Successor\n\nContinue.' });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    expect(result.status).toBe('applied');
+    expect(result.successorPrdId).toBeDefined();
+
+    const json = await readSidecarJson(dir, prdId);
+    const applied = json.applied as { action?: string; appliedAt?: string; successorPrdId?: string } | undefined;
+    expect(applied).toBeDefined();
+    expect(applied!.action).toBe('split');
+    expect(typeof applied!.appliedAt).toBe('string');
+    expect(applied!.appliedAt!.length).toBeGreaterThan(0);
+    expect(applied!.successorPrdId).toBe(result.successorPrdId);
+    // Unrelated sidecar fields are preserved.
+    expect(json.schemaVersion).toBeDefined();
+    expect(json.summary).toBeDefined();
+    expect(json.verdict).toBeDefined();
+  });
+
+  it('two split applies create exactly one successor and the second reports already-applied', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-twice';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', { suggestedSuccessorPrd: '# Twice Successor\n\nContinue.' });
+
+    // Single extractor response suffices: the second apply short-circuits on the marker.
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
+    const first = await driveGenerator(engine.applyRecovery(prdId));
+    expect(first.result.status).toBe('applied');
+    expect(await countQueueRootPrds(dir)).toBe(1);
+
+    const second = await driveGenerator(engine.applyRecovery(prdId));
+    expect(second.result.status).toBe('already-applied');
+    expect(second.result.successorPrdId).toBe(first.result.successorPrdId);
+
+    // Still exactly one successor file — no `-2` duplicate.
+    expect(await countQueueRootPrds(dir)).toBe(1);
+  });
+
+  it('records the marker and enqueues no duplicate when a live successor exists without a marker (crash window)', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-crash-window';
+    seedGitRepo(dir);
+    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: dir });
+    await seedFailedPrd(dir, prdId, 'split', {
+      suggestedSuccessorPrd: '# Crash Window Successor\n\nContinue.',
+      summary: {
+        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
+      },
+    });
+
+    // Simulate a successor enqueued before the marker was written (crash window):
+    // it carries recovery continuation frontmatter pointing back at the failed PRD.
+    const successorId = 'preexisting-successor';
+    const successorBody = [
+      '---',
+      'title: Preexisting Successor',
+      'created: 2024-01-01',
+      `recovery_from: ${prdId}`,
+      'recovery_set_name: test-set',
+      'recovery_feature_branch: eforge/test-set',
+      'recovery_base_branch: main',
+      '---',
+      '',
+      '# Preexisting Successor',
+      '',
+      'Already enqueued before the marker write.',
+    ].join('\n');
+    await writeFile(join(dir, '.eforge', 'queue', `${successorId}.md`), successorBody, 'utf-8');
+
+    expect(await countQueueRootPrds(dir)).toBe(1);
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    expect(result.status).toBe('already-applied');
+    expect(result.successorPrdId).toBe(successorId);
+
+    // No new successor enqueued — still exactly the one pre-existing file.
+    expect(await countQueueRootPrds(dir)).toBe(1);
+
+    // Marker now written, pointing at the pre-existing successor.
+    const json = await readSidecarJson(dir, prdId);
+    const applied = json.applied as { action?: string; appliedAt?: string; successorPrdId?: string } | undefined;
+    expect(applied).toBeDefined();
+    expect(applied!.action).toBe('split');
+    expect(applied!.appliedAt!.length).toBeGreaterThan(0);
+    expect(applied!.successorPrdId).toBe(successorId);
+  });
+
+  it('matches a live successor via recovery_split_source when no continuation metadata exists (crash window, no landed work)', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-crash-window-no-evidence';
+    seedGitRepo(dir);
+    // No landedCommits and no mergedAt plans: deriveSplitRecoveryContinuation
+    // returns undefined, so the successor carries no continuation frontmatter —
+    // only the durable recovery_split_source marker drives idempotency here.
+    await seedFailedPrd(dir, prdId, 'split', {
+      suggestedSuccessorPrd: '# No-Evidence Successor\n\nContinue.',
+    });
+
+    // Simulate a successor enqueued before the marker was written, carrying only
+    // the recovery_split_source marker (no continuation frontmatter).
+    const successorId = 'preexisting-no-evidence-successor';
+    const successorBody = [
+      '---',
+      'title: Preexisting No-Evidence Successor',
+      'created: 2024-01-01',
+      `recovery_split_source: ${prdId}`,
+      '---',
+      '',
+      '# Preexisting No-Evidence Successor',
+      '',
+      'Already enqueued before the marker write.',
+    ].join('\n');
+    await writeFile(join(dir, '.eforge', 'queue', `${successorId}.md`), successorBody, 'utf-8');
+
+    expect(await countQueueRootPrds(dir)).toBe(1);
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    expect(result.status).toBe('already-applied');
+    expect(result.successorPrdId).toBe(successorId);
+
+    // No duplicate successor enqueued.
+    expect(await countQueueRootPrds(dir)).toBe(1);
+
+    // Marker now written, pointing at the pre-existing successor.
+    const json = await readSidecarJson(dir, prdId);
+    const applied = json.applied as { action?: string; successorPrdId?: string } | undefined;
+    expect(applied).toBeDefined();
+    expect(applied!.action).toBe('split');
+    expect(applied!.successorPrdId).toBe(successorId);
+  });
+
+  it('writes recovery_split_source on a first split apply even without continuation metadata', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-source-no-evidence';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', { suggestedSuccessorPrd: '# Source Marker Successor\n\nContinue.' });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+    expect(result.status).toBe('applied');
+    expect(result.successorPrdId).toBeDefined();
+
+    // The enqueued successor carries the durable recovery_split_source marker so a
+    // crash before the applied-marker write is still idempotently recoverable.
+    const successorContent = await readFile(join(dir, '.eforge', 'queue', `${result.successorPrdId}.md`), 'utf-8');
+    expect(successorContent).toContain(`recovery_split_source: ${prdId}`);
   });
 });

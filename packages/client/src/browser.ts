@@ -24,9 +24,23 @@ export type {
   RecoverResponse,
   ReadSidecarRequest,
   RecoveryVerdictSidecar,
+  RecoveryAppliedMetadata,
   ReadSidecarResponse,
   ApplyRecoveryRequest,
   ApplyRecoveryResponse,
+  AcceptSuccessReasonCategory,
+  AcceptSuccessLandingAction,
+  AcceptSuccessPreviewRequest,
+  AcceptSuccessCleanupEffect,
+  AcceptSuccessAuditFields,
+  AcceptSuccessDependentCandidate,
+  AcceptSuccessCleanupResult,
+  AcceptSuccessLandingResult,
+  AcceptSuccessDependentResult,
+  AcceptSuccessAppliedSummary,
+  AcceptSuccessPreviewResponse,
+  AcceptSuccessRequest,
+  AcceptSuccessResponse,
   QueueControlStatus,
   QueuePriorityRequest,
   QueuePriorityResponse,
@@ -106,7 +120,11 @@ export {
   applySidecarRecovery,
   startResumeBuild,
   fetchResumeEligibility,
+  fetchAcceptSuccessPreview,
+  acceptRecoverySuccess,
 } from './browser-recovery.js';
+
+export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes.js';
 
 export {
   fetchExtensionContributionManifest,

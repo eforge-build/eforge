@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { parseWithSchema, type QueueItem } from '@eforge-build/client';
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
+import { parseRecoveryAppliedMetadata, parseAcceptSuccessAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
 
 export function parseQueueFrontmatter(content: string): Record<string, unknown> | null {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -29,12 +30,18 @@ export function parseQueueFrontmatter(content: string): Record<string, unknown> 
   return result;
 }
 
-function buildQueueItem(id: string, fm: Record<string, unknown>, status: string, recoveryVerdict?: QueueItem['recoveryVerdict']): QueueItem {
+interface RecoverySidecarProjection {
+  recoveryVerdict?: QueueItem['recoveryVerdict'];
+  recoveryApplied?: QueueItem['recoveryApplied'];
+}
+
+function buildQueueItem(id: string, fm: Record<string, unknown>, status: string, recovery: RecoverySidecarProjection = {}): QueueItem {
   const item: QueueItem = { id, title: fm.title as string, status };
   if (typeof fm.priority === 'number') item.priority = fm.priority;
   if (typeof fm.created === 'string') item.created = fm.created;
   if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
-  if (recoveryVerdict !== undefined) item.recoveryVerdict = recoveryVerdict;
+  if (recovery.recoveryVerdict !== undefined) item.recoveryVerdict = recovery.recoveryVerdict;
+  if (recovery.recoveryApplied !== undefined) item.recoveryApplied = recovery.recoveryApplied;
   return item;
 }
 
@@ -51,21 +58,27 @@ function postProcessQueueDependsOn(items: QueueItem[]): void {
   }
 }
 
-function parseRecoveryVerdict(raw: string): QueueItem['recoveryVerdict'] | undefined {
+function parseRecoverySidecarProjection(raw: string): RecoverySidecarProjection {
   const sidecarData = JSON.parse(raw) as Record<string, unknown>;
+  const projection: RecoverySidecarProjection = {};
   if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
     const parsed = parseWithSchema(recoveryVerdictSchema, sidecarData.verdict);
-    return { verdict: parsed.verdict, confidence: parsed.confidence };
+    projection.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
   }
-  return undefined;
+  // Prefer the rich accepted-success marker (keyed by `acceptedAt`); fall back to
+  // the base `appliedAt`-keyed retry/split/abandon marker.
+  const applied = parseAcceptSuccessAppliedMetadata(sidecarData?.applied)
+    ?? parseRecoveryAppliedMetadata(sidecarData?.applied);
+  if (applied !== undefined) projection.recoveryApplied = applied;
+  return projection;
 }
 
-function readRecoveryVerdictSync(dir: string, id: string): QueueItem['recoveryVerdict'] | undefined {
-  try { return parseRecoveryVerdict(readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8')); } catch { return undefined; }
+function readRecoverySidecarProjectionSync(dir: string, id: string): RecoverySidecarProjection {
+  try { return parseRecoverySidecarProjection(readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8')); } catch { return {}; }
 }
 
-async function readRecoveryVerdict(dir: string, id: string): Promise<QueueItem['recoveryVerdict'] | undefined> {
-  try { return parseRecoveryVerdict(await readFile(resolve(dir, `${id}.recovery.json`), 'utf-8')); } catch { return undefined; }
+async function readRecoverySidecarProjection(dir: string, id: string): Promise<RecoverySidecarProjection> {
+  try { return parseRecoverySidecarProjection(await readFile(resolve(dir, `${id}.recovery.json`), 'utf-8')); } catch { return {}; }
 }
 
 export function loadQueueItemsSync(queueDir: string, lockDir: string): QueueItem[] {
@@ -79,7 +92,7 @@ export function loadQueueItemsSync(queueDir: string, lockDir: string): QueueItem
         if (!fm || typeof fm.title !== 'string') continue;
         const id = basename(file, '.md');
         const status = derivedStatus === 'pending' && existsSync(resolve(lockDir, `${id}.lock`)) ? 'running' : derivedStatus;
-        items.push(buildQueueItem(id, fm, status, derivedStatus === 'failed' ? readRecoveryVerdictSync(dir, id) : undefined));
+        items.push(buildQueueItem(id, fm, status, derivedStatus === 'failed' ? readRecoverySidecarProjectionSync(dir, id) : {}));
       } catch { /* skip unreadable */ }
     }
   };
@@ -105,7 +118,7 @@ export async function loadQueueItems(queueDir: string, lockDir: string): Promise
         if (derivedStatus === 'pending') {
           try { await readFile(resolve(lockDir, `${id}.lock`)); status = 'running'; } catch { /* pending */ }
         }
-        items.push(buildQueueItem(id, fm, status, derivedStatus === 'failed' ? await readRecoveryVerdict(dir, id) : undefined));
+        items.push(buildQueueItem(id, fm, status, derivedStatus === 'failed' ? await readRecoverySidecarProjection(dir, id) : {}));
       } catch { /* skip unreadable */ }
     }
   };

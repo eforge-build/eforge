@@ -58,6 +58,8 @@ export const API_ROUTES = {
   recover: '/api/recover',
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
+  acceptRecoverySuccessPreview: '/api/recover/accept-success/preview',
+  acceptRecoverySuccess: '/api/recover/accept-success',
   resumeBuild: '/api/recover/resume-build',
   resumeEligibility: '/api/recover/resume-eligibility',
   schedulerKick: '/api/scheduler/kick',

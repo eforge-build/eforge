@@ -256,7 +256,8 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     const failedPrdContent = '---\ntitle: Failed PRD\npriority: 1\n---\n\n# Failed PRD\n';
     writeFileSync(join(failedDir, 'failed-prd.md'), failedPrdContent, 'utf-8');
     const recoverySidecar = JSON.stringify({
-      verdict: { verdict: 'retry', confidence: 'high' },
+      verdict: { verdict: 'split', confidence: 'high' },
+      applied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-prd-successor' },
     });
     writeFileSync(join(failedDir, 'failed-prd.recovery.json'), recoverySidecar, 'utf-8');
 

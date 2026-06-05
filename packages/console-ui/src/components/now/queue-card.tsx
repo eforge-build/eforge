@@ -3,7 +3,8 @@
  *
  * Renders dependency-linked plans as a "Build stack" subsection (in unlock
  * order) followed by an "Other queued items" subsection for standalone
- * pending/waiting/running items not part of a stack. The queue is forward-only:
+ * pending/waiting items not part of a stack. Running rows are not in this loose
+ * list — they surface only through the stack/active-build views. The queue is forward-only:
  * a failed or skipped PRD already ran, so it is not shown here — those surface
  * in the "Needs attention" strip, which owns the Recover action. No mutation
  * happens during render or expansion.
@@ -34,12 +35,15 @@ function blockedByLabel(dependsOn: string[]): string {
 }
 
 /**
- * Forward queue work only. A failed or skipped PRD already ran and belongs in
- * the Needs attention strip (with the Recover action), not in the queue.
+ * Forward queue work only — pending or waiting. This matches the
+ * `selectNowQueueSummary` contract, whose `topItems`/`allItems` are already
+ * pending/waiting rows. A failed or skipped PRD already ran and belongs in the
+ * Needs attention strip; a running PRD surfaces as an active build card. None of
+ * them belong in the queue preview.
  */
 function isForwardItem(item: NowQueueItem): boolean {
   const s = item.status.toLowerCase();
-  return s !== 'failed' && s !== 'skipped';
+  return s === 'pending' || s === 'waiting';
 }
 
 function LooseQueueRow({

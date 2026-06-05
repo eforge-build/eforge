@@ -407,6 +407,41 @@ describe('POST /api/recover/apply — split continuation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/recover/apply — split idempotency
+// ---------------------------------------------------------------------------
+
+describe('POST /api/recover/apply — split idempotency', () => {
+  it('repeated split apply returns already-applied with the same successorPrdId and no duplicate successor', async () => {
+    const prdId = 'test-route-split-idempotent';
+    await seedFailedPrd(tmpDir, prdId, 'split', { suggestedSuccessorPrd: '# Idempotent Successor\n\nContinue.' });
+
+    const apply = () => fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId }),
+    });
+
+    const firstRes = await apply();
+    expect(firstRes.status).toBe(200);
+    const first = await firstRes.json() as { verdict: string; successorPrdId: string; status?: string };
+    expect(first.verdict).toBe('split');
+    expect(first.status).toBe('applied');
+    expect(first.successorPrdId).toBeTruthy();
+
+    const secondRes = await apply();
+    expect(secondRes.status).toBe(200);
+    const second = await secondRes.json() as { verdict: string; successorPrdId: string; status?: string };
+    expect(second.status).toBe('already-applied');
+    expect(second.successorPrdId).toBe(first.successorPrdId);
+
+    // Exactly one successor file in the queue root — no `-2` duplicate.
+    const entries = await readdir(join(tmpDir, '.eforge', 'queue'));
+    const successorFiles = entries.filter((e) => e.endsWith('.md'));
+    expect(successorFiles).toEqual([`${first.successorPrdId}.md`]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/recover/apply — split missing suggestedSuccessorPrd → 500
 // ---------------------------------------------------------------------------
 
@@ -494,5 +529,95 @@ describe('POST /api/recover/apply — 503 without daemonState', () => {
     } finally {
       await server2.stop();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Accept-build-as-successful recovery routes (plan-02)
+// ---------------------------------------------------------------------------
+
+describe('accept-success recovery routes', () => {
+  function git(dir: string, args: string[]): void {
+    execFileSync('git', args, { cwd: dir });
+  }
+
+  async function seedAcceptRoute(dir: string, prdId: string): Promise<void> {
+    const setName = 'route-accept-set';
+    const feature = `eforge/${setName}`;
+    await mkdir(join(dir, 'eforge'), { recursive: true });
+    await writeFile(join(dir, 'eforge', 'config.yaml'), 'landing:\n  action: leave\n');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'chore: config']);
+
+    git(dir, ['checkout', '-b', feature]);
+    await mkdir(join(dir, 'eforge', 'plans', setName), { recursive: true });
+    await writeFile(join(dir, 'eforge', 'plans', setName, 'plan-01.md'), '# plan');
+    await mkdir(join(dir, 'eforge', 'prds'), { recursive: true });
+    await writeFile(join(dir, 'eforge', 'prds', `${prdId}.md`), '# prd');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'feat: landed work']);
+    git(dir, ['checkout', 'main']);
+
+    const failedDir = join(dir, '.eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, `${prdId}.md`), `---\ntitle: ${prdId}\n---\n# ${prdId}`);
+    await writeFile(join(failedDir, `${prdId}.recovery.md`), '## Recovery');
+    const sidecar = {
+      schemaVersion: 2,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        prdId, setName, featureBranch: feature, baseBranch: 'main',
+        plans: [], failingPlan: { planId: 'plan-01' },
+        landedCommits: [{ sha: 'abc123', subject: 'work', author: 'Test', date: new Date().toISOString() }],
+        diffStat: '', modelsUsed: [], failedAt: new Date().toISOString(),
+        acceptanceValidation: { passed: false, total: 1, pass: 0, fail: 1, unknown: 0, verdicts: [] },
+        validationCommands: [{ command: 'pnpm test', exitCode: 0 }],
+      },
+      verdict: { verdict: 'manual', confidence: 'low', rationale: 'm', completedWork: [], remainingWork: [], risks: [] },
+    };
+    await writeFile(join(failedDir, `${prdId}.recovery.json`), JSON.stringify(sidecar, null, 2));
+  }
+
+  it('previews eligibility for an acceptance-validation failure', async () => {
+    const prdId = 'route-accept-preview';
+    await seedAcceptRoute(tmpDir, prdId);
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccessPreview}?prdId=${prdId}`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as { status: string; landingAction: string };
+    expect(data.status).toBe('eligible');
+    expect(data.landingAction).toBe('leave');
+  });
+
+  it('returns 400 when reasonCategory is missing', async () => {
+    const prdId = 'route-accept-badreq';
+    await seedAcceptRoute(tmpDir, prdId);
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccess}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId, reason: 'no category' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('applies accepted-success and is idempotent on reapply', async () => {
+    const prdId = 'route-accept-apply';
+    await seedAcceptRoute(tmpDir, prdId);
+    const apply = () => fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccess}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId, reasonCategory: 'bad_acceptance_criterion', reason: 'criterion was wrong', unblockDependentIds: [] }),
+    });
+
+    const firstRes = await apply();
+    expect(firstRes.status).toBe(200);
+    const first = await firstRes.json() as { status: string; applied: { action: string } };
+    expect(first.status).toBe('applied');
+    expect(first.applied.action).toBe('accepted-success');
+    expect(autoBuildWakeReasons).toContain('apply-recovery');
+
+    const secondRes = await apply();
+    expect(secondRes.status).toBe(200);
+    const second = await secondRes.json() as { status: string };
+    expect(second.status).toBe('already-applied');
   });
 });

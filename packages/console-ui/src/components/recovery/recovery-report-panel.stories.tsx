@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type {
   ReadSidecarResponse,
   ResumeEligibilityResponse,
+  AcceptSuccessPreviewResponse,
 } from '@eforge-build/client/browser';
 import { SheetPanel } from '@/components/ui/sheet-panel';
 import { RecoveryVerdictChip } from '@/components/recovery/verdict-chip';
@@ -117,6 +118,30 @@ function ineligibleFixture(): ResumeEligibilityResponse {
   };
 }
 
+function acceptSuccessPreviewFixture(): AcceptSuccessPreviewResponse {
+  return {
+    prdId: 'add-queued-prd-priority-and-removal-controls',
+    status: 'eligible',
+    landingAction: 'pr',
+    cleanup: {
+      planSet: 'add-queued-prd-priority-and-removal-controls',
+      planArtifactsPresent: true,
+      prdArtifactPresent: true,
+      willCommit: true,
+    },
+    audit: {
+      setName: 'add-queued-prd-priority-and-removal-controls',
+      featureBranch: 'eforge/add-queued-prd-priority-and-removal-controls',
+      baseBranch: 'main',
+      landedCommitCount: 3,
+    },
+    dependentCandidates: [
+      { prdId: 'docs-followup', title: 'Docs Follow-up', remainingDependencies: [], unblockable: true, blockedBy: [] },
+      { prdId: 'blocked-followup', title: 'Blocked Follow-up', remainingDependencies: ['other'], unblockable: false, blockedBy: ['other'] },
+    ],
+  };
+}
+
 const meta = {
   title: 'Recovery/RecoveryReportPanel',
   component: RecoveryReportPanel,
@@ -154,17 +179,20 @@ const meta = {
     sidecarVerdict: undefined,
     effectiveVerdict: undefined,
     effectiveConfidence: undefined,
+    appliedMetadata: undefined,
     eligibility: null,
     eligibilityError: null,
-    applyResult: null,
     applyError: null,
     analysisStarted: false,
     analysisError: null,
-    resumeResult: null,
     resumeError: null,
     applyingSidecar: false,
     startingAnalysis: false,
     startingResume: false,
+    acceptSuccessPreview: null,
+    acceptingSuccess: false,
+    acceptSuccessError: null,
+    onAcceptSuccess: () => undefined,
     onApplySidecar: () => undefined,
     onRunAnalysis: () => undefined,
     onResume: () => undefined,
@@ -199,5 +227,17 @@ export const ErrorState: Story = {
   args: {
     reportStatus: 'error',
     reportError: 'Recovery report is malformed: missing verdict or summary fields.',
+  },
+};
+
+export const AcceptSuccessEligible: Story = {
+  args: {
+    reportStatus: 'loaded',
+    sidecar: sidecarFixture(),
+    sidecarVerdict: 'manual',
+    effectiveVerdict: 'manual',
+    effectiveConfidence: 'low',
+    eligibility: ineligibleFixture(),
+    acceptSuccessPreview: acceptSuccessPreviewFixture(),
   },
 };

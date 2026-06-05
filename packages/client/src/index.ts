@@ -157,6 +157,17 @@ export { apiReadRecoverySidecar, apiReadRecoverySidecarIfRunning } from './api/r
 
 export { apiApplyRecovery, apiApplyRecoveryIfRunning } from './api/apply-recovery.js';
 
+export {
+  apiAcceptRecoverySuccessPreview, apiAcceptRecoverySuccessPreviewIfRunning,
+  apiAcceptRecoverySuccess, apiAcceptRecoverySuccessIfRunning,
+} from './api/accept-recovery-success.js';
+export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes.js';
+export type {
+  AcceptSuccessReasonCategory, AcceptSuccessLandingAction, AcceptSuccessPreviewRequest, AcceptSuccessCleanupEffect,
+  AcceptSuccessAuditFields, AcceptSuccessDependentCandidate, AcceptSuccessCleanupResult, AcceptSuccessLandingResult,
+  AcceptSuccessDependentResult, AcceptSuccessAppliedSummary, AcceptSuccessPreviewResponse, AcceptSuccessRequest, AcceptSuccessResponse,
+} from './routes.js';
+
 export type {
   QueueRecoveryStrategy,
   QueueRecoveryStrategyWire,
@@ -336,7 +347,7 @@ export type {
   SessionPlanSetValidateResponse,
 } from './session-plan-set.js';
 
-export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
+export type { ApplyRecoveryRequest, ApplyRecoveryResponse, RecoveryAppliedMetadata } from './routes.js';
 
 export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
 export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';

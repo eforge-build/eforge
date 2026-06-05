@@ -38,13 +38,13 @@ describe('QueueCard - empty queue', () => {
 });
 
 describe('QueueCard - populated queue', () => {
-  it('renders Queue card heading', () => {
+  it('renders Queue card heading with pending and waiting forward rows', () => {
     const summary = makeSummary({
       total: 2,
       pendingCount: 1,
-      runningCount: 1,
+      waitingCount: 1,
       topItems: [
-        { id: 'q-1', title: 'Task A', status: 'running', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-1', title: 'Task A', status: 'waiting', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
         { id: 'q-2', title: 'Task B', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
     });
@@ -52,6 +52,23 @@ describe('QueueCard - populated queue', () => {
     expect(screen.getByText('Queue')).toBeDefined();
     expect(screen.getByText('Task A')).toBeDefined();
     expect(screen.getByText('Task B')).toBeDefined();
+  });
+
+  it('omits running rows — running appears as active build cards, not queue preview', () => {
+    // Even if a running row leaks into topItems, the forward-only component
+    // contract filters it out so the queue preview shows pending/waiting only.
+    const summary = makeSummary({
+      total: 1,
+      pendingCount: 1,
+      runningCount: 1,
+      topItems: [
+        { id: 'q-r', title: 'Running Task', status: 'running', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-p', title: 'Pending Task', status: 'pending', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+      ],
+    });
+    render(<QueueCard summary={summary} />);
+    expect(screen.getByText('Pending Task')).toBeDefined();
+    expect(screen.queryByText('Running Task')).toBeNull();
   });
 
   it('omits failed and skipped items — the queue is forward-only', () => {
@@ -137,16 +154,18 @@ describe('QueueCard - loose row actions', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined();
   });
 
-  it('renders no queue-control buttons for running loose rows', () => {
+  it('excludes running rows from the loose list entirely (no row, no controls)', () => {
     const summary = makeSummary({
-      total: 1,
+      total: 0,
       runningCount: 1,
       topItems: [
         { id: 'q-r', title: 'Running Task', status: 'running', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
     });
     render(<QueueCard summary={summary} onSetPriority={vi.fn()} onRemove={vi.fn()} />);
-    expect(screen.getByText('Running Task')).toBeDefined();
+    // Running rows are not forward work; the queue preview omits them.
+    expect(screen.queryByText('Running Task')).toBeNull();
+    expect(screen.getByText('Nothing waiting to build')).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Set priority' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });

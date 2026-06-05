@@ -23,6 +23,8 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'recover',
   'readRecoverySidecar',
   'applyRecovery',
+  'acceptRecoverySuccessPreview',
+  'acceptRecoverySuccess',
   'resumeBuild',
   'resumeEligibility',
   'queueRecoveryAnalyze',

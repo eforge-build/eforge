@@ -1,32 +1,20 @@
 import * as React from 'react';
 import type {
-  ApplyRecoveryResponse,
   ReadSidecarResponse,
-  ResumeBuildResponse,
   ResumeEligibilityResponse,
+  RecoveryAppliedMetadata,
+  AcceptSuccessPreviewResponse,
 } from '@eforge-build/client/browser';
 import { ConfirmAction } from '@/components/recovery/confirm-action';
 import { SafeMarkdown } from '@/components/recovery/safe-markdown';
 import { AdvancedCascadeSection } from '@/components/recovery/advanced-cascade-section';
+import { AcceptSuccessAction, type AcceptSuccessApplyInput } from '@/components/recovery/accept-success-action';
 import type {
   RecoveryConfidenceValue,
   RecoveryVerdictValue,
 } from '@/components/recovery/verdict-chip';
 
 export type ReportStatus = 'loading' | 'loaded' | 'missing' | 'error';
-
-function applyResultMessage(result: ApplyRecoveryResponse): string {
-  switch (result.verdict) {
-    case 'retry':
-      return 'Applied retry: re-queueing the PRD.';
-    case 'split':
-      return `Applied split: enqueuing the successor PRD${result.successorPrdId ? ` (${result.successorPrdId})` : ''}. When the recovery report records landed partial work, the successor starts from the preserved feature branch while still targeting the original base branch.`;
-    case 'abandon':
-      return 'Applied abandon: archiving or removing the failed PRD.';
-    case 'manual':
-      return 'Manual review required: no action taken.';
-  }
-}
 
 interface SidecarActionConfig {
   triggerLabel: string;
@@ -66,17 +54,26 @@ export interface RecoveryReportPanelProps {
   /** Normalized verdict/confidence for the advanced queue-cascade section. */
   effectiveVerdict: RecoveryVerdictValue | undefined;
   effectiveConfidence: RecoveryConfidenceValue | undefined;
+  /**
+   * Durable applied marker from the sidecar. When present the mutating sidecar
+   * action is hidden so an already-applied verdict cannot be re-applied (the
+   * dialog also transitions to a completion panel in this case).
+   */
+  appliedMetadata: RecoveryAppliedMetadata | undefined;
   eligibility: ResumeEligibilityResponse | null;
   eligibilityError: string | null;
-  applyResult: ApplyRecoveryResponse | null;
   applyError: string | null;
   analysisStarted: boolean;
   analysisError: string | null;
-  resumeResult: ResumeBuildResponse | null;
   resumeError: string | null;
   applyingSidecar: boolean;
   startingAnalysis: boolean;
   startingResume: boolean;
+  /** Read-only accepted-success preview; the action renders only when eligible. */
+  acceptSuccessPreview: AcceptSuccessPreviewResponse | null;
+  acceptingSuccess: boolean;
+  acceptSuccessError: string | null;
+  onAcceptSuccess: (input: AcceptSuccessApplyInput) => void;
   onApplySidecar: () => void;
   onRunAnalysis: () => void;
   onResume: () => void;
@@ -96,17 +93,20 @@ export function RecoveryReportPanel({
   sidecarVerdict,
   effectiveVerdict,
   effectiveConfidence,
+  appliedMetadata,
   eligibility,
   eligibilityError,
-  applyResult,
   applyError,
   analysisStarted,
   analysisError,
-  resumeResult,
   resumeError,
   applyingSidecar,
   startingAnalysis,
   startingResume,
+  acceptSuccessPreview,
+  acceptingSuccess,
+  acceptSuccessError,
+  onAcceptSuccess,
   onApplySidecar,
   onRunAnalysis,
   onResume,
@@ -149,8 +149,11 @@ export function RecoveryReportPanel({
         )}
       </section>
 
-      {/* Sidecar verdict action */}
-      {reportStatus === 'loaded' && sidecar && (
+      {/* Sidecar verdict action. Hidden once a durable applied marker exists so
+          an already-applied verdict cannot be re-applied (the dialog also swaps
+          in a completion panel in that case). Success transitions are owned by
+          the completion panel, so only the error stays here. */}
+      {reportStatus === 'loaded' && sidecar && !appliedMetadata && (
         <section className="space-y-2">
           <h3 className="text-sm font-medium text-foreground">Recommended recovery action</h3>
           {sidecarVerdict === 'manual' ? (
@@ -162,16 +165,26 @@ export function RecoveryReportPanel({
               description={SIDECAR_ACTIONS[sidecarVerdict].description}
               confirmLabel={SIDECAR_ACTIONS[sidecarVerdict].confirmLabel}
               onConfirm={onApplySidecar}
-              disabled={applyingSidecar || applyResult !== null}
+              disabled={applyingSidecar}
             />
           ) : null}
-          {applyResult && (
-            <p className="text-sm text-foreground">{applyResultMessage(applyResult)}</p>
-          )}
           {applyError && (
             <p role="alert" className="text-sm text-destructive">{applyError}</p>
           )}
         </section>
+      )}
+
+      {/* Accepted-success action. A focused human recovery path for builds whose
+          implementation is acceptable but PRD/acceptance validation failed on a
+          bad or unverifiable criterion. Rendered only when the preview reports
+          the PRD eligible; success transitions to a completion panel. */}
+      {acceptSuccessPreview?.status === 'eligible' && (
+        <AcceptSuccessAction
+          preview={acceptSuccessPreview}
+          applying={acceptingSuccess}
+          error={acceptSuccessError}
+          onApply={onAcceptSuccess}
+        />
       )}
 
       {/* Compiled-build resume */}
@@ -187,21 +200,11 @@ export function RecoveryReportPanel({
             description={`Resume the compiled build for ${eligibility.prdId} in set ${eligibility.setName}.`}
             confirmLabel="Resume"
             onConfirm={onResume}
-            disabled={startingResume || resumeResult !== null}
+            disabled={startingResume}
           />
         )}
         {eligibility && !eligibility.eligible && (
           <p className="text-sm text-muted-foreground">{eligibility.reason}</p>
-        )}
-        {resumeResult && (
-          <div className="space-y-1 text-sm text-foreground">
-            <p>Resume queued</p>
-            <p className="text-xs text-muted-foreground">PRD: {resumeResult.prdId}</p>
-            <p className="text-xs text-muted-foreground">Set: {resumeResult.setName}</p>
-            <p className="text-xs text-muted-foreground">Feature branch: {resumeResult.featureBranch}</p>
-            <p className="text-xs text-muted-foreground">Base branch: {resumeResult.baseBranch}</p>
-            {resumeResult.profile && <p className="text-xs text-muted-foreground">Profile: {resumeResult.profile}</p>}
-          </div>
         )}
         {resumeError && (
           <p role="alert" className="text-sm text-destructive">{resumeError}</p>

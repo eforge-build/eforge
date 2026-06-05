@@ -9,10 +9,12 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 77
+Total routes: 79
 
 | Route key | Path pattern |
 |-----------|-------------|
+| `acceptRecoverySuccess` | `/api/recover/accept-success` |
+| `acceptRecoverySuccessPreview` | `/api/recover/accept-success/preview` |
 | `applyRecovery` | `/api/recover/apply` |
 | `autoBuildGet` | `/api/auto-build` |
 | `autoBuildSet` | `/api/auto-build` |

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 53 for queue priority and queue removal route contracts', () => {
-    expect(DAEMON_API_VERSION).toBe(53);
+  it('is 55 for accepted-success recovery routes', () => {
+    expect(DAEMON_API_VERSION).toBe(55);
   });
 });

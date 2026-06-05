@@ -360,8 +360,8 @@ export function selectNowAttentionItems(
         id: `queue-failed-verdict-${item.id}`,
         severity: 'warning',
         message: `Failed: ${label}`,
-        detail: `${rv.verdict} / ${rv.confidence}`,
-        recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence },
+        detail: item.recoveryApplied ? `recovery applied: ${item.recoveryApplied.action === 'split' ? `split → ${item.recoveryApplied.successorPrdId}` : item.recoveryApplied.action}` : `${rv.verdict} / ${rv.confidence}`,
+        ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence } }),
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });

@@ -19,6 +19,7 @@ export type {
   RecoverResponse,
   ReadSidecarRequest,
   RecoveryVerdictSidecar,
+  RecoveryAppliedMetadata,
   ReadSidecarResponse,
   ResumeBuildRequest,
   ResumeBuildResponse,
@@ -27,7 +28,22 @@ export type {
   ResumeArtifactAvailability,
   ApplyRecoveryRequest,
   ApplyRecoveryResponse,
+  AcceptSuccessReasonCategory,
+  AcceptSuccessLandingAction,
+  AcceptSuccessPreviewRequest,
+  AcceptSuccessCleanupEffect,
+  AcceptSuccessAuditFields,
+  AcceptSuccessDependentCandidate,
+  AcceptSuccessCleanupResult,
+  AcceptSuccessLandingResult,
+  AcceptSuccessDependentResult,
+  AcceptSuccessAppliedSummary,
+  AcceptSuccessPreviewResponse,
+  AcceptSuccessRequest,
+  AcceptSuccessResponse,
 } from './routes/recovery.js';
+
+export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes/recovery.js';
 
 export type {
   SessionPlanStatusWire,
