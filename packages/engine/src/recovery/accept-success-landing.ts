@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { rm } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -7,7 +8,7 @@ import type { AcceptSuccessLandingResult, BuildFailureSummary, EforgeEvent } fro
 
 import { resolveTrunkBranch, isTrunkBranch } from '../branch-policy.js';
 import { DEFAULT_CONFIG } from '../config.js';
-import { DIRECT_PR_REMOTE, checkDirectPrBaseFreshness, syncDirectPrBase } from '../direct-pr-base-sync.js';
+import { DIRECT_PR_REMOTE, checkDirectPrBaseFreshness, syncDirectPrBase, type DirectPrBaseSyncPoint, type DirectPrBaseSyncResult } from '../direct-pr-base-sync.js';
 import type { OrchestrationConfig, EforgeState } from '../events.js';
 import { executeLandingAction } from '../landing.js';
 import { ModelTracker } from '../model-tracker.js';
@@ -23,6 +24,7 @@ export interface AcceptSuccessLandingOptions {
   allowLocalMergeToTrunk?: boolean;
   landingAutoMerge?: boolean;
   prAutoMergePolicy?: 'ask' | 'always' | 'never';
+  directPrBaseSyncPoint?: DirectPrBaseSyncPoint;
 }
 
 async function gitRevParse(cwd: string, ref: string): Promise<string> {
@@ -43,6 +45,27 @@ async function addDetachedWorktree(cwd: string, ref: string): Promise<string> {
   const wtPath = join(cwd, '.eforge', 'tmp', `accept-landing-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   await exec('git', ['worktree', 'add', '--detach', '--quiet', wtPath, ref], { cwd });
   return wtPath;
+}
+
+export async function syncAcceptedSuccessPrBase(options: AcceptSuccessLandingOptions, summary: BuildFailureSummary): Promise<DirectPrBaseSyncResult> {
+  const { cwd } = options;
+  const featureBranch = summary.featureBranch;
+  const baseBranch = summary.baseBranch;
+  const originalSha = await gitRevParse(cwd, featureBranch);
+  const tempBranch = `eforge/tmp/accept-success-${randomBytes(6).toString('hex')}`;
+  await exec('git', ['branch', tempBranch, originalSha], { cwd });
+  const wtPath = await addDetachedWorktree(cwd, tempBranch);
+  try {
+    const sync = await syncDirectPrBase({ cwd: wtPath, featureBranch: tempBranch, baseBranch, remote: DIRECT_PR_REMOTE });
+    if (!sync.ok) return sync;
+    await exec('git', ['update-ref', `refs/heads/${featureBranch}`, sync.point.featureSha, originalSha], { cwd });
+    return { ok: true, point: { ...sync.point, featureSha: sync.point.featureSha } };
+  } catch (err) {
+    return { ok: false, reason: 'rebase-failed', message: `Direct PR base sync failed: ${(err as Error).message}`, baseBranch, remote: DIRECT_PR_REMOTE };
+  } finally {
+    await removeWorktree(cwd, wtPath);
+    await exec('git', ['branch', '-D', tempBranch], { cwd }).catch(() => {});
+  }
 }
 
 async function removeWorktree(cwd: string, wtPath: string): Promise<void> {
@@ -148,72 +171,78 @@ async function landPr(options: AcceptSuccessLandingOptions, summary: BuildFailur
   const { cwd } = options;
   const featureBranch = summary.featureBranch;
   const baseBranch = summary.baseBranch;
-  const sync = await syncDirectPrBase({ cwd, featureBranch, baseBranch, remote: DIRECT_PR_REMOTE });
+  const syncPoint = options.directPrBaseSyncPoint;
+  const sync = syncPoint ? { ok: true as const, point: syncPoint } : await syncAcceptedSuccessPrBase(options, summary);
   if (!sync.ok) {
     return { action: 'pr', status: 'failed', branch: featureBranch, reason: sync.message };
   }
 
-  const freshnessGuard: PullRequestFreshnessGuard = async () => {
-    const result = await checkDirectPrBaseFreshness({ cwd, syncPoint: sync.point });
-    if (result.kind === 'fresh') return { ok: true };
-    if (result.kind === 'base-advanced') {
-      return {
-        ok: false,
-        retryable: true,
-        reason: `Direct PR base '${result.remote}/${result.baseBranch}' advanced after accepted-success base sync`,
-        fetchedBaseSha: result.fetchedBaseSha,
-      };
+  const wtPath = await addDetachedWorktree(cwd, featureBranch);
+  try {
+    const freshnessGuard: PullRequestFreshnessGuard = async () => {
+      const result = await checkDirectPrBaseFreshness({ cwd: wtPath, syncPoint: sync.point });
+      if (result.kind === 'fresh') return { ok: true };
+      if (result.kind === 'base-advanced') {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `Direct PR base '${result.remote}/${result.baseBranch}' advanced after accepted-success base sync`,
+          fetchedBaseSha: result.fetchedBaseSha,
+        };
+      }
+      return { ok: false, retryable: false, reason: result.reason };
+    };
+
+    const worktreeManager = new WorktreeManager({
+      repoRoot: wtPath,
+      worktreeBase: join(wtPath, '.eforge', 'worktrees'),
+      featureBranch,
+      mergeWorktreePath: wtPath,
+    });
+    const events: EforgeEvent[] = [];
+    const generator = executeLandingAction({
+      action: 'pr',
+      featureBranch,
+      baseBranch,
+      repoRoot: wtPath,
+      mergeWorktreePath: wtPath,
+      worktreeManager,
+      modelTracker: new ModelTracker(),
+      commitMessage: `build(${summary.setName}): accept successful recovery`,
+      state: minimalState(summary),
+      config: minimalConfig(summary),
+      engineConfig: { build: { ...DEFAULT_CONFIG.build, trunkBranch: options.trunkBranch, allowLocalMergeToTrunk: options.allowLocalMergeToTrunk ?? false } },
+      shouldCleanup: false,
+      cleanupPlanSet: summary.setName,
+      cleanupOutputDir: options.planOutputDir ?? 'eforge/plans',
+      prAutoMergePolicy: options.prAutoMergePolicy,
+      landingAutoMerge: options.landingAutoMerge,
+      beforePushFreshnessGuard: freshnessGuard,
+      beforeCreateFreshnessGuard: freshnessGuard,
+      forceWithLease: true,
+    });
+
+    let result = { landingSucceeded: false } as Awaited<ReturnType<typeof executeLandingAction> extends AsyncGenerator<EforgeEvent, infer R> ? Promise<R> : never>;
+    while (true) {
+      const next = await generator.next();
+      if (next.done) {
+        result = next.value;
+        break;
+      }
+      events.push(next.value);
     }
-    return { ok: false, retryable: false, reason: result.reason };
-  };
 
-  const worktreeManager = new WorktreeManager({
-    repoRoot: cwd,
-    worktreeBase: join(cwd, '.eforge', 'worktrees'),
-    featureBranch,
-    mergeWorktreePath: cwd,
-  });
-  const events: EforgeEvent[] = [];
-  const generator = executeLandingAction({
-    action: 'pr',
-    featureBranch,
-    baseBranch,
-    repoRoot: cwd,
-    mergeWorktreePath: cwd,
-    worktreeManager,
-    modelTracker: new ModelTracker(),
-    commitMessage: `build(${summary.setName}): accept successful recovery`,
-    state: minimalState(summary),
-    config: minimalConfig(summary),
-    engineConfig: { build: { ...DEFAULT_CONFIG.build, trunkBranch: options.trunkBranch, allowLocalMergeToTrunk: options.allowLocalMergeToTrunk ?? false } },
-    shouldCleanup: false,
-    cleanupPlanSet: summary.setName,
-    cleanupOutputDir: options.planOutputDir ?? 'eforge/plans',
-    prAutoMergePolicy: options.prAutoMergePolicy,
-    landingAutoMerge: options.landingAutoMerge,
-    beforePushFreshnessGuard: freshnessGuard,
-    beforeCreateFreshnessGuard: freshnessGuard,
-    forceWithLease: true,
-  });
-
-  let result = { landingSucceeded: false } as Awaited<ReturnType<typeof executeLandingAction> extends AsyncGenerator<EforgeEvent, infer R> ? Promise<R> : never>;
-  while (true) {
-    const next = await generator.next();
-    if (next.done) {
-      result = next.value;
-      break;
+    if (result.freshnessRetry) {
+      return { action: 'pr', status: 'failed', branch: featureBranch, reason: result.freshnessRetry.reason };
     }
-    events.push(next.value);
+    const autoMerge = autoMergeFromEvents(events);
+    if (result.landingSucceeded) {
+      return { action: 'pr', status: 'complete', branch: featureBranch, ...(result.prUrl ? { prUrl: result.prUrl } : {}), ...(autoMerge ? { autoMerge } : {}) };
+    }
+    return { action: 'pr', status: 'failed', branch: featureBranch, reason: landingFailureFromEvents(events) ?? 'PR landing failed', ...(autoMerge ? { autoMerge } : {}) };
+  } finally {
+    await removeWorktree(cwd, wtPath);
   }
-
-  if (result.freshnessRetry) {
-    return { action: 'pr', status: 'failed', branch: featureBranch, reason: result.freshnessRetry.reason };
-  }
-  const autoMerge = autoMergeFromEvents(events);
-  if (result.landingSucceeded) {
-    return { action: 'pr', status: 'complete', branch: featureBranch, ...(result.prUrl ? { prUrl: result.prUrl } : {}), ...(autoMerge ? { autoMerge } : {}) };
-  }
-  return { action: 'pr', status: 'failed', branch: featureBranch, reason: landingFailureFromEvents(events) ?? 'PR landing failed', ...(autoMerge ? { autoMerge } : {}) };
 }
 
 export async function landAcceptedSuccessBuild(

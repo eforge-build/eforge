@@ -447,8 +447,8 @@ describe('QueueRecoveryDialog - accepted success', () => {
     expect(trigger.disabled).toBe(false);
   });
 
-  it('confirmation lists cleanup, landing, audit, and selected dependents', async () => {
-    vi.mocked(fetchAcceptSuccessPreview).mockResolvedValue(eligiblePreviewFixture());
+  it('confirmation lists cleanup, landing, audit, selected dependents, and defined auto-merge intent', async () => {
+    vi.mocked(fetchAcceptSuccessPreview).mockResolvedValue(eligiblePreviewFixture({ landingAutoMerge: true }));
     renderDialog();
 
     fireEvent.change(await screen.findByLabelText('Reason category'), { target: { value: 'bad_acceptance_criterion' } });
@@ -458,13 +458,31 @@ describe('QueueRecoveryDialog - accepted success', () => {
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText(/commit removal of plan\/PRD artifacts for demo-set/)).toBeDefined();
     expect(within(dialog).getByText(/open a pull request/)).toBeDefined();
+    expect(within(dialog).getByText(/PR auto-merge: enabled\./)).toBeDefined();
     expect(within(dialog).getByText(/record set demo-set, feature branch eforge\/demo, base branch main, 3 landed commits/)).toBeDefined();
     expect(within(dialog).getByText(/unblock dep-open/)).toBeDefined();
   });
 
+  it('omits auto-merge intent from confirmation when preview does not define it', async () => {
+    vi.mocked(fetchAcceptSuccessPreview).mockResolvedValue(eligiblePreviewFixture());
+    renderDialog();
+
+    fireEvent.change(await screen.findByLabelText('Reason category'), { target: { value: 'bad_acceptance_criterion' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Criterion was wrong.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Accept build as successful' }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).queryByText(/PR auto-merge:/)).toBeNull();
+  });
+
   it('applies accepted-success and shows a completion panel with reason, cleanup, landing, and dependents', async () => {
     vi.mocked(fetchAcceptSuccessPreview).mockResolvedValue(eligiblePreviewFixture());
-    vi.mocked(acceptRecoverySuccess).mockResolvedValue(acceptedResponseFixture());
+    const accepted = acceptedResponseFixture();
+    accepted.applied.landing = {
+      ...accepted.applied.landing,
+      autoMerge: { status: 'failed', reason: 'branch protection blocked' },
+    };
+    vi.mocked(acceptRecoverySuccess).mockResolvedValue(accepted);
     const { refreshQueue } = renderDialog();
 
     fireEvent.change(await screen.findByLabelText('Reason category'), { target: { value: 'bad_acceptance_criterion' } });
@@ -485,6 +503,7 @@ describe('QueueRecoveryDialog - accepted success', () => {
     expect(screen.getByText('Acceptance criterion was wrong.')).toBeDefined();
     expect(screen.getByText(/committed \(abc1234\)/)).toBeDefined();
     expect(screen.getByText(/pr — complete/)).toBeDefined();
+    expect(screen.getByText(/auto-merge failed — branch protection blocked/)).toBeDefined();
     expect(screen.getByText('dep-open')).toBeDefined();
     await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
   });
