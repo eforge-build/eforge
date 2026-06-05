@@ -65,7 +65,7 @@ function installAdvanceMainOnFeaturePushHook(remote: string): void {
 while read old new ref; do
   if [ "$ref" = "refs/heads/eforge/accept-pr-set" ]; then
     tree=$(printf "100644 blob %s\\t%s\\n" "$(printf 'late remote base\\n' | git hash-object -w --stdin)" "late-base.txt" | git mktree)
-    commit=$(printf 'late remote base\\n' | git commit-tree "$tree" -p refs/heads/main)
+    commit=$(printf 'late remote base\\n' | env GIT_AUTHOR_NAME='Test' GIT_AUTHOR_EMAIL='test@example.com' GIT_COMMITTER_NAME='Test' GIT_COMMITTER_EMAIL='test@example.com' git commit-tree "$tree" -p refs/heads/main)
     git update-ref refs/heads/main "$commit"
   fi
 done
