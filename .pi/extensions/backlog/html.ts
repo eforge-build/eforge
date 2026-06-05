@@ -19,10 +19,13 @@ import {
 	type BacklogPriority,
 	type BacklogStatus,
 } from "./store";
+import { epicById, listEpics, type BacklogEpic } from "./epic-store";
 
 // --- eforge:region html-view-model ---
 export type BacklogHtmlOptions = { query?: string; includeClosed?: boolean };
 export type BacklogHtmlDependencyRef = { id: string; title: string; status?: BacklogStatus; visible: boolean; missing: boolean; blocking: boolean };
+export type BacklogHtmlEpicRef = { id: string; title: string; status?: BacklogStatus; missing: boolean };
+export type BacklogHtmlEpicGroup = { id: string; title: string; status?: BacklogStatus; missing: boolean; count: number };
 export type BacklogHtmlItem = {
 	item: BacklogItem;
 	labels: string[];
@@ -30,6 +33,7 @@ export type BacklogHtmlItem = {
 	blocked: boolean;
 	reviewDue: boolean;
 	closed: boolean;
+	epic?: BacklogHtmlEpicRef;
 	dependencies: BacklogHtmlDependencyRef[];
 	dependents: BacklogHtmlDependencyRef[];
 	claim: string;
@@ -42,6 +46,8 @@ export type BacklogHtmlModel = {
 	query?: string;
 	includeClosed: boolean;
 	items: BacklogHtmlItem[];
+	epics: BacklogHtmlEpicGroup[];
+	unassignedCount: number;
 	cycles: string[][];
 	stats: {
 		total: number;
@@ -58,8 +64,9 @@ export type BacklogHtmlWriteResult = BacklogHtmlModel["stats"] & { path: string 
 
 export async function writeBacklogHtml(cwd: string, options: BacklogHtmlOptions = {}): Promise<BacklogHtmlWriteResult> {
 	const allItems = await listItems(cwd);
+	const allEpics = await listEpics(cwd);
 	const visibleItems = filterItems(allItems, { query: options.query, includeClosed: options.includeClosed });
-	const model = createBacklogHtmlModel(visibleItems, allItems, options);
+	const model = createBacklogHtmlModel(visibleItems, allItems, options, allEpics);
 	const dir = join(backlogRoot(cwd), "view");
 	const path = join(dir, "index.html");
 	await mkdir(dir, { recursive: true });
@@ -67,14 +74,16 @@ export async function writeBacklogHtml(cwd: string, options: BacklogHtmlOptions 
 	return { path, ...model.stats };
 }
 
-export function createBacklogHtmlModel(visibleItems: BacklogItem[], allItems: BacklogItem[] = visibleItems, options: BacklogHtmlOptions = {}): BacklogHtmlModel {
+export function createBacklogHtmlModel(visibleItems: BacklogItem[], allItems: BacklogItem[] = visibleItems, options: BacklogHtmlOptions = {}, allEpics: BacklogEpic[]): BacklogHtmlModel {
 	const contextById = itemById(allItems);
+	const epicsById = epicById(allEpics);
 	const visibleIds = new Set(visibleItems.map((item) => item.id));
 	const readyIds = new Set(filterReadyItems(visibleItems, allItems).map((item) => item.id));
 	const items = visibleItems.map((item) => {
 		const blockers = blockedBy(item, contextById);
 		return {
 			item,
+			epic: item.epic ? epicRef(item.epic, epicsById) : undefined,
 			labels: summaryLabels(item, contextById),
 			ready: readyIds.has(item.id),
 			blocked: blockers.length > 0,
@@ -93,14 +102,32 @@ export function createBacklogHtmlModel(visibleItems: BacklogItem[], allItems: Ba
 		query: options.query?.trim() || undefined,
 		includeClosed: Boolean(options.includeClosed),
 		items,
+		epics: epicGroups(items),
+		unassignedCount: items.filter((entry) => !entry.epic).length,
 		cycles: findDependencyCycles(allItems).filter((cycle) => cycle.some((id) => visibleIds.has(id))),
 		stats: createStats(visibleItems, allItems),
 	};
 }
 
+function epicGroups(items: BacklogHtmlItem[]): BacklogHtmlEpicGroup[] {
+	const groups = new Map<string, BacklogHtmlEpicGroup>();
+	for (const entry of items) {
+		if (!entry.epic) continue;
+		const existing = groups.get(entry.epic.id);
+		if (existing) existing.count += 1;
+		else groups.set(entry.epic.id, { id: entry.epic.id, title: entry.epic.title, status: entry.epic.status, missing: entry.epic.missing, count: 1 });
+	}
+	return [...groups.values()].sort((a, b) => Number(a.missing) - Number(b.missing) || a.title.localeCompare(b.title));
+}
+
 function dependencyRef(id: string, contextById: Map<string, BacklogDisplayItem>, visibleIds: Set<string>, blocking: boolean): BacklogHtmlDependencyRef {
 	const item = contextById.get(id);
 	return { id, title: item?.title ?? `Missing dependency: ${id}`, status: item?.status, visible: visibleIds.has(id), missing: !item, blocking };
+}
+
+function epicRef(id: string, epicsById: Map<string, BacklogEpic>): BacklogHtmlEpicRef {
+	const epic = epicsById.get(id);
+	return { id, title: epic?.title ?? `Missing epic: ${id}`, status: epic?.status, missing: !epic };
 }
 
 function createStats(visibleItems: BacklogItem[], allItems: BacklogItem[]): BacklogHtmlModel["stats"] {
@@ -173,9 +200,11 @@ export function renderBacklogHtml(model: BacklogHtmlModel): string {
 	${renderStats(model)}
 </header>
 <main>
-	${renderToolbar()}
+	${renderToolbar(model)}
 	${renderCycles(model)}
+	${renderEpicPanel(model)}
 	${renderBoard(model)}
+	${renderEpicBoard(model)}
 </main>
 <script>${clientScript()}</script>
 </body>
@@ -193,12 +222,32 @@ function renderStats(model: BacklogHtmlModel): string {
 	return `<div class="stats">${stats.map(([label, value, tone]) => `<span class="stat stat-${tone}"><strong>${value}</strong>${escapeHtml(label)}</span>`).join("")}</div>`;
 }
 
-function renderToolbar(): string {
-	return `<section class="toolbar" aria-label="Backlog filters"><input id="search" type="search" placeholder="Search title, id, tag, dependency…" autocomplete="off"><div class="filters">${filterButton("all", "All", true)}${filterButton("ready", "Ready")}${filterButton("blocked", "Blocked")}${filterButton("review", "Review due")}${filterButton("closed", "Closed")}</div></section>`;
+function renderToolbar(model: BacklogHtmlModel): string {
+	const statusFilters = `<div class="filters">${filterButton("all", "All", true)}${filterButton("ready", "Ready")}${filterButton("blocked", "Blocked")}${filterButton("review", "Review due")}${filterButton("closed", "Closed")}</div>`;
+	return `<section class="toolbar" aria-label="Backlog filters"><input id="search" type="search" placeholder="Search title, id, tag, dependency…" autocomplete="off"><div class="toolbar-actions">${statusFilters}${renderEpicControls(model)}</div></section>`;
 }
 
 function filterButton(filter: string, label: string, active = false): string {
 	return `<button type="button" class="filter${active ? " active" : ""}" data-filter="${filter}">${label}</button>`;
+}
+
+function renderEpicControls(model: BacklogHtmlModel): string {
+	if (model.epics.length === 0) return "";
+	const groupToggle = `<div class="filters" role="group" aria-label="Group cards by"><span class="group-label">Group</span><button type="button" class="filter active" data-group="status">Status</button><button type="button" class="filter" data-group="epic">Epic</button></div>`;
+	const options = [`<option value="">All epics</option>`, ...model.epics.map((epic) => `<option value="${escapeAttr(epic.id)}">${escapeHtml(`${epic.title} (${epic.count})`)}</option>`)].join("");
+	const select = `<select id="epic-filter" class="epic-select" aria-label="Filter by epic">${options}</select>`;
+	return groupToggle + select;
+}
+
+function renderEpicPanel(model: BacklogHtmlModel): string {
+	if (model.epics.length === 0) return "";
+	const chips = model.epics.map((epic) => {
+		const classes = ["epic-summary", epic.missing && "missing"].filter(Boolean).join(" ");
+		const title = escapeAttr(epic.missing ? `Missing: ${epic.id}` : `${epic.id}${epic.status ? ` (${epic.status})` : ""}`);
+		return `<button type="button" class="${classes}" data-epic-filter="${escapeAttr(epic.id)}" title="${title}"><span class="epic-summary-name">${escapeHtml(epic.title)}</span><span class="epic-summary-count">${epic.count}</span></button>`;
+	}).join("");
+	const unassigned = model.unassignedCount > 0 ? `<span class="epic-summary epic-summary-none" title="Items with no epic"><span class="epic-summary-name">No epic</span><span class="epic-summary-count">${model.unassignedCount}</span></span>` : "";
+	return `<section class="epic-panel" aria-label="Epics">${chips}${unassigned}</section>`;
 }
 
 function renderCycles(model: BacklogHtmlModel): string {
@@ -210,7 +259,19 @@ function renderBoard(model: BacklogHtmlModel): string {
 	if (model.items.length === 0) return renderEmptyState();
 	const present = new Set(model.items.map((entry) => entry.item.status));
 	const columns = [...OPEN_STATUS_ORDER, ...CLOSED_STATUS_ORDER.filter((status) => present.has(status))];
-	return `<section class="board">${columns.map((status) => renderColumn(status, model.items.filter((entry) => entry.item.status === status))).join("")}</section>`;
+	return `<section class="board" data-board="status">${columns.map((status) => renderColumn(status, model.items.filter((entry) => entry.item.status === status))).join("")}</section>`;
+}
+
+function renderEpicBoard(model: BacklogHtmlModel): string {
+	if (model.epics.length === 0) return "";
+	const columns = model.epics.map((epic) => renderEpicColumn(epic.id, epic.title, epic.count, { missing: epic.missing }));
+	if (model.unassignedCount > 0) columns.push(renderEpicColumn("", "No epic", model.unassignedCount, { none: true }));
+	return `<section class="board epic-board is-hidden" data-board="epic">${columns.join("")}</section>`;
+}
+
+function renderEpicColumn(id: string, title: string, count: number, kind: { missing?: boolean; none?: boolean }): string {
+	const classes = ["col", "epic-col", kind.missing && "missing", kind.none && "none"].filter(Boolean).join(" ");
+	return `<div class="${classes}" data-epic-col="${escapeAttr(id)}"><div class="col-head"><span class="col-dot"></span><span class="col-name">${escapeHtml(title)}</span><span class="col-count" data-count>${count}</span></div><div class="col-body"></div></div>`;
 }
 
 function renderColumn(status: BacklogStatus, entries: BacklogHtmlItem[]): string {
@@ -232,17 +293,24 @@ function renderItemCard(entry: BacklogHtmlItem): string {
 		entry.blocked && `<span class="badge badge-bad">Blocked</span>`,
 		entry.reviewDue && `<span class="badge badge-warn">Review due</span>`,
 	].filter(Boolean).join("");
-	return `<article class="card priority-${item.priority}" id="item-${escapeAttr(item.id)}" data-backlog-card ${dataAttributes(entry)}><div class="card-head"><span class="prio"><span class="prio-dot"></span>${escapeHtml(item.priority)}</span><span class="badges">${badges}</span></div><h3 class="card-title">${escapeHtml(item.title)}</h3><code class="card-id" title="${escapeAttr(item.id)}">${escapeHtml(shortId(item.id))}</code>${renderTags(item.tags)}${renderDeps(entry)}${renderSections(entry)}</article>`;
+	return `<article class="card priority-${item.priority}" id="item-${escapeAttr(item.id)}" data-backlog-card ${dataAttributes(entry)}><div class="card-head"><span class="prio"><span class="prio-dot"></span>${escapeHtml(item.priority)}</span><span class="badges">${badges}</span></div><h3 class="card-title">${escapeHtml(item.title)}</h3><code class="card-id" title="${escapeAttr(item.id)}">${escapeHtml(shortId(item.id))}</code>${renderEpic(entry)}${renderTags(item.tags)}${renderDeps(entry)}${renderSections(entry)}</article>`;
 }
 
 function dataAttributes(entry: BacklogHtmlItem): string {
 	const item = entry.item;
-	const searchText = [item.id, item.title, item.status, item.priority, item.tags.join(" "), item.depends_on.join(" "), entry.claim, entry.evidence, entry.recheck].join("\n");
-	return [`data-search="${escapeAttr(searchText.toLowerCase())}"`, `data-ready="${entry.ready}"`, `data-blocked="${entry.blocked}"`, `data-review="${entry.reviewDue}"`, `data-closed="${entry.closed}"`].join(" ");
+	const searchText = [item.id, item.title, item.status, item.priority, item.tags.join(" "), item.depends_on.join(" "), item.epic ?? "", entry.epic?.title ?? "", entry.claim, entry.evidence, entry.recheck].join("\n");
+	return [`data-search="${escapeAttr(searchText.toLowerCase())}"`, `data-ready="${entry.ready}"`, `data-blocked="${entry.blocked}"`, `data-review="${entry.reviewDue}"`, `data-closed="${entry.closed}"`, `data-epic="${escapeAttr(entry.epic?.id ?? "")}"`].join(" ");
 }
 
 function renderTags(tags: string[]): string {
 	return tags.length ? `<div class="tags">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : "";
+}
+
+function renderEpic(entry: BacklogHtmlItem): string {
+	if (!entry.epic) return "";
+	const classes = ["tag", "epic-tag", entry.epic.missing && "missing"].filter(Boolean).join(" ");
+	const title = escapeAttr(entry.epic.missing ? `Missing: ${entry.epic.id}` : `${entry.epic.id}${entry.epic.status ? ` (${entry.epic.status})` : ""}`);
+	return `<div class="tags"><span class="${classes}" title="${title}">Epic: ${escapeHtml(entry.epic.title)}</span></div>`;
 }
 
 function renderDeps(entry: BacklogHtmlItem): string {
@@ -317,6 +385,18 @@ main{max-width:1500px;margin:0 auto;padding:1rem 1.25rem 3rem}
 .filter{border:1px solid var(--line);background:var(--col);color:var(--muted);border-radius:.5rem;padding:.4rem .7rem;cursor:pointer;font-size:.82rem;transition:.12s}
 .filter:hover{color:var(--text);border-color:var(--line-2)}
 .filter.active{color:var(--text);border-color:var(--accent);background:rgba(88,166,255,.12)}
+.toolbar-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.group-label{font-size:.72rem;color:var(--faint);align-self:center;padding:0 .15rem}
+.epic-select{background:var(--col);color:var(--text);border:1px solid var(--line);border-radius:.5rem;padding:.4rem .6rem;font-size:.82rem;max-width:16rem}
+.epic-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.15)}
+
+.epic-panel{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.1rem}
+.epic-summary{display:inline-flex;align-items:center;gap:.4rem;background:rgba(88,166,255,.08);color:var(--accent);border:1px solid var(--line);border-radius:.5rem;padding:.3rem .55rem;font-size:.78rem;cursor:pointer;transition:.12s}
+.epic-summary:hover{border-color:var(--accent)}
+.epic-summary.active{border-color:var(--accent);background:rgba(88,166,255,.18)}
+.epic-summary.missing{color:var(--bad);border-style:dashed;background:rgba(240,97,58,.08)}
+.epic-summary-none{color:var(--muted);background:var(--col);cursor:default}
+.epic-summary-count{background:var(--card);border:1px solid var(--line);border-radius:999px;min-width:1.4rem;text-align:center;padding:.02rem .35rem;font-size:.72rem;color:var(--muted)}
 
 .cycles{margin:0 0 1.1rem;padding:.7rem .9rem;background:rgba(240,97,58,.07);border:1px solid rgba(240,97,58,.4);border-radius:.6rem}
 .cycles-tag{display:inline-block;font-size:.72rem;font-weight:650;text-transform:uppercase;letter-spacing:.08em;color:var(--bad);margin-bottom:.35rem}
@@ -327,6 +407,7 @@ main{max-width:1500px;margin:0 auto;padding:1rem 1.25rem 3rem}
 .col{flex:1 1 0;min-width:300px;max-width:520px;background:var(--col);border:1px solid var(--line);border-radius:.75rem;border-top:2px solid var(--st);overflow:hidden}
 .status-candidate{--st:var(--st-candidate)}.status-planned{--st:var(--st-planned)}.status-active{--st:var(--st-active)}
 .status-shipped{--st:var(--st-shipped)}.status-stale{--st:var(--st-stale)}.status-superseded{--st:var(--st-superseded)}
+.epic-col{--st:var(--accent)}.epic-col.missing{--st:var(--bad)}.epic-col.none{--st:var(--faint)}
 .col-head{position:sticky;top:0;display:flex;align-items:center;gap:.5rem;padding:.65rem .8rem;background:var(--col);border-bottom:1px solid var(--line)}
 .col-dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--st)}
 .col-name{font-weight:650;font-size:.9rem}
@@ -352,6 +433,7 @@ main{max-width:1500px;margin:0 auto;padding:1rem 1.25rem 3rem}
 .card-id{display:block;color:var(--faint);font-size:.72rem;margin-bottom:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tags{display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0 0}
 .tag{font-size:.7rem;color:var(--muted);background:var(--col);border:1px solid var(--line);border-radius:.35rem;padding:.06rem .4rem}
+.epic-tag{color:var(--accent);background:rgba(88,166,255,.08)}.epic-tag.missing{color:var(--bad);border-color:var(--bad);border-style:dashed}
 
 .deps{margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem}
 .dep-row{display:flex;gap:.4rem;align-items:baseline;flex-wrap:wrap}
@@ -382,22 +464,33 @@ function clientScript(): string {
 	return `(() => {
 	const search = document.getElementById('search');
 	const buttons = [...document.querySelectorAll('[data-filter]')];
+	const groupButtons = [...document.querySelectorAll('[data-group]')];
+	const epicSelect = document.getElementById('epic-filter');
+	const epicChips = [...document.querySelectorAll('[data-epic-filter]')];
 	const nodes = [...document.querySelectorAll('[data-backlog-card]')];
-	const columns = [...document.querySelectorAll('[data-status]')];
+	const columns = [...document.querySelectorAll('.col')];
+	const statusBoard = document.querySelector('[data-board=status]');
+	const epicBoard = document.querySelector('[data-board=epic]');
+	const cardHome = new Map();
+	for (const card of nodes) cardHome.set(card, card.parentElement);
 	let filter = 'all';
+	let group = 'status';
+	let epicFilter = '';
 	function matchesFilter(node) {
-		if (filter === 'all') return true;
 		if (filter === 'ready') return node.dataset.ready === 'true';
 		if (filter === 'blocked') return node.dataset.blocked === 'true';
 		if (filter === 'review') return node.dataset.review === 'true';
 		if (filter === 'closed') return node.dataset.closed === 'true';
 		return true;
 	}
+	function matchesEpic(node) {
+		return !epicFilter || (node.dataset.epic || '') === epicFilter;
+	}
 	function apply() {
 		const q = (search && search.value || '').trim().toLowerCase();
 		for (const node of nodes) {
 			const text = node.dataset.search || '';
-			node.classList.toggle('is-hidden', Boolean(q && !text.includes(q)) || !matchesFilter(node));
+			node.classList.toggle('is-hidden', Boolean(q && !text.includes(q)) || !matchesFilter(node) || !matchesEpic(node));
 		}
 		for (const col of columns) {
 			const visible = col.querySelectorAll('[data-backlog-card]:not(.is-hidden)').length;
@@ -406,10 +499,43 @@ function clientScript(): string {
 			col.classList.toggle('is-hidden', visible === 0);
 		}
 	}
+	function layout() {
+		if (!epicBoard) return;
+		for (const card of nodes) {
+			if (group === 'epic') {
+				const target = epicBoard.querySelector('[data-epic-col="' + (card.dataset.epic || '') + '"] .col-body');
+				(target || cardHome.get(card)).appendChild(card);
+			} else {
+				cardHome.get(card).appendChild(card);
+			}
+		}
+		statusBoard.classList.toggle('is-hidden', group === 'epic');
+		epicBoard.classList.toggle('is-hidden', group !== 'epic');
+	}
+	function syncEpicChips() {
+		for (const chip of epicChips) chip.classList.toggle('active', chip.dataset.epicFilter === epicFilter);
+	}
 	if (search) search.addEventListener('input', apply);
 	for (const button of buttons) button.addEventListener('click', () => {
 		filter = button.dataset.filter || 'all';
 		for (const other of buttons) other.classList.toggle('active', other === button);
+		apply();
+	});
+	for (const button of groupButtons) button.addEventListener('click', () => {
+		group = button.dataset.group || 'status';
+		for (const other of groupButtons) other.classList.toggle('active', other === button);
+		layout();
+		apply();
+	});
+	if (epicSelect) epicSelect.addEventListener('change', () => {
+		epicFilter = epicSelect.value;
+		syncEpicChips();
+		apply();
+	});
+	for (const chip of epicChips) chip.addEventListener('click', () => {
+		epicFilter = epicFilter === chip.dataset.epicFilter ? '' : (chip.dataset.epicFilter || '');
+		if (epicSelect) epicSelect.value = epicFilter;
+		syncEpicChips();
 		apply();
 	});
 })();`;
