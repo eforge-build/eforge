@@ -6,23 +6,8 @@
  * live in `.eforge/session-plans/` (project-local scope only) and compile to
  * ordinary build source for the engine queue.
  *
- * Public API:
- *   parseSessionPlan          — parse raw markdown to a typed SessionPlan
- *   serializeSessionPlan      — serialize a SessionPlan back to markdown
- *   listSessionPlans          — list session plans filtered by lifecycle statuses
- *   listActiveSessionPlans    — list active session plans in project-local scope
- *   selectDimensions          — resolve required/optional/skipped dimension sets
- *   checkReadiness            — check if all required dimensions have content
- *   getReadinessDetail        — check readiness with covered/skipped dimension lists
- *   migrateBooleanDimensions  — convert legacy boolean dimension shape to new format
- *   sessionPlanToBuildSource  — format a session plan as ordinary build source
- *   normalizeBuildSource      — detect session-plan paths and convert to build source
- *   createSessionPlan         — create a fresh SessionPlan with canonical frontmatter
- *   setSessionPlanSection     — append-or-replace a ## section in the plan body
- *   skipDimension / unskipDimension — update entries in skipped_dimensions
- *   setSessionPlanStatus      — update status and optional metadata fields
- *   setSessionPlanDimensions  — apply planning_type/depth and write dimension lists
- *   resolveSessionPlanPath / loadSessionPlan / writeSessionPlan / createSessionPlanFile — safe project-local storage I/O
+ * Public API covers parsing/serialization, listing, readiness checks, dimension
+ * mutation, build-source normalization, and safe project-local storage I/O.
  */
 import { readFile, readdir, writeFile, mkdir, rename } from 'node:fs/promises';
 import { resolve, basename, dirname, sep } from 'node:path';

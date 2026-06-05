@@ -27,7 +27,7 @@
 
 - **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, and user-authored custom session-plan/playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
 - **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, and wrapper apps without treating every surface as engine functionality.
-- **User-authored workflow registration** - Explore native extension APIs for custom session-plan and playbook extraction on top of the shipped bundled adapters before deprecating direct built-in compatibility surfaces.
+- **User-authored workflow registration** - Explore native extension APIs, building on the bundled adapters that already ship, for custom session-plan extraction and custom playbook extraction before deprecating direct built-in compatibility surfaces.
 
 ---
 
