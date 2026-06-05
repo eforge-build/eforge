@@ -14,7 +14,6 @@ import { join } from 'node:path';
 import { findRepoRoot, getOutputPaths } from '@eforge-build/docs-gen/output-paths';
 import { runDriftCheck, runGenerators } from '@eforge-build/docs-gen/check';
 
-// --- eforge:region plan-01-public-web-docs-audit ---
 const AUDITED_TOP_LEVEL_CONFIG_KEYS = [
   'agents',
   'build',
@@ -40,7 +39,6 @@ function readMarkdownTableDescription(markdown: string, key: string): string | u
   const match = new RegExp(`^\\| \`${escaped}\` \\| (.*) \\|$`, 'm').exec(markdown);
   return match?.[1].trim();
 }
-// --- eforge:endregion plan-01-public-web-docs-audit ---
 
 describe('docs-gen drift check', () => {
   it('checked-in generated files are byte-identical to what the generator produces', async () => {

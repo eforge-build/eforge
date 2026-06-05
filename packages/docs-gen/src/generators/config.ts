@@ -39,7 +39,6 @@ interface ConfigJsonSchema {
   [key: string]: unknown;
 }
 
-// --- eforge:region plan-01-public-web-docs-audit ---
 const TOP_LEVEL_CONFIG_FIELD_DESCRIPTIONS: Record<string, string> = {
   agents: 'Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits.',
   build: 'Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers.',
@@ -56,7 +55,6 @@ const TOP_LEVEL_CONFIG_FIELD_DESCRIPTIONS: Record<string, string> = {
   stacking: 'Stacking configuration for git-spice backed stacked PRs.',
   tools: 'Toolbelt configuration for named project MCP server bundles.',
 };
-// --- eforge:endregion plan-01-public-web-docs-audit ---
 
 export async function generateConfig(opts: {
   outputPaths: OutputPaths;

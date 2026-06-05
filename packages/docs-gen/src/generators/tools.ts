@@ -52,7 +52,6 @@ const SKILL_PAIRS_CONFIG = [
   { plugin: 'recover', pi: 'eforge-recover' },
 ] as const;
 
-// --- eforge:region plan-01-public-web-docs-audit ---
 function getStaticLiteralString(node: Node): string | undefined {
   const kind = node.getKindName();
   if (kind !== 'StringLiteral' && kind !== 'NoSubstitutionTemplateLiteral') return undefined;
@@ -91,7 +90,6 @@ function extractStaticString(node: Node | undefined): string | undefined {
 
   return undefined;
 }
-// --- eforge:endregion plan-01-public-web-docs-audit ---
 
 function extractMcpTools(repoRoot: string): ToolEntry[] {
   const filePaths = [
