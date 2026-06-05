@@ -249,7 +249,6 @@ function normalizePrdDedupKey(slug: string): string {
 
 type QueueRecoveryApplied = NonNullable<ConsoleProjectState['queue'][number]['recoveryApplied']>;
 
-// --- eforge:region plan-02-console-resolved-status ---
 function isAcceptedSuccessComplete(item: { recoveryApplied?: QueueRecoveryApplied }): boolean {
   return item.recoveryApplied?.action === 'accepted-success' && item.recoveryApplied.landing.status === 'complete';
 }
@@ -259,7 +258,6 @@ function formatAppliedRecoveryDetail(applied: QueueRecoveryApplied): string {
   const reason = applied.landing.reason?.trim();
   return `recovery applied: accepted-success landing ${applied.landing.status}${reason ? ` — ${reason}` : ''}`;
 }
-// --- eforge:endregion plan-02-console-resolved-status ---
 
 interface AttentionCandidate {
   item: NowAttentionItem;
