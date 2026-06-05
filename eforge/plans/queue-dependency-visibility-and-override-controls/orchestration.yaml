@@ -1,0 +1,105 @@
+name: queue-dependency-visibility-and-override-controls
+description: Fix live queue dependency projection and add dependency override
+  daemon/client/Console controls.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-live-dependency-projection
+    name: Live Queue Dependency Projection
+    depends_on: []
+    branch: queue-dependency-visibility-and-override-controls/plan-01-live-dependency-projection
+    build:
+      - implement
+      - - test-cycle
+        - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: This plan edits the oversized client event registry under a no-growth
+          ceiling and coordinates engine-emitted event metadata with Console
+          projection tests.
+  - id: plan-02-daemon-dependency-override
+    name: Daemon Dependency Override API
+    depends_on:
+      - plan-01-live-dependency-projection
+    branch: queue-dependency-visibility-and-override-controls/plan-02-daemon-dependency-override
+    build:
+      - implement
+      - - test-cycle
+        - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan adds a new filesystem mutation route with validation,
+          lock/race handling, audit event persistence, client helpers, and API
+          versioning.
+      reviewer:
+        effort: high
+        rationale: Queue-control mutations cross HTTP input validation, local mutation
+          security, filesystem state, and daemon auditability.
+  - id: plan-03-console-override-control
+    name: Console Dependency Override Control
+    depends_on:
+      - plan-02-daemon-dependency-override
+    branch: queue-dependency-visibility-and-override-controls/plan-03-console-override-control
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - code
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "Excursion fits because this is a cohesive cross-package feature with
+    a clear route/event/client/engine/UI dependency chain that one planner can
+    enumerate. Plan review is included to catch contract and sequencing issues
+    before build. The build pipeline includes documentation and test stages
+    because the work touches public daemon/client APIs, generated references, UI
+    behavior, and route/event contracts. The loaded maintainability validation
+    provider runs after implementation-related changes and before review.
+    Parallel API and code review targets the main risks: typed wire-contract
+    drift, queue mutation correctness, and live projection behavior."
