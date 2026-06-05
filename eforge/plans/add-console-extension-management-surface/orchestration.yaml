@@ -1,0 +1,77 @@
+name: add-console-extension-management-surface
+description: Add a first-class native extension management area under
+  /console/system using existing daemon/client extension APIs for reload,
+  selected validate, trust/re-trust, untrust, promote, and demote.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/console-ui type-check
+  - pnpm --filter @eforge-build/console-ui test --
+    src/views/system/__tests__/system-fetches.test.ts
+    src/views/system/__tests__/extensions-section.test.tsx
+    src/views/system/__tests__/extension-management-selectors.test.ts
+    src/views/system/__tests__/system-view-content.test.tsx
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-console-extension-management
+    name: Console Extension Management Surface
+    depends_on: []
+    branch: add-console-extension-management-surface/plan-01-console-extension-management
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The plan spans Console UI state, browser fetch helpers, action
+          eligibility, and unsandboxed-code confirmation UX.
+      reviewer:
+        effort: high
+        rationale: The UI controls extension trust and promotion/demotion actions for
+          unsandboxed native code, so review needs extra attention to safety
+          copy, eligibility, and API usage.
+      tester:
+        effort: high
+        rationale: The acceptance criteria require confirmation gating, request body
+          assertions, mutation state, refresh callbacks, and selected validation
+          behavior across several UI paths.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - test-cycle
+    - doc-sync
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: This is a cohesive Console feature spanning UI, browser fetch
+    helpers, tests, and README updates, but it uses existing daemon/client APIs
+    and can be planned by a single planner, so excursion is appropriate. A plan
+    review gate helps catch scope and safety gaps before build. The build runs
+    implementation and planned docs in parallel, then writes and runs targeted
+    tests, syncs docs, runs the registered maintainability validation gate
+    before review, and finishes with an iterative review cycle. Security review
+    is included because the feature manages trust state for unsandboxed native
+    extension code.
+diff_base_ref: 2900cbf9c7781a0dadf333cb01bdb85db481a03c
