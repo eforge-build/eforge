@@ -16,7 +16,7 @@ import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { enqueuePrd, inferTitle, loadQueue, getRecoveryContinuationFrontmatter } from '../prd-queue.js';
 import { formatAcceptanceInventoryDiagnostics, requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock, validateCanonicalAcceptanceCriteriaInventory, type CanonicalAcceptanceCriteriaInventory } from '../validation/acceptance-criteria-inventory.js';
 import { deriveSplitRecoveryContinuation } from './continuation.js';
-import { readRecoveryAppliedMetadata, writeRecoveryAppliedMetadata } from './applied-sidecar.js';
+import { readRawAppliedAction, readRecoveryAppliedMetadata, writeRecoveryAppliedMetadata } from './applied-sidecar.js';
 
 export interface ApplyHelperOptions {
   /** Absolute working directory (repo root). */
@@ -59,6 +59,29 @@ function validateRecoveryInventory(
 }
 
 /**
+ * Reject a sidecar recovery mutation when a durable applied marker for a
+ * *different* recovery action already exists. Protects an already-applied marker
+ * (notably `accepted-success`, whose rich audit summary lives on the same
+ * sidecar) from being deleted or overwritten by a later retry/split/abandon
+ * apply. Reads the raw `applied.action` so even a malformed marker is honored.
+ *
+ * Same-action idempotent paths are handled by the callers (split via
+ * `checkSplitRecoveryIdempotency`); retry/abandon write no marker of their own,
+ * so any pre-existing marker conflicts.
+ */
+async function assertNoConflictingAppliedMarker(
+  sidecarJsonPath: string,
+  action: 'retry' | 'split' | 'abandon',
+): Promise<void> {
+  const existingAction = await readRawAppliedAction(sidecarJsonPath);
+  if (existingAction !== undefined && existingAction !== action) {
+    throw new Error(
+      `A different recovery action ('${existingAction}') was already applied to this PRD; refusing to apply '${action}' and overwrite its durable applied marker.`,
+    );
+  }
+}
+
+/**
  * Apply a `retry` verdict: move the failed PRD back to the queue and remove both
  * sidecar files. Auto-build will pick up the requeued PRD on the next tick.
  * Filesystem-only — queue state is runtime, not tracked in git.
@@ -72,6 +95,9 @@ export async function applyRecoveryRetry(
   const queuedPrdPath = join(queueDir, `${prdId}.md`);
   const recoveryMdPath = join(failedDir, `${prdId}.recovery.md`);
   const recoveryJsonPath = join(failedDir, `${prdId}.recovery.json`);
+
+  // Refuse to clobber another action's durable applied marker / audit record.
+  await assertNoConflictingAppliedMarker(recoveryJsonPath, 'retry');
 
   // Move failed PRD back to queue root
   await rename(failedPrdPath, queuedPrdPath);
@@ -116,6 +142,12 @@ export async function checkSplitRecoveryIdempotency(
   if (existingApplied?.action === 'split' && existingApplied.successorPrdId) {
     return { commitSha: '', successorPrdId: existingApplied.successorPrdId, status: 'already-applied' };
   }
+
+  // A durable applied marker for a *different* action (e.g. accepted-success)
+  // must never be overwritten by a split apply — that would lose its audit
+  // record. A same-action (`split`) marker is handled by the idempotent paths
+  // above and the live-successor scan below.
+  await assertNoConflictingAppliedMarker(sidecarJsonPath, 'split');
 
   // Crash window: a successor may have been enqueued before the marker was
   // written. Scan live queue locations for a successor whose recovery
@@ -241,6 +273,9 @@ export async function applyRecoveryAbandon(
   const failedPrdPath = join(failedDir, `${prdId}.md`);
   const recoveryMdPath = join(failedDir, `${prdId}.recovery.md`);
   const recoveryJsonPath = join(failedDir, `${prdId}.recovery.json`);
+
+  // Refuse to clobber another action's durable applied marker / audit record.
+  await assertNoConflictingAppliedMarker(recoveryJsonPath, 'abandon');
 
   await rm(failedPrdPath, { force: true });
   await rm(recoveryMdPath, { force: true });

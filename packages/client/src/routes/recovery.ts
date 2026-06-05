@@ -68,7 +68,8 @@ export type RecoveryAppliedMetadata =
 
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
- * Mirrors the shape produced by `writeRecoverySidecar` in the engine (schemaVersion: 1).
+ * Mirrors the current engine sidecar shape produced by `writeRecoverySidecar`
+ * (schemaVersion: 2), including the optional `applied` marker.
  *
  * `summary` and `verdict` use the shared wire types from @eforge-build/client so
  * new optional fields (e.g. failingPlans, commitSha, testPassed) are automatically
@@ -218,7 +219,13 @@ export interface AcceptSuccessCleanupEffect {
   willCommit: boolean;
 }
 
-/** Durable audit fields written by an accepted-success apply. */
+/**
+ * Preview/audit context fields surfaced for an accepted-success confirmation.
+ * These are read from the retained recovery sidecar / build-failure summary to
+ * provide confirmation and audit context; they are NOT part of the durable
+ * `AcceptSuccessAppliedSummary` written by an apply (which records action,
+ * acceptedAt, reason, cleanup, landing, and dependents).
+ */
 export interface AcceptSuccessAuditFields {
   setName: string;
   featureBranch: string;

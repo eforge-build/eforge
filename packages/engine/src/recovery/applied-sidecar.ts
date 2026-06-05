@@ -172,8 +172,16 @@ export function parseAcceptSuccessAppliedMetadata(value: unknown): AcceptSuccess
   if (landing.status !== 'complete' && landing.status !== 'skipped' && landing.status !== 'failed') return undefined;
 
   const dependents = obj.dependents as Record<string, unknown> | undefined;
-  const asStringArray = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  // Strict: a malformed dependents block must invalidate the whole marker rather
+  // than being silently rewritten into a different valid-looking wire shape, so
+  // idempotency and Console completion never hide corrupted audit metadata.
+  const asStrictStringArray = (v: unknown): string[] | undefined =>
+    Array.isArray(v) && v.every((x): x is string => typeof x === 'string') ? v : undefined;
   if (!dependents) return undefined;
+  const unblocked = asStrictStringArray(dependents.unblocked);
+  const remainedBlocked = asStrictStringArray(dependents.remainedBlocked);
+  const notFound = asStrictStringArray(dependents.notFound);
+  if (!unblocked || !remainedBlocked || !notFound) return undefined;
 
   return {
     action: 'accepted-success',
@@ -192,11 +200,7 @@ export function parseAcceptSuccessAppliedMetadata(value: unknown): AcceptSuccess
       ...(typeof landing.branch === 'string' ? { branch: landing.branch } : {}),
       ...(typeof landing.reason === 'string' ? { reason: landing.reason } : {}),
     },
-    dependents: {
-      unblocked: asStringArray(dependents.unblocked),
-      remainedBlocked: asStringArray(dependents.remainedBlocked),
-      notFound: asStringArray(dependents.notFound),
-    },
+    dependents: { unblocked, remainedBlocked, notFound },
   };
 }
 

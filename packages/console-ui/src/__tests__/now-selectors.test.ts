@@ -67,7 +67,7 @@ function makeActiveDetail(
 // ---------------------------------------------------------------------------
 
 describe('selectNowQueueSummary', () => {
-  it('counts running, pending, waiting, and failed items; total excludes running (queue card is pending-only)', () => {
+  it('counts every status over the full queue but totals only forward (pending/waiting) preview rows', () => {
     const queue = makeQueue([
       { status: 'running' },
       { status: 'running' },
@@ -76,8 +76,9 @@ describe('selectNowQueueSummary', () => {
       { status: 'failed' },
     ]);
     const summary = selectNowQueueSummary(queue);
-    // total reflects what the queue card displays — running items are surfaced above as active build cards
-    expect(summary.total).toBe(3);
+    // total reflects the forward-only queue preview: pending + waiting. Running
+    // surfaces as active build cards; failed/skipped surface in attention.
+    expect(summary.total).toBe(2);
     expect(summary.runningCount).toBe(2);
     expect(summary.pendingCount).toBe(1);
     expect(summary.waitingCount).toBe(1);
@@ -107,18 +108,41 @@ describe('selectNowQueueSummary', () => {
     expect(summary.withRecoveryVerdictCount).toBe(1);
   });
 
-  it('orders top items: failed before waiting before pending; running excluded', () => {
+  it('top items are forward-only (pending/waiting); running, failed, and skipped are excluded', () => {
     const queue = makeQueue([
       { id: 'p1', status: 'pending' },
       { id: 'r1', status: 'running' },
       { id: 'f1', status: 'failed' },
       { id: 'w1', status: 'waiting' },
+      { id: 's1', status: 'skipped' },
     ]);
     const summary = selectNowQueueSummary(queue);
     const statuses = summary.topItems.map((i) => i.status.toLowerCase());
     expect(statuses).not.toContain('running');
-    expect(statuses.indexOf('failed')).toBeLessThan(statuses.indexOf('waiting'));
+    expect(statuses).not.toContain('failed');
+    expect(statuses).not.toContain('skipped');
+    // Same-depth forward rows order waiting before pending.
     expect(statuses.indexOf('waiting')).toBeLessThan(statuses.indexOf('pending'));
+    expect(summary.total).toBe(2);
+  });
+
+  it('truncates after forward filtering, so leading terminal rows never starve the four-item preview', () => {
+    // Raw queue starts with four terminal rows. A slice-before-filter bug would
+    // consume all four preview slots with failed/skipped rows and hide forward
+    // work; forward-only truncation must surface the pending/waiting rows.
+    const queue = makeQueue([
+      { id: 'f1', status: 'failed' },
+      { id: 'f2', status: 'failed' },
+      { id: 's1', status: 'skipped' },
+      { id: 's2', status: 'skipped' },
+      { id: 'p1', status: 'pending' },
+      { id: 'w1', status: 'waiting' },
+    ]);
+    const summary = selectNowQueueSummary(queue);
+    expect(summary.topItems.map((i) => i.id).sort()).toEqual(['p1', 'w1']);
+    expect(summary.topItems.length).toBeLessThanOrEqual(4);
+    expect(summary.total).toBe(2);
+    expect(summary.hiddenCount).toBe(0);
   });
 });
 
@@ -298,6 +322,26 @@ describe('selectNowAttentionItems', () => {
     const item = items.find((i) => i.id === 'queue-failed-nrv');
     expect(item).toBeDefined();
     expect(item!.detail).toBe('recovery pending');
+  });
+
+  it('annotates an applied-recovery row and drops its actionable Recover prompt', () => {
+    const state = {
+      ...baseState,
+      queue: makeQueue([
+        {
+          id: 'applied-split',
+          status: 'failed',
+          recoveryVerdict: { verdict: 'split', confidence: 'high' },
+          recoveryApplied: { action: 'split', appliedAt: '2026-01-01T00:00:00Z', successorPrdId: 'successor-prd' },
+        },
+      ]),
+    };
+    const { items } = selectNowAttentionItems(state, {}, now);
+    const item = items.find((i) => i.id === 'queue-failed-verdict-applied-split');
+    expect(item).toBeDefined();
+    // Applied rows are resolved: annotate the verdict, suppress the prompt.
+    expect(item!.detail).toBe('recovery applied: split → successor-prd');
+    expect(item!.recovery).toBeUndefined();
   });
 
   it('deduplicates failed queue items sharing the same PRD key (extension-normalized) to one item', () => {
@@ -1032,7 +1076,9 @@ describe('queue skipped terminal status handling', () => {
     expect(queueSummary.skipped).toBe(1);
     expect(nowSummary.skippedCount).toBe(1);
     expect(nowSummary.byStatus.skipped).toBe(1);
-    expect(nowSummary.topItems.map((item) => item.id)).toEqual(['failed-upstream', 'skipped-child', 'pending-next']);
+    // Forward-only preview: failed/skipped terminal rows never consume preview
+    // slots, so only the pending row appears in topItems.
+    expect(nowSummary.topItems.map((item) => item.id)).toEqual(['pending-next']);
   });
 
   it('surfaces skipped queue items as warning attention entries', () => {

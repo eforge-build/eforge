@@ -82,10 +82,7 @@ export interface AcceptSuccessHelperOptions {
   allowLocalMergeToTrunk?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Validation / segment guards
-// ---------------------------------------------------------------------------
-
+// --- eforge:region accept-success-validation ---  (validation / segment guards)
 function assertSafePrdId(prdId: string): void {
   if (!prdId || prdId.includes('/') || prdId.includes('\\') || prdId.includes('..')) {
     throw new AcceptSuccessError('Invalid prdId: must not contain path separators or traversal sequences', 400);
@@ -112,9 +109,8 @@ async function assertValidGitBranch(cwd: string, branch: string, label: string):
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sidecar reads
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-validation ---
+// --- eforge:region accept-success-sidecar-reads ---  (sidecar reads)
 
 interface LoadedSidecar {
   summary: BuildFailureSummary;
@@ -153,9 +149,8 @@ async function loadFailedSidecar(options: AcceptSuccessHelperOptions): Promise<L
   return { summary, sidecarJsonPath };
 }
 
-// ---------------------------------------------------------------------------
-// Eligibility
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-sidecar-reads ---
+// --- eforge:region accept-success-eligibility ---  (eligibility)
 
 interface EligibilityResult {
   eligible: boolean;
@@ -197,9 +192,8 @@ export function evaluateAcceptSuccessEligibility(summary: BuildFailureSummary): 
   return { eligible: true };
 }
 
-// ---------------------------------------------------------------------------
-// Git helpers (worktree-isolated cleanup + landing)
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-eligibility ---
+// --- eforge:region accept-success-git-helpers ---  (worktree-isolated cleanup + landing)
 
 async function gitRevParse(cwd: string, ref: string): Promise<string> {
   const { stdout } = await exec('git', ['rev-parse', ref], { cwd });
@@ -248,9 +242,8 @@ async function removeWorktree(cwd: string, wtPath: string): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Cleanup
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-git-helpers ---
+// --- eforge:region accept-success-cleanup ---  (cleanup)
 
 /**
  * Run the normal post-build cleanup on the feature branch in an isolated
@@ -285,9 +278,8 @@ async function runAcceptedSuccessCleanup(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Landing
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-cleanup ---
+// --- eforge:region accept-success-landing ---  (landing)
 
 async function landAcceptedSuccessBuild(
   options: AcceptSuccessHelperOptions,
@@ -345,9 +337,8 @@ async function landAcceptedSuccessBuild(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Dependent candidates / movement
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-landing ---
+// --- eforge:region accept-success-dependents ---  (dependent candidates / movement)
 
 function directSkippedDependents(skipped: QueuedPrd[], acceptedPrdId: string): QueuedPrd[] {
   return skipped.filter((p) => p.frontmatter.depends_on?.includes(acceptedPrdId) ?? false);
@@ -420,8 +411,19 @@ async function moveSelectedDependents(
     }
     const newContent = setDependsOnInContent(prd.content, remaining);
     const destPath = resolve(queueDir, `${id}.md`);
-    // eslint-disable-next-line no-await-in-loop
-    await writeFile(destPath, newContent, 'utf-8');
+    try {
+      // Exclusive-create ('wx' = O_CREAT|O_EXCL): never clobber a pre-existing
+      // queue-root PRD in a collided/drifted queue. On collision leave the skipped
+      // source intact and report the dependent as not unblocked (no data loss).
+      // eslint-disable-next-line no-await-in-loop
+      await writeFile(destPath, newContent, { encoding: 'utf-8', flag: 'wx' });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        result.remainedBlocked.push(id);
+        continue;
+      }
+      throw err;
+    }
     // eslint-disable-next-line no-await-in-loop
     await rm(prd.filePath, { force: true });
     result.unblocked.push(id);
@@ -429,9 +431,8 @@ async function moveSelectedDependents(
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Preview
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-dependents ---
+// --- eforge:region accept-success-preview ---  (preview)
 
 export async function previewAcceptSuccess(
   options: AcceptSuccessHelperOptions,
@@ -491,9 +492,8 @@ export async function previewAcceptSuccess(
   return { ...base, status: 'eligible' };
 }
 
-// ---------------------------------------------------------------------------
-// Apply
-// ---------------------------------------------------------------------------
+// --- eforge:endregion accept-success-preview ---
+// --- eforge:region accept-success-apply ---  (apply)
 
 function validateApplyRequest(request: AcceptSuccessRequest): { reasonCategory: AcceptSuccessReasonCategory; reason: string; unblockDependentIds: string[] } {
   if (!REASON_CATEGORY_SET.has(request.reasonCategory)) {
@@ -597,3 +597,4 @@ export async function applyAcceptSuccess(
 
   return { prdId, status: 'applied', applied };
 }
+// --- eforge:endregion accept-success-apply ---
