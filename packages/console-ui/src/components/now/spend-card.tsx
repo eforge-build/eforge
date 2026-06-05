@@ -1,8 +1,9 @@
 /**
- * SpendCard — at-a-glance token + dollar spend. Today's dollars lead, with a
- * supporting line of tokens and cache hit rate, a per-day cost sparkline, and
- * the window total. Mirrors the Build health card's "big number + detail"
- * rhythm. Hidden until there is spend to show.
+ * SpendCard — at-a-glance token + dollar spend. Today and the trailing window
+ * sit side by side as two equal stats (dollars + tokens + cache), backed by a
+ * per-day cost sparkline, then a per-model breakdown over the window. Each model
+ * row carries a "today" accent so you can see what's driving spend right now
+ * without a scope toggle. Hidden until there is spend to show.
  *
  * Window note: the daemon retains the most recent N sessions (default 100), so
  * the sparkline reflects whatever days that history spans, not a guaranteed
@@ -14,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import type { NowSpendPanel, SpendModelRow } from '@/lib/selectors/spend';
 import { compactTokens, formatHarnessLabel, formatModelLabel, formatUsd } from '@/lib/format';
-import { cn } from '@/lib/utils';
 
 interface SpendCardProps {
   model: NowSpendPanel;
@@ -24,6 +24,32 @@ const SPEND_CONFIG: ChartConfig = { costUsd: { label: 'Spend', color: 'var(--col
 
 /** How many models to list before collapsing the tail into a "+N more" note. */
 const MODEL_ROW_LIMIT = 5;
+
+/** A single headline stat: scope label, big dollar figure, tokens + cache line. */
+function SpendStat({
+  label,
+  costUsd,
+  tokens,
+  cachePct,
+}: {
+  label: string;
+  costUsd: number;
+  tokens: number;
+  cachePct: number | null;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-10px uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 font-mono text-xl font-semibold leading-none tabular-nums text-foreground">
+        {formatUsd(costUsd)}
+      </p>
+      <p className="mt-1.5 truncate font-mono text-10px tabular-nums text-muted-foreground">
+        {compactTokens(tokens)} tok
+        {cachePct != null && ` · ${Math.round(cachePct)}% cache`}
+      </p>
+    </div>
+  );
+}
 
 function SpendBars({ model }: { model: NowSpendPanel }) {
   if (model.bars.length === 0) return null;
@@ -69,11 +95,18 @@ function ModelRow({ row }: { row: SpendModelRow }) {
           {formatUsd(row.costUsd)}
         </span>
       </div>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-[var(--color-blue)]"
-          style={{ width: `${Math.max(2, Math.round(row.sharePct))}%` }}
-        />
+      <div className="flex items-center gap-2">
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-[var(--color-blue)]"
+            style={{ width: `${Math.max(2, Math.round(row.sharePct))}%` }}
+          />
+        </div>
+        {row.todayCostUsd > 0 && (
+          <span className="shrink-0 font-mono text-10px tabular-nums text-[var(--color-blue)]">
+            +{formatUsd(row.todayCostUsd)} today
+          </span>
+        )}
       </div>
       <div className="flex items-baseline justify-between gap-2 text-10px tabular-nums text-muted-foreground">
         <span>{compactTokens(row.tokensTotal)} tok</span>
@@ -89,44 +122,6 @@ function ModelRow({ row }: { row: SpendModelRow }) {
 /** Stable key per model+harness+provider — the same model can appear under several. */
 function rowKey(row: SpendModelRow): string {
   return `${row.model}::${row.harness ?? ''}::${row.provider ?? ''}`;
-}
-
-type ModelScope = 'window' | 'today';
-
-/** Subtle segmented toggle between the window and today scopes. */
-function ScopeToggle({
-  scope,
-  onScope,
-  windowDays,
-}: {
-  scope: ModelScope;
-  onScope: (s: ModelScope) => void;
-  windowDays: number;
-}) {
-  const options: Array<{ value: ModelScope; label: string }> = [
-    { value: 'window', label: `${windowDays}d` },
-    { value: 'today', label: 'Today' },
-  ];
-  return (
-    <div className="flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          aria-pressed={scope === opt.value}
-          onClick={() => onScope(opt.value)}
-          className={cn(
-            'rounded px-1.5 py-0.5 text-10px font-medium tabular-nums transition-colors',
-            scope === opt.value
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 function ModelList({ models }: { models: SpendModelRow[] }) {
@@ -151,26 +146,13 @@ function ModelList({ models }: { models: SpendModelRow[] }) {
   );
 }
 
-function SpendModels({
-  windowModels,
-  todayModels,
-  windowDays,
-}: {
-  windowModels: SpendModelRow[];
-  todayModels: SpendModelRow[];
-  windowDays: number;
-}) {
-  const [scope, setScope] = React.useState<ModelScope>('window');
+function SpendModels({ models }: { models: SpendModelRow[] }) {
   // The section only appears once the window has per-model spend to show.
-  if (windowModels.length === 0) return null;
-  const active = scope === 'window' ? windowModels : todayModels;
+  if (models.length === 0) return null;
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="text-10px uppercase tracking-wide text-muted-foreground">By model</p>
-        <ScopeToggle scope={scope} onScope={setScope} windowDays={windowDays} />
-      </div>
-      <ModelList models={active} />
+      <p className="mb-1.5 text-10px uppercase tracking-wide text-muted-foreground">By model</p>
+      <ModelList models={models} />
     </div>
   );
 }
@@ -184,34 +166,22 @@ export function SpendCard({ model }: SpendCardProps) {
         <CardTitle className="text-sm font-semibold text-muted-foreground">Spend</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-3">
-        <div>
-          <p className="text-10px uppercase tracking-wide text-muted-foreground">today</p>
-          <div className="flex items-baseline gap-3">
-            <span className="font-mono text-2xl font-semibold leading-none tabular-nums text-foreground">
-              {formatUsd(model.todayCostUsd)}
-            </span>
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-              {compactTokens(model.todayTokens)} tok
-            </span>
-            {model.todayCachePct != null && (
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {Math.round(model.todayCachePct)}% cache
-              </span>
-            )}
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <SpendStat
+            label="today"
+            costUsd={model.todayCostUsd}
+            tokens={model.todayTokens}
+            cachePct={model.todayCachePct}
+          />
+          <SpendStat
+            label={`last ${model.windowDays}d`}
+            costUsd={model.windowCostUsd}
+            tokens={model.windowTokens}
+            cachePct={model.windowCachePct}
+          />
         </div>
         <SpendBars model={model} />
-        <SpendModels
-          windowModels={model.models}
-          todayModels={model.modelsToday}
-          windowDays={model.windowDays}
-        />
-        <p className="text-xs text-muted-foreground">
-          <span className="font-mono font-medium tabular-nums text-foreground">
-            {formatUsd(model.windowCostUsd)}
-          </span>{' '}
-          over last {model.windowDays} days
-        </p>
+        <SpendModels models={model.models} />
       </CardContent>
     </Card>
   );

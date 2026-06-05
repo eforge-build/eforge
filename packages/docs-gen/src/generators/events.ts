@@ -110,7 +110,7 @@ export async function generateEvents(opts: {
   repoRoot: string;
 }): Promise<void> {
   const header = buildProvenanceHeader({
-    sourceFiles: ['packages/client/src/events.schemas.ts'],
+    sourceFiles: ['packages/client/src/events.schemas.ts (facade)', 'packages/client/src/events/'],
   });
 
   // Write JSON Schema — TypeBox schema objects are JSON Schema (sans Symbol keys).
@@ -128,7 +128,7 @@ export async function generateEvents(opts: {
     '# eforge Event Protocol Reference',
     '',
     'All events emitted on the eforge SSE stream conform to the `EforgeEvent` discriminated',
-    'union defined in `packages/client/src/events.schemas.ts`.',
+    'union exposed by `packages/client/src/events.schemas.ts` and implemented under `packages/client/src/events/`.',
     '',
     'Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected',
     'with one of the variant objects below. The `type` field discriminates the variant.',

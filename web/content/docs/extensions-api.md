@@ -992,7 +992,7 @@ A `modify` variant (mutating the diff inline) is intentionally absent. `modify` 
 
 ## Event types and `EventPattern` glob semantics
 
-All event types are defined in `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`.
+All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`.
 
 Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 

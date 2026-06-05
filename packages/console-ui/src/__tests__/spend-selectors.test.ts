@@ -47,10 +47,10 @@ describe('selectNowSpendPanel', () => {
     expect(selectNowSpendPanel(summary([]), '2026-06-03').hasData).toBe(false);
   });
 
-  it('surfaces today totals, cache rate, and window total', () => {
+  it('surfaces today and window totals, tokens, and cache rates', () => {
     const model = selectNowSpendPanel(
       summary([
-        day({ date: '2026-06-01', costUsd: 10 }),
+        day({ date: '2026-06-01', costUsd: 10, tokensIn: 1000, tokensTotal: 1100, cacheRead: 500 }),
         day({ date: '2026-06-03', costUsd: 32.18, tokensIn: 1000, tokensTotal: 1200, cacheRead: 950 }),
       ]),
       '2026-06-03',
@@ -60,6 +60,9 @@ describe('selectNowSpendPanel', () => {
     expect(model.todayTokens).toBe(1200);
     expect(model.todayCachePct).toBeCloseTo(95, 5);
     expect(model.windowCostUsd).toBeCloseTo(42.18, 5);
+    expect(model.windowTokens).toBe(2300);
+    // Window cache rate is total cacheRead / total tokensIn = 1450 / 2000.
+    expect(model.windowCachePct).toBeCloseTo(72.5, 5);
   });
 
   it('reports zero spend for today when today has no row', () => {
@@ -114,7 +117,7 @@ describe('selectNowSpendPanel', () => {
     expect(panel.models[1].cachePct).toBeCloseTo(50, 5);
   });
 
-  it('derives today-only model rows with share against today cost', () => {
+  it('joins each model\'s today spend onto its window row, matched by harness/provider', () => {
     const panel = selectNowSpendPanel(
       summary(
         [day({ date: '2026-06-02', costUsd: 60 }), day({ date: '2026-06-03', costUsd: 40 })],
@@ -128,14 +131,30 @@ describe('selectNowSpendPanel', () => {
       ),
       '2026-06-03',
     );
-    // Window shares are against 100; today shares against 40.
-    expect(panel.models[0]).toMatchObject({ model: 'claude-opus-4-7', sharePct: 90 });
-    expect(panel.modelsToday).toHaveLength(2);
-    expect(panel.modelsToday[0]).toMatchObject({ model: 'claude-opus-4-7', costUsd: 30, sharePct: 75 });
-    expect(panel.modelsToday[1]).toMatchObject({ model: 'claude-sonnet-4-6', sharePct: 25 });
+    // Window shares are against the window total (100); today spend rides along.
+    expect(panel.models[0]).toMatchObject({ model: 'claude-opus-4-7', sharePct: 90, todayCostUsd: 30 });
+    expect(panel.models[1]).toMatchObject({ model: 'claude-sonnet-4-6', sharePct: 10, todayCostUsd: 10 });
   });
 
-  it('returns an empty today breakdown when there is no spend today', () => {
+  it('matches today spend per harness so the same model id stays distinct', () => {
+    const panel = selectNowSpendPanel(
+      summary(
+        [day({ date: '2026-06-03', costUsd: 30 })],
+        7,
+        [
+          model({ model: 'claude-opus-4-8', costUsd: 20, harness: 'claude-sdk', provider: null }),
+          model({ model: 'claude-opus-4-8', costUsd: 10, harness: 'pi', provider: 'openrouter' }),
+        ],
+        // Only the Pi route ran today; the claude-sdk row stays idle.
+        [model({ model: 'claude-opus-4-8', costUsd: 4, harness: 'pi', provider: 'openrouter' })],
+      ),
+      '2026-06-03',
+    );
+    expect(panel.models[0]).toMatchObject({ harness: 'claude-sdk', todayCostUsd: 0 });
+    expect(panel.models[1]).toMatchObject({ harness: 'pi', todayCostUsd: 4 });
+  });
+
+  it('reports zero today spend on every row when nothing ran today', () => {
     const panel = selectNowSpendPanel(
       summary([day({ date: '2026-06-02', costUsd: 60 })], 7, [
         model({ model: 'claude-opus-4-7', costUsd: 60 }),
@@ -143,7 +162,7 @@ describe('selectNowSpendPanel', () => {
       '2026-06-03',
     );
     expect(panel.models).toHaveLength(1);
-    expect(panel.modelsToday).toEqual([]);
+    expect(panel.models[0].todayCostUsd).toBe(0);
   });
 
   it('carries harness and provider through to the model rows', () => {

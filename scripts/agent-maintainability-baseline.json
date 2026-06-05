@@ -12,11 +12,6 @@
       "category": "implementation"
     },
     {
-      "path": "packages/client/src/events.schemas.ts",
-      "noGrowthCeiling": 2799,
-      "category": "implementation"
-    },
-    {
       "path": "packages/engine/src/config.ts",
       "noGrowthCeiling": 2700,
       "category": "implementation"
