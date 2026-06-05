@@ -400,9 +400,7 @@ export async function preprocessBuildSource(
 
     let fetchResult: unknown;
     try {
-      // --- eforge:region plan-02-eforge-plan-registration ---
       fetchResult = await withTimeout(() => fetchFn(sourceId, { cwd, originalSource: source, sourceKind: 'extension-reference', adapterId: adapterName, sourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath, logger: { debug() {}, info() {}, warn() {}, error() {} }, exec: { async run() { throw new Error('Input transform exec.run is unavailable during preprocessing'); } } }), timeoutMs);
-      // --- eforge:endregion plan-02-eforge-plan-registration ---
     } catch (err) {
       if (err instanceof TimeoutError) {
         const failedEvent: InputSourceFailedEvent = {

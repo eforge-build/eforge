@@ -1,4 +1,3 @@
-// --- eforge:region plan-02-eforge-plan-registration ---
 import {
   Type,
   defineConsoleContribution,
@@ -183,4 +182,3 @@ export async function loadItemSectionsForDisplay(cwd: string, itemId: string): P
   return item ? Object.fromEntries(extractMarkdownSections(item.body)) : {};
 }
 
-// --- eforge:endregion plan-02-eforge-plan-registration ---
