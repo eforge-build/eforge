@@ -185,7 +185,7 @@ Console shows:
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
 - Console Needs attention strip for failed builds with root-hosted recovery dialog actions and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
-- Extension status and diagnostics
+- Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
 

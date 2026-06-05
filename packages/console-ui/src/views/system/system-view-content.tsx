@@ -9,7 +9,7 @@ import { DaemonSection } from './daemon-section';
 import { ConfigSection } from './config-section';
 import { ProfilesSection } from './profiles-section';
 import { ExtensionsSection } from './extensions-section';
-import type { ExtensionTrustControls } from './extensions-section';
+import type { ExtensionManagementControls } from './use-extension-management-mutations';
 import { ExtensionContributionsSection } from './extension-contributions-section';
 import { PlaybooksSection } from './playbooks-section';
 import { SessionPlansSection } from './session-plans-section';
@@ -23,7 +23,7 @@ interface SystemViewContentProps {
   state: SystemSurfacesState;
   onRefresh: () => void;
   projectState?: ConsoleProjectState;
-  extensionTrust?: ExtensionTrustControls;
+  extensionManagement?: ExtensionManagementControls;
 }
 
 function readActivityOpenParam(): boolean {
@@ -31,7 +31,7 @@ function readActivityOpenParam(): boolean {
   return new URLSearchParams(window.location.search).get('activity') === 'open';
 }
 
-export function SystemViewContent({ state, onRefresh, projectState, extensionTrust }: SystemViewContentProps) {
+export function SystemViewContent({ state, onRefresh, projectState, extensionManagement }: SystemViewContentProps) {
   // Activity is daemon-level event flow, so its log lives here on System rather
   // than the Now glance view. Same right-side drawer, opened from the header and
   // deep-linkable via `?activity=open`.
@@ -95,7 +95,7 @@ export function SystemViewContent({ state, onRefresh, projectState, extensionTru
         <ExtensionsSection
           list={state.extensions.list}
           validate={state.extensions.validate}
-          trust={extensionTrust}
+          management={extensionManagement}
         />
 
         <ExtensionContributionsSection

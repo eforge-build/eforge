@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useSystemSurfaces } from './use-system-surfaces';
 import { SystemViewContent } from './system-view-content';
-import { useExtensionTrustMutation } from '@/hooks/use-extension-trust-mutation';
+import { useExtensionManagementMutations } from './use-extension-management-mutations';
 import type { ConsoleProjectState } from '@/lib/project-state';
 
 interface SystemConfigurationViewProps {
@@ -14,14 +14,14 @@ interface SystemConfigurationViewProps {
 
 export function SystemConfigurationView({ projectState }: SystemConfigurationViewProps) {
   const { state, refresh } = useSystemSurfaces();
-  const trust = useExtensionTrustMutation(refresh);
+  const management = useExtensionManagementMutations(refresh);
 
   return (
     <SystemViewContent
       state={state}
       projectState={projectState}
       onRefresh={refresh}
-      extensionTrust={trust}
+      extensionManagement={management}
     />
   );
 }

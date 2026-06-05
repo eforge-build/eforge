@@ -17,6 +17,11 @@ import {
   fetchSystemModelProviders,
   fetchSystemModelList,
   trustSystemExtension,
+  untrustSystemExtension,
+  promoteSystemExtension,
+  demoteSystemExtension,
+  reloadSystemExtensions,
+  validateSelectedSystemExtension,
 } from '../system-fetches';
 
 function makeFetchMock(status: number, body: unknown) {
@@ -198,6 +203,96 @@ describe('system-fetches', () => {
   it('trustSystemExtension rejects with the daemon error message on a non-2xx response', async () => {
     globalThis.fetch = makeFetchMock(409, { error: 'Ambiguous' });
     await expect(trustSystemExtension('/repo/eforge/extensions/policy.ts')).rejects.toThrow('Ambiguous');
+  });
+
+  it('reloadSystemExtensions POSTs an empty JSON body to the reload route', async () => {
+    const mockBody = { extensions: [], diagnostics: [], totals: {}, wasRunning: true, restarted: true, running: true, previousSessionId: 'a', sessionId: 'b', message: 'Reloaded.', watcher: { wasRunning: true, restarted: true, running: true, previousSessionId: 'a', sessionId: 'b', message: 'Watcher restarted.' } };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    const result = await reloadSystemExtensions();
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const url = call[0] as string;
+    const init = call[1] as RequestInit;
+    expect(url).toBe(API_ROUTES.extensionReload);
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body as string)).toEqual({});
+    expect(result).toEqual(mockBody);
+  });
+
+  it('reloadSystemExtensions surfaces the daemon error on a non-2xx response', async () => {
+    globalThis.fetch = makeFetchMock(500, { error: 'watcher restart failed' });
+    await expect(reloadSystemExtensions()).rejects.toThrow('watcher restart failed');
+  });
+
+  it('validateSelectedSystemExtension uses a single path query param and no body', async () => {
+    const mockBody = { valid: true, extensions: [], diagnostics: [] };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    await validateSelectedSystemExtension({ path: '/repo/eforge/extensions/policy.ts' });
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const url = new URL(call[0] as string, 'http://localhost');
+    expect(url.pathname).toBe(API_ROUTES.extensionValidate);
+    expect(url.searchParams.get('path')).toBe('/repo/eforge/extensions/policy.ts');
+    expect(url.searchParams.has('name')).toBe(false);
+    // GET read: no request init / body.
+    expect(call[1]).toBeUndefined();
+  });
+
+  it('validateSelectedSystemExtension uses a single name query param for user/external targets', async () => {
+    const mockBody = { valid: false, extensions: [], diagnostics: [{ severity: 'error', code: 'E', message: 'bad' }] };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    const result = await validateSelectedSystemExtension({ name: 'user-ext' });
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const url = new URL(call[0] as string, 'http://localhost');
+    expect(url.searchParams.get('name')).toBe('user-ext');
+    expect(url.searchParams.has('path')).toBe(false);
+    expect(result).toEqual(mockBody);
+  });
+
+  it('untrustSystemExtension POSTs { path } to the untrust route', async () => {
+    const mockBody = { extension: { name: 'policy' }, message: 'Untrusted policy.' };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    const result = await untrustSystemExtension('/repo/eforge/extensions/policy.ts');
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe(API_ROUTES.extensionUntrust);
+    expect((call[1] as RequestInit).method).toBe('POST');
+    expect(((call[1] as RequestInit).headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ path: '/repo/eforge/extensions/policy.ts' });
+    expect(result).toEqual(mockBody);
+  });
+
+  it('promoteSystemExtension POSTs { path } to the promote route in default mode', async () => {
+    const mockBody = { extension: { name: 'policy' }, message: 'Promoted policy.' };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    await promoteSystemExtension('/repo/eforge/extensions/policy.ts');
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe(API_ROUTES.extensionPromote);
+    expect((call[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ path: '/repo/eforge/extensions/policy.ts' });
+  });
+
+  it('demoteSystemExtension POSTs { path } to the demote route in default mode', async () => {
+    const mockBody = { extension: { name: 'policy' }, message: 'Demoted policy.' };
+    globalThis.fetch = makeFetchMock(200, mockBody);
+    await demoteSystemExtension('/repo/eforge/extensions/policy.ts');
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe(API_ROUTES.extensionDemote);
+    expect((call[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ path: '/repo/eforge/extensions/policy.ts' });
+  });
+
+  it('untrust/promote/demote surface daemon errors verbatim on non-2xx responses', async () => {
+    globalThis.fetch = makeFetchMock(409, { error: 'Ambiguous extension' });
+    await expect(untrustSystemExtension('/p.ts')).rejects.toThrow('Ambiguous extension');
+    globalThis.fetch = makeFetchMock(409, { error: 'Already at project-team' });
+    await expect(promoteSystemExtension('/p.ts')).rejects.toThrow('Already at project-team');
+    globalThis.fetch = makeFetchMock(409, { error: 'Not project-team' });
+    await expect(demoteSystemExtension('/p.ts')).rejects.toThrow('Not project-team');
   });
 
   it('returns error message from HTTP status text on 500 response', async () => {
