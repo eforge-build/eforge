@@ -39,6 +39,23 @@ interface ConfigJsonSchema {
   [key: string]: unknown;
 }
 
+const TOP_LEVEL_CONFIG_FIELD_DESCRIPTIONS: Record<string, string> = {
+  agents: 'Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits.',
+  build: 'Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers.',
+  daemon: 'Daemon lifecycle settings for the long-running project watcher and API process.',
+  extensions: 'Native eforge extension configuration.',
+  hooks: 'Fire-and-forget shell commands triggered by matching eforge events.',
+  landing: 'Publication action taken after all plans complete and validation passes.',
+  langfuse: 'Optional Langfuse tracing configuration for agent runs.',
+  maxConcurrentBuilds: 'Maximum number of queued PRD builds that may run concurrently.',
+  monitor: 'Monitor and Console retention settings for recorded runs and events.',
+  plan: 'Plan artifact output settings used during compile.',
+  plugins: 'Host plugin integration settings.',
+  prdQueue: 'Queue directory, auto-build, and watcher polling settings for queued PRDs.',
+  stacking: 'Stacking configuration for git-spice backed stacked PRs.',
+  tools: 'Toolbelt configuration for named project MCP server bundles.',
+};
+
 export async function generateConfig(opts: {
   outputPaths: OutputPaths;
   provenance: ProvenanceInfo;
@@ -75,7 +92,8 @@ export async function generateConfig(opts: {
   ];
 
   for (const [key, prop] of sortedFields) {
-    const desc = (prop.description ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    const description = prop.description?.trim() || TOP_LEVEL_CONFIG_FIELD_DESCRIPTIONS[key] || '';
+    const desc = description.replace(/\|/g, '\\|').replace(/\n/g, ' ');
     lines.push(`| \`${key}\` | ${desc} |`);
   }
 

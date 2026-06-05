@@ -14,6 +14,32 @@ import { join } from 'node:path';
 import { findRepoRoot, getOutputPaths } from '@eforge-build/docs-gen/output-paths';
 import { runDriftCheck, runGenerators } from '@eforge-build/docs-gen/check';
 
+const AUDITED_TOP_LEVEL_CONFIG_KEYS = [
+  'agents',
+  'build',
+  'daemon',
+  'hooks',
+  'langfuse',
+  'maxConcurrentBuilds',
+  'monitor',
+  'plan',
+  'plugins',
+  'prdQueue',
+  'tools',
+] as const;
+
+function twoColumnRowsWithEmptyDescription(markdown: string): string[] {
+  return markdown
+    .split('\n')
+    .filter((line) => /^\| `[^`]+` \|\s*\|$/.test(line));
+}
+
+function readMarkdownTableDescription(markdown: string, key: string): string | undefined {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`^\\| \`${escaped}\` \\| (.*) \\|$`, 'm').exec(markdown);
+  return match?.[1].trim();
+}
+
 describe('docs-gen drift check', () => {
   it('checked-in generated files are byte-identical to what the generator produces', async () => {
     const result = await runDriftCheck();
@@ -51,6 +77,28 @@ describe('docs-gen drift check', () => {
     expect(content).toContain('issue-pr');
     expect(content).toContain('merge-to-base-branch');
     expect(content).toContain('leave-branch');
+  });
+
+  it('generated tool and config reference tables have public descriptions for audited rows', async () => {
+    const repoRoot = findRepoRoot();
+    const paths = getOutputPaths(repoRoot);
+
+    for (const path of [paths.contentTools, paths.publicTools, paths.contentConfig, paths.publicConfig]) {
+      const content = await readFile(path, 'utf-8');
+      expect(twoColumnRowsWithEmptyDescription(content), `${path} should not have blank generated descriptions`).toEqual([]);
+    }
+
+    for (const path of [paths.contentConfig, paths.publicConfig]) {
+      const content = await readFile(path, 'utf-8');
+      for (const key of AUDITED_TOP_LEVEL_CONFIG_KEYS) {
+        expect(readMarkdownTableDescription(content, key), `${path} ${key} description`).toBeTruthy();
+      }
+    }
+
+    for (const path of [paths.contentTools, paths.publicTools]) {
+      const content = await readFile(path, 'utf-8');
+      expect(content).toContain('`eforge_apply_recovery` | Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon');
+    }
   });
 });
 
