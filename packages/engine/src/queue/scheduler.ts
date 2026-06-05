@@ -15,6 +15,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import {
   getCompiledResumeFrontmatter,
   loadQueue,
@@ -166,7 +167,7 @@ export class QueueScheduler {
     this.parallelism = opts.parallelism;
     this.extensionRegistry = opts.extensionRegistry;
     this.profileUsageProvider = opts.profileUsageProvider;
-    this.configDir = opts.configDir ?? opts.cwd;
+    this.configDir = opts.configDir ?? resolve(opts.cwd, 'eforge');
 
     // Initialise prdState from the pre-loaded initial PRD list.
     for (const prd of opts.initialPrds) {
@@ -738,7 +739,7 @@ export class QueueScheduler {
                   dependsOn: currentPrd.frontmatter.depends_on ?? [],
                   ...(compiledResume !== undefined && { compiledResume }),
                 },
-                { cwd: this.cwd },
+                { cwd: this.cwd, configDir: this.configDir },
               ),
               timeoutMs: this.config.extensions?.policyGateTimeoutMs ?? 5_000,
               failurePolicy: this.config.extensions?.policyGateFailurePolicy ?? 'fail-closed',

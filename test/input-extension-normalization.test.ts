@@ -744,10 +744,34 @@ describe('preprocessBuildSource — input-source context', () => {
     });
     expect(typeof received?.logger).toBe('object');
     expect(typeof received?.exec).toBe('object');
+    expect((received?.paths as { extensionStoragePath(scope: 'project-local', segments: string[]): string }).extensionStoragePath('project-local', ['input.json'])).toBe(
+      resolve(tmpDir, '.eforge', 'storage', 'extensions', 'ext-ctx', 'input.json'),
+    );
+    await expect((received?.exec as { run(): Promise<unknown> }).run()).rejects.toThrow(/unavailable/);
 
     await expect(preprocessBuildSource({
       source: 'eforge://input/one/DOC-2', inputSources: [oneArg], prdEnrichers: [], cwd: tmpDir, timeoutMs: 5000,
     })).resolves.toMatchObject({ content: 'one:DOC-2' });
+  });
+
+  it('passes ctx.paths to PRD enrichers', async () => {
+    const tmpDir = makeTempDir();
+    let storagePath: string | undefined;
+    const enricher = makeEnricher('paths', async (content) => content);
+    enricher.value.enrich = ((input: { ctx: { paths: { extensionStoragePath(scope: 'project-local', segments: string[]): string } } }) => {
+      storagePath = input.ctx.paths.extensionStoragePath('project-local', ['enricher.json']);
+      return null;
+    }) as unknown as (...args: never[]) => unknown;
+
+    await preprocessBuildSource({
+      source: '# PRD',
+      inputSources: [],
+      prdEnrichers: [enricher],
+      cwd: tmpDir,
+      timeoutMs: 5000,
+    });
+
+    expect(storagePath).toBe(resolve(tmpDir, '.eforge', 'storage', 'extensions', 'ext-enricher-paths', 'enricher.json'));
   });
 });
 

@@ -382,6 +382,9 @@ importers:
       '@eforge-build/client':
         specifier: workspace:*
         version: link:../client
+      '@eforge-build/scopes':
+        specifier: workspace:*
+        version: link:../scopes
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49

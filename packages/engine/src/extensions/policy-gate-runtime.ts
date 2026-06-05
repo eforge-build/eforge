@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import type { EforgeEvent } from '../events.js';
 import type { NativeExtensionRegistry, PolicyGateKind, PolicyGateRegistration } from './types.js';
 
@@ -19,6 +21,7 @@ interface PolicyDecisionMirror {
 
 interface PolicyGateContextBase {
   gateKind: PolicyGateKind;
+  paths: EforgeProjectPaths;
   logger: {
     debug(message: string): void;
     info(message: string): void;
@@ -101,6 +104,7 @@ export type PolicyGateTarget =
 
 export interface PolicyGateContextHelpersOptions {
   cwd?: string;
+  configDir?: string;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -185,10 +189,25 @@ function createExec(cwd: string, env: NodeJS.ProcessEnv) {
 }
 
 function makeHelpers(gateKind: PolicyGateKind, options: PolicyGateContextHelpersOptions, extensionName?: string) {
+  const cwd = options.cwd ?? process.cwd();
+  const configDir = options.configDir ?? resolve(cwd, 'eforge');
   return {
+    paths: createEforgeProjectPaths({ cwd, configDir, extensionName }),
     logger: createLogger(gateKind, extensionName),
-    exec: createExec(options.cwd ?? process.cwd(), options.env ?? process.env),
+    exec: createExec(cwd, options.env ?? process.env),
   };
+}
+
+function cloneContextForRegistration(context: AnyPolicyGateContext, registration: PolicyGateRegistration): AnyPolicyGateContext {
+  return deepFreeze({
+    ...context,
+    paths: createEforgeProjectPaths({
+      cwd: context.paths.cwd,
+      configDir: context.paths.configDir,
+      extensionName: registration.extensionName,
+    }),
+    logger: createLogger(context.gateKind, registration.extensionName),
+  }) as AnyPolicyGateContext;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -432,21 +451,22 @@ export async function executePolicyGate(
     .filter((registration) => registration.gateKind === options.gateKind);
 
   for (const registration of registrations) {
-    const result = await executeHandlerWithTimeout(registration, options.context, options.timeoutMs);
+    const context = cloneContextForRegistration(options.context, registration);
+    const result = await executeHandlerWithTimeout(registration, context, options.timeoutMs);
 
     if ('timedOut' in result) {
-      events.push(makeTimeoutEvent(registration, options.context, options.failurePolicy, options.timeoutMs));
+      events.push(makeTimeoutEvent(registration, context, options.failurePolicy, options.timeoutMs));
       if (options.failurePolicy === 'fail-open') continue;
       const decision = blockingFailureDecision(`Policy gate ${registration.method} timed out after ${options.timeoutMs}ms`);
-      events.push(makeDecisionEvent(registration, options.context, options.failurePolicy, decision));
+      events.push(makeDecisionEvent(registration, context, options.failurePolicy, decision));
       return { decision, blocked: true, events };
     }
 
     if ('error' in result) {
-      events.push(makeFailedEvent(registration, options.context, options.failurePolicy, result.error));
+      events.push(makeFailedEvent(registration, context, options.failurePolicy, result.error));
       if (options.failurePolicy === 'fail-open') continue;
       const decision = blockingFailureDecision(`Policy gate ${registration.method} failed: ${errorMessage(result.error)}`);
-      events.push(makeDecisionEvent(registration, options.context, options.failurePolicy, decision));
+      events.push(makeDecisionEvent(registration, context, options.failurePolicy, decision));
       return { decision, blocked: true, events };
     }
 
@@ -454,14 +474,14 @@ export async function executePolicyGate(
     try {
       decision = validatePolicyDecision(result.result);
     } catch (error) {
-      events.push(makeFailedEvent(registration, options.context, options.failurePolicy, error));
+      events.push(makeFailedEvent(registration, context, options.failurePolicy, error));
       if (options.failurePolicy === 'fail-open') continue;
       decision = blockingFailureDecision(`Policy gate ${registration.method} returned an invalid decision: ${errorMessage(error)}`);
-      events.push(makeDecisionEvent(registration, options.context, options.failurePolicy, decision));
+      events.push(makeDecisionEvent(registration, context, options.failurePolicy, decision));
       return { decision, blocked: true, events };
     }
 
-    events.push(makeDecisionEvent(registration, options.context, options.failurePolicy, decision));
+    events.push(makeDecisionEvent(registration, context, options.failurePolicy, decision));
     if (decision.decision === 'block' || decision.decision === 'require-approval') {
       return { decision, blocked: true, events };
     }

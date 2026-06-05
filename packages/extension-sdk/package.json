@@ -12,6 +12,10 @@
     "./project-storage": {
       "types": "./dist/project-storage.d.ts",
       "import": "./dist/project-storage.js"
+    },
+    "./project-paths": {
+      "types": "./dist/project-paths.d.ts",
+      "import": "./dist/project-paths.js"
     }
   },
   "types": "./dist/index.d.ts",
@@ -35,6 +39,7 @@
   },
   "dependencies": {
     "@eforge-build/client": "workspace:*",
+    "@eforge-build/scopes": "workspace:*",
     "@sinclair/typebox": "^0.34.49"
   },
   "devDependencies": {

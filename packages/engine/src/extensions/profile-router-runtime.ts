@@ -19,6 +19,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
@@ -59,6 +60,7 @@ interface ProfileRouterContextMirror {
   usage: {
     profile(name: string): ProfileUsageSummary;
   };
+  paths: EforgeProjectPaths;
   logger: {
     debug(message: string): void;
     info(message: string): void;
@@ -230,6 +232,8 @@ export interface BuildProfileRouterContextDeps {
   availableProfiles: ProfileSummaryMirror[];
   /** Working directory for exec API. */
   cwd: string;
+  /** Project-team config directory used by scoped path helpers. */
+  configDir?: string;
   /** Max chars for prdBody before capping to prdContentSummary. */
   prdBodyCapChars?: number;
 }
@@ -284,6 +288,7 @@ export function buildProfileRouterContext(
         return summary;
       },
     },
+    paths: createEforgeProjectPaths({ cwd: deps.cwd, configDir: deps.configDir, extensionName }),
     logger: createLogger(extensionName, routerName),
     exec: createExec(deps.cwd),
   };
@@ -369,6 +374,7 @@ export async function executeProfileRouters(
         profileUsageProvider: opts.profileUsageProvider,
         availableProfiles,
         cwd: opts.cwd,
+        configDir: opts.configDir,
       },
       extensionName,
       routerName,

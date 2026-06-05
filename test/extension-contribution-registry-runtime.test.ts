@@ -79,6 +79,30 @@ describe('extension contribution registry runtime', () => {
     expect(dispatched).toMatchObject({ kind: 'success', output: { greeting: 'hi Lin' } });
   });
 
+  it('passes ctx.paths to extension action handlers', async () => {
+    const root = makeTempDir();
+    const result = await loadFixture(root, {
+      'paths.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'path', title: 'Path', inputSchema: Type.Object({}), handler: (_input, ctx) => ({ path: ctx.paths.extensionStoragePath('project-local', ['action.json']) }) });
+      }`,
+    });
+
+    const dispatched = await dispatchExtensionAction(result.registry, {
+      actionId: 'paths:path',
+      input: {},
+      requestedBy: { host: 'cli' },
+      cwd: root,
+      configDir: resolve(root, 'eforge'),
+      timeoutMs: 1000,
+    });
+
+    expect(dispatched).toMatchObject({
+      kind: 'success',
+      output: { path: resolve(root, '.eforge', 'storage', 'extensions', 'paths', 'action.json') },
+    });
+  });
+
   it('emits invalid and duplicate diagnostics for unsafe contribution registrations', async () => {
     const result = await loadFixture(makeTempDir(), {
       'first.js': `import { Type } from '@eforge-build/extension-sdk';
@@ -260,7 +284,7 @@ describe('extension contribution registry runtime', () => {
       readFile('packages/monitor/src/routes/extensions/discovery-service.ts', 'utf8'),
     ]);
 
-    expect(runtimeSource).not.toContain('@eforge-build/extension-sdk');
+    expect(runtimeSource).toContain('@eforge-build/extension-sdk/project-paths');
     expect(manifestSource).toContain('@eforge-build/client');
     expect(manifestSource).not.toMatch(/['"]\/api\//);
     expect(discoveryServiceSource).not.toContain('ExtensionActionInvoke');

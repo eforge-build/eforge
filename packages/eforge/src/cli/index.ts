@@ -147,6 +147,7 @@ interface WrapEventsOptions {
     registry: Pick<NativeExtensionRegistry, 'eventHooks'>;
     timeoutMs: number;
     cwd?: string;
+    configDir?: string;
   };
   sessionOpts?: import('@eforge-build/engine/session').SessionOptions;
 }
@@ -159,6 +160,7 @@ function wrapEvents(
   wrapped = withRunId(wrapped);
   wrapped = withNativeEventHooks(wrapped, opts.native.registry, {
     cwd: opts.native.cwd ?? process.cwd(),
+    configDir: opts.native.configDir,
     timeoutMs: opts.native.timeoutMs,
   });
   wrapped = opts.monitor.wrapEvents(wrapped);
@@ -532,6 +534,7 @@ export function createProgram(abortController?: AbortController, version?: strin
                 inputSources: engine.nativeExtensionRegistry.inputSources,
                 prdEnrichers: engine.nativeExtensionRegistry.prdEnrichers,
                 cwd: process.cwd(),
+                configDir: engine.nativeExtensionConfigDir,
                 timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
               });
 
@@ -570,6 +573,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               native: {
                 registry: engine.nativeExtensionRegistry,
                 timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                configDir: engine.nativeExtensionConfigDir,
               },
             }),
           );
@@ -671,6 +675,7 @@ export function createProgram(abortController?: AbortController, version?: strin
                 native: {
                   registry: engine.nativeExtensionRegistry,
                   timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                  configDir: engine.nativeExtensionConfigDir,
                 },
               }),
               { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
@@ -957,6 +962,7 @@ export function createProgram(abortController?: AbortController, version?: strin
             native: {
               registry: engine.nativeExtensionRegistry,
               timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+              configDir: engine.nativeExtensionConfigDir,
             },
           });
 
@@ -1698,6 +1704,7 @@ export function createProgram(abortController?: AbortController, version?: strin
                 native: {
                   registry: engine.nativeExtensionRegistry,
                   timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                  configDir: engine.nativeExtensionConfigDir,
                   ...(cwd && { cwd }),
                 },
               }),
@@ -1743,6 +1750,7 @@ export function createProgram(abortController?: AbortController, version?: strin
                 native: {
                   registry: engine.nativeExtensionRegistry,
                   timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                  configDir: engine.nativeExtensionConfigDir,
                   ...(cwd && { cwd }),
                 },
               }),

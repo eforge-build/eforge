@@ -1,3 +1,4 @@
+import type { EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import type { Scope } from '@eforge-build/scopes';
 import type {
   ExtensionActionRequestedBy,
@@ -77,6 +78,7 @@ export interface ExtensionActionContextShape {
   /** Aborted when the daemon action timeout elapses; handlers should stop side effects promptly. */
   signal: AbortSignal;
   logger: { debug(message: string): void; info(message: string): void; warn(message: string): void; error(message: string): void };
+  paths: EforgeProjectPaths;
 }
 export interface ExtensionActionSpec {
   id: string;

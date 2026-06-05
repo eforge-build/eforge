@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { withNativeEventHooks, type EventHookContext } from '@eforge-build/engine/extensions';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { EventHookRegistration, NativeExtensionRegistry } from '@eforge-build/engine/extensions';
@@ -223,6 +223,25 @@ describe('withNativeEventHooks', () => {
       pattern: 'plan:build:*',
       signalAborted: false,
     });
+  });
+
+  it('passes ctx.paths with contained absolute storage paths', async () => {
+    const cwd = resolve('/tmp/event-paths-project');
+    const configDir = resolve(cwd, 'team-config');
+    let storagePath: string | undefined;
+    let extensionStoragePath: string | undefined;
+
+    await collectEvents(withNativeEventHooks(
+      asyncIterableFrom([event('plan:build:complete', { planId: 'plan-01' })]),
+      registry([hook('*', (_evt, ctx) => {
+        storagePath = ctx.paths.storagePath('project-local', ['cache.json']);
+        extensionStoragePath = ctx.paths.extensionStoragePath('project-local', ['trace.json']);
+      }, 'path-ext')]),
+      { cwd, configDir, timeoutMs: 1000 },
+    ));
+
+    expect(storagePath).toBe(resolve(cwd, '.eforge', 'storage', 'cache.json'));
+    expect(extensionStoragePath).toBe(resolve(cwd, '.eforge', 'storage', 'extensions', 'path-ext', 'trace.json'));
   });
 
   it('writes prefixed logger output to stderr', async () => {
