@@ -2,28 +2,38 @@
 
 Project-local lightweight backlog capture for any project.
 
-This is intentionally a Pi extension first: it records and curates issues without requiring an `eforge:plan` session or an `eforge:build`. Items can later be promoted into session plans, Schaake OS epics, roadmap updates, or discarded as stale.
+This is intentionally a Pi extension first: it records and curates issues without requiring an `eforge:plan` session or an `eforge:build`. Items can later be promoted into session plans, linked to local backlog epics, moved into roadmap updates, or discarded as stale.
 
 ## Storage
 
-Backlog items are Markdown files under:
+Backlog items and local epics are Markdown files under:
 
 ```text
 .backlog/items/<id>.md
+.backlog/epics/<epic-id>.md
 ```
 
-`.backlog/` is gitignored, so this is local working memory by default. The item format is frontmatter plus human-readable sections.
+`.backlog/` is gitignored, so this is local working memory by default. The item and epic formats are frontmatter plus human-readable sections.
 
-Frontmatter supports dependency tracking with `depends_on`, an array of backlog item IDs. An item is shown as blocked until each dependency is `shipped` or `superseded`.
+Item frontmatter supports dependency tracking with `depends_on`, an array of backlog item IDs. An item is shown as blocked until each dependency is `shipped` or `superseded`.
+
+Item frontmatter also supports one primary local epic link with `epic: <epic-id>`. Epic IDs point to records in `.backlog/epics/`; commands and agent tools validate the epic exists before writing links. Existing orphaned links are tolerated when reading and shown as missing in generated views.
 
 `stale_after` is treated as an analysis/review reminder, not as an automatic stale verdict. Use `/backlog analyze` or `/backlog analyze-all` for agent-assisted staleness analysis.
 
-Human-readable sections:
+Item human-readable sections:
 
 - `Claim`
 - `Evidence`
 - `Recheck`
 - `Promotion Paths`
+
+Epic human-readable sections:
+
+- `Goal`
+- `Evidence`
+- `Recheck`
+- `Notes`
 
 ## Commands
 
@@ -39,6 +49,12 @@ Human-readable sections:
 /backlog status <id> <status>    Set status: candidate|planned|active|shipped|stale|superseded
 /backlog stale <id> [reason]     Mark an item stale and append evidence
 /backlog depends <id> <dep...>   Add dependency backlog item IDs; use --clear to remove all
+/backlog epic list [query]       List local backlog epics
+/backlog epic add <title>        Create a local backlog epic
+/backlog epic show <epic-id>     Show one local backlog epic
+/backlog epic status <epic-id> <status> [reason]
+/backlog epic link <id> <epic-id>
+/backlog epic unlink <id>
 /backlog review                  Show open, blocked, and analysis-due counts
 /backlog analyze <id>            Ask the agent to analyze one item against git/docs/code evidence
 /backlog analyze-all             Ask the agent to analyze every open item
@@ -46,11 +62,11 @@ Human-readable sections:
 /backlog curate                  Ask the agent to review and curate backlog items without enqueuing builds
 ```
 
-Slash-command completions are registered for the subcommands above and for the status value in `/backlog status <id> <status>`.
+Slash-command completions are registered for the top-level subcommands above and for the status value in `/backlog status <id> <status>`.
 
 The list browser supports `↑↓/j/k` navigation, `enter` to view the selected item with markdown formatting, `b`/`←` to return from detail view, `/` to search from the list view, `r` to toggle ready-only filtering, `a` to analyze the selected item, `p` to promote it, `s` to choose a status, `!` to choose a priority, and `q`/`esc` to close. Status and priority changes use in-browser pickers and keep the current detail view open after saving.
 
-The HTML view is a self-contained, offline dashboard with summary counts, client-side search/filtering, dependency/dependent cards, blocked and ready highlighting, missing dependency markers, and cycle warnings when detected. It is written under `.backlog/view/`, opened automatically by default, and remains local/gitignored with the rest of `.backlog/`.
+The HTML view is a self-contained, offline dashboard with summary counts, client-side search/filtering, local epic chips, dependency/dependent cards, blocked and ready highlighting, missing epic/dependency markers, and cycle warnings when detected. It is written under `.backlog/view/`, opened automatically by default, and remains local/gitignored with the rest of `.backlog/`.
 
 ## Tests
 
@@ -68,5 +84,10 @@ The extension also registers tools for agent-assisted backlog maintenance:
 - `backlog_list`
 - `backlog_show`
 - `backlog_update`
+- `backlog_epic_add`
+- `backlog_epic_list`
+- `backlog_epic_show`
+- `backlog_epic_update`
+- `backlog_epic_link`
 
-Use these for lightweight capture and curation only. `backlog_list` accepts `readyOnly` and `blockedOnly`; `backlog_add` accepts `dependsOn`; `backlog_update` accepts `dependsOn`, `addDependsOn`, and `removeDependsOn`. Promote an item to `/eforge:plan` when it becomes buildable work.
+Use these for lightweight capture and curation only. `backlog_list` accepts `readyOnly`, `blockedOnly`, and `epic`; `backlog_add` accepts `dependsOn` and `epic`; `backlog_update` accepts `dependsOn`, `addDependsOn`, `removeDependsOn`, and `epic`. `backlog_epic_link` links one item to one local epic or unlinks it when no epic ID is provided. Promote an item to `/eforge:plan` when it becomes buildable work.

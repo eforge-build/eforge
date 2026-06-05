@@ -27,7 +27,7 @@ export type BacklogSummary = Omit<BacklogItem, "body"> & { stale: boolean };
 export const STATUS_VALUES = ["candidate", "planned", "active", "shipped", "stale", "superseded"] as const;
 export const PRIORITY_VALUES = ["low", "medium", "high"] as const;
 export const SOURCE_VALUES = ["conversation", "review", "build", "roadmap", "manual"] as const;
-export const BACKLOG_ACTIONS = ["list", "ready", "blocked", "graph", "html", "add", "show", "status", "stale", "depends", "review", "analyze", "analyze-all", "promote", "curate"] as const;
+export const BACKLOG_ACTIONS = ["list", "ready", "blocked", "graph", "html", "add", "show", "status", "stale", "depends", "epic", "review", "analyze", "analyze-all", "promote", "curate"] as const;
 export const CLOSED_STATUSES = new Set<BacklogStatus>(["shipped", "stale", "superseded"]);
 export const SATISFIED_DEPENDENCY_STATUSES = new Set<BacklogStatus>(["shipped", "superseded"]);
 export const DEFAULT_STALE_DAYS = 14;
@@ -206,7 +206,7 @@ export function summarize(item: BacklogItem): BacklogSummary {
 }
 
 export function defaultBody(title: string, claim?: string, evidence?: string): string {
-	return `# ${title}\n\n## Claim\n\n${claim?.trim() || "TBD"}\n\n## Evidence\n\n${evidence?.trim() || "- Source: manual capture"}\n\n## Recheck\n\n- Search or inspect the relevant files before promoting this item.\n\n## Promotion Paths\n\n- Create an eforge session plan when this becomes buildable work.\n- Link or update a Schaake OS epic if this becomes strategic work.\n`;
+	return `# ${title}\n\n## Claim\n\n${claim?.trim() || "TBD"}\n\n## Evidence\n\n${evidence?.trim() || "- Source: manual capture"}\n\n## Recheck\n\n- Search or inspect the relevant files before promoting this item.\n\n## Promotion Paths\n\n- Create an eforge session plan when this becomes buildable work.\n- Link or update a local backlog epic if this becomes strategic work.\n`;
 }
 
 export async function createItem(cwd: string, input: {
@@ -215,6 +215,7 @@ export async function createItem(cwd: string, input: {
 	evidence?: string;
 	tags?: string[];
 	dependsOn?: string[];
+	epic?: string;
 	priority?: BacklogPriority;
 	source?: BacklogSource;
 	staleAfter?: string;
@@ -232,6 +233,7 @@ export async function createItem(cwd: string, input: {
 		stale_after: input.staleAfter ?? addDays(date, DEFAULT_STALE_DAYS),
 		tags: input.tags ?? [],
 		depends_on: uniqueValues(input.dependsOn ?? []),
+		epic: input.epic || undefined,
 		body: defaultBody(input.title.trim(), input.claim, input.evidence),
 	};
 	await writeItem(cwd, item);
@@ -267,13 +269,14 @@ export function findSectionRange(body: string, heading: string): { start: number
 	return { start, contentStart, end };
 }
 
-export function filterItems(items: BacklogItem[], params: { status?: BacklogStatus; query?: string; tag?: string; includeClosed?: boolean }): BacklogItem[] {
+export function filterItems(items: BacklogItem[], params: { status?: BacklogStatus; query?: string; tag?: string; epic?: string; includeClosed?: boolean }): BacklogItem[] {
 	const query = params.query?.toLowerCase().trim();
 	return items.filter((item) => {
 		if (params.status && item.status !== params.status) return false;
 		if (!params.includeClosed && !params.status && CLOSED_STATUSES.has(item.status)) return false;
 		if (params.tag && !item.tags.includes(params.tag)) return false;
-		if (query && !`${item.id}\n${item.title}\n${item.tags.join(" ")}\n${item.depends_on.join(" ")}\n${item.body}`.toLowerCase().includes(query)) return false;
+		if (params.epic && item.epic !== params.epic) return false;
+		if (query && !`${item.id}\n${item.title}\n${item.tags.join(" ")}\n${item.depends_on.join(" ")}\n${item.epic ?? ""}\n${item.body}`.toLowerCase().includes(query)) return false;
 		return true;
 	});
 }
@@ -325,13 +328,14 @@ export function filterBlockedItems<T extends BacklogDisplayItem>(items: T[], con
 export function matchesBacklogQuery(item: BacklogItem, query: string): boolean {
 	const normalized = query.trim().toLowerCase();
 	if (!normalized) return true;
-	return `${item.id}\n${item.title}\n${item.tags.join(" ")}\n${item.depends_on.join(" ")}\n${item.body}`.toLowerCase().includes(normalized);
+	return `${item.id}\n${item.title}\n${item.tags.join(" ")}\n${item.depends_on.join(" ")}\n${item.epic ?? ""}\n${item.body}`.toLowerCase().includes(normalized);
 }
 
 export function formatSummaryLines(item: BacklogDisplayItem, itemsById: Map<string, BacklogDisplayItem>): string[] {
 	const blocked = blockedBy(item, itemsById);
 	const lines = [`• ${item.title} [${summaryLabels(item, itemsById).join("/")}]`, `  id: ${item.id}`];
 	if (item.tags.length) lines.push(`  tags: ${item.tags.join(", ")}`);
+	if (item.epic) lines.push(`  epic: ${shortId(item.epic)}`);
 	if (item.depends_on.length) lines.push(`  depends on: ${formatIdList(item.depends_on)}`);
 	if (blocked.length) lines.push(`  blocked by: ${formatIdList(blocked)}`);
 	return lines;

@@ -21,6 +21,7 @@ function backlogItemMarkdown(item: BacklogItem, contextItems: BacklogItem[] = [i
 		`> **Priority:** ${item.priority}  `,
 		`> **ID:** \`${item.id}\`  `,
 		`> **Tags:** ${tags}  `,
+		`> **Epic:** ${item.epic ? shortId(item.epic) : "none"}  `,
 		`> **Depends on:** ${dependencies}  `,
 		`> **Blocked by:** ${blocked}`,
 	].join("\n");
@@ -102,7 +103,6 @@ class BacklogPanel {
 }
 
 export type BacklogBrowserAction = { kind: "analyze"; id: string } | { kind: "promote"; id: string };
-
 export type BacklogBrowserMutationHandlers = {
 	setStatus(id: string, status: BacklogStatus, reason?: string): Promise<BacklogItem>;
 	setPriority(id: string, priority: BacklogPriority): Promise<BacklogItem>;
@@ -527,7 +527,7 @@ class BacklogBrowser {
 		const prefix = selected ? this.theme.fg("accent", "> ") : "  ";
 		const title = `${prefix}${item.title} [${summaryLabels(item, itemsById).join("/")}]`;
 		const blocked = blockedBy(item, itemsById);
-		const meta = [`id: ${shortId(item.id)}`, item.tags.length && `tags: ${item.tags.join(", ")}`, blocked.length && `blocked by: ${formatIdList(blocked)}`].filter(Boolean).join(" • ");
+		const meta = [`id: ${shortId(item.id)}`, item.tags.length && `tags: ${item.tags.join(", ")}`, item.epic && `epic: ${shortId(item.epic)}`, blocked.length && `blocked by: ${formatIdList(blocked)}`].filter(Boolean).join(" • ");
 		return [truncateToWidth(title, width, "", true), truncateToWidth(`  ${this.theme.fg("dim", meta)}`, width, "", true)];
 	}
 

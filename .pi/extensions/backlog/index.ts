@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, type AutocompleteItem } from "@earendil-works/pi-tui";
 import { showBacklogBrowser, showBacklogItem, showPanel, type BacklogBrowserAction, type BacklogBrowserMutationHandlers } from "./browser";
+import { handleEpicCommand, registerEpicTools } from "./epic-runtime";
+import { validateLocalEpic } from "./epic-store";
 import { writeBacklogHtml } from "./html";
 import { AddParams, ListParams, ShowParams, UpdateParams } from "./schemas";
 import {
@@ -127,6 +129,7 @@ function backlogArgumentCompletions(prefix: string): AutocompleteItem[] | null {
 			status: "Set item status",
 			stale: "Mark an item stale",
 			depends: "Add dependency IDs to an item",
+			epic: "Manage local backlog epics and item links",
 			review: "Show review-due summary",
 			analyze: "Ask the agent to analyze one item",
 			"analyze-all": "Ask the agent to analyze every open item",
@@ -242,6 +245,11 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 		return;
 	}
 
+	if (action === "epic" || action === "epics") {
+		await handleEpicCommand(rest, ctx);
+		return;
+	}
+
 	if (action === "review" || action === "stale-due") {
 		const items = await listItems(ctx.cwd);
 		const due = items.filter(isStale);
@@ -283,7 +291,7 @@ async function handleBacklogCommand(pi: ExtensionAPI, args: string, ctx: Extensi
 		return;
 	}
 
-	ctx.ui.notify("Usage: /backlog [list|ready|blocked|graph|html|add|show|status|stale|depends|review|analyze|analyze-all|promote|curate]", "error");
+	ctx.ui.notify("Usage: /backlog [list|ready|blocked|graph|html|add|show|status|stale|depends|epic|review|analyze|analyze-all|promote|curate]", "error");
 }
 
 async function openGeneratedHtml(pi: ExtensionAPI, ctx: ExtensionContext, path: string): Promise<void> {
@@ -316,7 +324,7 @@ function buildAnalyzeAllPrompt(): string {
 }
 
 function buildCuratorPrompt(): string {
-	return `Review the lightweight backlog in .backlog/items without starting an eforge build.\n\nGoals:\n- list open, blocked, and analysis-due items;\n- inspect recent git history and relevant docs/code for evidence when cheap;\n- use backlog_update to mark shipped/stale/superseded items or maintain dependsOn relationships when evidence is clear;\n- suggest which items should be promoted to /eforge:plan, Schaake OS epics, roadmap updates, or discarded;\n- do not enqueue builds.\n\nStart by calling backlog_list with includeClosed=false.`;
+	return `Review the lightweight backlog in .backlog/items without starting an eforge build.\n\nGoals:\n- list open, blocked, and analysis-due items;\n- inspect recent git history and relevant docs/code for evidence when cheap;\n- use backlog_update to mark shipped/stale/superseded items or maintain dependsOn relationships when evidence is clear;\n- suggest which items should be promoted to /eforge:plan, local backlog epics, roadmap updates, or discarded;\n- do not enqueue builds.\n\nStart by calling backlog_list with includeClosed=false.`;
 }
 
 function createDetails(item: BacklogItem | BacklogItem[] | BacklogSummary | BacklogSummary[]): Record<string, unknown> {
@@ -338,10 +346,12 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use backlog_add when the user wants to remember an issue, follow-up, idea, or concern without starting an eforge build.",
 			"Set dependsOn when a backlog item should wait for other backlog item IDs to be completed first.",
+			"Set epic only to an existing local backlog epic ID from .backlog/epics.",
 			"Do not use backlog_add for work that is already ready to build; ask whether to promote it to /eforge:plan instead.",
 		],
 		parameters: AddParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			await validateLocalEpic(ctx.cwd, params.epic);
 			const item = await createItem(ctx.cwd, params);
 			return {
 				content: [{ type: "text", text: `Added backlog item ${item.id}: ${item.title}` }],
@@ -379,7 +389,7 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 			};
 		},
 		renderCall(args, theme) {
-			const filter = [args.readyOnly && "ready", args.blockedOnly && "blocked", args.status, args.query && `q=${args.query}`, args.tag && `tag=${args.tag}`].filter(Boolean).join(" ");
+			const filter = [args.readyOnly && "ready", args.blockedOnly && "blocked", args.status, args.query && `q=${args.query}`, args.tag && `tag=${args.tag}`, args.epic && `epic=${args.epic}`].filter(Boolean).join(" ");
 			return new Text(`${theme.fg("toolTitle", theme.bold("backlog_list "))}${theme.fg("muted", filter || "open")}`, 0, 0);
 		},
 		renderResult(result, _options, theme) {
@@ -410,10 +420,12 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use backlog_update to mark backlog items shipped, stale, or superseded only when you have evidence.",
 			"Use dependsOn, addDependsOn, or removeDependsOn to maintain backlog dependency relationships.",
+			"Set epic only to an existing local backlog epic ID; pass an empty string to clear it.",
 			"When changing backlog item status, add evidence explaining why the status changed.",
 		],
 		parameters: UpdateParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			await validateLocalEpic(ctx.cwd, params.epic || undefined);
 			const item = await readItem(ctx.cwd, params.id);
 			if (params.status) item.status = params.status;
 			if (params.priority) item.priority = params.priority;
@@ -435,6 +447,8 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 			};
 		},
 	});
+
+	registerEpicTools(pi);
 
 	pi.on("session_start", async (_event, ctx) => {
 		const items = await listItems(ctx.cwd).catch(() => []);
