@@ -17,7 +17,6 @@ export interface ReadSidecarRequest {
   prdId: string;
 }
 
-// --- eforge:region plan-01-durable-recovery-applied-state ---
 /**
  * Durable record that a recovery verdict was applied to a failed PRD. Persisted
  * as the optional `applied` field on `<prdId>.recovery.json` so a repeated apply
@@ -64,7 +63,6 @@ export type RecoveryAppliedMetadata =
   | RecoverySplitAppliedMetadata
   | RecoveryNonSplitAppliedMetadata
   | AcceptSuccessAppliedSummary;
-// --- eforge:endregion plan-01-durable-recovery-applied-state ---
 
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
@@ -82,10 +80,8 @@ export interface RecoveryVerdictSidecar {
   generatedAt: string;
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
-  // --- eforge:region plan-01-durable-recovery-applied-state ---
   /** Durable applied marker; absent on sidecars written before a verdict is applied. */
   applied?: RecoveryAppliedMetadata;
-  // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 }
 
 /** Response for GET /api/recovery/sidecar */
@@ -160,7 +156,6 @@ export interface ApplyRecoveryResponse {
   successorPrdId?: string;
   /** True when the verdict was `manual` and no git changes were made. */
   noAction?: boolean;
-  // --- eforge:region plan-01-durable-recovery-applied-state ---
   /**
    * Apply idempotency status. `applied` on first successful apply;
    * `already-applied` when a durable applied marker or a live successor scan
@@ -170,10 +165,8 @@ export interface ApplyRecoveryResponse {
   status?: 'applied' | 'already-applied';
   /** Human-readable detail about the apply outcome (e.g. idempotency notice). */
   detail?: string;
-  // --- eforge:endregion plan-01-durable-recovery-applied-state ---
 }
 
-// --- eforge:region plan-02-accept-success-recovery-backend ---
 /**
  * Accept-build-as-successful recovery action contracts.
  *
@@ -318,4 +311,3 @@ export interface AcceptSuccessResponse {
   status: 'applied' | 'already-applied';
   applied: AcceptSuccessAppliedSummary;
 }
-// --- eforge:endregion plan-02-accept-success-recovery-backend ---

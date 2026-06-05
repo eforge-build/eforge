@@ -74,7 +74,6 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
         }
       } catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict'); }
     } }),
-    // --- eforge:region plan-02-accept-success-recovery-backend ---
     defineRoute({ routeKey: 'acceptRecoverySuccessPreview', method: 'GET', pattern: API_ROUTES.acceptRecoverySuccessPreview, security: [localMutation('Accept-success recovery preview')], async handler(ctx) {
       if (!context.cwd) return sendJsonError(ctx.res, 503, 'No working directory configured');
       const prdId = ctx.query.get('prdId');
@@ -104,6 +103,5 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
       context.notifyQueueMutation('apply-recovery');
       sendJson(ctx.res, result);
     } }),
-    // --- eforge:endregion plan-02-accept-success-recovery-backend ---
   ];
 }

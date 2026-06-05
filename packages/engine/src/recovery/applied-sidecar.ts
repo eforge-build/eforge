@@ -108,7 +108,6 @@ export async function writeRecoveryAppliedMetadata(
   await rename(tmp, sidecarJsonPath);
 }
 
-// --- eforge:region plan-02-accept-success-recovery-backend ---
 
 const ACCEPT_SUCCESS_REASON_CATEGORY_SET = new Set<AcceptSuccessReasonCategory>(
   ACCEPT_SUCCESS_REASON_CATEGORIES,
@@ -256,4 +255,3 @@ export async function writeAcceptSuccessAppliedMetadata(
   }
   await rename(tmp, sidecarJsonPath);
 }
-// --- eforge:endregion plan-02-accept-success-recovery-backend ---
