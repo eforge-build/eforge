@@ -215,7 +215,6 @@ export type {
 // Playbook workflow adapter exports
 // ---------------------------------------------------------------------------
 
-// --- eforge:region plan-01-playbook-workflow-adapter ---
 export {
   PLAYBOOK_WORKFLOW_ADAPTER_DESCRIPTOR,
   PlaybookWorkflowValidationError,
@@ -238,7 +237,6 @@ export type {
   PlaybookWorkflowRawValidationResult,
   PlaybookWorkflowAdapter,
 } from './playbook-workflow.js';
-// --- eforge:endregion plan-01-playbook-workflow-adapter ---
 
 // ---------------------------------------------------------------------------
 // Session planning workflow adapter exports

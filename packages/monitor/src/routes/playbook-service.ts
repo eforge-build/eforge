@@ -1,6 +1,5 @@
 import { API_ROUTES } from '@eforge-build/client';
 
-// --- eforge:region plan-01-playbook-workflow-adapter ---
 async function getPlaybookAdapter() {
   const input = await import('@eforge-build/input');
   return {
@@ -12,7 +11,6 @@ async function getPlaybookAdapter() {
     formatAcDiagnostics: input.formatAcDiagnostics,
   };
 }
-// --- eforge:endregion plan-01-playbook-workflow-adapter ---
 
 export async function listPlaybooksWire(cwd: string) { const { getConfigDir } = await import('@eforge-build/engine/config'); const { adapter } = await getPlaybookAdapter(); const configDir = await getConfigDir(cwd); const result = await adapter.scoped.list({ configDir: configDir ?? cwd, cwd }); for (const w of result.warnings) process.stderr.write(`${w}\n`); return result; }
 export async function showPlaybook(cwd: string, name: string) { const { getConfigDir } = await import('@eforge-build/engine/config'); const { adapter } = await getPlaybookAdapter(); const configDir = await getConfigDir(cwd); if (!configDir) throw Object.assign(new Error('No eforge config directory found'), { statusCode: 404 }); return adapter.scoped.load({ configDir, cwd, name }); }

@@ -98,7 +98,6 @@ describe('extension content route source contracts', () => {
     }
   });
 
-  // --- eforge:region plan-01-playbook-workflow-adapter ---
   it('keeps playbook services behind the bundled workflow adapter', () => {
     const service = readRouteFile('playbook-service.ts');
     expect(service).toContain("await import('@eforge-build/input')");
@@ -120,7 +119,6 @@ describe('extension content route source contracts', () => {
       expect(service, helperName).not.toMatch(new RegExp(`\\b${helperName}\\s*\\(`));
     }
   });
-  // --- eforge:endregion plan-01-playbook-workflow-adapter ---
 
   it('does not import server-main from extension content route modules', () => {
     for (const file of CONTENT_ROUTE_FILES) {
