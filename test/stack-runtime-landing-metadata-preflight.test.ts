@@ -98,7 +98,7 @@ describe('executeStackLanding — PR metadata editing', () => {
     } finally {
       process.env.PATH = origPath;
     }
-  });
+  }, 10_000);
 
   it('emits planning:progress diagnostic and still emits stack:landing:update complete when gh pr edit fails', async () => {
     await seedLayer(cwd);

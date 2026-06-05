@@ -193,16 +193,16 @@ describe('accept-success recovery helper', () => {
     const prdId = 'accept-pr';
     const { queueDir } = await seedAcceptScenario(dir, prdId);
 
-    // No `origin` remote is configured, so the pr landing push fails locally
-    // (no network). The helper must still surface action: 'pr' with a typed
-    // failure result rather than throwing, and the apply must complete.
+    // No `origin` remote is configured, so direct-PR base sync fails before PR
+    // creation. The helper must still surface action: 'pr' with a typed failure
+    // result rather than throwing, and the apply must complete.
     const res = await applyAcceptSuccess(helperOptions(dir, prdId, queueDir, 'pr'), {
       prdId, reasonCategory: 'other', reason: 'accepting via pr', unblockDependentIds: [],
     });
     expect(res.status).toBe('applied');
     expect(res.applied.landing.action).toBe('pr');
     expect(res.applied.landing.status).toBe('failed');
-    expect(res.applied.landing.reason).toBeTruthy();
+    expect(res.applied.landing.reason).toContain("Remote 'origin' is not a configured git remote");
   });
 
   it('is idempotent: reapply returns already-applied without new cleanup', async () => {

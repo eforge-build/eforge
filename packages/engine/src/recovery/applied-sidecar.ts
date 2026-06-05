@@ -170,6 +170,16 @@ export function parseAcceptSuccessAppliedMetadata(value: unknown): AcceptSuccess
   if (!landing || (landing.action !== 'pr' && landing.action !== 'merge' && landing.action !== 'leave')) return undefined;
   if (landing.status !== 'complete' && landing.status !== 'skipped' && landing.status !== 'failed') return undefined;
 
+  let autoMerge: AcceptSuccessAppliedSummary['landing']['autoMerge'] | undefined;
+  const rawAutoMerge = landing.autoMerge as Record<string, unknown> | undefined;
+  if (rawAutoMerge !== undefined) {
+    if (typeof rawAutoMerge !== 'object' || rawAutoMerge === null) return undefined;
+    if (rawAutoMerge.status === 'complete') autoMerge = { status: 'complete' };
+    else if ((rawAutoMerge.status === 'skipped' || rawAutoMerge.status === 'failed') && typeof rawAutoMerge.reason === 'string') {
+      autoMerge = { status: rawAutoMerge.status, reason: rawAutoMerge.reason };
+    } else return undefined;
+  }
+
   const dependents = obj.dependents as Record<string, unknown> | undefined;
   // Strict: a malformed dependents block must invalidate the whole marker rather
   // than being silently rewritten into a different valid-looking wire shape, so
@@ -198,6 +208,7 @@ export function parseAcceptSuccessAppliedMetadata(value: unknown): AcceptSuccess
       ...(typeof landing.mergeCommitSha === 'string' ? { mergeCommitSha: landing.mergeCommitSha } : {}),
       ...(typeof landing.branch === 'string' ? { branch: landing.branch } : {}),
       ...(typeof landing.reason === 'string' ? { reason: landing.reason } : {}),
+      ...(autoMerge !== undefined ? { autoMerge } : {}),
     },
     dependents: { unblocked, remainedBlocked, notFound },
   };

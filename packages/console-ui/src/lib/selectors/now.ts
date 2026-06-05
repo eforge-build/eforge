@@ -235,14 +235,7 @@ export function mergeSeverity(
   return SEVERITY_ORDER[a] >= SEVERITY_ORDER[b] ? a : b;
 }
 
-/**
- * Derive a stable deduplication key from a PRD or plan-set slug or display
- * title.  Strips timestamp prefixes and file extensions, lowercases, replaces
- * all non-alphanumeric characters (including whitespace) with hyphens,
- * collapses consecutive hyphens, and trims leading/trailing hyphens so that
- * title variants ("Feature X") and slug variants ("feature-x") resolve to the
- * same key.
- */
+/** Stable normalized PRD key for deduplicating slug/title variants. */
 function normalizePrdDedupKey(slug: string): string {
   if (!slug) return '';
   const trimmed = slug.trim();
@@ -254,20 +247,23 @@ function normalizePrdDedupKey(slug: string): string {
     .replace(/^-|-$/g, '');
 }
 
-/** Internal candidate shape used during attention-item collection. */
+type QueueRecoveryApplied = NonNullable<ConsoleProjectState['queue'][number]['recoveryApplied']>;
+
+function isAcceptedSuccessComplete(item: { recoveryApplied?: QueueRecoveryApplied }): boolean {
+  return item.recoveryApplied?.action === 'accepted-success' && item.recoveryApplied.landing.status === 'complete';
+}
+function formatAppliedRecoveryDetail(applied: QueueRecoveryApplied): string {
+  if (applied.action === 'split') return `recovery applied: split → ${applied.successorPrdId}`;
+  if (applied.action !== 'accepted-success') return `recovery applied: ${applied.action}`;
+  const reason = applied.landing.reason?.trim();
+  return `recovery applied: accepted-success landing ${applied.landing.status}${reason ? ` — ${reason}` : ''}`;
+}
+
 interface AttentionCandidate {
   item: NowAttentionItem;
-  /** Stable key; candidates sharing a key are merged (worst severity wins). */
   dedupKey: string;
 }
 
-// ---------------------------------------------------------------------------
-// Freshness / stale detection
-// ---------------------------------------------------------------------------
-
-/**
- * Returns true if the last known heartbeat or event is older than the stale threshold.
- */
 export function isLivenessStale(
   state: Pick<ConsoleProjectState, 'lastEventAt' | 'lastSnapshotAt' | 'latestHeartbeat' | 'liveness'>,
   now: number = Date.now(),
@@ -350,7 +346,7 @@ export function selectNowAttentionItems(
 
   // 4. Failed queue items with recovery verdict
   const failedWithVerdict = state.queue.filter(
-    (q) => q.status.toLowerCase() === 'failed' && q.recoveryVerdict != null,
+    (q) => q.status.toLowerCase() === 'failed' && q.recoveryVerdict != null && !isAcceptedSuccessComplete(q),
   );
   for (const item of failedWithVerdict) {
     const rv = item.recoveryVerdict!;
@@ -360,7 +356,7 @@ export function selectNowAttentionItems(
         id: `queue-failed-verdict-${item.id}`,
         severity: 'warning',
         message: `Failed: ${label}`,
-        detail: item.recoveryApplied ? `recovery applied: ${item.recoveryApplied.action === 'split' ? `split → ${item.recoveryApplied.successorPrdId}` : item.recoveryApplied.action}` : `${rv.verdict} / ${rv.confidence}`,
+        detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : `${rv.verdict} / ${rv.confidence}`,
         ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence } }),
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
@@ -369,7 +365,7 @@ export function selectNowAttentionItems(
 
   // 5. Failed queue items without recovery verdict
   const failedWithoutVerdict = state.queue.filter(
-    (q) => q.status.toLowerCase() === 'failed' && q.recoveryVerdict == null,
+    (q) => q.status.toLowerCase() === 'failed' && q.recoveryVerdict == null && !isAcceptedSuccessComplete(q),
   );
   for (const item of failedWithoutVerdict) {
     const label = selectPrdDisplayLabel(item.title, item.id);
@@ -378,8 +374,8 @@ export function selectNowAttentionItems(
         id: `queue-failed-${item.id}`,
         severity: 'warning',
         message: `Failed: ${label}`,
-        detail: 'recovery pending',
-        recovery: { prdId: item.id, prdTitle: label },
+        detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : 'recovery pending',
+        ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label } }),
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });

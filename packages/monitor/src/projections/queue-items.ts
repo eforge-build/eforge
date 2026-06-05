@@ -35,8 +35,14 @@ interface RecoverySidecarProjection {
   recoveryApplied?: QueueItem['recoveryApplied'];
 }
 
+function resolvedStatus(status: string, recovery: RecoverySidecarProjection): string {
+  const applied = recovery.recoveryApplied;
+  if (status === 'failed' && applied?.action === 'accepted-success' && applied.landing.status === 'complete') return 'completed';
+  return status;
+}
+
 function buildQueueItem(id: string, fm: Record<string, unknown>, status: string, recovery: RecoverySidecarProjection = {}): QueueItem {
-  const item: QueueItem = { id, title: fm.title as string, status };
+  const item: QueueItem = { id, title: fm.title as string, status: resolvedStatus(status, recovery) };
   if (typeof fm.priority === 'number') item.priority = fm.priority;
   if (typeof fm.created === 'string') item.created = fm.created;
   if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];

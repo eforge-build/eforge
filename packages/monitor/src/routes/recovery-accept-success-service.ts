@@ -7,7 +7,8 @@
  * the route handlers surface directly.
  */
 
-import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { loadConfig } from '@eforge-build/engine/config';
 import {
   previewAcceptSuccess,
@@ -22,16 +23,52 @@ import type {
 } from '@eforge-build/client';
 import type { MonitorContext } from '../context.js';
 import { HttpRouteError } from '../http/route-errors.js';
+import { buildAndPersistRunUpsert } from '../recorder.js';
+import { selectAcceptedSuccessRun } from '../projections/runs.js';
+
+type FailedPrdIntent = { landingAction?: 'pr' | 'merge' | 'leave'; landingAutoMerge?: boolean };
+
+function unquoteFrontmatterValue(value: string): string {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) return value.slice(1, -1);
+  return value;
+}
+
+function parseFailedPrdIntent(content: string): FailedPrdIntent {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return {};
+  const intent: FailedPrdIntent = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const kvMatch = line.match(/^(\w[\w_]*)\s*:\s*(.*)$/);
+    if (!kvMatch) continue;
+    const [, key, rawValue] = kvMatch;
+    const value = unquoteFrontmatterValue(rawValue.trim());
+    if (key === 'landing' && (value === 'pr' || value === 'merge' || value === 'leave')) intent.landingAction = value;
+    if (key === 'landing_auto_merge' && (value === 'true' || value === 'false')) intent.landingAutoMerge = value === 'true';
+  }
+  return intent;
+}
+
+async function readFailedPrdIntent(cwd: string, queueDir: string, prdId: string): Promise<FailedPrdIntent> {
+  try {
+    const content = await readFile(resolve(cwd, queueDir, 'failed', `${prdId}.md`), 'utf-8');
+    return parseFailedPrdIntent(content);
+  } catch {
+    return {};
+  }
+}
 
 async function resolveHelperOptions(context: MonitorContext, prdId: string): Promise<AcceptSuccessHelperOptions> {
   if (!context.cwd) throw new HttpRouteError(503, 'Working directory not configured');
   const queueDir = context.queuePaths?.queueDir ?? resolve(context.cwd, '.eforge/queue');
   const { config } = await loadConfig(context.cwd);
+  const prdIntent = await readFailedPrdIntent(context.cwd, queueDir, prdId);
   return {
     cwd: context.cwd,
     prdId,
     queueDir,
-    landingAction: config.landing.action,
+    landingAction: prdIntent.landingAction ?? config.landing.action,
+    ...(prdIntent.landingAutoMerge !== undefined ? { landingAutoMerge: prdIntent.landingAutoMerge } : {}),
+    prAutoMergePolicy: config.landing.pr.autoMerge,
     planOutputDir: config.plan.outputDir,
     trunkBranch: config.build.trunkBranch,
     allowLocalMergeToTrunk: config.build.allowLocalMergeToTrunk,
@@ -55,13 +92,41 @@ export async function previewAcceptSuccessForRequest(
   }
 }
 
+async function readSidecarRunTarget(queueDir: string, prdId: string): Promise<{ setName: string; failedAt?: string } | undefined> {
+  try {
+    const raw = await readFile(join(queueDir, 'failed', `${prdId}.recovery.json`), 'utf-8');
+    const parsed = JSON.parse(raw) as { summary?: { setName?: unknown; failedAt?: unknown } };
+    const setName = parsed.summary?.setName;
+    if (typeof setName !== 'string') return undefined;
+    const failedAt = parsed.summary?.failedAt;
+    return { setName, ...(typeof failedAt === 'string' ? { failedAt } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+function reconcileCompletedRun(context: MonitorContext, setName: string, acceptedAt: string, failedAt?: string): void {
+  const run = selectAcceptedSuccessRun(context.db.getRuns(), setName, failedAt);
+  if (!run) return;
+  context.db.updateRunStatus(run.id, 'completed', run.completedAt ?? acceptedAt);
+  buildAndPersistRunUpsert(context.db, run.id, run.id);
+}
+
+async function reconcileAcceptedSuccessComplete(context: MonitorContext, options: AcceptSuccessHelperOptions, result: AcceptSuccessResponse): Promise<void> {
+  if (result.applied.landing.status !== 'complete') return;
+  const target = await readSidecarRunTarget(options.queueDir, options.prdId);
+  if (target) reconcileCompletedRun(context, target.setName, result.applied.acceptedAt, target.failedAt);
+}
+
 export async function applyAcceptSuccessForRequest(
   context: MonitorContext,
   body: AcceptSuccessRequest,
 ): Promise<AcceptSuccessResponse> {
   const options = await resolveHelperOptions(context, body.prdId);
   try {
-    return await applyAcceptSuccess(options, body);
+    const result = await applyAcceptSuccess(options, body);
+    await reconcileAcceptedSuccessComplete(context, options, result);
+    return result;
   } catch (err) {
     translateError(err);
   }

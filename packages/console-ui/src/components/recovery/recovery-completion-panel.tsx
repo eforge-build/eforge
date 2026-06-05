@@ -45,11 +45,17 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function landingSummary(landing: AcceptSuccessAppliedSummary['landing']): string {
+  const autoMerge = landing.autoMerge
+    ? landing.autoMerge.status === 'complete'
+      ? ' — auto-merge complete'
+      : ` — auto-merge ${landing.autoMerge.status} — ${landing.autoMerge.reason}`
+    : '';
   const suffixes = [
     landing.prUrl ? ` (${landing.prUrl})` : '',
     landing.mergeCommitSha ? ` (${landing.mergeCommitSha})` : '',
     landing.branch ? ` (${landing.branch})` : '',
     landing.reason ? ` — ${landing.reason}` : '',
+    autoMerge,
   ].join('');
   return `${landing.action} — ${landing.status}${suffixes}`;
 }

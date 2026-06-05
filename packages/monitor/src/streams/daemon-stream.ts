@@ -3,6 +3,7 @@ import type { DaemonStreamSnapshot } from '@eforge-build/client';
 import type { MonitorContext } from '../context.js';
 import { autoBuildStateToWire, buildDaemonHeartbeatObject } from '../projections/auto-build-state.js';
 import { countPendingQueueDepth, loadQueueItemsSync } from '../projections/queue-items.js';
+import { projectRunsForAcceptedSuccess } from '../projections/runs.js';
 import { stackLayersToWire } from '../projections/stack-layers.js';
 import { writeHello } from '../sse-handshake.js';
 import { loadSyncStatusForRouteSync } from '../stack-sync-service.js';
@@ -64,7 +65,7 @@ export function buildDaemonHello(
     cursor,
     liveness: buildHeartbeatObject(context, options),
     recentActivity: hydrateRecentDaemonActivity(context.db.getDaemonEventsAfter(Math.max(0, cursor - 20)), cursor),
-    runs: context.db.getRuns(),
+    runs: projectRunsForAcceptedSuccess(context.db.getRuns(), context.queuePaths?.queueDir),
     queue: context.cwd && context.queuePaths ? loadQueueItemsSync(context.queuePaths.queueDir, context.queuePaths.lockDir) : [],
     sessionMetadata: context.db.getSessionMetadataBatch(),
     autoBuild: autoBuildStateToWire({

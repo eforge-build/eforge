@@ -51,6 +51,15 @@ describe('selectNowMetricsPanel — land rate', () => {
     expect(model.successSlices).toEqual([]);
   });
 
+  it('counts accepted-success-like resolved build statuses as landed', () => {
+    const model = selectNowMetricsPanel([
+      run({ id: 'accepted', command: 'build', status: 'accepted-success-complete' }),
+    ]);
+    expect(model.landed).toBe(1);
+    expect(model.failed).toBe(0);
+    expect(model.successSlices.map((s) => s.key)).toEqual(['landed']);
+  });
+
   it('drops zero-value slices', () => {
     const model = selectNowMetricsPanel([run({ id: 'build', command: 'build', status: 'completed' })]);
     expect(model.successSlices.map((s) => s.key)).toEqual(['landed']);

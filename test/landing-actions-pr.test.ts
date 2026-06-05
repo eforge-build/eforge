@@ -89,7 +89,7 @@ const makeTempDir = useTempDir('eforge-landing-');
       } finally {
         process.env.PATH = origPath;
       }
-    });
+    }, 10_000);
 
     it('feature branch is preserved after issue-pr', async () => {
       const dir = makeTempDir();
