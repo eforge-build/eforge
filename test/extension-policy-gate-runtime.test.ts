@@ -59,13 +59,25 @@ async function runPolicy(
 describe('policy gate runtime', () => {
   it('builds read-only cloned gate-specific contexts', () => {
     const queueDependsOn = ['prd-a'];
+    const queueCompiledResume = {
+      mode: 'compiled' as const,
+      sourcePrdId: 'failed-prd',
+      setName: 'failed-set',
+      featureBranch: 'eforge/failed-set',
+      baseBranch: 'main',
+    };
     const queueContext = buildQueueDispatchPolicyGateContext({
       prdId: 'prd-b',
       prdTitle: 'Build B',
       priority: 3,
       dependsOn: queueDependsOn,
-    });
+      compiledResume: queueCompiledResume,
+    } as Parameters<typeof buildQueueDispatchPolicyGateContext>[0] & { compiledResume: typeof queueCompiledResume });
     queueDependsOn.push('prd-c');
+    queueCompiledResume.sourcePrdId = 'mutated-prd';
+    queueCompiledResume.setName = 'mutated-set';
+    queueCompiledResume.featureBranch = 'eforge/mutated-set';
+    queueCompiledResume.baseBranch = 'develop';
 
     expect(queueContext).toMatchObject({
       gateKind: 'queue-dispatch',
@@ -73,9 +85,17 @@ describe('policy gate runtime', () => {
       prdTitle: 'Build B',
       priority: 3,
       dependsOn: ['prd-a'],
+      compiledResume: {
+        mode: 'compiled',
+        sourcePrdId: 'failed-prd',
+        setName: 'failed-set',
+        featureBranch: 'eforge/failed-set',
+        baseBranch: 'main',
+      },
     });
     expect(Object.isFrozen(queueContext)).toBe(true);
     expect(Object.isFrozen(queueContext.dependsOn)).toBe(true);
+    expect(Object.isFrozen((queueContext as typeof queueContext & { compiledResume?: unknown }).compiledResume)).toBe(true);
 
     const diff = { files: [{ path: 'src/index.ts', status: 'modified' as const }] };
     const finalPlanIds = ['plan-a'];
@@ -97,11 +117,13 @@ describe('policy gate runtime', () => {
     });
     expect(Object.isFrozen(finalContext.diff.files[0])).toBe(true);
 
-    expect(buildPolicyGateContext({ gateKind: 'queue-dispatch', prdId: 'prd-c' })).toMatchObject({
+    const normalQueueContext = buildPolicyGateContext({ gateKind: 'queue-dispatch', prdId: 'prd-c' });
+    expect(normalQueueContext).toMatchObject({
       gateKind: 'queue-dispatch',
       prdId: 'prd-c',
       dependsOn: [],
     });
+    expect(normalQueueContext).not.toHaveProperty('compiledResume');
   });
 
   it('provides exec helper with cwd/env and subprocess exit codes', async () => {

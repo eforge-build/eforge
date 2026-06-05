@@ -31,6 +31,7 @@ export type {
   EventHookContext,
   AgentRunContext,
   PolicyGateKind,
+  QueueDispatchCompiledResumeMetadata,
   QueueDispatchPolicyGateContext,
   PlanMergePolicyGateContext,
   PolicyGateContext,

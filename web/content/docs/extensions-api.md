@@ -908,6 +908,14 @@ Policy gate contexts are read-only snapshots for the gated operation. They inclu
 ```ts
 type PolicyGateKind = "queue-dispatch" | "plan-merge" | "final-merge";
 
+interface QueueDispatchCompiledResumeMetadata {
+  mode: "compiled";
+  sourcePrdId: string;
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
+}
+
 interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   gateKind: "queue-dispatch";
   prdId: string;
@@ -915,6 +923,8 @@ interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   priority?: number;
   profile?: string;
   dependsOn: string[];
+  /** Present only for complete compiled-resume queue items; omitted for normal PRDs. */
+  compiledResume?: QueueDispatchCompiledResumeMetadata;
 }
 
 interface PlanMergePolicyGateContext extends EforgeExtensionContext {
@@ -946,6 +956,8 @@ interface ExtensionDiff {
   }>;
 }
 ```
+
+`compiledResume` is available only on `beforeQueueDispatch` contexts for PRDs with complete compiled-resume frontmatter. The SDK exposes the parsed camelCase shape shown above rather than the raw `resume_*` frontmatter keys. Normal PRDs omit the property entirely.
 
 ---
 
