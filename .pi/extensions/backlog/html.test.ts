@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createBacklogHtmlModel, findDependencyCycles, renderBacklogHtml, writeBacklogHtml } from "./html";
 import { createItem, type BacklogItem, type BacklogStatus } from "./store";
+import { writeRecommendations } from "./recommendations";
 import type { BacklogEpic } from "./epic-store";
 
 function item(input: Partial<BacklogItem> & { id: string; title: string; depends_on?: string[]; status?: BacklogStatus }): BacklogItem {
@@ -145,6 +146,40 @@ describe("backlog HTML view", () => {
 		const b = item({ id: "backlog-2026-06-04-b", title: "B", depends_on: ["backlog-2026-06-04-a"] });
 
 		expect(findDependencyCycles([a, b])).toEqual([["backlog-2026-06-04-a", "backlog-2026-06-04-b", "backlog-2026-06-04-a"]]);
+	});
+
+	it("includes structured recommendations in the generated view", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "backlog-html-recommendations-"));
+		try {
+			const created = await createItem(cwd, { title: "Portable backlog item" });
+			await writeRecommendations(cwd, {
+				schemaVersion: 1,
+				refreshedAt: "2026-06-05",
+				summary: "Recommended plan",
+				activeWork: [],
+				readyCandidates: [],
+				recommendedNextSequence: [{ rank: 1, id: created.id, title: created.title, rationale: "ready" }],
+				safeParallelizableGroups: [{ name: "Storage lane", itemIds: [created.id], rationale: "independent" }],
+				blockedChains: [],
+				rationaleAndAssumptions: ["Generated from tests"],
+			});
+
+			const result = await writeBacklogHtml(cwd);
+			const html = await readFile(result.path, "utf8");
+
+			expect(html).toContain("Recommended plan");
+			expect(html).toContain("Recommended next sequence");
+			expect(html).toContain(`#item-${created.id}`);
+			// Approach C: the recommended grouping mode and per-card signals.
+			expect(html).toContain('data-group="recommended"');
+			expect(html).toContain('data-board="recommended"');
+			expect(html).toContain('badge-rec">Next 1</span>');
+			expect(html).toContain('class="tag lane-tag"');
+			expect(html).toContain('data-rec-col="next"');
+			expect(html).toContain('data-rec-rank="1"');
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("writes items and the generated view under .backlog", async () => {

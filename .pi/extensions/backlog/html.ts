@@ -20,6 +20,8 @@ import {
 	type BacklogStatus,
 } from "./store";
 import { epicById, listEpics, type BacklogEpic } from "./epic-store";
+import { buildRecommendationIndex, readRecommendations, renderRecommendationsHtml, type BacklogRecommendations } from "./recommendations";
+import { clientScript, css } from "./html-assets";
 
 // --- eforge:region html-view-model ---
 export type BacklogHtmlOptions = { query?: string; includeClosed?: boolean };
@@ -40,6 +42,10 @@ export type BacklogHtmlItem = {
 	evidence: string;
 	recheck: string;
 	promotionPaths: string;
+	recRank?: number;
+	recLanes: string[];
+	recUnblock?: string;
+	recColumn: "next" | "blocked" | "other" | "closed";
 };
 export type BacklogHtmlModel = {
 	generatedAt: string;
@@ -49,6 +55,7 @@ export type BacklogHtmlModel = {
 	epics: BacklogHtmlEpicGroup[];
 	unassignedCount: number;
 	cycles: string[][];
+	recommendations?: BacklogRecommendations;
 	stats: {
 		total: number;
 		open: number;
@@ -66,7 +73,8 @@ export async function writeBacklogHtml(cwd: string, options: BacklogHtmlOptions 
 	const allItems = await listItems(cwd);
 	const allEpics = await listEpics(cwd);
 	const visibleItems = filterItems(allItems, { query: options.query, includeClosed: options.includeClosed });
-	const model = createBacklogHtmlModel(visibleItems, allItems, options, allEpics);
+	const recommendations = await readRecommendations(cwd);
+	const model = createBacklogHtmlModel(visibleItems, allItems, options, allEpics, recommendations);
 	const dir = join(backlogRoot(cwd), "view");
 	const path = join(dir, "index.html");
 	await mkdir(dir, { recursive: true });
@@ -74,27 +82,35 @@ export async function writeBacklogHtml(cwd: string, options: BacklogHtmlOptions 
 	return { path, ...model.stats };
 }
 
-export function createBacklogHtmlModel(visibleItems: BacklogItem[], allItems: BacklogItem[] = visibleItems, options: BacklogHtmlOptions = {}, allEpics: BacklogEpic[]): BacklogHtmlModel {
+export function createBacklogHtmlModel(visibleItems: BacklogItem[], allItems: BacklogItem[] = visibleItems, options: BacklogHtmlOptions = {}, allEpics: BacklogEpic[], recommendations?: BacklogRecommendations): BacklogHtmlModel {
 	const contextById = itemById(allItems);
 	const epicsById = epicById(allEpics);
 	const visibleIds = new Set(visibleItems.map((item) => item.id));
 	const readyIds = new Set(filterReadyItems(visibleItems, allItems).map((item) => item.id));
+	const recIndex = buildRecommendationIndex(recommendations);
 	const items = visibleItems.map((item) => {
 		const blockers = blockedBy(item, contextById);
+		const blocked = blockers.length > 0;
+		const closed = CLOSED_STATUSES.has(item.status);
+		const recRank = recIndex.rankById.get(item.id);
 		return {
 			item,
 			epic: item.epic ? epicRef(item.epic, epicsById) : undefined,
 			labels: summaryLabels(item, contextById),
 			ready: readyIds.has(item.id),
-			blocked: blockers.length > 0,
+			blocked,
 			reviewDue: isStale(item),
-			closed: CLOSED_STATUSES.has(item.status),
+			closed,
 			dependencies: item.depends_on.map((id) => dependencyRef(id, contextById, visibleIds, blockers.includes(id))),
 			dependents: allItems.filter((candidate) => candidate.depends_on.includes(item.id)).map((candidate) => dependencyRef(candidate.id, contextById, visibleIds, false)),
 			claim: sectionContent(item.body, "Claim"),
 			evidence: sectionContent(item.body, "Evidence"),
 			recheck: sectionContent(item.body, "Recheck"),
 			promotionPaths: sectionContent(item.body, "Promotion Paths"),
+			recRank,
+			recLanes: recIndex.lanesById.get(item.id) ?? [],
+			recUnblock: recIndex.unblockById.get(item.id),
+			recColumn: recColumnFor(closed, recRank !== undefined, blocked),
 		};
 	});
 	return {
@@ -105,8 +121,16 @@ export function createBacklogHtmlModel(visibleItems: BacklogItem[], allItems: Ba
 		epics: epicGroups(items),
 		unassignedCount: items.filter((entry) => !entry.epic).length,
 		cycles: findDependencyCycles(allItems).filter((cycle) => cycle.some((id) => visibleIds.has(id))),
+		recommendations,
 		stats: createStats(visibleItems, allItems),
 	};
+}
+
+function recColumnFor(closed: boolean, ranked: boolean, blocked: boolean): BacklogHtmlItem["recColumn"] {
+	if (closed) return "closed";
+	if (ranked) return "next";
+	if (blocked) return "blocked";
+	return "other";
 }
 
 function epicGroups(items: BacklogHtmlItem[]): BacklogHtmlEpicGroup[] {
@@ -201,14 +225,20 @@ export function renderBacklogHtml(model: BacklogHtmlModel): string {
 </header>
 <main>
 	${renderToolbar(model)}
+	${renderRecommendationsHtml(model.recommendations, recommendationTitles(model))}
 	${renderCycles(model)}
 	${renderEpicPanel(model)}
 	${renderBoard(model)}
 	${renderEpicBoard(model)}
+	${renderRecommendedBoard(model)}
 </main>
 <script>${clientScript()}</script>
 </body>
 </html>`;
+}
+
+function recommendationTitles(model: BacklogHtmlModel): Map<string, string> {
+	return new Map(model.items.map((entry) => [entry.item.id, entry.item.title]));
 }
 
 function renderStats(model: BacklogHtmlModel): string {
@@ -224,19 +254,28 @@ function renderStats(model: BacklogHtmlModel): string {
 
 function renderToolbar(model: BacklogHtmlModel): string {
 	const statusFilters = `<div class="filters">${filterButton("all", "All", true)}${filterButton("ready", "Ready")}${filterButton("blocked", "Blocked")}${filterButton("review", "Review due")}${filterButton("closed", "Closed")}</div>`;
-	return `<section class="toolbar" aria-label="Backlog filters"><input id="search" type="search" placeholder="Search title, id, tag, dependency…" autocomplete="off"><div class="toolbar-actions">${statusFilters}${renderEpicControls(model)}</div></section>`;
+	return `<section class="toolbar" aria-label="Backlog filters"><input id="search" type="search" placeholder="Search title, id, tag, dependency…" autocomplete="off"><div class="toolbar-actions">${statusFilters}${renderGroupControls(model)}</div></section>`;
 }
 
 function filterButton(filter: string, label: string, active = false): string {
 	return `<button type="button" class="filter${active ? " active" : ""}" data-filter="${filter}">${label}</button>`;
 }
 
-function renderEpicControls(model: BacklogHtmlModel): string {
+function renderGroupControls(model: BacklogHtmlModel): string {
+	const hasEpics = model.epics.length > 0;
+	const hasRecommendations = Boolean(model.recommendations);
+	if (!hasEpics && !hasRecommendations) return "";
+	const buttons = [`<button type="button" class="filter active" data-group="status">Status</button>`];
+	if (hasEpics) buttons.push(`<button type="button" class="filter" data-group="epic">Epic</button>`);
+	if (hasRecommendations) buttons.push(`<button type="button" class="filter" data-group="recommended">Recommended</button>`);
+	const groupToggle = `<div class="filters" role="group" aria-label="Group cards by"><span class="group-label">Group</span>${buttons.join("")}</div>`;
+	return groupToggle + renderEpicSelect(model);
+}
+
+function renderEpicSelect(model: BacklogHtmlModel): string {
 	if (model.epics.length === 0) return "";
-	const groupToggle = `<div class="filters" role="group" aria-label="Group cards by"><span class="group-label">Group</span><button type="button" class="filter active" data-group="status">Status</button><button type="button" class="filter" data-group="epic">Epic</button></div>`;
 	const options = [`<option value="">All epics</option>`, ...model.epics.map((epic) => `<option value="${escapeAttr(epic.id)}">${escapeHtml(`${epic.title} (${epic.count})`)}</option>`)].join("");
-	const select = `<select id="epic-filter" class="epic-select" aria-label="Filter by epic">${options}</select>`;
-	return groupToggle + select;
+	return `<select id="epic-filter" class="epic-select" aria-label="Filter by epic">${options}</select>`;
 }
 
 function renderEpicPanel(model: BacklogHtmlModel): string {
@@ -269,6 +308,22 @@ function renderEpicBoard(model: BacklogHtmlModel): string {
 	return `<section class="board epic-board is-hidden" data-board="epic">${columns.join("")}</section>`;
 }
 
+const REC_COLUMNS: { id: BacklogHtmlItem["recColumn"]; title: string }[] = [
+	{ id: "next", title: "Next up" },
+	{ id: "blocked", title: "Blocked" },
+	{ id: "other", title: "Other open" },
+	{ id: "closed", title: "Closed" },
+];
+
+function renderRecommendedBoard(model: BacklogHtmlModel): string {
+	if (!model.recommendations) return "";
+	const counts = new Map<string, number>();
+	for (const entry of model.items) counts.set(entry.recColumn, (counts.get(entry.recColumn) ?? 0) + 1);
+	const columns = REC_COLUMNS.filter((column) => column.id !== "closed" || (counts.get("closed") ?? 0) > 0);
+	const cells = columns.map((column) => `<div class="col rec-col-${column.id}" data-rec-col="${column.id}"><div class="col-head"><span class="col-dot"></span><span class="col-name">${escapeHtml(column.title)}</span><span class="col-count" data-count>${counts.get(column.id) ?? 0}</span></div><div class="col-body"></div></div>`).join("");
+	return `<section class="board recommended-board is-hidden" data-board="recommended">${cells}</section>`;
+}
+
 function renderEpicColumn(id: string, title: string, count: number, kind: { missing?: boolean; none?: boolean }): string {
 	const classes = ["col", "epic-col", kind.missing && "missing", kind.none && "none"].filter(Boolean).join(" ");
 	return `<div class="${classes}" data-epic-col="${escapeAttr(id)}"><div class="col-head"><span class="col-dot"></span><span class="col-name">${escapeHtml(title)}</span><span class="col-count" data-count>${count}</span></div><div class="col-body"></div></div>`;
@@ -290,16 +345,34 @@ function compareEntries(a: BacklogHtmlItem, b: BacklogHtmlItem): number {
 function renderItemCard(entry: BacklogHtmlItem): string {
 	const { item } = entry;
 	const badges = [
+		entry.recRank !== undefined && `<span class="badge badge-rec">Next ${entry.recRank}</span>`,
 		entry.blocked && `<span class="badge badge-bad">Blocked</span>`,
 		entry.reviewDue && `<span class="badge badge-warn">Review due</span>`,
 	].filter(Boolean).join("");
-	return `<article class="card priority-${item.priority}" id="item-${escapeAttr(item.id)}" data-backlog-card ${dataAttributes(entry)}><div class="card-head"><span class="prio"><span class="prio-dot"></span>${escapeHtml(item.priority)}</span><span class="badges">${badges}</span></div><h3 class="card-title">${escapeHtml(item.title)}</h3><code class="card-id" title="${escapeAttr(item.id)}">${escapeHtml(shortId(item.id))}</code>${renderEpic(entry)}${renderTags(item.tags)}${renderDeps(entry)}${renderSections(entry)}</article>`;
+	return `<article class="card priority-${item.priority}" id="item-${escapeAttr(item.id)}" data-backlog-card ${dataAttributes(entry)}><div class="card-head"><span class="prio"><span class="prio-dot"></span>${escapeHtml(item.priority)}</span><span class="badges">${badges}</span></div><h3 class="card-title">${escapeHtml(item.title)}</h3><code class="card-id" title="${escapeAttr(item.id)}">${escapeHtml(shortId(item.id))}</code>${renderEpic(entry)}${renderLanes(entry)}${renderTags(item.tags)}${renderDeps(entry)}${renderUnblock(entry)}${renderSections(entry)}</article>`;
+}
+
+function renderLanes(entry: BacklogHtmlItem): string {
+	return entry.recLanes.length ? `<div class="tags">${entry.recLanes.map((lane) => `<span class="tag lane-tag" title="Recommended parallel lane">${escapeHtml(lane)}</span>`).join("")}</div>` : "";
+}
+
+function renderUnblock(entry: BacklogHtmlItem): string {
+	return entry.recUnblock ? `<div class="unblock-note"><span class="unblock-label">Unblock</span>${escapeHtml(entry.recUnblock)}</div>` : "";
 }
 
 function dataAttributes(entry: BacklogHtmlItem): string {
 	const item = entry.item;
 	const searchText = [item.id, item.title, item.status, item.priority, item.tags.join(" "), item.depends_on.join(" "), item.epic ?? "", entry.epic?.title ?? "", entry.claim, entry.evidence, entry.recheck].join("\n");
-	return [`data-search="${escapeAttr(searchText.toLowerCase())}"`, `data-ready="${entry.ready}"`, `data-blocked="${entry.blocked}"`, `data-review="${entry.reviewDue}"`, `data-closed="${entry.closed}"`, `data-epic="${escapeAttr(entry.epic?.id ?? "")}"`].join(" ");
+	return [
+		`data-search="${escapeAttr(searchText.toLowerCase())}"`,
+		`data-ready="${entry.ready}"`,
+		`data-blocked="${entry.blocked}"`,
+		`data-review="${entry.reviewDue}"`,
+		`data-closed="${entry.closed}"`,
+		`data-epic="${escapeAttr(entry.epic?.id ?? "")}"`,
+		`data-rec-col="${entry.recColumn}"`,
+		entry.recRank !== undefined ? `data-rec-rank="${entry.recRank}"` : "",
+	].filter(Boolean).join(" ");
 }
 
 function renderTags(tags: string[]): string {
@@ -347,200 +420,6 @@ function renderEmptyState(): string {
 // --- eforge:endregion html-renderer ---
 
 // --- eforge:region html-assets ---
-function css(): string {
-	return `
-:root{
-	color-scheme:dark;
-	--bg:#0b0e14;--col:#11151d;--card:#161b24;--card-hi:#1b212c;--line:#252c39;--line-2:#2f3848;
-	--text:#e6edf3;--muted:#8b97a8;--faint:#5b6678;--accent:#58a6ff;
-	--ok:#3fb950;--warn:#d2a022;--bad:#f0613a;
-	--st-candidate:#7d8aa0;--st-planned:#58a6ff;--st-active:#3fb950;--st-shipped:#a371f7;--st-stale:#d2a022;--st-superseded:#6e7681;
-	--p-high:#f0613a;--p-medium:#d2a022;--p-low:#5b6678;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82em}
-main{max-width:1500px;margin:0 auto;padding:1rem 1.25rem 3rem}
-
-.topbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;padding:.9rem 1.25rem;background:rgba(11,14,20,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(8px)}
-.topbar-title{display:flex;align-items:center;gap:.6rem}
-.topbar-title h1{font-size:1.15rem;font-weight:650;margin:0;letter-spacing:-.01em}
-.dot-brand{width:.7rem;height:.7rem;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.18)}
-.gen{color:var(--faint);font-size:.78rem}
-.gen code{background:#0a0d13;border:1px solid var(--line);border-radius:.3rem;padding:.05rem .3rem;color:var(--muted)}
-
-.stats{display:flex;gap:.4rem;flex-wrap:wrap}
-.stat{display:inline-flex;align-items:baseline;gap:.35rem;background:var(--col);border:1px solid var(--line);border-radius:.5rem;padding:.3rem .6rem;font-size:.76rem;color:var(--muted)}
-.stat strong{font-size:.95rem;color:var(--text);font-weight:650}
-.stat-ready strong{color:var(--ok)}
-.stat-bad strong{color:var(--bad)}
-.stat-warn strong{color:var(--warn)}
-
-.toolbar{display:flex;justify-content:space-between;gap:.75rem;align-items:center;flex-wrap:wrap;margin:1.1rem 0}
-.toolbar input{flex:1;min-width:min(28rem,100%);background:var(--col);color:var(--text);border:1px solid var(--line);border-radius:.55rem;padding:.5rem .75rem;font-size:.9rem}
-.toolbar input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.15)}
-.filters{display:flex;gap:.35rem;flex-wrap:wrap}
-.filter{border:1px solid var(--line);background:var(--col);color:var(--muted);border-radius:.5rem;padding:.4rem .7rem;cursor:pointer;font-size:.82rem;transition:.12s}
-.filter:hover{color:var(--text);border-color:var(--line-2)}
-.filter.active{color:var(--text);border-color:var(--accent);background:rgba(88,166,255,.12)}
-.toolbar-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-.group-label{font-size:.72rem;color:var(--faint);align-self:center;padding:0 .15rem}
-.epic-select{background:var(--col);color:var(--text);border:1px solid var(--line);border-radius:.5rem;padding:.4rem .6rem;font-size:.82rem;max-width:16rem}
-.epic-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.15)}
-
-.epic-panel{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.1rem}
-.epic-summary{display:inline-flex;align-items:center;gap:.4rem;background:rgba(88,166,255,.08);color:var(--accent);border:1px solid var(--line);border-radius:.5rem;padding:.3rem .55rem;font-size:.78rem;cursor:pointer;transition:.12s}
-.epic-summary:hover{border-color:var(--accent)}
-.epic-summary.active{border-color:var(--accent);background:rgba(88,166,255,.18)}
-.epic-summary.missing{color:var(--bad);border-style:dashed;background:rgba(240,97,58,.08)}
-.epic-summary-none{color:var(--muted);background:var(--col);cursor:default}
-.epic-summary-count{background:var(--card);border:1px solid var(--line);border-radius:999px;min-width:1.4rem;text-align:center;padding:.02rem .35rem;font-size:.72rem;color:var(--muted)}
-
-.cycles{margin:0 0 1.1rem;padding:.7rem .9rem;background:rgba(240,97,58,.07);border:1px solid rgba(240,97,58,.4);border-radius:.6rem}
-.cycles-tag{display:inline-block;font-size:.72rem;font-weight:650;text-transform:uppercase;letter-spacing:.08em;color:var(--bad);margin-bottom:.35rem}
-.cycles ul{margin:0;padding-left:1.1rem}
-.cycles code{background:#0a0d13;border:1px solid var(--line);border-radius:.3rem;padding:.03rem .28rem}
-
-.board{display:flex;gap:.9rem;align-items:flex-start;overflow-x:auto;padding-bottom:.5rem}
-.col{flex:1 1 0;min-width:300px;max-width:520px;background:var(--col);border:1px solid var(--line);border-radius:.75rem;border-top:2px solid var(--st);overflow:hidden}
-.status-candidate{--st:var(--st-candidate)}.status-planned{--st:var(--st-planned)}.status-active{--st:var(--st-active)}
-.status-shipped{--st:var(--st-shipped)}.status-stale{--st:var(--st-stale)}.status-superseded{--st:var(--st-superseded)}
-.epic-col{--st:var(--accent)}.epic-col.missing{--st:var(--bad)}.epic-col.none{--st:var(--faint)}
-.col-head{position:sticky;top:0;display:flex;align-items:center;gap:.5rem;padding:.65rem .8rem;background:var(--col);border-bottom:1px solid var(--line)}
-.col-dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--st)}
-.col-name{font-weight:650;font-size:.9rem}
-.col-count{margin-left:auto;font-size:.78rem;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;min-width:1.5rem;text-align:center;padding:.05rem .4rem}
-.col-body{display:flex;flex-direction:column;gap:.6rem;padding:.7rem}
-.col-empty{color:var(--faint);font-size:.82rem;text-align:center;padding:1.2rem 0;margin:0}
-
-.card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--p);border-radius:.6rem;padding:.7rem .8rem;scroll-margin-top:5rem;transition:.12s}
-.card:hover{border-color:var(--line-2);background:var(--card-hi)}
-.card:target{border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.2)}
-.priority-high{--p:var(--p-high)}.priority-medium{--p:var(--p-medium)}.priority-low{--p:var(--p-low)}
-.card[data-blocked=true]{border-left-color:var(--bad)}
-.card[data-closed=true]{opacity:.62}
-.card-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem}
-.prio{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--muted);text-transform:capitalize}
-.prio-dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--p)}
-.badges{margin-left:auto;display:flex;gap:.3rem;flex-wrap:wrap}
-.badge{font-size:.68rem;font-weight:600;border-radius:.35rem;padding:.08rem .4rem;border:1px solid transparent}
-.badge-bad{color:var(--bad);background:rgba(240,97,58,.12);border-color:rgba(240,97,58,.35)}
-.badge-warn{color:var(--warn);background:rgba(210,160,34,.12);border-color:rgba(210,160,34,.35)}
-.badge-ok{color:var(--ok);background:rgba(63,185,80,.12);border-color:rgba(63,185,80,.3)}
-.card-title{font-size:.95rem;font-weight:600;line-height:1.3;margin:.1rem 0 .25rem}
-.card-id{display:block;color:var(--faint);font-size:.72rem;margin-bottom:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tags{display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0 0}
-.tag{font-size:.7rem;color:var(--muted);background:var(--col);border:1px solid var(--line);border-radius:.35rem;padding:.06rem .4rem}
-.epic-tag{color:var(--accent);background:rgba(88,166,255,.08)}.epic-tag.missing{color:var(--bad);border-color:var(--bad);border-style:dashed}
-
-.deps{margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem}
-.dep-row{display:flex;gap:.4rem;align-items:baseline;flex-wrap:wrap}
-.dep-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);flex:0 0 auto;padding-top:.05rem}
-.dep-chips{display:flex;flex-wrap:wrap;gap:.25rem}
-.chip{font-size:.72rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);background:rgba(88,166,255,.08);border:1px solid var(--line);border-radius:.35rem;padding:.04rem .35rem;max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip.blocking{color:var(--bad);background:rgba(240,97,58,.1);border-color:rgba(240,97,58,.35)}
-.chip.missing{color:var(--bad);border-color:var(--bad);border-style:dashed}
-.chip.hidden-ref{color:var(--muted);background:var(--col)}
-
-.details{margin-top:.55rem}
-.details summary{cursor:pointer;color:var(--muted);font-size:.78rem;list-style:none}
-.details summary::-webkit-details-marker{display:none}
-.details summary::before{content:"▸ ";color:var(--faint)}
-.details[open] summary::before{content:"▾ "}
-.details summary:hover{color:var(--text)}
-.detail-section{margin-top:.5rem}
-.detail-section h4{margin:0 0 .25rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-pre{white-space:pre-wrap;word-break:break-word;background:#0a0d13;border:1px solid var(--line);border-radius:.45rem;padding:.55rem;color:#cdd9e5;font-size:.78rem;max-height:16rem;overflow:auto;margin:0}
-
-.empty{color:var(--muted);padding:3rem;text-align:center}
-.is-hidden{display:none!important}
-@media (max-width:760px){.board{flex-direction:column}.col{max-width:none;width:100%}.toolbar input{min-width:100%}}
-`;
-}
-
-function clientScript(): string {
-	return `(() => {
-	const search = document.getElementById('search');
-	const buttons = [...document.querySelectorAll('[data-filter]')];
-	const groupButtons = [...document.querySelectorAll('[data-group]')];
-	const epicSelect = document.getElementById('epic-filter');
-	const epicChips = [...document.querySelectorAll('[data-epic-filter]')];
-	const nodes = [...document.querySelectorAll('[data-backlog-card]')];
-	const columns = [...document.querySelectorAll('.col')];
-	const statusBoard = document.querySelector('[data-board=status]');
-	const epicBoard = document.querySelector('[data-board=epic]');
-	const cardHome = new Map();
-	for (const card of nodes) cardHome.set(card, card.parentElement);
-	let filter = 'all';
-	let group = 'status';
-	let epicFilter = '';
-	function matchesFilter(node) {
-		if (filter === 'ready') return node.dataset.ready === 'true';
-		if (filter === 'blocked') return node.dataset.blocked === 'true';
-		if (filter === 'review') return node.dataset.review === 'true';
-		if (filter === 'closed') return node.dataset.closed === 'true';
-		return true;
-	}
-	function matchesEpic(node) {
-		return !epicFilter || (node.dataset.epic || '') === epicFilter;
-	}
-	function apply() {
-		const q = (search && search.value || '').trim().toLowerCase();
-		for (const node of nodes) {
-			const text = node.dataset.search || '';
-			node.classList.toggle('is-hidden', Boolean(q && !text.includes(q)) || !matchesFilter(node) || !matchesEpic(node));
-		}
-		for (const col of columns) {
-			const visible = col.querySelectorAll('[data-backlog-card]:not(.is-hidden)').length;
-			const count = col.querySelector('[data-count]');
-			if (count) count.textContent = visible;
-			col.classList.toggle('is-hidden', visible === 0);
-		}
-	}
-	function layout() {
-		if (!epicBoard) return;
-		for (const card of nodes) {
-			if (group === 'epic') {
-				const target = epicBoard.querySelector('[data-epic-col="' + (card.dataset.epic || '') + '"] .col-body');
-				(target || cardHome.get(card)).appendChild(card);
-			} else {
-				cardHome.get(card).appendChild(card);
-			}
-		}
-		statusBoard.classList.toggle('is-hidden', group === 'epic');
-		epicBoard.classList.toggle('is-hidden', group !== 'epic');
-	}
-	function syncEpicChips() {
-		for (const chip of epicChips) chip.classList.toggle('active', chip.dataset.epicFilter === epicFilter);
-	}
-	if (search) search.addEventListener('input', apply);
-	for (const button of buttons) button.addEventListener('click', () => {
-		filter = button.dataset.filter || 'all';
-		for (const other of buttons) other.classList.toggle('active', other === button);
-		apply();
-	});
-	for (const button of groupButtons) button.addEventListener('click', () => {
-		group = button.dataset.group || 'status';
-		for (const other of groupButtons) other.classList.toggle('active', other === button);
-		layout();
-		apply();
-	});
-	if (epicSelect) epicSelect.addEventListener('change', () => {
-		epicFilter = epicSelect.value;
-		syncEpicChips();
-		apply();
-	});
-	for (const chip of epicChips) chip.addEventListener('click', () => {
-		epicFilter = epicFilter === chip.dataset.epicFilter ? '' : (chip.dataset.epicFilter || '');
-		if (epicSelect) epicSelect.value = epicFilter;
-		syncEpicChips();
-		apply();
-	});
-})();`;
-}
-
 function formatDateTime(value: string): string {
 	return new Date(value).toLocaleString();
 }
