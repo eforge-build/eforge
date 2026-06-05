@@ -14,6 +14,10 @@ import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getRecoveryVerdictSchemaYaml } from '../schemas.js';
 import { parseRecoveryVerdictBlock } from './common.js';
 import { determineRecoveryRecommendation } from '../recovery/recommendation.js';
+import { truncateText } from '../recovery/text-bounds.js';
+// --- eforge:region plan-01-bound-recovery-analyst-context ---
+import { prepareRecoveryAnalystPromptContext } from '../recovery/analyst-context.js';
+// --- eforge:endregion plan-01-bound-recovery-analyst-context ---
 
 // ---------------------------------------------------------------------------
 // Options
@@ -68,9 +72,14 @@ export async function* runRecoveryAnalyst(
     : '';
 
   const deterministicRec = determineRecoveryRecommendation(summary);
+  const promptRationale = truncateText(
+    deterministicRec.rationale,
+    4_000,
+    'deterministic recovery recommendation rationale for prompt',
+  ).text;
   const deterministicRecommendation =
     `Deterministic policy recommendation: **${deterministicRec.verdict}**\n\n` +
-    `Evidence: ${deterministicRec.rationale}\n\n` +
+    `Evidence: ${promptRationale}\n\n` +
     `You may agree or disagree with this recommendation, but you must explain any disagreement with specific evidence from the failure summary.`;
   // Build the failing plan IDs list using the same coverage logic as validateAnalystVerdict:
   // prefer failingPlans array, fall back to failingPlan.planId when it is present and not "unknown".
@@ -86,15 +95,23 @@ export async function* runRecoveryAnalyst(
     ? failingPlanIds.join(', ')
     : '(none identified — use partial context indicators in the summary)';
 
+  // --- eforge:region plan-01-bound-recovery-analyst-context ---
+  const promptContext = prepareRecoveryAnalystPromptContext({ prdContent, summary });
+  const contextNotes = promptContext.notes.length > 0
+    ? promptContext.notes.map(note => `- ${note}`).join('\n')
+    : '- No recovery analyst prompt input truncation or evidence omission was applied.';
+  // --- eforge:endregion plan-01-bound-recovery-analyst-context ---
+
   const prompt = await loadPrompt(
     'recovery-analyst',
     {
-      prdContent,
-      summary: JSON.stringify(summary, null, 2),
+      prdContent: promptContext.prdContent,
+      summary: promptContext.summaryJson,
       recovery_schema: getRecoveryVerdictSchemaYaml(),
       partialHint,
       deterministicRecommendation,
       failedPlanIdsList,
+      contextNotes,
     },
     options.promptAppend,
   );
