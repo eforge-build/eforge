@@ -298,6 +298,8 @@ export interface AcceptSuccessPreviewResponse {
   landingAction: AcceptSuccessLandingAction;
   /** Per-run PR auto-merge intent from failed PRD frontmatter, when present. */
   landingAutoMerge?: boolean;
+  /** Effective PR auto-merge outcome after applying landing.pr.autoMerge policy; only present for PR landing. */
+  effectiveLandingAutoMerge?: boolean;
   cleanup: AcceptSuccessCleanupEffect;
   audit: AcceptSuccessAuditFields;
   dependentCandidates: AcceptSuccessDependentCandidate[];

@@ -4,10 +4,11 @@ import http from 'node:http';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { API_ROUTES, type DaemonStreamSnapshot } from '@eforge-build/client';
+import { API_ROUTES, type DaemonStreamSnapshot, type RunInfo } from '@eforge-build/client';
 import { openDatabase } from '../db.js';
 import { startServer, type MonitorServer } from '../server.js';
 import { AutoBuildSupervisor } from '../auto-build-supervisor.js';
+import { projectRunsForAcceptedSuccess } from '../projections/runs.js';
 
 function tmp(): string { return mkdtempSync(join(tmpdir(), 'eforge-accept-parity-')); }
 function git(cwd: string, args: string[]): void { execFileSync('git', args, { cwd }); }
@@ -86,5 +87,24 @@ describe('accepted-success projection parity', () => {
     expect(queue.find((item: { id: string }) => item.id === 'accepted-prd')?.status).toBe('completed');
     expect(hello.runs).toEqual(runs);
     expect(hello.queue).toEqual(queue);
+  });
+
+  it('targets the failed run identified by failedAt and preserves its completedAt', () => {
+    const cwd = tmp();
+    const failed = join(cwd, '.eforge', 'queue', 'failed');
+    mkdirSync(failed, { recursive: true });
+    writeFileSync(join(failed, 'accepted-prd.recovery.json'), JSON.stringify({
+      summary: { setName: 'accepted-set', failedAt: '2025-01-01T00:10:00.000Z' },
+      applied: { action: 'accepted-success', acceptedAt: '2025-01-02T00:00:00.000Z', reasonCategory: 'other', reason: 'ok', cleanup: { status: 'noop' }, landing: { action: 'leave', status: 'complete', branch: 'eforge/accepted-set' }, dependents: { unblocked: [], remainedBlocked: [], notFound: [] } },
+    }));
+    const runs: RunInfo[] = [
+      { id: 'old-failure', planSet: 'accepted-set', command: 'build', status: 'failed', startedAt: '2025-01-01T00:00:00.000Z', completedAt: '2025-01-01T00:10:00.000Z', cwd },
+      { id: 'new-failure', planSet: 'accepted-set', command: 'build', status: 'failed', startedAt: '2025-01-03T00:00:00.000Z', completedAt: '2025-01-03T00:10:00.000Z', cwd },
+    ];
+
+    const projected = projectRunsForAcceptedSuccess(runs, join(cwd, '.eforge', 'queue'));
+
+    expect(projected.find((run) => run.id === 'old-failure')).toMatchObject({ status: 'completed', completedAt: '2025-01-01T00:10:00.000Z' });
+    expect(projected.find((run) => run.id === 'new-failure')).toMatchObject({ status: 'failed', completedAt: '2025-01-03T00:10:00.000Z' });
   });
 });

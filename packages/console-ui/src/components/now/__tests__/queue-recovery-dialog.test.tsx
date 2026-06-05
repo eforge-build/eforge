@@ -448,7 +448,7 @@ describe('QueueRecoveryDialog - accepted success', () => {
   });
 
   it('confirmation lists cleanup, landing, audit, selected dependents, and defined auto-merge intent', async () => {
-    vi.mocked(fetchAcceptSuccessPreview).mockResolvedValue(eligiblePreviewFixture({ landingAutoMerge: true }));
+    vi.mocked(fetchAcceptSuccessPreview).mockResolvedValue(eligiblePreviewFixture({ effectiveLandingAutoMerge: true } as unknown as Partial<AcceptSuccessPreviewResponse>));
     renderDialog();
 
     fireEvent.change(await screen.findByLabelText('Reason category'), { target: { value: 'bad_acceptance_criterion' } });

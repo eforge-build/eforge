@@ -541,11 +541,11 @@ describe('accept-success recovery routes', () => {
     execFileSync('git', args, { cwd: dir });
   }
 
-  async function seedAcceptRoute(dir: string, prdId: string, opts: { landing?: 'pr' | 'merge' | 'leave'; landingAutoMerge?: boolean; autoMerge?: { status: 'complete' } | { status: 'skipped' | 'failed'; reason: string } } = {}): Promise<void> {
+  async function seedAcceptRoute(dir: string, prdId: string, opts: { landing?: 'pr' | 'merge' | 'leave'; landingAutoMerge?: boolean; configLandingAction?: 'pr' | 'merge' | 'leave'; configAutoMerge?: 'ask' | 'always' | 'never'; autoMerge?: { status: 'complete' } | { status: 'skipped' | 'failed'; reason: string } } = {}): Promise<void> {
     const setName = prdId;
     const feature = `eforge/${setName}`;
     await mkdir(join(dir, 'eforge'), { recursive: true });
-    await writeFile(join(dir, 'eforge', 'config.yaml'), 'landing:\n  action: leave\n');
+    await writeFile(join(dir, 'eforge', 'config.yaml'), `landing:\n  action: ${opts.configLandingAction ?? 'leave'}\n  pr:\n    autoMerge: ${opts.configAutoMerge ?? 'ask'}\n`);
     git(dir, ['add', '-A']);
     git(dir, ['commit', '-m', 'chore: config']);
 
@@ -578,15 +578,54 @@ describe('accept-success recovery routes', () => {
     await writeFile(join(failedDir, `${prdId}.recovery.json`), JSON.stringify(sidecar, null, 2));
   }
 
-  it('previews eligibility for an acceptance-validation failure with per-PRD landing auto-merge intent', async () => {
-    for (const [prdId, landingAutoMerge] of [['route-accept-preview-true', true], ['route-accept-preview-false', false], ['route-accept-preview-omitted', undefined]] as const) {
-      await seedAcceptRoute(tmpDir, prdId, { landing: 'pr', ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) });
+  function setupOriginRemote(dir: string, name: string): void {
+    const remote = join(dir, `${name}.git`);
+    execFileSync('git', ['init', '--bare', remote]);
+    execFileSync('git', ['remote', 'add', 'origin', remote], { cwd: dir });
+    execFileSync('git', ['push', '-u', 'origin', 'main'], { cwd: dir });
+  }
+
+  async function fakeGh(dir: string): Promise<{ bin: string; log: string }> {
+    const bin = join(dir, 'fake-gh-bin');
+    const log = join(dir, 'fake-gh.log');
+    await mkdir(bin, { recursive: true });
+    const script = join(bin, 'gh');
+    await writeFile(script, `#!/usr/bin/env node
+const fs = require('fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+if (args[0] === '--version') process.exit(0);
+if (args[0] === 'pr' && args[1] === 'create') { console.log('https://github.test/repo/pull/1'); process.exit(0); }
+if (args[0] === 'pr' && args[1] === 'merge') process.exit(0);
+process.exit(0);
+`);
+    execFileSync('chmod', ['755', script]);
+    return { bin, log };
+  }
+
+  async function readGhCalls(log: string): Promise<string[][]> {
+    try {
+      return (await readFile(log, 'utf-8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    } catch {
+      return [];
+    }
+  }
+
+  it('previews eligibility for an acceptance-validation failure with effective landing auto-merge outcome', async () => {
+    for (const [prdId, landingAutoMerge, configAutoMerge, effectiveLandingAutoMerge] of [
+      ['route-accept-preview-true', true, 'ask', true],
+      ['route-accept-preview-false', false, 'always', false],
+      ['route-accept-preview-omitted-always', undefined, 'always', true],
+      ['route-accept-preview-true-never', true, 'never', false],
+    ] as const) {
+      await seedAcceptRoute(tmpDir, prdId, { landing: 'pr', configAutoMerge, ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) });
       const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccessPreview}?prdId=${prdId}`);
       expect(res.status).toBe(200);
-      const data = await res.json() as { status: string; landingAction: string; landingAutoMerge?: boolean };
+      const data = await res.json() as { status: string; landingAction: string; landingAutoMerge?: boolean; effectiveLandingAutoMerge?: boolean };
       expect(data.status).toBe('eligible');
       expect(data.landingAction).toBe('pr');
       expect(data.landingAutoMerge).toBe(landingAutoMerge);
+      expect(data.effectiveLandingAutoMerge).toBe(effectiveLandingAutoMerge);
     }
   });
 
@@ -653,6 +692,40 @@ describe('accept-success recovery routes', () => {
       expect(res.status).toBe(200);
       const body = await res.json() as { applied: { landing: { autoMerge?: unknown } } };
       expect(body.applied.landing.autoMerge).toEqual(autoMerge);
+    }
+  });
+
+  it.each([
+    ['route-auto-matrix-true-ask', true, 'ask', true, 'complete'],
+    ['route-auto-matrix-false-always', false, 'always', false, 'skipped'],
+    ['route-auto-matrix-omitted-always', undefined, 'always', true, 'complete'],
+    ['route-auto-matrix-omitted-ask', undefined, 'ask', false, 'skipped'],
+  ] as const)('applies accepted-success PR auto-merge matrix for %s', async (prdId, landingAutoMerge, configAutoMerge, expectMerge, expectedStatus) => {
+    await seedAcceptRoute(tmpDir, prdId, {
+      landing: 'pr',
+      ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}),
+      configLandingAction: 'pr',
+      configAutoMerge,
+    });
+    setupOriginRemote(tmpDir, prdId);
+    const { bin, log } = await fakeGh(tmpDir);
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${bin}:${oldPath}`;
+    try {
+      const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccess}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prdId, reasonCategory: 'other', reason: 'accepted', unblockDependentIds: [] }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { applied: { landing: { status: string; autoMerge?: { status: string } } } };
+      expect(body.applied.landing.status).toBe('complete');
+      expect(body.applied.landing.autoMerge?.status).toBe(expectedStatus);
+      const calls = await readGhCalls(log);
+      expect(calls.some((args) => args[0] === 'pr' && args[1] === 'create')).toBe(true);
+      expect(calls.some((args) => args[0] === 'pr' && args[1] === 'merge' && args.includes('--auto') && args.includes('--merge'))).toBe(expectMerge);
+    } finally {
+      process.env.PATH = oldPath;
     }
   });
 });

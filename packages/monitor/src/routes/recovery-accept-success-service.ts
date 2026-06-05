@@ -24,6 +24,7 @@ import type {
 import type { MonitorContext } from '../context.js';
 import { HttpRouteError } from '../http/route-errors.js';
 import { buildAndPersistRunUpsert } from '../recorder.js';
+import { selectAcceptedSuccessRun } from '../projections/runs.js';
 
 type FailedPrdIntent = { landingAction?: 'pr' | 'merge' | 'leave'; landingAutoMerge?: boolean };
 
@@ -91,31 +92,30 @@ export async function previewAcceptSuccessForRequest(
   }
 }
 
-async function readSidecarSetName(queueDir: string, prdId: string): Promise<string | undefined> {
+async function readSidecarRunTarget(queueDir: string, prdId: string): Promise<{ setName: string; failedAt?: string } | undefined> {
   try {
     const raw = await readFile(join(queueDir, 'failed', `${prdId}.recovery.json`), 'utf-8');
-    const parsed = JSON.parse(raw) as { summary?: { setName?: unknown } };
-    return typeof parsed.summary?.setName === 'string' ? parsed.summary.setName : undefined;
+    const parsed = JSON.parse(raw) as { summary?: { setName?: unknown; failedAt?: unknown } };
+    const setName = parsed.summary?.setName;
+    if (typeof setName !== 'string') return undefined;
+    const failedAt = parsed.summary?.failedAt;
+    return { setName, ...(typeof failedAt === 'string' ? { failedAt } : {}) };
   } catch {
     return undefined;
   }
 }
 
-function reconcileCompletedRun(context: MonitorContext, setName: string, completedAt: string): void {
-  const run = context.db.getRuns().find((candidate) =>
-    candidate.planSet === setName &&
-    candidate.status === 'failed' &&
-    ['build', 'resume', 'run'].includes(candidate.command)
-  );
+function reconcileCompletedRun(context: MonitorContext, setName: string, acceptedAt: string, failedAt?: string): void {
+  const run = selectAcceptedSuccessRun(context.db.getRuns(), setName, failedAt);
   if (!run) return;
-  context.db.updateRunStatus(run.id, 'completed', completedAt);
+  context.db.updateRunStatus(run.id, 'completed', run.completedAt ?? acceptedAt);
   buildAndPersistRunUpsert(context.db, run.id, run.id);
 }
 
 async function reconcileAcceptedSuccessComplete(context: MonitorContext, options: AcceptSuccessHelperOptions, result: AcceptSuccessResponse): Promise<void> {
   if (result.applied.landing.status !== 'complete') return;
-  const setName = await readSidecarSetName(options.queueDir, options.prdId);
-  if (setName) reconcileCompletedRun(context, setName, result.applied.acceptedAt);
+  const target = await readSidecarRunTarget(options.queueDir, options.prdId);
+  if (target) reconcileCompletedRun(context, target.setName, result.applied.acceptedAt, target.failedAt);
 }
 
 export async function applyAcceptSuccessForRequest(

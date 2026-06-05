@@ -38,6 +38,7 @@ import type {
 import { ACCEPT_SUCCESS_REASON_CATEGORIES } from '@eforge-build/client';
 
 import { cleanupPlanFiles } from '../cleanup.js';
+import { resolvePrAutoMergeIntent } from '../config.js';
 import {
   loadArtifactRegistry,
   hasUsableArtifact,
@@ -408,6 +409,7 @@ export async function previewAcceptSuccess(
     prdId,
     landingAction,
     ...(options.landingAutoMerge !== undefined ? { landingAutoMerge: options.landingAutoMerge } : {}),
+    ...(landingAction === 'pr' ? { effectiveLandingAutoMerge: resolvePrAutoMergeIntent(options.prAutoMergePolicy ?? 'ask', options.landingAutoMerge) } : {}),
     cleanup,
     audit: {
       setName: summary.setName,

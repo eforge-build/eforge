@@ -75,7 +75,8 @@ export function AcceptSuccessAction({ preview, applying, error, onApply }: Accep
     : 'Cleanup: no artifact cleanup needed.';
   const landingLine = `Landing: ${ACCEPT_SUCCESS_LANDING_LABELS[preview.landingAction]}.`;
   // --- eforge:region plan-02-console-resolved-status ---
-  const autoMergeLine = preview.landingAutoMerge == null ? null : `PR auto-merge: ${preview.landingAutoMerge ? 'enabled' : 'disabled'}.`;
+  const effectiveAutoMerge = (preview as AcceptSuccessPreviewResponse & { effectiveLandingAutoMerge?: boolean }).effectiveLandingAutoMerge;
+  const autoMergeLine = effectiveAutoMerge == null ? null : `PR auto-merge: ${effectiveAutoMerge ? 'enabled' : 'disabled'}.`;
   // --- eforge:endregion plan-02-console-resolved-status ---
   const commitWord = preview.audit.landedCommitCount === 1 ? 'commit' : 'commits';
   const auditLine =
