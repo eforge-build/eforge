@@ -1,0 +1,57 @@
+name: harden-acceptance-criteria-extractor-json-parsing
+description: Harden acceptance-criteria extractor parsing by sharing balanced
+  JSON-object extraction across engine parsers while preserving fail-closed
+  schema and persisted block validation.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm vitest run test/json-object-extractor.test.ts
+    test/acceptance-criteria-extractor.test.ts test/prd-validator.test.ts
+    test/acceptance-unknown-resolver.test.ts
+plans:
+  - id: plan-01-extractor-json-parsing
+    name: Shared Balanced JSON Parsing for Acceptance Criteria Extractor
+    depends_on: []
+    branch: harden-acceptance-criteria-extractor-json-parsing/plan-01-extractor-json-parsing
+    build:
+      - implement
+      - test-write
+      - test-cycle
+      - validate
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - test-cycle
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "This is a focused multi-file engine bugfix with shared helper
+    extraction, parser behavior changes, and regression tests, so excursion is
+    appropriate. A plan review gate helps preserve the strict persisted-block
+    boundary and avoid over-broad parsing changes. The build runs
+    implementation, writes and executes targeted tests, then runs the registered
+    maintainability validation gate before iterative review. Code and test
+    perspectives cover the main risks: parser correctness, DRY helper reuse,
+    fail-closed validation behavior, and regression coverage."
+diff_base_ref: a5ece9fa76f5ee3c61d7fc7a4ee470c43c9355ce
