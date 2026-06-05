@@ -1,4 +1,4 @@
-import type { EforgeEvent } from './events.schemas.js';
+import type { EforgeEvent } from './events/root.js';
 import type { SchemaError } from './schema-utils.js';
 
 export const MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH = 4096;

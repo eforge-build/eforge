@@ -1,9 +1,10 @@
 /**
  * Event types re-exported from `@eforge-build/client`.
  *
- * Event wire shapes are owned by `packages/client/src/events.schemas.ts`.
- * The SDK re-exports them here so extension authors have a single import path.
- * Do NOT redefine event shapes in this package.
+ * Event wire shapes are owned by `@eforge-build/client` (facade:
+ * `packages/client/src/events.schemas.ts`; implementation modules:
+ * `packages/client/src/events/`). The SDK re-exports them here so extension
+ * authors have a single import path. Do NOT redefine event shapes in this package.
  */
 
 export type { EforgeEvent, AgentRole } from '@eforge-build/client';

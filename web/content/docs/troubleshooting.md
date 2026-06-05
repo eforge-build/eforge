@@ -50,7 +50,7 @@ pnpm docs:generate
 pnpm docs:check
 ```
 
-Run `pnpm docs:generate` any time you edit hand-authored guide pages under `web/content/docs/` or change source files that feed into generated reference pages (`packages/engine/src/config.ts`, CLI source, event schema, MCP tools). The generator updates `web/content/reference/*.md`, `web/public/reference/*.md`, `web/public/docs/*.md`, `web/public/schemas/*.json`, `web/public/llms.txt`, and `web/public/llms-full.txt`. Never edit those files by hand; the drift check will catch it.
+Run `pnpm docs:generate` any time you edit hand-authored guide pages under `web/content/docs/` or change source files that feed into generated reference pages (`packages/engine/src/config.ts`, CLI source, client event schema modules, MCP tools). The generator updates `web/content/reference/*.md`, `web/public/reference/*.md`, `web/public/docs/*.md`, `web/public/schemas/*.json`, `web/public/llms.txt`, and `web/public/llms-full.txt`. Never edit those files by hand; the drift check will catch it.
 
 If the check reports broken internal links, update the link target in the relevant `web/content/docs/*.md` file to point at a slug that exists under `/docs/`, `/reference/`, or `/schemas/`.
 
