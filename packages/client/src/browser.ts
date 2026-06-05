@@ -223,6 +223,8 @@ export type {
   ExtensionTrustState,
   ExtensionTrustRequest,
   ExtensionTrustResponse,
+  ExtensionUntrustRequest,
+  ExtensionUntrustResponse,
   ExtensionScaffoldScope,
   ExtensionScaffoldTemplate,
   ExtensionDiagnostic,

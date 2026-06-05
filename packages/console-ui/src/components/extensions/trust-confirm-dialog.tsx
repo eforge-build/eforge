@@ -29,6 +29,11 @@ interface TrustConfirmDialogProps {
   path: string;
   /** Current trust state, when known. */
   trustState?: ExtensionTrustState;
+  /**
+   * Extension scope, when known. Now-strip callers may omit it; System callers
+   * pass it so the confirmation surfaces the scope being trusted.
+   */
+  scope?: string;
   /** Action verb: "Trust" or "Re-trust". */
   actionLabel: string;
   /** Invoked only after the user confirms in the dialog. */
@@ -41,6 +46,7 @@ export function TrustConfirmDialog({
   name,
   path,
   trustState,
+  scope,
   actionLabel,
   onConfirm,
   children,
@@ -54,8 +60,9 @@ export function TrustConfirmDialog({
           <AlertDialogDescription asChild>
             <div className="space-y-2">
               <p>
-                Trusting this extension lets its project-team code execute after the next
-                reload. Only continue if you have reviewed the extension and trust its source.
+                Trusting this extension lets its project-team code execute as unsandboxed
+                native code after the next reload. Only continue if you have reviewed the
+                extension and trust its source.
               </p>
               <dl className="space-y-1 text-xs">
                 <div className="flex gap-2">
@@ -66,6 +73,12 @@ export function TrustConfirmDialog({
                   <dt className="shrink-0 font-medium text-foreground">Path</dt>
                   <dd className="font-mono break-all">{path}</dd>
                 </div>
+                {scope && (
+                  <div className="flex gap-2">
+                    <dt className="shrink-0 font-medium text-foreground">Scope</dt>
+                    <dd className="font-mono">{scope}</dd>
+                  </div>
+                )}
                 {trustState && (
                   <div className="flex gap-2">
                     <dt className="shrink-0 font-medium text-foreground">Current state</dt>
