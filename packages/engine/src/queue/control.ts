@@ -7,9 +7,9 @@
  * helpers, and map the typed {@link QueueControlError} kinds to HTTP status.
  */
 
-import { access, readdir, rm } from 'node:fs/promises';
+import { access, readdir, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import type {
   QueuePriorityResponse,
   QueueRemoveResponse,
@@ -73,6 +73,21 @@ export interface UpdateQueuedPrdPriorityOptions extends QueueControlLocateOption
 
 export type RemoveQueuedPrdOptions = QueueControlLocateOptions;
 
+export interface OverrideQueuedPrdDependencyOptions extends QueueControlLocateOptions {
+  dependencyId: string;
+}
+
+export interface OverrideQueuedPrdDependencyResult {
+  id: string;
+  title: string;
+  previousStatus: 'pending' | 'waiting';
+  currentStatus: 'pending' | 'waiting';
+  removedDependency: string;
+  previousDependsOn: string[];
+  currentDependsOn: string[];
+  movedToQueueRoot: boolean;
+}
+
 const RUNNING_CANCEL_GUIDANCE =
   'running builds must be cancelled by session id through the cancel route, not through queue-control routes';
 
@@ -80,6 +95,13 @@ function assertSafePrdId(id: string): void {
   const safe = id.length > 0 && !id.includes('/') && !id.includes('\\') && !id.includes('..') && !id.includes('\0');
   if (!safe) {
     throw new QueueControlError('validation', `Unsafe PRD id: ${JSON.stringify(id)}`);
+  }
+}
+
+function assertSafeDependencyId(id: string): void {
+  const safe = id.length > 0 && !id.includes('/') && !id.includes('\\') && !id.includes('..') && !id.includes('\0');
+  if (!safe) {
+    throw new QueueControlError('validation', `Unsafe dependency id: ${JSON.stringify(id)}`);
   }
 }
 
@@ -164,6 +186,60 @@ async function setPriorityExistingOnly(prd: QueuedPrd, priority: number): Promis
       throw new QueueControlError(
         'not-found',
         `Queue item '${prd.id}' disappeared before priority update; expected '${prd.filePath}'.`,
+      );
+    }
+    throw err;
+  }
+}
+
+async function setDependsOnExistingOnly(prd: QueuedPrd, dependsOn: string[]): Promise<void> {
+  try {
+    await setQueuedPrdFrontmatterFieldsExistingOnly(prd, { depends_on: dependsOn });
+  } catch (err) {
+    if (isErrno(err, 'ENOENT')) {
+      throw new QueueControlError(
+        'not-found',
+        `Queue item '${prd.id}' disappeared before dependency override; expected '${prd.filePath}'.`,
+      );
+    }
+    throw err;
+  }
+}
+
+function replaceDependsOnInContent(content: string, dependsOn: string[]): string {
+  const line = `depends_on: [${dependsOn.map((id) => JSON.stringify(id)).join(', ')}]`;
+  if (/^depends_on:.*$/m.test(content)) return content.replace(/^depends_on:.*$/m, line);
+  return content.replace(/^(---\n[\s\S]*?)(\n---)/, `$1\n${line}$2`);
+}
+
+async function moveWaitingPrdToQueueRoot(prd: QueuedPrd, absQueueDir: string, currentDependsOn: string[]): Promise<void> {
+  const destPath = resolve(absQueueDir, basename(prd.filePath));
+  if (await fileExists(destPath)) {
+    throw new QueueControlError(
+      'conflict',
+      `Cannot move waiting queue item '${prd.id}' to queue root: destination already exists at '${destPath}'.`,
+    );
+  }
+  const newContent = replaceDependsOnInContent(prd.content, currentDependsOn);
+  try {
+    await writeFile(destPath, newContent, { encoding: 'utf-8', flag: 'wx' });
+  } catch (err) {
+    if (isErrno(err, 'EEXIST')) {
+      throw new QueueControlError(
+        'conflict',
+        `Cannot move waiting queue item '${prd.id}' to queue root: destination already exists at '${destPath}'.`,
+      );
+    }
+    throw err;
+  }
+  try {
+    await rm(prd.filePath);
+  } catch (err) {
+    await rm(destPath, { force: true });
+    if (isErrno(err, 'ENOENT')) {
+      throw new QueueControlError(
+        'not-found',
+        `Queue item '${prd.id}' disappeared before dependency override; expected '${prd.filePath}'.`,
       );
     }
     throw err;
@@ -292,6 +368,91 @@ export async function updateQueuedPrdPriority(opts: UpdateQueuedPrdPriorityOptio
     currentStatus: located.status,
     priority: opts.priority,
   };
+}
+
+/** Remove one dependency id from a pending or waiting queued PRD. */
+export async function overrideQueuedPrdDependency(opts: OverrideQueuedPrdDependencyOptions): Promise<OverrideQueuedPrdDependencyResult> {
+  assertSafePrdId(opts.prdId);
+  assertSafeDependencyId(opts.dependencyId);
+
+  const located = await findQueuedPrdForControl(opts);
+  await runQueueControlRaceHook(opts, 'afterLocate');
+  if (located.status === 'running') {
+    throw new QueueControlError(
+      'conflict',
+      `Queue item '${opts.prdId}' is currently running; ${RUNNING_CANCEL_GUIDANCE}.`,
+    );
+  }
+  if (located.status !== 'pending' && located.status !== 'waiting') {
+    throw new QueueControlError(
+      'conflict',
+      `Cannot override dependencies of '${located.status}' queue item '${opts.prdId}'; only pending or waiting items support dependency overrides.`,
+    );
+  }
+
+  const absQueueDir = resolve(opts.cwd, opts.queueDir);
+  if (located.location === 'queue') {
+    return await overridePendingRootDependency(opts, located, absQueueDir);
+  }
+
+  const fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
+  const mutation = dependencyOverrideMutation(opts, located, fresh);
+  if (mutation.movedToQueueRoot) {
+    await moveWaitingPrdToQueueRoot(fresh, absQueueDir, mutation.currentDependsOn);
+  } else {
+    await setDependsOnExistingOnly(fresh, mutation.currentDependsOn);
+  }
+  return mutation;
+}
+
+function dependencyOverrideMutation(
+  opts: OverrideQueuedPrdDependencyOptions,
+  located: LocatedPrd,
+  fresh: QueuedPrd,
+): OverrideQueuedPrdDependencyResult {
+  const previousDependsOn = [...(fresh.frontmatter.depends_on ?? [])];
+  if (!previousDependsOn.includes(opts.dependencyId)) {
+    throw new QueueControlError(
+      'conflict',
+      `Queue item '${opts.prdId}' does not depend on '${opts.dependencyId}'.`,
+    );
+  }
+  const currentDependsOn = previousDependsOn.filter((id) => id !== opts.dependencyId);
+  const previousStatus = located.status as 'pending' | 'waiting';
+  const movedToQueueRoot = previousStatus === 'waiting' && currentDependsOn.length === 0;
+  return {
+    id: opts.prdId,
+    title: fresh.frontmatter.title,
+    previousStatus,
+    currentStatus: movedToQueueRoot ? 'pending' : previousStatus,
+    removedDependency: opts.dependencyId,
+    previousDependsOn,
+    currentDependsOn,
+    movedToQueueRoot,
+  };
+}
+
+async function overridePendingRootDependency(
+  opts: OverrideQueuedPrdDependencyOptions,
+  located: LocatedPrd,
+  absQueueDir: string,
+): Promise<OverrideQueuedPrdDependencyResult> {
+  const claimed = await claimPrd(opts.prdId, opts.cwd);
+  if (!claimed) {
+    throw new QueueControlError(
+      'conflict',
+      `Queue item '${opts.prdId}' was claimed or became running before dependency override; ${RUNNING_CANCEL_GUIDANCE}.`,
+    );
+  }
+  try {
+    await runQueueControlRaceHook(opts, 'afterRootClaim');
+    const fresh = await reloadExpectedPrd(opts.cwd, absQueueDir, located);
+    const mutation = dependencyOverrideMutation(opts, located, fresh);
+    await setDependsOnExistingOnly(fresh, mutation.currentDependsOn);
+    return mutation;
+  } finally {
+    await releasePrd(opts.prdId, opts.cwd);
+  }
 }
 
 /**

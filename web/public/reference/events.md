@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 220
+Total variants: 221
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -210,6 +210,7 @@ Total variants: 220
 | `queue:start` | `dir`, `prdCount` |
 | `queue:prd:start` | `prdId`, `title` |
 | `queue:prd:discovered` | `dependsOn`, `prdId`, `title` |
+| `queue:prd:dependency-overridden` | `currentDependsOn`, `prdId`, `previousDependsOn`, `reason`, `removedDependency`, `title` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
 | `queue:prd:commit-failed` | `error`, `prdId`, `title` |

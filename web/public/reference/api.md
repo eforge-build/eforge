@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 79
+Total routes: 80
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -61,6 +61,7 @@ Total routes: 79
 | `profileUse` | `/api/profile/use` |
 | `projectContext` | `/api/project-context` |
 | `queue` | `/api/queue` |
+| `queueDependencyOverride` | `/api/queue/:prdId/dependencies/override` |
 | `queuePriority` | `/api/queue/:prdId/priority` |
 | `queueRecoveryAnalyze` | `/api/queue/recovery/analyze` |
 | `queueRecoveryApply` | `/api/queue/recovery/apply` |

@@ -21,7 +21,9 @@
  */
 
 import type { EforgeEvent, StackLayerWire } from './events.js';
-import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked } from './event-projections/queue.js';
+import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked,
+  projectQueueDependencyOverridden,
+} from './event-projections/queue.js';
 import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -1699,6 +1701,13 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Discovered PRD: ${e.title} (${e.prdId})`,
     project: projectQueuePrdDiscovered,
+  },
+
+  'queue:prd:dependency-overridden': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `PRD ${e.prdId} dependency override: removed ${e.removedDependency}`,
+    project: projectQueueDependencyOverridden,
   },
 
   'queue:prd:stale': {

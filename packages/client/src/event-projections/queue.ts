@@ -6,6 +6,7 @@ type QueueProjectState = Readonly<Pick<ProjectableState, 'queue'>>;
 type EnqueueCompleteEvent = Extract<EforgeEvent, { type: 'enqueue:complete' }>;
 type QueuePrdDiscoveredEvent = Extract<EforgeEvent, { type: 'queue:prd:discovered' }>;
 type SchedulerDependencyBlockedEvent = Extract<EforgeEvent, { type: 'daemon:scheduler:dependency-blocked' }>;
+type QueueDependencyOverriddenEvent = Extract<EforgeEvent, { type: 'queue:prd:dependency-overridden' }>;
 
 function dedupeDependsOn(dependsOn: string[]): string[] {
   const deduped: string[] = [];
@@ -79,5 +80,20 @@ export function projectSchedulerDependencyBlocked(event: SchedulerDependencyBloc
   if (updatedItem === existing) return undefined;
   const updated = [...state.queue];
   updated[idx] = updatedItem;
+  return { queue: updated };
+}
+
+export function projectQueueDependencyOverridden(event: QueueDependencyOverriddenEvent, state: QueueProjectState): Partial<ProjectableState> | undefined {
+  const idx = state.queue.findIndex((item) => item.id === event.prdId);
+  if (idx === -1) return undefined;
+  const existing = state.queue[idx];
+  if (isTerminalQueueStatus(existing.status)) return undefined;
+  const updated = [...state.queue];
+  if (event.currentDependsOn.length === 0) {
+    const { dependsOn: _dependsOn, ...rest } = existing;
+    updated[idx] = existing.status === 'waiting' ? { ...rest, status: 'pending' } : rest;
+  } else {
+    updated[idx] = { ...existing, dependsOn: dedupeDependsOn(event.currentDependsOn) };
+  }
   return { queue: updated };
 }

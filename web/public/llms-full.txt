@@ -643,7 +643,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 79
+Total routes: 80
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -695,6 +695,7 @@ Total routes: 79
 | `profileUse` | `/api/profile/use` |
 | `projectContext` | `/api/project-context` |
 | `queue` | `/api/queue` |
+| `queueDependencyOverride` | `/api/queue/:prdId/dependencies/override` |
 | `queuePriority` | `/api/queue/:prdId/priority` |
 | `queueRecoveryAnalyze` | `/api/queue/recovery/analyze` |
 | `queueRecoveryApply` | `/api/queue/recovery/apply` |
@@ -750,7 +751,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 220
+Total variants: 221
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -949,6 +950,7 @@ Total variants: 220
 | `queue:start` | `dir`, `prdCount` |
 | `queue:prd:start` | `prdId`, `title` |
 | `queue:prd:discovered` | `dependsOn`, `prdId`, `title` |
+| `queue:prd:dependency-overridden` | `currentDependsOn`, `prdId`, `previousDependsOn`, `reason`, `removedDependency`, `title` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
 | `queue:prd:commit-failed` | `error`, `prdId`, `title` |

@@ -734,6 +734,57 @@ describe('eventRegistry — live queue dependency projectors', () => {
 
     expect(delta).toBeUndefined();
   });
+
+  it('accepts and registers queue dependency override audit events', () => {
+    const event = {
+      type: 'queue:prd:dependency-overridden',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      title: 'Child PRD',
+      removedDependency: 'parent-prd',
+      previousDependsOn: ['parent-prd', 'other-prd'],
+      currentDependsOn: ['other-prd'],
+      reason: 'operator approved',
+    } as const;
+    expect(safeParseEforgeEvent(event).success).toBe(true);
+    expect(eventRegistry['queue:prd:dependency-overridden']).toMatchObject({ scope: 'daemon', persist: true });
+    expect(DAEMON_EVENT_TYPES).toContain('queue:prd:dependency-overridden');
+    expect(isPersistedDaemonEventType('queue:prd:dependency-overridden')).toBe(true);
+  });
+
+  it('projects queue dependency overrides into existing queue item dependsOn metadata', () => {
+    const project = eventRegistry['queue:prd:dependency-overridden'].project!;
+    const delta = project({
+      type: 'queue:prd:dependency-overridden',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      title: 'Child PRD',
+      removedDependency: 'parent-prd',
+      previousDependsOn: ['parent-prd', 'other-prd'],
+      currentDependsOn: ['other-prd'],
+    }, {
+      ...baseState,
+      queue: [{ id: 'child-prd', title: 'Child PRD', status: 'pending', dependsOn: ['parent-prd', 'other-prd'] }],
+    });
+    expect(delta?.queue?.[0]?.dependsOn).toEqual(['other-prd']);
+  });
+
+  it('removes dependsOn metadata and marks waiting items pending when an override clears the final dependency', () => {
+    const project = eventRegistry['queue:prd:dependency-overridden'].project!;
+    const delta = project({
+      type: 'queue:prd:dependency-overridden',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      title: 'Child PRD',
+      removedDependency: 'parent-prd',
+      previousDependsOn: ['parent-prd'],
+      currentDependsOn: [],
+    }, {
+      ...baseState,
+      queue: [{ id: 'child-prd', title: 'Child PRD', status: 'waiting', dependsOn: ['parent-prd'] }],
+    });
+    expect(delta?.queue?.[0]).toEqual({ id: 'child-prd', title: 'Child PRD', status: 'pending' });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -10629,6 +10629,47 @@
             "type",
             "prdId",
             "title",
+            "removedDependency",
+            "previousDependsOn",
+            "currentDependsOn"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:dependency-overridden",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "removedDependency": {
+              "type": "string"
+            },
+            "previousDependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "currentDependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "title",
             "verdict",
             "justification"
           ],
