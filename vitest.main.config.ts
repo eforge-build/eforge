@@ -17,6 +17,7 @@ export default defineConfig({
       'web/__tests__/**/*.test.ts',
       'packages/client/src/__tests__/**/*.test.ts',
       'packages/monitor/src/__tests__/**/*.test.ts',
+      'eforge/extensions/**/__tests__/**/*.test.ts',
     ],
     server: {
       deps: {
