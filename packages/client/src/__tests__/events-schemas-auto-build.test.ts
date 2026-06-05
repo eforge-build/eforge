@@ -367,6 +367,24 @@ describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', 
     expect(result.success).toBe(true);
   });
 
+  it('accepts accepted-success recoveryApplied marker with landing autoMerge metadata', () => {
+    const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
+      id: 'accepted-prd',
+      title: 'Accepted PRD',
+      status: 'completed',
+      recoveryApplied: {
+        action: 'accepted-success',
+        acceptedAt: '2025-01-01T00:00:00.000Z',
+        reasonCategory: 'other',
+        reason: 'manual verification',
+        cleanup: { status: 'noop' },
+        landing: { action: 'pr', status: 'complete', branch: 'eforge/accepted-prd', autoMerge: { status: 'complete' } },
+        dependents: { unblocked: [], remainedBlocked: [], notFound: [] },
+      },
+    }));
+    expect(result.success).toBe(true);
+  });
+
   it('accepts a queue item with no recoveryApplied marker (optional field)', () => {
     const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
       id: 'plain-prd',

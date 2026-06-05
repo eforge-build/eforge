@@ -164,7 +164,7 @@ export {
 export { ACCEPT_SUCCESS_REASON_CATEGORIES } from './routes.js';
 export type {
   AcceptSuccessReasonCategory, AcceptSuccessLandingAction, AcceptSuccessPreviewRequest, AcceptSuccessCleanupEffect,
-  AcceptSuccessAuditFields, AcceptSuccessDependentCandidate, AcceptSuccessCleanupResult, AcceptSuccessLandingResult,
+  AcceptSuccessAuditFields, AcceptSuccessDependentCandidate, AcceptSuccessCleanupResult, AcceptSuccessAutoMergeResult, AcceptSuccessLandingResult,
   AcceptSuccessDependentResult, AcceptSuccessAppliedSummary, AcceptSuccessPreviewResponse, AcceptSuccessRequest, AcceptSuccessResponse,
 } from './routes.js';
 

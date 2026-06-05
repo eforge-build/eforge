@@ -541,8 +541,8 @@ describe('accept-success recovery routes', () => {
     execFileSync('git', args, { cwd: dir });
   }
 
-  async function seedAcceptRoute(dir: string, prdId: string): Promise<void> {
-    const setName = 'route-accept-set';
+  async function seedAcceptRoute(dir: string, prdId: string, opts: { landing?: 'pr' | 'merge' | 'leave'; landingAutoMerge?: boolean; autoMerge?: { status: 'complete' } | { status: 'skipped' | 'failed'; reason: string } } = {}): Promise<void> {
+    const setName = prdId;
     const feature = `eforge/${setName}`;
     await mkdir(join(dir, 'eforge'), { recursive: true });
     await writeFile(join(dir, 'eforge', 'config.yaml'), 'landing:\n  action: leave\n');
@@ -560,7 +560,7 @@ describe('accept-success recovery routes', () => {
 
     const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
-    await writeFile(join(failedDir, `${prdId}.md`), `---\ntitle: ${prdId}\n---\n# ${prdId}`);
+    await writeFile(join(failedDir, `${prdId}.md`), `---\ntitle: ${prdId}\n${opts.landing ? `landing: ${opts.landing}\n` : ''}${opts.landingAutoMerge !== undefined ? `landing_auto_merge: ${opts.landingAutoMerge}\n` : ''}---\n# ${prdId}`);
     await writeFile(join(failedDir, `${prdId}.recovery.md`), '## Recovery');
     const sidecar = {
       schemaVersion: 2,
@@ -578,14 +578,28 @@ describe('accept-success recovery routes', () => {
     await writeFile(join(failedDir, `${prdId}.recovery.json`), JSON.stringify(sidecar, null, 2));
   }
 
-  it('previews eligibility for an acceptance-validation failure', async () => {
-    const prdId = 'route-accept-preview';
-    await seedAcceptRoute(tmpDir, prdId);
+  it('previews eligibility for an acceptance-validation failure with per-PRD landing auto-merge intent', async () => {
+    for (const [prdId, landingAutoMerge] of [['route-accept-preview-true', true], ['route-accept-preview-false', false], ['route-accept-preview-omitted', undefined]] as const) {
+      await seedAcceptRoute(tmpDir, prdId, { landing: 'pr', ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) });
+      const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccessPreview}?prdId=${prdId}`);
+      expect(res.status).toBe(200);
+      const data = await res.json() as { status: string; landingAction: string; landingAutoMerge?: boolean };
+      expect(data.status).toBe('eligible');
+      expect(data.landingAction).toBe('pr');
+      expect(data.landingAutoMerge).toBe(landingAutoMerge);
+    }
+  });
+
+  it('ignores unrelated invalid failed PRD frontmatter when previewing accept-success', async () => {
+    const prdId = 'route-accept-preview-targeted';
+    await seedAcceptRoute(tmpDir, prdId, { landing: 'pr' });
+    await writeFile(join(tmpDir, '.eforge', 'queue', 'failed', 'unrelated-invalid.md'), '---\ntitle: bad\nonSuccess: issue-pr\n---\n# bad');
+
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccessPreview}?prdId=${prdId}`);
     expect(res.status).toBe(200);
     const data = await res.json() as { status: string; landingAction: string };
     expect(data.status).toBe('eligible');
-    expect(data.landingAction).toBe('leave');
+    expect(data.landingAction).toBe('pr');
   });
 
   it('returns 400 when reasonCategory is missing', async () => {
@@ -619,5 +633,26 @@ describe('accept-success recovery routes', () => {
     expect(secondRes.status).toBe(200);
     const second = await secondRes.json() as { status: string };
     expect(second.status).toBe('already-applied');
+  });
+
+  it('returns accepted-success landing autoMerge metadata on already-applied responses', async () => {
+    for (const [prdId, autoMerge] of [
+      ['route-auto-complete', { status: 'complete' }],
+      ['route-auto-skipped', { status: 'skipped', reason: 'policy' }],
+      ['route-auto-failed', { status: 'failed', reason: 'gh pr merge failed: nope' }],
+    ] as const) {
+      await seedAcceptRoute(tmpDir, prdId, { autoMerge });
+      const sidecarPath = join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`);
+      const sidecar = JSON.parse(await readFile(sidecarPath, 'utf-8'));
+      sidecar.applied = { action: 'accepted-success', acceptedAt: new Date().toISOString(), reasonCategory: 'other', reason: 'ok', cleanup: { status: 'noop' }, landing: { action: 'pr', status: 'complete', branch: `eforge/${prdId}`, autoMerge }, dependents: { unblocked: [], remainedBlocked: [], notFound: [] } };
+      await writeFile(sidecarPath, JSON.stringify(sidecar, null, 2));
+      const res = await fetch(`http://localhost:${server.port}${API_ROUTES.acceptRecoverySuccess}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prdId, reasonCategory: 'other', reason: 'again', unblockDependentIds: [] }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { applied: { landing: { autoMerge?: unknown } } };
+      expect(body.applied.landing.autoMerge).toEqual(autoMerge);
+    }
   });
 });

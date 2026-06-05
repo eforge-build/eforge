@@ -38,7 +38,6 @@ import type {
 import { ACCEPT_SUCCESS_REASON_CATEGORIES } from '@eforge-build/client';
 
 import { cleanupPlanFiles } from '../cleanup.js';
-import { resolveTrunkBranch, isTrunkBranch } from '../branch-policy.js';
 import {
   loadArtifactRegistry,
   hasUsableArtifact,
@@ -52,6 +51,7 @@ import {
   readAcceptSuccessAppliedMetadata,
   writeAcceptSuccessAppliedMetadata,
 } from './applied-sidecar.js';
+import { landAcceptedSuccessBuild } from './accept-success-landing.js';
 
 const exec = promisify(execFile);
 
@@ -72,8 +72,12 @@ export interface AcceptSuccessHelperOptions {
   prdId: string;
   /** Absolute path to the queue directory (e.g. `<cwd>/.eforge/queue`). */
   queueDir: string;
-  /** Effective landing action (resolved from project configuration). Default `merge`. */
+  /** Effective landing action (resolved from project configuration or failed PRD frontmatter). Default `merge`. */
   landingAction?: AcceptSuccessLandingAction;
+  /** Per-run PR auto-merge intent from failed PRD frontmatter. */
+  landingAutoMerge?: boolean;
+  /** Project PR auto-merge policy from landing.pr.autoMerge. */
+  prAutoMergePolicy?: 'ask' | 'always' | 'never';
   /** Relative plan output directory (resolved from configuration). Default `eforge/plans`. */
   planOutputDir?: string;
   /** Explicit trunk branch (`build.trunkBranch`); resolved via git when omitted. */
@@ -279,65 +283,6 @@ async function runAcceptedSuccessCleanup(
 }
 
 // --- eforge:endregion accept-success-cleanup ---
-// --- eforge:region accept-success-landing ---  (landing)
-
-async function landAcceptedSuccessBuild(
-  options: AcceptSuccessHelperOptions,
-  summary: BuildFailureSummary,
-): Promise<AcceptSuccessLandingResult> {
-  const { cwd, landingAction = 'merge' } = options;
-  const featureBranch = summary.featureBranch;
-  const baseBranch = summary.baseBranch;
-
-  if (!(await branchExists(cwd, featureBranch))) {
-    return { action: landingAction, status: 'failed', branch: featureBranch, reason: `Feature branch '${featureBranch}' not found` };
-  }
-
-  if (landingAction === 'leave') {
-    return { action: 'leave', status: 'complete', branch: featureBranch };
-  }
-
-  if (landingAction === 'merge') {
-    // Enforce the same local-merge-to-trunk policy as the normal landing path:
-    // refuse to merge directly into trunk unless explicitly opted in.
-    const trunk = options.trunkBranch ?? await resolveTrunkBranch(undefined, cwd);
-    if (isTrunkBranch(baseBranch, trunk) && !(options.allowLocalMergeToTrunk ?? false)) {
-      return { action: 'merge', status: 'skipped', branch: featureBranch, reason: `Local merge to trunk '${trunk}' is not permitted (set allowLocalMergeToTrunk: true to opt in)` };
-    }
-    // Compare-and-swap base ref update: refuse to clobber a concurrently-advanced base.
-    const expectedBaseSha = await gitRevParse(cwd, baseBranch);
-    const wtPath = await addDetachedWorktree(cwd, baseBranch);
-    try {
-      try {
-        await exec('git', ['merge', '--no-ff', '--no-edit', featureBranch], { cwd: wtPath });
-      } catch {
-        await exec('git', ['merge', '--abort'], { cwd: wtPath }).catch(() => {});
-        return { action: 'merge', status: 'failed', branch: featureBranch, reason: 'Merge failed' };
-      }
-      const mergeCommitSha = await gitRevParse(wtPath, 'HEAD');
-      try {
-        await exec('git', ['update-ref', `refs/heads/${baseBranch}`, mergeCommitSha, expectedBaseSha], { cwd });
-      } catch {
-        return { action: 'merge', status: 'failed', branch: featureBranch, reason: 'Base branch advanced during landing; merge not applied' };
-      }
-      return { action: 'merge', status: 'complete', branch: featureBranch, mergeCommitSha };
-    } finally {
-      await removeWorktree(cwd, wtPath);
-    }
-  }
-
-  // pr
-  try {
-    await exec('git', ['push', 'origin', featureBranch], { cwd });
-    const { stdout } = await exec('gh', ['pr', 'create', '--base', baseBranch, '--head', featureBranch, '--fill'], { cwd });
-    const prUrl = stdout.trim().split('\n').find((line) => line.startsWith('http'));
-    return { action: 'pr', status: 'complete', branch: featureBranch, ...(prUrl ? { prUrl } : {}) };
-  } catch (err) {
-    return { action: 'pr', status: 'failed', branch: featureBranch, reason: `PR creation failed: ${(err as Error).message}` };
-  }
-}
-
-// --- eforge:endregion accept-success-landing ---
 // --- eforge:region accept-success-dependents ---  (dependent candidates / movement)
 
 function directSkippedDependents(skipped: QueuedPrd[], acceptedPrdId: string): QueuedPrd[] {
@@ -462,6 +407,7 @@ export async function previewAcceptSuccess(
   const base = {
     prdId,
     landingAction,
+    ...(options.landingAutoMerge !== undefined ? { landingAutoMerge: options.landingAutoMerge } : {}),
     cleanup,
     audit: {
       setName: summary.setName,

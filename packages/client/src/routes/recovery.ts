@@ -245,6 +245,11 @@ export interface AcceptSuccessCleanupResult {
   commitSha?: string;
 }
 
+export type AcceptSuccessAutoMergeResult =
+  | { status: 'complete' }
+  | { status: 'skipped'; reason: string }
+  | { status: 'failed'; reason: string };
+
 /** Result of the landing step of an accepted-success apply. */
 export interface AcceptSuccessLandingResult {
   action: AcceptSuccessLandingAction;
@@ -257,6 +262,8 @@ export interface AcceptSuccessLandingResult {
   branch?: string;
   /** Failure/skipped reason when `status` is `failed` or `skipped`. */
   reason?: string;
+  /** Auto-merge audit result for accepted-success PR landing. */
+  autoMerge?: AcceptSuccessAutoMergeResult;
 }
 
 /** Result of moving selected skipped dependents back to the queue root. */
@@ -287,8 +294,10 @@ export interface AcceptSuccessPreviewResponse {
   status: 'eligible' | 'ineligible' | 'already-applied';
   /** Present when `status === 'ineligible'`: human-readable reason. */
   reason?: string;
-  /** Effective landing action resolved from project configuration. */
+  /** Effective landing action resolved from failed PRD frontmatter or project configuration. */
   landingAction: AcceptSuccessLandingAction;
+  /** Per-run PR auto-merge intent from failed PRD frontmatter, when present. */
+  landingAutoMerge?: boolean;
   cleanup: AcceptSuccessCleanupEffect;
   audit: AcceptSuccessAuditFields;
   dependentCandidates: AcceptSuccessDependentCandidate[];

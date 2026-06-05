@@ -21,7 +21,7 @@ import type { MonitorDB } from './db.js';
  * @param eventRunId  - The `run_id` FK to use when inserting the event row.
  *                      Almost always the same as `runId`.
  */
-function buildAndPersistRunUpsert(
+export function buildAndPersistRunUpsert(
   db: MonitorDB,
   runId: string,
   eventRunId: string,

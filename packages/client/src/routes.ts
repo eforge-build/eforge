@@ -35,6 +35,7 @@ export type {
   AcceptSuccessAuditFields,
   AcceptSuccessDependentCandidate,
   AcceptSuccessCleanupResult,
+  AcceptSuccessAutoMergeResult,
   AcceptSuccessLandingResult,
   AcceptSuccessDependentResult,
   AcceptSuccessAppliedSummary,
