@@ -121,7 +121,7 @@ export async function upsertBuildRun(
   epicId?: string,
 ): Promise<TraceSidecar> {
   return updateTrace(cwd, itemId, epicId, (trace) => {
-    trace.buildRuns = upsertBy(trace.buildRuns, entry, (candidate) => candidate.runId === entry.runId);
+    trace.buildRuns = upsertBy(trace.buildRuns, entry, (candidate) => candidate.runId === entry.runId || candidate.sessionId === entry.sessionId);
     trace.buildRunIds = uniqueStrings(trace.buildRuns.map((candidate) => candidate.runId));
     trace.buildSessionIds = uniqueStrings([
       ...trace.buildRuns.map((candidate) => candidate.sessionId),
