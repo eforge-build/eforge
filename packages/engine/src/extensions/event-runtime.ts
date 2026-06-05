@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
+import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import { compilePattern } from '../hooks.js';
 import type { EforgeEvent } from '../events.js';
 import type { EventHookRegistration, NativeExtensionRegistry } from './types.js';
@@ -11,6 +13,7 @@ export interface NativeEventHookRuntimeOptions {
   timeoutMs?: number;
   drainTimeoutMs?: number;
   cwd?: string;
+  configDir?: string;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -34,6 +37,7 @@ export interface EventHookContext {
   extensionPath: string;
   pattern: string;
   signal: AbortSignal;
+  paths: EforgeProjectPaths;
   logger: {
     debug(message: string): void;
     info(message: string): void;
@@ -103,7 +107,7 @@ function createContext(
   registration: EventHookRegistration,
   event: EforgeEvent,
   controller: AbortController,
-  options: Required<Pick<NativeEventHookRuntimeOptions, 'cwd' | 'env'>>,
+  options: Required<Pick<NativeEventHookRuntimeOptions, 'cwd' | 'configDir' | 'env'>>,
 ): EventHookContext {
   return {
     event,
@@ -111,6 +115,7 @@ function createContext(
     extensionPath: registration.extensionPath,
     pattern: registration.value.pattern,
     signal: controller.signal,
+    paths: createEforgeProjectPaths({ cwd: options.cwd, configDir: options.configDir, extensionName: registration.extensionName }),
     logger: createLogger(registration, event),
     exec: {
       run: (command, args = [], execOptions = {}) => runExec(command, args, {
@@ -130,7 +135,7 @@ function executeHandler(
   registration: EventHookRegistration,
   event: EforgeEvent,
   timeoutMs: number,
-  options: Required<Pick<NativeEventHookRuntimeOptions, 'cwd' | 'env'>>,
+  options: Required<Pick<NativeEventHookRuntimeOptions, 'cwd' | 'configDir' | 'env'>>,
 ): Promise<DiagnosticEvent | undefined> {
   const controller = new AbortController();
   const ctx = createContext(registration, event, controller, options);
@@ -182,6 +187,10 @@ function executeHandler(
   });
 }
 
+function resolveConfigDirFallback(cwd: string): string {
+  return resolve(cwd, 'eforge');
+}
+
 function flushDiagnostics(queue: DiagnosticEvent[]): DiagnosticEvent[] {
   if (queue.length === 0) return [];
   return queue.splice(0, queue.length);
@@ -220,8 +229,10 @@ export async function* withNativeEventHooks(
   }
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS;
+  const runtimeCwd = options.cwd ?? process.cwd();
   const runtimeOptions = {
-    cwd: options.cwd ?? process.cwd(),
+    cwd: runtimeCwd,
+    configDir: options.configDir ?? resolveConfigDirFallback(runtimeCwd),
     env: options.env ?? process.env,
   };
   const drainTimeoutMs = options.drainTimeoutMs ?? timeoutMs + DEFAULT_EVENT_HOOK_DRAIN_GRACE_MS;

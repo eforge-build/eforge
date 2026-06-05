@@ -46,7 +46,7 @@ For example, enqueue `eforge://input/eforge-plan/add-import-preview` to compile 
 - `.backlog/items/<id>.md` stores backlog items.
 - `.backlog/epics/<id>.md` stores epics.
 - `.eforge/session-plans/<session>.md` stores promoted session-plan artifacts.
-- `.eforge/extension-data/eforge-plan/traces/<itemId>.json` stores lifecycle trace sidecars.
+- `.eforge/storage/extensions/eforge-plan/traces/<itemId>.json` stores lifecycle trace sidecars as extension-owned private metadata.
 
 Backlog item and epic files are Markdown documents with frontmatter. The item body remains the durable human-authored planning record; update actions preserve body content while changing supported frontmatter fields, including `evidence_notes` and `recheck_notes`.
 
@@ -90,7 +90,7 @@ flowchart TD
   Epic[.backlog/epics/epic.md] --> Synthesize
   Deps[Dependency context] --> Synthesize
   Synthesize --> Plan[.eforge/session-plans/session.md]
-  Synthesize --> Trace[.eforge/extension-data/eforge-plan/traces/item.json]
+  Synthesize --> Trace[.eforge/storage/extensions/eforge-plan/traces/item.json]
   Plan --> Engine[Existing eforge session-plan workflow]
 ```
 
@@ -127,7 +127,7 @@ Host integrations register commands and action-backed deep links for board rende
 
 ## Trace sidecars
 
-Trace sidecars live under `.eforge/extension-data/eforge-plan/traces/<itemId>.json`. They are extension-owned metadata that correlate backlog items with eforge lifecycle evidence.
+Trace sidecars live under `.eforge/storage/extensions/eforge-plan/traces/<itemId>.json`. They are extension-owned private metadata resolved through the SDK's extension storage helper, and they correlate backlog items with eforge lifecycle evidence.
 
 Trace-owned data includes:
 

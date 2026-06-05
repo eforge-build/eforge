@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { executeProfileRouters, buildProfileRouterContext } from '@eforge-build/engine/extensions/index';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import type { ProfileRouterRegistration } from '@eforge-build/engine/extensions/types';
@@ -384,6 +384,37 @@ describe('executeProfileRouters', () => {
       // prdId and prdTitle should come from the PRD
       expect(ctx.prdId).toBe('test-prd');
       expect(ctx.prdTitle).toBe('Test PRD');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('router context includes ctx.paths using the resolved config dir', async () => {
+    const cwd = makeTempDir();
+    try {
+      const configDir = resolve(cwd, 'custom-eforge');
+      setupProjectWithProfile(cwd, 'profile-b');
+      let captured: string | undefined;
+      const registry = {
+        profileRouters: [
+          makeRouterRegistration('path-router', {
+            selectBuildProfile: (ctx: { paths: { scopeRoot(scope: 'project-team'): string; extensionStoragePath(scope: 'project-local', segments: string[]): string } }) => {
+              captured = `${ctx.paths.scopeRoot('project-team')}|${ctx.paths.extensionStoragePath('project-local', ['router.json'])}`;
+              return null;
+            },
+          }, 'router-ext'),
+        ],
+      };
+
+      await executeProfileRouters(registry, makePrd(), {
+        configDir,
+        cwd,
+        config: makeConfig(),
+        configProfileName: null,
+        availableProfiles: [],
+      });
+
+      expect(captured).toBe(`${configDir}|${resolve(cwd, '.eforge', 'storage', 'extensions', 'router-ext', 'router.json')}`);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

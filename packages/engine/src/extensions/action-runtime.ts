@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import { safeParseWithSchema, type ExtensionActionRequestedBy, type ExtensionJsonValue, type ValueError } from '@eforge-build/client';
 import type { TSchema } from '@sinclair/typebox';
 
@@ -11,6 +12,7 @@ export interface DispatchExtensionActionOptions {
   input: Record<string, unknown>;
   requestedBy: ExtensionActionRequestedBy;
   cwd: string;
+  configDir?: string;
   timeoutMs: number;
   invocationId?: string;
 }
@@ -101,6 +103,7 @@ function buildActionContext(action: ActionRegistration, options: DispatchExtensi
     cwd: options.cwd,
     signal,
     logger: buildLogger(action),
+    paths: createEforgeProjectPaths({ cwd: options.cwd, configDir: options.configDir, extensionName: action.extensionName }),
   };
 }
 

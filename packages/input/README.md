@@ -11,7 +11,7 @@ Reusable build-input protocols for eforge - playbook and session-plan artifacts 
 ## Dependencies
 
 - Depends on `@eforge-build/scopes` for scope directory lookup and named-set resolution
-- Depends on `@eforge-build/extension-sdk` for the project-local storage path helper used by session-plan and plan-set path resolution
+- Depends on `@eforge-build/extension-sdk` for project-local session-plan/plan-set path resolution and scoped `ctx.paths` helpers in extension input contexts
 - Does **NOT** depend on `@eforge-build/engine`
 
 The engine consumes normalized PRD/build source; it has no knowledge of where that source originated. This keeps the engine input-agnostic.

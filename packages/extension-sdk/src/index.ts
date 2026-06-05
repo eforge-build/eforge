@@ -85,9 +85,21 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
-// Project-local storage helpers
+// Project-local and scoped storage helpers
 export type { ProjectLocalStoragePathOptions } from './project-storage.js';
 export { resolveProjectLocalStoragePath } from './project-storage.js';
+export type {
+  EforgeStorageScope,
+  EforgeProjectPaths,
+  EforgeProjectPathsOptions,
+  ResolveScopedStoragePathOptions,
+  ResolveExtensionStoragePathOptions,
+} from './project-paths.js';
+export {
+  createEforgeProjectPaths,
+  resolveScopedStoragePath,
+  resolveExtensionStoragePath,
+} from './project-paths.js';
 
 export type {
   ConsoleContribution,

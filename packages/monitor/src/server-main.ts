@@ -329,9 +329,10 @@ export function wrapWatcherEvents(
   native?: {
     registry: Pick<NativeExtensionRegistry, 'eventHooks'>;
     timeoutMs: number;
+    configDir?: string;
   },
 ): AsyncGenerator<EforgeEvent> {
-  const nativeEvents = withNativeEventHooks(events, native?.registry, { cwd, timeoutMs: native?.timeoutMs });
+  const nativeEvents = withNativeEventHooks(events, native?.registry, { cwd, configDir: native?.configDir, timeoutMs: native?.timeoutMs });
   const recordedEvents = withRecording(nativeEvents, db, cwd, pid);
   return withHooks(recordedEvents, hooks, cwd);
 }
@@ -627,6 +628,7 @@ async function main(): Promise<void> {
           {
             registry: engine.nativeExtensionRegistry,
             timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+            configDir: engine.nativeExtensionConfigDir,
           },
         );
         // Drain the event stream; native event hooks run first, withRecording

@@ -9,6 +9,8 @@
  */
 
 import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import type { EforgeEvent, AgentRole } from '../events.js';
 import type { AgentHarness, AgentRunOptions, CustomTool } from '../harness.js';
 import type { AgentRuntimeRegistry } from '../agent-runtime-registry.js';
@@ -47,18 +49,11 @@ interface AgentRunContext {
   toolbelt?: string | null;
   toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
-  /** Changed files for this agent run, cloned from the run options so hook mutation cannot leak. */
   changedFiles?: string[];
   effectiveToolName(name: string): string;
-  logger: {
-    debug(msg: string): void;
-    info(msg: string): void;
-    warn(msg: string): void;
-    error(msg: string): void;
-  };
-  exec: {
-    run(command: string, args?: string[], options?: { cwd?: string; env?: Record<string, string> }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
-  };
+  paths: EforgeProjectPaths;
+  logger: { debug(msg: string): void; info(msg: string): void; warn(msg: string): void; error(msg: string): void };
+  exec: { run(command: string, args?: string[], options?: { cwd?: string; env?: Record<string, string> }): Promise<{ stdout: string; stderr: string; exitCode: number }> };
 }
 
 /** Mirror of AgentRunHandler from @eforge-build/extension-sdk */
@@ -77,10 +72,8 @@ export interface AgentContextHookRuntimeOptions {
   profileName: string;
   /** Working directory (used for exec API). */
   cwd: string;
-  /**
-   * Timeout in milliseconds for each hook handler.
-   * Defaults to `extensions.eventHookTimeoutMs` when not specified.
-   */
+  configDir?: string;
+  /** Timeout in milliseconds for each hook handler. */
   timeoutMs: number;
 }
 
@@ -243,6 +236,7 @@ function buildAgentRunContext(
   planId: string | undefined,
   profileName: string,
   cwd: string,
+  configDir: string,
   effectiveCustomToolName: (name: string) => string,
 ): AgentRunContext {
   const prefix = `[eforge ext:${registration.extensionName} role:${agent}]`;
@@ -293,6 +287,7 @@ function buildAgentRunContext(
     // Clone into a fresh array so a hook mutating ctx.changedFiles cannot mutate the run options.
     ...(options.changedFiles !== undefined && { changedFiles: [...options.changedFiles] }),
     effectiveToolName: effectiveCustomToolName,
+    paths: createEforgeProjectPaths({ cwd, configDir, extensionName: registration.extensionName }),
     logger,
     exec,
   };
@@ -445,6 +440,7 @@ export async function executeAgentRunHooks(
   runtimeOptions: {
     profileName: string;
     cwd: string;
+    configDir?: string;
     timeoutMs: number;
     effectiveCustomToolName?: (name: string) => string;
     registeredTools?: ToolRegistration[];
@@ -459,6 +455,7 @@ export async function executeAgentRunHooks(
   const successfulContributions: SuccessfulHookContribution[] = [];
   const effectiveCustomToolName = runtimeOptions.effectiveCustomToolName ?? ((name: string) => name);
   const registeredTools = runtimeOptions.registeredTools ?? [];
+  const configDir = runtimeOptions.configDir ?? resolve(runtimeOptions.cwd, 'eforge');
 
   for (const registration of hooks) {
     const ctx = buildAgentRunContext(
@@ -468,6 +465,7 @@ export async function executeAgentRunHooks(
       planId,
       runtimeOptions.profileName,
       runtimeOptions.cwd,
+      configDir,
       effectiveCustomToolName,
     );
 
@@ -686,6 +684,7 @@ export function withAgentContextHooks(
           {
             profileName: runtimeOptions.profileName,
             cwd: runtimeOptions.cwd,
+            configDir: runtimeOptions.configDir,
             timeoutMs: runtimeOptions.timeoutMs,
             effectiveCustomToolName: (name) => innerHarness.effectiveCustomToolName(name),
             registeredTools: runtimeOptions.extensionRegistry.tools,

@@ -13,6 +13,7 @@
  *   - StubHarness-driven wiring (registry decorator)
  */
 import { describe, it, expect } from 'vitest';
+import { resolve } from 'node:path';
 import {
   executeAgentRunHooks,
   withAgentContextHooks,
@@ -165,6 +166,29 @@ describe('executeAgentRunHooks — ordering across multiple extensions', () => {
     const names = applied.map(e => e.extensionName);
     expect(names).toContain('ext-alpha');
     expect(names).toContain('ext-beta');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeAgentRunHooks — role/tier/phase filtering inside handlers
+// ---------------------------------------------------------------------------
+
+describe('executeAgentRunHooks — scoped paths', () => {
+  it('provides ctx.paths and defaults extension storage to the active extension name', async () => {
+    const cwd = resolve('/tmp/agent-paths-project');
+    let extensionPath: string | undefined;
+    await executeAgentRunHooks(
+      [makeHook('agent-ext', (ctx) => {
+        extensionPath = ctx.paths.extensionStoragePath('project-local', ['trace.json']);
+        return undefined;
+      })],
+      BASE_OPTIONS,
+      'builder',
+      undefined,
+      { ...RUNTIME_OPTIONS, cwd, configDir: resolve(cwd, 'team-config') },
+    );
+
+    expect(extensionPath).toBe(resolve(cwd, '.eforge', 'storage', 'extensions', 'agent-ext', 'trace.json'));
   });
 });
 

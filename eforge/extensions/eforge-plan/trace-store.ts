@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, relative, sep } from 'node:path';
-import { resolveProjectLocalStoragePath } from '../../../packages/extension-sdk/src/index.js';
+import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
 import { assertSafeBacklogId } from './markdown-store.js';
 import type { TraceSummary } from './backlog-domain.js';
 import type {
@@ -30,11 +30,9 @@ export const TRACE_SCHEMA_VERSION = 1;
 
 export function resolveTracePath(cwd: string, itemId: string): string {
   assertSafeBacklogId(itemId);
-  const root = resolveProjectLocalStoragePath({ cwd, segments: ['extension-data', 'eforge-plan', 'traces'] });
-  const filePath = resolveProjectLocalStoragePath({
-    cwd,
-    segments: ['extension-data', 'eforge-plan', 'traces', `${itemId}.json`],
-  });
+  const paths = createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' });
+  const root = paths.extensionStoragePath('project-local', ['traces']);
+  const filePath = paths.extensionStoragePath('project-local', ['traces', `${itemId}.json`]);
   assertContained(root, filePath);
   return filePath;
 }
@@ -76,13 +74,14 @@ export async function writeTraceSidecar(cwd: string, trace: TraceSidecar): Promi
 }
 
 export async function listTraceSidecars(cwd: string): Promise<TraceSidecar[]> {
-  const root = resolveProjectLocalStoragePath({ cwd, segments: ['extension-data', 'eforge-plan', 'traces'] });
+  const paths = createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' });
+  const root = paths.extensionStoragePath('project-local', ['traces']);
   if (!existsSync(root)) {
     return [];
   }
   const names = (await readdir(root)).filter((name) => name.endsWith('.json')).sort();
   return Promise.all(names.map(async (name) => {
-    const filePath = resolveProjectLocalStoragePath({ cwd, segments: ['extension-data', 'eforge-plan', 'traces', name] });
+    const filePath = paths.extensionStoragePath('project-local', ['traces', name]);
     assertContained(root, filePath);
     return normalizeTrace(JSON.parse(await readFile(filePath, 'utf-8')) as unknown, name.slice(0, -'.json'.length));
   }));

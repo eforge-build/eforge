@@ -57,7 +57,7 @@ export function synthesizeSessionPlanMarkdown(input: SynthesisInput): string {
 export function synthesizeBuildSourceMarkdown(input: SynthesisInput): string {
   const sessionPlan = synthesizeSessionPlanMarkdown(input);
   const session = input.session ?? generateSessionId(input.item);
-  const sourcePath = resolveProjectLocalStoragePath({ cwd: input.cwd, segments: ['session-plans', `${session}.md`] });
+  const sourcePath = resolveSessionPlanPath(input.cwd, session);
   return normalizeBuildSource({ sourcePath, content: sessionPlan }).content;
 }
 
@@ -70,7 +70,7 @@ export async function promoteBacklogItem(input: {
 }): Promise<PromotionResult> {
   const item = await requireBacklogItem(input.cwd, input.itemId);
   const epic = item.epic ? await readBacklogEpic(input.cwd, item.epic) : null;
-  const root = resolveProjectLocalStoragePath({ cwd: input.cwd, segments: ['session-plans'] });
+  const root = resolveSessionPlanRoot(input.cwd);
   await mkdir(root, { recursive: true });
   const { session, sessionPlanPath } = resolvePromotionTarget(input.cwd, item, input.session);
   const sessionPlan = synthesizeSessionPlanMarkdown({ cwd: input.cwd, item, epic, session, profile: input.profile });
@@ -133,11 +133,21 @@ async function requireBacklogItem(cwd: string, itemId: string): Promise<BacklogI
   return item;
 }
 
+// Promoted session plans are built-in eforge workflow artifacts consumed by the engine,
+// not private extension-owned metadata, so they intentionally remain under `.eforge/session-plans/`.
+function resolveSessionPlanRoot(cwd: string): string {
+  return resolveProjectLocalStoragePath({ cwd, segments: ['session-plans'] });
+}
+
+function resolveSessionPlanPath(cwd: string, session: string): string {
+  return resolveProjectLocalStoragePath({ cwd, segments: ['session-plans', `${session}.md`] });
+}
+
 function resolvePromotionTarget(cwd: string, item: BacklogItem, explicitSession?: string): { session: string; sessionPlanPath: string } {
   const baseSession = explicitSession ?? generateSessionId(item);
   for (let index = 0; index < 100; index += 1) {
     const session = index === 0 ? baseSession : `${baseSession}-${index + 1}`;
-    const sessionPlanPath = resolveProjectLocalStoragePath({ cwd, segments: ['session-plans', `${session}.md`] });
+    const sessionPlanPath = resolveSessionPlanPath(cwd, session);
     if (!existsSync(sessionPlanPath)) return { session, sessionPlanPath };
     if (explicitSession) throw new Error(`Session plan already exists for explicit session "${explicitSession}": ${sessionPlanPath}`);
   }

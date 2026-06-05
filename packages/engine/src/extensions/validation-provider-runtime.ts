@@ -4,7 +4,9 @@
  */
 
 import { execFile as nodeExecFile, type ChildProcess } from 'node:child_process';
+import { resolve } from 'node:path';
 
+import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import type { EforgeEvent } from '../events.js';
 import type {
   ValidationProviderMetadata,
@@ -82,6 +84,8 @@ export interface ValidationProviderRuntimeContext {
   planId: string;
   planOutputDir: string;
   worktreePath: string;
+  cwd?: string;
+  configDir?: string;
   signal?: AbortSignal;
   changedFiles?: string[];
 }
@@ -159,6 +163,8 @@ export async function runValidationProvider(
 ): Promise<RunValidationProviderResult> {
   const { timeoutMs } = options;
   const { planId, planOutputDir, worktreePath, signal, changedFiles } = ctx;
+  const pathsCwd = ctx.cwd ?? worktreePath;
+  const pathsConfigDir = ctx.configDir ?? resolve(pathsCwd, 'eforge');
   const { extensionName, extensionPath, name: providerName } = registration;
   const spec = registration.value;
   const timestamp = new Date().toISOString();
@@ -299,6 +305,7 @@ export async function runValidationProvider(
     exec,
     signal,
     changedFiles,
+    paths: createEforgeProjectPaths({ cwd: pathsCwd, configDir: pathsConfigDir, extensionName }) as EforgeProjectPaths,
   };
 
   const callPromise = Promise.resolve().then(() =>

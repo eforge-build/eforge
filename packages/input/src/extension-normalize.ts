@@ -19,6 +19,7 @@
 
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import { normalizeBuildSource } from './session-plan.js';
 
 // ---------------------------------------------------------------------------
@@ -245,12 +246,7 @@ export function parseInputSourceReference(source: string): InputSourceReference 
 
 /** Sentinel used to distinguish a timeout from other errors. */
 class TimeoutError extends Error {
-  readonly timeoutMs: number;
-  constructor(timeoutMs: number) {
-    super(`Timed out after ${timeoutMs}ms`);
-    this.name = 'TimeoutError';
-    this.timeoutMs = timeoutMs;
-  }
+  constructor(readonly timeoutMs: number) { super(`Timed out after ${timeoutMs}ms`); this.name = 'TimeoutError'; }
 }
 
 /**
@@ -290,9 +286,11 @@ function extractContent(result: unknown): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Main preprocessing helper
-// ---------------------------------------------------------------------------
+const unavailableExec = () => ({ async run(): Promise<never> { throw new Error('Input transform exec.run is unavailable during preprocessing'); } });
+
+type InputTransformContextOpts = { cwd: string; configDir: string; originalSource: string; sourceKind: 'inline' | 'file' | 'extension-reference'; extensionName: string; extensionPath: string; sourceId?: string; sourcePath?: string; adapterId?: string };
+
+const buildInputTransformContext = ({ cwd, configDir, extensionName, ...rest }: InputTransformContextOpts): Record<string, unknown> => ({ cwd, ...rest, extensionName, logger: { debug() {}, info() {}, warn() {}, error() {} }, exec: unavailableExec(), paths: createEforgeProjectPaths({ cwd, configDir, extensionName }) });
 
 export interface PreprocessBuildSourceOpts {
   /** Raw source string: a file path, inline content, or `eforge://input/<adapter>/<id>` reference. */
@@ -303,6 +301,7 @@ export interface PreprocessBuildSourceOpts {
   prdEnrichers: PrdEnricherRegistrationLike[];
   /** Project working directory for resolving relative file paths. */
   cwd: string;
+  configDir?: string;
   /** Timeout in milliseconds for adapter fetch and enricher calls. */
   timeoutMs: number;
 }
@@ -334,6 +333,7 @@ export async function preprocessBuildSource(
   opts: PreprocessBuildSourceOpts,
 ): Promise<PreprocessingResult> {
   const { source, inputSources, prdEnrichers, cwd, timeoutMs } = opts;
+  const configDir = opts.configDir ?? resolve(cwd, 'eforge');
 
   const events: PreprocessingProvenanceEvent[] = [];
   const provenance: PreprocessingProvenance = {
@@ -400,7 +400,7 @@ export async function preprocessBuildSource(
 
     let fetchResult: unknown;
     try {
-      fetchResult = await withTimeout(() => fetchFn(sourceId, { cwd, originalSource: source, sourceKind: 'extension-reference', adapterId: adapterName, sourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath, logger: { debug() {}, info() {}, warn() {}, error() {} }, exec: { async run() { throw new Error('Input transform exec.run is unavailable during preprocessing'); } } }), timeoutMs);
+      fetchResult = await withTimeout(() => fetchFn(sourceId, buildInputTransformContext({ cwd, configDir, originalSource: source, sourceKind: 'extension-reference', adapterId: adapterName, sourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath })), timeoutMs);
     } catch (err) {
       if (err instanceof TimeoutError) {
         const failedEvent: InputSourceFailedEvent = {
@@ -510,7 +510,7 @@ export async function preprocessBuildSource(
   for (const registration of prdEnrichers) {
     const inputLength = content.length;
     const enrichFn = registration.value.enrich as unknown as (input: Record<string, unknown>) => Promise<unknown>;
-    const ctx = { cwd, originalSource: source, sourceKind: ref ? 'extension-reference' : sourcePath ? 'file' : 'inline', sourcePath, adapterId: provenance.adapterName, sourceId: enricherSourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath, logger: { debug() {}, info() {}, warn() {}, error() {} }, exec: { async run() { throw new Error('Input transform exec.run is unavailable during preprocessing'); } } };
+    const ctx = buildInputTransformContext({ cwd, configDir, originalSource: source, sourceKind: ref ? 'extension-reference' : sourcePath ? 'file' : 'inline', sourcePath, adapterId: provenance.adapterName, sourceId: enricherSourceId, extensionName: registration.extensionName, extensionPath: registration.extensionPath });
 
     let enrichResult: unknown;
     try {

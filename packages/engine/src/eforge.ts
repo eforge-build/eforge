@@ -238,8 +238,9 @@ export class EforgeEngine {
   private readonly extensionRegistry: NativeExtensionRegistry;
   private readonly extensionDiagnostics: NativeExtensionDiagnostic[];
   private readonly profileUsageProvider?: ProfileUsageProvider;
+  private readonly configDir: string;
 
-  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }, extensionRegistry?: NativeExtensionRegistry, extensionDiagnostics: NativeExtensionDiagnostic[] = []) {
+  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }, extensionRegistry?: NativeExtensionRegistry, extensionDiagnostics: NativeExtensionDiagnostic[] = [], configDir?: string) {
     this.config = config;
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
@@ -249,6 +250,7 @@ export class EforgeEngine {
     this.extensionDiagnostics = extensionDiagnostics;
     this.profileUsageProvider = options.profileUsageProvider;
     this.cwd = options.cwd ?? process.cwd();
+    this.configDir = configDir ?? getConventionalConfigDir(this.cwd);
     // agentRuntimes is always resolved to a registry by create() before reaching the constructor
     this.agentRuntimes = options.agentRuntimes as AgentRuntimeRegistry;
     this.onClarification = options.onClarification;
@@ -266,6 +268,10 @@ export class EforgeEngine {
 
   get nativeExtensionDiagnostics(): readonly NativeExtensionDiagnostic[] {
     return this.extensionDiagnostics;
+  }
+
+  get nativeExtensionConfigDir(): string {
+    return this.configDir;
   }
 
   private startupWarnings(): Array<{ message: string; source: string; details?: string }> {
@@ -343,12 +349,13 @@ export class EforgeEngine {
       extensionRegistry: extensionLoadResult.registry,
       profileName: configProfile.name ?? 'default',
       cwd,
+      configDir: extensionConfigDir,
       timeoutMs: config.extensions.agentContextHookTimeoutMs,
     });
 
     options = { ...options, agentRuntimes };
 
-    return new EforgeEngine(config, options, configWarnings, configProfile, extensionLoadResult.registry, extensionLoadResult.diagnostics);
+    return new EforgeEngine(config, options, configWarnings, configProfile, extensionLoadResult.registry, extensionLoadResult.diagnostics, extensionConfigDir);
   }
 
   /**
@@ -2121,10 +2128,7 @@ export class EforgeEngine {
     const eventQueue = new AsyncEventQueue<EforgeEvent>();
 
     // Resolve configDir needed by profile routers in the scheduler.
-    const schedulerConfigDir = await (async () => {
-      const { getConfigDir, getConventionalConfigDir } = await import('./config.js');
-      return (await getConfigDir(cwd)) ?? getConventionalConfigDir(cwd);
-    })();
+    const schedulerConfigDir = this.configDir;
 
     const scheduler = new QueueScheduler({
       bus,

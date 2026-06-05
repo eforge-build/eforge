@@ -9,6 +9,7 @@
  */
 
 import type { EforgeEvent } from './events.js';
+import type { EforgeProjectPaths } from './project-paths.js';
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -83,6 +84,8 @@ export interface ExtensionDiff {
 export interface EforgeExtensionContext {
   /** Structured logger routed through the eforge daemon's log pipeline. */
   logger: ExtensionLogger;
+  /** Scoped path helpers for resolving eforge-owned storage locations. */
+  paths: EforgeProjectPaths;
   /**
    * Shell-exec API for running subprocesses from an extension.
    *

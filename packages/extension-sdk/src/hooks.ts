@@ -21,6 +21,7 @@ import type {
 import type { ExtensionTool } from './tools.js';
 import type { TObject } from '@sinclair/typebox';
 import type { EventPattern } from './patterns.js';
+import type { EforgeProjectPaths } from './project-paths.js';
 
 // ---------------------------------------------------------------------------
 // Event hook
@@ -508,6 +509,8 @@ export interface ValidationProviderContext {
   signal?: AbortSignal;
   /** Files changed in the plan worktree, if available. */
   changedFiles?: string[];
+  /** Scoped path helpers for resolving eforge-owned storage locations. */
+  paths: EforgeProjectPaths;
 }
 
 type ValidationProviderReturn =

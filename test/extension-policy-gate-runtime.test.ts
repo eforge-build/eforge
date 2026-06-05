@@ -1,6 +1,6 @@
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildFinalMergePolicyGateContext,
@@ -146,6 +146,39 @@ describe('policy gate runtime', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
+  });
+
+  it('provides ctx.paths per policy registration with active extension defaults', async () => {
+    const cwd = resolve('/tmp/policy-paths-project');
+    const seen: string[] = [];
+    const context = buildPlanMergePolicyGateContext(
+      { planId: 'plan-01', diff: { files: [] } },
+      { cwd, configDir: resolve(cwd, 'team-config') },
+    );
+
+    await executePolicyGate({
+      registry: {
+        policyGates: [
+          registration('first-policy', (ctx) => {
+            seen.push((ctx as typeof context).paths.extensionStoragePath('project-local', ['trace.json']));
+            return { decision: 'allow' };
+          }, 0),
+          registration('second-policy', (ctx) => {
+            seen.push((ctx as typeof context).paths.extensionStoragePath('project-local', ['trace.json']));
+            return { decision: 'allow' };
+          }, 1),
+        ],
+      },
+      gateKind: 'plan-merge',
+      context,
+      failurePolicy: 'fail-closed',
+      timeoutMs: 1000,
+    });
+
+    expect(seen).toEqual([
+      resolve(cwd, '.eforge', 'storage', 'extensions', 'first-policy', 'trace.json'),
+      resolve(cwd, '.eforge', 'storage', 'extensions', 'second-policy', 'trace.json'),
+    ]);
   });
 
   it('allows when all handlers allow', async () => {

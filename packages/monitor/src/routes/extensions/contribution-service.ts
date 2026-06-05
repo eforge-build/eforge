@@ -16,6 +16,7 @@ import {
 
 export interface LoadedContributionRuntime {
   config: { extensions: unknown };
+  configDir: string;
   registry: unknown;
   manifest: ExtensionContributionManifestResponse;
 }
@@ -29,7 +30,7 @@ export async function loadContributionRuntime(context: MonitorContext): Promise<
   const configDir = await getConfigDir(context.cwd) ?? getConventionalConfigDir(context.cwd);
   const loadResult = await loadNativeExtensions({ cwd: context.cwd, configDir, config: config.extensions });
   const manifest = buildExtensionContributionManifest(loadResult.registry);
-  return { config, registry: loadResult.registry, manifest };
+  return { config, configDir, registry: loadResult.registry, manifest };
 }
 
 export async function getContributionManifest(context: MonitorContext): Promise<ExtensionContributionManifestResponse> {
@@ -69,6 +70,7 @@ export async function invokeExtensionAction(
       input: request.input,
       requestedBy: request.requestedBy,
       cwd: context.cwd ?? '',
+      configDir: runtime.configDir,
       timeoutMs: getActionTimeoutMs(runtime.config),
       invocationId,
     });

@@ -320,6 +320,20 @@ describe('runValidationProvider (function form)', () => {
     expect(typeof receivedCtx?.exec).toBe('object');
   });
 
+  it('passes ctx.paths using provider extension name and worktree cwd by default', async () => {
+    let storagePath: string | undefined;
+    const reg = makeRegistration({
+      validate: (_dir, ctx) => {
+        const c = ctx as { paths: { extensionStoragePath(scope: 'project-local', segments: string[]): string } };
+        storagePath = c.paths.extensionStoragePath('project-local', ['validate.json']);
+        return null;
+      },
+    });
+    await runValidationProvider(reg, defaultCtx, defaultOptions);
+
+    expect(storagePath).toBe(`${defaultCtx.worktreePath}/.eforge/storage/extensions/test-ext/validate.json`);
+  });
+
   it('ctx.exec.run actually spawns a subprocess and returns its output', async () => {
     let execResult: { stdout: string; stderr: string; exitCode: number } | undefined;
     const reg = makeRegistration({
