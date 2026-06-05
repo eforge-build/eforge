@@ -126,7 +126,7 @@ export const TypicalWeek: Story = {
           modelSpend('claude-sonnet-4-6', 58.2, 54_000_000),
           modelSpend('claude-haiku-4-5', 12.49, 17_500_000),
         ],
-        // Today's slice — a subset of the window, used by the "Today" tab.
+        // Today's slice — a subset of the window, surfaced as the per-row "today" accent.
         [
           modelSpend('claude-opus-4-7', 22.0, 16_000_000),
           modelSpend('claude-sonnet-4-6', 8.18, 6_500_000),
@@ -137,7 +137,7 @@ export const TypicalWeek: Story = {
   },
 };
 
-/** Quiet today — prior days carry the spend, the "Today" tab is empty. */
+/** Quiet today — prior days carry the spend, so no rows show a "today" accent. */
 export const QuietToday: Story = {
   args: {
     model: modelFromSummary(
@@ -147,7 +147,7 @@ export const QuietToday: Story = {
           modelSpend('claude-opus-4-7', 35.5, 22_000_000),
           modelSpend('claude-sonnet-4-6', 14.0, 13_000_000),
         ],
-        // No spend today, so the "Today" tab shows the empty state.
+        // No spend today, so no model row shows a "today" accent.
         [],
       ),
     ),
