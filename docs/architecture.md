@@ -95,12 +95,14 @@ flowchart TD
     engine --> scopes
     input --> scopes
     input --> extensionSdk
+    extensionSdk --> scopes
 ```
 
 **Allowed dependency edges:**
 
 - `engine` MAY depend on `scopes`. MUST NOT depend on `input`.
-- `input` MAY depend on `scopes` and `extension-sdk` for shared project-local storage helpers. MUST NOT depend on `engine`.
+- `input` MAY depend on `scopes` and `extension-sdk` for shared storage/path helpers, including project-local session-plan paths and scoped extension input contexts. MUST NOT depend on `engine`.
+- `extension-sdk` MAY depend on `scopes` for scoped path/storage helpers.
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
 

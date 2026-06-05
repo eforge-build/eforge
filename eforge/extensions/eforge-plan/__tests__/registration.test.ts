@@ -28,7 +28,7 @@ describe('eforge-plan extension registration', () => {
     await withTempProject(async (cwd) => {
       load();
       expect(existsSync(join(cwd, '.backlog'))).toBe(false);
-      expect(existsSync(join(cwd, '.eforge', 'extension-data'))).toBe(false);
+      expect(existsSync(join(cwd, '.eforge', 'storage'))).toBe(false);
       expect(existsSync(join(cwd, '.eforge', 'extensions', 'eforge-plan'))).toBe(false);
     });
   });

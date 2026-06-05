@@ -65,20 +65,39 @@ Precedence is `project-local > project-team > user`. Supported entrypoints are `
 
 Loader-time registration capture is available today for runtime-wired families: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution routes, Console System rendering for declarative contributions, and host discovery/invocation for actions, integration commands, and action-backed deep links are wired. The bundled playbook and session-planning adapters live in `@eforge-build/input` and are not extension SDK registration APIs. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, and user-authored custom session-plan or playbook extraction remain separate, deferred, or unsupported runtime phases.
 
-## Project-local storage helper
+## Scoped storage helpers
 
-`resolveProjectLocalStoragePath` resolves safe path segments under the project-local `.eforge/` storage root. It is exported from both the package root and `@eforge-build/extension-sdk/project-storage`, so extension tooling can use it without loading an extension module or running the daemon extension runtime.
+Use `createEforgeProjectPaths` to resolve eforge-owned storage locations for the user, project-team, and project-local scopes. It is exported from the package root and `@eforge-build/extension-sdk/project-paths`, so extension tooling can use the same path convention without loading an extension module or running the daemon extension runtime.
 
 ```ts
-import { resolveProjectLocalStoragePath } from "@eforge-build/extension-sdk";
+import { createEforgeProjectPaths } from "@eforge-build/extension-sdk";
 
-const path = resolveProjectLocalStoragePath({
+const paths = createEforgeProjectPaths({
   cwd: process.cwd(),
-  segments: ["extensions", "my-extension", "state.json"],
+  extensionName: "my-extension",
+});
+
+const projectCache = paths.extensionStoragePath("project-local", ["cache.json"]);
+// <cwd>/.eforge/storage/extensions/my-extension/cache.json
+
+const teamIndex = paths.storagePath("project-team", ["indexes", "team.json"]);
+// <cwd>/eforge/storage/indexes/team.json
+```
+
+Available scopes are `"user"`, `"project-team"`, and `"project-local"`. Scope roots are `~/.config/eforge/` (XDG-aware), `<cwd>/eforge/`, and `<cwd>/.eforge/`; storage roots add `storage/` below those roots. Extension-owned private metadata should live under `storage/extensions/<extension-name>/`, usually via `extensionStorageRoot(scope)` or `extensionStoragePath(scope, segments)`. Built-in eforge workflow artifacts, such as `.eforge/session-plans/`, are not extension-owned private storage and may keep their established locations.
+
+Runtime contexts include the same helpers as `ctx.paths`, already initialized with the current extension name:
+
+```ts
+eforge.onEvent("plan:build:failed", async (_event, ctx) => {
+  const tracePath = ctx.paths.extensionStoragePath("project-local", ["traces", "latest.json"]);
+  // Callers own directory creation and writes.
 });
 ```
 
-The helper rejects empty segments, `.`/`..`, path separators, absolute paths, and null bytes, then verifies the resolved absolute path remains contained under `<cwd>/.eforge/`. It performs no filesystem I/O: it does not create directories, read files, write files, or check whether the path exists. Callers own all I/O and should choose their own subdirectory conventions.
+The helper rejects empty segments, `.`/`..`, path separators, absolute paths, and null bytes, then verifies the resolved absolute path remains contained under the selected storage root. It performs no filesystem I/O: it does not create directories, read files, write files, or check whether the path exists. These helpers are path-convention utilities only; extensions remain trusted, unsandboxed Node code, and the returned paths are not a sandbox boundary.
+
+`resolveScopedStoragePath` and `resolveExtensionStoragePath` are convenience wrappers for one-shot resolution. `resolveProjectLocalStoragePath` remains available for compatibility and resolves segments under `<cwd>/.eforge/`.
 
 ## Registration methods
 
@@ -329,6 +348,7 @@ Pattern semantics match shell hooks in `eforge/config.yaml`.
 ## Dependencies
 
 - `@eforge-build/client` - canonical event types and TypeBox schemas
+- `@eforge-build/scopes` - scope directory lookup provider for scoped project path helpers
 - `@sinclair/typebox` - schema language for tool definitions
 
 ## Documentation

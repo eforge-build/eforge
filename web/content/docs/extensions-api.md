@@ -51,26 +51,90 @@ Policy gate and validation-provider runtime behavior is controlled by native ext
 
 ---
 
-## Project-local storage helper
+## Scoped storage helpers
 
-### `resolveProjectLocalStoragePath(opts)`
+### `createEforgeProjectPaths(opts)`
 
-Resolve safe path segments under the project-local `.eforge/` storage root. This SDK helper is useful for extension tooling and helper libraries that need a deterministic location for project-local state without depending on extension runtime loading.
+Create scoped path helpers for eforge-owned storage locations. Use these helpers when extension tooling or runtime handlers need deterministic user, project-team, or project-local paths without depending on ad hoc string concatenation.
 
 ```ts
-import { resolveProjectLocalStoragePath } from "@eforge-build/extension-sdk";
+import { createEforgeProjectPaths } from "@eforge-build/extension-sdk";
 
-const cachePath = resolveProjectLocalStoragePath({
+const paths = createEforgeProjectPaths({
   cwd: process.cwd(),
-  segments: ["extensions", "my-extension", "cache.json"],
+  extensionName: "my-extension",
+});
+
+const tracePath = paths.extensionStoragePath("project-local", ["traces", "item-1.json"]);
+// <cwd>/.eforge/storage/extensions/my-extension/traces/item-1.json
+```
+
+**Type:**
+
+```ts
+type EforgeStorageScope = 'user' | 'project-team' | 'project-local';
+
+interface EforgeProjectPathsOptions {
+  cwd: string;
+  configDir?: string;
+  extensionName?: string;
+}
+
+interface EforgeProjectPaths {
+  cwd: string;
+  configDir: string;
+  scopeRoot(scope: EforgeStorageScope): string;
+  storageRoot(scope: EforgeStorageScope): string;
+  storagePath(scope: EforgeStorageScope, segments: readonly string[]): string;
+  extensionStorageRoot(scope: EforgeStorageScope, extensionName?: string): string;
+  extensionStoragePath(scope: EforgeStorageScope, segments: readonly string[], extensionName?: string): string;
+}
+```
+
+Scope roots are:
+
+| Scope | Root | Storage root |
+|-------|------|--------------|
+| `user` | `~/.config/eforge/` (XDG-aware) | `~/.config/eforge/storage/` |
+| `project-team` | `<cwd>/eforge/` (or `configDir`) | `<cwd>/eforge/storage/` |
+| `project-local` | `<cwd>/.eforge/` | `<cwd>/.eforge/storage/` |
+
+Extension-owned private metadata should live under `storage/extensions/<extension-name>/`, resolved with `extensionStorageRoot(scope)` or `extensionStoragePath(scope, segments)`. For example, a project-local trace sidecar for `my-extension` should use `.eforge/storage/extensions/my-extension/traces/<id>.json`. Built-in eforge workflow artifacts, such as `.eforge/session-plans/`, are not extension-owned private storage and may keep their established workflow locations.
+
+Runtime contexts expose the same helper object as `ctx.paths`, initialized with the current `cwd`, `configDir`, and extension name:
+
+```ts
+eforge.onEvent("plan:build:failed", async (_event, ctx) => {
+  const diagnosticPath = ctx.paths.extensionStoragePath("project-local", ["diagnostics", "latest.json"]);
+  // Callers own mkdir/write/read behavior.
 });
 ```
 
+**Behavior:** helper methods validate each segment lexically, reject empty segments, `.`/`..`, path separators, absolute paths, and null bytes, then verify the resolved absolute path remains contained under the selected storage root. The helpers perform no filesystem I/O: they do not create directories, read files, write files, or test whether a path exists. Callers own all I/O.
+
+The path helpers are not a sandbox boundary. Extensions remain trusted, unsandboxed Node code running in the daemon/worker process; these APIs only standardize path layout and guard against accidental traversal in helper inputs.
+
+### `resolveScopedStoragePath(opts)`
+
+One-shot wrapper around `createEforgeProjectPaths(opts).storagePath(opts.scope, opts.segments)`.
+
+**Type:** `(opts: { cwd: string; configDir?: string; scope: EforgeStorageScope; segments: readonly string[] }) => string`
+
+### `resolveExtensionStoragePath(opts)`
+
+One-shot wrapper around `extensionStoragePath` for extension-owned storage.
+
+**Type:** `(opts: { cwd: string; configDir?: string; scope: EforgeStorageScope; extensionName: string; segments: readonly string[] }) => string`
+
+### `resolveProjectLocalStoragePath(opts)`
+
+Compatibility helper that resolves safe path segments under the project-local `.eforge/` root.
+
 **Type:** `(opts: { cwd: string; segments: readonly string[] }) => string`
 
-**Behavior:** validates each segment lexically, rejects empty segments, `.`/`..`, path separators, absolute paths, and null bytes, then returns an absolute path contained under `<cwd>/.eforge/`. The helper performs no filesystem I/O: it does not create directories, read files, write files, or test whether the path exists. Callers own any I/O and should continue treating extension code as trusted, unsandboxed project code.
+Prefer `createEforgeProjectPaths` or `resolveExtensionStoragePath` for new extension-owned storage so the scope and `storage/extensions/<extension-name>/` convention are explicit.
 
-This helper does not add a native workflow registration API. The bundled playbook and session-planning adapters are internal to `@eforge-build/input`; user-authored custom playbook or session-plan extraction remains future/deferred work.
+These helpers do not add a native workflow registration API. The bundled playbook and session-planning adapters are internal to `@eforge-build/input`; user-authored custom playbook or session-plan extraction remains future/deferred work.
 
 ---
 
@@ -699,7 +763,7 @@ interface ValidationProviderSpec {
    * Function form: run custom validation logic for the plan.
    *
    * Receives the absolute path to the plan worktree and an optional
-   * `ValidationProviderContext` with richer build facts (planId, logger,
+   * `ValidationProviderContext` with richer build facts (planId, paths, logger,
    * exec, signal, changedFiles).
    *
    * Return values:
@@ -743,6 +807,8 @@ interface ValidationProviderContext {
   planOutputDir: string;
   /** Same as `planOutputDir` — the worktree root path. */
   worktreePath: string;
+  /** Scoped eforge project path helpers initialized for this extension. */
+  paths: EforgeProjectPaths;
   /** Structured logger routed through the eforge daemon's log pipeline. */
   logger: ExtensionLogger;
   /** Shell-exec API for running subprocesses from a validation provider. */
@@ -873,6 +939,8 @@ The base context passed to all handlers. Provides logging and command execution.
 interface EforgeExtensionContext {
   logger: ExtensionLogger;
   exec: ExtensionExecApi;
+  /** Scoped path helpers for resolving eforge-owned storage locations. */
+  paths: EforgeProjectPaths;
 }
 ```
 

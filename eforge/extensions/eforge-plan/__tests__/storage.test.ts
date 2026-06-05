@@ -150,12 +150,13 @@ describe('eforge-plan markdown storage', () => {
 });
 
 describe('eforge-plan trace storage', () => {
-  it('places trace paths under project-local extension data', async () => {
+  it('places trace paths under project-local extension-owned storage', async () => {
     await withTempProject(async (cwd) => {
       const tracePath = resolveTracePath(cwd, 'item-1');
-      expect(tracePath).toContain(`${sep}.eforge${sep}extension-data${sep}eforge-plan${sep}traces${sep}item-1.json`);
+      expect(tracePath).toContain(`${sep}.eforge${sep}storage${sep}extensions${sep}eforge-plan${sep}traces${sep}item-1.json`);
       expect(tracePath).not.toContain(`${sep}.eforge${sep}extensions${sep}eforge-plan${sep}`);
-      expect(relative(cwd, tracePath).startsWith(`.eforge${sep}extension-data${sep}eforge-plan${sep}traces`)).toBe(true);
+      expect(tracePath).not.toContain(`${sep}.eforge${sep}extension-data${sep}eforge-plan${sep}`);
+      expect(relative(cwd, tracePath).startsWith(`.eforge${sep}storage${sep}extensions${sep}eforge-plan${sep}traces`)).toBe(true);
       expect(await readTraceSidecar(cwd, 'item-1')).toBeNull();
     });
   });
