@@ -1,0 +1,75 @@
+name: split-client-event-schemas-for-maintainability
+description: Split the @eforge-build/client event schema god-file into focused
+  internal modules while preserving public event contracts and generated docs
+  behavior.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/client type-check
+  - pnpm --filter @eforge-build/client build
+  - pnpm maintainability:check
+  - pnpm exec vitest run "packages/client/src/__tests__/events-schemas*.test.ts"
+    "packages/client/src/__tests__/events-wire-parity*.test.ts"
+    packages/client/src/__tests__/terminal-failure-event.test.ts
+    packages/client/src/__tests__/events-schema-shape.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-split-client-event-schemas
+    name: Split Client Event Schemas
+    depends_on: []
+    branch: split-client-event-schemas-for-maintainability/plan-01-split-client-event-schemas
+    build:
+      - implement
+      - test-write
+      - doc-sync
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Large contract-preserving TypeBox refactor with many internal module
+          boundaries and strict public export preservation.
+      reviewer:
+        effort: high
+        rationale: Review must check schema shape, public exports, parse order, and
+          generated-doc extraction assumptions.
+      tester:
+        effort: high
+        rationale: Validation spans TypeScript narrowing, TypeBox runtime parsing, docs
+          drift, and file-size gates.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - doc-sync
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - code
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: Excursion fits because this is a cohesive internal refactor within
+    @eforge-build/client with clear public-contract constraints; a single
+    planner can enumerate module splits and dependent edits without delegated
+    expedition planning. A plan review gate is warranted for contract-sensitive
+    architecture work. Build writes needed tests/docs, runs the registered
+    maintainability validation before review, then uses iterative API/code
+    review and final test execution to protect schema shape, exports, parse
+    behavior, and generated documentation.
+diff_base_ref: 4c9c3fe663b5d3a58b729a02fda613050d666f75
