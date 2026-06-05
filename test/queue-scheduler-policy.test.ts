@@ -291,8 +291,11 @@ describe('QueueScheduler — queue:mutation event', () => {
     await scheduler.start();
 
     // Write a PRD file to the queue directory
-    const prdContent = '---\ntitle: New PRD\nstatus: pending\n---\n\n# New PRD\n\nDo something.';
+    const prdContent = '---\ntitle: New PRD\nstatus: pending\ndepends_on: [base-prd]\n---\n\n# New PRD\n\nDo something.';
     await writeFile(join(cwd, 'eforge', 'queue', 'new-prd.md'), prdContent);
+
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, { prdId: 'base-prd', artifactBranch: 'eforge/base-prd', commitSha: 'abc123', resolvedBase: 'main', landingAction: 'pr', status: 'built', recordedAt: now, updatedAt: now });
 
     // Inject a queue:mutation event
     const mutationEvent: SchedulerInputEvent = {
@@ -313,8 +316,9 @@ describe('QueueScheduler — queue:mutation event', () => {
 
     // Should have discovered the PRD
     expect(types).toContain('queue:prd:discovered');
-    const discovered = events.find((e) => e.type === 'queue:prd:discovered') as { prdId: string } | undefined;
+    const discovered = events.find((e) => e.type === 'queue:prd:discovered') as { prdId: string; dependsOn?: string[] } | undefined;
     expect(discovered?.prdId).toBe('new-prd');
+    expect(discovered?.dependsOn).toEqual(['base-prd']);
 
     // Should have spawned a build (session:start emitted before spawnPrdChild)
     expect(types).toContain('session:start');

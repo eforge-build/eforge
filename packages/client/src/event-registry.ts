@@ -21,6 +21,7 @@
  */
 
 import type { EforgeEvent, StackLayerWire } from './events.js';
+import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked } from './event-projections/queue.js';
 import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -1305,19 +1306,7 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Enqueued: ${e.title}`,
     // daemon:run:upsert remains the single source of truth for DaemonState.runs.
-    // This projector only affects DaemonState.queue: it inserts a pending QueueItem
-    // so Console shows the item immediately, before queue:prd:discovered is
-    // emitted. Uses event.id as the QueueItem id (not event.planSet or event.filePath).
-    // Idempotent: duplicate enqueue:complete events leave only one queue item.
-    project(event, state) {
-      if (state.queue.some((item) => item.id === event.id)) return undefined;
-      const newItem: QueueItem = {
-        id: event.id,
-        title: event.title,
-        status: 'pending',
-      };
-      return { queue: [...state.queue, newItem] };
-    },
+    project: projectEnqueueComplete,
   },
 
   'enqueue:failed': {
@@ -1539,6 +1528,7 @@ const eventRegistry = {
     scope: 'daemon',
     persist: true,
     summary: (e) => `PRD ${e.prdId} blocked by: ${e.blockedBy.join(', ')}`,
+    project: projectSchedulerDependencyBlocked,
   },
 
   'daemon:scheduler:paused': {
@@ -1708,15 +1698,7 @@ const eventRegistry = {
     scope: 'daemon',
     persist: true,
     summary: (e) => `Discovered PRD: ${e.title} (${e.prdId})`,
-    project(event, state) {
-      if (state.queue.some((item) => item.id === event.prdId)) return undefined;
-      const newItem: QueueItem = {
-        id: event.prdId,
-        title: event.title,
-        status: 'pending',
-      };
-      return { queue: [...state.queue, newItem] };
-    },
+    project: projectQueuePrdDiscovered,
   },
 
   'queue:prd:stale': {
@@ -1753,7 +1735,7 @@ const eventRegistry = {
       const idx = state.queue.findIndex((item) => item.id === event.prdId);
       if (idx === -1) return undefined;
       const updated = [...state.queue];
-      updated[idx] = { ...updated[idx], status: 'failed' };
+      updated[idx] = normalizeTerminalQueueItem(updated[idx], 'failed');
       return { queue: updated };
     },
   },
@@ -1767,7 +1749,7 @@ const eventRegistry = {
       if (idx === -1) return undefined;
       if (event.status === 'failed') {
         const updated = [...state.queue];
-        updated[idx] = { ...updated[idx], status: 'failed' };
+        updated[idx] = normalizeTerminalQueueItem(updated[idx], 'failed');
         return { queue: updated };
       }
       return { queue: state.queue.filter((item) => item.id !== event.prdId) };
@@ -1779,8 +1761,8 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Queue complete: ${e.processed} processed, ${e.skipped} skipped`,
     project(_event, state) {
-      const failed = state.queue.filter((item) => item.status === 'failed');
-      if (failed.length === state.queue.length) return undefined;
+      const failed = state.queue.filter((item) => item.status === 'failed').map((item) => normalizeTerminalQueueItem(item, 'failed'));
+      if (failed.length === state.queue.length && failed.every((item, idx) => item === state.queue[idx])) return undefined;
       return { queue: failed };
     },
   },

@@ -653,7 +653,88 @@ describe('eventRegistry — enqueue:complete queue projector', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Queue dependency projection
+// ---------------------------------------------------------------------------
 
+describe('eventRegistry — live queue dependency projectors', () => {
+  const baseState = {
+    runs: [],
+    queue: [],
+    autoBuild: null,
+    latestHeartbeat: null,
+    stackLayers: [],
+  };
+
+  it('projects queue:prd:discovered dependsOn into an empty queue', () => {
+    const project = eventRegistry['queue:prd:discovered'].project!;
+    const delta = project({
+      type: 'queue:prd:discovered',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      title: 'Child PRD',
+      dependsOn: ['parent-prd'],
+    }, baseState);
+
+    expect(delta?.queue?.[0]).toEqual({
+      id: 'child-prd',
+      title: 'Child PRD',
+      status: 'pending',
+      dependsOn: ['parent-prd'],
+    });
+  });
+
+  it('merges discovered dependencies into an existing enqueue-complete queue row', () => {
+    const project = eventRegistry['queue:prd:discovered'].project!;
+    const delta = project({
+      type: 'queue:prd:discovered',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      title: 'Child PRD',
+      dependsOn: ['parent-prd'],
+    }, {
+      ...baseState,
+      queue: [{ id: 'child-prd', title: 'Enqueued title', status: 'pending' }],
+    });
+
+    expect(delta?.queue?.[0]).toEqual({
+      id: 'child-prd',
+      title: 'Child PRD',
+      status: 'pending',
+      dependsOn: ['parent-prd'],
+    });
+  });
+
+  it('unions dependency-blocked ids into an existing queue row without dropping existing dependencies', () => {
+    const project = eventRegistry['daemon:scheduler:dependency-blocked'].project!;
+    const delta = project({
+      type: 'daemon:scheduler:dependency-blocked',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      blockedBy: ['parent-prd', 'sibling-prd'],
+    }, {
+      ...baseState,
+      queue: [{ id: 'child-prd', title: 'Child PRD', status: 'pending', dependsOn: ['existing-prd', 'parent-prd'] }],
+    });
+
+    expect(delta?.queue?.[0]?.dependsOn).toEqual(['existing-prd', 'parent-prd', 'sibling-prd']);
+  });
+
+  it('does not reintroduce dependencies on terminal queue rows', () => {
+    const project = eventRegistry['daemon:scheduler:dependency-blocked'].project!;
+    const delta = project({
+      type: 'daemon:scheduler:dependency-blocked',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      blockedBy: ['parent-prd'],
+    }, {
+      ...baseState,
+      queue: [{ id: 'child-prd', title: 'Child PRD', status: 'failed' }],
+    });
+
+    expect(delta).toBeUndefined();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // isPersistedDaemonEventType predicate

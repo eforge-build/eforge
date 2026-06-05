@@ -25,24 +25,23 @@ Evidence gathered during investigation on 2026-06-05:
 - `packages/console-ui/src/components/now/queue-card.tsx` already renders `blocked by ...` for loose queue rows when `NowQueueItem.dependsOn` is present.
 - `packages/console-ui/src/components/now/queue-stack-card.tsx` already renders dependency-linked queue stacks when the selector receives related queue items.
 - `packages/console-ui/src/lib/selectors/queue-stacks.ts` builds stack components from `QueueItem.dependsOn` relationships among pending, waiting, and running queue items.
-- `packages/client/src/event-registry.ts` currently projects `enqueue:complete` and `queue:prd:discovered` into minimal queue items containing only id, title, and status; it does not preserve or merge dependency metadata.
-- `packages/client/src/events/queue-events.ts` defines `queue:prd:discovered` with only `prdId` and `title`.
-- `packages/client/src/event-registry.ts` has no projector for `daemon:scheduler:dependency-blocked`, even though the event carries `prdId` and `blockedBy`.
+- `packages/client/src/events/queue-events.ts` defines `queue:prd:discovered` with optional `dependsOn` metadata sourced from PRD `depends_on` frontmatter.
+- `packages/client/src/event-projections/queue.ts` contains the queue live-state projectors used by `packages/client/src/event-registry.ts`; discovery events merge `dependsOn` into queue rows and `daemon:scheduler:dependency-blocked` defensively unions `blockedBy` into existing row metadata.
 - `packages/monitor/src/projections/queue-items.ts` can load `depends_on` from queue frontmatter into `QueueItem.dependsOn` for REST and `stream:hello` snapshots.
 - `packages/engine/src/queue/control.ts`, `packages/monitor/src/routes/queue-control.ts`, `packages/client/src/routes/queue-control.ts`, and `packages/client/src/browser-queue-control.ts` already implement the pattern for queue mutation routes: `priority`, `remove`, and browser helpers.
 - `docs/roadmap.md` aligns this work with **Console Observability and Control** (`Actionable build control`) and **Integration & Maturity** (`Queue lifecycle controls`).
 
-Classification: **feature / focused**. This is a unified feature because it combines one correctness fix, dependency visibility in live state, with a new user-facing Console queue-control action backed by typed daemon/client APIs.
+Classification: **feature / focused**. This is a unified feature because it combines dependency visibility in live state with a new user-facing Console queue-control action backed by typed daemon/client APIs.
 
 ## Goal
 
-Fix live Console queue state so dependency metadata is visible without a page reload, and add a typed, auditable Console control that removes one dependency from one pending or waiting queued PRD.
+Preserve live Console queue state dependency metadata without a page reload, and add a typed, auditable Console control that removes one dependency from one pending or waiting queued PRD.
 
 ## Approach
 
 Treat this as one unified queue-dependency control slice. The override feature is unsafe and confusing unless dependency visibility is correct. The same queue metadata, `dependsOn`, drives both the display fix and the button eligibility.
 
-Prefer live-state projection parity with REST queue projection. `queue:prd:discovered` should carry enough metadata to project the same dependency state as `loadQueueItemsSync`, and projectors should merge fields into existing queue items rather than dropping dependency data when the item already exists. A `daemon:scheduler:dependency-blocked` projector may be added as a defensive live patch, but it should not be the only source of dependency metadata.
+Prefer live-state projection parity with REST queue projection. `queue:prd:discovered` carries enough metadata to project the same dependency state as `loadQueueItemsSync`, and projectors merge fields into existing queue items rather than dropping dependency data when the item already exists. The `daemon:scheduler:dependency-blocked` projector is a defensive live patch, but it is not the only source of dependency metadata.
 
 The override API removes exactly one dependency from exactly one queued PRD. Use a request body like `{ dependencyId: string; reason?: string }` and a response that includes `id`, `previousStatus`, `currentStatus`, `removedDependency`, `previousDependsOn`, `currentDependsOn`, and whether the PRD was moved from `waiting` to the queue root.
 
@@ -62,8 +61,8 @@ Place dependency override with the existing per-row queue controls for the first
 
 Expected implementation targets:
 
-- `packages/client/src/events/queue-events.ts`: add optional dependency metadata to queue discovery events, or add a new dedicated event variant if needed for dependency projection.
-- `packages/client/src/event-registry.ts`: update `enqueue:complete` and `queue:prd:discovered` projectors to merge queue metadata instead of no-oping when an item already exists, and add a projector for `daemon:scheduler:dependency-blocked` when appropriate.
+- `packages/client/src/events/queue-events.ts`: keep optional `dependsOn` metadata on queue discovery events for live dependency projection.
+- `packages/client/src/event-projections/queue.ts` and `packages/client/src/event-registry.ts`: keep queue projectors delegated through the focused helper so `enqueue:complete`, `queue:prd:discovered`, and `daemon:scheduler:dependency-blocked` preserve dependency metadata.
 - `packages/client/src/events/snapshots.ts` and `packages/client/src/types.ts`: ensure queue-item and new route/event wire shapes remain the single source of truth.
 - `packages/client/src/routes/route-map.ts`: add a route constant for dependency override, likely under the existing queue-control family.
 - `packages/client/src/routes/queue-control.ts`: add request/response types for dependency override.
@@ -90,7 +89,7 @@ Assumptions and validation:
 
 | Assumption | Evidence / validation performed | Confidence | Cost to validate further | Validation path | Impact if wrong |
 |---|---|---|---|---|---|
-| The missing dependency display is caused by live event projection losing `dependsOn`, not by the Queue card renderer. | Read `queue-card.tsx`, `queue-stack-card.tsx`, `queue-stacks.ts`, `event-registry.ts`, and `queue-events.ts`; renderers already consume `dependsOn`, while live projectors create minimal queue items. | high | low | Add a focused projector test that replays `queue:prd:discovered`/`daemon:scheduler:dependency-blocked` and asserts `selectNowQueueStacks` output. | If wrong, work may need additional Console state or selector fixes. |
+| Live dependency display depends on event projection preserving `dependsOn`, not on Queue card renderer changes. | Read `queue-card.tsx`, `queue-stack-card.tsx`, `queue-stacks.ts`, `event-registry.ts`, `event-projections/queue.ts`, and `queue-events.ts`; renderers already consume `dependsOn`, while live projectors now merge discovery metadata and dependency-blocked patches into queue rows. | high | low | Keep projector and selector tests that replay `queue:prd:discovered`/`daemon:scheduler:dependency-blocked` and assert `selectNowQueueStacks` output. | If wrong, work may need additional Console state or selector fixes. |
 | Existing REST and `stream:hello` queue snapshots can carry correct dependency metadata. | Read `packages/monitor/src/projections/queue-items.ts`; it maps `depends_on` to `QueueItem.dependsOn` and filters to live ids. Current `eforge_queue_list` returned `dependsOn` for the queued item. | high | low | Add or update stream/REST parity tests with a dependency-linked running and pending pair. | If wrong, monitor queue projection also needs correction before Console can rely on snapshots. |
 | A waiting PRD with no remaining dependencies should be moved to the queue root by the override mutation. | Read `unblockWaiting` in `packages/engine/src/prd-queue.ts`; waiting items are normally moved to root only when dependencies are satisfied. A dependency override that removes the last dependency should make the item dispatchable. | high | medium | Implement route tests that assert file movement from `waiting/` to root after removing the last dependency. | If wrong, override would appear successful but the PRD would remain undispatchable. |
 | It is acceptable to scope override to one dependency at a time. | User requested an engineer override action; no requirement for bulk override was stated. Existing queue controls are item-scoped. | medium | low | Confirm UX in implementation by rendering one action per dependency or a chooser in the dialog. | If wrong, UI may require a multi-select dialog and broader route semantics. |

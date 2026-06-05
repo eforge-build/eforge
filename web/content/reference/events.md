@@ -209,7 +209,7 @@ Total variants: 220
 | `daemon:error` | `message`, `source`, `stack` |
 | `queue:start` | `dir`, `prdCount` |
 | `queue:prd:start` | `prdId`, `title` |
-| `queue:prd:discovered` | `prdId`, `title` |
+| `queue:prd:discovered` | `dependsOn`, `prdId`, `title` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
 | `queue:prd:commit-failed` | `error`, `prdId`, `title` |

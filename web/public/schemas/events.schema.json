@@ -10614,6 +10614,12 @@
             },
             "title": {
               "type": "string"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         },

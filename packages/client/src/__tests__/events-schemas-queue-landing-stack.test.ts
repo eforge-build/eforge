@@ -6,6 +6,19 @@ import { Value } from '@sinclair/typebox/value';
 
 // --- eforge:region event-schema-tests ---
 
+describe('safeParseEforgeEvent — queue discovery dependencies', () => {
+  it('accepts queue:prd:discovered with dependsOn metadata', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:prd:discovered',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'child-prd',
+      title: 'Child PRD',
+      dependsOn: ['parent-prd'],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('safeParseEforgeEvent — landing workflow literals', () => {
   it('accepts landing:start with feature-pr workflow literal (direct non-trunk PR)', () => {
     const result = safeParseEforgeEvent({

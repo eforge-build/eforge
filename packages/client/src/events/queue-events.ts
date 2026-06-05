@@ -12,6 +12,7 @@ export const queueEventVariants = [
     type: Type.Literal('queue:prd:discovered'),
     prdId: Type.String(),
     title: Type.String(),
+    dependsOn: Type.Optional(Type.Array(Type.String())),
   }),
   Type.Object({
     type: Type.Literal('queue:prd:stale'),
