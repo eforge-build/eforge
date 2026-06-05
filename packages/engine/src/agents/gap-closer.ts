@@ -73,6 +73,7 @@ export async function* runGapCloser(
         ...pickSdkOptions(options),
       },
       'gap-closer',
+      'gap-close',
     )) {
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;

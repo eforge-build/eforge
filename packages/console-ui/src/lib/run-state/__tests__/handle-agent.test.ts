@@ -93,6 +93,20 @@ describe('handle-agent', () => {
       expect(thread?.numTurns).toBeNull();
     });
 
+    it('maps legacy plan-less gap-closer starts onto the gap-close lane', () => {
+      const event = makeEvent('agent:start', {
+        agentId: 'gap1',
+        agent: 'gap-closer',
+        model: 'gpt-5.5',
+        harness: 'pi',
+        harnessSource: 'tier',
+        tier: 'planning',
+        tierSource: 'tier',
+      });
+      const delta = handleAgentStart(event, initialRunState);
+      expect(delta?.agentThreads?.[0]?.planId).toBe('gap-close');
+    });
+
     it('appends to existing agentThreads (does not replace)', () => {
       const existing = makeThread({ agentId: 'existing', agent: 'planner', planId: undefined });
       const state = { ...initialRunState, agentThreads: [existing] };

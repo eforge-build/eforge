@@ -19,6 +19,8 @@ import type { AgentThread, AgentActivityFacts } from '../types';
 import type { EventHandler } from './handler-types';
 import { formatThinking } from '../format';
 
+type AgentStartEvent = Parameters<EventHandler<'agent:start'>>[0];
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
@@ -69,11 +71,20 @@ function updateThread(
 // Handlers
 // ---------------------------------------------------------------------------
 
+function agentThreadPlanId(event: AgentStartEvent): string | undefined {
+  if (event.planId !== undefined) return event.planId;
+  // Compatibility for older/current runs: gap-closer was emitted without a
+  // planId during its plan-generation pass, which caused it to render in the
+  // synthetic Compile/global lane instead of the Gap Close phase lane.
+  if (event.agent === 'gap-closer') return 'gap-close';
+  return undefined;
+}
+
 export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
   const thread: AgentThread = {
     agentId: event.agentId,
     agent: event.agent,
-    planId: event.planId,
+    planId: agentThreadPlanId(event),
     startedAt: event.timestamp,
     endedAt: null,
     durationMs: null,

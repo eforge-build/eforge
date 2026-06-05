@@ -302,6 +302,9 @@ describe('gap-closer lane assignment (regression)', () => {
       },
     }));
 
+    const gapCloserStarts = filterEvents(events, 'agent:start').filter((event) => event.agent === 'gap-closer');
+    expect(gapCloserStarts).toHaveLength(1);
+    expect(gapCloserStarts[0].planId).toBe('gap-close');
     expect(capturedPlanId).toBe('gap-close');
   });
 });
