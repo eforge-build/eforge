@@ -15,7 +15,18 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, setQueuedPrdStackParent, movePrdToSubdir, readPrdLockStatus, releasePrd } from '../prd-queue.js';
+import {
+  getCompiledResumeFrontmatter,
+  loadQueue,
+  movePrdToSubdir,
+  propagateSkip,
+  readPrdLockStatus,
+  releasePrd,
+  resolveQueueOrder,
+  setQueuedPrdProfile,
+  setQueuedPrdStackParent,
+  unblockWaiting,
+} from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
@@ -714,6 +725,7 @@ export class QueueScheduler {
 
           const policyGates = this.extensionRegistry?.policyGates;
           if (policyGates && policyGates.some((registration) => registration.gateKind === 'queue-dispatch')) {
+            const compiledResume = getCompiledResumeFrontmatter(currentPrd.frontmatter);
             const policyResult = await executePolicyGate({
               registry: { policyGates },
               gateKind: 'queue-dispatch',
@@ -724,6 +736,7 @@ export class QueueScheduler {
                   priority: currentPrd.frontmatter.priority,
                   profile: currentPrd.frontmatter.profile,
                   dependsOn: currentPrd.frontmatter.depends_on ?? [],
+                  ...(compiledResume !== undefined && { compiledResume }),
                 },
                 { cwd: this.cwd },
               ),
