@@ -78,7 +78,7 @@ Queue controls are safe runtime filesystem mutations under `.eforge/queue/` and 
 
 Use `eforge queue remove <prdId>` to delete a non-running pending, waiting, failed, or skipped queue item. Removing a failed item also deletes matching `.recovery.md` and `.recovery.json` sidecars. Running items reject both priority and removal controls because active work is owned by its build session; cancel running work through the existing session-id cancel route/tool instead.
 
-If removal reports live dependents, eforge failed closed because pending or waiting queue items still depend on the target. The conflict lists dependent ids; remove those dependents first until future cascade-aware removal controls ship. If a queue file was moved or deleted between listing and mutation, refresh the queue view and retry against the current item id. After successful priority or removal mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
+If removal reports live dependents, eforge failed closed because pending or waiting queue items still depend on the target. The conflict lists dependent ids; remove those dependents first; there is no cascade remove action. If a queue file was moved or deleted between listing and mutation, refresh the queue view and retry against the current item id. After successful priority or removal mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
 
 Console exposes set-priority and confirmed remove actions on pending/waiting queue rows. MCP and Pi expose the same host tool names, `eforge_queue_priority` and `eforge_queue_remove`; priority applies to pending/waiting items and removal applies to non-running pending, waiting, failed, and skipped items.
 
@@ -181,9 +181,9 @@ After an exhausted-retries failure, use `/eforge:recover` to apply the recovery 
 
 ## Extension policy gate `require-approval` blocks a build
 
-Policy gates can return `{ decision: 'require-approval', reason }`. This decision currently blocks the gated operation because no approval workflow exists yet. If a build is stuck on a policy gate, check Console for `extension:policy:decision` events with `decision: require-approval`.
+Policy gates can return `{ decision: 'require-approval', reason }`, but eforge does not provide an approval workflow, approval state, or Console approval UI. The decision blocks the gated operation. If a build is stuck on a policy gate, check Console for `extension:policy:decision` events with `decision: require-approval`.
 
-**Short-term fix:** change the extension to return `{ decision: 'allow' }` or `{ decision: 'block', reason }` until an approval workflow is implemented. The `require-approval` decision type is reserved for a future release.
+**Supported fix:** change the extension to return `{ decision: 'allow' }` or `{ decision: 'block', reason }`. Treat `require-approval` as unsupported for runtime approvals in the current release.
 
 See [Extensions API - Policy gates](/docs/extensions-api) and [Configuration - Native Extensions](/docs/configuration#native-extensions) for `policyGateFailurePolicy` and timeout configuration.
 

@@ -1,7 +1,14 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const readRepoFile = (path: string) => readFileSync(path, 'utf-8');
+
+// --- eforge:region plan-01-public-web-docs-audit ---
+const publicDocsFiles = () => [
+  ...readdirSync('web/content/docs').map((entry) => `web/content/docs/${entry}`),
+  ...readdirSync('web/public/docs').map((entry) => `web/public/docs/${entry}`),
+].filter((path) => path.endsWith('.md'));
+// --- eforge:endregion plan-01-public-web-docs-audit ---
 
 describe('plan-01 reference and raw mirror content', () => {
   it('checks in raw mirrors for extension guide pages', () => {
@@ -66,6 +73,22 @@ describe('plan-01 reference and raw mirror content', () => {
       const raw = readRepoFile(path);
       for (const staleReference of forbidden) {
         expect(raw).not.toContain(staleReference);
+      }
+    }
+  });
+
+  it('keeps public docs on public references and current queue/approval behavior', () => {
+    const forbidden = [
+      'docs/hooks.md',
+      'until future cascade',
+      'future cascade-aware',
+      'future release',
+    ];
+
+    for (const path of publicDocsFiles()) {
+      const raw = readRepoFile(path);
+      for (const staleReference of forbidden) {
+        expect(raw, `${path} should not contain ${staleReference}`).not.toContain(staleReference);
       }
     }
   });

@@ -9,7 +9,7 @@
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { Project } from 'ts-morph';
+import { Project, type Node } from 'ts-morph';
 import { parse as parseYaml } from 'yaml';
 import type { OutputPaths } from '../output-paths.js';
 import type { ProvenanceInfo } from '../provenance.js';
@@ -52,20 +52,46 @@ const SKILL_PAIRS_CONFIG = [
   { plugin: 'recover', pi: 'eforge-recover' },
 ] as const;
 
-function extractStringLiteralValue(
-  node: ReturnType<ReturnType<typeof Project.prototype.addSourceFileAtPath>['getDescendantsOfKind']>[0] | undefined,
-): string | undefined {
-  if (!node) return undefined;
-  // node is a ts-morph Node; try to get literal value
+// --- eforge:region plan-01-public-web-docs-audit ---
+function getStaticLiteralString(node: Node): string | undefined {
+  const kind = node.getKindName();
+  if (kind !== 'StringLiteral' && kind !== 'NoSubstitutionTemplateLiteral') return undefined;
+
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const asStr = (node as any).getLiteralValue?.() as string | undefined;
-    if (typeof asStr === 'string') return asStr;
+    const literalValue = (node as { getLiteralValue?: () => unknown }).getLiteralValue?.();
+    return typeof literalValue === 'string' ? literalValue : undefined;
   } catch {
-    // Ignore
+    return undefined;
   }
+}
+
+function extractStaticString(node: Node | undefined): string | undefined {
+  if (!node) return undefined;
+
+  const literal = getStaticLiteralString(node);
+  if (literal !== undefined) return literal;
+
+  if (node.getKindName() === 'ParenthesizedExpression') {
+    const expression = (node as { getExpression?: () => Node }).getExpression?.();
+    return extractStaticString(expression);
+  }
+
+  if (node.getKindName() === 'BinaryExpression') {
+    const binary = node as {
+      getLeft?: () => Node;
+      getRight?: () => Node;
+      getOperatorToken?: () => { getKindName?: () => string };
+    };
+    if (binary.getOperatorToken?.().getKindName?.() !== 'PlusToken') return undefined;
+
+    const left = extractStaticString(binary.getLeft?.());
+    const right = extractStaticString(binary.getRight?.());
+    return left !== undefined && right !== undefined ? left + right : undefined;
+  }
+
   return undefined;
 }
+// --- eforge:endregion plan-01-public-web-docs-audit ---
 
 function extractMcpTools(repoRoot: string): ToolEntry[] {
   const filePaths = [
@@ -117,17 +143,11 @@ function extractMcpTools(repoRoot: string): ToolEntry[] {
       const descProp = optObj.getProperty?.('description');
 
       if (nameProp?.getKindName?.() === 'PropertyAssignment') {
-        const init = nameProp.getInitializer?.();
-        if (init?.getKindName?.() === 'StringLiteral') {
-          name = init.getLiteralValue?.() as string | undefined;
-        }
+        name = extractStaticString(nameProp.getInitializer?.());
       }
 
       if (descProp?.getKindName?.() === 'PropertyAssignment') {
-        const init = descProp.getInitializer?.();
-        if (init?.getKindName?.() === 'StringLiteral') {
-          description = init.getLiteralValue?.() as string | undefined;
-        }
+        description = extractStaticString(descProp.getInitializer?.());
       }
 
       if (name) {
@@ -183,17 +203,11 @@ function extractPiTools(repoRoot: string): ToolEntry[] {
       const descProp = optObj.getProperty?.('description');
 
       if (nameProp?.getKindName?.() === 'PropertyAssignment') {
-        const init = nameProp.getInitializer?.();
-        if (init?.getKindName?.() === 'StringLiteral') {
-          name = init.getLiteralValue?.() as string | undefined;
-        }
+        name = extractStaticString(nameProp.getInitializer?.());
       }
 
       if (descProp?.getKindName?.() === 'PropertyAssignment') {
-        const init = descProp.getInitializer?.();
-        if (init?.getKindName?.() === 'StringLiteral') {
-          description = init.getLiteralValue?.() as string | undefined;
-        }
+        description = extractStaticString(descProp.getInitializer?.());
       }
 
       if (name) {

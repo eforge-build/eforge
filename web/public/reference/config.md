@@ -13,20 +13,20 @@ eforge merges configuration from three tiers (highest precedence first):
 
 | Field | Description |
 |-------|-------------|
-| `agents` |  |
-| `build` |  |
-| `daemon` |  |
+| `agents` | Agent runtime configuration, including tiers, roles, prompt overrides, permissions, and model-turn limits. |
+| `build` | Build execution settings such as worktree location, validation commands, cleanup, trunk policy, and validation waivers. |
+| `daemon` | Daemon lifecycle settings for the long-running project watcher and API process. |
 | `extensions` | Native eforge extension configuration |
-| `hooks` |  |
+| `hooks` | Fire-and-forget shell commands triggered by matching eforge events. |
 | `landing` | Publication action taken after all plans complete and validation passes. |
-| `langfuse` |  |
-| `maxConcurrentBuilds` |  |
-| `monitor` |  |
-| `plan` |  |
-| `plugins` |  |
-| `prdQueue` |  |
+| `langfuse` | Optional Langfuse tracing configuration for agent runs. |
+| `maxConcurrentBuilds` | Maximum number of queued PRD builds that may run concurrently. |
+| `monitor` | Monitor and Console retention settings for recorded runs and events. |
+| `plan` | Plan artifact output settings used during compile. |
+| `plugins` | Host plugin integration settings. |
+| `prdQueue` | Queue directory, auto-build, and watcher polling settings for queued PRDs. |
 | `stacking` | Stacking configuration for git-spice backed stacked PRs. Set stacking.enabled: true to activate; each artifact branch PR then targets the parent artifact branch rather than trunk. PRD frontmatter fields stack_id (logical stack name) and stack_parent (parent PRD id) control the topology. |
-| `tools` |  |
+| `tools` | Toolbelt configuration for named project MCP server bundles. |
 
 ## Toolbelts
 
