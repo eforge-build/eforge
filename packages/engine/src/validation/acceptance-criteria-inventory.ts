@@ -1,4 +1,5 @@
 import { analyzeAcceptanceCriteriaItem, extractExpectedAcceptanceCriteria, normalizeCriterionText, type ExpectedAcceptanceCriterion } from './acceptance-criteria.js';
+import { findJsonObjectText } from './json-object-extractor.js';
 
 export const AC_INVENTORY_VERSION = 1;
 export const AC_EXTRACTION_MIN_CONFIDENCE = 0.7;
@@ -173,7 +174,11 @@ export function parseAcceptanceCriteriaExtractorOutput(
   source: string,
   options: AcceptanceInventoryValidationOptions = {},
 ): CanonicalAcceptanceCriteriaInventory {
-  const parsed = parseJsonObject(text);
+  const jsonText = findJsonObjectText(text);
+  if (!jsonText) {
+    throw invalidInventoryError([{ kind: 'invalid-json', message: 'Acceptance criteria extractor output did not contain a JSON object.' }]);
+  }
+  const parsed = parseJsonObject(jsonText);
   if (parsed.diagnostic) throw invalidInventoryError([parsed.diagnostic]);
   const result = validateCanonicalAcceptanceCriteriaInventory(parsed.value, source, { ...options, requireIds: false });
   if (!result.valid) throw invalidInventoryError(result.diagnostics);
