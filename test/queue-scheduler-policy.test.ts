@@ -123,6 +123,86 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
       profile: 'careful',
       dependsOn: ['base-prd'],
     }));
+    expect(seenContext).not.toHaveProperty('compiledResume');
+
+    eventQueue.removeProducer();
+  });
+
+  it('passes compiled-resume metadata to queue dispatch policy gates', async () => {
+    const { cwd, eventQueue, makeScheduler } = await createTestEnv();
+    const prdPath = join(cwd, 'eforge', 'queue', 'compiled-resume-prd.md');
+    await writeFile(prdPath, [
+      '---',
+      'title: Compiled Resume PRD',
+      'profile: careful',
+      'depends_on: [base-prd]',
+      'resume_mode: compiled',
+      'resume_from: failed-prd',
+      'resume_set_name: failed-set',
+      'resume_feature_branch: eforge/failed-set',
+      'resume_base_branch: main',
+      '---',
+      '',
+      '# Compiled Resume PRD',
+    ].join('\n'));
+    await exec('git', ['add', '.'], { cwd });
+    await exec('git', ['commit', '-m', 'queue files'], { cwd });
+    // base-prd completed in a prior run — write a registry artifact so compiled-resume-prd is ready.
+    const now = new Date().toISOString();
+    await upsertArtifact(cwd, { prdId: 'base-prd', artifactBranch: 'eforge/base-prd', commitSha: 'abc123', resolvedBase: 'main', landingAction: 'pr', status: 'built', recordedAt: now, updatedAt: now });
+
+    type SeenQueueDispatchContext = {
+      gateKind?: string;
+      prdId?: string;
+      prdTitle?: string;
+      profile?: string;
+      dependsOn?: string[];
+      compiledResume?: {
+        mode?: string;
+        sourcePrdId?: string;
+        setName?: string;
+        featureBranch?: string;
+        baseBranch?: string;
+      };
+    };
+    const frontmatter = {
+      title: 'Compiled Resume PRD',
+      profile: 'careful',
+      depends_on: ['base-prd'],
+      resume_mode: 'compiled',
+      resume_from: 'failed-prd',
+      resume_set_name: 'failed-set',
+      resume_feature_branch: 'eforge/failed-set',
+      resume_base_branch: 'main',
+    };
+    let seenContext: SeenQueueDispatchContext | undefined;
+    const scheduler = makeScheduler(
+      [{ ...makeQueuedPrd('compiled-resume-prd', ['base-prd'], prdPath), frontmatter }],
+      [makeQueueDispatchPolicyGate(((ctx: SeenQueueDispatchContext) => {
+        seenContext = ctx;
+        return { decision: 'allow' };
+      }) as PolicyGateRegistration['value'])],
+    );
+
+    await scheduler.start();
+    await vi.waitFor(() => {
+      expect(seenContext).toBeDefined();
+    });
+
+    expect(seenContext).toEqual(expect.objectContaining({
+      gateKind: 'queue-dispatch',
+      prdId: 'compiled-resume-prd',
+      prdTitle: 'Compiled Resume PRD',
+      profile: 'careful',
+      dependsOn: ['base-prd'],
+      compiledResume: {
+        mode: 'compiled',
+        sourcePrdId: 'failed-prd',
+        setName: 'failed-set',
+        featureBranch: 'eforge/failed-set',
+        baseBranch: 'main',
+      },
+    }));
 
     eventQueue.removeProducer();
   });
