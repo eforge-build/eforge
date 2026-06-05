@@ -95,7 +95,7 @@ export default function HomePage() {
           >
             <img
               src="/screenshots/monitor-dashboard.png"
-              alt="eforge monitor showing build history, plan timelines, agent activity, model usage, and review cycles"
+              alt="eforge Console showing a recovery build running, a dependent plan waiting, spend by model, and build health"
               style={{ display: 'block', width: '100%', height: 'auto' }}
             />
           </div>
@@ -107,7 +107,7 @@ export default function HomePage() {
               textAlign: 'center',
             }}
           >
-            Track delegated builds, inspect agent activity, and follow review cycles while eforge runs engineering work in the background.
+            Track recovery builds, dependent plans, model spend, and build health while eforge runs engineering work in the background.
           </figcaption>
         </figure>
       </section>

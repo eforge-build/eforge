@@ -13,7 +13,7 @@ Harness engineering - the discipline of designing everything around an LLM that 
 
 The name: **eforge** means **extensible forge** - a small, durable kernel for shaping code from plans, with extension surfaces around it.
 
-<img src="docs/images/monitor-full-pipeline.png" alt="eforge dashboard - full pipeline" width="800">
+<img src="docs/images/console-recovery-build.png" alt="eforge Console showing a recovery build running, a dependent plan waiting, spend by model, and build health" width="800">
 
 > **Status:** This is a young project moving fast. Used daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
 
