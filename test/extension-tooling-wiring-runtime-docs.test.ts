@@ -181,8 +181,8 @@ describe('extension runtime documentation', () => {
       expect(source).toMatch(/(?:raw extension-owned HTTP routes?|raw HTTP routes?)[^.\n]*(?:unsupported|deferred|not supported|do not register)|(?:unsupported|deferred|not supported|do not register)[^.\n]*(?:raw extension-owned HTTP routes?|raw HTTP routes?)/i);
       expect(source).toMatch(/arbitrary Console JavaScript[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*arbitrary Console JavaScript/i);
       expect(source).toMatch(/React bundles?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*React bundles?/i);
-      expect(source).toMatch(/session-plan extraction[^.\n]*(?:deferred|future|not shipped)|(?:deferred|future|not shipped)[^.\n]*session-plan extraction/i);
-      expect(source).toMatch(/playbook extraction[^.\n]*(?:deferred|future|not shipped)|(?:deferred|future|not shipped)[^.\n]*playbook extraction/i);
+      expect(source).toMatch(/(?:user-authored[^.\n]*session-plan[^.\n]*extraction|session-plan extraction[^.\n]*(?:user-authored )?extensions)[^.\n]*(?:deferred|future|not shipped|unsupported|remain)|(?:deferred|future|not shipped|unsupported|remain)[^.\n]*(?:user-authored[^.\n]*session-plan[^.\n]*extraction|session-plan extraction[^.\n]*(?:user-authored )?extensions)/i);
+      expect(source).toMatch(/(?:user-authored[^.\n]*playbook extraction|playbook extraction[^.\n]*(?:user-authored )?extensions)[^.\n]*(?:deferred|future|not shipped|unsupported|remain)|(?:deferred|future|not shipped|unsupported|remain)[^.\n]*(?:user-authored[^.\n]*playbook extraction|playbook extraction[^.\n]*(?:user-authored )?extensions)/i);
     }
   });
 

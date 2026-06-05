@@ -4,7 +4,7 @@ Reusable build-input protocols for eforge - playbook and session-plan artifacts 
 
 ## Consumers
 
-- `@eforge-build/monitor` - daemon playbook routes, session-plan compatibility routes, and adapter-backed normalization for session-plan source paths before enqueue
+- `@eforge-build/monitor` - daemon playbook and session-plan compatibility routes backed by bundled input workflow adapters, plus adapter-backed normalization for session-plan source paths before enqueue
 - `@eforge-build/eforge` - in-process adapter-backed normalization for CLI build commands that accept session plans or playbooks as input
 - Future wrapper apps that need to compile playbooks or session plans to build source independently of the daemon
 
@@ -157,6 +157,22 @@ This is a read-only protocol. It does **not** create, add, update, or delete pla
 - `normalizeBuildSource(input)` - single chokepoint for session-plan handling: if a source path matches `**/.eforge/session-plans/*.md`, parses the plan and converts it to ordinary build source; other paths pass through unchanged
 
 The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match this pattern are returned unchanged.
+
+### Bundled playbook workflow adapter
+
+`createPlaybookWorkflowAdapter()` returns the built-in adapter that bundles the three-tier playbook protocol behind one workflow-shaped boundary. It is internal to eforge's shipped playbook flow: daemon services use it as a compatibility shim for client-owned HTTP routes and wire response shapes while the engine still receives only normalized build source. It is not a native extension registration API for user-authored playbook extraction.
+
+The adapter descriptor is exported as `PLAYBOOK_WORKFLOW_ADAPTER_DESCRIPTOR`:
+
+```ts
+{
+  id: 'builtin:playbooks',
+  kind: 'workflow-input-adapter',
+  sourceScopes: ['project-local', 'project-team', 'user'],
+}
+```
+
+The adapter exposes a `scoped` surface for list/load/save/write/move/promote/demote/copy, raw validation, autonomous compilation, and planning session-plan seed creation. Daemon services keep HTTP error mapping, landing-action validation, queue dependency handling, profile lookup, acceptance-criteria inventory derivation, enqueue, and scheduler notification outside this package.
 
 ### Bundled session-planning workflow adapter
 

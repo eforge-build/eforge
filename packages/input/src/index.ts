@@ -212,6 +212,35 @@ export type {
 } from './session-plan-set.js';
 
 // ---------------------------------------------------------------------------
+// Playbook workflow adapter exports
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-playbook-workflow-adapter ---
+export {
+  PLAYBOOK_WORKFLOW_ADAPTER_DESCRIPTOR,
+  PlaybookWorkflowValidationError,
+  PlaybookWorkflowSessionPlanExistsError,
+  isPlaybookWorkflowValidationError,
+  isPlaybookWorkflowSessionPlanExistsError,
+  isPlaybookWorkflowModeMismatchError,
+  createPlaybookWorkflowAdapter,
+} from './playbook-workflow.js';
+
+export type {
+  PlaybookWorkflowSaveOptions,
+  PlaybookWorkflowPromoteDemoteOptions,
+  PlaybookWorkflowSeedPlanningSessionPlanOptions,
+  PlaybookWorkflowSeedPlanningSessionPlanResult,
+  PlaybookWorkflowListResult,
+  PlaybookWorkflowLoadResult,
+  PlaybookWorkflowWriteResult,
+  PlaybookWorkflowMoveResult,
+  PlaybookWorkflowRawValidationResult,
+  PlaybookWorkflowAdapter,
+} from './playbook-workflow.js';
+// --- eforge:endregion plan-01-playbook-workflow-adapter ---
+
+// ---------------------------------------------------------------------------
 // Session planning workflow adapter exports
 // ---------------------------------------------------------------------------
 

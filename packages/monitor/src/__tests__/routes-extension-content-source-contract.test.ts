@@ -98,6 +98,30 @@ describe('extension content route source contracts', () => {
     }
   });
 
+  // --- eforge:region plan-01-playbook-workflow-adapter ---
+  it('keeps playbook services behind the bundled workflow adapter', () => {
+    const service = readRouteFile('playbook-service.ts');
+    expect(service).toContain("await import('@eforge-build/input')");
+    expect(service).toContain('createPlaybookWorkflowAdapter');
+    expect(service).toMatch(/\.scoped\.(?:list|load|save|write|move|promote|demote|copy|validateRaw|compileAutonomous|seedPlanningSessionPlan)\b/);
+    for (const helperName of [
+      'listPlaybooks',
+      'loadPlaybook',
+      'writePlaybook',
+      'movePlaybook',
+      'copyPlaybookToScope',
+      'validatePlaybook',
+      'playbookToBuildSource',
+      'createSessionPlanFromPlaybookSeed',
+      'resolveSessionPlanPath',
+      'writeSessionPlan',
+    ]) {
+      expect(service, helperName).not.toMatch(new RegExp(`\\b(?:const|let|var)\\s*\\{[^}]*${helperName}[^}]*\\}\\s*=\\s*await\\s+import`));
+      expect(service, helperName).not.toMatch(new RegExp(`\\b${helperName}\\s*\\(`));
+    }
+  });
+  // --- eforge:endregion plan-01-playbook-workflow-adapter ---
+
   it('does not import server-main from extension content route modules', () => {
     for (const file of CONTENT_ROUTE_FILES) {
       const serverMainImports = productionLines(file).filter((line) => /^import\s/.test(line))
