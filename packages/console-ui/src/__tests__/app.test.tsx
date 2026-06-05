@@ -91,10 +91,12 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 /**
- * Text that is always present when NowDashboard is mounted.
- * QueueCard renders "Nothing waiting to build" when the queue is empty (our mock state).
+ * Element that is always present when NowDashboard is mounted. The dashboard
+ * root carries this testid unconditionally, so it is the stable route marker —
+ * unlike any individual section (Queue, active builds, attention), each of which
+ * can be absent depending on state.
  */
-const NOW_MARKER = 'Nothing waiting to build';
+const NOW_MARKER_TESTID = 'now-dashboard';
 
 /**
  * Text present while RunDetailView's lazy module is still resolving
@@ -114,7 +116,7 @@ describe('App — popstate routing', () => {
     // Suspense fallback should be visible before the lazy component resolves
     expect(screen.getByText(RUN_DETAIL_SUSPENSE_MARKER)).toBeDefined();
     // NowDashboard must not be present on this route
-    expect(screen.queryByText(NOW_MARKER)).toBeNull();
+    expect(screen.queryByTestId(NOW_MARKER_TESTID)).toBeNull();
   });
 
   it('initial render at /console/plans mounts the Plans route, not NowDashboard', async () => {
@@ -122,7 +124,7 @@ describe('App — popstate routing', () => {
     render(<App />);
 
     // NowDashboard must not be present on the plans route
-    expect(screen.queryByText(NOW_MARKER)).toBeNull();
+    expect(screen.queryByTestId(NOW_MARKER_TESTID)).toBeNull();
     // Allow the lazy mock to resolve
     await act(async () => {});
     expect(screen.getByTestId('plans-view')).toBeDefined();
@@ -131,7 +133,7 @@ describe('App — popstate routing', () => {
   it('unknown routes render the Now dashboard', () => {
     window.history.pushState(null, '', '/console/not-a-route');
     render(<App />);
-    expect(screen.getByText(NOW_MARKER)).toBeDefined();
+    expect(screen.getByTestId(NOW_MARKER_TESTID)).toBeDefined();
   });
 
   it('switches from run-detail to now-dashboard when popstate fires with /console/ pathname', async () => {
@@ -139,7 +141,7 @@ describe('App — popstate routing', () => {
     render(<App />);
 
     // Confirm we are not on Now before the navigation
-    expect(screen.queryByText(NOW_MARKER)).toBeNull();
+    expect(screen.queryByTestId(NOW_MARKER_TESTID)).toBeNull();
 
     // Simulate browser back: update the URL then fire popstate
     await act(async () => {
@@ -148,7 +150,7 @@ describe('App — popstate routing', () => {
     });
 
     // NowDashboard should now be rendered
-    expect(screen.getByText(NOW_MARKER)).toBeDefined();
+    expect(screen.getByTestId(NOW_MARKER_TESTID)).toBeDefined();
   });
 
   it('returns to now-dashboard after forward navigation + popstate back', async () => {
@@ -156,7 +158,7 @@ describe('App — popstate routing', () => {
     render(<App />);
 
     // Starting at /console/ — NowDashboard should be visible
-    expect(screen.getByText(NOW_MARKER)).toBeDefined();
+    expect(screen.getByTestId(NOW_MARKER_TESTID)).toBeDefined();
 
     // Simulate in-app forward navigation (pushState + popstate mimics the
     // handleNavigate path as far as the popstate listener is concerned)
@@ -166,7 +168,7 @@ describe('App — popstate routing', () => {
     });
 
     // NowDashboard should no longer be visible
-    expect(screen.queryByText(NOW_MARKER)).toBeNull();
+    expect(screen.queryByTestId(NOW_MARKER_TESTID)).toBeNull();
 
     // Simulate browser back
     await act(async () => {
@@ -175,6 +177,6 @@ describe('App — popstate routing', () => {
     });
 
     // NowDashboard should be restored
-    expect(screen.getByText(NOW_MARKER)).toBeDefined();
+    expect(screen.getByTestId(NOW_MARKER_TESTID)).toBeDefined();
   });
 });

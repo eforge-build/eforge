@@ -6,7 +6,6 @@ import type { NowAttentionItem } from '@/lib/selectors/now';
 import { NowStateBanner } from '@/components/now/now-state-banner';
 import { AttentionPanel } from '@/components/now/attention-panel';
 import { ActiveBuildsGrid } from '@/components/now/active-builds-grid';
-import { EnqueueCard } from '@/components/now/enqueue-card';
 import { QueueCard } from '@/components/now/queue-card';
 import { MetricsPanel } from '@/components/now/metrics-panel';
 import { SpendCard } from '@/components/now/spend-card';
@@ -115,7 +114,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
   );
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4">
+    <div data-testid="now-dashboard" className="mx-auto w-full max-w-[1600px] space-y-4">
       {/* Connection/state banner */}
       {model.connectionBanner && (
         <NowStateBanner banner={model.connectionBanner} />
@@ -151,17 +150,15 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
               onTrust: (payload) => extensionTrustMutation.onTrust(payload.path),
             }}
           />
-          {model.enqueueCards.length > 0 && (
-            <div className="grid grid-cols-1 gap-3">
-              {model.enqueueCards.map((card) => (
-                <EnqueueCard key={card.sessionId} card={card} />
-              ))}
-            </div>
-          )}
           <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
+          {/* Queue owns intake too now: a "Preparing PRD" run is work entering
+              the queue, shown as the Intake lane inside the card rather than as
+              a full-width peer of active builds. The at-a-glance Intake/Queued/
+              Active counts live in the global header (PipelineChips). */}
           <QueueCard
             stacks={model.queueStacks}
             summary={model.queue}
+            enqueueCards={model.enqueueCards}
             onSetPriority={handleQueuePriority}
             onRemove={handleQueueRemove}
           />
