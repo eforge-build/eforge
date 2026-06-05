@@ -1,26 +1,37 @@
 /**
  * QueueCard — the single forward-looking build-queue surface.
  *
- * Renders dependency-linked plans as a "Build stack" subsection (in unlock
- * order) followed by an "Other queued items" subsection for standalone
- * pending/waiting items not part of a stack. Running rows are not in this loose
- * list — they surface only through the stack/active-build views. The queue is forward-only:
- * a failed or skipped PRD already ran, so it is not shown here — those surface
- * in the "Needs attention" strip, which owns the Recover action. No mutation
- * happens during render or expansion.
+ * Renders, top to bottom: an "Intake" subsection for pre-build PRD formatting
+ * runs (work entering the queue), the dependency-linked "Build stack"
+ * subsection (in unlock order), then an "Other queued items" subsection for
+ * standalone pending/waiting items not part of a stack. Running rows are not in
+ * the loose list — they surface only through the stack/active-build views. The
+ * queue is forward-only: a failed or skipped PRD already ran, so it is not shown
+ * here — those surface in the "Needs attention" strip, which owns the Recover
+ * action. When nothing is intaking, queued, or stacked the card renders nothing
+ * at all (the PipelineChips carries the zero-state counts). No mutation happens
+ * during render or expansion.
  */
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { NowQueueItem, NowQueueStack, NowQueueSummary } from '@/lib/selectors/now';
+import type {
+  NowEnqueueCard,
+  NowQueueItem,
+  NowQueueStack,
+  NowQueueSummary,
+} from '@/lib/selectors/now';
 import { selectPrdDisplayLabel } from '@/lib/selectors/labels';
 import { QueueStacks } from './queue-stack-card';
+import { QueueIntakeLane } from './queue-intake-lane';
 import { QueueRowActions } from './queue-row-actions';
 import type { QueueRowActionCallbacks } from './queue-row-actions';
 
 interface QueueCardProps extends QueueRowActionCallbacks {
   stacks?: NowQueueStack[];
   summary: NowQueueSummary;
+  /** Pre-build PRD formatting runs, shown as the Intake lane. */
+  enqueueCards?: NowEnqueueCard[];
 }
 
 function statusVariant(status: string): 'default' | 'secondary' | 'outline' {
@@ -82,7 +93,13 @@ function LooseQueueRow({
   );
 }
 
-export function QueueCard({ stacks = [], summary, onSetPriority, onRemove }: QueueCardProps) {
+export function QueueCard({
+  stacks = [],
+  summary,
+  enqueueCards = [],
+  onSetPriority,
+  onRemove,
+}: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
 
   // Items already shown in the stacked view; never repeat them in the flat list.
@@ -109,62 +126,64 @@ export function QueueCard({ stacks = [], summary, onSetPriority, onRemove }: Que
   const looseVisible = expanded ? looseAll : looseTop;
   const looseHidden = Math.max(0, looseAll.length - looseTop.length);
 
-  const queuedCount = stackedIds.size + looseAll.length;
-  const isEmpty = stacks.length === 0 && looseAll.length === 0;
+  const hasIntake = enqueueCards.length > 0;
+  const hasStacks = stacks.length > 0;
+  // Nothing intaking, queued, or stacked → render nothing. The PipelineChips
+  // carries the zero-state counts, so an empty Queue card is pure noise.
+  if (!hasIntake && !hasStacks && looseAll.length === 0) {
+    return null;
+  }
 
   return (
     <Card id="queue">
       <CardHeader className="pb-2 pt-4 px-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Queue</CardTitle>
-          {queuedCount > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {queuedCount} item{queuedCount !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
+        {/* No count here: the PipelineChips is the authoritative count surface
+            (Intake/Queued/Active). A second count on the card only invited
+            drift, since the strip counts forward work while the stack includes
+            the already-running plan as a reference row. */}
+        <CardTitle className="text-sm font-semibold">Queue</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-4">
-        {isEmpty ? (
-          <p className="text-sm text-muted-foreground">Nothing waiting to build</p>
-        ) : (
-          <>
-            <QueueStacks stacks={stacks} onSetPriority={onSetPriority} onRemove={onRemove} />
+        <QueueIntakeLane cards={enqueueCards} />
 
-            {looseAll.length > 0 && (
-              <div className={stacks.length > 0 ? 'border-t pt-3' : undefined}>
-                {stacks.length > 0 && (
-                  <p className="mb-2 text-xs font-medium text-foreground">Other queued items</p>
-                )}
-                {summary.pendingCount > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      Pending: <span className="font-medium text-foreground">{summary.pendingCount}</span>
-                    </span>
-                  </div>
-                )}
-                <ul className="space-y-1.5">
-                  {looseVisible.map((item) => (
-                    <LooseQueueRow
-                      key={item.id}
-                      item={item}
-                      onSetPriority={onSetPriority}
-                      onRemove={onRemove}
-                    />
-                  ))}
-                </ul>
-                {looseHidden > 0 && !expanded && (
-                  <button
-                    type="button"
-                    className="mt-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                    onClick={() => setExpanded(true)}
-                  >
-                    + {looseHidden} more — show all
-                  </button>
-                )}
+        {hasStacks && (
+          <div className={hasIntake ? 'border-t pt-3' : undefined}>
+            <QueueStacks stacks={stacks} onSetPriority={onSetPriority} onRemove={onRemove} />
+          </div>
+        )}
+
+        {looseAll.length > 0 && (
+          <div className={hasStacks || hasIntake ? 'border-t pt-3' : undefined}>
+            {(hasStacks || hasIntake) && (
+              <p className="mb-2 text-xs font-medium text-foreground">Other queued items</p>
+            )}
+            {summary.pendingCount > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Pending: <span className="font-medium text-foreground">{summary.pendingCount}</span>
+                </span>
               </div>
             )}
-          </>
+            <ul className="space-y-1.5">
+              {looseVisible.map((item) => (
+                <LooseQueueRow
+                  key={item.id}
+                  item={item}
+                  onSetPriority={onSetPriority}
+                  onRemove={onRemove}
+                />
+              ))}
+            </ul>
+            {looseHidden > 0 && !expanded && (
+              <button
+                type="button"
+                className="mt-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setExpanded(true)}
+              >
+                + {looseHidden} more — show all
+              </button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

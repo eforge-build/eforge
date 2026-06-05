@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { EFORGE_LOGO_URL, EFORGE_LOGO_ALT } from '@/lib/brand';
-import { selectNowStatusSummary } from '@/lib/selectors/now';
+import { selectNowStatusSummary, selectNowQueueSummary } from '@/lib/selectors/now';
+import { countActiveIntakeRuns, countActiveBuildRuns } from '@/lib/selectors/enqueue-cards';
 import { formatRelativeTime, formatAbsoluteTimestamp } from '@/lib/format';
 import { projectBasename } from '@/lib/selectors/runs';
 import { projectLabelFromContext } from '@/lib/selectors/project-label';
@@ -11,6 +12,7 @@ import { ConnectionIndicator } from './connection-indicator';
 import { AutoBuildToggle } from './auto-build-toggle';
 import { ProjectNameChip } from './project-name-chip';
 import { ControlSurfaceLinks } from './control-surface-links';
+import { PipelineChips } from './pipeline-chips';
 
 interface HeaderProps {
   projectState: ConsoleProjectState;
@@ -28,6 +30,15 @@ export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled,
   }, []);
 
   const summary = selectNowStatusSummary(projectState, {}, now);
+
+  // Build-pipeline glance: intake = in-progress enqueue runs, active = in-progress
+  // build runs (intake excluded), queued = forward queue (pending + waiting; a
+  // running queue item is an active build, not queued). Sourced from the same
+  // focused selectors the Now view uses so the header never disagrees with it.
+  const queueSummary = selectNowQueueSummary(projectState.queue);
+  const intakeCount = countActiveIntakeRuns(projectState.runs);
+  const activeBuildCount = countActiveBuildRuns(projectState.runs);
+  const queuedCount = queueSummary.pendingCount + queueSummary.waitingCount;
 
   // Derive project repo basename from the most recent run's cwd
   const latestCwd = React.useMemo(() => {
@@ -77,15 +88,9 @@ export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled,
           )}
         </span>
 
-        {/* Queue count chip */}
-        <span aria-label="queue count">
-          Q: <span className="text-foreground">{summary.queueDepth}</span>
-        </span>
-
-        {/* Active builds chip */}
-        <span aria-label="active builds count">
-          Active: <span className="text-foreground">{summary.activeBuildCount}</span>
-        </span>
+        {/* Build pipeline glance — condensed Intake · Queued · Active cluster,
+            the single count surface for the pipeline. */}
+        <PipelineChips intake={intakeCount} queued={queuedCount} active={activeBuildCount} />
 
         {/* Connection indicator */}
         <ConnectionIndicator status={summary.connectionStatus} />

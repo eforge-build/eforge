@@ -83,6 +83,29 @@ function extractEnqueueError(runState: RunState): string | null {
   return null;
 }
 
+/** In-progress runs (have a session, not completed/terminal), by unique session. */
+function activeRunSessions(runs: RunInfo[]): RunInfo[] {
+  return runs.filter((r) => !r.completedAt && r.sessionId && !isTerminalStatus(r.status));
+}
+
+/** Count of in-progress PRD intake (enqueue/formatting) runs — pipeline stage 1. */
+export function countActiveIntakeRuns(runs: RunInfo[]): number {
+  return new Set(
+    activeRunSessions(runs)
+      .filter((r) => r.command === ENQUEUE_COMMAND)
+      .map((r) => r.sessionId),
+  ).size;
+}
+
+/** Count of in-progress build runs (intake excluded so it is not double-counted). */
+export function countActiveBuildRuns(runs: RunInfo[]): number {
+  return new Set(
+    activeRunSessions(runs)
+      .filter((r) => r.command !== ENQUEUE_COMMAND)
+      .map((r) => r.sessionId),
+  ).size;
+}
+
 export function selectNowEnqueueCards(
   runs: RunInfo[],
   activeDetails: Record<string, ActiveSessionDetail>,

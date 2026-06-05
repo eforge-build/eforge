@@ -6,7 +6,6 @@
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import type { NowQueueStack, NowQueueStackItem } from '@/lib/selectors/now';
-import { cn } from '@/lib/utils';
 import { QueueRowActions } from './queue-row-actions';
 import type { QueueRowActionCallbacks } from './queue-row-actions';
 
@@ -34,15 +33,43 @@ function itemDetail(item: NowQueueStackItem): string {
   if (item.blockedBy.length > 0) {
     return `blocked by ${item.blockedBy.join(', ')}`;
   }
-  if (item.status.toLowerCase() === 'running') {
-    return item.unlocksCount > 0
-      ? `currently running · unlocks ${item.unlocksCount} plan${item.unlocksCount !== 1 ? 's' : ''}`
-      : 'currently running';
-  }
   if (item.unlocksCount > 0) {
     return `unlocks ${item.unlocksCount} plan${item.unlocksCount !== 1 ? 's' : ''}`;
   }
   return 'ready when dependencies clear';
+}
+
+function unlocksLabel(item: NowQueueStackItem): string | null {
+  if (item.unlocksCount <= 0) return null;
+  return `unlocks ${item.unlocksCount} plan${item.unlocksCount !== 1 ? 's' : ''}`;
+}
+
+/**
+ * A running stack item is already shown in full as an active build card above,
+ * so it collapses to a thin reference row here: it holds its place in the
+ * dependency chain (node, connector, layer, title) and points back to the
+ * detailed card, without re-rendering a second status surface or actions.
+ */
+function RunningStackRow({ item, isLast }: { item: NowQueueStackItem; isLast: boolean }) {
+  const unlocks = unlocksLabel(item);
+  return (
+    <li className="relative pl-6">
+      {!isLast && <span className="absolute left-[7px] top-5 h-full w-px bg-border" aria-hidden="true" />}
+      <span
+        className="absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border border-primary bg-primary"
+        aria-hidden="true"
+      />
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1 text-xs text-muted-foreground">
+        <span>Layer {item.layer} / {item.totalLayers}</span>
+        <span className="min-w-0 truncate font-medium text-foreground/80" title={item.title}>
+          {item.title}
+        </span>
+        <span className="text-foreground/70">running ↑</span>
+        <span aria-hidden="true">·</span>
+        <span>see above{unlocks ? ` · ${unlocks}` : ''}</span>
+      </div>
+    </li>
+  );
 }
 
 function QueueStackItemRow({
@@ -52,17 +79,16 @@ function QueueStackItemRow({
   onRemove,
 }: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
-  // Only forward queue work (pending/waiting) is mutable from Console; running
-  // rows keep their status-only presentation.
+  if (status === 'running') {
+    return <RunningStackRow item={item} isLast={isLast} />;
+  }
+  // Only forward queue work (pending/waiting) is mutable from Console.
   const showActions = status === 'pending' || status === 'waiting';
   return (
     <li className="relative pl-6">
       {!isLast && <span className="absolute left-[7px] top-5 h-full w-px bg-border" aria-hidden="true" />}
       <span
-        className={cn(
-          'absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border bg-background',
-          item.status.toLowerCase() === 'running' ? 'border-primary bg-primary' : 'border-muted-foreground/50',
-        )}
+        className="absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border border-muted-foreground/50 bg-background"
         aria-hidden="true"
       />
       <div className="rounded-md border bg-muted/20 px-3 py-2">

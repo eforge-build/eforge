@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { QueueCard } from '../queue-card';
-import type { NowQueueSummary } from '@/lib/selectors/now';
+import type { NowEnqueueCard, NowQueueSummary } from '@/lib/selectors/now';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -30,10 +30,37 @@ function makeSummary(overrides: Partial<NowQueueSummary> = {}): NowQueueSummary 
 // Display tests
 // ---------------------------------------------------------------------------
 
+function makeEnqueueCard(overrides: Partial<NowEnqueueCard> = {}): NowEnqueueCard {
+  return {
+    sessionId: 'sess-intake',
+    runId: 'run-intake',
+    title: 'Preparing Build PRD',
+    durationMs: 12_000,
+    streamStatus: 'connected',
+    step: 'Extracting acceptance criteria',
+    latestError: null,
+    tokens: 8_900,
+    cost: 0.17,
+    ...overrides,
+  };
+}
+
+describe('QueueCard - intake lane', () => {
+  it('renders the Intake lane with no queued work and still shows the card', () => {
+    render(<QueueCard summary={emptySummary} enqueueCards={[makeEnqueueCard()]} />);
+    expect(screen.getByText('Queue')).toBeDefined();
+    expect(screen.getByText('Intake')).toBeDefined();
+    expect(screen.getByText('Preparing Build PRD')).toBeDefined();
+    expect(screen.getByText('Extracting acceptance criteria')).toBeDefined();
+  });
+});
+
 describe('QueueCard - empty queue', () => {
-  it('renders the empty forward-queue message when total is 0', () => {
-    render(<QueueCard summary={emptySummary} />);
-    expect(screen.getByText('Nothing waiting to build')).toBeDefined();
+  it('renders nothing when there is no intake, stack, or queued work', () => {
+    const { container } = render(<QueueCard summary={emptySummary} />);
+    // The PipelineChips carries the zero-state counts; an empty card is noise.
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText('Queue')).toBeNull();
   });
 });
 
@@ -162,10 +189,13 @@ describe('QueueCard - loose row actions', () => {
         { id: 'q-r', title: 'Running Task', status: 'running', priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
       ],
     });
-    render(<QueueCard summary={summary} onSetPriority={vi.fn()} onRemove={vi.fn()} />);
-    // Running rows are not forward work; the queue preview omits them.
+    const { container } = render(
+      <QueueCard summary={summary} onSetPriority={vi.fn()} onRemove={vi.fn()} />,
+    );
+    // Running rows are not forward work; with no other work the card omits them
+    // by rendering nothing at all.
     expect(screen.queryByText('Running Task')).toBeNull();
-    expect(screen.getByText('Nothing waiting to build')).toBeDefined();
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByRole('button', { name: 'Set priority' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
