@@ -23,7 +23,6 @@ import { eforgeReducer, createInitialRunState } from '@/lib/run-state';
 
 // ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
 function makeQueue(overrides: Partial<QueueItem>[] = []): QueueItem[] {
   return overrides.map((o, i) => ({
@@ -64,7 +63,6 @@ function makeActiveDetail(
 
 // ---------------------------------------------------------------------------
 // Queue summary tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowQueueSummary', () => {
   it('counts every status over the full queue but totals only forward (pending/waiting) preview rows', () => {
@@ -127,9 +125,7 @@ describe('selectNowQueueSummary', () => {
   });
 
   it('truncates after forward filtering, so leading terminal rows never starve the four-item preview', () => {
-    // Raw queue starts with four terminal rows. A slice-before-filter bug would
-    // consume all four preview slots with failed/skipped rows and hide forward
-    // work; forward-only truncation must surface the pending/waiting rows.
+    // Raw queue leads with four terminal rows: a slice-before-filter bug would consume all preview slots with failed/skipped rows; forward-only truncation must surface pending/waiting.
     const queue = makeQueue([
       { id: 'f1', status: 'failed' },
       { id: 'f2', status: 'failed' },
@@ -148,7 +144,6 @@ describe('selectNowQueueSummary', () => {
 
 // ---------------------------------------------------------------------------
 // Queue stack selector
-// ---------------------------------------------------------------------------
 
 describe('selectNowQueueStacks', () => {
   it('groups dependency-linked running and waiting queue items in unlock order', () => {
@@ -206,7 +201,6 @@ describe('selectNowQueueStacks', () => {
 
 // ---------------------------------------------------------------------------
 // Queue summary – label normalization
-// ---------------------------------------------------------------------------
 
 describe('selectNowQueueSummary – label normalization', () => {
   it('falls back to slug-derived label when queue item title is markdown-shaped', () => {
@@ -225,7 +219,6 @@ describe('selectNowQueueSummary – label normalization', () => {
 
 // ---------------------------------------------------------------------------
 // Recent runs – label normalization
-// ---------------------------------------------------------------------------
 
 describe('selectNowRecentRuns – label normalization', () => {
   const now = Date.now();
@@ -245,7 +238,6 @@ describe('selectNowRecentRuns – label normalization', () => {
 
 // ---------------------------------------------------------------------------
 // Attention items tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowAttentionItems', () => {
   const now = Date.now();
@@ -416,7 +408,6 @@ describe('selectNowAttentionItems', () => {
 
 // ---------------------------------------------------------------------------
 // Extension trust attention items
-// ---------------------------------------------------------------------------
 
 function makeExtensionEntry(overrides: Partial<ExtensionEntry> = {}): ExtensionEntry {
   return {
@@ -503,7 +494,6 @@ describe('selectNowAttentionItems — extension trust', () => {
 
 // ---------------------------------------------------------------------------
 // Active build card derivation tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowActiveBuildCards', () => {
   const now = Date.now();
@@ -749,7 +739,6 @@ describe('selectNowActiveBuildCards', () => {
 
 // ---------------------------------------------------------------------------
 // Enqueue card tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowEnqueueCards', () => {
   const now = Date.now();
@@ -807,7 +796,6 @@ describe('selectNowEnqueueCards', () => {
 
 // ---------------------------------------------------------------------------
 // Status summary tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowStatusSummary', () => {
   const now = Date.now();
@@ -843,7 +831,6 @@ describe('selectNowStatusSummary', () => {
 
 // ---------------------------------------------------------------------------
 // Recent activity tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowRecentActivity', () => {
   it('filters out daemon:heartbeat events', () => {
@@ -892,7 +879,6 @@ describe('selectNowRecentActivity', () => {
 
 // ---------------------------------------------------------------------------
 // Stack sync status selector tests
-// ---------------------------------------------------------------------------
 
 describe('selectNowStackSyncStatus', () => {
   it('returns null for null input', () => {
@@ -1022,7 +1008,6 @@ describe('selectNowStackSyncStatus', () => {
 
 // ---------------------------------------------------------------------------
 // Stale liveness helper tests
-// ---------------------------------------------------------------------------
 
 describe('isLivenessStale', () => {
   it('returns true when last heartbeat is older than 30 seconds', () => {
@@ -1111,7 +1096,6 @@ describe('queue skipped terminal status handling', () => {
 
 // ---------------------------------------------------------------------------
 // selectAllNowBuildItems — per-session build rollup
-// ---------------------------------------------------------------------------
 
 describe('selectAllNowBuildItems', () => {
   const T0 = Date.parse('2026-01-01T00:00:00.000Z');
