@@ -15,7 +15,7 @@
 **Goal**: Make console-ui the canonical local-first control surface for observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
 
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
-- **Planning visibility as extension-hosted UI** - Keep planning artifact browsing available in Console while preparing session plans and playbooks to move behind bundled reference workflow extensions.
+- **Planning visibility and workflow surfaces** - Keep planning artifact browsing available in Console for the shipped bundled playbook and session-plan input adapters while expanding future Console UX and user-authored workflow registration.
 - **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, and model/runtime preferences through typed daemon/client APIs.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.
 
@@ -25,9 +25,9 @@
 
 **Goal**: Make eforge an extensible forge: a small build-engine kernel surrounded by trusted, typed extension mechanisms and reusable input surfaces.
 
-- **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, session-plan extraction, and playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
+- **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles, and user-authored custom session-plan/playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
 - **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, and wrapper apps without treating every surface as engine functionality.
-- **Bundled reference workflow extensions** - Move session plans and playbooks toward extension-shaped implementations, then expose them as bundled defaults before deprecating direct built-in surfaces.
+- **User-authored workflow registration** - Explore native extension APIs, building on the bundled adapters that already ship, for custom session-plan extraction and custom playbook extraction before deprecating direct built-in compatibility surfaces.
 
 ---
 

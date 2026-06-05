@@ -6,23 +6,8 @@
  * live in `.eforge/session-plans/` (project-local scope only) and compile to
  * ordinary build source for the engine queue.
  *
- * Public API:
- *   parseSessionPlan          — parse raw markdown to a typed SessionPlan
- *   serializeSessionPlan      — serialize a SessionPlan back to markdown
- *   listSessionPlans          — list session plans filtered by lifecycle statuses
- *   listActiveSessionPlans    — list active session plans in project-local scope
- *   selectDimensions          — resolve required/optional/skipped dimension sets
- *   checkReadiness            — check if all required dimensions have content
- *   getReadinessDetail        — check readiness with covered/skipped dimension lists
- *   migrateBooleanDimensions  — convert legacy boolean dimension shape to new format
- *   sessionPlanToBuildSource  — format a session plan as ordinary build source
- *   normalizeBuildSource      — detect session-plan paths and convert to build source
- *   createSessionPlan         — create a fresh SessionPlan with canonical frontmatter
- *   setSessionPlanSection     — append-or-replace a ## section in the plan body
- *   skipDimension / unskipDimension — update entries in skipped_dimensions
- *   setSessionPlanStatus      — update status and optional metadata fields
- *   setSessionPlanDimensions  — apply planning_type/depth and write dimension lists
- *   resolveSessionPlanPath / loadSessionPlan / writeSessionPlan — safe project-local storage I/O
+ * Public API covers parsing/serialization, listing, readiness checks, dimension
+ * mutation, build-source normalization, and safe project-local storage I/O.
  */
 import { readFile, readdir, writeFile, mkdir, rename } from 'node:fs/promises';
 import { resolve, basename, dirname, sep } from 'node:path';
@@ -926,6 +911,26 @@ export interface WriteSessionPlanOpts {
   plan: SessionPlan;
 }
 
+function resolveSessionPlanWritePath(opts: WriteSessionPlanOpts): { sessionPlansDir: string; filePath: string } {
+  const sessionPlansDir = resolveSessionPlanStorageRoot(opts.cwd);
+  const guardPrefix = sessionPlansDir.endsWith(sep)
+    ? sessionPlansDir
+    : sessionPlansDir + sep;
+
+  if (opts.path !== undefined) {
+    const resolvedPath = resolve(opts.path);
+    if (!resolvedPath.startsWith(guardPrefix)) {
+      throw new Error(
+        `writeSessionPlan: path "${opts.path}" would escape .eforge/session-plans/`,
+      );
+    }
+    return { sessionPlansDir, filePath: resolvedPath };
+  }
+
+  const session = opts.session ?? opts.plan.session;
+  return { sessionPlansDir, filePath: resolveSessionPlanPath({ cwd: opts.cwd, session }) };
+}
+
 /**
  * Serialize a `SessionPlan` and write it atomically to disk.
  *
@@ -935,25 +940,7 @@ export interface WriteSessionPlanOpts {
  * Uses a temporary-file-then-rename strategy for atomic writes.
  */
 export async function writeSessionPlan(opts: WriteSessionPlanOpts): Promise<void> {
-  const sessionPlansDir = resolveSessionPlanStorageRoot(opts.cwd);
-  const guardPrefix = sessionPlansDir.endsWith(sep)
-    ? sessionPlansDir
-    : sessionPlansDir + sep;
-
-  let filePath: string;
-  if (opts.path !== undefined) {
-    const resolvedPath = resolve(opts.path);
-    if (!resolvedPath.startsWith(guardPrefix)) {
-      throw new Error(
-        `writeSessionPlan: path "${opts.path}" would escape .eforge/session-plans/`,
-      );
-    }
-    filePath = resolvedPath;
-  } else {
-    const session = opts.session ?? opts.plan.session;
-    filePath = resolveSessionPlanPath({ cwd: opts.cwd, session });
-  }
-
+  const { filePath } = resolveSessionPlanWritePath(opts);
   const content = serializeSessionPlan(opts.plan);
   await mkdir(dirname(filePath), { recursive: true });
 
@@ -961,6 +948,19 @@ export async function writeSessionPlan(opts: WriteSessionPlanOpts): Promise<void
   const tmpPath = filePath + '.tmp';
   await writeFile(tmpPath, content, 'utf-8');
   await rename(tmpPath, filePath);
+}
+
+/**
+ * Serialize a `SessionPlan` and create it on disk without overwriting an existing file.
+ *
+ * The target path is constrained to `<cwd>/.eforge/session-plans/`. If the
+ * target already exists, the underlying `EEXIST` error is propagated.
+ */
+export async function createSessionPlanFile(opts: WriteSessionPlanOpts): Promise<void> {
+  const { filePath } = resolveSessionPlanWritePath(opts);
+  const content = serializeSessionPlan(opts.plan);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, { encoding: 'utf-8', flag: 'wx' });
 }
 
 // ---------------------------------------------------------------------------

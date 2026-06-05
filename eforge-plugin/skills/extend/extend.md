@@ -50,13 +50,13 @@ Runtime-supported capability families:
 - `registerReviewerPerspective` reviewer perspectives — inject custom prompt context into the reviewer agent during parallel review-cycle perspective dispatch (`review.strategy: parallel`, or `auto` once the diff crosses the parallel-review thresholds). Applicability is declared via `appliesTo.fileGlobs`, `paths`, `extensions`, `categories`, or `minChanged*` thresholds; a function-form `appliesTo.fn(changedFiles, changedLines)` escape hatch is also available. Applicability inputs are read-only snapshots; perspectives cannot mutate orchestration state. Failures are fail-open (`extension:reviewer-perspective:skipped` with reason `applicability-error` or `applicability-timeout`). See `examples/extensions/reviewer-perspective.ts` for an accessibility example.
 - `registerValidationProvider` validation providers — run during the per-plan `validate` build stage when `validate` is included in the pipeline. Normal structured failures and command-form non-zero exits enter bounded recovery; thrown errors, non-empty string returns, timeouts, and unexpected shapes are hard failures.
 - `registerAction`, `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink` are runtime-supported platform seams for extension-authored actions and host-facing contributions. Actions, integration commands, and action-backed deep links are discoverable and invokable by host integrations through `mcp__eforge__eforge_extension_contribution`; declarative Console contributions render in the Console System route (`/console/system`). Raw extension-owned HTTP routes and arbitrary frontend bundles remain unsupported.
-- The bundled session-planning adapter is internal/built-in and is not a user-authored native extension registration point.
+- The bundled playbook and session-planning adapters are internal/built-in and are not user-authored native extension registration points.
 
 Runtime-deferred capability families:
 
 - `beforeEnqueue` and `beforeValidation` policy gates.
 - Approval workflow/UI/state and `modify` policy decisions.
-- Session-plan extraction, playbook extraction, raw extension-owned HTTP routes, and arbitrary frontend plugin bundles.
+- User-authored custom session-plan/playbook extraction, raw extension-owned HTTP routes, and arbitrary frontend plugin bundles.
 
 If user intent maps to the supported policy-gate, reviewer-perspective, validation-provider, or extension-action subset, explain that the capability executes at runtime and note the parallel-review condition for reviewer perspectives, validate-stage/recovery behavior for validation providers, or daemon invocation boundary for actions. If user intent maps to deferred APIs, state whether the current SDK provides only a type contract or a captured registration, and that it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, approve, mutate, provide raw HTTP/frontend surfaces, extract workflows, or run unsupported validation phases at runtime.
 

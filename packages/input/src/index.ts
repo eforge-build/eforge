@@ -212,6 +212,33 @@ export type {
 } from './session-plan-set.js';
 
 // ---------------------------------------------------------------------------
+// Playbook workflow adapter exports
+// ---------------------------------------------------------------------------
+
+export {
+  PLAYBOOK_WORKFLOW_ADAPTER_DESCRIPTOR,
+  PlaybookWorkflowValidationError,
+  PlaybookWorkflowSessionPlanExistsError,
+  isPlaybookWorkflowValidationError,
+  isPlaybookWorkflowSessionPlanExistsError,
+  isPlaybookWorkflowModeMismatchError,
+  createPlaybookWorkflowAdapter,
+} from './playbook-workflow.js';
+
+export type {
+  PlaybookWorkflowSaveOptions,
+  PlaybookWorkflowPromoteDemoteOptions,
+  PlaybookWorkflowSeedPlanningSessionPlanOptions,
+  PlaybookWorkflowSeedPlanningSessionPlanResult,
+  PlaybookWorkflowListResult,
+  PlaybookWorkflowLoadResult,
+  PlaybookWorkflowWriteResult,
+  PlaybookWorkflowMoveResult,
+  PlaybookWorkflowRawValidationResult,
+  PlaybookWorkflowAdapter,
+} from './playbook-workflow.js';
+
+// ---------------------------------------------------------------------------
 // Session planning workflow adapter exports
 // ---------------------------------------------------------------------------
 
