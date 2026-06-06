@@ -59,8 +59,8 @@ daemon REST (Workstations)
   → fetchExtensionContributionManifest / API_ROUTES.extensionContributionManifest
   → use-workstation-manifest.ts loads actions and consoleWorkstations (`srcDoc` or client-contract `frameBundle` entries)
   → workstation selectors choose list/detail and allowed action metadata
-  → workstation-iframe.tsx renders sandboxed iframe entries from either `srcDoc` or daemon-provided `frameBundle.frameUrl` sources; bundle frame shells load declared immutable asset URLs from the daemon
-  → workstation-bridge.ts invokes allowed actions through invokeExtensionAction
+  → workstation-iframe.tsx renders sandboxed iframe entries from either `srcDoc` or daemon-provided `frameBundle.frameUrl` sources; bundle frame shells are served by `API_ROUTES.extensionWorkstationFrame` with no-cache semantics and load declared immutable asset URLs from `API_ROUTES.extensionWorkstationAsset`
+  → bridgeToken is appended to the iframe URL fragment for parent/iframe correlation; workstation-bridge.ts invokes allowed actions through invokeExtensionAction
   → WorkstationsView at `/console/workstations` and `/console/workstations/:workstationId`
 
   → useSystemSurfaces / system-fetches.ts   loads extension inventory, global validation, contribution manifest
@@ -140,11 +140,12 @@ Consumers (`plan-progress.ts`, `pipeline-colors.ts`, `thread-pipeline.tsx`) call
 
 - **Source-owned top-level Console route** - add route metadata and a nav item to `src/lib/navigation.ts` (update `ConsoleRouteBaseId`, `consoleRouteOrder`, `ROUTE_LABELS`, `toConsolePath`, `parseConsoleRoute`, and `buildNavItems`). `ControlSurfaceLinks` renders internal nav buttons automatically from `buildNavItems()`, so no direct edits to `src/components/header/control-surface-links.tsx` are needed for standard first-party routes.
 - **Daemon-manifest declarative System contribution** - register the contribution with the extension manifest and render it under `/console/system` in the Extensions/System area. These contributions use the Console-owned declarative renderer set and do not require edits to `src/lib/navigation.ts` or new top-level routes.
-- **Extension-registered workstation** - register `registerConsoleWorkstation` from a native extension. Console discovers it from the contribution manifest, lists it under `/console/workstations`, renders trusted iframe workstation entries, and invokes only manifest-allowed actions through the parent bridge. Source-authored entries use either `srcDoc` or `frameBundle`; bundle entries render from the manifest `frameBundle.frameUrl` with the bridge token in the URL fragment, while the daemon frame shell loads declared immutable asset URLs. This is the supported V1 rich extension UI path and does not require source-owned route edits.
+- **Extension-registered `srcDoc` workstation** - register `registerConsoleWorkstation` from a native extension with inline iframe `srcDoc`. Console discovers it from the contribution manifest, lists it under `/console/workstations`, renders a trusted sandboxed iframe document, and invokes only manifest-allowed actions through the parent bridge.
+- **Extension-registered bundle workstation** - register `registerConsoleWorkstation` with source `frameBundle` metadata. Console renders the manifest `frameBundle.frameUrl` as the iframe `src`, appends the `bridgeToken` in the URL fragment, and lets the daemon-owned `extensionWorkstationFrame` frame shell load declared immutable files from `extensionWorkstationAsset`. Bundle JavaScript executes inside the workstation iframe, not in the parent Console realm. This is the supported V1 rich extension UI path and does not require source-owned route edits.
 - **Non-route or external links** - add them directly to `src/components/header/control-surface-links.tsx` when they do not belong in the top-level Console route list.
 - **System route entry** - add a panel or section under `src/views/system/`. The system route is the home for configuration and diagnostic surfaces that do not need top-level navigation prominence.
 
-Arbitrary extension-supplied frontend bundles outside the daemon-owned workstation frame/asset contract, direct React component loading, private React imports, browser JavaScript outside workstation documents, and extension-owned HTTP routes are deferred beyond the current declarative contribution and workstation models.
+Arbitrary extension-supplied frontend bundles outside the daemon-owned workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, browser JavaScript outside workstation documents, parent-Console plugins, and extension-owned HTTP routes are deferred beyond the current declarative contribution and workstation models.
 
 ## Dev
 

@@ -48,6 +48,8 @@ describe('workstation frame shell generation', () => {
     expect(csp).toContain("style-src 'self'");
     expect(csp).toContain("frame-ancestors 'self'");
     expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain("worker-src 'none'");
+    expect(csp).toContain("child-src 'none'");
   });
 
   it('escapes workstation titles and declared asset URLs in HTML contexts', () => {

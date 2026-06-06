@@ -35,6 +35,8 @@ export function buildWorkstationFrameCsp(nonce: string): string {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "connect-src 'none'",
+    "worker-src 'none'",
+    "child-src 'none'",
   ].join('; ');
 }
 

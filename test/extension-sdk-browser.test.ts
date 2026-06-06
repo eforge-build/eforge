@@ -7,6 +7,7 @@ import {
 import * as rootSdk from '@eforge-build/extension-sdk';
 import {
   EFORGE_WORKSTATION_BROWSER_SDK_VERSION,
+  assertEforgeConsoleBridgeVersion,
   getEforgeConsoleBridge,
   invokeAction,
   type EforgeConsoleBridge,
@@ -60,6 +61,13 @@ describe('@eforge-build/extension-sdk/browser', () => {
     expect(() => getEforgeConsoleBridge({ minVersion: 1 })).toThrow(
       'Eforge Console bridge version 0 is below the required minimum version 1.',
     );
+  });
+
+  it('supports the documented assertEforgeConsoleBridgeVersion(expected) usage', () => {
+    const bridge: EforgeConsoleBridge = { version: 1, invokeAction: vi.fn() };
+    installBridge(bridge);
+
+    expect(assertEforgeConsoleBridgeVersion(1)).toBe(bridge);
   });
 
   it('returns a v1 bridge with a function-valued invokeAction', () => {

@@ -11,6 +11,10 @@ export interface GetEforgeConsoleBridgeOptions {
   minVersion?: EforgeWorkstationBrowserSdkVersion;
 }
 
+export interface AssertEforgeConsoleBridgeVersionOptions {
+  bridge?: EforgeConsoleBridge;
+}
+
 declare global {
   interface Window {
     eforge?: EforgeConsoleBridge;
@@ -18,9 +22,18 @@ declare global {
 }
 
 export function assertEforgeConsoleBridgeVersion(
-  bridge: EforgeConsoleBridge | undefined = getWindowEforgeBridge(),
-  expectedVersion: EforgeWorkstationBrowserSdkVersion = EFORGE_WORKSTATION_BROWSER_SDK_VERSION,
+  expectedVersion?: EforgeWorkstationBrowserSdkVersion,
+  options?: AssertEforgeConsoleBridgeVersionOptions,
+): EforgeConsoleBridge;
+export function assertEforgeConsoleBridgeVersion(
+  bridge: EforgeConsoleBridge | undefined,
+  expectedVersion?: EforgeWorkstationBrowserSdkVersion,
+): EforgeConsoleBridge;
+export function assertEforgeConsoleBridgeVersion(
+  expectedVersionOrBridge?: EforgeWorkstationBrowserSdkVersion | EforgeConsoleBridge,
+  optionsOrExpectedVersion: AssertEforgeConsoleBridgeVersionOptions | EforgeWorkstationBrowserSdkVersion = {},
 ): EforgeConsoleBridge {
+  const { bridge, expectedVersion } = normalizeAssertBridgeVersionArgs(expectedVersionOrBridge, optionsOrExpectedVersion);
   if (!bridge) {
     throw new Error('Eforge Console bridge is unavailable: window.eforge is missing.');
   }
@@ -39,10 +52,7 @@ export function assertEforgeConsoleBridgeVersion(
 }
 
 export function getEforgeConsoleBridge(options: GetEforgeConsoleBridgeOptions = {}): EforgeConsoleBridge {
-  return assertEforgeConsoleBridgeVersion(
-    getWindowEforgeBridge(),
-    options.minVersion ?? EFORGE_WORKSTATION_BROWSER_SDK_VERSION,
-  );
+  return assertEforgeConsoleBridgeVersion(options.minVersion ?? EFORGE_WORKSTATION_BROWSER_SDK_VERSION);
 }
 
 export function invokeAction<TOutput = unknown>(
@@ -50,6 +60,22 @@ export function invokeAction<TOutput = unknown>(
   input: Record<string, unknown> = {},
 ): Promise<TOutput> {
   return getEforgeConsoleBridge().invokeAction<TOutput>(actionId, input);
+}
+
+function normalizeAssertBridgeVersionArgs(
+  expectedVersionOrBridge: EforgeWorkstationBrowserSdkVersion | EforgeConsoleBridge | undefined,
+  optionsOrExpectedVersion: AssertEforgeConsoleBridgeVersionOptions | EforgeWorkstationBrowserSdkVersion,
+): { bridge: EforgeConsoleBridge | undefined; expectedVersion: EforgeWorkstationBrowserSdkVersion } {
+  if (typeof expectedVersionOrBridge === 'number') {
+    return {
+      bridge: typeof optionsOrExpectedVersion === 'object' ? optionsOrExpectedVersion.bridge ?? getWindowEforgeBridge() : getWindowEforgeBridge(),
+      expectedVersion: expectedVersionOrBridge,
+    };
+  }
+  return {
+    bridge: expectedVersionOrBridge ?? getWindowEforgeBridge(),
+    expectedVersion: typeof optionsOrExpectedVersion === 'number' ? optionsOrExpectedVersion : EFORGE_WORKSTATION_BROWSER_SDK_VERSION,
+  };
 }
 
 function getWindowEforgeBridge(): EforgeConsoleBridge | undefined {

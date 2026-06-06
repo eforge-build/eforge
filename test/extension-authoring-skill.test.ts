@@ -88,7 +88,7 @@ describe('/eforge:extend skill files and manifests', () => {
       commands: string[];
     };
 
-    expect(compareSemver(manifest.version, '0.25.7')).toBeGreaterThan(0);
+    expect(compareSemver(manifest.version, '0.25.51')).toBeGreaterThan(0);
     expect(manifest.commands).toContain('./skills/extend/extend.md');
 
     const pluginRoot = repoPath('eforge-plugin');
@@ -185,6 +185,12 @@ describe('/eforge:extend workflow content', () => {
       'registerInputSource',
       'registerReviewerPerspective',
       'registerValidationProvider',
+      'registerConsoleWorkstation',
+      'frameBundle',
+      'srcDoc',
+      'workstation-assets',
+      '@eforge-build/extension-sdk/browser',
+      'parent Console',
       'scope: "local"',
       'event-logger',
       'blank',

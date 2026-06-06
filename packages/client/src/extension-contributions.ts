@@ -4,11 +4,36 @@ import { parseWithSchema, safeParseWithSchema, type SafeParseResult } from './sc
 
 export const EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION = 1;
 export const CONSOLE_WORKSTATION_BROWSER_SDK_VERSION = 1;
+const ROUTE_SEGMENT_URL_PATTERN = '[^/?#]+';
+
 export const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN = '^sha256-[a-f0-9]{64}-path-[a-f0-9]{64}$';
 export const CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN = '^[a-f0-9]{64}$';
-export const CONSOLE_WORKSTATION_FRAME_URL_PATTERN = '^/api/extensions/workstations/[^/?#]+/frame(?:\\?[^#]*)?$';
-export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = `^/api/extensions/workstations/[^/?#]+/assets/${CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN.slice(1, -1)}$`;
+export const CONSOLE_WORKSTATION_FRAME_URL_PATTERN = routePatternToRegexPattern(
+  API_ROUTES.extensionWorkstationFrame,
+  {},
+  '(?:\\?[^#]*)?',
+);
+export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = routePatternToRegexPattern(
+  API_ROUTES.extensionWorkstationAsset,
+  { assetId: CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN.slice(1, -1) },
+);
 const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_HASH_PATTERN = /^sha256-([a-f0-9]{64})-path-[a-f0-9]{64}$/;
+
+function routePatternToRegexPattern(
+  pattern: string,
+  paramPatterns: Partial<Record<string, string>> = {},
+  suffix = '',
+): string {
+  const escapedPattern = escapeRegex(pattern);
+  const urlPattern = escapedPattern.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, (_match, param: string) => (
+    paramPatterns[param] ?? ROUTE_SEGMENT_URL_PATTERN
+  ));
+  return `^${urlPattern}${suffix}$`;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export const ExtensionJsonValueSchema = Type.Recursive((Self) => Type.Union([
   Type.Null(),

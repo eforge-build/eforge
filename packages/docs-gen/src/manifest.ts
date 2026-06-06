@@ -53,12 +53,12 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Extensions guide',
       url: '/docs/extensions.md',
-      description: 'How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including the LLM-first extension authoring checklist and Console workstations',
+      description: 'How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including srcDoc/frameBundle Console workstations, workstation-assets trust hashing, and the LLM-first authoring checklist',
     },
     {
       title: 'Extensions API reference',
       url: '/docs/extensions-api.md',
-      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries',
+      description: 'Typed extension SDK concepts, ConsoleWorkstation srcDoc/frameBundle APIs, @eforge-build/extension-sdk/browser bridge helpers, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries',
     },
     {
       title: 'Profiles guide',
