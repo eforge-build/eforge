@@ -1,0 +1,55 @@
+name: implement-iframe-bundled-console-workstation-sdk
+description: Implement iframe-scoped Console workstation asset bundles plus a
+  minimal versioned workstation browser SDK while preserving existing srcDoc
+  workstations.
+created: 2026-06-06
+status: draft
+mode: expedition
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm docs:check
+  - pnpm test
+architecture:
+  status: complete
+modules:
+  client-contracts:
+    description: Add client-owned workstation bundle manifest schemas, route
+      constants, browser exports, and daemon API version bump.
+    depends_on: []
+    status: pending
+  extension-sdk-api:
+    description: Add source-level frameBundle workstation types and the browser-safe
+      v1 workstation SDK entrypoint.
+    depends_on:
+      - client-contracts
+    status: pending
+  engine-registration-manifest-trust:
+    description: Validate/projection frameBundle workstations, generate asset
+      metadata, and include workstation-assets in trust hashing.
+    depends_on:
+      - client-contracts
+      - extension-sdk-api
+    status: pending
+  monitor-frame-assets:
+    description: Serve eforge-owned workstation frame shells and declared bundle
+      assets with CSP/cache/path containment security.
+    depends_on:
+      - client-contracts
+      - engine-registration-manifest-trust
+    status: pending
+  console-workstation-rendering:
+    description: Render srcDoc and frameBundle workstations in sandboxed iframes and
+      preserve bridge validation semantics.
+    depends_on:
+      - client-contracts
+    status: pending
+  docs-and-examples:
+    description: Update extension, SDK, Console, and generated public docs for
+      srcDoc versus frameBundle workstation authoring boundaries.
+    depends_on:
+      - extension-sdk-api
+      - engine-registration-manifest-trust
+      - monitor-frame-assets
+      - console-workstation-rendering
+    status: pending
