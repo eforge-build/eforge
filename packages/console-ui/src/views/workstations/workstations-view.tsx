@@ -80,7 +80,7 @@ export function WorkstationsView({ selectedWorkstationId, onNavigate }: Workstat
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{workstation.title}</span>
-                    <Badge variant="outline" className="ml-auto text-[10px]">{workstation.extensionName}</Badge>
+                    <Badge variant="outline" className="ml-auto text-xs">{workstation.extensionName}</Badge>
                   </div>
                   {workstation.description && (
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{workstation.description}</p>
