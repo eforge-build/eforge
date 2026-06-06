@@ -68,7 +68,7 @@ First inspect sidecar-provided compiled-build resume fields. If `resumeEligibili
 
 > This recovery sidecar recommends compiled-build resume from preserved artifacts. You may either follow the verdict action above or resume the build using `mcp__eforge__eforge_resume_build`. Which would you prefer?
 
-If the sidecar has `resumeEligibility.eligible === false`, show the bounded reason and do not recommend resume unless the user asks to resume anyway because branch/artifact state may have changed. Claude Code has no separate read-only live eligibility tool; rely on sidecar fields unless the user confirms calling `mcp__eforge__eforge_resume_build`, which will validate eligibility server-side and queue a resume only when eligible. If the sidecar does not contain resume fields, do not infer eligibility manually; offer `mcp__eforge__eforge_resume_build` only after explicit confirmation and explain that the daemon will reject ineligible resumes.
+If the sidecar has `resumeEligibility.eligible === false`, show the bounded reason and do not recommend resume unless the user asks to resume anyway because branch/artifact state may have changed. There is no separate read-only live eligibility tool; rely on sidecar fields unless the user confirms calling `mcp__eforge__eforge_resume_build`, which will validate eligibility server-side and queue a resume only when eligible. If the sidecar does not contain resume fields, do not infer eligibility manually; offer `mcp__eforge__eforge_resume_build` only after explicit confirmation and explain that the daemon will reject ineligible resumes.
 
 ### Step 4: Confirm the Action
 
