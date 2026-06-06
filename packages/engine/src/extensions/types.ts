@@ -98,9 +98,7 @@ export type ConsoleContributionBlockSpec =
   | { rendererId: 'action-button'; title?: string; content: string; action: ExtensionActionBindingSpec }
   | { rendererId: 'action-form'; title?: string; content: string; action: ExtensionActionBindingSpec };
 export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[] }
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export interface ConsoleWorkstationSpec { id: string; title: string; description?: string; srcDoc: string; allowedActions?: string[] }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; action: ExtensionActionBindingSpec }
 export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; action?: ExtensionActionBindingSpec }
 
@@ -232,9 +230,7 @@ export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', P
 
 export type ActionRegistration = BaseExtensionRegistration<'action', ExtensionActionSpec> & { localId: string; id: string };
 export type ConsoleContributionRegistration = BaseExtensionRegistration<'consoleContribution', ConsoleContributionSpec> & { localId: string; id: string };
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export type ConsoleWorkstationRegistration = BaseExtensionRegistration<'consoleWorkstation', ConsoleWorkstationSpec> & { localId: string; id: string };
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 export type IntegrationCommandRegistration = BaseExtensionRegistration<'integrationCommand', IntegrationCommandSpec> & { localId: string; id: string };
 export type DeepLinkRegistration = BaseExtensionRegistration<'deepLink', ExtensionDeepLinkSpec> & { localId: string; id: string };
 

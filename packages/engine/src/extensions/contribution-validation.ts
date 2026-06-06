@@ -80,7 +80,6 @@ export function validateConsoleContributionSpec(value: unknown): RegistrationVal
   return { ok: true, id, value: value as unknown as ConsoleContributionSpec };
 }
 
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export function validateConsoleWorkstationSpec(value: unknown): RegistrationValidationResult<ConsoleWorkstationSpec> {
   if (!isNonArrayObject(value)) return fail(undefined, 'registerConsoleWorkstation requires an object spec');
   const id = typeof value.id === 'string' ? value.id : undefined;
@@ -96,7 +95,6 @@ export function validateConsoleWorkstationSpec(value: unknown): RegistrationVali
   if (!jsonSafe.ok) return fail(id, `registerConsoleWorkstation spec must be JSON-safe: ${jsonSafe.message}`);
   return { ok: true, id, value: value as unknown as ConsoleWorkstationSpec };
 }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export function validateIntegrationCommandSpec(value: unknown): RegistrationValidationResult<IntegrationCommandSpec> {
   const base = validateBase(value, 'registerIntegrationCommand', 'label');

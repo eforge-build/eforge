@@ -79,7 +79,6 @@ export interface ConsoleContribution {
   blocks: ConsoleContributionBlock[];
 }
 
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export interface ConsoleWorkstation {
   id: string;
   title: string;
@@ -92,7 +91,6 @@ export interface ConsoleWorkstation {
 export interface EforgeConsoleBridge {
   invokeAction<TOutput = unknown>(actionId: string, input?: Record<string, unknown>): Promise<TOutput>;
 }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export interface IntegrationCommand<TInput extends TObject | undefined = TObject | undefined> {
   id: string;
@@ -121,11 +119,9 @@ export function defineConsoleContribution(contribution: ConsoleContribution): Co
   return contribution;
 }
 
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export function defineConsoleWorkstation(workstation: ConsoleWorkstation): ConsoleWorkstation {
   return workstation;
 }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export function defineIntegrationCommand<TInput extends TObject | undefined = TObject | undefined>(
   command: IntegrationCommand<TInput>,

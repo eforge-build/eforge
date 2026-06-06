@@ -70,7 +70,6 @@ export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRe
   }) as ConsoleContributionManifestEntry;
 }
 
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): ConsoleWorkstationManifestEntry {
   return omitUndefined({
     id: reg.id,
@@ -84,7 +83,6 @@ export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegi
     allowedActions: projectAllowedActions(reg, registry),
   }) as ConsoleWorkstationManifestEntry;
 }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export function buildIntegrationCommandManifestEntry(reg: IntegrationCommandRegistration): IntegrationCommandManifestEntry {
   return omitUndefined({
@@ -122,12 +120,10 @@ export function buildConsoleContributionDetails(registry: NativeExtensionRegistr
   return details.length > 0 ? details : undefined;
 }
 
-// --- eforge:region plan-01-workstation-contract-runtime ---
 export function buildConsoleWorkstationDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): ConsoleWorkstationDetail[] | undefined {
   const details = registry.consoleWorkstations.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map((reg) => buildConsoleWorkstationManifestEntry(reg, registry));
   return details.length > 0 ? details : undefined;
 }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export function buildIntegrationCommandDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): IntegrationCommandDetail[] | undefined {
   const details = registry.integrationCommands.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map(buildIntegrationCommandManifestEntry);
@@ -149,12 +145,10 @@ function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string
   return omitUndefined(jsonSafeClone(base)) as ConsoleContributionBlock;
 }
 
-// --- eforge:region plan-01-workstation-contract-runtime ---
 function projectAllowedActions(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): string[] {
   const localActionIds = reg.value.allowedActions ?? registry.actions.filter((action) => belongsTo(action, reg.extensionName, reg.extensionPath)).map((action) => action.localId);
   return [...new Set(localActionIds.map((actionId) => resolveExtensionContributionId(reg.extensionName, actionId)))].sort();
 }
-// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 function projectBinding(binding: ExtensionActionBindingSpec, extensionName: string): ExtensionActionBindingManifest {
   return omitUndefined({

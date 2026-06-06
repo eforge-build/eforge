@@ -14,11 +14,9 @@ const RunDetailView = lazy(() =>
 const PlansView = lazy(() =>
   import('@/views/plans').then((m) => ({ default: m.PlansView })),
 );
-// --- eforge:region plan-02-console-workstations-ui ---
 const WorkstationsView = lazy(() =>
   import('@/views/workstations').then((m) => ({ default: m.WorkstationsView })),
 );
-// --- eforge:endregion plan-02-console-workstations-ui ---
 // --- eforge:region now-dashboard ---
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
@@ -107,7 +105,6 @@ export function App() {
       );
     }
 
-    // --- eforge:region plan-02-console-workstations-ui ---
     if (currentRoute === 'workstations' || (typeof currentRoute === 'object' && currentRoute.id === 'workstationDetail')) {
       const selectedWorkstationId = typeof currentRoute === 'object' ? currentRoute.workstationId : undefined;
       return (
@@ -116,7 +113,6 @@ export function App() {
         </Suspense>
       );
     }
-    // --- eforge:endregion plan-02-console-workstations-ui ---
 
     if (typeof currentRoute === 'object' && currentRoute.id === 'buildDetail') {
       const { detailId } = currentRoute;

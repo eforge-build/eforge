@@ -153,9 +153,7 @@ export {
   ConsoleContributionBlockSchema,
   ConsoleContributionManifestEntrySchema,
   ConsoleContributionRendererIdSchema,
-  // --- eforge:region plan-01-workstation-contract-runtime ---
   ConsoleWorkstationManifestEntrySchema,
-  // --- eforge:endregion plan-01-workstation-contract-runtime ---
   IntegrationCommandManifestEntrySchema,
   parseExtensionActionInvokeRequest,
   parseExtensionActionInvokeResponse,
@@ -168,9 +166,7 @@ export type {
   ConsoleContributionBlock,
   ConsoleContributionManifestEntry,
   ConsoleContributionRendererId,
-  // --- eforge:region plan-01-workstation-contract-runtime ---
   ConsoleWorkstationManifestEntry,
-  // --- eforge:endregion plan-01-workstation-contract-runtime ---
   ExtensionActionBindingManifest,
   ExtensionActionInvokeErrorCode,
   ExtensionActionInvokeFailureResponse,
@@ -241,9 +237,7 @@ export type {
   ExtensionRegistrationSummary,
   ReviewerPerspectiveApplicabilitySummary,
   ReviewerPerspectiveDetail,
-  // --- eforge:region plan-01-workstation-contract-runtime ---
   ConsoleWorkstationDetail,
-  // --- eforge:endregion plan-01-workstation-contract-runtime ---
   ExtensionEntry,
   ExtensionListResponse,
   ExtensionShowResponse,
