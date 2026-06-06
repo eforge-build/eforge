@@ -288,13 +288,14 @@ describe('extension contribution registry runtime', () => {
     }
   });
 
-  it('projects Console workstation allowed actions explicitly and defaults omitted lists to empty', async () => {
+  it('projects Console workstation allowed actions explicitly and defaults omitted lists to same-extension actions', async () => {
     const result = await loadFixture(makeTempDir(), {
       'alpha.js': `import { Type } from '@eforge-build/extension-sdk';
       export default function extension(eforge) {
         eforge.registerAction({ id: 'one', title: 'One', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
         eforge.registerAction({ id: 'two', title: 'Two', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
         eforge.registerConsoleWorkstation({ id: 'explicit', title: 'Explicit', srcDoc: '<p>explicit</p>', allowedActions: ['two'] });
+        eforge.registerConsoleWorkstation({ id: 'empty', title: 'Empty', srcDoc: '<p>empty</p>', allowedActions: [] });
         eforge.registerConsoleWorkstation({ id: 'derived', title: 'Derived', srcDoc: '<p>derived</p>' });
       }`,
       'beta.js': `import { Type } from '@eforge-build/extension-sdk';
@@ -304,9 +305,10 @@ describe('extension contribution registry runtime', () => {
     });
 
     const manifest = buildExtensionContributionManifest(result.registry);
-    expect(manifest.consoleWorkstations.map((workstation) => workstation.id)).toEqual(['alpha:derived', 'alpha:explicit']);
+    expect(manifest.consoleWorkstations.map((workstation) => workstation.id)).toEqual(['alpha:derived', 'alpha:empty', 'alpha:explicit']);
     expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'explicit')?.allowedActions).toEqual(['alpha:two']);
-    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'derived')?.allowedActions).toEqual([]);
+    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'empty')?.allowedActions).toEqual([]);
+    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'derived')?.allowedActions).toEqual(['alpha:one', 'alpha:two']);
     expect(JSON.stringify(manifest.consoleWorkstations)).not.toContain('beta:other');
   });
 

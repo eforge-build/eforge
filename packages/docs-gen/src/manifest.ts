@@ -53,12 +53,12 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Extensions guide',
       url: '/docs/extensions.md',
-      description: 'How native eforge extensions are discovered, trusted, loaded, and authored',
+      description: 'How native eforge extensions are discovered, trusted, loaded, authored, including the LLM-first extension authoring checklist and Console workstations',
     },
     {
       title: 'Extensions API reference',
       url: '/docs/extensions-api.md',
-      description: 'Typed extension SDK concepts, hook registration, context objects, and runtime boundaries',
+      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, SDK stability and migration guidance, hook registration, context objects, and runtime boundaries',
     },
     {
       title: 'Profiles guide',
@@ -150,6 +150,16 @@ export const LLMS_MANIFEST: LlmsManifest = {
       title: 'Core concepts',
       url: '/docs/concepts.md',
       description: 'Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts',
+    },
+    {
+      title: 'Extension authoring checklist',
+      url: '/docs/extensions.md#llm-first-extension-authoring-checklist',
+      description: 'LLM-first scaffold, validate, test, trust, and reload checklist for native extension authors',
+    },
+    {
+      title: 'SDK stability and migration guidance',
+      url: '/docs/extensions-api.md#sdk-stability-and-migration-guidance',
+      description: 'Canonical versioning and migration guidance for @eforge-build/extension-sdk authors',
     },
     {
       title: 'Stacked PRs',
