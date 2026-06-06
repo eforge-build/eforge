@@ -484,6 +484,7 @@ export const TFLandingSchema = Type.Object({ status: Type.String(), action: Type
 export const TerminalFailureEnvelopeSchema = Type.Object({
   scope: TerminalFailureScopeSchema, message: Type.String(),
   authoritative: Type.Boolean(), planId: Type.Optional(Type.String()),
+  terminalSubtype: Type.Optional(AgentTerminalSubtypeSchema),
   stage: Type.Optional(Type.String()), phaseSummary: Type.Optional(Type.String()),
   phaseStatus: Type.Optional(Type.String()), eventType: Type.Optional(Type.String()),
   sourceEventType: Type.Optional(Type.String()), sourceEventId: Type.Optional(Type.Integer()), sourceEventTimestamp: Type.Optional(Type.String()),

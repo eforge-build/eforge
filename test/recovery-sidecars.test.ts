@@ -329,6 +329,90 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('Validation command output was truncated for: pnpm test -- --large-output');
   });
 
+  it('JSON and Markdown include eligible compiled-build resume recommendation without changing the verdict vocabulary', async () => {
+    const dir = makeTempDir();
+    const { jsonPath, mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict('manual')!,
+      resumeEvidence: {
+        resumeEligibility: {
+          source: 'projectResumeEligibility',
+          eligible: true,
+          featureBranch: 'eforge/test-set',
+          artifactAvailability: 'feature-branch',
+          landedCommitCount: 1,
+          diffStat: '3 files changed',
+          failingPlanId: 'plan-02',
+        },
+      },
+    });
+
+    const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    const md = await readFile(mdPath, 'utf-8');
+
+    expect(parsed.resumeEligibility.eligible).toBe(true);
+    expect(parsed.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true }));
+    expect(['retry', 'split', 'abandon', 'manual']).toContain(parsed.verdict.verdict);
+    expect(parsed.verdict.verdict).toBe('manual');
+    expect(parsed.report.recommendedAction).toContain('eforge_resume_build');
+    expect(md).toContain('Compiled-build resume');
+    expect(md).toContain('eforge_resume_build');
+    expect(md).toContain('Recommended operator action');
+  });
+
+  it('JSON and Markdown include ineligible resume evidence without a recommended compiled-build option', async () => {
+    const dir = makeTempDir();
+    const { jsonPath, mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict('retry')!,
+      resumeEvidence: {
+        resumeEligibility: {
+          source: 'projectResumeEligibility',
+          eligible: false,
+          featureBranch: 'eforge/test-set',
+          reason: 'feature branch eforge/test-set not found',
+        },
+      },
+    });
+
+    const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    const md = await readFile(mdPath, 'utf-8');
+    expect(parsed.resumeEligibility.eligible).toBe(false);
+    expect(parsed.resumeEligibility.reason).toContain('feature branch');
+    expect(parsed.recoveryOptions?.some((option: { kind: string; recommended: boolean }) => option.kind === 'compiled-build-resume' && option.recommended)).not.toBe(true);
+    expect(md).toContain('Compiled-build resume');
+    expect(md).toContain('ineligible');
+  });
+
+  it('JSON sidecar records bounded inspection failure evidence', async () => {
+    const dir = makeTempDir();
+    const { projectRecoverySidecarResumeEvidence } = await import('@eforge-build/engine/recovery/resume-sidecar');
+    const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+      cwd: '/definitely/missing/eforge/project',
+      setName: 'test-set',
+      prdId: 'test-prd',
+      outputDir: 'eforge/plans',
+    });
+    const { jsonPath, mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummary(),
+      verdict: makeVerdict('manual')!,
+      resumeEvidence,
+    });
+
+    const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    const md = await readFile(mdPath, 'utf-8');
+    expect(parsed.resumeEligibility.eligible).toBe(false);
+    expect(parsed.resumeEligibility.reason.length).toBeGreaterThan(0);
+    expect(parsed.resumeEligibility.reason.length).toBeLessThanOrEqual(1100);
+    expect(md).toContain('Compiled-build resume');
+  });
+
   it('places operator guidance before detailed evidence in Markdown sidecars', async () => {
     const dir = makeTempDir();
     const summary = makeSummaryWithAcceptanceFailure();

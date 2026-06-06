@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { buildRecoverySidecarPayload } from './sidecar-payload.js';
 import { renderRecoverySidecarMarkdown } from './sidecar-markdown.js';
+import type { RecoverySidecarResumeEvidence } from './resume-sidecar.js';
 
 /**
  * Write `.recovery.md` and `.recovery.json` sidecar files next to the failed PRD.
@@ -26,11 +27,13 @@ export async function writeRecoverySidecar({
   prdId,
   summary,
   verdict,
+  resumeEvidence,
 }: {
   failedPrdDir: string;
   prdId: string;
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
+  resumeEvidence?: RecoverySidecarResumeEvidence;
 }): Promise<{ mdPath: string; jsonPath: string }> {
   const mdPath = join(failedPrdDir, `${prdId}.recovery.md`);
   const jsonPath = join(failedPrdDir, `${prdId}.recovery.json`);
@@ -38,7 +41,7 @@ export async function writeRecoverySidecar({
   await mkdir(failedPrdDir, { recursive: true });
 
   const generatedAt = new Date().toISOString();
-  const payload = buildRecoverySidecarPayload({ prdId, summary, verdict, generatedAt });
+  const payload = buildRecoverySidecarPayload({ prdId, summary, verdict, generatedAt, ...resumeEvidence });
 
   const jsonTmp = jsonPath + '.tmp';
   await writeFile(jsonTmp, JSON.stringify(payload, null, 2) + '\n', 'utf-8');

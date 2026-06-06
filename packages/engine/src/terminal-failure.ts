@@ -17,7 +17,7 @@
  *   other daemon:error → scope: 'daemon'
  */
 
-import type { EforgeEvent, TerminalFailureScope } from './events.js';
+import type { AgentTerminalSubtype, EforgeEvent, TerminalFailureScope } from './events.js';
 
 // ---------------------------------------------------------------------------
 // Internal evidence shape
@@ -27,6 +27,7 @@ interface FailureEvidence {
   scope: TerminalFailureScope;
   message: string;
   planId?: string;
+  terminalSubtype?: AgentTerminalSubtype;
   sourceEventType?: string;
   sourceEventTimestamp?: string;
   landing?: { status: string; action?: string; reason?: string };
@@ -68,7 +69,7 @@ export function createBuildTerminalFailureTracker(runId: string): BuildTerminalF
   return {
     observe(event: EforgeEvent): void {
       if (event.type === 'plan:build:failed') {
-        update({ scope: 'plan', message: event.error, planId: event.planId, sourceEventType: event.type, sourceEventTimestamp: event.timestamp });
+        update({ scope: 'plan', message: event.error, planId: event.planId, ...(event.terminalSubtype !== undefined ? { terminalSubtype: event.terminalSubtype } : {}), sourceEventType: event.type, sourceEventTimestamp: event.timestamp });
       } else if (event.type === 'validation:complete' && !event.passed) {
         update({ scope: 'post-merge-validation', message: 'Post-merge validation failed', sourceEventType: event.type, sourceEventTimestamp: event.timestamp, validationPassed: false });
       } else if (event.type === 'prd_validation:complete' && !event.passed) {
@@ -97,6 +98,7 @@ export function createBuildTerminalFailureTracker(runId: string): BuildTerminalF
           message: ev.message,
           authoritative: true,
           ...(ev.planId !== undefined ? { planId: ev.planId } : {}),
+          ...(ev.terminalSubtype !== undefined ? { terminalSubtype: ev.terminalSubtype } : {}),
           ...(ev.sourceEventType !== undefined ? { sourceEventType: ev.sourceEventType } : {}),
           ...(ev.sourceEventTimestamp !== undefined ? { sourceEventTimestamp: ev.sourceEventTimestamp } : {}),
           ...(ev.landing !== undefined ? { landing: ev.landing } : {}),

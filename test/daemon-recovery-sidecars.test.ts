@@ -152,6 +152,52 @@ describe('moveFailedWithSidecar', () => {
     expect(existsSync(mdPath)).toBe(true);
     expect(existsSync(jsonPath)).toBe(true);
   });
+
+  it('passes optional compiled-build resume evidence through to written sidecars', async () => {
+    const dir = makeTestDir();
+    initGitRepo(dir);
+    const queueDir = join(dir, '.eforge', 'queue');
+    await mkdir(queueDir, { recursive: true });
+    const prdPath = join(queueDir, 'resume-prd.md');
+    await writeFile(prdPath, '---\ntitle: Resume PRD\ncreated: 2024-01-01\n---\n\n# Resume PRD\n');
+
+    const summary = {
+      prdId: 'resume-prd',
+      setName: 'resume-set',
+      featureBranch: 'eforge/resume-set',
+      baseBranch: 'main',
+      plans: [{ planId: 'plan-01', status: 'failed', error: 'Transient' }],
+      failingPlan: { planId: 'plan-01', errorMessage: 'Transient' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: new Date().toISOString(),
+    };
+    const verdict = {
+      verdict: 'manual' as const,
+      confidence: 'low' as const,
+      rationale: 'Manual with resume option.',
+      completedWork: [],
+      remainingWork: [],
+      risks: [],
+    };
+
+    const { jsonPath } = await moveFailedWithSidecar(prdPath, summary, verdict, undefined, dir, {
+      resumeEligibility: {
+        source: 'projectResumeEligibility',
+        eligible: true,
+        featureBranch: 'eforge/resume-set',
+        artifactAvailability: 'feature-branch',
+        landedCommitCount: 1,
+        diffStat: '1 file changed',
+      },
+      recoveryOptions: [{ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true, reason: 'Eligible artifacts.' }],
+    });
+
+    const sidecarJson = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    expect(sidecarJson.resumeEligibility.eligible).toBe(true);
+    expect(sidecarJson.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true }));
+  });
 });
 
 describe('sidecar path uses prdId not planId', () => {

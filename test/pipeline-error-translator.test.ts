@@ -78,6 +78,18 @@ describe('toBuildFailedEvent', () => {
     expect(event.terminalSubtype).toBe('error_transient_transport');
   });
 
+  it('maps backend Codex SSE response-header timeout to error_transient_transport', () => {
+    const planId = 'plan-03';
+    const err = new Error('Backend error: Codex SSE response headers timed out after 10000ms');
+
+    const event = toBuildFailedEvent(planId, err);
+
+    expect(event.type).toBe('plan:build:failed');
+    expect(event.planId).toBe(planId);
+    expect(event.error).toBe('Backend error: Codex SSE response headers timed out after 10000ms');
+    expect(event.terminalSubtype).toBe('error_transient_transport');
+  });
+
   it('maps a plain Error to a build:failed event without terminalSubtype', () => {
     const planId = 'plan-03';
     const err = new Error('Something went wrong');

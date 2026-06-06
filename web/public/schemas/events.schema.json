@@ -9054,6 +9054,34 @@
                     "planId": {
                       "type": "string"
                     },
+                    "terminalSubtype": {
+                      "anyOf": [
+                        {
+                          "const": "error_max_turns",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error_max_budget_usd",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error_max_structured_output_retries",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error_during_execution",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error_pi_tool_infrastructure",
+                          "type": "string"
+                        },
+                        {
+                          "const": "error_transient_transport",
+                          "type": "string"
+                        }
+                      ]
+                    },
                     "stage": {
                       "type": "string"
                     },
@@ -12113,6 +12141,34 @@
                 },
                 "planId": {
                   "type": "string"
+                },
+                "terminalSubtype": {
+                  "anyOf": [
+                    {
+                      "const": "error_max_turns",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error_max_budget_usd",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error_max_structured_output_retries",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error_during_execution",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error_pi_tool_infrastructure",
+                      "type": "string"
+                    },
+                    {
+                      "const": "error_transient_transport",
+                      "type": "string"
+                    }
+                  ]
                 },
                 "stage": {
                   "type": "string"

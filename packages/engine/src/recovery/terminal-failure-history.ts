@@ -8,14 +8,21 @@
  * All helpers accept a raw DatabaseSync instance and return typed data.
  * The caller (synthesizeFromEvents) opens and closes the DB.
  */
-
 import { DatabaseSync } from 'node:sqlite';
-import type { AcceptanceCriteriaConflict, AcceptanceCriterionVerdict, BuildFailureSummary, FailingPlanEntry, LandedCommit, PlanSummaryEntry, ReviewIssue } from '../events.js';
-
+import { AgentTerminalSubtypeSchema, safeParseWithSchema } from '@eforge-build/client';
+import type {
+  AcceptanceCriteriaConflict,
+  AcceptanceCriterionVerdict,
+  AgentTerminalSubtype,
+  BuildFailureSummary,
+  FailingPlanEntry,
+  LandedCommit,
+  PlanSummaryEntry,
+  ReviewIssue,
+} from '../events.js';
 // ---------------------------------------------------------------------------
 // Shared types
 // ---------------------------------------------------------------------------
-
 export interface EventRow {
   id: number;
   planId: string | null;
@@ -23,18 +30,33 @@ export interface EventRow {
   data: string;
   timestamp: string;
 }
-
-function parseData(data: string): Record<string, unknown> {
-  try {
-    const p = JSON.parse(data);
-    return p && typeof p === 'object' ? p as Record<string, unknown> : {};
-  } catch { return {}; }
+function parseData(data: string): Record<string, unknown> { try { const p = JSON.parse(data); return p && typeof p === 'object' ? p as Record<string, unknown> : {}; } catch { return {}; } }
+function parseAgentTerminalSubtype(value: unknown): AgentTerminalSubtype | undefined {
+  const result = safeParseWithSchema(AgentTerminalSubtypeSchema, value);
+  return result.success ? result.data : undefined;
 }
-
+function planBuildFailedSubtypeFromData(data: string): AgentTerminalSubtype | undefined {
+  return parseAgentTerminalSubtype(parseData(data).terminalSubtype);
+}
+function recoverReferencedPlanBuildFailedSubtype(
+  db: DatabaseSync,
+  runId: string,
+  terminalRowId: number,
+  sourceEventId: number | undefined,
+  sourceEventTimestamp: string | undefined,
+  planId: string | undefined,
+): AgentTerminalSubtype | undefined {
+  if (sourceEventId !== undefined) {
+    const row = db.prepare(`SELECT data FROM events WHERE run_id = ? AND id = ? AND type = 'plan:build:failed' LIMIT 1`).get(runId, sourceEventId) as { data: string } | undefined;
+    return row ? planBuildFailedSubtypeFromData(row.data) : undefined;
+  }
+  if (sourceEventTimestamp === undefined || planId === undefined) return undefined;
+  const row = db.prepare(`SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:failed' AND id <= ? AND plan_id = ? AND timestamp = ? ORDER BY id DESC LIMIT 1`).get(runId, terminalRowId, planId, sourceEventTimestamp) as { data: string } | undefined;
+  return row ? planBuildFailedSubtypeFromData(row.data) : undefined;
+}
 type ReviewFailureDetails = NonNullable<BuildFailureSummary['reviewFailure']>;
 type ReviewFailureEvaluation = NonNullable<ReviewFailureDetails['evaluation']>;
 type ReviewFailureEvaluationVerdict = ReviewFailureEvaluation['verdicts'][number];
-
 function parseReviewIssues(raw: unknown): ReviewIssue[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((issue): issue is ReviewIssue => {
@@ -48,7 +70,6 @@ function parseReviewIssues(raw: unknown): ReviewIssue[] {
       (r.fix === undefined || typeof r.fix === 'string');
   });
 }
-
 function parseEvaluationVerdicts(raw: unknown): ReviewFailureEvaluationVerdict[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((verdict): verdict is ReviewFailureEvaluationVerdict => {
@@ -62,11 +83,9 @@ function parseEvaluationVerdicts(raw: unknown): ReviewFailureEvaluationVerdict[]
       (r.retryGuidance === undefined || typeof r.retryGuidance === 'string');
   });
 }
-
 // ---------------------------------------------------------------------------
 // Authoritative terminal event lookup
 // ---------------------------------------------------------------------------
-
 export interface AuthoritativeTerminalEvent {
   id: number;
   timestamp: string;
@@ -79,9 +98,8 @@ export interface AuthoritativeTerminalEvent {
   landing?: { status: string; action?: string; reason?: string };
   validationPassed?: boolean;
   prdValidationPassed?: boolean;
-  acceptanceValidationPassed?: boolean;
+  acceptanceValidationPassed?: boolean; terminalSubtype?: AgentTerminalSubtype;
 }
-
 /**
  * Find the latest `build:terminal-failure` event for the run at or before
  * the failed phase:end. Returns undefined if none found.
@@ -110,6 +128,7 @@ export function findAuthoritativeTerminalEvent(
   const landing = landingRaw && typeof landingRaw.status === 'string'
     ? { status: landingRaw.status, ...(typeof landingRaw.action === 'string' ? { action: landingRaw.action } : {}), ...(typeof landingRaw.reason === 'string' ? { reason: landingRaw.reason } : {}) }
     : undefined;
+  const terminalSubtype = failure.terminalSubtype === undefined ? (sourceEventType === 'plan:build:failed' ? recoverReferencedPlanBuildFailedSubtype(db, runId, row.id, sourceEventId, sourceEventTimestamp, planId) : undefined) : parseAgentTerminalSubtype(failure.terminalSubtype);
   return {
     id: row.id, timestamp: row.timestamp, scope, message,
     ...(planId !== undefined ? { planId } : {}),
@@ -117,23 +136,19 @@ export function findAuthoritativeTerminalEvent(
     ...(sourceEventId !== undefined ? { sourceEventId } : {}),
     ...(sourceEventTimestamp !== undefined ? { sourceEventTimestamp } : {}),
     ...(landing !== undefined ? { landing } : {}),
+    ...(terminalSubtype !== undefined ? { terminalSubtype } : {}),
     ...(typeof failure.validationPassed === 'boolean' ? { validationPassed: failure.validationPassed } : {}),
     ...(typeof failure.prdValidationPassed === 'boolean' ? { prdValidationPassed: failure.prdValidationPassed } : {}),
     ...(typeof failure.acceptanceValidationPassed === 'boolean' ? { acceptanceValidationPassed: failure.acceptanceValidationPassed } : {}),
   };
 }
-
 // ---------------------------------------------------------------------------
 // Acceptance validation evidence extraction
 // ---------------------------------------------------------------------------
-
-
 type AcceptanceValidationSummary = NonNullable<BuildFailureSummary['acceptanceValidation']>;
-
 type AcceptanceValidationParseResult =
   | { ok: true; acceptanceValidation: AcceptanceValidationSummary }
   | { ok: false; reason: string };
-
 function isAcceptanceVerdict(value: unknown): value is AcceptanceCriterionVerdict {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
@@ -141,7 +156,6 @@ function isAcceptanceVerdict(value: unknown): value is AcceptanceCriterionVerdic
     (record.verdict === 'pass' || record.verdict === 'fail' || record.verdict === 'unknown') &&
     typeof record.evidence === 'string' && record.evidence.length > 0;
 }
-
 function isAcceptanceConflict(value: unknown): value is AcceptanceCriteriaConflict {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
@@ -151,7 +165,6 @@ function isAcceptanceConflict(value: unknown): value is AcceptanceCriteriaConfli
     (record.scope === 'narrow' || record.scope === 'broad' || record.scope === 'unknown') &&
     (record.recommendedAction === 'revise_acceptance_criteria' || record.recommendedAction === 'manual_review');
 }
-
 export function parseAcceptanceValidationPayload(data: string, options: { legacyCompatible?: boolean } = {}): AcceptanceValidationParseResult {
   let parsed: unknown;
   try {
@@ -163,7 +176,6 @@ export function parseAcceptanceValidationPayload(data: string, options: { legacy
   const record = parsed as Record<string, unknown>;
   if (record.passed !== false) return { ok: false, reason: 'payload passed is not false' };
   if (!Array.isArray(record.verdicts)) return { ok: false, reason: 'payload verdicts is not an array' };
-
   const verdicts = options.legacyCompatible
     ? record.verdicts.flatMap((verdict): AcceptanceCriterionVerdict[] => {
       if (!verdict || typeof verdict !== 'object') return [];
@@ -176,7 +188,6 @@ export function parseAcceptanceValidationPayload(data: string, options: { legacy
     })
     : record.verdicts.filter(isAcceptanceVerdict);
   if (verdicts.length === 0) return { ok: false, reason: 'payload contains zero schema-valid verdicts' };
-
   const pass = verdicts.filter((verdict) => verdict.verdict === 'pass').length;
   const fail = verdicts.filter((verdict) => verdict.verdict === 'fail').length;
   const unknown = verdicts.filter((verdict) => verdict.verdict === 'unknown').length;
@@ -186,7 +197,6 @@ export function parseAcceptanceValidationPayload(data: string, options: { legacy
   const conflicts = Array.isArray(record.acceptanceConflicts)
     ? record.acceptanceConflicts.filter(isAcceptanceConflict)
     : [];
-
   return {
     ok: true,
     acceptanceValidation: {
@@ -201,7 +211,6 @@ export function parseAcceptanceValidationPayload(data: string, options: { legacy
     },
   };
 }
-
 function buildAcceptanceLookupPlaceholder(
   runId: string,
   terminal: AuthoritativeTerminalEvent,
@@ -227,7 +236,6 @@ function buildAcceptanceLookupPlaceholder(
     verdicts: [{ criterion: 'Acceptance validation evidence lookup failed', verdict: 'unknown', evidence }],
   };
 }
-
 export function extractAuthoritativeAcceptanceValidation(
   db: DatabaseSync,
   runId: string,
@@ -237,17 +245,13 @@ export function extractAuthoritativeAcceptanceValidation(
     `SELECT id, type, data, timestamp FROM events WHERE run_id = ? AND type = 'acceptance_validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
   ).get(runId, terminal.id) as { id: number; type: string; data: string; timestamp: string } | undefined;
   if (!row) return buildAcceptanceLookupPlaceholder(runId, terminal, 'no acceptance_validation:complete row found at or before terminal event id');
-
   const parsed = parseAcceptanceValidationPayload(row.data);
   if (parsed.ok) return parsed.acceptanceValidation;
   return buildAcceptanceLookupPlaceholder(runId, terminal, parsed.reason, row);
 }
-
-
 // ---------------------------------------------------------------------------
 // Plan status reconstruction (shared between authoritative and fallback paths)
 // ---------------------------------------------------------------------------
-
 export interface PlanStatusMaps {
   planStatusMap: Map<string, string>;
   planStatusTimestampMap: Map<string, string>;
@@ -257,7 +261,6 @@ export interface PlanStatusMaps {
   testCompleteMap: Map<string, { testPassed: number; testFailed: number }>;
   toolUseMap: Map<string, number>;
 }
-
 export function reconstructPlanMaps(db: DatabaseSync, runId: string): PlanStatusMaps {
   const planStatusMap = new Map<string, string>();
   const planStatusTimestampMap = new Map<string, string>();
@@ -265,7 +268,6 @@ export function reconstructPlanMaps(db: DatabaseSync, runId: string): PlanStatus
   const mergeCompleteMap = new Map<string, { commitSha?: string; mergedAt: string }>();
   const testCompleteMap = new Map<string, { testPassed: number; testFailed: number }>();
   const toolUseMap = new Map<string, number>();
-
   const statusRows = db.prepare(
     `SELECT id, plan_id as planId, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:status:change' AND plan_id IS NOT NULL ORDER BY id ASC`,
   ).all(runId) as Array<{ id: number; planId: string; data: string; timestamp: string }>;
@@ -275,7 +277,6 @@ export function reconstructPlanMaps(db: DatabaseSync, runId: string): PlanStatus
     planStatusTimestampMap.set(r.planId, r.timestamp);
     planStatusIdMap.set(r.planId, r.id);
   }
-
   const mergeRows = db.prepare(
     `SELECT plan_id as planId, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:merge:complete' AND plan_id IS NOT NULL ORDER BY id ASC`,
   ).all(runId) as Array<{ planId: string; data: string; timestamp: string }>;
@@ -283,7 +284,6 @@ export function reconstructPlanMaps(db: DatabaseSync, runId: string): PlanStatus
     const d = parseData(r.data);
     mergeCompleteMap.set(r.planId, { mergedAt: r.timestamp, ...(typeof d.commitSha === 'string' ? { commitSha: d.commitSha } : {}) });
   }
-
   const testRows = db.prepare(
     `SELECT plan_id as planId, data FROM events WHERE run_id = ? AND type = 'plan:build:test:complete' AND plan_id IS NOT NULL ORDER BY id ASC`,
   ).all(runId) as Array<{ planId: string; data: string }>;
@@ -291,21 +291,16 @@ export function reconstructPlanMaps(db: DatabaseSync, runId: string): PlanStatus
     const d = parseData(r.data);
     if (typeof d.passed === 'number' && typeof d.failed === 'number') testCompleteMap.set(r.planId, { testPassed: d.passed, testFailed: d.failed });
   }
-
   const toolUseRows = db.prepare(
     `SELECT plan_id as planId, COUNT(*) as count FROM events WHERE run_id = ? AND type = 'agent:tool_use' AND plan_id IS NOT NULL GROUP BY plan_id`,
   ).all(runId) as Array<{ planId: string; count: number }>;
   for (const r of toolUseRows) toolUseMap.set(r.planId, r.count);
-
   return { planStatusMap, planStatusTimestampMap, planStatusIdMap, mergeCompleteMap, testCompleteMap, toolUseMap };
 }
-
 // ---------------------------------------------------------------------------
 // Build PlanSummaryEntry[] from maps
 // ---------------------------------------------------------------------------
-
 export type PlanErrorEntry = { error?: string; terminalSubtype?: string };
-
 export function buildPlanSummaries(
   allPlanIds: Set<string>,
   maps: PlanStatusMaps,
@@ -330,7 +325,6 @@ export function buildPlanSummaries(
     };
   });
 }
-
 export function extractPlanErrorMap(
   db: DatabaseSync,
   runId: string,
@@ -355,11 +349,9 @@ export function extractPlanErrorMap(
   }
   return planErrorMap;
 }
-
 // ---------------------------------------------------------------------------
 // Validation command extraction for a build window
 // ---------------------------------------------------------------------------
-
 export function extractValidationCommands(
   db: DatabaseSync,
   runId: string,
@@ -378,11 +370,9 @@ export function extractValidationCommands(
   }
   return result;
 }
-
 // ---------------------------------------------------------------------------
 // Landing evidence extraction
 // ---------------------------------------------------------------------------
-
 export function extractLandingInfo(
   db: DatabaseSync,
   runId: string,
@@ -397,7 +387,6 @@ export function extractLandingInfo(
   if (!status) return undefined;
   return { status, ...(typeof d.action === 'string' ? { action: d.action } : {}), ...(typeof d.reason === 'string' ? { reason: d.reason } : {}) };
 }
-
 export function extractReviewFailureDetails(
   db: DatabaseSync,
   runId: string,
@@ -408,7 +397,6 @@ export function extractReviewFailureDetails(
     `SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:review:complete' AND plan_id = ? AND id <= ? ORDER BY id DESC LIMIT 1`,
   ).get(runId, planId, upToId) as { data: string } | undefined;
   const reviewIssues = reviewRow ? parseReviewIssues(parseData(reviewRow.data).issues) : [];
-
   const evalRow = db.prepare(
     `SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:evaluate:complete' AND plan_id = ? AND id <= ? ORDER BY id DESC LIMIT 1`,
   ).get(runId, planId, upToId) as { data: string } | undefined;
@@ -425,7 +413,6 @@ export function extractReviewFailureDetails(
     const review = verdicts.filter(v => v.action === 'review').length;
     evaluation = { accepted, rejected, review, verdicts };
   }
-
   if (reviewIssues.length === 0 && evaluation === undefined) return undefined;
   return {
     planId,
@@ -433,11 +420,9 @@ export function extractReviewFailureDetails(
     ...(evaluation !== undefined ? { evaluation } : {}),
   };
 }
-
 // ---------------------------------------------------------------------------
 // Build authoritative BuildFailureSummary fragment from terminal event
 // ---------------------------------------------------------------------------
-
 export function buildAuthoritativeFragment(
   terminal: AuthoritativeTerminalEvent,
   maps: PlanStatusMaps,
@@ -455,21 +440,18 @@ export function buildAuthoritativeFragment(
   const failingPlanId = terminal.planId ?? (terminal.scope !== 'plan' ? terminal.scope : 'unknown');
   const allPlanIds = new Set([...maps.planStatusMap.keys(), ...lifecyclePlanErrorMap.keys()]);
   if (failingPlanId !== 'unknown') allPlanIds.add(failingPlanId);
-
   const planErrorMap = new Map(lifecyclePlanErrorMap);
-  if (terminal.scope === 'plan' && failingPlanId !== 'unknown') {
-    planErrorMap.set(failingPlanId, { error: terminal.message });
-  }
+  if (terminal.scope === 'plan' && failingPlanId !== 'unknown') { const terminalSubtype = terminal.terminalSubtype ?? planErrorMap.get(failingPlanId)?.terminalSubtype; planErrorMap.set(failingPlanId, { error: terminal.message, ...(terminalSubtype !== undefined ? { terminalSubtype } : {}) }); }
   const plans = buildPlanSummaries(allPlanIds, maps, planErrorMap);
-
   const toolUseCount = maps.toolUseMap.get(failingPlanId);
+  const failingPlanTerminalSubtype = terminal.terminalSubtype ?? planErrorMap.get(failingPlanId)?.terminalSubtype;
   const failingPlan: FailingPlanEntry = {
     planId: failingPlanId,
     ...(terminal.scope === 'plan' ? { errorMessage: terminal.message } : {}),
+    ...(failingPlanTerminalSubtype !== undefined ? { terminalSubtype: failingPlanTerminalSubtype } : {}),
     ...(toolUseCount !== undefined ? { toolUseCount } : {}),
   };
   const failingPlans = terminal.scope === 'plan' && failingPlanId !== 'unknown' ? [failingPlan] : undefined;
-
   return {
     prdId, setName,
     featureBranch: `eforge/${setName}`,
@@ -486,6 +468,7 @@ export function buildAuthoritativeFragment(
       message: terminal.message,
       authoritative: true,
       ...(terminal.planId ? { planId: terminal.planId } : {}),
+      ...(terminal.terminalSubtype !== undefined ? { terminalSubtype: terminal.terminalSubtype } : {}),
       ...(terminal.sourceEventType ? { sourceEventType: terminal.sourceEventType } : {}),
       ...(terminal.sourceEventId !== undefined ? { sourceEventId: terminal.sourceEventId } : {}),
       ...(terminal.sourceEventTimestamp ? { sourceEventTimestamp: terminal.sourceEventTimestamp } : {}),
@@ -499,12 +482,10 @@ export function buildAuthoritativeFragment(
     ...(options.acceptanceValidation !== undefined ? { acceptanceValidation: options.acceptanceValidation } : {}),
   };
 }
-
 // ---------------------------------------------------------------------------
 // Legacy fallback fragment detection (no authoritative build:terminal-failure)
 // Detects artifact-recording, landing, and post-merge-validation failures.
 // ---------------------------------------------------------------------------
-
 /** Base fields common to all legacy fallback fragments. */
 function makeLegacyBase(
   prdId: string, setName: string, modelsUsed: string[], failedAt: string,
@@ -518,7 +499,6 @@ function makeLegacyBase(
     failedAt, partial: true,
   };
 }
-
 /**
  * Probe the DB for well-known non-plan terminal failure patterns that predate
  * the authoritative build:terminal-failure event. Returns a synthesized fragment
@@ -538,7 +518,6 @@ export function detectLegacyFallbackFragment(
   phaseStatus: string | undefined,
 ): Partial<BuildFailureSummary> | undefined {
   const phaseFields = { ...(phaseSummary !== undefined ? { phaseSummary } : {}), ...(phaseStatus !== undefined ? { phaseStatus } : {}) };
-
   // --- artifact-recording: daemon:error with source=stack:artifact-recording ---
   const artifactRows = db.prepare(
     `SELECT id, data FROM events WHERE run_id = ? AND type = 'daemon:error' AND id <= ? ORDER BY id DESC LIMIT 20`,
@@ -557,7 +536,6 @@ export function detectLegacyFallbackFragment(
       ...(landing !== undefined ? { landing } : {}),
     };
   }
-
   // --- landing: landing:skipped or stack:landing:update with status=failed/skipped ---
   const landingRow = db.prepare(
     `SELECT type, data FROM events WHERE run_id = ? AND (type = 'landing:skipped' OR type = 'stack:landing:update') AND id <= ? ORDER BY id DESC LIMIT 1`,
@@ -577,7 +555,6 @@ export function detectLegacyFallbackFragment(
       };
     }
   }
-
   // --- post-merge-validation: validation:complete with passed=false ---
   const valRow = db.prepare(
     `SELECT id, data FROM events WHERE run_id = ? AND type = 'validation:complete' AND id <= ? ORDER BY id DESC LIMIT 1`,
@@ -592,6 +569,5 @@ export function detectLegacyFallbackFragment(
       ...(valCmds.length > 0 ? { validationCommands: valCmds } : {}),
     };
   }
-
   return undefined;
 }

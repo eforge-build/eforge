@@ -78,6 +78,7 @@ export {
   // --- eforge:region build-completion-recovery ---
   EvaluationIssueOutcomeSchema,
   // --- eforge:endregion build-completion-recovery ---
+  AgentTerminalSubtypeSchema,
   BuildDecisionSchema,
   PlanningDecisionSchema,
   AcceptanceCriterionVerdictSchema,

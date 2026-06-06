@@ -9,6 +9,7 @@ import { forgeCommit, retryOnLock } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
 import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
+import type { RecoverySidecarResumeEvidence } from './recovery/resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
@@ -411,6 +412,7 @@ export async function moveFailedWithSidecar(
   verdict: RecoveryVerdict,
   _modelTracker: ModelTracker | undefined,
   _cwd: string,
+  resumeEvidence?: RecoverySidecarResumeEvidence,
 ): Promise<{ mdPath: string; jsonPath: string; destPath: string }> {
   const dir = resolve(filePath, '..');
   const destDir = resolve(dir, 'failed');
@@ -423,12 +425,7 @@ export async function moveFailedWithSidecar(
   await rename(filePath, destPath);
 
   // Write both sidecar files (atomic temp-then-rename inside writeRecoverySidecar)
-  const { mdPath, jsonPath } = await writeRecoverySidecar({
-    failedPrdDir: destDir,
-    prdId,
-    summary,
-    verdict,
-  });
+  const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: destDir, prdId, summary, verdict, ...(resumeEvidence !== undefined ? { resumeEvidence } : {}) });
 
   return { mdPath, jsonPath, destPath };
 }

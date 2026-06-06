@@ -24,6 +24,7 @@ import { openDatabase } from '@eforge-build/monitor/db';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, filterEvents } from './test-events.js';
+import { createBuildTerminalFailureTracker } from '@eforge-build/engine/terminal-failure';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -102,6 +103,28 @@ describe('recovery run selection', () => {
 describe('authoritative terminal failure precedence', () => {
   const makeTempDir = useTempDir('eforge-tf-test-');
 
+  it('copies plan build failure terminalSubtype into the authoritative terminal failure event', () => {
+    const tracker = createBuildTerminalFailureTracker('run-tracker-subtype');
+    tracker.observe({
+      type: 'plan:build:failed',
+      planId: 'plan-transport',
+      error: 'Backend error: Codex SSE response headers timed out after 10000ms',
+      terminalSubtype: 'error_transient_transport',
+      timestamp: '2026-01-01T10:00:00.000Z',
+    });
+
+    const event = tracker.toEvent('failed', 'Build failed');
+
+    expect(event).toEqual(expect.objectContaining({
+      type: 'build:terminal-failure',
+      failure: expect.objectContaining({
+        scope: 'plan',
+        planId: 'plan-transport',
+        terminalSubtype: 'error_transient_transport',
+      }),
+    }));
+  });
+
   it('uses build:terminal-failure event as authoritative source when present', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
@@ -128,6 +151,50 @@ describe('authoritative terminal failure precedence', () => {
     expect(fragment!.partial).toBeUndefined();
     // The stale agent:stop for plan-old should not affect failingPlan
     expect(fragment!.failingPlan?.planId).toBe('artifact-recording');
+  });
+
+  it('preserves terminal subtype from authoritative plan-scoped terminal failures', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-auth-subtype.db');
+    const db = openDatabase(dbPath);
+
+    makeBaseRun(db, 'run-auth-subtype-01', 'auth-subtype-set', dir);
+    db.insertEvent({ runId: 'run-auth-subtype-01', type: 'plan:status:change', planId: 'plan-codex', data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-codex', status: 'failed' }), timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-subtype-01', type: 'build:terminal-failure', planId: 'plan-codex', data: JSON.stringify({ type: 'build:terminal-failure', runId: 'run-auth-subtype-01', failure: { scope: 'plan', planId: 'plan-codex', message: 'Backend error: Codex SSE response headers timed out after 10000ms', authoritative: true, sourceEventType: 'plan:build:failed', terminalSubtype: 'error_transient_transport' } }), timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-auth-subtype-01', 'failed');
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'auth-subtype-set', prdId: 'auth-subtype-prd', cwd: dir, dbPath });
+
+    expect(summary.terminalFailure).toEqual(expect.objectContaining({ terminalSubtype: 'error_transient_transport' }));
+    expect(summary.failingPlan).toEqual(expect.objectContaining({ planId: 'plan-codex', terminalSubtype: 'error_transient_transport' }));
+    expect(summary.failingPlans?.[0]).toEqual(expect.objectContaining({ planId: 'plan-codex', terminalSubtype: 'error_transient_transport' }));
+    expect(summary.plans.find((plan) => plan.planId === 'plan-codex')).toEqual(expect.objectContaining({ terminalSubtype: 'error_transient_transport' }));
+  });
+
+  it('recovers terminal subtype from referenced legacy plan:build:failed row when authoritative event omits it', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'tf-auth-subtype-fallback.db');
+    const db = openDatabase(dbPath);
+    const sourceTimestamp = new Date('2026-01-01T10:21:00.000Z').toISOString();
+
+    makeBaseRun(db, 'run-auth-subtype-fallback-01', 'auth-subtype-fallback-set', dir);
+    db.insertEvent({ runId: 'run-auth-subtype-fallback-01', type: 'plan:status:change', planId: 'plan-codex', data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-codex', status: 'failed' }), timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-auth-subtype-fallback-01', type: 'plan:build:failed', planId: 'plan-codex', data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-codex', error: 'Backend error: Codex SSE response headers timed out after 10000ms', terminalSubtype: 'error_transient_transport' }), timestamp: sourceTimestamp });
+    db.insertEvent({ runId: 'run-auth-subtype-fallback-01', type: 'build:terminal-failure', planId: 'plan-codex', data: JSON.stringify({ type: 'build:terminal-failure', runId: 'run-auth-subtype-fallback-01', failure: { scope: 'plan', planId: 'plan-codex', message: 'Backend error: Codex SSE response headers timed out after 10000ms', authoritative: true, sourceEventType: 'plan:build:failed', sourceEventTimestamp: sourceTimestamp } }), timestamp: new Date('2026-01-01T10:25:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-auth-subtype-fallback-01', 'failed');
+    db.close();
+
+    const summary = await buildFailureSummary({ setName: 'auth-subtype-fallback-set', prdId: 'auth-subtype-fallback-prd', cwd: dir, dbPath });
+
+    expect(summary.terminalFailure).toEqual(expect.objectContaining({ terminalSubtype: 'error_transient_transport' }));
+    expect(summary.failingPlan.terminalSubtype).toBe('error_transient_transport');
+    expect(summary.failingPlans?.[0]?.terminalSubtype).toBe('error_transient_transport');
+    expect(summary.plans.find((plan) => plan.planId === 'plan-codex')?.terminalSubtype).toBe('error_transient_transport');
   });
 
   it('keeps blocked descendants in authoritative recovery plans without treating them as failingPlans', async () => {

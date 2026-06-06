@@ -34,10 +34,20 @@ const BACKEND_WS_CLOSE_RE = /backend error:\s*websocket closed\s+\d+\b/i;
  */
 const CLAUDE_SDK_SOCKET_CLOSE_RE = /api error:.*socket connection was closed unexpectedly/i;
 
+/**
+ * Matches Codex SSE response-header timeouts emitted by the backend transport:
+ *   Backend error: Codex SSE response headers timed out after <N>ms
+ *
+ * Requires the `backend error:` and `codex` prefixes so generic shell command,
+ * daemon request, or non-backend SSE timeout text is not classified as transient.
+ */
+const BACKEND_CODEX_SSE_HEADERS_TIMEOUT_RE = /backend error:\s*codex sse response headers timed out after \d+ms\b/i;
+
 /** True when an error message matches a known transient backend transport close. */
 export function isTransientTransportError(message: string): boolean {
   if (BACKEND_WS_CLOSE_RE.test(message)) return true;
   if (CLAUDE_SDK_SOCKET_CLOSE_RE.test(message)) return true;
+  if (BACKEND_CODEX_SSE_HEADERS_TIMEOUT_RE.test(message)) return true;
   const normalized = message.toLowerCase();
   return normalized.includes('backend error: websocket error');
 }

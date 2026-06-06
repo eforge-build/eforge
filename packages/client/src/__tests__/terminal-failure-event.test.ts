@@ -58,6 +58,7 @@ describe('TerminalFailureEnvelopeSchema', () => {
       sourceEventType: 'daemon:error',
       sourceEventId: 42,
       sourceEventTimestamp: '2026-01-01T00:00:00.000Z',
+      terminalSubtype: 'error_transient_transport',
       landing: { status: 'skipped', action: 'pr', reason: 'validation failed' },
       validationPassed: true,
       prdValidationPassed: true,
@@ -128,6 +129,28 @@ describe('safeParseEforgeEvent — build:terminal-failure', () => {
       type: 'build:terminal-failure',
       runId: 'run-01',
       failure: { scope: 'plan', message: 'Build failed' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts build:terminal-failure with a valid failure.terminalSubtype', () => {
+    const event = {
+      type: 'build:terminal-failure',
+      runId: 'run-01',
+      failure: { scope: 'plan', planId: 'plan-01', message: 'Build failed', authoritative: true, terminalSubtype: 'error_transient_transport' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects build:terminal-failure with an invalid failure.terminalSubtype', () => {
+    const event = {
+      type: 'build:terminal-failure',
+      runId: 'run-01',
+      failure: { scope: 'plan', planId: 'plan-01', message: 'Build failed', authoritative: true, terminalSubtype: 'not-a-subtype' },
       timestamp: '2026-01-01T00:00:00.000Z',
     };
     const result = safeParseEforgeEvent(event);

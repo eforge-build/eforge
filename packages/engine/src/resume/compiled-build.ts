@@ -379,6 +379,7 @@ export async function projectResumeEligibility(opts: {
   trunkBranch?: string;
   featureBranch?: string;
   baseBranch?: string;
+  failureSummary?: BuildFailureSummary;
 }): Promise<ResumeEligibilityProjection> {
   const { cwd, setName, prdId, mergeWorktreePath, outputDir, dbPath, trunkBranch } = opts;
   const featureBranch = opts.featureBranch ?? `eforge/${setName}`;
@@ -439,14 +440,18 @@ export async function projectResumeEligibility(opts: {
 
   // 3. Failure evidence from monitor DB + git history (read-only).
   let summary: BuildFailureSummary;
-  try {
-    summary = await buildFailureSummary({ setName, prdId, cwd, dbPath, trunkBranch: opts.baseBranch ?? trunkBranch, featureBranch, baseBranch: opts.baseBranch });
-  } catch {
-    return {
-      eligible: false,
-      featureBranch,
-      reason: `failed to reconstruct build failure summary — no monitor DB or git evidence available for ${setName}`,
-    };
+  if (opts.failureSummary !== undefined) {
+    summary = opts.failureSummary;
+  } else {
+    try {
+      summary = await buildFailureSummary({ setName, prdId, cwd, dbPath, trunkBranch: opts.baseBranch ?? trunkBranch, featureBranch, baseBranch: opts.baseBranch });
+    } catch {
+      return {
+        eligible: false,
+        featureBranch,
+        reason: `failed to reconstruct build failure summary — no monitor DB or git evidence available for ${setName}`,
+      };
+    }
   }
 
   const hasEvidence = !summary.partial || summary.landedCommits.length > 0;

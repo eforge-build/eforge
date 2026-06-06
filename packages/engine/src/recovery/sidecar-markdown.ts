@@ -1,5 +1,6 @@
 import type { RecoveryVerdictSidecar } from '@eforge-build/client';
 import type { AcceptanceCriterionVerdict } from '../events.js';
+import type { RecoverySidecarResumeEvidence } from './resume-sidecar.js';
 
 function escapeTableCell(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
@@ -17,7 +18,40 @@ function acceptanceNextStep(verdict: AcceptanceCriterionVerdict['verdict']): str
   }
 }
 
-export function renderRecoverySidecarMarkdown(payload: RecoveryVerdictSidecar): string {
+function renderCompiledResumeSection(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence>): string[] {
+  const eligibility = payload.resumeEligibility;
+  if (eligibility === undefined) return [];
+
+  const lines = [
+    '## Compiled-build resume',
+    '',
+    `**Eligibility:** ${eligibility.eligible ? 'eligible' : 'ineligible'}`,
+    `**Source:** ${eligibility.source}`,
+    `**Feature Branch:** \`${eligibility.featureBranch}\``,
+  ];
+
+  if (eligibility.eligible) {
+    const recommended = payload.recoveryOptions?.find((option) => option.kind === 'compiled-build-resume' && option.recommended);
+    lines.push(
+      `**Artifact Source:** ${eligibility.artifactAvailability}`,
+      `**Landed Commits:** ${eligibility.landedCommitCount}`,
+    );
+    if (eligibility.artifactCommit) lines.push(`**Artifact Commit:** \`${eligibility.artifactCommit}\``);
+    if (eligibility.failingPlanId) lines.push(`**Failing Plan:** ${eligibility.failingPlanId}`);
+    if (eligibility.partial !== undefined) lines.push(`**Partial Evidence:** ${eligibility.partial ? 'yes' : 'no'}`);
+    lines.push('', recommended?.reason ?? 'Compiled plan artifacts are eligible for scheduler-owned resume.');
+    lines.push('', 'Recommended operator action: call `eforge_resume_build` (or `/eforge:recover resume`) for this PRD. Do not call `eforge_apply_recovery` for compiled-build resume.');
+  } else {
+    lines.push(`**Reason:** ${escapeTableCell(eligibility.reason)}`);
+    if (eligibility.checkedPath) lines.push(`**Checked Path:** \`${eligibility.checkedPath}\``);
+    lines.push('', 'Compiled-build resume is not recommended from this sidecar. Use the recovery verdict or run live eligibility as a fallback if the branch/artifact state may have changed.');
+  }
+
+  lines.push('');
+  return lines;
+}
+
+export function renderRecoverySidecarMarkdown(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence>): string {
   const { boundedEvidence: evidence, report, verdict } = payload;
   const lines: string[] = [
     `# Recovery Analysis: ${payload.prdId}`,
@@ -45,6 +79,7 @@ export function renderRecoverySidecarMarkdown(payload: RecoveryVerdictSidecar): 
     '',
     report.recommendedAction,
     '',
+    ...renderCompiledResumeSection(payload),
     '## Key Evidence',
     '',
     ...bulletLines(report.keyEvidence),

@@ -10,6 +10,7 @@ import { runRecoveryAnalyst } from '../agents/recovery-analyst.js';
 import { resolveAgentConfig } from '../pipeline.js';
 import { buildFailureSummary } from './failure-summary.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recommendation.js';
+import { projectRecoverySidecarResumeEvidence } from './resume-sidecar.js';
 import { writeRecoverySidecar } from './sidecar.js';
 
 export interface FailedQueuedResumeSidecarFinalizationOptions {
@@ -102,7 +103,7 @@ async function writeCurrentSidecar(options: FailedQueuedResumeSidecarFinalizatio
       analystError = err instanceof Error ? err.message : String(err);
     }
     const verdict = selectFinalVerdict({ deterministicRecommendation, analystVerdict, analystError, parseError, summary: options.summary });
-    return await writeSidecarOrInvalidate(options.failedPrdDir, options.prdId, options.summary, verdict, 'refreshed');
+    return await writeSidecarOrInvalidate(options, options.summary, verdict, 'refreshed');
   } finally {
     clearTimeout(timer);
     options.abortController?.signal.removeEventListener('abort', abortForwarder);
@@ -136,15 +137,31 @@ async function writeDegradedSidecar(options: FailedQueuedResumeSidecarFinalizati
     recommendationSource: 'manual-fallback',
     recommendationRationale: 'Failed queued-resume recovery sidecar finalization used a degraded manual fallback.',
   };
-  return writeSidecarOrInvalidate(options.failedPrdDir, options.prdId, summary, verdict, 'degraded');
+  return writeSidecarOrInvalidate(options, summary, verdict, 'degraded');
 }
 
-async function writeSidecarOrInvalidate(failedPrdDir: string, prdId: string, summary: BuildFailureSummary, verdict: RecoveryVerdict, status: 'refreshed' | 'degraded'): Promise<FailedQueuedResumeSidecarFinalizationResult> {
+async function writeSidecarOrInvalidate(
+  options: FailedQueuedResumeSidecarFinalizationOptions & { failedPrdDir: string },
+  summary: BuildFailureSummary,
+  verdict: RecoveryVerdict,
+  status: 'refreshed' | 'degraded',
+): Promise<FailedQueuedResumeSidecarFinalizationResult> {
   try {
-    const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir, prdId, summary, verdict });
+    const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+      cwd: options.cwd,
+      setName: options.setName,
+      prdId: options.prdId,
+      outputDir: options.config.plan.outputDir,
+      ...(options.trunkBranch !== undefined ? { trunkBranch: options.trunkBranch } : {}),
+      featureBranch: summary.featureBranch,
+      baseBranch: summary.baseBranch,
+      failureSummary: summary,
+      dbPath: resolve(options.cwd, '.eforge', 'monitor.db'),
+    });
+    const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: options.failedPrdDir, prdId: options.prdId, summary, verdict, resumeEvidence });
     return { status, mdPath, jsonPath };
   } catch (err) {
-    await removeRecoverySidecars(failedPrdDir, prdId);
+    await removeRecoverySidecars(options.failedPrdDir, options.prdId);
     return { status: 'invalidated', reason: err instanceof Error ? err.message : String(err) };
   }
 }

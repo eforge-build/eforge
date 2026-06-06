@@ -624,6 +624,38 @@ describe('applyRecovery — manual', () => {
     expect(completeEvent!.verdict).toBe('manual');
     expect(completeEvent!.noAction).toBe(true);
   });
+
+  it('returns noAction for a manual sidecar that contains a compiled-build resume recommendation', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-manual-with-resume';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'manual');
+
+    const sidecarPath = join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`);
+    const sidecar = JSON.parse(await readFile(sidecarPath, 'utf-8')) as Record<string, unknown>;
+    sidecar.resumeEligibility = {
+      source: 'projectResumeEligibility',
+      eligible: true,
+      featureBranch: 'eforge/test-set',
+      artifactAvailability: 'feature-branch',
+      landedCommitCount: 1,
+      diffStat: '1 file changed',
+    };
+    sidecar.recoveryOptions = [{ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true, reason: 'Eligible compiled artifacts.' }];
+    await writeFile(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8');
+    execFileSync('git', ['add', '--', sidecarPath], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'chore: add resume sidecar fields'], { cwd: dir });
+
+    const headBefore = await gitHeadSha(dir);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
+
+    expect(result.verdict).toBe('manual');
+    expect(result.noAction).toBe(true);
+    expect(await gitHeadSha(dir)).toBe(headBefore);
+    expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect((await readdir(join(dir, '.eforge', 'queue'))).filter((entry) => entry.endsWith('.md'))).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

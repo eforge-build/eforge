@@ -64,9 +64,11 @@ If the verdict is `split`, also show:
 {suggestedSuccessorPrd}
 ```
 
-Also check whether the PRD has compiled artifacts and a feature branch. If it does, present the compiled-build resume option alongside the verdict-recommended action:
+First inspect sidecar-provided compiled-build resume fields. If `resumeEligibility.eligible === true` or `recoveryOptions` contains `{ kind: "compiled-build-resume", action: "eforge_resume_build", recommended: true }`, prefer that sidecar recommendation and present it alongside the verdict-recommended action:
 
-> This PRD has compiled artifacts on a feature branch. You may either follow the verdict action above or resume the build from its compiled artifacts using `mcp__eforge__eforge_resume_build`. Which would you prefer?
+> This recovery sidecar recommends compiled-build resume from preserved artifacts. You may either follow the verdict action above or resume the build using `mcp__eforge__eforge_resume_build`. Which would you prefer?
+
+If the sidecar has `resumeEligibility.eligible === false`, show the bounded reason and do not recommend resume unless the user asks to resume anyway because branch/artifact state may have changed. There is no separate read-only live eligibility tool; rely on sidecar fields unless the user confirms calling `mcp__eforge__eforge_resume_build`, which will validate eligibility server-side and queue a resume only when eligible. If the sidecar does not contain resume fields, do not infer eligibility manually; offer `mcp__eforge__eforge_resume_build` only after explicit confirmation and explain that the daemon will reject ineligible resumes.
 
 ### Step 4: Confirm the Action
 
@@ -75,13 +77,13 @@ Ask the user to confirm the verdict-specific action or the resume option:
 - `retry`: "Re-queue PRD `{prdId}` for another attempt? (yes / no)"
 - `split`: "Enqueue a successor PRD based on the suggested content above? If landed partial work is recorded in the sidecar, the queued successor will start from the preserved feature branch while targeting the original base branch. (yes / no)"
 - `abandon`: "Archive the failed PRD `{prdId}` (this cannot be undone)? (yes / no)"
-- `manual`: Render the full markdown report and stop. Tell the user:
+- `manual`: If the sidecar recommends compiled-build resume, offer the resume confirmation below; a `manual` verdict can coexist with a resume recommendation because `manual` applies only to `mcp__eforge__eforge_apply_recovery`. Otherwise render the full markdown report and stop. Tell the user:
 
-> This verdict requires manual intervention. Review the report above and take action outside of eforge. No automated action is available for the `manual` verdict.
+> This verdict requires manual intervention. Review the report above and take action outside of eforge. No automated apply-recovery action is available for the `manual` verdict.
 
-**Stop here** for `manual`. Do not call `eforge_apply_recovery`. If it were called it would return `{ verdict: 'manual', noAction: true }` — no mutation occurs.
+**Stop here** for `manual` unless a sidecar-provided compiled-build resume recommendation is present and the user chooses it. Do not call `eforge_apply_recovery`. If it were called it would return `{ verdict: 'manual', noAction: true }` — no mutation occurs.
 
-- **resume**: "Resume PRD `{prdId}` from its compiled artifacts? (yes / no)"
+- **resume**: "Resume PRD `{prdId}` from its compiled artifacts with `mcp__eforge__eforge_resume_build`? (yes / no)"
 
 ### Step 5: Apply the Recovery
 
@@ -104,7 +106,8 @@ A dispatched compiled-build resume automatically retires the failed queue item a
 | Situation | Recommended action |
 |-----------|-------------------|
 | PRD failed early (before compile stage) — no artifacts | Use `retry` or `split` via `mcp__eforge__eforge_apply_recovery` |
-| PRD failed after compile — feature branch exists with partial work | Use `mcp__eforge__eforge_apply_recovery` with a `split` verdict to enqueue a continuation successor; use `mcp__eforge__eforge_resume_build` only when you want to queue the original compiled artifacts for scheduler-owned resume |
+| Sidecar recommends compiled-build resume | Prefer `mcp__eforge__eforge_resume_build` after confirmation, even when the apply-recovery verdict is `manual` |
+| PRD failed after compile — feature branch exists with partial work | Use `mcp__eforge__eforge_apply_recovery` with a `split` verdict to enqueue a continuation successor; use `mcp__eforge__eforge_resume_build` when the sidecar recommends it, or when no sidecar resume fields exist only after explicit user confirmation because the daemon validates eligibility server-side |
 | Compiled artifacts are stale or the plan has changed significantly | Use `retry` via `mcp__eforge__eforge_apply_recovery` to start fresh |
 | User wants to archive the failed PRD without further attempts | Use `abandon` via `mcp__eforge__eforge_apply_recovery` |
 

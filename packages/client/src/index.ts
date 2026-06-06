@@ -19,6 +19,9 @@ export type {
   ReadSidecarRequest,
   RecoverySidecarReport,
   RecoverySidecarBoundedEvidence,
+  RecoverySidecarResumeEligibilitySource,
+  RecoverySidecarResumeEligibility,
+  RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   ReadSidecarResponse,
   QueueControlStatus,
@@ -486,7 +489,7 @@ export type {
   BuildResumeCompleteEvent,
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, AgentTerminalSubtypeSchema, EvaluationIssueOutcomeSchema, BuildDecisionSchema, PlanningDecisionSchema,
   AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,
   safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot,
   ReviewPerspectiveKeySchema, isBuiltInReviewPerspective,

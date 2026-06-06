@@ -11,6 +11,7 @@ export { ORCHESTRATION_MODES, REVIEW_PERSPECTIVES } from './events/constants.js'
 export {
   AcceptanceCriteriaConflictSchema,
   AcceptanceCriterionVerdictSchema,
+  AgentTerminalSubtypeSchema,
   BuildResumeArtifactPlanSchema,
   BuildResumeArtifactSourceSchema,
   BuildResumeArtifactsEventSchema,

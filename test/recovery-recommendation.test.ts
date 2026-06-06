@@ -86,6 +86,50 @@ describe('determineRecoveryRecommendation — transient retry policy', () => {
     expect(recommendation.rationale.toLowerCase()).toMatch(/transient|transport|529/i);
   });
 
+  it('[regression] Codex SSE timeout terminalSubtype is passed through by legacy synthesizeFromEvents', () => {
+    const dirPath = join(tmpdir(), `eforge-codex-sse-test-${Date.now()}`);
+    mkdirSync(dirPath, { recursive: true });
+    const dbPath = join(dirPath, 'monitor.db');
+    const db = openDatabase(dbPath);
+    db.insertRun({
+      id: 'run-codex-sse-regression',
+      sessionId: 'session-codex-sse',
+      planSet: 'prd-codex-sse-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2026-05-26T06:00:00.000Z').toISOString(),
+      cwd: dirPath,
+      pid: 12345,
+    });
+    db.insertEvent({
+      runId: 'run-codex-sse-regression',
+      type: 'plan:status:change',
+      planId: 'plan-01',
+      data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-01', status: 'failed' }),
+      timestamp: new Date('2026-05-26T06:15:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-codex-sse-regression',
+      type: 'plan:build:failed',
+      planId: 'plan-01',
+      data: JSON.stringify({
+        type: 'plan:build:failed',
+        planId: 'plan-01',
+        error: 'Backend error: Codex SSE response headers timed out after 10000ms',
+        terminalSubtype: 'error_transient_transport',
+      }),
+      timestamp: new Date('2026-05-26T06:15:10.000Z').toISOString(),
+    });
+    db.close();
+
+    const fragment = synthesizeFromEvents({ setName: 'prd-codex-sse-set', prdId: 'prd-codex-sse', dbPath });
+
+    expect(fragment).not.toBeNull();
+    expect(fragment!.failingPlan?.terminalSubtype).toBe('error_transient_transport');
+    expect(fragment!.failingPlans?.[0]?.terminalSubtype).toBe('error_transient_transport');
+    expect(fragment!.plans?.find((plan) => plan.planId === 'plan-01')?.terminalSubtype).toBe('error_transient_transport');
+  });
+
   it('[regression] API 529 terminalSubtype is passed through by synthesizeFromEvents and produces retry recommendation', () => {
     // Criterion: "API 529 failures are classified as transient transport failures in recovery
     // summary or recovery decision data when the error message matches the existing transport classifier."
