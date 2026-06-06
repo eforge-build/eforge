@@ -2,10 +2,14 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const readRepoFile = (path: string) => readFileSync(path, 'utf-8');
+const readRepoBytes = (path: string) => readFileSync(path);
 
-const publicGuideSourceFiles = () => readdirSync('web/content/docs')
-  .map((entry) => `web/content/docs/${entry}`)
+const markdownSourceFiles = (dir: string) => readdirSync(dir)
+  .map((entry) => `${dir}/${entry}`)
   .filter((path) => path.endsWith('.md'));
+
+const publicGuideSourceFiles = () => markdownSourceFiles('web/content/docs');
+const publicReferenceSourceFiles = () => markdownSourceFiles('web/content/reference');
 
 describe('plan-01 reference and raw mirror content', () => {
   it('checks in raw mirror files for extension guide pages', () => {
@@ -86,6 +90,20 @@ describe('plan-01 reference and raw mirror content', () => {
       for (const staleReference of forbidden) {
         expect(raw, `${path} should not contain ${staleReference}`).not.toContain(staleReference);
       }
+    }
+  });
+});
+
+describe('plan-02 public docs regeneration', () => {
+  it('keeps every public raw mirror byte-identical to its content source', () => {
+    for (const sourcePath of publicGuideSourceFiles()) {
+      const mirrorPath = sourcePath.replace('web/content/docs/', 'web/public/docs/');
+      expect(readRepoBytes(mirrorPath), `${mirrorPath} should mirror ${sourcePath}`).toEqual(readRepoBytes(sourcePath));
+    }
+
+    for (const sourcePath of publicReferenceSourceFiles()) {
+      const mirrorPath = sourcePath.replace('web/content/reference/', 'web/public/reference/');
+      expect(readRepoBytes(mirrorPath), `${mirrorPath} should mirror ${sourcePath}`).toEqual(readRepoBytes(sourcePath));
     }
   });
 });
