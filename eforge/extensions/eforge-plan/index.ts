@@ -44,7 +44,7 @@ const MarkdownOutput = Type.Object({ markdown: Type.String() });
 const listBoard = defineExtensionAction({
   id: 'list-board', title: 'List eforge-plan board', description: 'Read backlog epics, items, kanban lanes, blocked reasons, and trace summaries.',
   inputSchema: BoardInput, outputSchema: ListBoardOutput, sideEffects: ['local-read'],
-  async handler(input, ctx) { return buildBoard(ctx.cwd, input); },
+  async handler(input, ctx) { return projectBoardOutput(await buildBoard(ctx.cwd, input)); },
 });
 
 const renderBoardMarkdown = defineExtensionAction({
@@ -165,6 +165,30 @@ async function buildBoard(cwd: string, input: { epic?: string; includeArchive?: 
   const board = projectKanbanBoard(items, traceSummaries, { epic: input.epic, includeArchive: input.includeArchive });
   return { epics, items, lanes: board.lanes, blockedReasons: board.items.filter((item) => item.unresolvedDependsOn.length > 0).map((item) => ({ itemId: item.id, reasons: item.reasons })), traceSummaries };
 }
+
+// --- eforge:region plan-01-json-safe-list-board ---
+function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>) {
+  return projectJsonSafeValue(board);
+}
+
+function projectJsonSafeValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(projectJsonSafeValue).filter((entry) => entry !== undefined);
+  if (!isPlainObject(value)) return value;
+  const projected = Object.create(null) as Record<string, unknown>;
+  for (const [key, entry] of Object.entries(value)) {
+    const projectedEntry = projectJsonSafeValue(entry);
+    if (projectedEntry !== undefined) projected[key] = projectedEntry;
+  }
+  return projected;
+}
+
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+// --- eforge:endregion plan-01-json-safe-list-board ---
 
 function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
   const lines = ['# eforge-plan board', ''];
