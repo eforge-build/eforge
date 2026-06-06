@@ -166,7 +166,6 @@ async function buildBoard(cwd: string, input: { epic?: string; includeArchive?: 
   return { epics, items, lanes: board.lanes, blockedReasons: board.items.filter((item) => item.unresolvedDependsOn.length > 0).map((item) => ({ itemId: item.id, reasons: item.reasons })), traceSummaries };
 }
 
-// --- eforge:region plan-01-json-safe-list-board ---
 function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>) {
   return projectJsonSafeValue(board);
 }
@@ -188,7 +187,6 @@ function isPlainObject(value: object): value is Record<string, unknown> {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
-// --- eforge:endregion plan-01-json-safe-list-board ---
 
 function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
   const lines = ['# eforge-plan board', ''];

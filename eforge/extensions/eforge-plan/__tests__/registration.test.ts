@@ -27,7 +27,6 @@ function load() {
   return state;
 }
 
-// --- eforge:region plan-01-json-safe-list-board ---
 function registryFromRecorderState(state: NativeExtensionRecorderState): NativeExtensionRegistry {
   return { ...state, extensions: [], candidates: [] };
 }
@@ -44,7 +43,6 @@ function expectRecord(value: unknown): Record<string, unknown> {
   expect(Array.isArray(value)).toBe(false);
   return value as Record<string, unknown>;
 }
-// --- eforge:endregion plan-01-json-safe-list-board ---
 
 describe('eforge-plan extension registration', () => {
   it('loads without creating runtime storage', async () => {
@@ -72,7 +70,6 @@ describe('eforge-plan extension registration', () => {
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'traceSummaries']);
   });
 
-  // --- eforge:region plan-01-json-safe-list-board ---
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n\nEpic evidence.\n' });
@@ -122,7 +119,6 @@ describe('eforge-plan extension registration', () => {
       expect(typeof expectRecord(markdownResult.output).markdown).toBe('string');
     });
   });
-  // --- eforge:endregion plan-01-json-safe-list-board ---
 
   it('registers input source, Console contribution, commands, deep links, and lifecycle hooks', () => {
     const state = load();
