@@ -2,6 +2,7 @@ import { safeParseWithSchema, type ExtensionActionSideEffect } from '@eforge-bui
 import type { TSchema } from '@sinclair/typebox';
 
 import { isValidExtensionLocalContributionId } from './ids.js';
+import { validateWorkstationFrameBundleSource } from './workstation-bundle-paths.js';
 import type {
   ConsoleContributionBlockSpec,
   ConsoleContributionSpec,
@@ -86,7 +87,14 @@ export function validateConsoleWorkstationSpec(value: unknown): RegistrationVali
   if (!isValidExtensionLocalContributionId(value.id)) return fail(id, 'registerConsoleWorkstation id must match ^[a-z][a-z0-9-]{0,63}$');
   if (!isNonBlankString(value.title)) return fail(id, 'registerConsoleWorkstation title must be a non-empty string');
   if (value.description !== undefined && typeof value.description !== 'string') return fail(id, 'registerConsoleWorkstation description must be a string');
-  if (!isNonBlankString(value.srcDoc)) return fail(id, 'registerConsoleWorkstation srcDoc must be a non-empty string');
+  const hasSrcDoc = value.srcDoc !== undefined;
+  const hasFrameBundle = value.frameBundle !== undefined;
+  if (hasSrcDoc === hasFrameBundle) return fail(id, 'registerConsoleWorkstation requires exactly one of srcDoc or frameBundle');
+  if (hasSrcDoc && !isNonBlankString(value.srcDoc)) return fail(id, 'registerConsoleWorkstation srcDoc must be a non-empty string');
+  if (hasFrameBundle) {
+    const frameBundleResult = validateWorkstationFrameBundleSource(value.frameBundle);
+    if (!frameBundleResult.ok) return fail(id, `registerConsoleWorkstation ${frameBundleResult.message}`);
+  }
   if (value.allowedActions !== undefined) {
     if (!Array.isArray(value.allowedActions)) return fail(id, 'registerConsoleWorkstation allowedActions must be an array of local action ids');
     if (!value.allowedActions.every((actionId) => isValidExtensionLocalContributionId(actionId))) return fail(id, 'registerConsoleWorkstation allowedActions must contain only local action ids matching ^[a-z][a-z0-9-]{0,63}$');

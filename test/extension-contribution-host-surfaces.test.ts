@@ -175,8 +175,12 @@ describe('host contribution skill parity and plugin versioning', () => {
       expect(text).toContain('registerConsoleContribution');
       expect(text).toContain('registerIntegrationCommand');
       expect(text).toContain('registerDeepLink');
+      expect(text).toContain('registerConsoleWorkstation');
+      expect(text).toContain('frameBundle');
+      expect(text).toContain('workstation-assets');
+      expect(text).toContain('@eforge-build/extension-sdk/browser');
       expect(text).toMatch(/raw .*HTTP routes/i);
-      expect(text).toMatch(/arbitrary frontend bundles/i);
+      expect(text).toMatch(/parent.Console|parent Console|private Console/i);
     }
     expect(pluginSkill).toContain('mcp__eforge__eforge_extension_contribution');
     expect(piSkill).toContain('eforge_extension_contribution');
@@ -188,7 +192,7 @@ describe('host contribution skill parity and plugin versioning', () => {
     const plugin = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
     const [major, minor, patch] = plugin.version.split('.').map(Number);
     const actual = major * 1_000_000 + minor * 1_000 + patch;
-    const baseline = 0 * 1_000_000 + 25 * 1_000 + 44;
+    const baseline = 0 * 1_000_000 + 25 * 1_000 + 51;
 
     expect(actual).toBeGreaterThan(baseline);
   });

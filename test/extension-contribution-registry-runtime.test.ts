@@ -82,6 +82,27 @@ describe('extension contribution registry runtime', () => {
     expect(dispatched).toMatchObject({ kind: 'success', output: { greeting: 'hi Lin' } });
   });
 
+  it('omits frameBundle workstations with unreadable bundle assets and emits diagnostics', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    const bundleRoot = resolve(extensions, 'bundle', 'workstation-assets', 'board');
+    await mkdir(bundleRoot, { recursive: true });
+    await writeModule(resolve(extensions, 'bundle', 'index.js'), `export default function extension(eforge) {
+      eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', frameBundle: { root: 'workstation-assets/board', entrypoint: 'missing.js' } });
+    }`);
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    const manifest = buildExtensionContributionManifest(result.registry);
+
+    expect(manifest.consoleWorkstations).toHaveLength(0);
+    expect(manifest.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'extension:invalid-workstation-bundle',
+      name: 'bundle:board',
+      message: expect.stringContaining('frameBundle asset is missing'),
+    }));
+  });
+
   it('passes ctx.paths to extension action handlers', async () => {
     const root = makeTempDir();
     const result = await loadFixture(root, {

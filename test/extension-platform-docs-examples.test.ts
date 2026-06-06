@@ -74,16 +74,31 @@ describe('extension platform docs and examples', () => {
   it('documents Console workstation support and deferred rich-UI boundaries', () => {
     for (const path of [...rootExtensionDocs, ...webExtensionDocs, 'packages/extension-sdk/README.md']) {
       const contents = read(path);
-      expect(contents, `${path} should document registerConsoleWorkstation`).toContain('registerConsoleWorkstation');
-      expect(contents, `${path} should document ConsoleWorkstation`).toContain('ConsoleWorkstation');
-      expect(contents, `${path} should document defineConsoleWorkstation`).toContain('defineConsoleWorkstation');
+      for (const snippet of [
+        'registerConsoleWorkstation',
+        'ConsoleWorkstation',
+        'defineConsoleWorkstation',
+        'frameBundle',
+        'workstation-assets',
+        '@eforge-build/extension-sdk/browser',
+        'browserSdkVersion',
+        'window.eforge.invokeAction',
+        'allowedActions',
+        'Content-Security-Policy',
+      ]) {
+        expect(contents, `${path} should document ${snippet}`).toContain(snippet);
+      }
       expect(contents, `${path} should document iframe srcDoc`).toMatch(/iframe[^.\n]*srcDoc|srcDoc[^.\n]*iframe/i);
-      expect(contents, `${path} should document invokeAction bridge`).toContain('window.eforge.invokeAction');
-      expect(contents, `${path} should document allowedActions`).toContain('allowedActions');
-      expect(contents, `${path} should document trusted iframe UI`).toMatch(/trusted extension UI[^.\n]*iframe sandbox|iframe sandbox[^.\n]*trusted extension UI/i);
+      expect(contents, `${path} should document trusted iframe UI`).toMatch(/trusted extension UI[^.\n]*iframe sandbox|iframe sandbox[^.\n]*trusted extension UI|trusted extension UI[^.\n]*iframe `?(?:srcDoc|src)`?/i);
       expect(contents, `${path} should state workstation HTML is not sanitized declarative content`).toMatch(/not sanitized declarative content/i);
-      expect(contents, `${path} should defer asset bundles`).toMatch(/separately served frontend asset bundles[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*separately served frontend asset bundles/i);
+      expect(contents, `${path} should support eforge-owned declared bundle assets`).toMatch(/(?:declared|eforge-owned)[^.\n]*frameBundle[^.\n]*(?:assets?|routes?|URLs?)[^.\n]*(?:supported|served)|frameBundle[^.\n]*(?:assets?|routes?|URLs?)[^.\n]*(?:supported|served)/i);
+      expect(contents, `${path} should document bridge tokens stay out of route queries`).toMatch(/bridge token[^.\n]*URL fragment[^.\n]*not[^.\n]*(?:query string|route query)|URL fragment[^.\n]*bridge token[^.\n]*not[^.\n]*(?:query string|route query)/i);
+      expect(contents, `${path} should document no-cache frame shells`).toMatch(/frame shell[^.\n]*no-cache|no-cache[^.\n]*frame shell|frame routes?[^.\n]*no-cache/i);
+      expect(contents, `${path} should document immutable asset URLs`).toMatch(/immutable[^.\n]*(?:asset URLs?|content-addressed asset)|(?:asset URLs?|content-addressed asset)[^.\n]*immutable/i);
+      expect(contents, `${path} should allow bundled iframe frameworks`).toMatch(/(?:React|framework)[^.\n]*(?:inside|within)[^.\n]*(?:iframe|workstation frame)|(?:iframe|workstation frame)[^.\n]*(?:React|framework)/i);
       expect(contents, `${path} should defer direct React loading`).toMatch(/direct React component loading[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*direct React component loading/i);
+      expect(contents, `${path} should reject private Console imports`).toMatch(/private Console (?:React\/components\/CSS|modules|imports?)[^.\n]*(?:unsupported|not supported|must not)|(?:unsupported|not supported|must not)[^.\n]*private Console (?:React\/components\/CSS|modules|imports?)/i);
+      expect(contents, `${path} should reject parent Console context imports`).toMatch(/parent Console context[^.\n]*(?:unsupported|not supported|must not)|(?:unsupported|not supported|must not)[^.\n]*parent Console context/i);
       expect(contents, `${path} should defer extension-owned AI planning or chat APIs`).toMatch(/extension-owned AI planning\/chat APIs[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*extension-owned AI planning\/chat APIs/i);
     }
   });
@@ -145,7 +160,9 @@ describe('extension platform docs and examples', () => {
       for (const expected of [
         /raw extension-owned HTTP routes?[^.\n]*(?:unsupported|deferred|not supported)|(?:unsupported|deferred|not supported)[^.\n]*raw extension-owned HTTP routes?/i,
         /arbitrary Console JavaScript[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*arbitrary Console JavaScript/i,
-        /React bundles?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*React bundles?/i,
+        /direct React component loading[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*direct React component loading/i,
+        /private Console (?:React\/components\/CSS|modules|imports?)[^.\n]*(?:unsupported|not supported|must not)|(?:unsupported|not supported|must not)[^.\n]*private Console (?:React\/components\/CSS|modules|imports?)/i,
+        /parent-Console plugins?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*parent-Console plugins?/i,
         /independently loaded frontend plugins?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*independently loaded frontend plugins?/i,
         /session-plan extraction[^.\n]*(?:deferred|future|not shipped|unsupported|not supported|do not register)|(?:deferred|future|not shipped|unsupported|not supported|do not register)[^.\n]*session-plan extraction/i,
         /playbook extraction[^.\n]*(?:deferred|future|not shipped|unsupported|not supported|do not register)|(?:deferred|future|not shipped|unsupported|not supported|do not register)[^.\n]*playbook extraction/i,
@@ -202,6 +219,8 @@ describe('extension platform docs and examples', () => {
     const apiReference = read('web/content/reference/api.md');
     expect(apiReference).toContain('extensionContributionManifest');
     expect(apiReference).toContain('extensionActionInvoke');
+    expect(apiReference).toContain('extensionWorkstationFrame');
+    expect(apiReference).toContain('extensionWorkstationAsset');
 
     const eventsReference = read('web/content/reference/events.md');
     for (const eventType of [

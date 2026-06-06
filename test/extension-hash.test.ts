@@ -45,6 +45,18 @@ describe('extension content hashing', () => {
       const hashAfter = await hashExtensionFile(file);
       expect(hashBefore).not.toBe(hashAfter);
     });
+
+    it('includes sibling workstation-assets files in file-layout hashes', async () => {
+      const root = makeTempDir();
+      const file = resolve(root, 'ext.js');
+      await mkdir(resolve(root, 'workstation-assets'), { recursive: true });
+      await writeFile(file, 'export default function extension() {}', 'utf-8');
+      await writeFile(resolve(root, 'workstation-assets', 'bundle.js'), 'console.log("one");', 'utf-8');
+      const hashBefore = await hashExtensionFile(file);
+      await writeFile(resolve(root, 'workstation-assets', 'bundle.js'), 'console.log("two");', 'utf-8');
+      const hashAfter = await hashExtensionFile(file);
+      expect(hashBefore).not.toBe(hashAfter);
+    });
   });
 
   describe('hashExtensionDirectory', () => {
@@ -166,6 +178,58 @@ describe('extension content hashing', () => {
       const hashAfter = await hashExtensionDirectory(dir);
 
       expect(hashBefore).toBe(hashAfter);
+    });
+
+    it('includes workstation-assets CSS files in directory hashes', async () => {
+      const root = makeTempDir();
+      const dir = resolve(root, 'my-ext');
+      await mkdir(resolve(dir, 'workstation-assets'), { recursive: true });
+      await writeFile(resolve(dir, 'index.ts'), 'export default function extension() {}', 'utf-8');
+      await writeFile(resolve(dir, 'workstation-assets', 'index.css'), 'body { color: red; }', 'utf-8');
+      const hashBefore = await hashExtensionDirectory(dir);
+      await writeFile(resolve(dir, 'workstation-assets', 'index.css'), 'body { color: blue; }', 'utf-8');
+      const hashAfter = await hashExtensionDirectory(dir);
+      expect(hashBefore).not.toBe(hashAfter);
+    });
+
+    it('includes workstation-assets JavaScript files as browser assets', async () => {
+      const root = makeTempDir();
+      const dir = resolve(root, 'my-ext');
+      await mkdir(resolve(dir, 'workstation-assets'), { recursive: true });
+      await writeFile(resolve(dir, 'index.ts'), 'export default function extension() {}', 'utf-8');
+      await writeFile(resolve(dir, 'workstation-assets', 'app.bundle.js'), 'console.log("one");', 'utf-8');
+      const hashBefore = await hashExtensionDirectory(dir);
+      await writeFile(resolve(dir, 'workstation-assets', 'app.bundle.js'), 'console.log("two");', 'utf-8');
+      const hashAfter = await hashExtensionDirectory(dir);
+      expect(hashBefore).not.toBe(hashAfter);
+    });
+
+    it('includes nested workstation-assets dist files while excluding top-level dist files', async () => {
+      const root = makeTempDir();
+      const dir = resolve(root, 'my-ext');
+      await mkdir(resolve(dir, 'workstation-assets', 'dist'), { recursive: true });
+      await mkdir(resolve(dir, 'dist'), { recursive: true });
+      await writeFile(resolve(dir, 'index.ts'), 'export default function extension() {}', 'utf-8');
+      await writeFile(resolve(dir, 'workstation-assets', 'dist', 'bundle.js'), 'console.log("browser one");', 'utf-8');
+      await writeFile(resolve(dir, 'dist', 'bundle.js'), 'console.log("build one");', 'utf-8');
+      const hashBeforeTopDist = await hashExtensionDirectory(dir);
+      await writeFile(resolve(dir, 'dist', 'bundle.js'), 'console.log("build two");', 'utf-8');
+      const hashAfterTopDist = await hashExtensionDirectory(dir);
+      expect(hashAfterTopDist).toBe(hashBeforeTopDist);
+      await writeFile(resolve(dir, 'workstation-assets', 'dist', 'bundle.js'), 'console.log("browser two");', 'utf-8');
+      const hashAfterBrowserDist = await hashExtensionDirectory(dir);
+      expect(hashAfterBrowserDist).not.toBe(hashAfterTopDist);
+    });
+
+    it('rejects symbolic links under workstation-assets', async () => {
+      const root = makeTempDir();
+      const dir = resolve(root, 'my-ext');
+      const outside = resolve(root, 'outside.css');
+      await mkdir(resolve(dir, 'workstation-assets'), { recursive: true });
+      await writeFile(resolve(dir, 'index.ts'), 'export default function extension() {}', 'utf-8');
+      await writeFile(outside, 'body { color: red; }', 'utf-8');
+      await symlink(outside, resolve(dir, 'workstation-assets', 'linked.css'));
+      await expect(hashExtensionDirectory(dir)).rejects.toThrow('unsupported symbolic link');
     });
 
     it('includes a resolved entrypoint under an otherwise excluded dist/ directory', async () => {

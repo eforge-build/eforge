@@ -191,7 +191,9 @@ describe('extension runtime documentation', () => {
     for (const source of [docsExtensions, webExtensions, sdkReadme]) {
       expect(source).toMatch(/(?:raw extension-owned HTTP routes?|raw HTTP routes?)[^.\n]*(?:unsupported|deferred|not supported|do not register)|(?:unsupported|deferred|not supported|do not register)[^.\n]*(?:raw extension-owned HTTP routes?|raw HTTP routes?)/i);
       expect(source).toMatch(/arbitrary Console JavaScript[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*arbitrary Console JavaScript/i);
-      expect(source).toMatch(/React bundles?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*React bundles?/i);
+      expect(source).toMatch(/direct React component loading[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*direct React component loading/i);
+      expect(source).toMatch(/private Console (?:React\/components\/CSS|modules|imports?)[^.\n]*(?:unsupported|not supported|must not)|(?:unsupported|not supported|must not)[^.\n]*private Console (?:React\/components\/CSS|modules|imports?)/i);
+      expect(source).toMatch(/(?:React|framework)[^.\n]*(?:inside|within)[^.\n]*(?:iframe|workstation frame)|(?:iframe|workstation frame)[^.\n]*(?:React|framework)/i);
       expect(source).toMatch(/(?:user-authored[^.\n]*session-plan[^.\n]*extraction|session-plan extraction[^.\n]*(?:user-authored )?extensions)[^.\n]*(?:deferred|future|not shipped|unsupported|remain)|(?:deferred|future|not shipped|unsupported|remain)[^.\n]*(?:user-authored[^.\n]*session-plan[^.\n]*extraction|session-plan extraction[^.\n]*(?:user-authored )?extensions)/i);
       expect(source).toMatch(/(?:user-authored[^.\n]*playbook extraction|playbook extraction[^.\n]*(?:user-authored )?extensions)[^.\n]*(?:deferred|future|not shipped|unsupported|remain)|(?:deferred|future|not shipped|unsupported|remain)[^.\n]*(?:user-authored[^.\n]*playbook extraction|playbook extraction[^.\n]*(?:user-authored )?extensions)/i);
     }

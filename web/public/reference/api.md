@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 80
+Total routes: 82
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -41,6 +41,8 @@ Total routes: 80
 | `extensionUntrust` | `/api/extensions/untrust` |
 | `extensionUpdate` | `/api/extensions/update` |
 | `extensionValidate` | `/api/extensions/validate` |
+| `extensionWorkstationAsset` | `/api/extensions/workstations/:workstationId/assets/:assetId` |
+| `extensionWorkstationFrame` | `/api/extensions/workstations/:workstationId/frame` |
 | `health` | `/api/health` |
 | `keepAlive` | `/api/keep-alive` |
 | `modelList` | `/api/models/list` |

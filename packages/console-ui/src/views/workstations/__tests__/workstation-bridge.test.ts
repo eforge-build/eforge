@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ConsoleWorkstationManifestEntry, ExtensionActionInvokeResponse } from '@eforge-build/client/browser';
+import type { ExtensionActionInvokeResponse } from '@eforge-build/client/browser';
+import type { FrameBundleWorkstationManifestEntry, SrcDocWorkstationManifestEntry } from '../workstation-manifest-mode';
 import {
   buildWorkstationRequestedBy,
   handleWorkstationBridgeEvent,
   type InvokeExtensionActionFn,
 } from '../workstation-bridge';
 
-function workstation(overrides: Partial<ConsoleWorkstationManifestEntry> = {}): ConsoleWorkstationManifestEntry {
+const assetId = 'sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-path-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+function srcDocWorkstation(overrides: Partial<SrcDocWorkstationManifestEntry> = {}): SrcDocWorkstationManifestEntry {
   return {
     id: 'demo:board',
     localId: 'board',
@@ -16,6 +19,31 @@ function workstation(overrides: Partial<ConsoleWorkstationManifestEntry> = {}): 
     schemaVersion: 1,
     srcDoc: '<h1>Board</h1>',
     allowedActions: ['demo:render-board-markdown'],
+    ...overrides,
+  };
+}
+
+function frameBundleWorkstation(overrides: Partial<FrameBundleWorkstationManifestEntry> = {}): FrameBundleWorkstationManifestEntry {
+  return {
+    id: 'bundle:board',
+    localId: 'board',
+    extensionName: 'bundle',
+    extensionPath: '/bundle.js',
+    title: 'Bundle Board',
+    schemaVersion: 1,
+    frameBundle: {
+      browserSdkVersion: 1,
+      frameUrl: '/api/extensions/workstations/bundle%3Aboard/frame',
+      entrypoint: {
+        id: assetId,
+        url: `/api/extensions/workstations/bundle%3Aboard/assets/${assetId}`,
+        relativePath: 'dist/index.js',
+        sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+      styles: [],
+      assets: [],
+    },
+    allowedActions: ['bundle:render-board-markdown'],
     ...overrides,
   };
 }
@@ -42,7 +70,7 @@ function invokeMessage(actionId = 'render-board-markdown', bridgeToken = 'bridge
 
 describe('workstation bridge', () => {
   it('builds Console workstation action provenance', () => {
-    expect(buildWorkstationRequestedBy(workstation())).toEqual({
+    expect(buildWorkstationRequestedBy(srcDocWorkstation())).toEqual({
       host: 'console',
       surface: 'workstation:demo:board',
     });
@@ -56,7 +84,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(otherSource, invokeMessage()),
       sourceWindow: selectedSource,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -73,7 +101,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, { ...invokeMessage(), input }),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -92,7 +120,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage('render-board-markdown', 'wrong-token')),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -111,7 +139,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage('not-allowed')),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -131,7 +159,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage('render-board-markdown')),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -150,12 +178,51 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage('demo:render-board-markdown')),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
 
     expect(invokeAction.mock.calls[0][0].actionId).toBe('demo:render-board-markdown');
+  });
+
+  it('invokes allowed actions from frameBundle workstations with the same provenance semantics', async () => {
+    const source = sourceWindow();
+    const response: ExtensionActionInvokeResponse = { ok: true, invocationId: 'inv-bundle', output: { ok: true } };
+    const invokeAction = vi.fn<InvokeExtensionActionFn>().mockResolvedValue(response);
+
+    await handleWorkstationBridgeEvent({
+      event: bridgeEvent(source, invokeMessage('render-board-markdown')),
+      sourceWindow: source,
+      workstation: frameBundleWorkstation(),
+      bridgeToken: 'bridge-token',
+      invokeAction,
+    });
+
+    expect(invokeAction).toHaveBeenCalledWith({
+      actionId: 'bundle:render-board-markdown',
+      input: {},
+      requestedBy: { host: 'console', surface: 'workstation:bundle:board' },
+    });
+  });
+
+  it('rejects disallowed frameBundle workstation actions without invoking the daemon', async () => {
+    const source = sourceWindow();
+    const invokeAction = vi.fn<InvokeExtensionActionFn>();
+
+    await handleWorkstationBridgeEvent({
+      event: bridgeEvent(source, invokeMessage('not-allowed')),
+      sourceWindow: source,
+      workstation: frameBundleWorkstation(),
+      bridgeToken: 'bridge-token',
+      invokeAction,
+    });
+
+    expect(invokeAction).not.toHaveBeenCalled();
+    expect(source.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 'req-1',
+      error: expect.objectContaining({ code: 'disallowed-action' }),
+    }), '*');
   });
 
   it('posts daemon success responses with the original requestId', async () => {
@@ -166,7 +233,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage()),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -186,7 +253,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage()),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });
@@ -205,7 +272,7 @@ describe('workstation bridge', () => {
     await handleWorkstationBridgeEvent({
       event: bridgeEvent(source, invokeMessage()),
       sourceWindow: source,
-      workstation: workstation(),
+      workstation: srcDocWorkstation(),
       bridgeToken: 'bridge-token',
       invokeAction,
     });

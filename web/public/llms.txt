@@ -8,8 +8,8 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 
 - [Getting Started](/docs/getting-started.md): Install eforge, initialize a project, and run your first build
 - [Configuration guide](/docs/configuration.md): Practical setup and tuning guidance before using the full config reference
-- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including the LLM-first extension authoring checklist and Console workstations
-- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, ConsoleWorkstation APIs, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries
+- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including srcDoc/frameBundle Console workstations, workstation-assets trust hashing, and the LLM-first authoring checklist
+- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, ConsoleWorkstation srcDoc/frameBundle APIs, @eforge-build/extension-sdk/browser bridge helpers, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries
 - [Profiles guide](/docs/profiles.md): Create, activate, and route agent runtime profiles across project and user scopes
 - [Playbooks guide](/docs/playbooks.md): Create, manage, and run reusable workflow playbooks
 - [Integrations guide](/docs/integrations.md): Use Claude Code, Pi, the standalone CLI, shell hooks, input sources, Langfuse tracing, daemon APIs, and the Console dashboard

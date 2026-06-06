@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ConsoleWorkstationManifestEntry, ExtensionContributionManifestResponse } from '@eforge-build/client/browser';
+import type { ExtensionContributionManifestResponse } from '@eforge-build/client/browser';
+import type { FrameBundleWorkstationManifestEntry, SrcDocWorkstationManifestEntry } from '../workstation-manifest-mode';
 import { WorkstationsView } from '../workstations-view';
 
 const fetchExtensionContributionManifest = vi.fn();
@@ -16,7 +17,10 @@ vi.mock('@eforge-build/client/browser', async () => {
   };
 });
 
-function workstation(overrides: Partial<ConsoleWorkstationManifestEntry> = {}): ConsoleWorkstationManifestEntry {
+const assetId = 'sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-path-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const cssAssetId = 'sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc-path-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
+
+function srcDocWorkstation(overrides: Partial<SrcDocWorkstationManifestEntry> = {}): SrcDocWorkstationManifestEntry {
   return {
     id: 'demo:board',
     localId: 'board',
@@ -31,7 +35,38 @@ function workstation(overrides: Partial<ConsoleWorkstationManifestEntry> = {}): 
   };
 }
 
-function manifest(consoleWorkstations: ConsoleWorkstationManifestEntry[]): ExtensionContributionManifestResponse {
+function frameBundleWorkstation(overrides: Partial<FrameBundleWorkstationManifestEntry> = {}): FrameBundleWorkstationManifestEntry {
+  return {
+    id: 'bundle:board',
+    localId: 'board',
+    extensionName: 'bundle',
+    extensionPath: '/bundle.js',
+    title: 'Bundle Board',
+    description: 'Bundle workstation',
+    schemaVersion: 1,
+    frameBundle: {
+      browserSdkVersion: 1,
+      frameUrl: '/api/extensions/workstations/bundle%3Aboard/frame',
+      entrypoint: {
+        id: assetId,
+        url: `/api/extensions/workstations/bundle%3Aboard/assets/${assetId}`,
+        relativePath: 'dist/index.js',
+        sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+      styles: [{
+        id: cssAssetId,
+        url: `/api/extensions/workstations/bundle%3Aboard/assets/${cssAssetId}`,
+        relativePath: 'dist/index.css',
+        sha256: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      }],
+      assets: [],
+    },
+    allowedActions: ['bundle:render-board-markdown'],
+    ...overrides,
+  };
+}
+
+function manifest(consoleWorkstations: ExtensionContributionManifestResponse['consoleWorkstations']): ExtensionContributionManifestResponse {
   return {
     schemaVersion: 1,
     generatedAt: '2026-01-01T00:00:00.000Z',
@@ -60,8 +95,8 @@ describe('WorkstationsView', () => {
 
   it('lists workstation titles and extension names when entries exist', async () => {
     fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([
-      workstation({ id: 'demo:board', title: 'Board', extensionName: 'demo' }),
-      workstation({ id: 'tools:panel', title: 'Panel', extensionName: 'tools' }),
+      srcDocWorkstation({ id: 'demo:board', title: 'Board', extensionName: 'demo' }),
+      frameBundleWorkstation({ id: 'tools:panel', title: 'Panel', extensionName: 'tools' }),
     ]));
 
     render(<WorkstationsView />);
@@ -72,10 +107,10 @@ describe('WorkstationsView', () => {
     expect(screen.getAllByText('tools').length).toBeGreaterThan(0);
   });
 
-  it('selecting a workstation renders a sandboxed iframe derived from the manifest srcDoc', async () => {
+  it('selecting a srcDoc workstation renders a sandboxed iframe derived from the manifest srcDoc', async () => {
     fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([
-      workstation({ id: 'demo:board', title: 'Board', srcDoc: '<main>Board content</main>' }),
-      workstation({ id: 'tools:panel', title: 'Panel', extensionName: 'tools', srcDoc: '<main>Panel content</main>' }),
+      srcDocWorkstation({ id: 'demo:board', title: 'Board', srcDoc: '<main>Board content</main>' }),
+      srcDocWorkstation({ id: 'tools:panel', title: 'Panel', extensionName: 'tools', srcDoc: '<main>Panel content</main>' }),
     ]));
     const onNavigate = vi.fn();
 
@@ -90,12 +125,63 @@ describe('WorkstationsView', () => {
     expect(iframe.getAttribute('srcdoc')).toContain('Panel content');
     expect(iframe.getAttribute('srcdoc')).toContain('window.eforge');
     expect(iframe.getAttribute('srcdoc')).toContain('invokeAction');
+    expect(iframe.getAttribute('src')).toBeNull();
     expect(onNavigate).toHaveBeenCalledWith('/console/workstations/tools%3Apanel');
+  });
+
+  it('renders a frameBundle workstation as a sandboxed iframe src with bridge token in the fragment', async () => {
+    const frameUrl = '/api/extensions/workstations/bundle%3Aboard/frame?view=main';
+    fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([
+      frameBundleWorkstation({ frameBundle: { ...frameBundleWorkstation().frameBundle, frameUrl } }),
+    ]));
+
+    render(<WorkstationsView />);
+
+    const iframe = await screen.findByTestId('workstation-iframe') as HTMLIFrameElement;
+    expect(iframe.getAttribute('sandbox')).toContain('allow-scripts');
+    expect(iframe.getAttribute('sandbox')).not.toContain('allow-same-origin');
+    expect(iframe.getAttribute('srcdoc')).toBeNull();
+    const src = iframe.getAttribute('src');
+    expect(src).toBeTruthy();
+    expect(src).toContain(`${frameUrl}#bridgeToken=`);
+    const parsed = new URL(src ?? '', 'https://console.test');
+    expect(parsed.hash).toMatch(/^#bridgeToken=.+/);
+    expect(parsed.searchParams.has('bridgeToken')).toBe(false);
+    expect(parsed.pathname.includes('bridgeToken')).toBe(false);
+  });
+
+  it('does not render frameBundle assets in the parent document realm', async () => {
+    const entry = frameBundleWorkstation();
+    fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([entry]));
+
+    render(<WorkstationsView />);
+
+    await screen.findByTestId('workstation-iframe');
+    expect(document.querySelectorAll(`script[src="${entry.frameBundle.entrypoint.url}"]`)).toHaveLength(0);
+    expect(document.querySelectorAll(`link[href="${entry.frameBundle.styles[0]?.url}"]`)).toHaveLength(0);
+  });
+
+  it('navigates to frameBundle workstation detail routes with encoded workstation ids', async () => {
+    fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([
+      srcDocWorkstation({ id: 'demo:board', title: 'Board' }),
+      frameBundleWorkstation({ id: 'bundle:board', title: 'Bundle Board' }),
+    ]));
+    const onNavigate = vi.fn();
+
+    render(<WorkstationsView onNavigate={onNavigate} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Bundle Board/i })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: /Bundle Board/i }));
+
+    const iframe = screen.getByTestId('workstation-iframe') as HTMLIFrameElement;
+    expect(iframe.getAttribute('src')).toContain('/api/extensions/workstations/bundle%3Aboard/frame#bridgeToken=');
+    expect(iframe.getAttribute('srcdoc')).toBeNull();
+    expect(onNavigate).toHaveBeenCalledWith('/console/workstations/bundle%3Aboard');
   });
 
   it('renders selected detail routes and not-found states', async () => {
     fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([
-      workstation({ id: 'demo:board', title: 'Board' }),
+      srcDocWorkstation({ id: 'demo:board', title: 'Board' }),
     ]));
 
     render(<WorkstationsView selectedWorkstationId="missing:board" />);

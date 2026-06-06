@@ -125,7 +125,7 @@ For standalone use, run `/eforge:init` in Claude Code or Pi first to create `efo
 
 Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs.
 
-Action-backed commands and deep links can be invoked generically through those host surfaces. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; extensions do not provide arbitrary frontend bundles.
+Action-backed commands and deep links can be invoked generically through those host surfaces. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; richer extension UI uses registered sandboxed workstations (`srcDoc` or daemon-owned `frameBundle` assets), not arbitrary parent-Console frontend bundles.
 
 ## Daemon HTTP API
 

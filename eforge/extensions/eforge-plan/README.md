@@ -165,6 +165,6 @@ Lifecycle status mutation is conservative:
 
 ## Deferred platform gaps
 
-V1 sandboxed iframe Console workstations now exist, and `eforge-plan` registers a proof-of-concept board workstation through the supported `registerConsoleWorkstation` / `srcDoc` / `window.eforge.invokeAction` path.
+V1 sandboxed iframe Console workstations now exist, and `eforge-plan` registers a small `srcDoc` proof-of-concept board workstation through the supported `registerConsoleWorkstation` / `srcDoc` / `window.eforge.invokeAction` path.
 
-The full eforge-plan workstation UX remains a follow-up. Private daemon routes, separately served frontend asset bundles, custom React renderers or direct React component loading, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain deferred.
+The full eforge-plan bundle workstation UX remains a follow-up. Supported `frameBundle` workstation assets must be declared under `workstation-assets/` and served through the daemon-owned iframe frame/asset contract. Parent-Console plugins, direct React loading into the parent Console, private Console imports/routes, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain deferred or unsupported.
