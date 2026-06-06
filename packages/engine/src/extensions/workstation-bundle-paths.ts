@@ -1,8 +1,12 @@
+import { extname } from 'node:path';
 import { CONSOLE_WORKSTATION_BROWSER_SDK_VERSION } from '@eforge-build/client';
 
 import type { ConsoleWorkstationFrameBundleSpec } from './types.js';
 
 export const WORKSTATION_ASSETS_DIR = 'workstation-assets';
+
+const SUPPORTED_ENTRYPOINT_EXTENSIONS = new Set(['.js', '.mjs']);
+const SUPPORTED_STYLE_EXTENSIONS = new Set(['.css']);
 
 export type WorkstationBundlePathResult = { ok: true; value: string } | { ok: false; message: string };
 export type WorkstationFrameBundleSourceResult = { ok: true; value: ConsoleWorkstationFrameBundleSpec } | { ok: false; message: string };
@@ -26,8 +30,15 @@ export function validateWorkstationFrameBundleSource(value: unknown): Workstatio
   if (!root.ok) return root;
   const entrypoint = normalizeWorkstationBundleAssetPath(value.entrypoint, 'frameBundle.entrypoint');
   if (!entrypoint.ok) return entrypoint;
+  if (!hasSupportedExtension(entrypoint.value, SUPPORTED_ENTRYPOINT_EXTENSIONS)) {
+    return { ok: false, message: 'frameBundle.entrypoint must use a supported browser module extension: .js or .mjs' };
+  }
   const styles = normalizeOptionalPathArray(value.styles, 'frameBundle.styles');
   if (!styles.ok) return styles;
+  if (styles.value !== undefined) {
+    const invalidStyle = styles.value.find((style) => !hasSupportedExtension(style, SUPPORTED_STYLE_EXTENSIONS));
+    if (invalidStyle !== undefined) return { ok: false, message: `frameBundle.styles must use supported stylesheet extensions: .css (${invalidStyle})` };
+  }
   const assets = normalizeOptionalPathArray(value.assets, 'frameBundle.assets');
   if (!assets.ok) return assets;
   if (value.browserSdkVersion !== undefined && value.browserSdkVersion !== CONSOLE_WORKSTATION_BROWSER_SDK_VERSION) {
@@ -70,6 +81,10 @@ function normalizeLexicalRelativePath(value: unknown, fieldName: string): Workst
   if (segments.some((segment) => segment === '.')) return { ok: false, message: `${fieldName} must not contain . path segments` };
   if (segments.some((segment) => segment === '..')) return { ok: false, message: `${fieldName} must not contain .. path segments` };
   return { ok: true, value: segments.join('/') };
+}
+
+function hasSupportedExtension(path: string, supported: Set<string>): boolean {
+  return supported.has(extname(path).toLowerCase());
 }
 
 function isNonArrayObject(value: unknown): value is Record<string, unknown> {

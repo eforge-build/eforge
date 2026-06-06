@@ -29,7 +29,7 @@ describe('extension workstation routes', () => {
     try {
       const res = await harness.get(buildPath(API_ROUTES.extensionWorkstationAsset, { workstationId: 'bundle:board', assetId: 'asset.js' }));
       expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({ error: 'Malformed extension workstation asset id' });
+      expect(await res.text()).toBe('Bad Request');
       expect(contributionMock.loadContributionRuntime).not.toHaveBeenCalled();
     } finally { await harness.close(); }
   });
@@ -41,7 +41,7 @@ describe('extension workstation routes', () => {
       harness.context.cwd = undefined;
       const res = await harness.get(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'bundle:board' }));
       expect(res.status).toBe(503);
-      expect(await res.json()).toMatchObject({ error: 'Working directory not configured' });
+      expect(await res.text()).toBe('Working directory not configured');
       expect(contributionMock.loadContributionRuntime).not.toHaveBeenCalled();
     } finally { await harness.close(); }
   });
@@ -52,7 +52,7 @@ describe('extension workstation routes', () => {
     try {
       const res = await harness.get(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'bundle:board' }));
       expect(res.status).toBe(500);
-      expect(await res.json()).toMatchObject({ error: 'Failed to load extension workstation runtime: manifest unavailable' });
+      expect(await res.text()).toBe('Extension workstation runtime unavailable');
     } finally { await harness.close(); }
   });
 
@@ -68,7 +68,7 @@ describe('extension workstation routes', () => {
 
       const res = await harness.get(asset.url);
       expect(res.status).toBe(404);
-      expect(await res.json()).toMatchObject({ error: 'Extension workstation asset not found' });
+      expect(await res.text()).toBe('Not Found');
     } finally { await harness.close(); }
   });
 
@@ -93,7 +93,7 @@ describe('extension workstation routes', () => {
     expect(posted[0]).toMatchObject({ bridgeToken: token });
   });
 
-  it('serves frames and assets with response-level CSP protections', async () => {
+  it('serves frames and assets with response-level protections', async () => {
     const harness = await startContentRouteHarness({ routes: createExtensionWorkstationRoutes });
     try {
       const body = 'console.log("ok");\n';
@@ -105,11 +105,11 @@ describe('extension workstation routes', () => {
 
       const frame = await harness.get(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'bundle:board' }));
       expect(frame.status).toBe(200);
-      expect(frame.headers.get('content-security-policy')).toContain('sandbox allow-scripts');
+      expect(frame.headers.get('content-security-policy')).toContain("script-src 'self' 'nonce-");
 
       const res = await harness.get(asset.url);
       expect(res.status).toBe(200);
-      expect(res.headers.get('content-security-policy')).toContain("script-src 'none'");
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
       expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     } finally { await harness.close(); }
   });

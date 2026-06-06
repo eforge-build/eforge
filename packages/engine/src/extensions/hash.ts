@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
-import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { WORKSTATION_ASSETS_DIR } from './workstation-bundle-paths.js';
 
@@ -9,11 +9,19 @@ const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.git']);
 
 /**
  * Compute a deterministic SHA-256 hash for a file-layout extension (single file).
- * Hashes the raw file content of the resolved entrypoint.
+ * Hashes the raw file content of the resolved entrypoint plus any sibling
+ * workstation-assets tree used by frameBundle workstations.
  */
 export async function hashExtensionFile(entrypoint: string): Promise<string> {
-  const content = await readFile(entrypoint);
-  return createHash('sha256').update(content).digest('hex');
+  const resolvedEntrypoint = resolve(entrypoint);
+  const content = await readFile(resolvedEntrypoint);
+  const root = dirname(resolvedEntrypoint);
+  const assetManifest: Array<[string, Buffer]> = [];
+  await addWorkstationAssetsManifest(root, assetManifest);
+  if (assetManifest.length === 0) return createHash('sha256').update(content).digest('hex');
+  const manifest: Array<[string, Buffer]> = [['./' + normalizeManifestPath(root, resolvedEntrypoint), content], ...assetManifest];
+  manifest.sort(([a], [b]) => a.localeCompare(b));
+  return hashManifest(manifest);
 }
 
 /**
@@ -36,12 +44,20 @@ export async function hashExtensionDirectory(dir: string, entrypoint?: string): 
     await addExplicitEntrypoint(root, entrypoint, manifest);
   }
   manifest.sort(([a], [b]) => a.localeCompare(b));
-  const hash = createHash('sha256');
-  for (const [relativePath, content] of manifest) {
-    updateLengthPrefixed(hash, Buffer.from(relativePath, 'utf-8'));
-    updateLengthPrefixed(hash, content);
+  return hashManifest(manifest);
+}
+
+async function addWorkstationAssetsManifest(root: string, manifest: Array<[string, Buffer]>): Promise<void> {
+  const assetsRoot = resolve(root, WORKSTATION_ASSETS_DIR);
+  let info: Awaited<ReturnType<typeof lstat>>;
+  try {
+    info = await lstat(assetsRoot);
+  } catch {
+    return;
   }
-  return hash.digest('hex');
+  if (info.isSymbolicLink()) throw new Error(`Extension directory contains unsupported symbolic link: ${WORKSTATION_ASSETS_DIR}`);
+  if (!info.isDirectory()) return;
+  manifest.push(...await collectManifest(root, assetsRoot, true));
 }
 
 async function collectManifest(root: string, dir: string, underWorkstationAssets: boolean): Promise<Array<[string, Buffer]>> {
@@ -93,6 +109,15 @@ async function addExplicitEntrypoint(root: string, entrypoint: string, manifest:
   if (!info.isFile()) return;
   const content = await readFile(resolvedEntrypoint);
   manifest.push([relativePath, content]);
+}
+
+function hashManifest(manifest: Array<[string, Buffer]>): string {
+  const hash = createHash('sha256');
+  for (const [relativePath, content] of manifest) {
+    updateLengthPrefixed(hash, Buffer.from(relativePath, 'utf-8'));
+    updateLengthPrefixed(hash, content);
+  }
+  return hash.digest('hex');
 }
 
 function updateLengthPrefixed(hash: ReturnType<typeof createHash>, value: Buffer): void {

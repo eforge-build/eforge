@@ -314,7 +314,7 @@ Registers declarative Console metadata rendered under `/console/system`. Blocks 
 
 #### `registerConsoleWorkstation(workstation)`
 
-Registers a sandboxed Console workstation rendered under `/console/workstations`. The source SDK shape is trusted extension UI delivered as exactly one source: iframe `srcDoc` or `frameBundle` bundle metadata. Bundle roots must be `workstation-assets` or a child directory under `workstation-assets/`; `entrypoint`, `styles`, and `assets` paths are relative to that root. Bundle entries are projected as sandboxed iframe `src` navigations to the manifest `frameBundle.frameUrl` with the bridge token in the URL fragment. Workstation UI is isolated by the Console-owned iframe sandbox and bridge checks, but the HTML or bundle metadata is not sanitized declarative content and should be reviewed like the extension source that produced it.
+Registers a sandboxed Console workstation rendered under `/console/workstations`. The source SDK shape is trusted extension UI delivered as exactly one source: iframe `srcDoc` or `frameBundle` bundle metadata. Bundle roots must be `workstation-assets` or a child directory under `workstation-assets/`; `entrypoint`, `styles`, and `assets` paths are relative to that root. Bundle entries are projected as sandboxed iframe `src` navigations to the manifest `frameBundle.frameUrl` with the bridge token in the URL fragment. The daemon serves bundle workstations through a generated frame shell and declared, immutable, content-addressed asset URLs; the browser never supplies filesystem-relative asset paths. Workstation UI is isolated by the Console-owned iframe sandbox and bridge checks, but the `srcDoc` HTML or bundle metadata/code is not sanitized declarative content and should be reviewed like the extension source that produced it.
 
 ```ts
 import { Type, defineConsoleWorkstation, defineExtensionAction } from "@eforge-build/extension-sdk";
@@ -1244,7 +1244,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
 | `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route |
 | `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console renders declarative panels under `/console/system` |
-| `registerConsoleWorkstation` / `ConsoleWorkstation` | Yes | Yes | Daemon contribution manifest projection; Console renders sandboxed iframe workstations under `/console/workstations` from `srcDoc` entries or source `frameBundle` entries projected to daemon frame URLs |
+| `registerConsoleWorkstation` / `ConsoleWorkstation` | Yes | Yes | Daemon contribution manifest projection; Console renders sandboxed iframe workstations under `/console/workstations` from `srcDoc` entries or source `frameBundle` entries projected to daemon frame/asset URLs |
 | `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed commands |
 | `registerDeepLink` / `ExtensionDeepLink` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed deep links |
 

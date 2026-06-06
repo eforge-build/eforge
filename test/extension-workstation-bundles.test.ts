@@ -55,6 +55,7 @@ describe('extension workstation frameBundle runtime', () => {
     const { browserSdkVersion: _browserSdkVersion, ...bundleWithoutSdkVersion } = validBundle.frameBundle;
     expect(validateConsoleWorkstationSpec(validBundle).ok).toBe(true);
     expect(validateConsoleWorkstationSpec({ ...validBundle, frameBundle: { ...validBundle.frameBundle, root: 'workstation-assets' } }).ok).toBe(true);
+    expect(validateConsoleWorkstationSpec({ ...validBundle, frameBundle: { ...validBundle.frameBundle, entrypoint: 'index.mjs' } }).ok).toBe(true);
     expect(validateConsoleWorkstationSpec({ ...validBundle, frameBundle: bundleWithoutSdkVersion }).ok).toBe(true);
   });
 
@@ -73,6 +74,8 @@ describe('extension workstation frameBundle runtime', () => {
     ['empty segment', { ...validBundle, frameBundle: { ...validBundle.frameBundle, entrypoint: 'dist//index.js' } }, 'frameBundle.entrypoint'],
     ['null byte', { ...validBundle, frameBundle: { ...validBundle.frameBundle, entrypoint: 'index\0.js' } }, 'frameBundle.entrypoint'],
     ['backslash', { ...validBundle, frameBundle: { ...validBundle.frameBundle, entrypoint: 'dist\\index.js' } }, 'frameBundle.entrypoint'],
+    ['unsupported entrypoint extension', { ...validBundle, frameBundle: { ...validBundle.frameBundle, entrypoint: 'index.ts' } }, 'supported browser module extension'],
+    ['unsupported style extension', { ...validBundle, frameBundle: { ...validBundle.frameBundle, styles: ['style.png'] } }, 'supported stylesheet extensions'],
     ['non-array styles', { ...validBundle, frameBundle: { ...validBundle.frameBundle, styles: 'style.css' } }, 'frameBundle.styles'],
     ['non-array assets', { ...validBundle, frameBundle: { ...validBundle.frameBundle, assets: 'logo.svg' } }, 'frameBundle.assets'],
     ['unsafe style path', { ...validBundle, frameBundle: { ...validBundle.frameBundle, styles: ['../style.css'] } }, 'frameBundle.styles[0]'],

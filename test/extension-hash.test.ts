@@ -45,6 +45,18 @@ describe('extension content hashing', () => {
       const hashAfter = await hashExtensionFile(file);
       expect(hashBefore).not.toBe(hashAfter);
     });
+
+    it('includes sibling workstation-assets files in file-layout hashes', async () => {
+      const root = makeTempDir();
+      const file = resolve(root, 'ext.js');
+      await mkdir(resolve(root, 'workstation-assets'), { recursive: true });
+      await writeFile(file, 'export default function extension() {}', 'utf-8');
+      await writeFile(resolve(root, 'workstation-assets', 'bundle.js'), 'console.log("one");', 'utf-8');
+      const hashBefore = await hashExtensionFile(file);
+      await writeFile(resolve(root, 'workstation-assets', 'bundle.js'), 'console.log("two");', 'utf-8');
+      const hashAfter = await hashExtensionFile(file);
+      expect(hashBefore).not.toBe(hashAfter);
+    });
   });
 
   describe('hashExtensionDirectory', () => {
