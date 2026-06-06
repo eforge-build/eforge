@@ -9,6 +9,20 @@ interface AcceptedSuccessRunTarget {
   acceptedAt: string;
 }
 
+interface RecoverySidecarRunIdentity {
+  summary?: { setName?: unknown; failedAt?: unknown };
+  boundedEvidence?: { identity?: { setName?: unknown; failedAt?: unknown } };
+  applied?: unknown;
+}
+
+function getRecoverySidecarSetName(sidecar: RecoverySidecarRunIdentity): unknown {
+  return sidecar.boundedEvidence?.identity?.setName ?? sidecar.summary?.setName;
+}
+
+function getRecoverySidecarFailedAt(sidecar: RecoverySidecarRunIdentity): unknown {
+  return sidecar.boundedEvidence?.identity?.failedAt ?? sidecar.summary?.failedAt;
+}
+
 function readAcceptedSuccessCompletedRuns(queueDir: string): AcceptedSuccessRunTarget[] {
   const targets: AcceptedSuccessRunTarget[] = [];
   const failedDir = resolve(queueDir, 'failed');
@@ -16,9 +30,9 @@ function readAcceptedSuccessCompletedRuns(queueDir: string): AcceptedSuccessRunT
   try { entries = readdirSync(failedDir); } catch { return targets; }
   for (const file of entries.filter((entry) => entry.endsWith('.recovery.json'))) {
     try {
-      const parsed = JSON.parse(readFileSync(resolve(failedDir, file), 'utf-8')) as { summary?: { setName?: unknown; failedAt?: unknown }; applied?: unknown };
-      const setName = parsed.summary?.setName;
-      const failedAt = parsed.summary?.failedAt;
+      const parsed = JSON.parse(readFileSync(resolve(failedDir, file), 'utf-8')) as RecoverySidecarRunIdentity;
+      const setName = getRecoverySidecarSetName(parsed);
+      const failedAt = getRecoverySidecarFailedAt(parsed);
       const applied = parseAcceptSuccessAppliedMetadata(parsed.applied);
       if (typeof setName === 'string' && applied?.landing.status === 'complete') {
         targets.push({ setName, ...(typeof failedAt === 'string' ? { failedAt } : {}), acceptedAt: applied.acceptedAt });

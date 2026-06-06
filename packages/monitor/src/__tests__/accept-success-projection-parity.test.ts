@@ -29,14 +29,22 @@ function seedAcceptedSuccess(cwd: string, prdId: string): void {
   writeFileSync(join(failed, `${prdId}.md`), `---\ntitle: ${prdId}\n---\n# ${prdId}\n`);
   writeFileSync(join(failed, `${prdId}.recovery.md`), 'recovery');
   writeFileSync(join(failed, `${prdId}.recovery.json`), JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date().toISOString(),
-    summary: {
-      prdId, setName: 'accepted-set', featureBranch: 'eforge/accepted-set', baseBranch: 'main', plans: [], failingPlan: { planId: 'plan-01' },
-      landedCommits: [{ sha: 'abc', subject: 'work', author: 'Test', date: new Date().toISOString() }], diffStat: '', modelsUsed: [], failedAt: new Date().toISOString(),
-      acceptanceValidation: { passed: false, total: 1, pass: 0, fail: 1, unknown: 0, verdicts: [] }, validationCommands: [{ command: 'true', exitCode: 0 }],
-    },
+    prdId,
+    setName: 'accepted-set',
     verdict: { verdict: 'manual', confidence: 'low', rationale: 'manual', completedWork: [], remainingWork: [], risks: [] },
+    report: { operatorSummary: 'manual', recommendedAction: 'Review manually.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName: 'accepted-set', featureBranch: 'eforge/accepted-set', baseBranch: 'main', failedAt: new Date().toISOString() },
+      plans: [{ planId: 'plan-01', status: 'failed' }],
+      failingPlan: { planId: 'plan-01' },
+      landedCommits: [{ sha: 'abc', subject: 'work', author: 'Test', date: new Date().toISOString() }],
+      diffStat: '',
+      modelsUsed: [],
+      acceptanceValidation: { passed: false, total: 1, pass: 0, fail: 1, unknown: 0, verdicts: [] },
+      validationCommands: [{ command: 'true', exitCode: 0 }],
+    },
     applied: { action: 'accepted-success', acceptedAt: '2026-01-01T00:00:00.000Z', reasonCategory: 'other', reason: 'ok', cleanup: { status: 'noop' }, landing: { action: 'leave', status: 'complete', branch: 'eforge/accepted-set' }, dependents: { unblocked: [], remainedBlocked: [], notFound: [] } },
   }, null, 2));
 }
