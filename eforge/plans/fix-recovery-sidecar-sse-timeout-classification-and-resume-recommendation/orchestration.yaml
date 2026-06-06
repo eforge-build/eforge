@@ -1,0 +1,98 @@
+name: fix-recovery-sidecar-sse-timeout-classification-and-resume-recommendation
+description: Fix recovery sidecar SSE timeout classification, terminal subtype
+  preservation, and deterministic compiled-build resume recommendations.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/pipeline-error-translator.test.ts
+    test/pi-transport-resilience.test.ts test/recovery-terminal-failure.test.ts
+    test/recovery-recommendation.test.ts test/recovery-sidecars.test.ts
+    test/daemon-recovery-sidecars.test.ts test/apply-recovery.test.ts
+    packages/client/src/__tests__/events-schemas.test.ts
+    packages/client/src/__tests__/terminal-failure-event.test.ts
+  - pnpm test
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-transport-terminal-subtypes
+    name: Classify Codex SSE Timeouts and Preserve Terminal Subtypes
+    depends_on: []
+    branch: fix-recovery-sidecar-sse-timeout-classification-and-resume-recommendation/plan-01-transport-terminal-subtypes
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan changes a client-owned event contract and the authoritative
+          recovery-summary path; careful propagation is required to avoid
+          degrading terminal subtype evidence.
+      reviewer:
+        effort: high
+        rationale: The review needs to check wire compatibility, event-schema
+          validation, and recovery summary precedence.
+  - id: plan-02-sidecar-resume-option
+    name: Add Sidecar Compiled-Build Resume Option
+    depends_on:
+      - plan-01-transport-terminal-subtypes
+    branch: fix-recovery-sidecar-sse-timeout-classification-and-resume-recommendation/plan-02-sidecar-resume-option
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan touches the sidecar wire contract, engine sidecar
+          generation paths, and two integration skill documents while preserving
+          apply-recovery semantics.
+      reviewer:
+        effort: high
+        rationale: The review needs to verify read-only resume eligibility,
+          backward-compatible sidecar parsing, and Pi/Claude skill parity.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - validate
+    - test-write
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "Excursion fits because this is a cohesive cross-package recovery
+    bugfix with typed client/event contract changes, engine recovery logic,
+    sidecar rendering, tests, and Pi/Claude skill docs, but a single planner can
+    enumerate the work. The plan review gate helps catch contract and sequencing
+    risks before build. The build pipeline runs implementation and doc authoring
+    in parallel, then the required maintainability validation gate, test
+    generation, doc sync, iterative review, and final test cycle. API and docs
+    review perspectives target the highest-risk surfaces: wire/schema
+    compatibility and recovery-skill/reporting behavior."
+diff_base_ref: e937e43d91722ae86e954119f235c857279c6509
