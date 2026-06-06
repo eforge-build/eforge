@@ -72,13 +72,13 @@ If a PRD is queued but does not start, check whether daemon auto-build is disabl
 
 For persistent defaults, set `prdQueue.autoBuild: true` in `eforge/config.yaml`. If the watcher is slow to notice new PRDs, tune `prdQueue.watchPollIntervalMs` rather than manually editing queue files.
 
-## Queue priority or removal returns conflict
+## Queue priority, removal, or dependency override returns conflict
 
 Queue controls are safe runtime filesystem mutations under `.eforge/queue/` and produce no git commits. Use `eforge queue priority <prdId> <priority>` to update pending or waiting PRD frontmatter; lower numeric priority values run earlier within each dependency wave. Failed and skipped priority changes return conflict until recovery or requeue makes the item runnable.
 
-Use `eforge queue remove <prdId>` to delete a non-running pending, waiting, failed, or skipped queue item. Removing a failed item also deletes matching `.recovery.md` and `.recovery.json` sidecars. Running items reject both priority and removal controls because active work is owned by its build session; cancel running work through the existing session-id cancel route/tool instead.
+Use `eforge queue remove <prdId>` to delete a non-running pending, waiting, failed, or skipped queue item. Removing a failed item also deletes matching `.recovery.md` and `.recovery.json` sidecars. The daemon API's dependency override removes one dependency id from a pending or waiting queue item; it returns conflict for running, failed, or skipped items, or when the target does not list the requested dependency. Running items reject priority, removal, and dependency override controls because active work is owned by its build session; cancel running work through the existing session-id cancel route/tool instead.
 
-If removal reports live dependents, eforge failed closed because pending or waiting queue items still depend on the target. The conflict lists dependent ids; remove those dependents first; there is no cascade remove action. If a queue file was moved or deleted between listing and mutation, refresh the queue view and retry against the current item id. After successful priority or removal mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
+If removal reports live dependents, eforge failed closed because pending or waiting queue items still depend on the target. The conflict lists dependent ids; remove those dependents first; there is no cascade remove action. If a queue file was moved or deleted between listing and mutation, refresh the queue view and retry against the current item id. After successful priority, removal, or dependency override mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
 
 Console exposes set-priority and confirmed remove actions on pending/waiting queue rows. MCP and Pi expose the same host tool names, `eforge_queue_priority` and `eforge_queue_remove`; priority applies to pending/waiting items and removal applies to non-running pending, waiting, failed, and skipped items.
 

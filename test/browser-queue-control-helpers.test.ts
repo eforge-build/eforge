@@ -12,6 +12,7 @@ import {
   buildPath,
   updateQueuePriority,
   removeQueueItem,
+  overrideQueueDependency,
 } from '@eforge-build/client/browser';
 
 interface CapturedRequest {
@@ -72,6 +73,16 @@ describe('browser queue-control helpers — route selection', () => {
     expect(captured[0].url).toBe(buildPath(API_ROUTES.queueRemove, { prdId: 'prd-2' }));
     expect(captured[0].body).toBeUndefined();
   });
+
+  it('overrideQueueDependency POSTs the dependency body to the queueDependencyOverride route', async () => {
+    nextResponse = { ok: true, status: 200, json: { id: 'prd-5', previousStatus: 'waiting', currentStatus: 'pending', removedDependency: 'prd-1', previousDependsOn: ['prd-1'], currentDependsOn: [], movedToQueueRoot: true } };
+    const result = await overrideQueueDependency('prd-5', { dependencyId: 'prd-1', reason: 'manual unblock' });
+    expect(result).toEqual({ id: 'prd-5', previousStatus: 'waiting', currentStatus: 'pending', removedDependency: 'prd-1', previousDependsOn: ['prd-1'], currentDependsOn: [], movedToQueueRoot: true });
+    expect(captured[0].method).toBe('POST');
+    expect(captured[0].url).toBe(buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'prd-5' }));
+    expect(captured[0].body).toEqual({ dependencyId: 'prd-1', reason: 'manual unblock' });
+    expect(captured[0].headers.get('Content-Type')).toBe('application/json');
+  });
 });
 
 describe('browser queue-control helpers — error surfacing', () => {
@@ -88,6 +99,13 @@ describe('browser queue-control helpers — error surfacing', () => {
     nextResponse = { ok: false, status: 404, text: 'Queue item not found' };
     await expect(removeQueueItem('prd-4')).rejects.toThrow(
       'Queue removal request failed (404): Queue item not found',
+    );
+  });
+
+  it('throws a status-bearing Error carrying the daemon response text for non-2xx dependency override responses', async () => {
+    nextResponse = { ok: false, status: 409, text: 'Queue item does not depend on parent' };
+    await expect(overrideQueueDependency('prd-6', { dependencyId: 'parent' })).rejects.toThrow(
+      'Queue dependency override request failed (409): Queue item does not depend on parent',
     );
   });
 });

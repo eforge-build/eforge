@@ -45,6 +45,8 @@ export type {
   QueuePriorityRequest,
   QueuePriorityResponse,
   QueueRemoveResponse,
+  QueueDependencyOverrideRequest,
+  QueueDependencyOverrideResponse,
   ResumeBuildRequest,
   ResumeBuildResponse,
   ResumeEligibilityRequest,
@@ -112,6 +114,7 @@ export {
 export {
   updateQueuePriority,
   removeQueueItem,
+  overrideQueueDependency,
 } from './browser-queue-control.js';
 
 export {

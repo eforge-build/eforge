@@ -12,6 +12,16 @@ export const queueEventVariants = [
     type: Type.Literal('queue:prd:discovered'),
     prdId: Type.String(),
     title: Type.String(),
+    dependsOn: Type.Optional(Type.Array(Type.String())),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:prd:dependency-overridden'),
+    prdId: Type.String(),
+    title: Type.String(),
+    removedDependency: Type.String(),
+    previousDependsOn: Type.Array(Type.String()),
+    currentDependsOn: Type.Array(Type.String()),
+    reason: Type.Optional(Type.String()),
   }),
   Type.Object({
     type: Type.Literal('queue:prd:stale'),

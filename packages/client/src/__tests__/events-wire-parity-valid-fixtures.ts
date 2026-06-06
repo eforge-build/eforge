@@ -166,6 +166,7 @@ export const validPayloads: EventWireParityFixture[] = [
   {label: 'queue:start',payload: {type: 'queue:start',timestamp: '2025-01-01T00:00:00.000Z',prdCount: 2,dir: '/queue'},},
   {label: 'queue:prd:start',payload: {type: 'queue:prd:start',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',},},
   {label: 'queue:prd:discovered',payload: {type: 'queue:prd:discovered',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',},},
+  {label: 'queue:prd:dependency-overridden',payload: {type: 'queue:prd:dependency-overridden',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',removedDependency: 'parent-prd',previousDependsOn: ['parent-prd','other-prd'],currentDependsOn: ['other-prd'],reason: 'operator approved',},},
   {label: 'queue:prd:stale',payload: {type: 'queue:prd:stale',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',verdict: 'proceed',justification: 'still relevant',},},
   {label: 'queue:prd:skip',payload: {type: 'queue:prd:skip',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',reason: 'already completed',},},
   {label: 'queue:prd:commit-failed',payload: {type: 'queue:prd:commit-failed',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',error: 'git error',},},

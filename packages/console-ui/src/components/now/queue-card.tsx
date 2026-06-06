@@ -61,6 +61,7 @@ function LooseQueueRow({
   item,
   onSetPriority,
   onRemove,
+  onOverrideDependency,
 }: { item: NowQueueItem } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   // Only forward queue work (pending/waiting) is mutable from Console; running
@@ -80,13 +81,17 @@ function LooseQueueRow({
           <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
         )}
         {showActions && (
-          <QueueRowActions
-            itemId={item.id}
-            itemTitle={item.title}
-            initialPriority={item.priority}
-            onSetPriority={onSetPriority}
-            onRemove={onRemove}
-          />
+          <>
+            <QueueRowActions
+              itemId={item.id}
+              itemTitle={item.title}
+              initialPriority={item.priority}
+              onSetPriority={onSetPriority}
+              onRemove={onRemove}
+              dependencyIds={item.dependsOn ?? []}
+              onOverrideDependency={onOverrideDependency}
+            />
+          </>
         )}
       </div>
     </li>
@@ -99,6 +104,7 @@ export function QueueCard({
   enqueueCards = [],
   onSetPriority,
   onRemove,
+  onOverrideDependency,
 }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
 
@@ -148,7 +154,12 @@ export function QueueCard({
 
         {hasStacks && (
           <div className={hasIntake ? 'border-t pt-3' : undefined}>
-            <QueueStacks stacks={stacks} onSetPriority={onSetPriority} onRemove={onRemove} />
+            <QueueStacks
+              stacks={stacks}
+              onSetPriority={onSetPriority}
+              onRemove={onRemove}
+              onOverrideDependency={onOverrideDependency}
+            />
           </div>
         )}
 
@@ -171,6 +182,7 @@ export function QueueCard({
                   item={item}
                   onSetPriority={onSetPriority}
                   onRemove={onRemove}
+                  onOverrideDependency={onOverrideDependency}
                 />
               ))}
             </ul>

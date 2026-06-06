@@ -17,7 +17,7 @@ import { selectNowSpendPanel } from '@/lib/selectors/spend';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
 import { toConsolePath } from '@/lib/navigation';
-import { removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
+import { overrideQueueDependency, removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
 
 // ---------------------------------------------------------------------------
 // Attention partitioning
@@ -112,6 +112,13 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     },
     [refreshQueue],
   );
+  const handleQueueDependencyOverride = React.useCallback(
+    async (id: string, dependencyId: string, reason?: string) => {
+      await overrideQueueDependency(id, { dependencyId, reason });
+      await refreshQueue?.();
+    },
+    [refreshQueue],
+  );
 
   return (
     <div data-testid="now-dashboard" className="mx-auto w-full max-w-[1600px] space-y-4">
@@ -161,6 +168,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             enqueueCards={model.enqueueCards}
             onSetPriority={handleQueuePriority}
             onRemove={handleQueueRemove}
+            onOverrideDependency={handleQueueDependencyOverride}
           />
         </div>
 

@@ -45,6 +45,7 @@ export const API_ROUTES = {
   queue: '/api/queue',
   queuePriority: '/api/queue/:prdId/priority',
   queueRemove: '/api/queue/:prdId',
+  queueDependencyOverride: '/api/queue/:prdId/dependencies/override',
   queueRecoveryAnalyze: '/api/queue/recovery/analyze',
   queueRecoveryApply: '/api/queue/recovery/apply',
   sessionMetadata: '/api/session-metadata',

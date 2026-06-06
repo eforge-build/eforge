@@ -279,6 +279,7 @@ export const IGNORED_EVENT_TYPES = [
   'queue:start',
   'queue:prd:start',
   'queue:prd:discovered',
+  'queue:prd:dependency-overridden',
   'queue:prd:stale',
   'queue:prd:skip',
   'queue:prd:commit-failed',

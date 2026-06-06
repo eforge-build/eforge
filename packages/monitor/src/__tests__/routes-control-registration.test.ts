@@ -4,7 +4,7 @@ import { createMonitorContext } from '../context.js';
 import { openDatabase } from '../db.js';
 import { CONTROL_MONITOR_ROUTE_KEYS, createControlMonitorRoutes } from '../routes/control-monitor.js';
 
-const sensitive = ['keepAlive', 'enqueue', 'cancel', 'daemonStop', 'autoBuildGet', 'autoBuildSet', 'schedulerKick', 'recover', 'readRecoverySidecar', 'applyRecovery', 'acceptRecoverySuccessPreview', 'acceptRecoverySuccess', 'resumeBuild', 'resumeEligibility', 'queueRecoveryAnalyze', 'queueRecoveryApply'];
+const sensitive = ['keepAlive', 'enqueue', 'cancel', 'daemonStop', 'autoBuildGet', 'autoBuildSet', 'schedulerKick', 'queueDependencyOverride', 'recover', 'readRecoverySidecar', 'applyRecovery', 'acceptRecoverySuccessPreview', 'acceptRecoverySuccess', 'resumeBuild', 'resumeEligibility', 'queueRecoveryAnalyze', 'queueRecoveryApply'];
 const intentionallyUngated: string[] = [];
 
 describe('control monitor route registration', () => {

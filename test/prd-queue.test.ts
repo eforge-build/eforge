@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, cleanupCompletedPrd, setQueuedPrdProfile, isPrdRunning, readPrdLockStatus, type QueuedPrd } from '@eforge-build/engine/prd-queue';
-import { findQueuedPrdForControl, removeQueuedPrd, updateQueuedPrdPriority, isQueueControlError } from '@eforge-build/engine/queue/control';
+import { findQueuedPrdForControl, removeQueuedPrd, updateQueuedPrdPriority, isQueueControlError,
+  overrideQueuedPrdDependency,
+} from '@eforge-build/engine/queue/control';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -793,5 +795,78 @@ describe('queue-control helpers', () => {
     expect(existsSync(basePath)).toBe(true);
     expect(existsSync(rootDepPath)).toBe(true);
     expect(existsSync(waitingDepPath)).toBe(true);
+  });
+
+  it('overrides one dependency on a pending PRD and preserves remaining dependencies', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const filePath = writePrdFile(dir, '', 'p', '\ndepends_on: [base, other]\nprofile: careful', 'Keep this body.');
+
+    const result = await overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'p', dependencyId: 'base' });
+    expect(result).toEqual({
+      id: 'p',
+      title: 'p',
+      previousStatus: 'pending',
+      currentStatus: 'pending',
+      removedDependency: 'base',
+      previousDependsOn: ['base', 'other'],
+      currentDependsOn: ['other'],
+      movedToQueueRoot: false,
+    });
+
+    const written = readFileSync(filePath, 'utf-8');
+    expect(written).toContain('depends_on: ["other"]');
+    expect(written).toContain('profile: careful');
+    expect(written).toContain('Keep this body.');
+  });
+
+  it('moves a waiting PRD to the queue root when its last dependency is overridden', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const waitingPath = writePrdFile(dir, 'waiting', 'w', '\ndepends_on: [base]', 'Waiting body.');
+    const rootPath = join(queueDir, 'w.md');
+
+    const result = await overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'w', dependencyId: 'base' });
+    expect(result).toMatchObject({
+      id: 'w',
+      previousStatus: 'waiting',
+      currentStatus: 'pending',
+      currentDependsOn: [],
+      movedToQueueRoot: true,
+    });
+    expect(existsSync(waitingPath)).toBe(false);
+    expect(existsSync(rootPath)).toBe(true);
+    expect(readFileSync(rootPath, 'utf-8')).toContain('depends_on: []');
+  });
+
+  it('keeps a waiting PRD in waiting when dependency overrides leave remaining blockers', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    const waitingPath = writePrdFile(dir, 'waiting', 'w2', '\ndepends_on: [base, other]');
+
+    const result = await overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'w2', dependencyId: 'base' });
+    expect(result).toMatchObject({
+      previousStatus: 'waiting',
+      currentStatus: 'waiting',
+      currentDependsOn: ['other'],
+      movedToQueueRoot: false,
+    });
+    expect(existsSync(waitingPath)).toBe(true);
+    expect(existsSync(join(queueDir, 'w2.md'))).toBe(false);
+    expect(readFileSync(waitingPath, 'utf-8')).toContain('depends_on: ["other"]');
+  });
+
+  it('rejects dependency overrides for running, terminal, missing dependency, and unsafe ids', async () => {
+    const dir = makeTempDir();
+    const queueDir = queueRoot(dir);
+    writePrdFile(dir, '', 'running', '\ndepends_on: [base]');
+    writeLock(dir, 'running', String(process.pid));
+    writePrdFile(dir, 'failed', 'failed', '\ndepends_on: [base]');
+    writePrdFile(dir, '', 'pending', '\ndepends_on: [base]');
+
+    await expectKind(overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'running', dependencyId: 'base' }), 'conflict');
+    await expectKind(overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'failed', dependencyId: 'base' }), 'conflict');
+    await expectKind(overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'pending', dependencyId: 'missing' }), 'conflict');
+    await expectKind(overrideQueuedPrdDependency({ cwd: dir, queueDir, prdId: 'pending', dependencyId: '../base' }), 'validation');
   });
 });

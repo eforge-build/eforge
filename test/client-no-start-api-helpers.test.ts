@@ -36,6 +36,7 @@ import {
   apiStackSyncIfRunning,
   apiUpdateQueuePriorityIfRunning,
   apiRemoveQueueItemIfRunning,
+  apiOverrideQueueDependencyIfRunning,
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,20 @@ function startTestServer(): Promise<TestServer> {
         return;
       }
 
+      if (method === 'POST' && url === buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          id: 'prd-1',
+          previousStatus: 'waiting',
+          currentStatus: 'pending',
+          removedDependency: 'parent-prd',
+          previousDependsOn: ['parent-prd'],
+          currentDependsOn: [],
+          movedToQueueRoot: true,
+        }));
+        return;
+      }
+
       if (url === '/api/cancel/session-1') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
@@ -189,6 +204,8 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiGetQueueIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiUpdateQueuePriorityIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', priority: 3 }) },
   { name: 'apiRemoveQueueItemIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1' }) },
+  { name: 'apiOverrideQueueDependencyIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', body: { dependencyId: 'parent-prd', reason: 'manual override' } }) },
+
   { name: 'apiGetRunsIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiGetLatestRunFromRunsIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiGetRunningRunsIfRunning', opts: (cwd) => ({ cwd }) },
@@ -515,6 +532,26 @@ describe('helper import discipline', () => {
       url: buildPath(API_ROUTES.queueRemove, { prdId: 'prd-1' }),
       bodyText: '',
     });
+
+    const overrideBody = { dependencyId: 'parent-prd', reason: 'manual override' };
+    const overrideResult = await apiOverrideQueueDependencyIfRunning({ cwd: tmpDir, prdId: 'prd-1', body: overrideBody });
+    expect(overrideResult).toEqual({
+      data: {
+        id: 'prd-1',
+        previousStatus: 'waiting',
+        currentStatus: 'pending',
+        removedDependency: 'parent-prd',
+        previousDependsOn: ['parent-prd'],
+        currentDependsOn: [],
+        movedToQueueRoot: true,
+      },
+      port: testServer.port,
+    });
+    expect(testServer.requests.at(-1)).toEqual({
+      method: 'POST',
+      url: buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'prd-1' }),
+      bodyText: JSON.stringify(overrideBody),
+    });
   });
 
   it('(6g) queue-control helpers fail version verification before issuing the mutation request', async () => {
@@ -532,5 +569,11 @@ describe('helper import discipline', () => {
     // The stale-version check must short-circuit before the queue-control route is hit.
     const queuePriorityPath = buildPath(API_ROUTES.queuePriority, { prdId: 'prd-1' });
     expect(testServer.requests.some((r) => r.url === queuePriorityPath)).toBe(false);
+
+    await expect(
+      apiOverrideQueueDependencyIfRunning({ cwd: tmpDir, prdId: 'prd-1', body: { dependencyId: 'parent-prd' } }),
+    ).rejects.toThrow(/version.mismatch/i);
+    const dependencyOverridePath = buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'prd-1' });
+    expect(testServer.requests.some((r) => r.url === dependencyOverridePath)).toBe(false);
   });
 });

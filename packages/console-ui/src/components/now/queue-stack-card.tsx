@@ -77,6 +77,7 @@ function QueueStackItemRow({
   isLast,
   onSetPriority,
   onRemove,
+  onOverrideDependency,
 }: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   if (status === 'running') {
@@ -103,20 +104,29 @@ function QueueStackItemRow({
         <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
         {showActions && (
-          <QueueRowActions
-            itemId={item.id}
-            itemTitle={item.title}
-            initialPriority={item.priority}
-            onSetPriority={onSetPriority}
-            onRemove={onRemove}
-          />
+          <>
+            <QueueRowActions
+              itemId={item.id}
+              itemTitle={item.title}
+              initialPriority={item.priority}
+              onSetPriority={onSetPriority}
+              onRemove={onRemove}
+              dependencyIds={item.dependsOn}
+              onOverrideDependency={onOverrideDependency}
+            />
+          </>
         )}
       </div>
     </li>
   );
 }
 
-export function QueueStacks({ stacks, onSetPriority, onRemove }: QueueStacksProps) {
+export function QueueStacks({
+  stacks,
+  onSetPriority,
+  onRemove,
+  onOverrideDependency,
+}: QueueStacksProps) {
   if (stacks.length === 0) return null;
 
   const totalPlans = stacks.reduce((sum, stack) => sum + stack.totalItems, 0);
@@ -154,6 +164,7 @@ export function QueueStacks({ stacks, onSetPriority, onRemove }: QueueStacksProp
                   isLast={itemIndex === stack.items.length - 1}
                   onSetPriority={onSetPriority}
                   onRemove={onRemove}
+                  onOverrideDependency={onOverrideDependency}
                 />
               ))}
             </ol>

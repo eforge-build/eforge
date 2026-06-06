@@ -478,7 +478,7 @@ export class QueueScheduler {
           timestamp: new Date().toISOString(),
           type: 'queue:prd:discovered',
           prdId: prd.id,
-          title: prd.frontmatter.title ?? prd.id,
+          title: prd.frontmatter.title ?? prd.id, dependsOn: deps,
         } as EforgeEvent);
       } else {
         const existing = this.prdState.get(prd.id)!;
@@ -498,7 +498,7 @@ export class QueueScheduler {
             timestamp: new Date().toISOString(),
             type: 'queue:prd:discovered',
             prdId: prd.id,
-            title: prd.frontmatter.title ?? prd.id,
+            title: prd.frontmatter.title ?? prd.id, dependsOn: deps,
           } as EforgeEvent);
         }
       }
