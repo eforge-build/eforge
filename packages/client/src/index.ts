@@ -23,11 +23,14 @@ export type {
   QueuePriorityRequest,
   QueuePriorityResponse,
   QueueRemoveResponse,
+  QueueDependencyOverrideRequest,
+  QueueDependencyOverrideResponse,
 } from './routes.js';
 
 export {
   updateQueuePriority,
   removeQueueItem,
+  overrideQueueDependency,
 } from './browser-queue-control.js';
 
 export {
@@ -41,6 +44,8 @@ export {
   apiUpdateQueuePriorityIfRunning,
   apiRemoveQueueItem,
   apiRemoveQueueItemIfRunning,
+  apiOverrideQueueDependency,
+  apiOverrideQueueDependencyIfRunning,
   apiGetRuns,
   apiGetRunsIfRunning,
   apiGetLatestRunFromRuns,

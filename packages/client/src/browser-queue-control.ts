@@ -5,6 +5,8 @@ import type {
   QueuePriorityRequest,
   QueuePriorityResponse,
   QueueRemoveResponse,
+  QueueDependencyOverrideRequest,
+  QueueDependencyOverrideResponse,
 } from './routes/queue-control.js';
 
 export async function updateQueuePriority(
@@ -25,6 +27,26 @@ export async function updateQueuePriority(
     throw new Error(`Queue priority request failed (${res.status}): ${text}`);
   }
   return await res.json() as QueuePriorityResponse;
+}
+
+export async function overrideQueueDependency(
+  prdId: string,
+  body: QueueDependencyOverrideRequest,
+  init?: RequestInit,
+): Promise<QueueDependencyOverrideResponse> {
+  const headers = new Headers(init?.headers);
+  headers.set('Content-Type', 'application/json');
+  const res = await fetch(buildPath(API_ROUTES.queueDependencyOverride, { prdId }), {
+    ...init,
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Queue dependency override request failed (${res.status}): ${text}`);
+  }
+  return await res.json() as QueueDependencyOverrideResponse;
 }
 
 export async function removeQueueItem(

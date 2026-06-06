@@ -17,6 +17,12 @@ export interface QueuePriorityRequest {
   priority: number;
 }
 
+/** Request body for `POST /api/queue/:prdId/dependencies/override`. */
+export interface QueueDependencyOverrideRequest {
+  dependencyId: string;
+  reason?: string;
+}
+
 /** Response for a successful queue priority mutation. */
 export interface QueuePriorityResponse {
   id: string;
@@ -36,4 +42,15 @@ export interface QueueRemoveResponse {
   previousStatus: 'pending' | 'waiting' | 'failed' | 'skipped';
   currentStatus: 'removed';
   removedSidecars: string[];
+}
+
+/** Response for a successful queue dependency override. */
+export interface QueueDependencyOverrideResponse {
+  id: string;
+  previousStatus: 'pending' | 'waiting';
+  currentStatus: 'pending' | 'waiting';
+  removedDependency: string;
+  previousDependsOn: string[];
+  currentDependsOn: string[];
+  movedToQueueRoot: boolean;
 }

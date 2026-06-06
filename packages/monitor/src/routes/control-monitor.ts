@@ -19,6 +19,7 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'autoBuildSet',
   'schedulerKick',
   'queuePriority',
+  'queueDependencyOverride',
   'queueRemove',
   'recover',
   'readRecoverySidecar',

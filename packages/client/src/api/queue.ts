@@ -21,6 +21,8 @@ import type {
   QueuePriorityRequest,
   QueuePriorityResponse,
   QueueRemoveResponse,
+  QueueDependencyOverrideRequest,
+  QueueDependencyOverrideResponse,
 } from '../routes.js';
 
 export function apiEnqueue(opts: { cwd: string; body: EnqueueRequest }) {
@@ -86,6 +88,24 @@ export function apiRemoveQueueItemIfRunning(opts: { cwd: string; prdId: string }
     opts.cwd,
     'DELETE',
     buildPath(API_ROUTES.queueRemove, { prdId: opts.prdId }),
+  );
+}
+
+export function apiOverrideQueueDependency(opts: { cwd: string; prdId: string; body: QueueDependencyOverrideRequest }) {
+  return daemonRequest<QueueDependencyOverrideResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueDependencyOverride, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiOverrideQueueDependencyIfRunning(opts: { cwd: string; prdId: string; body: QueueDependencyOverrideRequest }) {
+  return daemonRequestIfRunning<QueueDependencyOverrideResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueDependencyOverride, { prdId: opts.prdId }),
+    opts.body,
   );
 }
 

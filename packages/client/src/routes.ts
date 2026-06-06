@@ -79,6 +79,8 @@ export type {
   QueuePriorityRequest,
   QueuePriorityResponse,
   QueueRemoveResponse,
+  QueueDependencyOverrideRequest,
+  QueueDependencyOverrideResponse,
 } from './routes/queue-control.js';
 
 export type {

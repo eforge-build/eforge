@@ -1876,7 +1876,7 @@ export class EforgeEngine {
             timestamp: new Date().toISOString(),
             type: 'queue:prd:discovered',
             prdId: prd.id,
-            title: prd.frontmatter.title ?? prd.id,
+            title: prd.frontmatter.title ?? prd.id, dependsOn: deps,
           } as EforgeEvent);
         }
       }
