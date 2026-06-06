@@ -2,6 +2,11 @@ import { Type, type Static } from '@sinclair/typebox';
 import { parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
 
 export const EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION = 1;
+export const CONSOLE_WORKSTATION_BROWSER_SDK_VERSION = 1;
+export const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN = '^sha256-[a-f0-9]{64}-path-[a-f0-9]{64}$';
+export const CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN = '^[a-f0-9]{64}$';
+export const CONSOLE_WORKSTATION_FRAME_URL_PATTERN = '^/api/extensions/workstations/[^/?#]+/frame$';
+export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = `^/api/extensions/workstations/[^/?#]+/assets/${CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN.slice(1, -1)}$`;
 
 export const ExtensionJsonValueSchema = Type.Recursive((Self) => Type.Union([
   Type.Null(),
@@ -118,7 +123,22 @@ export const ConsoleContributionManifestEntrySchema = Type.Object({
   blocks: Type.Array(ConsoleContributionBlockSchema),
 }, { additionalProperties: false });
 
-export const ConsoleWorkstationManifestEntrySchema = Type.Object({
+export const ConsoleWorkstationFrameBundleAssetRefSchema = Type.Object({
+  id: Type.String({ pattern: CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN }),
+  url: Type.String({ pattern: CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN }),
+  relativePath: Type.String(),
+  sha256: Type.String({ pattern: CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN }),
+}, { additionalProperties: false });
+
+export const ConsoleWorkstationFrameBundleManifestSchema = Type.Object({
+  browserSdkVersion: Type.Literal(CONSOLE_WORKSTATION_BROWSER_SDK_VERSION),
+  frameUrl: Type.String({ pattern: CONSOLE_WORKSTATION_FRAME_URL_PATTERN }),
+  entrypoint: ConsoleWorkstationFrameBundleAssetRefSchema,
+  styles: Type.Array(ConsoleWorkstationFrameBundleAssetRefSchema),
+  assets: Type.Array(ConsoleWorkstationFrameBundleAssetRefSchema),
+}, { additionalProperties: false });
+
+export const ConsoleWorkstationSrcDocManifestEntrySchema = Type.Object({
   id: Type.String(),
   localId: Type.String(),
   extensionName: Type.String(),
@@ -129,6 +149,23 @@ export const ConsoleWorkstationManifestEntrySchema = Type.Object({
   srcDoc: Type.String(),
   allowedActions: Type.Array(Type.String()),
 }, { additionalProperties: false });
+
+export const ConsoleWorkstationFrameBundleManifestEntrySchema = Type.Object({
+  id: Type.String(),
+  localId: Type.String(),
+  extensionName: Type.String(),
+  extensionPath: Type.String(),
+  title: Type.String(),
+  description: Type.Optional(Type.String()),
+  schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
+  frameBundle: ConsoleWorkstationFrameBundleManifestSchema,
+  allowedActions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const ConsoleWorkstationManifestEntrySchema = Type.Union([
+  ConsoleWorkstationSrcDocManifestEntrySchema,
+  ConsoleWorkstationFrameBundleManifestEntrySchema,
+]);
 
 export const IntegrationCommandManifestEntrySchema = Type.Object({
   id: Type.String(),
@@ -222,6 +259,10 @@ export type ConsoleContributionRendererId = Static<typeof ConsoleContributionRen
 export type ConsoleContributionBlock = Static<typeof ConsoleContributionBlockSchema>;
 export type ExtensionActionManifestEntry = Static<typeof ExtensionActionManifestEntrySchema>;
 export type ConsoleContributionManifestEntry = Static<typeof ConsoleContributionManifestEntrySchema>;
+export type ConsoleWorkstationFrameBundleAssetRef = Static<typeof ConsoleWorkstationFrameBundleAssetRefSchema>;
+export type ConsoleWorkstationFrameBundleManifest = Static<typeof ConsoleWorkstationFrameBundleManifestSchema>;
+export type ConsoleWorkstationSrcDocManifestEntry = Static<typeof ConsoleWorkstationSrcDocManifestEntrySchema>;
+export type ConsoleWorkstationFrameBundleManifestEntry = Static<typeof ConsoleWorkstationFrameBundleManifestEntrySchema>;
 export type ConsoleWorkstationManifestEntry = Static<typeof ConsoleWorkstationManifestEntrySchema>;
 export type IntegrationCommandManifestEntry = Static<typeof IntegrationCommandManifestEntrySchema>;
 export type ExtensionDeepLinkManifestEntry = Static<typeof ExtensionDeepLinkManifestEntrySchema>;
@@ -233,12 +274,38 @@ export type ExtensionActionInvokeSuccessResponse = Static<typeof ExtensionAction
 export type ExtensionActionInvokeFailureResponse = Static<typeof ExtensionActionInvokeFailureResponseSchema>;
 export type ExtensionActionInvokeResponse = Static<typeof ExtensionActionInvokeResponseSchema>;
 
+function validateFrameBundleAssetUrls(manifest: ExtensionContributionManifestResponse): SafeParseResult<ExtensionContributionManifestResponse> {
+  const errors = manifest.consoleWorkstations.flatMap((workstation, workstationIndex) => {
+    if (!('frameBundle' in workstation)) return [];
+    const assets = [workstation.frameBundle.entrypoint, ...workstation.frameBundle.styles, ...workstation.frameBundle.assets];
+    return assets.flatMap((asset, assetIndex) => asset.url.endsWith(`/assets/${asset.id}`)
+      ? []
+      : [{
+        path: `/consoleWorkstations/${workstationIndex}/frameBundle/assets/${assetIndex}/url`,
+        message: 'must use the asset id as the route parameter',
+      }]);
+  });
+
+  if (errors.length === 0) return { success: true, data: manifest };
+  return {
+    success: false,
+    error: {
+      errors,
+      message: errors.map((error) => `${error.path}: ${error.message}`).join('\n'),
+    },
+  };
+}
+
 export function safeParseExtensionContributionManifest(value: unknown): SafeParseResult<ExtensionContributionManifestResponse> {
-  return safeParseWithSchema(ExtensionContributionManifestResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionContributionManifestResponseSchema, value);
+  if (!result.success) return result;
+  return validateFrameBundleAssetUrls(result.data);
 }
 
 export function parseExtensionContributionManifest(value: unknown): ExtensionContributionManifestResponse {
-  return parseWithSchema(ExtensionContributionManifestResponseSchema, value);
+  const result = safeParseExtensionContributionManifest(value);
+  if (result.success) return result.data;
+  throw new Error(result.error.message);
 }
 
 export function safeParseExtensionActionInvokeRequest(value: unknown): SafeParseResult<ExtensionActionInvokeRequest> {

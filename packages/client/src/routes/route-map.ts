@@ -41,6 +41,8 @@ export const API_ROUTES = {
   extensionPromote: '/api/extensions/promote',
   extensionDemote: '/api/extensions/demote',
   extensionContributionManifest: '/api/extensions/contributions',
+  extensionWorkstationFrame: '/api/extensions/workstations/:workstationId/frame',
+  extensionWorkstationAsset: '/api/extensions/workstations/:workstationId/assets/:assetId',
   extensionActionInvoke: '/api/extensions/actions/invoke',
   queue: '/api/queue',
   queuePriority: '/api/queue/:prdId/priority',

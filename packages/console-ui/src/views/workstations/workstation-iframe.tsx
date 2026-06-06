@@ -15,7 +15,8 @@ function createBridgeToken(): string {
 export function WorkstationIframe({ workstation }: WorkstationIframeProps) {
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const bridgeToken = React.useMemo(createBridgeToken, [workstation.id]);
-  const srcDoc = React.useMemo(() => buildWorkstationSrcDoc(workstation.srcDoc, bridgeToken), [workstation.srcDoc, bridgeToken]);
+  const workstationSrcDoc = 'srcDoc' in workstation ? workstation.srcDoc : '';
+  const srcDoc = React.useMemo(() => buildWorkstationSrcDoc(workstationSrcDoc, bridgeToken), [workstationSrcDoc, bridgeToken]);
   const [loadedSrcDoc, setLoadedSrcDoc] = React.useState<{ workstationId: string; srcDoc: string } | null>(null);
 
   React.useLayoutEffect(() => {

@@ -80,9 +80,9 @@ describe('extension platform docs and examples', () => {
       expect(contents, `${path} should document iframe srcDoc`).toMatch(/iframe[^.\n]*srcDoc|srcDoc[^.\n]*iframe/i);
       expect(contents, `${path} should document invokeAction bridge`).toContain('window.eforge.invokeAction');
       expect(contents, `${path} should document allowedActions`).toContain('allowedActions');
-      expect(contents, `${path} should document trusted iframe UI`).toMatch(/trusted extension UI[^.\n]*iframe sandbox|iframe sandbox[^.\n]*trusted extension UI/i);
+      expect(contents, `${path} should document trusted iframe UI`).toMatch(/trusted extension UI[^.\n]*iframe sandbox|iframe sandbox[^.\n]*trusted extension UI|trusted extension UI[^.\n]*iframe `?srcDoc`?/i);
       expect(contents, `${path} should state workstation HTML is not sanitized declarative content`).toMatch(/not sanitized declarative content/i);
-      expect(contents, `${path} should defer asset bundles`).toMatch(/separately served frontend asset bundles[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*separately served frontend asset bundles/i);
+      expect(contents, `${path} should defer asset bundles`).toMatch(/(?:separately served frontend asset bundles|extension-authored arbitrary (?:frontend )?asset bundles)[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*(?:separately served frontend asset bundles|extension-authored arbitrary (?:frontend )?asset bundles)/i);
       expect(contents, `${path} should defer direct React loading`).toMatch(/direct React component loading[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*direct React component loading/i);
       expect(contents, `${path} should defer extension-owned AI planning or chat APIs`).toMatch(/extension-owned AI planning\/chat APIs[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*extension-owned AI planning\/chat APIs/i);
     }

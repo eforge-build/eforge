@@ -167,4 +167,4 @@ Lifecycle status mutation is conservative:
 
 V1 sandboxed iframe Console workstations now exist, and `eforge-plan` registers a proof-of-concept board workstation through the supported `registerConsoleWorkstation` / `srcDoc` / `window.eforge.invokeAction` path.
 
-The full eforge-plan workstation UX remains a follow-up. Private daemon routes, separately served frontend asset bundles, custom React renderers or direct React component loading, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain deferred.
+The full eforge-plan workstation UX remains a follow-up. Private daemon routes, extension-authored arbitrary frontend asset bundles beyond the daemon-owned workstation frame/asset contract, custom React renderers or direct React component loading, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain deferred.

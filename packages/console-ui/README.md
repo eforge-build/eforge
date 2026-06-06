@@ -12,7 +12,7 @@ The canonical route list lives in [`src/lib/navigation.ts`](src/lib/navigation.t
 | `/console/builds/:detailId` | `buildDetail` | Build detail view for a session (legacy `/console/runs/:detailId` still resolves and canonicalizes to this path) |
 | `/console/plans` | `plans` | Planning Workspace - read-only browsing of flat session plans and grouped session plan sets |
 | `/console/system` | `system` | System - configuration, profiles, playbooks, extensions, and diagnostic surfaces |
-| `/console/workstations` | `workstations` | Workstations - extension-registered sandboxed iframe `srcDoc` workstations |
+| `/console/workstations` | `workstations` | Workstations - extension-registered sandboxed iframe workstations |
 | `/console/workstations/:workstationId` | `workstationDetail` | Workstation detail route for a selected extension workstation |
 
 All unrecognized paths (including previously removed routes) redirect to `now`.
@@ -57,9 +57,9 @@ daemon REST (Now extension trust)
 
 daemon REST (Workstations)
   → fetchExtensionContributionManifest / API_ROUTES.extensionContributionManifest
-  → use-workstation-manifest.ts loads actions and consoleWorkstations
+  → use-workstation-manifest.ts loads actions and consoleWorkstations (`srcDoc` or client-contract `frameBundle` entries)
   → workstation selectors choose list/detail and allowed action metadata
-  → workstation-iframe.tsx renders sandboxed iframe `srcDoc`
+  → workstation-iframe.tsx renders sandboxed iframe entries and tolerates bundle-backed metadata while frame/asset loading lands behind client-owned routes
   → workstation-bridge.ts invokes allowed actions through invokeExtensionAction
   → WorkstationsView at `/console/workstations` and `/console/workstations/:workstationId`
 
@@ -140,11 +140,11 @@ Consumers (`plan-progress.ts`, `pipeline-colors.ts`, `thread-pipeline.tsx`) call
 
 - **Source-owned top-level Console route** - add route metadata and a nav item to `src/lib/navigation.ts` (update `ConsoleRouteBaseId`, `consoleRouteOrder`, `ROUTE_LABELS`, `toConsolePath`, `parseConsoleRoute`, and `buildNavItems`). `ControlSurfaceLinks` renders internal nav buttons automatically from `buildNavItems()`, so no direct edits to `src/components/header/control-surface-links.tsx` are needed for standard first-party routes.
 - **Daemon-manifest declarative System contribution** - register the contribution with the extension manifest and render it under `/console/system` in the Extensions/System area. These contributions use the Console-owned declarative renderer set and do not require edits to `src/lib/navigation.ts` or new top-level routes.
-- **Extension-registered workstation** - register `registerConsoleWorkstation` from a native extension. Console discovers it from the contribution manifest, lists it under `/console/workstations`, renders its trusted iframe `srcDoc`, and invokes only manifest-allowed actions through the parent bridge. This is the supported V1 rich extension UI path and does not require source-owned route edits.
+- **Extension-registered workstation** - register `registerConsoleWorkstation` from a native extension. Console discovers it from the contribution manifest, lists it under `/console/workstations`, renders trusted iframe workstation entries, and invokes only manifest-allowed actions through the parent bridge. Source-authored entries use `srcDoc`; the client contract also accepts daemon-projected `frameBundle` metadata with eforge-owned frame/asset routes. This is the supported V1 rich extension UI path and does not require source-owned route edits.
 - **Non-route or external links** - add them directly to `src/components/header/control-surface-links.tsx` when they do not belong in the top-level Console route list.
 - **System route entry** - add a panel or section under `src/views/system/`. The system route is the home for configuration and diagnostic surfaces that do not need top-level navigation prominence.
 
-Arbitrary extension-supplied separately served frontend bundles, direct React component loading, private React imports, browser JavaScript outside workstation `srcDoc`, and extension-owned HTTP routes are deferred beyond the current declarative contribution and workstation models.
+Arbitrary extension-supplied frontend bundles outside the daemon-owned workstation frame/asset contract, direct React component loading, private React imports, browser JavaScript outside workstation documents, and extension-owned HTTP routes are deferred beyond the current declarative contribution and workstation models.
 
 ## Dev
 

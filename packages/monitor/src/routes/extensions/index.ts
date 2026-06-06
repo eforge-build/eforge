@@ -6,11 +6,13 @@ import { createExtensionReplayRoutes } from './replay.js';
 import { createExtensionTrustRoutes } from './trust.js';
 import { createExtensionPackageRoutes } from './packages.js';
 import { createExtensionContributionRoutes } from './contributions.js';
+import { createExtensionWorkstationRoutes } from './workstations.js';
 
 export function createExtensionRoutes(context: MonitorContext): RouteDefinition[] {
   return [
     ...createExtensionReadRoutes(context),
     ...createExtensionContributionRoutes(context),
+    ...createExtensionWorkstationRoutes(),
     ...createExtensionManagementRoutes(context),
     ...createExtensionReplayRoutes(context),
     ...createExtensionTrustRoutes(context),
