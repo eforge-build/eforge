@@ -120,10 +120,8 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
     verdict,
     report,
     boundedEvidence,
-    // --- eforge:region plan-02-sidecar-resume-option ---
     ...(obj.resumeEligibility !== undefined ? { resumeEligibility: validateResumeEligibility(obj.resumeEligibility, prdId) } : {}),
     ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, prdId) } : {}),
-    // --- eforge:endregion plan-02-sidecar-resume-option ---
     ...(obj.applied !== undefined ? { applied: obj.applied as RecoveryVerdictSidecar['applied'] } : {}),
   };
 }
@@ -237,7 +235,6 @@ function validateLanding(value: unknown, prdId?: string): NonNullable<RecoveryVe
   };
 }
 
-// --- eforge:region plan-02-sidecar-resume-option ---
 function validateResumeEligibility(value: unknown, prdId?: string): RecoverySidecarResumeEligibility {
   const obj = requireRecord(value, `Recovery sidecar resumeEligibility is invalid${suffix(prdId)}`);
   const source = requireString(obj.source, 'resumeEligibility.source', prdId);
@@ -283,7 +280,6 @@ function validateRecoveryOptions(value: unknown, prdId?: string): RecoverySideca
     };
   });
 }
-// --- eforge:endregion plan-02-sidecar-resume-option ---
 
 function validateOptionalStringRecord(value: unknown, label: string, keys: string[], prdId?: string): Record<string, string> {
   const obj = requireRecord(value, `${label} is invalid${suffix(prdId)}`);

@@ -18,7 +18,6 @@ function acceptanceNextStep(verdict: AcceptanceCriterionVerdict['verdict']): str
   }
 }
 
-// --- eforge:region plan-02-sidecar-resume-option ---
 function renderCompiledResumeSection(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence>): string[] {
   const eligibility = payload.resumeEligibility;
   if (eligibility === undefined) return [];
@@ -51,7 +50,6 @@ function renderCompiledResumeSection(payload: RecoveryVerdictSidecar & Partial<R
   lines.push('');
   return lines;
 }
-// --- eforge:endregion plan-02-sidecar-resume-option ---
 
 export function renderRecoverySidecarMarkdown(payload: RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence>): string {
   const { boundedEvidence: evidence, report, verdict } = payload;

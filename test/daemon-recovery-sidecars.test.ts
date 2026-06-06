@@ -153,7 +153,6 @@ describe('moveFailedWithSidecar', () => {
     expect(existsSync(jsonPath)).toBe(true);
   });
 
-  // --- eforge:region plan-02-sidecar-resume-option ---
   it('passes optional compiled-build resume evidence through to written sidecars', async () => {
     const dir = makeTestDir();
     initGitRepo(dir);
@@ -199,7 +198,6 @@ describe('moveFailedWithSidecar', () => {
     expect(sidecarJson.resumeEligibility.eligible).toBe(true);
     expect(sidecarJson.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true }));
   });
-  // --- eforge:endregion plan-02-sidecar-resume-option ---
 });
 
 describe('sidecar path uses prdId not planId', () => {

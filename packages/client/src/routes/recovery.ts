@@ -126,12 +126,10 @@ export interface RecoveryVerdictSidecar {
   verdict: RecoveryVerdict;
   report: RecoverySidecarReport;
   boundedEvidence: RecoverySidecarBoundedEvidence;
-  // --- eforge:region plan-02-sidecar-resume-option ---
   /** Read-only compiled-build resume eligibility captured when the sidecar was generated. */
   resumeEligibility?: RecoverySidecarResumeEligibility;
   /** Optional recovery options that point operators to routes outside apply-recovery. */
   recoveryOptions?: RecoverySidecarRecoveryOption[];
-  // --- eforge:endregion plan-02-sidecar-resume-option ---
   /** Durable applied marker; absent on sidecars written before a verdict is applied. */
   applied?: RecoveryAppliedMetadata;
 }
@@ -168,7 +166,6 @@ export interface ResumeEligibilityRequest {
 
 export type ResumeArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
 
-// --- eforge:region plan-02-sidecar-resume-option ---
 export type RecoverySidecarResumeEligibilitySource = 'projectResumeEligibility' | 'inspection-error';
 
 export type RecoverySidecarResumeEligibility =
@@ -197,7 +194,6 @@ export interface RecoverySidecarRecoveryOption {
   recommended: boolean;
   reason: string;
 }
-// --- eforge:endregion plan-02-sidecar-resume-option ---
 
 interface ResumeEligibilityIdentity {
   prdId: string;

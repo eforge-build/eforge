@@ -27,9 +27,7 @@ interface FailureEvidence {
   scope: TerminalFailureScope;
   message: string;
   planId?: string;
-  // --- eforge:region plan-01-transport-terminal-subtypes ---
   terminalSubtype?: AgentTerminalSubtype;
-  // --- eforge:endregion plan-01-transport-terminal-subtypes ---
   sourceEventType?: string;
   sourceEventTimestamp?: string;
   landing?: { status: string; action?: string; reason?: string };
@@ -100,9 +98,7 @@ export function createBuildTerminalFailureTracker(runId: string): BuildTerminalF
           message: ev.message,
           authoritative: true,
           ...(ev.planId !== undefined ? { planId: ev.planId } : {}),
-          // --- eforge:region plan-01-transport-terminal-subtypes ---
           ...(ev.terminalSubtype !== undefined ? { terminalSubtype: ev.terminalSubtype } : {}),
-          // --- eforge:endregion plan-01-transport-terminal-subtypes ---
           ...(ev.sourceEventType !== undefined ? { sourceEventType: ev.sourceEventType } : {}),
           ...(ev.sourceEventTimestamp !== undefined ? { sourceEventTimestamp: ev.sourceEventTimestamp } : {}),
           ...(ev.landing !== undefined ? { landing: ev.landing } : {}),

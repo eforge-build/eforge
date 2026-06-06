@@ -21,10 +21,8 @@ export interface BuildRecoverySidecarPayloadOptions {
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
   generatedAt?: string;
-  // --- eforge:region plan-02-sidecar-resume-option ---
   resumeEligibility?: RecoverySidecarResumeEligibility;
   recoveryOptions?: RecoverySidecarRecoveryOption[];
-  // --- eforge:endregion plan-02-sidecar-resume-option ---
 }
 
 export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayloadOptions): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
@@ -178,7 +176,6 @@ function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoun
   return lines.length > 0 ? lines : ['No detailed failure evidence was available; inspect the failed PRD and build logs manually.'];
 }
 
-// --- eforge:region plan-02-sidecar-resume-option ---
 function recoveryOptionsFor(
   resumeEligibility: RecoverySidecarResumeEligibility | undefined,
   recoveryOptions: RecoverySidecarRecoveryOption[] | undefined,
@@ -196,7 +193,6 @@ function recoveryOptionsFor(
 function compiledResumeRecommendedAction(verdict: RecoveryVerdict): string {
   return `Recommended operator action: queue a compiled-build resume with eforge_resume_build (or /eforge:recover resume). The apply-recovery verdict remains ${verdict.verdict}; do not use eforge_apply_recovery for this resume action.`;
 }
-// --- eforge:endregion plan-02-sidecar-resume-option ---
 
 function recommendedAction(verdict: RecoveryVerdict): string {
   switch (verdict.verdict) {

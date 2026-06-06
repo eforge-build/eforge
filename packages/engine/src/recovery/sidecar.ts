@@ -33,9 +33,7 @@ export async function writeRecoverySidecar({
   prdId: string;
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
-  // --- eforge:region plan-02-sidecar-resume-option ---
   resumeEvidence?: RecoverySidecarResumeEvidence;
-  // --- eforge:endregion plan-02-sidecar-resume-option ---
 }): Promise<{ mdPath: string; jsonPath: string }> {
   const mdPath = join(failedPrdDir, `${prdId}.recovery.md`);
   const jsonPath = join(failedPrdDir, `${prdId}.recovery.json`);

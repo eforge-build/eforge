@@ -31,7 +31,6 @@ export interface EventRow {
   timestamp: string;
 }
 function parseData(data: string): Record<string, unknown> { try { const p = JSON.parse(data); return p && typeof p === 'object' ? p as Record<string, unknown> : {}; } catch { return {}; } }
-// --- eforge:region plan-01-transport-terminal-subtypes ---
 function parseAgentTerminalSubtype(value: unknown): AgentTerminalSubtype | undefined {
   const result = safeParseWithSchema(AgentTerminalSubtypeSchema, value);
   return result.success ? result.data : undefined;
@@ -55,7 +54,6 @@ function recoverReferencedPlanBuildFailedSubtype(
   const row = db.prepare(`SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:failed' AND id <= ? AND plan_id = ? AND timestamp = ? ORDER BY id DESC LIMIT 1`).get(runId, terminalRowId, planId, sourceEventTimestamp) as { data: string } | undefined;
   return row ? planBuildFailedSubtypeFromData(row.data) : undefined;
 }
-// --- eforge:endregion plan-01-transport-terminal-subtypes ---
 type ReviewFailureDetails = NonNullable<BuildFailureSummary['reviewFailure']>;
 type ReviewFailureEvaluation = NonNullable<ReviewFailureDetails['evaluation']>;
 type ReviewFailureEvaluationVerdict = ReviewFailureEvaluation['verdicts'][number];

@@ -329,7 +329,6 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('Validation command output was truncated for: pnpm test -- --large-output');
   });
 
-  // --- eforge:region plan-02-sidecar-resume-option ---
   it('JSON and Markdown include eligible compiled-build resume recommendation without changing the verdict vocabulary', async () => {
     const dir = makeTempDir();
     const { jsonPath, mdPath } = await writeRecoverySidecar({
@@ -413,7 +412,6 @@ describe('writeRecoverySidecar', () => {
     expect(parsed.resumeEligibility.reason.length).toBeLessThanOrEqual(1100);
     expect(md).toContain('Compiled-build resume');
   });
-  // --- eforge:endregion plan-02-sidecar-resume-option ---
 
   it('places operator guidance before detailed evidence in Markdown sidecars', async () => {
     const dir = makeTempDir();

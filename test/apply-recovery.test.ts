@@ -625,7 +625,6 @@ describe('applyRecovery — manual', () => {
     expect(completeEvent!.noAction).toBe(true);
   });
 
-  // --- eforge:region plan-02-sidecar-resume-option ---
   it('returns noAction for a manual sidecar that contains a compiled-build resume recommendation', async () => {
     const dir = makeTempDir();
     const prdId = 'test-manual-with-resume';
@@ -657,7 +656,6 @@ describe('applyRecovery — manual', () => {
     expect(await pathExists(join(dir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
     expect((await readdir(join(dir, '.eforge', 'queue'))).filter((entry) => entry.endsWith('.md'))).toEqual([]);
   });
-  // --- eforge:endregion plan-02-sidecar-resume-option ---
 });
 
 // ---------------------------------------------------------------------------
