@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
+import { WORKSTATION_ASSETS_DIR } from './workstation-bundle-paths.js';
+
 const HASH_INCLUDED_EXTENSIONS = new Set(['.ts', '.mts', '.js', '.mjs']);
 const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.git']);
 
@@ -29,7 +31,7 @@ export async function hashExtensionFile(entrypoint: string): Promise<string> {
  */
 export async function hashExtensionDirectory(dir: string, entrypoint?: string): Promise<string> {
   const root = resolve(dir);
-  const manifest = await collectManifest(root, root);
+  const manifest = await collectManifest(root, root, false);
   if (entrypoint !== undefined) {
     await addExplicitEntrypoint(root, entrypoint, manifest);
   }
@@ -42,7 +44,7 @@ export async function hashExtensionDirectory(dir: string, entrypoint?: string): 
   return hash.digest('hex');
 }
 
-async function collectManifest(root: string, dir: string): Promise<Array<[string, Buffer]>> {
+async function collectManifest(root: string, dir: string, underWorkstationAssets: boolean): Promise<Array<[string, Buffer]>> {
   const entries: Array<[string, Buffer]> = [];
   const items = await readdir(dir);
   for (const item of items) {
@@ -56,19 +58,22 @@ async function collectManifest(root: string, dir: string): Promise<Array<[string
     if (info.isSymbolicLink()) {
       throw new Error(`Extension directory contains unsupported symbolic link: ${normalizeManifestPath(root, fullPath)}`);
     }
+    // --- eforge:region plan-04-engine-registration-manifest-trust ---
+    const childUnderWorkstationAssets = underWorkstationAssets || (dir === root && item === WORKSTATION_ASSETS_DIR);
     if (info.isDirectory()) {
-      if (EXCLUDED_DIRS.has(item)) continue;
-      const subEntries = await collectManifest(root, fullPath);
+      if (!childUnderWorkstationAssets && EXCLUDED_DIRS.has(item)) continue;
+      const subEntries = await collectManifest(root, fullPath, childUnderWorkstationAssets);
       entries.push(...subEntries);
     } else if (info.isFile()) {
       const ext = extname(item);
       const isPackageJson = item === 'package.json';
-      if (!isPackageJson && !HASH_INCLUDED_EXTENSIONS.has(ext)) continue;
+      if (!childUnderWorkstationAssets && !isPackageJson && !HASH_INCLUDED_EXTENSIONS.has(ext)) continue;
       // relativePath is relative to the extension directory root and normalized for cross-platform determinism.
       const relativePath = normalizeManifestPath(root, fullPath);
       const content = await readFile(fullPath);
       entries.push([relativePath, content]);
     }
+    // --- eforge:endregion plan-04-engine-registration-manifest-trust ---
   }
   return entries;
 }

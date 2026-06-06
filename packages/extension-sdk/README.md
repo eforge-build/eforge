@@ -162,7 +162,7 @@ Action inputs require object-root TypeBox input schemas, action handlers must re
 
 ### Console workstations
 
-Use `registerConsoleWorkstation` for richer Console UI that needs browser interactivity. V1 source-authored workstations declare exactly one source: inline iframe `srcDoc` or a `frameBundle` with local bundle metadata (`root`, `entrypoint`, optional `styles`, optional `assets`, and optional `browserSdkVersion: 1`). Bundle entries are projected to manifest `frameBundle.frameUrl` iframe navigations with the bridge token in the URL fragment. Workstations are not shared React components, private Console imports, or arbitrary asset bundles outside the workstation frame/asset contract. The workstation can call the parent-owned bridge at `window.eforge.invokeAction(actionId, input)` or use `invokeAction` from `@eforge-build/extension-sdk/browser` to invoke allowed extension actions.
+Use `registerConsoleWorkstation` for richer Console UI that needs browser interactivity. V1 source-authored workstations declare exactly one source: inline iframe `srcDoc` or a `frameBundle` with local bundle metadata (`root`, `entrypoint`, optional `styles`, optional `assets`, and optional `browserSdkVersion: 1`). Bundle roots must be `workstation-assets` or a child directory under `workstation-assets/`; `entrypoint`, `styles`, and `assets` paths are relative to that root. Bundle entries are projected to manifest `frameBundle.frameUrl` iframe navigations with the bridge token in the URL fragment. Workstations are not shared React components, private Console imports, or arbitrary asset bundles outside the workstation frame/asset contract. The workstation can call the parent-owned bridge at `window.eforge.invokeAction(actionId, input)` or use `invokeAction` from `@eforge-build/extension-sdk/browser` to invoke allowed extension actions.
 
 ```ts
 import {
@@ -362,7 +362,7 @@ eforge extension remove my-extension
 
 Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types.
 
-Install sidecar files - package metadata, lockfile records, and other install-generated artifacts - are excluded from the trust hash. Reinstalling without changing the source files does not invalidate an existing trust record.
+Install sidecar files - package metadata, lockfile records, and other install-generated artifacts - are excluded from the trust hash. Reinstalling without changing the source files or trusted `workstation-assets/` browser assets does not invalidate an existing trust record.
 
 Git URL installs are not yet supported; accepted sources are npm package specifiers (including tarball URLs), local package directories, and local `.tgz`/`.tar.gz` tarball paths.
 

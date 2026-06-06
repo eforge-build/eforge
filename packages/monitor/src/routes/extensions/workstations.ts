@@ -1,12 +1,11 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, realpath } from 'node:fs/promises';
-import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import {
   API_ROUTES,
   CONSOLE_WORKSTATION_BROWSER_SDK_VERSION,
   CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN,
   type ConsoleWorkstationFrameBundleManifestEntry,
-  type ConsoleWorkstationFrameBundleAssetRef,
 } from '@eforge-build/client';
 import { defineRoute, type RequestContext, type RouteDefinition } from '../../http/router.js';
 import { sendJsonError, sendText } from '../../http/response.js';
@@ -15,7 +14,8 @@ import { loadContributionRuntime } from './contribution-service.js';
 
 const security = [localOnly('Extension workstation content reads'), rejectCrossSiteBrowser('Extension workstation content reads')];
 const workstationAssetIdPattern = new RegExp(CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN);
-const workstationAssetIdHashPattern = /^sha256-([a-f0-9]{64})-path-[a-f0-9]{64}$/;
+type ConsoleWorkstationBundleAssetLookupResult = import('@eforge-build/engine/extensions/index').ConsoleWorkstationBundleAssetLookupResult;
+type NativeExtensionRegistry = import('@eforge-build/engine/extensions/index').NativeExtensionRegistry;
 
 export function createExtensionWorkstationRoutes(): RouteDefinition[] {
   return [
@@ -61,45 +61,30 @@ async function sendWorkstationAsset(ctx: RequestContext): Promise<void> {
     return;
   }
 
-  const workstation = await findFrameBundleWorkstation(ctx);
-  if (workstation === null) return;
-  if (!workstation) {
-    sendJsonError(ctx.res, 404, 'Extension workstation frame bundle not found');
-    return;
-  }
+  const runtime = await loadWorkstationRuntime(ctx);
+  if (runtime === null) return;
 
-  const asset = findAsset(workstation, assetId);
-  if (!asset) {
-    sendJsonError(ctx.res, 404, 'Extension workstation asset not found');
-    return;
-  }
-
-  const expectedSha256 = contentSha256ForAsset(asset);
-  if (!expectedSha256) {
-    sendJsonError(ctx.res, 409, 'Extension workstation asset hash mismatch');
-    return;
-  }
-
-  const assetPath = await resolveAssetPath(ctx.monitor.cwd, workstation.extensionPath, asset.relativePath);
-  if (!assetPath) {
-    sendJsonError(ctx.res, 404, 'Extension workstation asset not found');
+  const { findConsoleWorkstationBundleAsset } = await import('@eforge-build/engine/extensions/index');
+  const lookup = findConsoleWorkstationBundleAsset(runtime.registry as NativeExtensionRegistry, ctx.params.workstationId ?? '', assetId);
+  if (!lookup.ok) {
+    sendAssetLookupError(ctx, lookup.reason);
     return;
   }
 
   let body: Buffer;
   try {
-    body = await readFile(assetPath);
+    body = await readFile(lookup.asset.absolutePath);
   } catch {
     sendJsonError(ctx.res, 404, 'Extension workstation asset not found');
     return;
   }
-  if (createHash('sha256').update(body).digest('hex') !== expectedSha256) {
+  if (createHash('sha256').update(body).digest('hex') !== lookup.asset.sha256) {
     sendJsonError(ctx.res, 409, 'Extension workstation asset hash mismatch');
     return;
   }
 
   sendText(ctx.res, 200, body, {
-    contentType: contentTypeForPath(asset.relativePath),
+    contentType: contentTypeForPath(lookup.asset.extensionRelativePath),
     headers: {
       'Cache-Control': 'public, max-age=31536000, immutable',
       'Content-Security-Policy': "default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
@@ -126,42 +111,34 @@ async function findFrameBundleWorkstation(ctx: RequestContext): Promise<ConsoleW
   }
 }
 
-function findAsset(workstation: ConsoleWorkstationFrameBundleManifestEntry, assetId: string): ConsoleWorkstationFrameBundleAssetRef | undefined {
-  const assets = [workstation.frameBundle.entrypoint, ...workstation.frameBundle.styles, ...workstation.frameBundle.assets];
-  return assets.find((asset) => asset.id === assetId);
-}
-
-function contentSha256ForAsset(asset: ConsoleWorkstationFrameBundleAssetRef): string | undefined {
-  const idHash = workstationAssetIdHashPattern.exec(asset.id)?.[1];
-  return idHash !== undefined && idHash === asset.sha256 ? idHash : undefined;
-}
-
-async function resolveAssetPath(cwd: string | undefined, extensionPath: string, relativePath: string): Promise<string | undefined> {
-  if (relativePath.includes('\0') || isAbsolute(relativePath)) return undefined;
-  const extensionRoot = await resolveExtensionRoot(cwd, extensionPath);
-  if (!extensionRoot) return undefined;
-  const candidate = resolve(extensionRoot, relativePath);
-  if (!isWithinDir(candidate, extensionRoot)) return undefined;
+async function loadWorkstationRuntime(ctx: RequestContext): Promise<{ registry: unknown } | null> {
+  if (!ctx.monitor.cwd) {
+    sendJsonError(ctx.res, 503, 'Working directory not configured');
+    return null;
+  }
   try {
-    const [realRoot, realCandidate] = await Promise.all([realpath(extensionRoot), realpath(candidate)]);
-    if (!isWithinDir(realCandidate, realRoot)) return undefined;
-    const info = await lstat(realCandidate);
-    return info.isFile() && !info.isSymbolicLink() ? realCandidate : undefined;
-  } catch {
-    return undefined;
+    return await loadContributionRuntime(ctx.monitor);
+  } catch (err) {
+    const detail = err instanceof Error ? `: ${err.message}` : '';
+    sendJsonError(ctx.res, 500, `Failed to load extension workstation runtime${detail}`);
+    return null;
   }
 }
 
-async function resolveExtensionRoot(cwd: string | undefined, extensionPath: string): Promise<string | undefined> {
-  if (extensionPath.includes('\0')) return undefined;
-  if (!isAbsolute(extensionPath) && !cwd) return undefined;
-  const resolved = isAbsolute(extensionPath) ? extensionPath : resolve(cwd ?? '', extensionPath);
-  if (!isAbsolute(extensionPath) && cwd && !isWithinDir(resolved, cwd)) return undefined;
-  try {
-    const info = await lstat(resolved);
-    return info.isDirectory() ? resolved : resolve(resolved, '..');
-  } catch {
-    return undefined;
+function sendAssetLookupError(ctx: RequestContext, reason: Extract<ConsoleWorkstationBundleAssetLookupResult, { ok: false }>['reason']): void {
+  switch (reason) {
+    case 'malformed-asset-id':
+      sendJsonError(ctx.res, 400, 'Malformed extension workstation asset id');
+      return;
+    case 'unknown-workstation':
+    case 'not-frame-bundle':
+      sendJsonError(ctx.res, 404, 'Extension workstation frame bundle not found');
+      return;
+    case 'unknown-asset-id':
+      sendJsonError(ctx.res, 404, 'Extension workstation asset not found');
+      return;
+    default:
+      sendJsonError(ctx.res, 404, 'Extension workstation asset not found');
   }
 }
 
@@ -203,11 +180,6 @@ function contentTypeForPath(path: string): string {
     case '.woff2': return 'font/woff2';
     default: return 'application/octet-stream';
   }
-}
-
-function isWithinDir(path: string, parent: string): boolean {
-  const rel = relative(resolve(parent), resolve(path));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel) && !rel.split(sep).includes('..'));
 }
 
 function escapeHtmlAttribute(value: string): string {

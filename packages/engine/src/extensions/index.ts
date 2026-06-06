@@ -67,6 +67,10 @@ export type {
   DeepLinkRegistration,
   ExtensionActionSpec,
   ConsoleContributionSpec,
+  ConsoleWorkstationBaseSpec,
+  ConsoleWorkstationFrameBundleSpec,
+  ConsoleWorkstationSrcDocSpec,
+  ConsoleWorkstationFrameBundleWorkstationSpec,
   ConsoleWorkstationSpec,
   IntegrationCommandSpec,
   ExtensionDeepLinkSpec,
@@ -131,6 +135,25 @@ export type {
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
 export { EXTENSION_LOCAL_CONTRIBUTION_ID_RE, isValidExtensionLocalContributionId, resolveExtensionContributionId } from './ids.js';
+// --- eforge:region plan-04-engine-registration-manifest-trust ---
+export {
+  WORKSTATION_ASSETS_DIR,
+  normalizeWorkstationBundleRoot,
+  normalizeWorkstationBundleAssetPath,
+} from './workstation-bundle-paths.js';
+export {
+  ConsoleWorkstationAssetCatalogError,
+  buildConsoleWorkstationAssetCatalog,
+  buildConsoleWorkstationFrameBundleManifest,
+  findConsoleWorkstationBundleAsset,
+} from './workstation-assets.js';
+export type {
+  ConsoleWorkstationAssetCatalog,
+  ConsoleWorkstationAssetCatalogErrorCode,
+  ConsoleWorkstationBundleAssetLookupResult,
+  ConsoleWorkstationCatalogAsset,
+} from './workstation-assets.js';
+// --- eforge:endregion plan-04-engine-registration-manifest-trust ---
 export {
   buildExtensionContributionManifest,
   buildActionDetails,

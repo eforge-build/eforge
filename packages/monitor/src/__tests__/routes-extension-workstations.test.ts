@@ -9,6 +9,7 @@ import {
   buildPath,
   type ExtensionContributionManifestResponse,
 } from '@eforge-build/client';
+import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { startContentRouteHarness } from './route-test-harness.js';
 import { createExtensionWorkstationRoutes, renderBridgeScript } from '../routes/extensions/workstations.js';
 
@@ -55,19 +56,19 @@ describe('extension workstation routes', () => {
     } finally { await harness.close(); }
   });
 
-  it('rejects asset manifests whose id hash does not match sha256', async () => {
+  it('rejects asset ids that are absent from the loaded registry', async () => {
     const harness = await startContentRouteHarness({ routes: createExtensionWorkstationRoutes });
     try {
       const body = 'console.log("ok");\n';
       const sha256 = sha256Hex(body);
-      const asset = assetRef('dist/index.js', `${'a'.repeat(64)}`, sha256);
+      const asset = assetRef('workstation-assets/index.js', `${'a'.repeat(64)}`, sha256);
       contributionMock.manifest = manifestFor(asset);
-      contributionMock.loadContributionRuntime.mockReset().mockResolvedValue({ manifest: contributionMock.manifest });
-      await seedAsset(harness.cwd, asset.relativePath, body);
+      contributionMock.loadContributionRuntime.mockReset().mockResolvedValue({ manifest: contributionMock.manifest, registry: registryFor(harness.cwd) });
+      await seedAsset(harness.cwd, 'workstation-assets/index.js', body);
 
       const res = await harness.get(asset.url);
-      expect(res.status).toBe(409);
-      expect(await res.json()).toMatchObject({ error: 'Extension workstation asset hash mismatch' });
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ error: 'Extension workstation asset not found' });
     } finally { await harness.close(); }
   });
 
@@ -97,9 +98,9 @@ describe('extension workstation routes', () => {
     try {
       const body = 'console.log("ok");\n';
       const sha256 = sha256Hex(body);
-      const asset = assetRef('dist/index.js', sha256, sha256);
+      const asset = assetRef('workstation-assets/index.js', sha256, sha256, 'index.js');
       contributionMock.manifest = manifestFor(asset);
-      contributionMock.loadContributionRuntime.mockReset().mockResolvedValue({ manifest: contributionMock.manifest });
+      contributionMock.loadContributionRuntime.mockReset().mockResolvedValue({ manifest: contributionMock.manifest, registry: registryFor(harness.cwd) });
       await seedAsset(harness.cwd, asset.relativePath, body);
 
       const frame = await harness.get(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'bundle:board' }));
@@ -141,8 +142,8 @@ function manifestFor(entrypoint: ReturnType<typeof assetRef>): ExtensionContribu
   };
 }
 
-function assetRef(relativePath: string, idSha256: string, sha256: string) {
-  const id = `sha256-${idSha256}-path-${'b'.repeat(64)}`;
+function assetRef(relativePath: string, idSha256: string, sha256: string, bundleRelativePath = relativePath) {
+  const id = `sha256-${idSha256}-path-${sha256Hex(bundleRelativePath)}`;
   return {
     id,
     url: buildPath(API_ROUTES.extensionWorkstationAsset, { workstationId: 'bundle:board', assetId: id }),
@@ -151,9 +152,46 @@ function assetRef(relativePath: string, idSha256: string, sha256: string) {
   };
 }
 
+function registryFor(cwd: string): NativeExtensionRegistry {
+  return {
+    extensions: [],
+    candidates: [],
+    diagnostics: [],
+    eventHooks: [],
+    agentRunHooks: [],
+    policyGates: [],
+    profileRouters: [],
+    inputSources: [],
+    reviewerPerspectives: [],
+    validationProviders: [],
+    tools: [],
+    prdEnrichers: [],
+    actions: [],
+    consoleContributions: [],
+    consoleWorkstations: [{
+      kind: 'consoleWorkstation',
+      extensionName: 'bundle',
+      extensionPath: join(cwd, '.eforge', 'extensions', 'bundle.mjs'),
+      localId: 'board',
+      id: 'bundle:board',
+      value: {
+        id: 'board',
+        title: 'Board',
+        frameBundle: {
+          root: 'workstation-assets',
+          entrypoint: 'index.js',
+        },
+      },
+    }],
+    integrationCommands: [],
+    deepLinks: [],
+  };
+}
+
 async function seedAsset(cwd: string, relativePath: string, body: string): Promise<void> {
   const extensionDir = join(cwd, '.eforge', 'extensions');
   await mkdir(join(extensionDir, 'dist'), { recursive: true });
+  await mkdir(join(extensionDir, 'workstation-assets'), { recursive: true });
   await writeFile(join(extensionDir, 'bundle.mjs'), 'export default function extension() {}\n');
   await writeFile(join(extensionDir, relativePath), body);
 }
