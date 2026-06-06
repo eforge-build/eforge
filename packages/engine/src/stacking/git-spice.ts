@@ -125,7 +125,10 @@ export class GitSpiceAdapter {
    */
   private async run(cwd: string, args: string[]): Promise<ProviderCommandResult> {
     try {
-      const { stdout, stderr } = await execFileAsync(this.command, args, { cwd });
+      const { stdout, stderr } = await execFileAsync(this.command, args, {
+        cwd,
+        env: nonInteractiveGitEnv(),
+      });
       return { command: this.command, args, stdout, stderr, exitCode: 0 };
     } catch (err) {
       // ENOENT means the command was not found in PATH or at the given path
@@ -346,6 +349,17 @@ function conflictKindFromDiagnostic(diagnostic: string): StackProviderConflictKi
   return 'unknown';
 }
 
+function nonInteractiveGitEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    GIT_EDITOR: 'true',
+    VISUAL: 'true',
+    EDITOR: 'true',
+    GIT_SEQUENCE_EDITOR: 'true',
+    GIT_MERGE_AUTOEDIT: 'no',
+  };
+}
+
 function classification(
   kind: StackProviderErrorClassification['kind'],
   operation: StackProviderOperationKind,
@@ -366,7 +380,10 @@ async function repoHasUnmergedPaths(cwd: string): Promise<boolean> {
 
 async function getGitOutput(cwd: string, args: string[]): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('git', args, { cwd });
+    const { stdout } = await execFileAsync('git', args, {
+      cwd,
+      env: nonInteractiveGitEnv(),
+    });
     return stdout;
   } catch {
     return '';
