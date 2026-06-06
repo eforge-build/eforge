@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { loadDocPage, loadReferencePage } from '../lib/content.js';
@@ -29,6 +29,10 @@ function readGuide(slug: string): string {
 
 function readReference(slug: string): string {
   return readFileSync(join(referenceContentDir, `${slug}.md`), 'utf-8');
+}
+
+function readPublicGuide(slug: string): string {
+  return readFileSync(join(publicDocsDir, `${slug}.md`), 'utf-8');
 }
 
 function listMarkdownSlugs(dir: string): string[] {
@@ -113,14 +117,14 @@ describe('loadDocPage', () => {
       expect(page.frontmatter.title, `Expected title frontmatter for ${slug}`).toEqual(expect.any(String));
       expect(page.frontmatter.description, `Expected description frontmatter for ${slug}`).toEqual(expect.any(String));
       expect(stripFencedCodeBlocks(raw), `Expected at least one level-two heading in ${slug}`).toMatch(/^##\s+/m);
-      expect(existsSync(join(publicDocsDir, `${slug}.md`)), `Expected generated public docs mirror for ${slug}`).toBe(true);
+      expect(readPublicGuide(slug), `Expected generated public docs mirror for ${slug} to match its source`).toBe(raw);
     }
   });
 
-  it('keeps every public guide mirrored and structurally valid', async () => {
+  it('keeps every public guide structurally valid and mirrored by slug', async () => {
     for (const slug of expectedDocSlugs) {
       const source = readGuide(slug);
-      const mirrorPath = join(publicDocsDir, `${slug}.md`);
+      const mirror = readPublicGuide(slug);
       const page = await loadDocPage(slug);
       const markdownOutsideCode = stripFencedCodeBlocks(source);
 
@@ -131,8 +135,27 @@ describe('loadDocPage', () => {
       expect(markdownOutsideCode.match(/^##\s+/gm) ?? [], `Expected at least one h2 heading in ${slug}`).not.toHaveLength(0);
       expect(headingLevels[0], `Expected ${slug} to start its document outline with h1`).toBe(1);
       expect(headingLevels.slice(1), `Expected ${slug} to use h2 sections after its h1`).toContain(2);
-      expect(existsSync(mirrorPath), `Expected generated public docs mirror for ${slug}`).toBe(true);
-      expect(readFileSync(mirrorPath, 'utf-8'), `Expected ${mirrorPath} to mirror web/content/docs/${slug}.md`).toBe(source);
+      expect(mirror, `Expected generated public docs mirror for ${slug} to match its source`).toBe(source);
+    }
+  });
+
+  it('keeps public guide sources free of stale or repo-only public wording', () => {
+    const forbiddenSnippets = [
+      'Starting June 15, 2026',
+      'coming soon',
+      'TBD',
+      'TODO',
+      'future release',
+      'docs/config.md',
+      'docs/hooks.md',
+      'docs/prd/',
+    ];
+
+    for (const slug of expectedDocSlugs) {
+      const raw = readGuide(slug);
+      for (const snippet of forbiddenSnippets) {
+        expect(raw, `Expected ${slug} guide not to contain ${snippet}`).not.toContain(snippet);
+      }
     }
   });
 

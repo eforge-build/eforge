@@ -134,7 +134,7 @@ Compatibility helper that resolves safe path segments under the project-local `.
 
 Prefer `createEforgeProjectPaths` or `resolveExtensionStoragePath` for new extension-owned storage so the scope and `storage/extensions/<extension-name>/` convention are explicit.
 
-These helpers do not add a native workflow registration API. The bundled playbook and session-planning adapters are internal to `@eforge-build/input`; user-authored custom playbook or session-plan extraction remains future/deferred work.
+These helpers do not add a native workflow registration API. The bundled playbook and session-planning adapters are internal to `@eforge-build/input`; user-authored custom playbook or session-plan extraction is not supported by native extensions in the current release.
 
 ---
 
@@ -1112,7 +1112,7 @@ type PolicyDecision =
 - `block` - the operation is rejected. `reason` is surfaced in logs and Console.
 - `require-approval` - currently blocks the operation because no approval workflow, approval state, or Console approval UI exists in this MVP.
 
-A `modify` variant (mutating the diff inline) is intentionally absent. `modify` decisions remain deferred; no policy gate in the current scope explicitly allows mutation.
+A `modify` variant (mutating the diff inline) is intentionally absent. `modify` decisions are not supported; no policy gate in the current scope explicitly allows mutation.
 
 ---
 
@@ -1207,17 +1207,17 @@ const lookupTool = defineExtensionTool({
 
 The canonical SDK stability and migration guidance lives here. Public exports from `@eforge-build/extension-sdk` are stability-promised within a major version, but runtime behavior is intentionally versioned through the daemon/client contract and documented in this reference. When upgrading:
 
-1. Read this Extensions API reference first, especially the runtime support table and deferred-boundary notes.
+1. Read this Extensions API reference first, especially the runtime support table and unsupported-boundary notes.
 2. Run `eforge extension validate <name-or-path>` to catch registration-shape changes.
 3. Run `eforge extension test <name-or-path>` for replayable event hooks or registration summaries.
 4. Rebuild packaged extensions against the new SDK and avoid private imports from `packages/console-ui`, `packages/engine`, or daemon internals.
 5. For Console workstations, target the documented `ConsoleWorkstation` shape and `window.eforge.invokeAction` bridge. Reusable SDK-provided widgets should use a versioned workstation browser SDK or host-rendered slots when those surfaces exist, not private Console React imports.
 
-Breaking changes to daemon HTTP routes, event schemas, manifest wire shapes, or workstation bridge semantics require a daemon API version bump and migration notes in this section. Separately served asset bundles, direct React component loading, raw extension-owned HTTP routes, and extension-owned AI planning/chat APIs are not migration targets for V1 because they remain deferred.
+Breaking changes to daemon HTTP routes, event schemas, manifest wire shapes, or workstation bridge semantics require a daemon API version bump and migration notes in this section. Separately served asset bundles, direct React component loading, raw extension-owned HTTP routes, and extension-owned AI planning/chat APIs are not migration targets for V1 because V1 does not provide those surfaces.
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution manifest/action invocation routes, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions, plus sandboxed iframe workstation rendering. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The bundled playbook and session-planning adapters are internal/built-in and are not user-authored native extension workflow registration APIs. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, separately served frontend asset bundles, direct React component loading, extension-owned AI planning/chat APIs, and arbitrary frontend plugin bundles are intentionally deferred or unsupported runtime phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution manifest/action invocation routes, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions, plus sandboxed iframe workstation rendering. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The bundled playbook and session-planning adapters are internal/built-in and are not user-authored native extension workflow registration APIs. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, separately served frontend asset bundles, direct React component loading, extension-owned AI planning/chat APIs, and arbitrary frontend plugin bundles are unsupported runtime phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -1240,7 +1240,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, separately served frontend asset bundles, direct React component loading, extension-owned AI planning/chat APIs, and arbitrary frontend plugin bundles are future or unsupported runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, separately served frontend asset bundles, direct React component loading, extension-owned AI planning/chat APIs, and arbitrary frontend plugin bundles are unsupported runtime work.
 
 ---
 
