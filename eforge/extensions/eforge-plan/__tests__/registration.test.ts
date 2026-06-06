@@ -62,6 +62,10 @@ describe('eforge-plan extension registration', () => {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 
+    expect(state.consoleWorkstations).toHaveLength(1);
+    expect(state.consoleWorkstations[0]?.value.allowedActions).toEqual(['render-board-markdown']);
+    expect(state.consoleWorkstations[0]?.value.srcDoc).toContain("window.eforge.invokeAction('render-board-markdown'");
+
     expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
     expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
     expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:start', 'session:end', 'session:start']);

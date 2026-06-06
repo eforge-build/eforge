@@ -2,6 +2,8 @@ import type {
   ConsoleContributionBlock,
   ConsoleContributionDetail,
   ConsoleContributionManifestEntry,
+  ConsoleWorkstationDetail,
+  ConsoleWorkstationManifestEntry,
   ExtensionActionBindingManifest,
   ExtensionActionDetail,
   ExtensionActionManifestEntry,
@@ -18,6 +20,7 @@ import { resolveExtensionContributionId } from './ids.js';
 import type {
   ConsoleContributionBlockSpec,
   ConsoleContributionRegistration,
+  ConsoleWorkstationRegistration,
   DeepLinkRegistration,
   ExtensionActionBindingSpec,
   ActionRegistration,
@@ -32,6 +35,7 @@ export function buildExtensionContributionManifest(registry: NativeExtensionRegi
     generatedAt: new Date().toISOString(),
     actions: registry.actions.map(buildActionManifestEntry).sort(sortById),
     consoleContributions: registry.consoleContributions.map(buildConsoleContributionManifestEntry).sort(sortById),
+    consoleWorkstations: registry.consoleWorkstations.map((reg) => buildConsoleWorkstationManifestEntry(reg, registry)).sort(sortById),
     integrationCommands: registry.integrationCommands.map(buildIntegrationCommandManifestEntry).sort(sortById),
     deepLinks: registry.deepLinks.map(buildDeepLinkManifestEntry).sort(sortById),
     diagnostics: registry.diagnostics.map((diagnostic) => projectDiagnostic(diagnostic, registry)),
@@ -64,6 +68,20 @@ export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRe
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
     blocks: reg.value.blocks.map((block) => projectBlock(block, reg.extensionName)),
   }) as ConsoleContributionManifestEntry;
+}
+
+export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): ConsoleWorkstationManifestEntry {
+  return omitUndefined({
+    id: reg.id,
+    localId: reg.localId,
+    extensionName: reg.extensionName,
+    extensionPath: reg.extensionPath,
+    title: reg.value.title,
+    description: reg.value.description,
+    schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
+    srcDoc: reg.value.srcDoc,
+    allowedActions: projectAllowedActions(reg, registry),
+  }) as ConsoleWorkstationManifestEntry;
 }
 
 export function buildIntegrationCommandManifestEntry(reg: IntegrationCommandRegistration): IntegrationCommandManifestEntry {
@@ -102,6 +120,11 @@ export function buildConsoleContributionDetails(registry: NativeExtensionRegistr
   return details.length > 0 ? details : undefined;
 }
 
+export function buildConsoleWorkstationDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): ConsoleWorkstationDetail[] | undefined {
+  const details = registry.consoleWorkstations.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map((reg) => buildConsoleWorkstationManifestEntry(reg, registry));
+  return details.length > 0 ? details : undefined;
+}
+
 export function buildIntegrationCommandDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): IntegrationCommandDetail[] | undefined {
   const details = registry.integrationCommands.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map(buildIntegrationCommandManifestEntry);
   return details.length > 0 ? details : undefined;
@@ -120,6 +143,11 @@ function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string
   const base = { ...block } as Record<string, unknown>;
   if ('action' in block) base.action = projectBinding(block.action, extensionName);
   return omitUndefined(jsonSafeClone(base)) as ConsoleContributionBlock;
+}
+
+function projectAllowedActions(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): string[] {
+  const localActionIds = reg.value.allowedActions ?? registry.actions.filter((action) => belongsTo(action, reg.extensionName, reg.extensionPath)).map((action) => action.localId);
+  return [...new Set(localActionIds.map((actionId) => resolveExtensionContributionId(reg.extensionName, actionId)))].sort();
 }
 
 function projectBinding(binding: ExtensionActionBindingSpec, extensionName: string): ExtensionActionBindingManifest {

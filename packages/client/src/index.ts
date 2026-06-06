@@ -525,6 +525,7 @@ export type {
   ValidationProviderDetail,
   ExtensionActionDetail,
   ConsoleContributionDetail,
+  ConsoleWorkstationDetail,
   IntegrationCommandDetail,
   ExtensionDeepLinkDetail,
   ExtensionEntry,

@@ -11,12 +11,12 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('consoleRouteOrder', () => {
-  it('contains exactly four route base IDs in order', () => {
-    expect(consoleRouteOrder).toEqual(['now', 'plans', 'buildDetail', 'system']);
+  it('contains route base IDs in order', () => {
+    expect(consoleRouteOrder).toEqual(['now', 'plans', 'workstations', 'buildDetail', 'workstationDetail', 'system']);
   });
 
-  it('has length 4', () => {
-    expect(consoleRouteOrder).toHaveLength(4);
+  it('has length 6', () => {
+    expect(consoleRouteOrder).toHaveLength(6);
   });
 
   it('starts with now', () => {
@@ -27,8 +27,12 @@ describe('consoleRouteOrder', () => {
     expect(consoleRouteOrder[1]).toBe('plans');
   });
 
+  it('third entry is workstations', () => {
+    expect(consoleRouteOrder[2]).toBe('workstations');
+  });
+
   it('ends with system', () => {
-    expect(consoleRouteOrder[3]).toBe('system');
+    expect(consoleRouteOrder[5]).toBe('system');
   });
 });
 
@@ -47,6 +51,14 @@ describe('toConsolePath', () => {
 
   it("maps 'system' to /console/system", () => {
     expect(toConsolePath('system')).toBe('/console/system');
+  });
+
+  it("maps 'workstations' to /console/workstations", () => {
+    expect(toConsolePath('workstations')).toBe('/console/workstations');
+  });
+
+  it('maps a workstationDetail object to an encoded workstation detail path', () => {
+    expect(toConsolePath({ id: 'workstationDetail', workstationId: 'demo:board' })).toBe('/console/workstations/demo%3Aboard');
   });
 
   it('maps a buildDetail object to /console/builds/:detailId', () => {
@@ -83,6 +95,15 @@ describe('parseConsoleRoute', () => {
 
   it("returns 'system' for /console/system", () => {
     expect(parseConsoleRoute('/console/system')).toBe('system');
+  });
+
+  it("returns 'workstations' for /console/workstations", () => {
+    expect(parseConsoleRoute('/console/workstations')).toBe('workstations');
+  });
+
+  it('returns workstationDetail for /console/workstations/:workstationId', () => {
+    expect(parseConsoleRoute('/console/workstations/demo:board')).toEqual({ id: 'workstationDetail', workstationId: 'demo:board' });
+    expect(parseConsoleRoute('/console/workstations/demo%3Aboard')).toEqual({ id: 'workstationDetail', workstationId: 'demo:board' });
   });
 
   it('returns buildDetail object for /console/builds/:detailId', () => {
@@ -156,8 +177,8 @@ describe('parseConsoleRoute', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildNavItems', () => {
-  it('returns three nav items (now, plans, and system)', () => {
-    expect(buildNavItems()).toHaveLength(3);
+  it('returns four nav items (now, plans, workstations, and system)', () => {
+    expect(buildNavItems()).toHaveLength(4);
   });
 
   it('first item is now', () => {
@@ -170,9 +191,14 @@ describe('buildNavItems', () => {
     expect(items[1].id).toBe('plans');
   });
 
-  it('third item is system', () => {
+  it('third item is workstations', () => {
     const items = buildNavItems();
-    expect(items[2].id).toBe('system');
+    expect(items[2].id).toBe('workstations');
+  });
+
+  it('fourth item is system', () => {
+    const items = buildNavItems();
+    expect(items[3].id).toBe('system');
   });
 
   it('now item has href /console/', () => {
@@ -193,6 +219,12 @@ describe('buildNavItems', () => {
     expect(systemItem?.href).toBe('/console/system');
   });
 
+  it('workstations item has href /console/workstations', () => {
+    const items = buildNavItems();
+    const workstationsItem = items.find((i) => i.id === 'workstations');
+    expect(workstationsItem?.href).toBe('/console/workstations');
+  });
+
   it('each item has a non-empty label', () => {
     const items = buildNavItems();
     for (const item of items) {
@@ -204,5 +236,11 @@ describe('buildNavItems', () => {
     const items = buildNavItems();
     const plansItem = items.find((i) => i.id === 'plans');
     expect(plansItem?.label).toBe('Plans');
+  });
+
+  it('workstations item has label "Workstations"', () => {
+    const items = buildNavItems();
+    const workstationsItem = items.find((i) => i.id === 'workstations');
+    expect(workstationsItem?.label).toBe('Workstations');
   });
 });

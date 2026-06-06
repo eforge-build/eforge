@@ -21,7 +21,7 @@ import {
 import { compilePattern } from '../hooks.js';
 import { loadNativeExtensions } from './loader.js';
 import { withNativeEventHooks } from './event-runtime.js';
-import { buildActionDetails, buildConsoleContributionDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
+import { buildActionDetails, buildConsoleContributionDetails, buildConsoleWorkstationDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
 import type {
   EventHookRegistration,
   NativeExtensionCandidate,
@@ -71,6 +71,7 @@ const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
   prdEnrichers: 0,
   actions: 0,
   consoleContributions: 0,
+  consoleWorkstations: 0,
   integrationCommands: 0,
   deepLinks: 0,
 };
@@ -90,6 +91,7 @@ const DEFERRED_FAMILIES = [
   'prdEnrichers',
   'actions',
   'consoleContributions',
+  'consoleWorkstations',
   'integrationCommands',
   'deepLinks',
 ] as const satisfies readonly ExtensionTestDeferredRegistrationFamily[];
@@ -359,6 +361,7 @@ function selectRegistry(registry: NativeExtensionRegistry, options: Pick<NativeE
     prdEnrichers: registry.prdEnrichers.filter(matches),
     actions: registry.actions.filter(matches),
     consoleContributions: registry.consoleContributions.filter(matches),
+    consoleWorkstations: registry.consoleWorkstations.filter(matches),
     integrationCommands: registry.integrationCommands.filter(matches),
     deepLinks: registry.deepLinks.filter(matches),
     diagnostics: registry.diagnostics.filter((diagnostic) => {
@@ -463,6 +466,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
     const validationProviderDetails = collectValidationProviderDetails(registry, candidate.name, candidate.path);
     const actionDetails = buildActionDetails(registry, candidate.name, candidate.path);
     const consoleContributionDetails = buildConsoleContributionDetails(registry, candidate.name, candidate.path);
+    const consoleWorkstationDetails = buildConsoleWorkstationDetails(registry, candidate.name, candidate.path);
     const integrationCommandDetails = buildIntegrationCommandDetails(registry, candidate.name, candidate.path);
     const deepLinkDetails = buildDeepLinkDetails(registry, candidate.name, candidate.path);
     return {
@@ -497,6 +501,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       ...(validationProviderDetails !== undefined && { validationProviderDetails }),
       ...(actionDetails !== undefined && { actionDetails }),
       ...(consoleContributionDetails !== undefined && { consoleContributionDetails }),
+      ...(consoleWorkstationDetails !== undefined && { consoleWorkstationDetails }),
       ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
       ...(deepLinkDetails !== undefined && { deepLinkDetails }),
       ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),

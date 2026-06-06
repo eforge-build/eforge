@@ -1,6 +1,7 @@
 import {
   Type,
   defineConsoleContribution,
+  defineConsoleWorkstation,
   defineEforgeExtension,
   defineExtensionAction,
   defineExtensionDeepLink,
@@ -120,6 +121,34 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
     ],
+  }));
+  eforge.registerConsoleWorkstation(defineConsoleWorkstation({
+    id: 'board-workstation',
+    title: 'eforge-plan board workstation',
+    description: 'Rough iframe proof-of-concept for rendering the project-local backlog board.',
+    allowedActions: ['render-board-markdown'],
+    srcDoc: `<!doctype html>
+<html>
+  <body>
+    <h1>eforge-plan board</h1>
+    <p id="status">Hello from the eforge-plan workstation.</p>
+    <pre id="board">Loading board markdown…</pre>
+    <script>
+      (async () => {
+        const status = document.getElementById('status');
+        const board = document.getElementById('board');
+        try {
+          const result = await window.eforge.invokeAction('render-board-markdown', {});
+          board.textContent = result && typeof result.markdown === 'string' ? result.markdown : JSON.stringify(result, null, 2);
+          status.textContent = 'Board markdown rendered.';
+        } catch (error) {
+          status.textContent = 'Unable to render board markdown.';
+          board.textContent = error instanceof Error ? error.message : String(error);
+        }
+      })();
+    </script>
+  </body>
+</html>`,
   }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'render-board', label: 'Render eforge-plan board', inputSchema: BoardInput, action: { actionId: 'render-board-markdown' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-item', label: 'Promote eforge-plan item', inputSchema: PromoteInput, action: { actionId: 'promote-item' } }));

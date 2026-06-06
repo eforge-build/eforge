@@ -63,6 +63,7 @@ function manifest(): ExtensionContributionManifestResponse {
         blocks: [{ rendererId: 'text', content: 'not a host invocation target' }],
       },
     ],
+    consoleWorkstations: [],
     integrationCommands: [
       {
         id: 'ext.command',

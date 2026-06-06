@@ -3,7 +3,7 @@
  *
  * Produces agent-facing files:
  *   - llms.txt: curated index (summary + guides + reference docs + packages + schemas)
- *   - llms-full.txt: deterministic concatenation of all reference Markdown files
+ *   - llms-full.txt: deterministic concatenation of guide mirrors and reference Markdown files
  *   - public docs/*.md: raw Markdown mirror of hand-authored guide pages
  *
  * llms.txt is generated from LLMS_MANIFEST and the reference files written
@@ -76,6 +76,20 @@ function buildLlmsTxt(): string {
 }
 
 async function buildLlmsFullTxt(outputPaths: OutputPaths): Promise<string> {
+  const guideToPath: Record<string, string> = {
+    'getting-started': outputPaths.publicDocsGettingStarted,
+    concepts: outputPaths.publicDocsConcepts,
+    configuration: outputPaths.publicDocsConfiguration,
+    extensions: outputPaths.publicDocsExtensions,
+    'extensions-api': outputPaths.publicDocsExtensionsApi,
+    profiles: outputPaths.publicDocsProfiles,
+    playbooks: outputPaths.publicDocsPlaybooks,
+    integrations: outputPaths.publicDocsIntegrations,
+    stacking: outputPaths.publicDocsStacking,
+    troubleshooting: outputPaths.publicDocsTroubleshooting,
+    glossary: outputPaths.publicDocsGlossary,
+  };
+
   const surfaceToPath: Record<string, string> = {
     cli: outputPaths.publicCli,
     api: outputPaths.publicApi,
@@ -85,6 +99,18 @@ async function buildLlmsFullTxt(outputPaths: OutputPaths): Promise<string> {
   };
 
   const chunks: string[] = [];
+
+  for (const guide of LLMS_MANIFEST.guides) {
+    const slug = guide.url.match(/\/docs\/([^/#.]+)\.md/)?.[1];
+    if (!slug) continue;
+    const filePath = guideToPath[slug];
+    if (!filePath) continue;
+
+    const content = await readFile(filePath, 'utf-8').catch(() => '');
+    chunks.push(`\n<!-- section: guide:${slug} -->\n`);
+    chunks.push(content);
+    chunks.push(`\n<!-- end-section: guide:${slug} -->\n`);
+  }
 
   for (const entry of LLMS_MANIFEST.entries) {
     const filePath = surfaceToPath[entry.surface];

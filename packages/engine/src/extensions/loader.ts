@@ -127,6 +127,7 @@ function createEmptyRegistry(candidates: NativeExtensionCandidate[]): NativeExte
     prdEnrichers: [],
     actions: [],
     consoleContributions: [],
+    consoleWorkstations: [],
     integrationCommands: [],
     deepLinks: [],
     diagnostics: [],
@@ -148,6 +149,7 @@ function registrationCounts(registry: NativeExtensionRegistry): RegistrationCoun
     prdEnrichers: registry.prdEnrichers.length,
     actions: registry.actions.length,
     consoleContributions: registry.consoleContributions.length,
+    consoleWorkstations: registry.consoleWorkstations.length,
     integrationCommands: registry.integrationCommands.length,
     deepLinks: registry.deepLinks.length,
   };
@@ -166,6 +168,7 @@ function diffRegistrationCounts(before: RegistrationCounts, after: RegistrationC
     prdEnrichers: after.prdEnrichers - before.prdEnrichers,
     actions: after.actions - before.actions,
     consoleContributions: after.consoleContributions - before.consoleContributions,
+    consoleWorkstations: after.consoleWorkstations - before.consoleWorkstations,
     integrationCommands: after.integrationCommands - before.integrationCommands,
     deepLinks: after.deepLinks - before.deepLinks,
   };

@@ -20,7 +20,7 @@ eforge extension trust eforge-plan
 eforge extension reload
 ```
 
-Run `eforge extension show eforge-plan` to confirm the registered actions, integration commands, deep links, and input source.
+Run `eforge extension show eforge-plan` to confirm the registered actions, integration commands, deep links, Console workstation, and input source.
 
 ## Usage
 
@@ -123,7 +123,7 @@ The Console System contribution is declarative and uses only the closed renderer
 
 The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, promoting an item, capturing an item, and updating an item. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
 
-Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
+Host integrations register commands and action-backed deep links for board rendering and promotion workflows. The proof-of-concept board workstation appears under `/console/workstations` and invokes `render-board-markdown` through `window.eforge.invokeAction`.
 
 ## Trace sidecars
 
@@ -165,6 +165,6 @@ Lifecycle status mutation is conservative:
 
 ## Deferred platform gaps
 
-The MVP intentionally does not add private daemon routes, custom Console routes, browser bundles, custom React renderers, raw extension-owned HTTP routes, or extension-owned AI planning/chat runtime APIs.
+V1 sandboxed iframe Console workstations now exist, and `eforge-plan` registers a proof-of-concept board workstation through the supported `registerConsoleWorkstation` / `srcDoc` / `window.eforge.invokeAction` path.
 
-A first-class Console workstation API, an extension-owned AI planning/chat API, and promotion into a bundled/core distribution remain TBD.
+The full eforge-plan workstation UX remains a follow-up. Private daemon routes, separately served frontend asset bundles, custom React renderers or direct React component loading, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain deferred.

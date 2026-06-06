@@ -2,6 +2,7 @@ import {
   validateActionBindingJson,
   validateActionSpec,
   validateConsoleContributionSpec,
+  validateConsoleWorkstationSpec,
   validateDeepLinkSpec,
   validateIntegrationCommandSpec,
 } from './contribution-validation.js';
@@ -9,6 +10,7 @@ import { buildDuplicateContributionDiagnostic, resolveExtensionContributionId } 
 import type {
   ActionRegistration,
   ConsoleContributionRegistration,
+  ConsoleWorkstationRegistration,
   DeepLinkRegistration,
   EforgeExtensionAPIShape,
   EventPattern,
@@ -42,6 +44,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     prdEnrichers: [],
     actions: [],
     consoleContributions: [],
+    consoleWorkstations: [],
     integrationCommands: [],
     deepLinks: [],
     diagnostics: [],
@@ -202,6 +205,14 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.consoleContributions.push({ kind: 'consoleContribution', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
     },
+    registerConsoleWorkstation(workstation: unknown): void {
+      const result = validateConsoleWorkstationSpec(workstation);
+      if (!result.ok || result.value === undefined || result.id === undefined) {
+        addDiagnostic(result.message ?? 'registerConsoleWorkstation registration is invalid', 'extension:invalid-registration', result.id);
+        return;
+      }
+      state.consoleWorkstations.push({ kind: 'consoleWorkstation', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
+    },
     registerIntegrationCommand(command: unknown): void {
       const result = validateIntegrationCommandSpec(command);
       if (!result.ok || result.value === undefined || result.id === undefined) {
@@ -239,6 +250,7 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
   mergeIdRegistrations(target.actions, source.actions, 'action', diagnostics, target.diagnostics);
   const acceptedActions = new Set(target.actions.map(actionLookupKey));
   mergeBoundIdRegistrations(target.consoleContributions, source.consoleContributions, 'Console contribution', acceptedActions, diagnostics, target.diagnostics);
+  mergeConsoleWorkstationRegistrations(target.consoleWorkstations, source.consoleWorkstations, acceptedActions, diagnostics, target.diagnostics);
   mergeBoundIdRegistrations(target.integrationCommands, source.integrationCommands, 'integration command', acceptedActions, diagnostics, target.diagnostics);
   mergeBoundIdRegistrations(target.deepLinks, source.deepLinks, 'deep link', acceptedActions, diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.tools, source.tools, 'tool', diagnostics, target.diagnostics);
@@ -265,6 +277,34 @@ function mergeIdRegistrations<T extends { id: string; extensionName: string; ext
     target.push(registration);
     existing.set(registration.id, registration);
   }
+}
+
+function mergeConsoleWorkstationRegistrations(
+  target: ConsoleWorkstationRegistration[],
+  source: ConsoleWorkstationRegistration[],
+  acceptedActions: Set<string>,
+  diagnostics: NativeExtensionDiagnostic[],
+  allDiagnostics: NativeExtensionDiagnostic[],
+): void {
+  const filtered: ConsoleWorkstationRegistration[] = [];
+  for (const registration of source) {
+    const invalidAction = findInvalidWorkstationAllowedAction(registration, acceptedActions);
+    if (invalidAction !== undefined) {
+      const diagnostic: NativeExtensionDiagnostic = {
+        severity: 'error',
+        code: 'extension:invalid-registration',
+        message: `Console workstation "${registration.id}" references unknown local action "${invalidAction}" from extension "${registration.extensionName}"`,
+        name: registration.id,
+        path: registration.extensionPath,
+        extensionName: registration.extensionName,
+      };
+      diagnostics.push(diagnostic);
+      allDiagnostics.push(diagnostic);
+      continue;
+    }
+    filtered.push(registration);
+  }
+  mergeIdRegistrations(target, filtered, 'Console workstation', diagnostics, allDiagnostics);
 }
 
 function mergeBoundIdRegistrations<T extends (ConsoleContributionRegistration | IntegrationCommandRegistration | DeepLinkRegistration)>(
@@ -294,6 +334,14 @@ function mergeBoundIdRegistrations<T extends (ConsoleContributionRegistration | 
     filtered.push(registration);
   }
   mergeIdRegistrations(target, filtered, label, diagnostics, allDiagnostics);
+}
+
+function findInvalidWorkstationAllowedAction(registration: ConsoleWorkstationRegistration, acceptedActions: Set<string>): string | undefined {
+  if (registration.value.allowedActions === undefined) return undefined;
+  for (const actionId of registration.value.allowedActions) {
+    if (!acceptedActions.has(`${registration.extensionName}\0${registration.extensionPath}\0${actionId}`)) return actionId;
+  }
+  return undefined;
 }
 
 function findInvalidBinding(registration: ConsoleContributionRegistration | IntegrationCommandRegistration | DeepLinkRegistration, acceptedActions: Set<string>): string | undefined {

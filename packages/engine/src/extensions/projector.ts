@@ -1,5 +1,5 @@
-import type { ConsoleContributionDetail, ExtensionActionDetail, ExtensionDeepLinkDetail, IntegrationCommandDetail, ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary, ValidationProviderDetail } from '@eforge-build/client';
-import { buildActionDetails, buildConsoleContributionDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
+import type { ConsoleContributionDetail, ConsoleWorkstationDetail, ExtensionActionDetail, ExtensionDeepLinkDetail, IntegrationCommandDetail, ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary, ValidationProviderDetail } from '@eforge-build/client';
+import { buildActionDetails, buildConsoleContributionDetails, buildConsoleWorkstationDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
 import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionInstallProvenance, NativeExtensionPackageProvenance, NativeExtensionRegistry } from './types.js';
 
 export interface NativeExtensionRegistryProjection {
@@ -15,6 +15,7 @@ export interface NativeExtensionRegistryProjection {
     validationProviderDetails?: ValidationProviderDetail[];
     actionDetails?: ExtensionActionDetail[];
     consoleContributionDetails?: ConsoleContributionDetail[];
+    consoleWorkstationDetails?: ConsoleWorkstationDetail[];
     integrationCommandDetails?: IntegrationCommandDetail[];
     deepLinkDetails?: ExtensionDeepLinkDetail[];
     packageProvenance?: NativeExtensionPackageProvenance;
@@ -51,6 +52,7 @@ export interface NativeExtensionRegistryProjection {
     prdEnrichers: number;
     actions: number;
     consoleContributions: number;
+    consoleWorkstations: number;
     integrationCommands: number;
     deepLinks: number;
   };
@@ -128,6 +130,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       const validationProviderDetails = buildValidationProviderDetails(registry, extension.name, extension.path);
       const actionDetails = buildActionDetails(registry, extension.name, extension.path);
       const consoleContributionDetails = buildConsoleContributionDetails(registry, extension.name, extension.path);
+      const consoleWorkstationDetails = buildConsoleWorkstationDetails(registry, extension.name, extension.path);
       const integrationCommandDetails = buildIntegrationCommandDetails(registry, extension.name, extension.path);
       const deepLinkDetails = buildDeepLinkDetails(registry, extension.name, extension.path);
       return {
@@ -142,6 +145,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         ...(validationProviderDetails !== undefined && { validationProviderDetails }),
         ...(actionDetails !== undefined && { actionDetails }),
         ...(consoleContributionDetails !== undefined && { consoleContributionDetails }),
+        ...(consoleWorkstationDetails !== undefined && { consoleWorkstationDetails }),
         ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
         ...(deepLinkDetails !== undefined && { deepLinkDetails }),
         ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
@@ -162,6 +166,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       prdEnrichers: registry.prdEnrichers.length,
       actions: registry.actions.length,
       consoleContributions: registry.consoleContributions.length,
+      consoleWorkstations: registry.consoleWorkstations.length,
       integrationCommands: registry.integrationCommands.length,
       deepLinks: registry.deepLinks.length,
     },

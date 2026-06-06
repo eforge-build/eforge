@@ -17,6 +17,7 @@ function emptyTotals() {
     prdEnrichers: 0,
     actions: 0,
     consoleContributions: 0,
+    consoleWorkstations: 0,
     integrationCommands: 0,
     deepLinks: 0,
   };
@@ -28,6 +29,7 @@ function emptyManifest(): ExtensionContributionManifestResponse {
     generatedAt: '2026-01-01T00:00:00.000Z',
     actions: [],
     consoleContributions: [],
+    consoleWorkstations: [],
     integrationCommands: [],
     deepLinks: [],
     diagnostics: [],
@@ -129,6 +131,7 @@ describe('useSystemSurfaces extension contribution manifest state', () => {
     expect(result.current.state.extensions.contributions.data).toMatchObject({
       actions: [],
       consoleContributions: [],
+      consoleWorkstations: [],
       integrationCommands: [],
       deepLinks: [],
       diagnostics: [],

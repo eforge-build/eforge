@@ -8,7 +8,7 @@ interface ControlSurfaceLinksProps {
 
 /**
  * Top-level Console navigation links rendered in the header control surface.
- * Renders Now, Plans, and System nav buttons.
+ * Renders nav buttons from buildNavItems().
  */
 export function ControlSurfaceLinks({ onNavigate }: ControlSurfaceLinksProps) {
   const navItems = buildNavItems();

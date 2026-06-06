@@ -161,6 +161,7 @@ describe('extension runtime documentation', () => {
         'registerConsoleContribution',
         'registerIntegrationCommand',
         'registerDeepLink',
+        'registerConsoleWorkstation',
       ]) {
         const row = source.split('\n').find((line) => line.startsWith('|') && line.includes(method));
         expect(row, `${method} support row`).toBeDefined();
@@ -175,6 +176,16 @@ describe('extension runtime documentation', () => {
 
     for (const source of [docsExtensions, webExtensions, configDocs, webConfigDocs]) {
       expect(source).toMatch(/(?:extension )?action(?: handlers?| invocations?| invocation)?[^.\n]*extensions\.eventHookTimeoutMs|extensions\.eventHookTimeoutMs[^.\n]*(?:extension )?action(?: handlers?| invocations?| invocation)?/i);
+    }
+
+
+
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+      const workstationRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerConsoleWorkstation'));
+      expect(workstationRow, 'registerConsoleWorkstation support row').toBeDefined();
+      expect(workstationRow).toContain('Yes');
+      expect(source).toContain('window.eforge.invokeAction');
+      expect(source).toContain('allowedActions');
     }
 
     for (const source of [docsExtensions, webExtensions, sdkReadme]) {

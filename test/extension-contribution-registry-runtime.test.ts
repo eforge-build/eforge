@@ -47,6 +47,7 @@ describe('extension contribution registry runtime', () => {
       export default function extension(eforge) {
         eforge.registerAction({ id: 'hello', title: 'Hello', inputSchema: Type.Object({ name: Type.String() }), outputSchema: Type.Object({ greeting: Type.String() }), sideEffects: ['none'], handler: (input) => ({ greeting: 'hi ' + input.name }) });
         eforge.registerConsoleContribution({ id: 'panel', title: 'Panel', blocks: [{ rendererId: 'action-button', content: 'Run', action: { actionId: 'hello', inputDefaults: { name: 'Ada' } } }] });
+        eforge.registerConsoleWorkstation({ id: 'workspace', title: 'Workspace', srcDoc: '<h1>Workspace</h1>', allowedActions: ['hello'] });
         eforge.registerIntegrationCommand({ id: 'say-hi', label: 'Say hi', action: { actionId: 'hello', inputDefaults: { name: 'Grace' } } });
         eforge.registerDeepLink({ id: 'open-hi', label: 'Open hi', urlTemplate: 'eforge://hi/{name}', action: { actionId: 'hello' } });
       }`,
@@ -54,19 +55,21 @@ describe('extension contribution registry runtime', () => {
 
     expect(result.registry.actions[0]).toMatchObject({ localId: 'hello', id: 'contrib:hello' });
     expect(result.registry.consoleContributions[0]).toMatchObject({ localId: 'panel', id: 'contrib:panel' });
+    expect(result.registry.consoleWorkstations[0]).toMatchObject({ localId: 'workspace', id: 'contrib:workspace' });
     expect(result.registry.integrationCommands[0]).toMatchObject({ localId: 'say-hi', id: 'contrib:say-hi' });
     expect(result.registry.deepLinks[0]).toMatchObject({ localId: 'open-hi', id: 'contrib:open-hi' });
-    expect(result.registry.extensions[0]?.registrations).toMatchObject({ actions: 1, consoleContributions: 1, integrationCommands: 1, deepLinks: 1 });
+    expect(result.registry.extensions[0]?.registrations).toMatchObject({ actions: 1, consoleContributions: 1, consoleWorkstations: 1, integrationCommands: 1, deepLinks: 1 });
 
     const manifest = buildExtensionContributionManifest(result.registry);
     expect(manifest.schemaVersion).toBe(1);
     expect(Date.parse(manifest.generatedAt)).not.toBeNaN();
     expect(manifest.consoleContributions[0]?.blocks[0]).toMatchObject({ action: { actionId: 'contrib:hello' } });
+    expect(manifest.consoleWorkstations[0]).toMatchObject({ id: 'contrib:workspace', allowedActions: ['contrib:hello'], srcDoc: '<h1>Workspace</h1>' });
     expect(JSON.stringify(manifest)).not.toContain('handler');
 
     const projection = projectExtensionRegistry(result.registry);
-    expect(projection.totals).toMatchObject({ actions: 1, consoleContributions: 1, integrationCommands: 1, deepLinks: 1 });
-    expect(projection.extensions[0]).toMatchObject({ actionDetails: [{ id: 'contrib:hello' }], consoleContributionDetails: [{ id: 'contrib:panel' }] });
+    expect(projection.totals).toMatchObject({ actions: 1, consoleContributions: 1, consoleWorkstations: 1, integrationCommands: 1, deepLinks: 1 });
+    expect(projection.extensions[0]).toMatchObject({ actionDetails: [{ id: 'contrib:hello' }], consoleContributionDetails: [{ id: 'contrib:panel' }], consoleWorkstationDetails: [{ id: 'contrib:workspace' }] });
 
     const dispatched = await dispatchExtensionAction(result.registry, {
       actionId: 'contrib:hello',
@@ -113,6 +116,7 @@ describe('extension contribution registry runtime', () => {
       'bad.js': `export default function extension(eforge) {
         eforge.registerAction({ id: 'bad-schema', title: 'Bad', inputSchema: { type: 'string' }, handler: () => ({}) });
         eforge.registerConsoleContribution({ id: 'bad-panel', blocks: [{ rendererId: 'action-button', content: 'Run' }] });
+        eforge.registerConsoleWorkstation({ id: 'bad workstation', title: 'Bad', srcDoc: '<p>bad</p>' });
         eforge.registerIntegrationCommand({ id: 'bad-command', label: 'Bad', action: { actionId: 'missing' } });
         eforge.registerDeepLink({ id: 'bad-link', label: 'Bad' });
       }`,
@@ -157,6 +161,8 @@ describe('extension contribution registry runtime', () => {
         eforge.registerAction({ id: 'action-one', title: 'Second action', inputSchema: Type.Object({}), handler: () => ({ winner: 'second' }) });
         eforge.registerConsoleContribution({ id: 'panel-one', title: 'First panel', blocks: [{ rendererId: 'text', content: 'first' }] });
         eforge.registerConsoleContribution({ id: 'panel-one', title: 'Second panel', blocks: [{ rendererId: 'text', content: 'second' }] });
+        eforge.registerConsoleWorkstation({ id: 'workstation-one', title: 'First workstation', srcDoc: '<p>first</p>' });
+        eforge.registerConsoleWorkstation({ id: 'workstation-one', title: 'Second workstation', srcDoc: '<p>second</p>' });
         eforge.registerIntegrationCommand({ id: 'command-one', label: 'First command', action: { actionId: 'action-one' } });
         eforge.registerIntegrationCommand({ id: 'command-one', label: 'Second command', action: { actionId: 'action-one' } });
         eforge.registerDeepLink({ id: 'link-one', label: 'First link', urlTemplate: 'eforge://first', action: { actionId: 'action-one' } });
@@ -170,9 +176,11 @@ describe('extension contribution registry runtime', () => {
       'dupes:command-one',
       'dupes:link-one',
       'dupes:panel-one',
+      'dupes:workstation-one',
     ]);
     expect(result.registry.actions).toHaveLength(1);
     expect(result.registry.consoleContributions).toHaveLength(1);
+    expect(result.registry.consoleWorkstations).toHaveLength(1);
     expect(result.registry.integrationCommands).toHaveLength(1);
     expect(result.registry.deepLinks).toHaveLength(1);
     expect(buildExtensionContributionManifest(result.registry).deepLinks[0]).toMatchObject({ urlTemplate: 'eforge://first' });
@@ -191,6 +199,8 @@ describe('extension contribution registry runtime', () => {
         eforge.registerConsoleContribution({ id: 'bad-renderer', title: 'Bad renderer', blocks: [{ rendererId: 'iframe', content: 'no' }] });
         eforge.registerConsoleContribution({ id: 'missing-action', title: 'Missing action', blocks: [{ rendererId: 'action-form', content: 'Run' }] });
         eforge.registerConsoleContribution({ id: 'unknown-action', title: 'Unknown action', blocks: [{ rendererId: 'action-button', content: 'Run', action: { actionId: 'missing' } }] });
+        eforge.registerConsoleWorkstation({ id: 'missing-src-doc', title: 'Missing srcDoc' });
+        eforge.registerConsoleWorkstation({ id: 'unknown-allow', title: 'Unknown allow', srcDoc: '<p>bad</p>', allowedActions: ['missing'] });
         eforge.registerIntegrationCommand({ id: 'bad-command-schema', label: 'Bad command schema', inputSchema: { type: 'string' }, action: { actionId: 'valid' } });
         eforge.registerIntegrationCommand({ id: 'no-command-action', label: 'No command action' });
         eforge.registerDeepLink({ id: 'no-target', label: 'No target' });
@@ -200,6 +210,7 @@ describe('extension contribution registry runtime', () => {
 
     expect(result.registry.actions.map((action) => action.id)).toEqual(['invalids:valid']);
     expect(result.registry.consoleContributions).toHaveLength(0);
+    expect(result.registry.consoleWorkstations).toHaveLength(0);
     expect(result.registry.integrationCommands).toHaveLength(0);
     expect(result.registry.deepLinks).toHaveLength(0);
     expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration').length).toBeGreaterThanOrEqual(12);
@@ -275,6 +286,30 @@ describe('extension contribution registry runtime', () => {
       expect(outcome).not.toHaveProperty('input');
       expect(outcome).not.toHaveProperty('output');
     }
+  });
+
+  it('projects Console workstation allowed actions explicitly and defaults omitted lists to same-extension actions', async () => {
+    const result = await loadFixture(makeTempDir(), {
+      'alpha.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'one', title: 'One', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'two', title: 'Two', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerConsoleWorkstation({ id: 'explicit', title: 'Explicit', srcDoc: '<p>explicit</p>', allowedActions: ['two'] });
+        eforge.registerConsoleWorkstation({ id: 'empty', title: 'Empty', srcDoc: '<p>empty</p>', allowedActions: [] });
+        eforge.registerConsoleWorkstation({ id: 'derived', title: 'Derived', srcDoc: '<p>derived</p>' });
+      }`,
+      'beta.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'other', title: 'Other', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+      }`,
+    });
+
+    const manifest = buildExtensionContributionManifest(result.registry);
+    expect(manifest.consoleWorkstations.map((workstation) => workstation.id)).toEqual(['alpha:derived', 'alpha:empty', 'alpha:explicit']);
+    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'explicit')?.allowedActions).toEqual(['alpha:two']);
+    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'empty')?.allowedActions).toEqual([]);
+    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'derived')?.allowedActions).toEqual(['alpha:one', 'alpha:two']);
+    expect(JSON.stringify(manifest.consoleWorkstations)).not.toContain('beta:other');
   });
 
   it('keeps engine contribution helpers inside the engine/client boundary', async () => {

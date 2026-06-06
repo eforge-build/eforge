@@ -62,10 +62,12 @@ export type {
   PrdEnricherRegistration,
   ActionRegistration,
   ConsoleContributionRegistration,
+  ConsoleWorkstationRegistration,
   IntegrationCommandRegistration,
   DeepLinkRegistration,
   ExtensionActionSpec,
   ConsoleContributionSpec,
+  ConsoleWorkstationSpec,
   IntegrationCommandSpec,
   ExtensionDeepLinkSpec,
 } from './types.js';
@@ -133,6 +135,7 @@ export {
   buildExtensionContributionManifest,
   buildActionDetails,
   buildConsoleContributionDetails,
+  buildConsoleWorkstationDetails,
   buildIntegrationCommandDetails,
   buildDeepLinkDetails,
 } from './manifest.js';

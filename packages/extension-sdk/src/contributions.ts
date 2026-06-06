@@ -79,6 +79,19 @@ export interface ConsoleContribution {
   blocks: ConsoleContributionBlock[];
 }
 
+export interface ConsoleWorkstation {
+  id: string;
+  title: string;
+  description?: string;
+  srcDoc: string;
+  /** Local action ids registered by this same extension. Omit to allow all same-extension actions; use [] to expose no actions. */
+  allowedActions?: string[];
+}
+
+export interface EforgeConsoleBridge {
+  invokeAction<TOutput = unknown>(actionId: string, input?: Record<string, unknown>): Promise<TOutput>;
+}
+
 export interface IntegrationCommand<TInput extends TObject | undefined = TObject | undefined> {
   id: string;
   label: string;
@@ -104,6 +117,10 @@ export function defineExtensionAction<
 
 export function defineConsoleContribution(contribution: ConsoleContribution): ConsoleContribution {
   return contribution;
+}
+
+export function defineConsoleWorkstation(workstation: ConsoleWorkstation): ConsoleWorkstation {
+  return workstation;
 }
 
 export function defineIntegrationCommand<TInput extends TObject | undefined = TObject | undefined>(

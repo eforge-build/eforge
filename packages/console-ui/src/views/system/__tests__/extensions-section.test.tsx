@@ -15,7 +15,7 @@ import type {
 } from '@eforge-build/client/browser';
 import type { Loadable, ExtensionValidateResponse } from '../system-types';
 
-const emptyTotals = { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 };
+const emptyTotals = { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 };
 
 function makeExtension(
   name: string,

@@ -98,6 +98,7 @@ export type ConsoleContributionBlockSpec =
   | { rendererId: 'action-button'; title?: string; content: string; action: ExtensionActionBindingSpec }
   | { rendererId: 'action-form'; title?: string; content: string; action: ExtensionActionBindingSpec };
 export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[] }
+export interface ConsoleWorkstationSpec { id: string; title: string; description?: string; srcDoc: string; allowedActions?: string[] }
 export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; action: ExtensionActionBindingSpec }
 export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; action?: ExtensionActionBindingSpec }
 
@@ -115,6 +116,7 @@ export interface EforgeExtensionAPIShape {
   registerTool(tool: ExtensionTool): void;
   registerAction(action: ExtensionActionSpec): void;
   registerConsoleContribution(contribution: ConsoleContributionSpec): void;
+  registerConsoleWorkstation(workstation: ConsoleWorkstationSpec): void;
   registerIntegrationCommand(command: IntegrationCommandSpec): void;
   registerDeepLink(deepLink: ExtensionDeepLinkSpec): void;
 }
@@ -228,6 +230,7 @@ export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', P
 
 export type ActionRegistration = BaseExtensionRegistration<'action', ExtensionActionSpec> & { localId: string; id: string };
 export type ConsoleContributionRegistration = BaseExtensionRegistration<'consoleContribution', ConsoleContributionSpec> & { localId: string; id: string };
+export type ConsoleWorkstationRegistration = BaseExtensionRegistration<'consoleWorkstation', ConsoleWorkstationSpec> & { localId: string; id: string };
 export type IntegrationCommandRegistration = BaseExtensionRegistration<'integrationCommand', IntegrationCommandSpec> & { localId: string; id: string };
 export type DeepLinkRegistration = BaseExtensionRegistration<'deepLink', ExtensionDeepLinkSpec> & { localId: string; id: string };
 
@@ -243,6 +246,7 @@ export interface NativeExtensionRecorderState {
   prdEnrichers: PrdEnricherRegistration[];
   actions: ActionRegistration[];
   consoleContributions: ConsoleContributionRegistration[];
+  consoleWorkstations: ConsoleWorkstationRegistration[];
   integrationCommands: IntegrationCommandRegistration[];
   deepLinks: DeepLinkRegistration[];
   diagnostics: NativeExtensionDiagnostic[];
@@ -271,6 +275,7 @@ export interface LoadedNativeExtension {
     prdEnrichers: number;
     actions: number;
     consoleContributions: number;
+    consoleWorkstations: number;
     integrationCommands: number;
     deepLinks: number;
   };

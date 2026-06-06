@@ -62,6 +62,7 @@ export function formatJsonPreview(value: ExtensionJsonValue | undefined, limit =
 export function manifestHasEntries(manifest: ExtensionContributionManifestResponse): boolean {
   return manifest.actions.length > 0
     || manifest.consoleContributions.length > 0
+    || manifest.consoleWorkstations.length > 0
     || manifest.integrationCommands.length > 0
     || manifest.deepLinks.length > 0
     || (manifest.diagnostics?.length ?? 0) > 0;

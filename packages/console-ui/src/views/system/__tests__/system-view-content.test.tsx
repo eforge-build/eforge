@@ -96,6 +96,7 @@ function emptyManifest() {
     generatedAt: '2026-01-01T00:00:00.000Z',
     actions: [],
     consoleContributions: [],
+    consoleWorkstations: [],
     integrationCommands: [],
     deepLinks: [],
     diagnostics: [],
@@ -118,7 +119,7 @@ function manifestWithContribution() {
 }
 
 function emptyTotals() {
-  return { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 };
+  return { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 };
 }
 
 function makeProjectStateWithTelemetry(): ConsoleProjectState {

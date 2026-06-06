@@ -149,8 +149,8 @@ describe('loadDocPage', () => {
       ],
       profiles: ['.eforge/profiles/', 'eforge/profiles/', '~/.config/eforge/profiles/', 'eforge build --profile'],
       playbooks: ['mode: autonomous', 'mode: planning', 'eforge playbook run', 'eforge playbook promote'],
-      extensions: ['eforge extension install', 'trust', 'onEvent', 'registerInputSource', 'registerAction', 'fetchExtensionContributionManifest', 'not sandboxed'],
-      'extensions-api': ['defineExtension', 'EventPattern', 'defineExtensionTool', 'registerConsoleContribution', 'Runtime support status'],
+      extensions: ['eforge extension install', 'trust', 'onEvent', 'registerInputSource', 'registerAction', 'registerConsoleWorkstation', 'LLM-first extension authoring checklist', 'fetchExtensionContributionManifest', 'not sandboxed'],
+      'extensions-api': ['defineExtension', 'EventPattern', 'defineExtensionTool', 'registerConsoleContribution', 'defineConsoleWorkstation', 'SDK stability and migration guidance', 'Runtime support status'],
       integrations: [
         'Claude Code plugin',
         'Pi extension',
@@ -178,6 +178,29 @@ describe('loadDocPage', () => {
       for (const snippet of snippets) {
         expect(raw, `Expected ${slug} guide to cover ${snippet}`).toContain(snippet.toLowerCase());
       }
+    }
+  });
+
+
+
+  it('keeps LLM artifacts pointed at extension authoring and migration guidance', () => {
+    const llms = readFileSync(join(process.cwd(), 'web/public/llms.txt'), 'utf-8');
+    const full = readFileSync(join(process.cwd(), 'web/public/llms-full.txt'), 'utf-8');
+
+    for (const snippet of [
+      'Extension authoring checklist',
+      'SDK stability and migration guidance',
+    ]) {
+      expect(llms, `Expected llms.txt to mention ${snippet}`).toContain(snippet);
+    }
+
+    for (const snippet of [
+      'LLM-first extension authoring checklist',
+      'SDK stability and migration guidance',
+      'window.eforge.invokeAction',
+      'defineConsoleWorkstation',
+    ]) {
+      expect(full, `Expected llms-full.txt to contain ${snippet}`).toContain(snippet);
     }
   });
 

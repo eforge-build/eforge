@@ -17,7 +17,7 @@ export function ExtensionContributionsSection({ manifest }: ExtensionContributio
   const summary = data ? selectExtensionContributionManifestSummary(data) : undefined;
   const actionLookup = React.useMemo(() => buildActionLookup(data?.actions ?? []), [data?.actions]);
   const isEmpty = manifest.status === 'empty'
-    || (data ? data.consoleContributions.length === 0 && summary?.diagnostics.total === 0 : false);
+    || (data ? data.actions.length === 0 && data.consoleContributions.length === 0 && data.consoleWorkstations.length === 0 && data.integrationCommands.length === 0 && data.deepLinks.length === 0 && summary?.diagnostics.total === 0 : false);
 
   return (
     <SystemSection
@@ -35,6 +35,7 @@ export function ExtensionContributionsSection({ manifest }: ExtensionContributio
             <div className="flex flex-wrap gap-1.5">
               <Badge variant="outline">actions: {summary.families.actions}</Badge>
               <Badge variant="outline">Console contributions: {summary.families.consoleContributions}</Badge>
+              <Badge variant="outline">workstations: {summary.families.consoleWorkstations}</Badge>
               <Badge variant="outline">integration commands: {summary.families.integrationCommands}</Badge>
               <Badge variant="outline">deep links: {summary.families.deepLinks}</Badge>
             </div>

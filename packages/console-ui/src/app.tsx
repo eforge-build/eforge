@@ -14,6 +14,9 @@ const RunDetailView = lazy(() =>
 const PlansView = lazy(() =>
   import('@/views/plans').then((m) => ({ default: m.PlansView })),
 );
+const WorkstationsView = lazy(() =>
+  import('@/views/workstations').then((m) => ({ default: m.WorkstationsView })),
+);
 // --- eforge:region now-dashboard ---
 import { NowDashboard } from './views/now-dashboard';
 // --- eforge:endregion now-dashboard ---
@@ -98,6 +101,15 @@ export function App() {
       return (
         <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
           <PlansView onNavigate={handleNavigate} />
+        </Suspense>
+      );
+    }
+
+    if (currentRoute === 'workstations' || (typeof currentRoute === 'object' && currentRoute.id === 'workstationDetail')) {
+      const selectedWorkstationId = typeof currentRoute === 'object' ? currentRoute.workstationId : undefined;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
+          <WorkstationsView selectedWorkstationId={selectedWorkstationId} onNavigate={handleNavigate} />
         </Suspense>
       );
     }

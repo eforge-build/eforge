@@ -99,6 +99,8 @@ Registers two validation providers using `registerValidationProvider`. Demonstra
 
 ### `action-contribution.ts`
 
+For richer iframe UI, see the `registerConsoleWorkstation` Console workstation docs in [`docs/extensions.md`](../../docs/extensions.md) and the eforge-plan dogfood workstation example.
+
 Registers one JSON-safe `echo-status` action with TypeBox object-root input and output schemas, then binds it to a declarative Console contribution, a host integration command, and an action-backed deep link. The Console contribution uses closed renderer IDs (`markdown`, `status-badge`, `action-button`, and `action-form`) and renders under `/console/system`; it does not ship browser JavaScript or a React bundle.
 
 The example intentionally avoids raw HTTP routes, daemon route literals, network calls, filesystem writes, and secrets. Local action IDs such as `echo-status` are resolved to effective namespaced manifest IDs by eforge. Host integrations can discover the command/deep link through the shared contribution surfaces, while URL-only deep links (not used in this sample) are listable navigation metadata rather than generic action invocations.

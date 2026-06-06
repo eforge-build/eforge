@@ -8,8 +8,8 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 
 - [Getting Started](/docs/getting-started.md): Install eforge, initialize a project, and run your first build
 - [Configuration guide](/docs/configuration.md): Practical setup and tuning guidance before using the full config reference
-- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, and authored
-- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, hook registration, context objects, and runtime boundaries
+- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, authored, including the LLM-first extension authoring checklist and Console workstations
+- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, ConsoleWorkstation APIs, SDK stability and migration guidance, hook registration, context objects, and runtime boundaries
 - [Profiles guide](/docs/profiles.md): Create, activate, and route agent runtime profiles across project and user scopes
 - [Playbooks guide](/docs/playbooks.md): Create, manage, and run reusable workflow playbooks
 - [Integrations guide](/docs/integrations.md): Use shell hooks, input sources, Langfuse tracing, and the Console dashboard
@@ -39,6 +39,8 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Full LLM reference bundle](/llms-full.txt): Complete concatenated reference documentation for agents that need full context
 - [Why eforge](/why): Positioning and product thesis: asynchronous engineering for planned work
 - [Core concepts](/docs/concepts.md): Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts
+- [Extension authoring checklist](/docs/extensions.md#llm-first-extension-authoring-checklist): LLM-first scaffold, validate, test, trust, and reload checklist for native extension authors
+- [SDK stability and migration guidance](/docs/extensions-api.md#sdk-stability-and-migration-guidance): Canonical versioning and migration guidance for @eforge-build/extension-sdk authors
 - [Stacked PRs](/docs/stacking.md): Configure git-spice-backed artifact branch stacks and PR targeting
 - [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
 - [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples
