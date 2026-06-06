@@ -1266,6 +1266,7 @@ export class EforgeEngine {
               ...(config.build.trunkBranch !== undefined ? { trunkBranch: config.build.trunkBranch } : {}),
               featureBranch: summary.featureBranch,
               baseBranch: summary.baseBranch,
+              failureSummary: summary,
             });
             try {
               await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd, resumeEvidence);
@@ -1865,6 +1866,7 @@ export class EforgeEngine {
           ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
           featureBranch: summary.featureBranch,
           baseBranch: summary.baseBranch,
+          failureSummary: summary,
         });
         const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, resumeEvidence });
         yield {
@@ -1953,6 +1955,7 @@ export class EforgeEngine {
         ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
         featureBranch: summary.featureBranch,
         baseBranch: summary.baseBranch,
+        failureSummary: summary,
       });
       const { mdPath, jsonPath } = await writeRecoverySidecar({
         failedPrdDir: failedDir,
@@ -2009,6 +2012,7 @@ export class EforgeEngine {
           ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
           featureBranch: summary.featureBranch,
           baseBranch: summary.baseBranch,
+          failureSummary: summary,
         });
         const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, resumeEvidence });
         yield {

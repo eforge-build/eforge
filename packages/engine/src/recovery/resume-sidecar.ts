@@ -1,39 +1,22 @@
 import { join } from 'node:path';
+import type {
+  BuildFailureSummary,
+  RecoverySidecarRecoveryOption,
+  RecoverySidecarResumeEligibility,
+  RecoverySidecarResumeEligibilitySource,
+} from '@eforge-build/client';
 import { projectResumeEligibility } from '../resume/compiled-build.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
 import { truncateMiddleText, truncateText } from './text-bounds.js';
 
+export type {
+  RecoverySidecarRecoveryOption,
+  RecoverySidecarResumeEligibility,
+  RecoverySidecarResumeEligibilitySource,
+} from '@eforge-build/client';
+
 const RESUME_REASON_CHARS = 1_000;
 const RESUME_DIFF_STAT_CHARS = 4_000;
-
-export type RecoverySidecarResumeEligibilitySource = 'projectResumeEligibility' | 'inspection-error';
-
-export type RecoverySidecarResumeEligibility =
-  | {
-      source: RecoverySidecarResumeEligibilitySource;
-      eligible: true;
-      featureBranch: string;
-      artifactAvailability: 'merge-worktree' | 'feature-branch' | 'branch-history';
-      artifactCommit?: string;
-      landedCommitCount: number;
-      diffStat: string;
-      failingPlanId?: string;
-      partial?: boolean;
-    }
-  | {
-      source: RecoverySidecarResumeEligibilitySource;
-      eligible: false;
-      featureBranch: string;
-      reason: string;
-      checkedPath?: string;
-    };
-
-export interface RecoverySidecarRecoveryOption {
-  kind: 'compiled-build-resume';
-  action: 'eforge_resume_build';
-  recommended: boolean;
-  reason: string;
-}
 
 export interface RecoverySidecarResumeEvidence {
   resumeEligibility: RecoverySidecarResumeEligibility;
@@ -49,6 +32,7 @@ export interface ProjectRecoverySidecarResumeEvidenceOptions {
   trunkBranch?: string;
   featureBranch?: string;
   baseBranch?: string;
+  failureSummary?: BuildFailureSummary;
 }
 
 /**
@@ -70,6 +54,7 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
       ...(options.trunkBranch !== undefined ? { trunkBranch: options.trunkBranch } : {}),
       ...(options.featureBranch !== undefined ? { featureBranch: options.featureBranch } : {}),
       ...(options.baseBranch !== undefined ? { baseBranch: options.baseBranch } : {}),
+      ...(options.failureSummary !== undefined ? { failureSummary: options.failureSummary } : {}),
     });
 
     if (projected.eligible) {

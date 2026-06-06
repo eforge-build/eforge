@@ -155,6 +155,7 @@ async function writeSidecarOrInvalidate(
       ...(options.trunkBranch !== undefined ? { trunkBranch: options.trunkBranch } : {}),
       featureBranch: summary.featureBranch,
       baseBranch: summary.baseBranch,
+      failureSummary: summary,
       dbPath: resolve(options.cwd, '.eforge', 'monitor.db'),
     });
     const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: options.failedPrdDir, prdId: options.prdId, summary, verdict, resumeEvidence });
