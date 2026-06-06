@@ -27,6 +27,8 @@ interface RecordedRequest {
 }
 
 const objectSchema = { type: 'object', properties: {}, additionalProperties: true } as const;
+const boundActionSchema = { type: 'object', properties: { fromAction: { type: 'string' } }, required: ['fromAction'], additionalProperties: false } as const;
+const commandSpecificSchema = { type: 'object', properties: { fromCommand: { type: 'number' } }, required: ['fromCommand'], additionalProperties: false } as const;
 
 function manifest(): ExtensionContributionManifestResponse {
   return {
@@ -40,7 +42,7 @@ function manifest(): ExtensionContributionManifestResponse {
         extensionPath: '/extensions/example',
         title: 'Run action',
         description: 'Runs the extension action',
-        inputSchema: objectSchema,
+        inputSchema: boundActionSchema,
         sideEffects: ['daemon-state'],
       },
       {
@@ -72,7 +74,7 @@ function manifest(): ExtensionContributionManifestResponse {
         extensionPath: '/extensions/example',
         label: 'Run command',
         description: 'Runs through a command binding',
-        inputSchema: objectSchema,
+        inputSchema: commandSpecificSchema,
         action: { actionId: 'ext.run', inputDefaults: { fromDefault: true, override: 'default' } },
       },
       {
@@ -207,6 +209,16 @@ describe('extension contribution host dispatcher projection', () => {
       actionBacked: true,
       inputDefaults: { fromDefault: true, override: 'default' },
     });
+  });
+
+  it('projects bound action schemas for action-backed host entries and preserves command-specific precedence', () => {
+    const summary = summarizeExtensionContributionManifest(manifest());
+
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.deep')?.inputSchema).toEqual(boundActionSchema);
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'shared')?.inputSchema).toEqual(boundActionSchema);
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.inputSchema).toEqual(commandSpecificSchema);
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.inputDefaults).toEqual({ fromDefault: true, override: 'default' });
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.url')?.inputSchema).toBeUndefined();
   });
 
   it('filters summary entries by requested kind', () => {
