@@ -1,0 +1,98 @@
+name: implement-iframe-bundled-console-workstation-sdk
+description: Implement iframe-scoped Console workstation asset bundles plus a
+  minimal versioned workstation browser SDK while preserving existing srcDoc
+  workstations.
+created: 2026-06-06
+compiled: 2026-06-06
+mode: expedition
+base_branch: eforge/reduce-complexity-in-top-eforge-hotspots
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-client-contracts
+    name: Add client-owned workstation bundle manifest schemas, route constants,
+      browser exports, and daemon API version bump.
+    depends_on: []
+    branch: implement-iframe-bundled-console-workstation-sdk/client-contracts
+    build: &a1
+      - - implement
+        - doc-author
+      - validate
+      - - test-write
+        - doc-sync
+      - test-cycle
+      - review-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - security
+        - api
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-console-workstation-rendering
+    name: Render srcDoc and frameBundle workstations in sandboxed iframes and
+      preserve bridge validation semantics.
+    depends_on:
+      - plan-01-client-contracts
+    branch: implement-iframe-bundled-console-workstation-sdk/console-workstation-rendering
+    build: *a1
+    review: *a2
+  - id: plan-03-extension-sdk-api
+    name: Add source-level frameBundle workstation types and the browser-safe v1
+      workstation SDK entrypoint.
+    depends_on:
+      - plan-01-client-contracts
+    branch: implement-iframe-bundled-console-workstation-sdk/extension-sdk-api
+    build: *a1
+    review: *a2
+  - id: plan-04-engine-registration-manifest-trust
+    name: Validate/projection frameBundle workstations, generate asset metadata, and
+      include workstation-assets in trust hashing.
+    depends_on:
+      - plan-01-client-contracts
+      - plan-03-extension-sdk-api
+    branch: implement-iframe-bundled-console-workstation-sdk/engine-registration-manifest-trust
+    build: *a1
+    review: *a2
+  - id: plan-05-monitor-frame-assets
+    name: Serve eforge-owned workstation frame shells and declared bundle assets
+      with CSP/cache/path containment security.
+    depends_on:
+      - plan-01-client-contracts
+      - plan-04-engine-registration-manifest-trust
+    branch: implement-iframe-bundled-console-workstation-sdk/monitor-frame-assets
+    build: *a1
+    review: *a2
+  - id: plan-06-docs-and-examples
+    name: Update extension, SDK, Console, and generated public docs for srcDoc
+      versus frameBundle workstation authoring boundaries.
+    depends_on:
+      - plan-03-extension-sdk-api
+      - plan-04-engine-registration-manifest-trust
+      - plan-05-monitor-frame-assets
+      - plan-02-console-workstation-rendering
+    branch: implement-iframe-bundled-console-workstation-sdk/docs-and-examples
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: This PRD spans client wire contracts, extension SDK/browser exports,
+    engine validation and manifest projection, trust hashing, monitor
+    routes/static asset security, Console iframe rendering, docs, and tests,
+    with sandboxing/CSP/path-containment risks. That warrants expedition
+    planning with architecture, module planning, and cohesion review. The build
+    runs implementation alongside doc authoring, then the required
+    maintainability validation gate, test generation and doc sync, iterative
+    tests, and a strict review cycle focused on security and public API
+    correctness.

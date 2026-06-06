@@ -3,7 +3,8 @@ description: Implement iframe-scoped Console workstation asset bundles plus a
   minimal versioned workstation browser SDK while preserving existing srcDoc
   workstations.
 created: 2026-06-06
-status: draft
+status: compiled
+compiled: "2026-06-06"
 mode: expedition
 validate:
   - pnpm type-check
