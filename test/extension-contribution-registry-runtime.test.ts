@@ -175,8 +175,8 @@ describe('extension contribution registry runtime', () => {
       'dupes:action-one',
       'dupes:command-one',
       'dupes:link-one',
-      'dupes:workstation-one',
       'dupes:panel-one',
+      'dupes:workstation-one',
     ]);
     expect(result.registry.actions).toHaveLength(1);
     expect(result.registry.consoleContributions).toHaveLength(1);

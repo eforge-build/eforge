@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 59 for workstation manifests after recovery sidecar v3', () => {
+  it('is 59 for required workstation manifest support after recovery sidecar v3', () => {
     expect(DAEMON_API_VERSION).toBe(59);
   });
 });
