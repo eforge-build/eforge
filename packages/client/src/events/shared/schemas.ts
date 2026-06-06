@@ -484,6 +484,9 @@ export const TFLandingSchema = Type.Object({ status: Type.String(), action: Type
 export const TerminalFailureEnvelopeSchema = Type.Object({
   scope: TerminalFailureScopeSchema, message: Type.String(),
   authoritative: Type.Boolean(), planId: Type.Optional(Type.String()),
+  // --- eforge:region plan-01-transport-terminal-subtypes ---
+  terminalSubtype: Type.Optional(AgentTerminalSubtypeSchema),
+  // --- eforge:endregion plan-01-transport-terminal-subtypes ---
   stage: Type.Optional(Type.String()), phaseSummary: Type.Optional(Type.String()),
   phaseStatus: Type.Optional(Type.String()), eventType: Type.Optional(Type.String()),
   sourceEventType: Type.Optional(Type.String()), sourceEventId: Type.Optional(Type.Integer()), sourceEventTimestamp: Type.Optional(Type.String()),

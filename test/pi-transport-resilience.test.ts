@@ -15,6 +15,7 @@ import { useTempDir } from './test-tmpdir.js';
 
 const TRANSIENT_CLOSE = 'Backend error: WebSocket closed 1012';
 const TRANSIENT_CLOSE_1000 = 'Backend error: WebSocket closed 1000';
+const CODEX_SSE_HEADERS_TIMEOUT = 'Backend error: Codex SSE response headers timed out after 10000ms';
 // Exact observed Claude Code SDK socket-close message (raw and eforge-wrapped forms).
 const CLAUDE_SDK_SOCKET_CLOSE_RAW =
   "API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
@@ -148,6 +149,12 @@ describe('Pi transport transient classifier', () => {
     expect(isTransientTransportError('socket connection was closed unexpectedly')).toBe(false);
     expect(isTransientTransportError('The socket connection was closed unexpectedly')).toBe(false);
   });
+
+  it('classifies only backend Codex SSE response-header timeouts as transient transport', () => {
+    expect(isTransientTransportError(CODEX_SSE_HEADERS_TIMEOUT)).toBe(true);
+    expect(isTransientTransportError('command timed out after 10000ms')).toBe(false);
+    expect(isTransientTransportError('SSE response headers timed out after 10000ms')).toBe(false);
+  });
 });
 
 describe('classifyAgentTerminalSubtype Claude SDK socket close', () => {
@@ -162,6 +169,10 @@ describe('classifyAgentTerminalSubtype Claude SDK socket close', () => {
   it('classifies an AgentTerminalError whose detail contains the socket-close message as error_transient_transport', () => {
     const err = new AgentTerminalError('error_during_execution', CLAUDE_SDK_SOCKET_CLOSE_RAW);
     expect(classifyAgentTerminalSubtype(err)).toBe('error_transient_transport');
+  });
+
+  it('classifies backend Codex SSE response-header timeout errors as error_transient_transport', () => {
+    expect(classifyAgentTerminalSubtype(new Error(CODEX_SSE_HEADERS_TIMEOUT))).toBe('error_transient_transport');
   });
 
   it('preserves original AgentTerminalError subtype when message is not a transport error', () => {

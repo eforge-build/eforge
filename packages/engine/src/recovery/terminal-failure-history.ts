@@ -10,7 +10,17 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
-import type { AcceptanceCriteriaConflict, AcceptanceCriterionVerdict, BuildFailureSummary, FailingPlanEntry, LandedCommit, PlanSummaryEntry, ReviewIssue } from '../events.js';
+import { AgentTerminalSubtypeSchema, safeParseWithSchema } from '@eforge-build/client';
+import type {
+  AcceptanceCriteriaConflict,
+  AcceptanceCriterionVerdict,
+  AgentTerminalSubtype,
+  BuildFailureSummary,
+  FailingPlanEntry,
+  LandedCommit,
+  PlanSummaryEntry,
+  ReviewIssue,
+} from '../events.js';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -24,12 +34,35 @@ export interface EventRow {
   timestamp: string;
 }
 
-function parseData(data: string): Record<string, unknown> {
-  try {
-    const p = JSON.parse(data);
-    return p && typeof p === 'object' ? p as Record<string, unknown> : {};
-  } catch { return {}; }
+function parseData(data: string): Record<string, unknown> { try { const p = JSON.parse(data); return p && typeof p === 'object' ? p as Record<string, unknown> : {}; } catch { return {}; } }
+
+// --- eforge:region plan-01-transport-terminal-subtypes ---
+function parseAgentTerminalSubtype(value: unknown): AgentTerminalSubtype | undefined {
+  const result = safeParseWithSchema(AgentTerminalSubtypeSchema, value);
+  return result.success ? result.data : undefined;
 }
+
+function planBuildFailedSubtypeFromData(data: string): AgentTerminalSubtype | undefined {
+  return parseAgentTerminalSubtype(parseData(data).terminalSubtype);
+}
+
+function recoverReferencedPlanBuildFailedSubtype(
+  db: DatabaseSync,
+  runId: string,
+  terminalRowId: number,
+  sourceEventId: number | undefined,
+  sourceEventTimestamp: string | undefined,
+  planId: string | undefined,
+): AgentTerminalSubtype | undefined {
+  if (sourceEventId !== undefined) {
+    const row = db.prepare(`SELECT data FROM events WHERE run_id = ? AND id = ? AND type = 'plan:build:failed' LIMIT 1`).get(runId, sourceEventId) as { data: string } | undefined;
+    return row ? planBuildFailedSubtypeFromData(row.data) : undefined;
+  }
+  if (sourceEventTimestamp === undefined || planId === undefined) return undefined;
+  const row = db.prepare(`SELECT data FROM events WHERE run_id = ? AND type = 'plan:build:failed' AND id <= ? AND plan_id = ? AND timestamp = ? ORDER BY id DESC LIMIT 1`).get(runId, terminalRowId, planId, sourceEventTimestamp) as { data: string } | undefined;
+  return row ? planBuildFailedSubtypeFromData(row.data) : undefined;
+}
+// --- eforge:endregion plan-01-transport-terminal-subtypes ---
 
 type ReviewFailureDetails = NonNullable<BuildFailureSummary['reviewFailure']>;
 type ReviewFailureEvaluation = NonNullable<ReviewFailureDetails['evaluation']>;
@@ -79,7 +112,7 @@ export interface AuthoritativeTerminalEvent {
   landing?: { status: string; action?: string; reason?: string };
   validationPassed?: boolean;
   prdValidationPassed?: boolean;
-  acceptanceValidationPassed?: boolean;
+  acceptanceValidationPassed?: boolean; terminalSubtype?: AgentTerminalSubtype;
 }
 
 /**
@@ -110,6 +143,7 @@ export function findAuthoritativeTerminalEvent(
   const landing = landingRaw && typeof landingRaw.status === 'string'
     ? { status: landingRaw.status, ...(typeof landingRaw.action === 'string' ? { action: landingRaw.action } : {}), ...(typeof landingRaw.reason === 'string' ? { reason: landingRaw.reason } : {}) }
     : undefined;
+  const terminalSubtype = failure.terminalSubtype === undefined ? (sourceEventType === 'plan:build:failed' ? recoverReferencedPlanBuildFailedSubtype(db, runId, row.id, sourceEventId, sourceEventTimestamp, planId) : undefined) : parseAgentTerminalSubtype(failure.terminalSubtype);
   return {
     id: row.id, timestamp: row.timestamp, scope, message,
     ...(planId !== undefined ? { planId } : {}),
@@ -117,6 +151,7 @@ export function findAuthoritativeTerminalEvent(
     ...(sourceEventId !== undefined ? { sourceEventId } : {}),
     ...(sourceEventTimestamp !== undefined ? { sourceEventTimestamp } : {}),
     ...(landing !== undefined ? { landing } : {}),
+    ...(terminalSubtype !== undefined ? { terminalSubtype } : {}),
     ...(typeof failure.validationPassed === 'boolean' ? { validationPassed: failure.validationPassed } : {}),
     ...(typeof failure.prdValidationPassed === 'boolean' ? { prdValidationPassed: failure.prdValidationPassed } : {}),
     ...(typeof failure.acceptanceValidationPassed === 'boolean' ? { acceptanceValidationPassed: failure.acceptanceValidationPassed } : {}),
@@ -457,15 +492,15 @@ export function buildAuthoritativeFragment(
   if (failingPlanId !== 'unknown') allPlanIds.add(failingPlanId);
 
   const planErrorMap = new Map(lifecyclePlanErrorMap);
-  if (terminal.scope === 'plan' && failingPlanId !== 'unknown') {
-    planErrorMap.set(failingPlanId, { error: terminal.message });
-  }
+  if (terminal.scope === 'plan' && failingPlanId !== 'unknown') { const terminalSubtype = terminal.terminalSubtype ?? planErrorMap.get(failingPlanId)?.terminalSubtype; planErrorMap.set(failingPlanId, { error: terminal.message, ...(terminalSubtype !== undefined ? { terminalSubtype } : {}) }); }
   const plans = buildPlanSummaries(allPlanIds, maps, planErrorMap);
 
   const toolUseCount = maps.toolUseMap.get(failingPlanId);
+  const failingPlanTerminalSubtype = terminal.terminalSubtype ?? planErrorMap.get(failingPlanId)?.terminalSubtype;
   const failingPlan: FailingPlanEntry = {
     planId: failingPlanId,
     ...(terminal.scope === 'plan' ? { errorMessage: terminal.message } : {}),
+    ...(failingPlanTerminalSubtype !== undefined ? { terminalSubtype: failingPlanTerminalSubtype } : {}),
     ...(toolUseCount !== undefined ? { toolUseCount } : {}),
   };
   const failingPlans = terminal.scope === 'plan' && failingPlanId !== 'unknown' ? [failingPlan] : undefined;
@@ -486,6 +521,7 @@ export function buildAuthoritativeFragment(
       message: terminal.message,
       authoritative: true,
       ...(terminal.planId ? { planId: terminal.planId } : {}),
+      ...(terminal.terminalSubtype !== undefined ? { terminalSubtype: terminal.terminalSubtype } : {}),
       ...(terminal.sourceEventType ? { sourceEventType: terminal.sourceEventType } : {}),
       ...(terminal.sourceEventId !== undefined ? { sourceEventId: terminal.sourceEventId } : {}),
       ...(terminal.sourceEventTimestamp ? { sourceEventTimestamp: terminal.sourceEventTimestamp } : {}),
