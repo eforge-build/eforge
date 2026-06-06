@@ -1,12 +1,14 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { API_ROUTES, buildPath } from './routes.js';
 import { parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
 
 export const EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION = 1;
 export const CONSOLE_WORKSTATION_BROWSER_SDK_VERSION = 1;
 export const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN = '^sha256-[a-f0-9]{64}-path-[a-f0-9]{64}$';
 export const CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN = '^[a-f0-9]{64}$';
-export const CONSOLE_WORKSTATION_FRAME_URL_PATTERN = '^/api/extensions/workstations/[^/?#]+/frame$';
+export const CONSOLE_WORKSTATION_FRAME_URL_PATTERN = '^/api/extensions/workstations/[^/?#]+/frame(?:\\?[^#]*)?$';
 export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = `^/api/extensions/workstations/[^/?#]+/assets/${CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN.slice(1, -1)}$`;
+const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_HASH_PATTERN = /^sha256-([a-f0-9]{64})-path-[a-f0-9]{64}$/;
 
 export const ExtensionJsonValueSchema = Type.Recursive((Self) => Type.Union([
   Type.Null(),
@@ -274,16 +276,33 @@ export type ExtensionActionInvokeSuccessResponse = Static<typeof ExtensionAction
 export type ExtensionActionInvokeFailureResponse = Static<typeof ExtensionActionInvokeFailureResponseSchema>;
 export type ExtensionActionInvokeResponse = Static<typeof ExtensionActionInvokeResponseSchema>;
 
-function validateFrameBundleAssetUrls(manifest: ExtensionContributionManifestResponse): SafeParseResult<ExtensionContributionManifestResponse> {
+function validateFrameBundleRoutes(manifest: ExtensionContributionManifestResponse): SafeParseResult<ExtensionContributionManifestResponse> {
   const errors = manifest.consoleWorkstations.flatMap((workstation, workstationIndex) => {
     if (!('frameBundle' in workstation)) return [];
-    const assets = [workstation.frameBundle.entrypoint, ...workstation.frameBundle.styles, ...workstation.frameBundle.assets];
-    return assets.flatMap((asset, assetIndex) => asset.url.endsWith(`/assets/${asset.id}`)
+    const expectedFrameUrl = buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: workstation.id });
+    const expectedFramePrefix = `${expectedFrameUrl}?`;
+    const frameErrors = workstation.frameBundle.frameUrl === expectedFrameUrl || workstation.frameBundle.frameUrl.startsWith(expectedFramePrefix)
       ? []
       : [{
-        path: `/consoleWorkstations/${workstationIndex}/frameBundle/assets/${assetIndex}/url`,
-        message: 'must use the asset id as the route parameter',
-      }]);
+        path: `/consoleWorkstations/${workstationIndex}/frameBundle/frameUrl`,
+        message: 'must use the workstation id as the frame route parameter',
+      }];
+    const assets = [workstation.frameBundle.entrypoint, ...workstation.frameBundle.styles, ...workstation.frameBundle.assets];
+    const assetErrors = assets.flatMap((asset, assetIndex) => {
+      const expectedAssetUrl = buildPath(API_ROUTES.extensionWorkstationAsset, { workstationId: workstation.id, assetId: asset.id });
+      const idHash = CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_HASH_PATTERN.exec(asset.id)?.[1];
+      return [
+        ...(asset.url === expectedAssetUrl ? [] : [{
+          path: `/consoleWorkstations/${workstationIndex}/frameBundle/assets/${assetIndex}/url`,
+          message: 'must use the workstation id and asset id as route parameters',
+        }]),
+        ...(idHash === asset.sha256 ? [] : [{
+          path: `/consoleWorkstations/${workstationIndex}/frameBundle/assets/${assetIndex}/sha256`,
+          message: 'must match the sha256 component of the asset id',
+        }]),
+      ];
+    });
+    return [...frameErrors, ...assetErrors];
   });
 
   if (errors.length === 0) return { success: true, data: manifest };
@@ -299,7 +318,7 @@ function validateFrameBundleAssetUrls(manifest: ExtensionContributionManifestRes
 export function safeParseExtensionContributionManifest(value: unknown): SafeParseResult<ExtensionContributionManifestResponse> {
   const result = safeParseWithSchema(ExtensionContributionManifestResponseSchema, value);
   if (!result.success) return result;
-  return validateFrameBundleAssetUrls(result.data);
+  return validateFrameBundleRoutes(result.data);
 }
 
 export function parseExtensionContributionManifest(value: unknown): ExtensionContributionManifestResponse {

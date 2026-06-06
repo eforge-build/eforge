@@ -214,7 +214,7 @@ describe('extension contribution schemas', () => {
     expect(CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN).toBe('^sha256-[a-f0-9]{64}-path-[a-f0-9]{64}$');
     expect(CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN).toBe('^/api/extensions/workstations/[^/?#]+/assets/sha256-[a-f0-9]{64}-path-[a-f0-9]{64}$');
     expect(CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN).toBe('^[a-f0-9]{64}$');
-    expect(CONSOLE_WORKSTATION_FRAME_URL_PATTERN).toBe('^/api/extensions/workstations/[^/?#]+/frame$');
+    expect(CONSOLE_WORKSTATION_FRAME_URL_PATTERN).toBe('^/api/extensions/workstations/[^/?#]+/frame(?:\\?[^#]*)?$');
     expect(Value.Check(ConsoleWorkstationFrameBundleAssetRefSchema, bundleAssetRef('dist/index.js'))).toBe(true);
     expect(Value.Check(ConsoleWorkstationFrameBundleAssetRefSchema, {
       ...bundleAssetRef('dist/index.js'),
@@ -224,6 +224,26 @@ describe('extension contribution schemas', () => {
       ...bundleAssetRef('dist/index.js'),
       sha256: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     })).toBe(false);
+  });
+
+  it('accepts bundle frame URLs with query strings', () => {
+    const value = manifest();
+    value.consoleWorkstations[0] = {
+      ...base,
+      id: 'example.workstation',
+      localId: 'workstation',
+      title: 'Workstation',
+      schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
+      frameBundle: {
+        browserSdkVersion: 1,
+        frameUrl: `${buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'example.workstation' })}?view=main`,
+        entrypoint: bundleAssetRef('dist/index.js'),
+        styles: [bundleAssetRef('dist/index.css')],
+        assets: [bundleAssetRef('dist/logo.svg')],
+      },
+      allowedActions: ['example.say-hi'],
+    } as never;
+    expect(safeParseExtensionContributionManifest(value).success).toBe(true);
   });
 
   it('rejects invalid bundle-backed Console workstation metadata', () => {
@@ -263,6 +283,10 @@ describe('extension contribution schemas', () => {
     (malformedSha256.consoleWorkstations[0] as never as { frameBundle: { entrypoint: { sha256: string } } }).frameBundle.entrypoint.sha256 = 'not-a-hash';
     expect(safeParseExtensionContributionManifest(malformedSha256).success).toBe(false);
 
+    const mismatchedAssetIdHash = bundleManifest();
+    (mismatchedAssetIdHash.consoleWorkstations[0] as never as { frameBundle: { entrypoint: { sha256: string } } }).frameBundle.entrypoint.sha256 = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+    expect(safeParseExtensionContributionManifest(mismatchedAssetIdHash).success).toBe(false);
+
     for (const frameUrl of ['https://example.test/frame', 'data:text/html,nope', 'javascript:alert(1)', '/api/extensions/workstations/example.workstation/assets/not-frame']) {
       const invalidFrameUrl = bundleManifest();
       (invalidFrameUrl.consoleWorkstations[0] as never as { frameBundle: { frameUrl: string } }).frameBundle.frameUrl = frameUrl;
@@ -274,6 +298,14 @@ describe('extension contribution schemas', () => {
       (invalidAssetUrl.consoleWorkstations[0] as never as { frameBundle: { entrypoint: { url: string } } }).frameBundle.entrypoint.url = url;
       expect(safeParseExtensionContributionManifest(invalidAssetUrl).success).toBe(false);
     }
+
+    const mismatchedFrameWorkstationId = bundleManifest();
+    (mismatchedFrameWorkstationId.consoleWorkstations[0] as never as { frameBundle: { frameUrl: string } }).frameBundle.frameUrl = buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'other.workstation' });
+    expect(safeParseExtensionContributionManifest(mismatchedFrameWorkstationId).success).toBe(false);
+
+    const mismatchedAssetWorkstationId = bundleManifest();
+    (mismatchedAssetWorkstationId.consoleWorkstations[0] as never as { frameBundle: { entrypoint: { url: string } } }).frameBundle.entrypoint.url = buildPath(API_ROUTES.extensionWorkstationAsset, { workstationId: 'other.workstation', assetId: bundleAssetRef('dist/index.js').id });
+    expect(safeParseExtensionContributionManifest(mismatchedAssetWorkstationId).success).toBe(false);
 
     const mismatchedAssetUrlId = bundleManifest();
     (mismatchedAssetUrlId.consoleWorkstations[0] as never as { frameBundle: { entrypoint: { url: string } } }).frameBundle.entrypoint.url = '/api/extensions/workstations/example.workstation/assets/sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc-path-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
