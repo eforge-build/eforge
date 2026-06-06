@@ -8,7 +8,7 @@ import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import { readFile, readdir, mkdir, stat, writeFile } from 'node:fs/promises';
+import { readFile, readdir, mkdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -24,8 +24,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getRecoveryContinuationFrontmatter, getCompiledResumeFrontmatter } from './prd-queue.js';
-import { runStalenessAssessor } from './agents/staleness-assessor.js';
+import { loadQueue, resolveQueueOrder, enqueuePrd, inferTitle, releasePrd, movePrdToSubdir, moveFailedWithSidecar, materializePrdArtifact, cleanupCompletedPrd, QueueExecExitCode, propagateSkip as propagateSkipFS, unblockWaiting, classifyAfterQueueId, getCompiledResumeFrontmatter } from './prd-queue.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
@@ -56,61 +55,25 @@ import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, resolveAgentConfig, type PipelineContext, type BuildStageContext } from './pipeline.js';
-import { forgeCommit, retryOnLock } from './git.js';
+import { forgeCommit } from './git.js';
 import { ModelTracker, composeCommitMessage } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
-import { withRunId } from './session.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
+import { runQueuedPrdBuild } from './queue/build-single-prd.js';
 import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
-import { resolveStackBaseContext, type StackBaseContext } from './stacking/base-resolver.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import type { ArtifactRegistry } from './artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion, upsertCompletion } from './artifacts/completions.js';
 import type { CompletionRegistry } from './artifacts/completions.js';
-import { createProvider } from './stacking/provider.js';
-import type { StackProviderAdapter } from './stacking/provider.js';
-import { prepareTrunkSyncBase } from './trunk-sync.js';
-import { resolveTrunkBranch } from './branch-policy.js';
 import type { ProfileUsageProvider } from './profile-usage.js';
 export type { ProfileUsageProvider } from './profile-usage.js';
 import { formatAcceptanceFailureSummary } from './validation/acceptance-summary.js';
-import { appendAcceptanceCriteriaInventoryBlock, requireAcceptanceCriteriaInventoryFromPrd, stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
+import { stripAcceptanceCriteriaInventoryBlock } from './validation/acceptance-criteria-inventory.js';
 import { createPrdValidationWiring } from './validation/prd-validation-wiring.js';
 
 const exec = promisify(execFile);
-
-/**
- * Collect the events produced by a `TrunkSyncResult` and the failure summary (if any).
- *
- * Returns an object with:
- * - `events`        — diagnostic + warning events to yield to callers.
- * - `failureSummary`— set when `result.outcome === 'failed'`; callers should fail the build.
- *
- * Extracting this avoids duplicating the event-emission and failed-outcome logic across the
- * stacked-root and non-stacked queued-build code paths.
- */
-function collectTrunkSyncEvents(
-  result: import('./trunk-sync.js').TrunkSyncResult,
-  planId: string,
-): { events: EforgeEvent[]; failureSummary?: string } {
-  const ts = new Date().toISOString();
-  const events: EforgeEvent[] = [];
-  for (const msg of result.diagnostics) {
-    events.push({ timestamp: ts, type: 'planning:progress', message: msg } as EforgeEvent);
-  }
-  for (const msg of result.warnings) {
-    events.push({ timestamp: ts, type: 'config:warning', message: msg, source: 'trunk-sync' } as EforgeEvent);
-  }
-  if (result.outcome === 'failed') {
-    const errMsg = result.warnings[0] ?? 'Trunk sync failed before compile';
-    events.push({ timestamp: ts, type: 'plan:status:change', planId, status: 'failed' } as EforgeEvent);
-    events.push({ timestamp: ts, type: 'plan:error:set', planId, error: errMsg } as EforgeEvent);
-    return { events, failureSummary: errMsg };
-  }
-  return { events };
-}
 
 export interface EforgeEngineOptions {
   /** Working directory (defaults to process.cwd()) */
@@ -992,406 +955,14 @@ export class EforgeEngine {
     options: QueueOptions,
     sessionId?: string,
   ): AsyncGenerator<EforgeEvent> {
-    const cwd = this.cwd;
-    const verbose = options.verbose;
-    const abortController = options.abortController;
-
-    yield {
-      timestamp: new Date().toISOString(),
-      type: 'queue:prd:start',
-      prdId: prd.id,
-      title: prd.frontmatter.title,
-    };
-
-    // Claim this PRD exclusively — skip if another process already holds it
-    const claimed = await claimPrd(prd.id, cwd);
-    if (!claimed) {
-      yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.AlreadyClaimed };
-      if (sessionId !== undefined) {
-        yield { type: 'session:end', sessionId, result: { status: 'skipped', summary: 'PRD already claimed by another process' }, timestamp: new Date().toISOString() } as EforgeEvent;
-      }
-      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
-      return;
-    }
-
-    const prdSessionId = sessionId ?? randomUUID();
-    const failBeforeBuildSession = function* (message: string): Generator<EforgeEvent> {
-      if (sessionId === undefined) {
-        yield { type: 'session:start', sessionId: prdSessionId, timestamp: new Date().toISOString() } as EforgeEvent;
-      }
-      yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
-      yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
-      yield { type: 'session:end', sessionId: prdSessionId, result: { status: 'failed', summary: message }, timestamp: new Date().toISOString() } as EforgeEvent;
-      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
-    };
-
-    let compiledResume: ReturnType<typeof getCompiledResumeFrontmatter>;
-    try {
-      compiledResume = getCompiledResumeFrontmatter(prd.frontmatter);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      yield* failBeforeBuildSession(message);
-      return;
-    }
-
-    try {
-      if (compiledResume === undefined) {
-        requireAcceptanceCriteriaInventoryFromPrd(prd.content, {
-          allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      yield* failBeforeBuildSession(message);
-      return;
-    }
-
-    // Staleness check — skip only if PRD was added in the most recent commit
-    const headHash = await getHeadHash(cwd);
-    if (compiledResume === undefined && prd.lastCommitHash && prd.lastCommitHash !== headHash) {
-      const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
-
-      let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
-      let revision: string | undefined;
-
-      const stalenessConfig = resolveAgentConfig('staleness-assessor', this.config);
-      for await (const event of runStalenessAssessor({
-        ...stalenessConfig,
-        prdContent: stripAcceptanceCriteriaInventoryBlock(prd.content),
-        diffSummary,
-        cwd,
-        prdId: prd.id,
-        title: prd.frontmatter.title,
-        verbose,
-        abortController,
-        phase: 'standalone',
-        harness: this.agentRuntimes.forRole('staleness-assessor'),
-      })) {
-        if (event.type === 'queue:prd:stale') {
-          stalenessVerdict = event.verdict;
-          revision = event.revision;
-        }
-        yield event;
-      }
-
-      if (stalenessVerdict === 'obsolete') {
-        yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.Obsolete };
-        if (sessionId !== undefined) {
-          yield { type: 'session:end', sessionId, result: { status: 'skipped', summary: 'PRD is obsolete' }, timestamp: new Date().toISOString() } as EforgeEvent;
-        }
-        yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
-        return;
-      }
-
-      if (stalenessVerdict === 'revise') {
-        if (revision) {
-          const visibleRevision = stripAcceptanceCriteriaInventoryBlock(revision).trimEnd();
-          let revisedContent: string;
-          try {
-            const extractorConfig = resolveAgentConfig('prd-validator', this.config);
-            const extractorGen = runAcceptanceCriteriaExtractor({
-              ...extractorConfig,
-              cwd,
-              prdContent: visibleRevision,
-              verbose,
-              abortController,
-              phase: 'standalone',
-              harness: this.agentRuntimes.forRole('prd-validator'),
-              allowNoAcceptanceCriteria: this.config.build.validation.allowNoAcceptanceCriteria,
-            });
-            let extractorResult = await extractorGen.next();
-            while (!extractorResult.done) {
-              yield extractorResult.value;
-              extractorResult = await extractorGen.next();
-            }
-            revisedContent = appendAcceptanceCriteriaInventoryBlock(visibleRevision, extractorResult.value).trimEnd();
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            yield* failBeforeBuildSession(message);
-            return;
-          }
-
-          // Auto-apply revision and commit
-          await writeFile(prd.filePath, `${revisedContent}\n`, 'utf-8');
-          prd = { ...prd, content: `${revisedContent}\n` };
-          try {
-            await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
-            await forgeCommit(cwd, composeCommitMessage(`chore(queue): revise stale PRD ${prd.id}`));
-          } catch (err) {
-            yield {
-              timestamp: new Date().toISOString(),
-              type: 'queue:prd:commit-failed',
-              prdId: prd.id,
-              title: prd.frontmatter.title,
-              error: err instanceof Error ? err.message : String(err),
-            };
-          }
-        } else {
-          // Skip — needs manual revision
-          yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.NeedsRevision };
-          if (sessionId !== undefined) {
-            yield { type: 'session:end', sessionId, result: { status: 'skipped', summary: 'PRD needs manual revision' }, timestamp: new Date().toISOString() } as EforgeEvent;
-          }
-          yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
-          return;
-        }
-      }
-    }
-
-    // Per-PRD session: each PRD gets its own sessionId for monitor grouping.
-    // When sessionId is injected by the parent scheduler, use it verbatim and
-    // skip the child-side session:start emission (parent already emitted it).
-    let prdResult: { status: 'completed' | 'failed' | 'skipped'; summary: string } = {
-      status: 'failed',
-      summary: 'Session terminated abnormally',
-    };
-
-    try {
-      if (sessionId === undefined) {
-        yield {
-          type: 'session:start',
-          sessionId: prdSessionId,
-          timestamp: new Date().toISOString(),
-        } as EforgeEvent;
-      }
-
-      if (compiledResume !== undefined) {
-        let resumeFailed = false;
-        const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
-        const resolvedLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
-        for await (const event of withRunId(this.resumeBuild(compiledResume.sourcePrdId, {
-          setName: compiledResume.setName,
-          featureBranch: compiledResume.featureBranch,
-          baseBranch: compiledResume.baseBranch,
-          cwd,
-          verbose,
-          abortController,
-          schedulerOwned: true,
-          ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
-          ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
-        }))) {
-          yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-          if (event.type === 'phase:end' && event.result.status === 'failed') {
-            resumeFailed = true;
-          }
-        }
-        prdResult = resumeFailed
-          ? { status: 'failed', summary: 'Resume failed' }
-          : { status: 'completed', summary: 'Resume complete' };
-        return;
-      }
-
-      // Compile (plan) the PRD
-      let compileFailed = false;
-      let planSkipped = false;
-      let skipReason = '';
-      const planSetName = options.name ?? prd.id;
-      let recoveryContinuation: ReturnType<typeof getRecoveryContinuationFrontmatter>;
-      try {
-        recoveryContinuation = getRecoveryContinuationFrontmatter(prd.frontmatter);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
-        yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
-        prdResult = { status: 'failed', summary: message };
-        return;
-      }
-      let stackContext: StackBaseContext | undefined;
-      const hasExplicitStackMetadata = prd.frontmatter.stack_id !== undefined
-        || prd.frontmatter.stack_parent !== undefined
-        || prd.frontmatter.stack_provider !== undefined;
-      if (recoveryContinuation !== undefined && hasExplicitStackMetadata) {
-        const message = 'Recovery continuation PRD cannot also use stack metadata';
-        yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
-        yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
-        prdResult = { status: 'failed', summary: message };
-        return;
-      }
-      // Recovery continuations resume from their preserved feature branch and
-      // target the original base branch. Do not infer stack context from the
-      // global stacking setting; only explicit stack frontmatter is invalid.
-      if (this.config.stacking.enabled && recoveryContinuation === undefined) {
-        try {
-          stackContext = await resolveStackBaseContext({ cwd, config: this.config, prd, planSetName });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
-          yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
-          prdResult = { status: 'failed', summary: message };
-          return;
-        }
-      }
-
-      // For stacked PRDs, instantiate the provider and gate on availability
-      // before compile so the error surfaces early (before planning:start).
-      let stackProvider: StackProviderAdapter | undefined;
-      if (stackContext !== undefined) {
-        try {
-          stackProvider = createProvider(this.config.stacking);
-          await stackProvider.requireAvailable(cwd);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          yield { timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent;
-          yield { timestamp: new Date().toISOString(), type: 'plan:error:set', planId: prd.id, error: message } as EforgeEvent;
-          prdResult = { status: 'failed', summary: message };
-          return;
-        }
-      }
-
-      // Compute the worktree base ref via trunk sync, applying the gate only to
-      // root builds (stacked root or non-stacked on trunk). Child stacked PRDs
-      // and non-trunk feature branches skip the helper unchanged.
-      //
-      // IMPORTANT: trunk sync may resolve a fetched commit SHA (when remote is
-      // ahead of local). That SHA is passed as `worktreeBaseRefOverride` — used
-      // only by createMergeWorktree() — while `baseBranchOverride` always
-      // carries the logical trunk branch name so orchestration.yaml, PR creation,
-      // and mergeToBase() always receive a real branch name, not a SHA.
-      let compileWorktreeBaseRefOverride: string | undefined;
-      if (recoveryContinuation !== undefined) {
-        yield {
-          timestamp: new Date().toISOString(),
-          type: 'planning:progress',
-          message: `Recovery continuation: starting successor from '${recoveryContinuation.featureBranch}' while targeting '${recoveryContinuation.baseBranch}' (PRD ${prd.id})`,
-        } as EforgeEvent;
-      } else if (this.config.build.trunkSync.enabled && stackContext !== undefined && stackContext.parentPrdId === undefined) {
-        // Stacked root PRD: run trunk sync on the trunk base
-        yield {
-          timestamp: new Date().toISOString(),
-          type: 'planning:progress',
-          message: `Trunk sync: checking '${stackContext.baseBranch}' against remote before compile (PRD ${prd.id})`,
-        } as EforgeEvent;
-        const tsSyncResult = await prepareTrunkSyncBase({
-          cwd,
-          config: this.config,
-          candidateBase: stackContext.baseBranch,
-          parentPrdId: undefined,
-        });
-        const { events: tsEvents, failureSummary: tsFailure } = collectTrunkSyncEvents(tsSyncResult, prd.id);
-        for (const event of tsEvents) { yield event; }
-        if (tsFailure !== undefined) {
-          prdResult = { status: 'failed', summary: tsFailure };
-          return;
-        }
-        // Only set worktree ref override when trunk sync selected a different ref
-        // (e.g. a fetched SHA). The logical baseBranch stays as stackContext.baseBranch.
-        if (tsSyncResult.baseRef !== stackContext.baseBranch) {
-          compileWorktreeBaseRefOverride = tsSyncResult.baseRef;
-        }
-      } else if (this.config.build.trunkSync.enabled && stackContext === undefined) {
-        // Non-stacked queued build: apply trunk sync only when current HEAD is the trunk branch
-        const { stdout: currentBranchRaw } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
-        const currentBranch = currentBranchRaw.trim();
-        // Pass the configured trunk-sync remote so HEAD resolution uses the right remote in
-        // fork/upstream workflows (e.g. refs/remotes/upstream/HEAD instead of origin/HEAD).
-        const resolvedTrunk = await resolveTrunkBranch(this.config, cwd, this.config.build.trunkSync.remote);
-        if (currentBranch === resolvedTrunk) {
-          yield {
-            timestamp: new Date().toISOString(),
-            type: 'planning:progress',
-            message: `Trunk sync: checking '${resolvedTrunk}' against remote before compile (PRD ${prd.id})`,
-          } as EforgeEvent;
-          const tsSyncResult = await prepareTrunkSyncBase({
-            cwd,
-            config: this.config,
-            candidateBase: resolvedTrunk,
-            parentPrdId: undefined,
-          });
-          const { events: tsEvents, failureSummary: tsFailure } = collectTrunkSyncEvents(tsSyncResult, prd.id);
-          for (const event of tsEvents) { yield event; }
-          if (tsFailure !== undefined) {
-            prdResult = { status: 'failed', summary: tsFailure };
-            return;
-          }
-          // Only set worktree ref override when trunk sync selected a different ref
-          // (e.g. a fetched SHA). The logical baseBranch stays as resolvedTrunk.
-          if (tsSyncResult.baseRef !== resolvedTrunk) {
-            compileWorktreeBaseRefOverride = tsSyncResult.baseRef;
-          }
-        }
-        // Off-trunk feature branches: no override — compile() uses HEAD as base
-      }
-      // Stacked child PRDs (stackContext.parentPrdId !== undefined): no override
-      // here; the plan-02 region below passes stackContext.baseBranch unchanged.
-
-      const compileBaseBranchOverride = recoveryContinuation?.baseBranch ?? stackContext?.baseBranch;
-      const compileWorktreeRefOverride = recoveryContinuation?.featureBranch ?? compileWorktreeBaseRefOverride;
-
-      for await (const event of withRunId(this.compile(prd.filePath, {
-        name: planSetName,
-        auto: options.auto,
-        verbose,
-        cwd,
-        abortController,
-        ...(compileBaseBranchOverride !== undefined && { baseBranchOverride: compileBaseBranchOverride }),
-        // Pass the fetched SHA or preserved recovery feature branch as worktreeBaseRefOverride
-        // (for createMergeWorktree only), never as baseBranchOverride, so orchestration/landing
-        // always gets the branch name.
-        ...(compileWorktreeRefOverride !== undefined && { worktreeBaseRefOverride: compileWorktreeRefOverride }),
-      }))) {
-        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-        if (event.type === 'phase:end' && event.result.status === 'failed') {
-          compileFailed = true;
-        }
-        if (event.type === 'planning:skip') {
-          planSkipped = true;
-          skipReason = event.reason;
-        }
-      }
-
-      if (compileFailed) {
-        prdResult = { status: 'failed', summary: 'Compile failed' };
-        return;
-      }
-
-      if (planSkipped) {
-        prdResult = { status: 'skipped', summary: skipReason };
-        return;
-      }
-
-      // Build the plan — PRD cleanup flows through build()
-      // Resolve landing precedence: explicit options.landingAction > PRD landing frontmatter.
-      const resolvedLandingAction = options.landingAction ?? prd.frontmatter.landing;
-      const resolvedLandingAutoMerge = options.landingAutoMerge ?? prd.frontmatter.landing_auto_merge;
-      let buildFailed = false;
-      for await (const event of withRunId(this.build(planSetName, {
-        auto: options.auto,
-        verbose,
-        cwd,
-        abortController,
-        prdFilePath: prd.filePath,
-        prdId: prd.id,
-        ...(stackContext !== undefined && { stackContext }),
-        ...(stackProvider !== undefined && { stackProvider }),
-        ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
-        ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
-      }))) {
-        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-        if (event.type === 'phase:end' && event.result.status === 'failed') {
-          buildFailed = true;
-        }
-      }
-
-      if (buildFailed) {
-        prdResult = { status: 'failed', summary: 'Build failed' };
-      } else {
-        prdResult = { status: 'completed', summary: 'Build complete' };
-      }
-    } catch (err) {
-      prdResult = { status: 'failed', summary: (err as Error).message };
-    } finally {
-      // Lock release and PRD file-location transitions are the parent
-      // scheduler's responsibility (via child.on('exit')). This child only
-      // emits terminal events and returns.
-      yield {
-        type: 'session:end',
-        sessionId: prdSessionId,
-        result: prdResult,
-        timestamp: new Date().toISOString(),
-      } as EforgeEvent;
-
-      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
-    }
+    yield* runQueuedPrdBuild({
+      cwd: this.cwd,
+      config: this.config,
+      agentRuntimes: this.agentRuntimes,
+      compile: this.compile.bind(this),
+      build: this.build.bind(this),
+      resumeBuild: this.resumeBuild.bind(this),
+    }, prd, options, sessionId);
   }
 
   /**
