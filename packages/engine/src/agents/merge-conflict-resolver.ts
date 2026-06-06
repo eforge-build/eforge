@@ -24,7 +24,8 @@ export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
 export async function* runMergeConflictResolver(
   options: MergeConflictResolverOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:start', planId: options.conflict.branch };
+  const planId = options.conflict.branch;
+  yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:start', planId };
 
   const prompt = await loadPrompt('merge-conflict-resolver', {
     branch: options.conflict.branch,
@@ -48,26 +49,34 @@ export async function* runMergeConflictResolver(
         ...pickSdkOptions(options),
       },
       'merge-conflict-resolver',
+      planId,
     )) {
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
-        yield event;
+        yield withPlanId(event, planId);
       }
     }
   } catch (err) {
     // Re-throw abort errors so the orchestrator can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Other resolver failures are non-fatal — fall through to resolved: false
-    yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId: options.conflict.branch, resolved: false };
+    yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId, resolved: false };
     return;
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId: options.conflict.branch, resolved: true };
+  yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId, resolved: true };
 
   // Emit merge-conflict-resolution decision alongside the resolution success
-  yield emitBuildDecisionForPlan(options.conflict.branch, {
+  yield emitBuildDecisionForPlan(planId, {
     kind: 'merge-conflict-resolution',
     strategy: 'agent-resolved',
     files: options.conflict.conflictedFiles,
     rationale: `Merge conflict resolver agent resolved ${options.conflict.conflictedFiles.length} conflicted file(s)`,
   });
+}
+
+function withPlanId(event: EforgeEvent, planId: string): EforgeEvent {
+  if (!event.type.startsWith('agent:')) return event;
+  const agentEvent = event as EforgeEvent & { planId?: string };
+  if (agentEvent.planId !== undefined) return event;
+  return { ...agentEvent, planId } as EforgeEvent;
 }

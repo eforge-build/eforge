@@ -325,6 +325,29 @@ describe('GitSpiceAdapter', () => {
     expect(readFileSync(argsFile, 'utf8').trim()).toBe('rebase continue');
   });
 
+  it('runs provider commands with git editor prompts disabled', async () => {
+    const dir = makeTempDir();
+    const envFile = join(dir, 'env.txt');
+    const stub = makeStub(
+      dir,
+      'git-spice',
+      `printf "%s\\n" "$GIT_EDITOR" "$VISUAL" "$EDITOR" "$GIT_SEQUENCE_EDITOR" "$GIT_MERGE_AUTOEDIT" > "${envFile}"`,
+    );
+    const adapter = createGitSpiceAdapter({ gitSpice: { command: stub } });
+
+    await adapter.continueInterruptedOperation(dir, {
+      operation: 'branch-restack', conflictKind: 'git-rebase', conflictedFiles: [], conflictDiff: '',
+    });
+
+    expect(readFileSync(envFile, 'utf8').trim().split('\n')).toEqual([
+      'true',
+      'true',
+      'true',
+      'true',
+      'no',
+    ]);
+  });
+
   it('abortInterruptedOperation returns rebase abort argv', async () => {
     const dir = makeTempDir();
     const argsFile = join(dir, 'args.txt');

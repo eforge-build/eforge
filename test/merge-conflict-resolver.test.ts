@@ -41,6 +41,45 @@ describe('runMergeConflictResolver wiring', () => {
     expect(findEvent(events, 'agent:result')).toBeDefined();
   });
 
+  it('scopes forwarded agent events to the merge-conflict branch lane', async () => {
+    const backend = new StubHarness([{
+      text: 'Conflicts resolved.',
+      toolCalls: [{ tool: 'edit', toolUseId: 'tool-1', input: { path: 'src/index.ts' }, output: 'ok' }],
+    }]);
+    const conflict = makeConflict({ branch: 'feature/conflict-lane' });
+
+    const events = await collectEvents(runMergeConflictResolver({
+      harness: backend,
+      cwd: '/tmp/test-repo',
+      conflict,
+      verbose: true,
+    }));
+
+    const agentEvents = events.filter((event) => event.type.startsWith('agent:'));
+    expect(agentEvents.length).toBeGreaterThan(0);
+    expect(agentEvents.every((event) => event.planId === 'feature/conflict-lane')).toBe(true);
+  });
+
+  it('passes the merge-conflict branch lane into backend.run()', async () => {
+    const planIds: Array<string | undefined> = [];
+    class RecordingHarness extends StubHarness {
+      override async *run(...args: Parameters<StubHarness['run']>): ReturnType<StubHarness['run']> {
+        planIds.push(args[2]);
+        yield* super.run(...args);
+      }
+    }
+    const backend = new RecordingHarness([{ text: 'Done.' }]);
+    const conflict = makeConflict({ branch: 'feature/conflict-lane' });
+
+    await collectEvents(runMergeConflictResolver({
+      harness: backend,
+      cwd: '/tmp/test-repo',
+      conflict,
+    }));
+
+    expect(planIds).toEqual(['feature/conflict-lane']);
+  });
+
   it('emits resolved: false on non-abort error', async () => {
     const backend = new StubHarness([{ error: new Error('LLM failed') }]);
     const conflict = makeConflict();
