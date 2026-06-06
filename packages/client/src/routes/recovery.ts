@@ -114,7 +114,9 @@ export interface RecoverySidecarBoundedEvidence {
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
  * Current concise v3 contract: top-level identity, verdict, operator report,
- * bounded evidence, generated timestamp, and optional durable `applied` marker.
+ * bounded evidence, generated timestamp, optional read-only compiled-build resume
+ * fields (`resumeEligibility` and `recoveryOptions`), and optional durable
+ * `applied` marker.
  */
 export interface RecoveryVerdictSidecar {
   schemaVersion: number;
@@ -124,6 +126,12 @@ export interface RecoveryVerdictSidecar {
   verdict: RecoveryVerdict;
   report: RecoverySidecarReport;
   boundedEvidence: RecoverySidecarBoundedEvidence;
+  // --- eforge:region plan-02-sidecar-resume-option ---
+  /** Read-only compiled-build resume eligibility captured when the sidecar was generated. */
+  resumeEligibility?: RecoverySidecarResumeEligibility;
+  /** Optional recovery options that point operators to routes outside apply-recovery. */
+  recoveryOptions?: RecoverySidecarRecoveryOption[];
+  // --- eforge:endregion plan-02-sidecar-resume-option ---
   /** Durable applied marker; absent on sidecars written before a verdict is applied. */
   applied?: RecoveryAppliedMetadata;
 }
@@ -159,6 +167,37 @@ export interface ResumeEligibilityRequest {
 }
 
 export type ResumeArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
+
+// --- eforge:region plan-02-sidecar-resume-option ---
+export type RecoverySidecarResumeEligibilitySource = 'projectResumeEligibility' | 'inspection-error';
+
+export type RecoverySidecarResumeEligibility =
+  | {
+      source: RecoverySidecarResumeEligibilitySource;
+      eligible: true;
+      featureBranch: string;
+      artifactAvailability: ResumeArtifactAvailability;
+      artifactCommit?: string;
+      landedCommitCount: number;
+      diffStat: string;
+      failingPlanId?: string;
+      partial?: boolean;
+    }
+  | {
+      source: RecoverySidecarResumeEligibilitySource;
+      eligible: false;
+      featureBranch: string;
+      reason: string;
+      checkedPath?: string;
+    };
+
+export interface RecoverySidecarRecoveryOption {
+  kind: 'compiled-build-resume';
+  action: 'eforge_resume_build';
+  recommended: boolean;
+  reason: string;
+}
+// --- eforge:endregion plan-02-sidecar-resume-option ---
 
 interface ResumeEligibilityIdentity {
   prdId: string;

@@ -3,6 +3,7 @@ import type {
   RecoverySidecarReport,
   RecoveryVerdictSidecar,
 } from '@eforge-build/client';
+import type { RecoverySidecarRecoveryOption, RecoverySidecarResumeEligibility, RecoverySidecarResumeEvidence } from './resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { boundList, truncateMiddleText, truncateText } from './text-bounds.js';
 
@@ -20,12 +21,17 @@ export interface BuildRecoverySidecarPayloadOptions {
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
   generatedAt?: string;
+  // --- eforge:region plan-02-sidecar-resume-option ---
+  resumeEligibility?: RecoverySidecarResumeEligibility;
+  recoveryOptions?: RecoverySidecarRecoveryOption[];
+  // --- eforge:endregion plan-02-sidecar-resume-option ---
 }
 
-export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayloadOptions): RecoveryVerdictSidecar {
+export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayloadOptions): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const boundedEvidence = buildBoundedEvidence(options.summary);
-  const report = buildReport(options.summary, options.verdict, boundedEvidence);
+  const recoveryOptions = recoveryOptionsFor(options.resumeEligibility, options.recoveryOptions);
+  const report = buildReport(options.summary, options.verdict, boundedEvidence, options.resumeEligibility);
   return {
     schemaVersion: SCHEMA_VERSION,
     generatedAt,
@@ -34,6 +40,8 @@ export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayload
     verdict: options.verdict,
     report,
     boundedEvidence,
+    ...(options.resumeEligibility !== undefined ? { resumeEligibility: options.resumeEligibility } : {}),
+    ...(recoveryOptions !== undefined ? { recoveryOptions } : {}),
   };
 }
 
@@ -41,11 +49,12 @@ function buildReport(
   summary: BuildFailureSummary,
   verdict: RecoveryVerdict,
   evidence: RecoverySidecarBoundedEvidence,
+  resumeEligibility?: RecoverySidecarResumeEligibility,
 ): RecoverySidecarReport {
   const rootFailure = compactRootFailure(summary);
   return {
     operatorSummary: truncateText(verdict.rationale, BULLET_CHARS * 2, 'operator summary').text,
-    recommendedAction: recommendedAction(verdict),
+    recommendedAction: resumeEligibility?.eligible === true ? compiledResumeRecommendedAction(verdict) : recommendedAction(verdict),
     ...(rootFailure ? { rootFailure } : {}),
     keyEvidence: keyEvidence(summary, evidence),
     completedWork: boundedStrings(verdict.completedWork, 'completed work'),
@@ -168,6 +177,26 @@ function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoun
   if (evidence.evidenceOmissions?.length) lines.push(...evidence.evidenceOmissions.slice(0, 3));
   return lines.length > 0 ? lines : ['No detailed failure evidence was available; inspect the failed PRD and build logs manually.'];
 }
+
+// --- eforge:region plan-02-sidecar-resume-option ---
+function recoveryOptionsFor(
+  resumeEligibility: RecoverySidecarResumeEligibility | undefined,
+  recoveryOptions: RecoverySidecarRecoveryOption[] | undefined,
+): RecoverySidecarRecoveryOption[] | undefined {
+  if (recoveryOptions !== undefined) return recoveryOptions.length > 0 ? recoveryOptions : undefined;
+  if (resumeEligibility?.eligible !== true) return undefined;
+  return [{
+    kind: 'compiled-build-resume',
+    action: 'eforge_resume_build',
+    recommended: true,
+    reason: 'Compiled plan artifacts are eligible for scheduler-owned resume.',
+  }];
+}
+
+function compiledResumeRecommendedAction(verdict: RecoveryVerdict): string {
+  return `Recommended operator action: queue a compiled-build resume with eforge_resume_build (or /eforge:recover resume). The apply-recovery verdict remains ${verdict.verdict}; do not use eforge_apply_recovery for this resume action.`;
+}
+// --- eforge:endregion plan-02-sidecar-resume-option ---
 
 function recommendedAction(verdict: RecoveryVerdict): string {
   switch (verdict.verdict) {

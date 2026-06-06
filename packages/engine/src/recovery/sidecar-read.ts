@@ -2,10 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseWithSchema, type RecoveryVerdictSidecar } from '@eforge-build/client';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
+import type { RecoverySidecarRecoveryOption, RecoverySidecarResumeEligibility, RecoverySidecarResumeEvidence } from './resume-sidecar.js';
 import { recoveryVerdictSchema } from '../schemas.js';
 
 export interface RecoverySidecarProjection {
-  sidecar: RecoveryVerdictSidecar;
+  sidecar: RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence>;
   verdict: RecoveryVerdict;
   summary: BuildFailureSummary;
   identity: RecoveryVerdictSidecar['boundedEvidence']['identity'];
@@ -25,7 +26,7 @@ export async function tryReadRecoverySidecarProjection(failedDir: string, prdId:
   }
 }
 
-export function parseRecoverySidecarPayload(raw: string, prdId?: string): RecoveryVerdictSidecar {
+export function parseRecoverySidecarPayload(raw: string, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -99,7 +100,7 @@ export function projectBuildFailureSummary(sidecar: RecoveryVerdictSidecar): Bui
   };
 }
 
-function validateRecoverySidecarPayload(value: unknown, prdId?: string): RecoveryVerdictSidecar {
+function validateRecoverySidecarPayload(value: unknown, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
   const obj = requireRecord(value, `Recovery sidecar JSON is invalid${suffix(prdId)}`);
   if (obj.schemaVersion !== 3) throw new Error(`Recovery sidecar schemaVersion is invalid${suffix(prdId)}: expected 3`);
   const generatedAt = requireString(obj.generatedAt, 'generatedAt', prdId);
@@ -119,6 +120,10 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
     verdict,
     report,
     boundedEvidence,
+    // --- eforge:region plan-02-sidecar-resume-option ---
+    ...(obj.resumeEligibility !== undefined ? { resumeEligibility: validateResumeEligibility(obj.resumeEligibility, prdId) } : {}),
+    ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, prdId) } : {}),
+    // --- eforge:endregion plan-02-sidecar-resume-option ---
     ...(obj.applied !== undefined ? { applied: obj.applied as RecoveryVerdictSidecar['applied'] } : {}),
   };
 }
@@ -232,6 +237,54 @@ function validateLanding(value: unknown, prdId?: string): NonNullable<RecoveryVe
   };
 }
 
+// --- eforge:region plan-02-sidecar-resume-option ---
+function validateResumeEligibility(value: unknown, prdId?: string): RecoverySidecarResumeEligibility {
+  const obj = requireRecord(value, `Recovery sidecar resumeEligibility is invalid${suffix(prdId)}`);
+  const source = requireString(obj.source, 'resumeEligibility.source', prdId);
+  if (source !== 'projectResumeEligibility' && source !== 'inspection-error') throw new Error(`resumeEligibility.source is invalid${suffix(prdId)}`);
+  const eligible = requireBoolean(obj.eligible, 'resumeEligibility.eligible', prdId);
+  const featureBranch = requireString(obj.featureBranch, 'resumeEligibility.featureBranch', prdId);
+  if (eligible) {
+    const artifactAvailability = requireString(obj.artifactAvailability, 'resumeEligibility.artifactAvailability', prdId);
+    if (artifactAvailability !== 'merge-worktree' && artifactAvailability !== 'feature-branch' && artifactAvailability !== 'branch-history') throw new Error(`resumeEligibility.artifactAvailability is invalid${suffix(prdId)}`);
+    return {
+      source,
+      eligible: true,
+      featureBranch,
+      artifactAvailability,
+      ...(typeof obj.artifactCommit === 'string' ? { artifactCommit: obj.artifactCommit } : {}),
+      landedCommitCount: requireNumber(obj.landedCommitCount, 'resumeEligibility.landedCommitCount', prdId),
+      diffStat: requireStringAllowEmpty(obj.diffStat, 'resumeEligibility.diffStat', prdId),
+      ...(typeof obj.failingPlanId === 'string' ? { failingPlanId: obj.failingPlanId } : {}),
+      ...(typeof obj.partial === 'boolean' ? { partial: obj.partial } : {}),
+    };
+  }
+  return {
+    source,
+    eligible: false,
+    featureBranch,
+    reason: requireString(obj.reason, 'resumeEligibility.reason', prdId),
+    ...(typeof obj.checkedPath === 'string' ? { checkedPath: obj.checkedPath } : {}),
+  };
+}
+
+function validateRecoveryOptions(value: unknown, prdId?: string): RecoverySidecarRecoveryOption[] {
+  return requireArray(value, 'recoveryOptions', prdId).map((item) => {
+    const obj = requireRecord(item, `Recovery sidecar recoveryOptions item is invalid${suffix(prdId)}`);
+    const kind = requireString(obj.kind, 'recoveryOptions.kind', prdId);
+    const action = requireString(obj.action, 'recoveryOptions.action', prdId);
+    if (kind !== 'compiled-build-resume') throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
+    if (action !== 'eforge_resume_build') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
+    return {
+      kind,
+      action,
+      recommended: requireBoolean(obj.recommended, 'recoveryOptions.recommended', prdId),
+      reason: requireString(obj.reason, 'recoveryOptions.reason', prdId),
+    };
+  });
+}
+// --- eforge:endregion plan-02-sidecar-resume-option ---
+
 function validateOptionalStringRecord(value: unknown, label: string, keys: string[], prdId?: string): Record<string, string> {
   const obj = requireRecord(value, `${label} is invalid${suffix(prdId)}`);
   const out: Record<string, string> = {};
@@ -267,6 +320,11 @@ function requireStringArray(value: unknown, label: string, prdId?: string): stri
 
 function requireString(value: unknown, label: string, prdId?: string): string {
   if (typeof value !== 'string' || value.length === 0) throw new Error(`${label} is invalid${suffix(prdId)}`);
+  return value;
+}
+
+function requireStringAllowEmpty(value: unknown, label: string, prdId?: string): string {
+  if (typeof value !== 'string') throw new Error(`${label} is invalid${suffix(prdId)}`);
   return value;
 }
 

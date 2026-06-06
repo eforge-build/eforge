@@ -28,6 +28,7 @@ import { loadQueue, resolveQueueOrder, enqueuePrd, inferTitle, releasePrd, moveP
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
+import { projectRecoverySidecarResumeEvidence } from './recovery/resume-sidecar.js';
 import { finalizeFailedQueuedResumeSidecars } from './recovery/failed-resume-sidecar-finalization.js';
 import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd, checkSplitRecoveryIdempotency } from './recovery/apply.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
@@ -1256,8 +1257,18 @@ export class EforgeEngine {
             }
 
             // Move PRD to failed/ and write sidecar files (filesystem-only)
+            const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+              cwd,
+              setName,
+              prdId,
+              outputDir: config.plan.outputDir,
+              dbPath,
+              ...(config.build.trunkBranch !== undefined ? { trunkBranch: config.build.trunkBranch } : {}),
+              featureBranch: summary.featureBranch,
+              baseBranch: summary.baseBranch,
+            });
             try {
-              await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd);
+              await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd, resumeEvidence);
             } catch {
               // Fallback: plain move without sidecars
               try { await movePrdToSubdir(filePath, 'failed', cwd); } catch { /* best-effort */ }
@@ -1845,7 +1856,17 @@ export class EforgeEngine {
           recommendationSource: 'manual-fallback',
           recommendationRationale: 'PRD file not found; cannot perform automated recovery analysis.',
         };
-        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict });
+        const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+          cwd,
+          setName,
+          prdId,
+          outputDir: this.config.plan.outputDir,
+          dbPath,
+          ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
+          featureBranch: summary.featureBranch,
+          baseBranch: summary.baseBranch,
+        });
+        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, resumeEvidence });
         yield {
           timestamp: new Date().toISOString(),
           type: 'recovery:complete',
@@ -1923,11 +1944,22 @@ export class EforgeEngine {
       });
 
       // Write sidecar files
+      const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+        cwd,
+        setName,
+        prdId,
+        outputDir: this.config.plan.outputDir,
+        dbPath,
+        ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
+        featureBranch: summary.featureBranch,
+        baseBranch: summary.baseBranch,
+      });
       const { mdPath, jsonPath } = await writeRecoverySidecar({
         failedPrdDir: failedDir,
         prdId,
         summary,
         verdict,
+        resumeEvidence,
       });
 
       // Emit final recovery:complete with sidecar paths
@@ -1968,7 +2000,17 @@ export class EforgeEngine {
           recommendationSource: 'manual-fallback',
           recommendationRationale: 'Recovery process failed unexpectedly; cannot perform automated recovery analysis.',
         };
-        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict });
+        const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+          cwd,
+          setName,
+          prdId,
+          outputDir: this.config.plan.outputDir,
+          dbPath,
+          ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
+          featureBranch: summary.featureBranch,
+          baseBranch: summary.baseBranch,
+        });
+        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, resumeEvidence });
         yield {
           timestamp: new Date().toISOString(),
           type: 'recovery:complete',

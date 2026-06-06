@@ -23,6 +23,11 @@ export type {
   RecoverRequest,
   RecoverResponse,
   ReadSidecarRequest,
+  // --- eforge:region plan-02-sidecar-resume-option ---
+  RecoverySidecarResumeEligibilitySource,
+  RecoverySidecarResumeEligibility,
+  RecoverySidecarRecoveryOption,
+  // --- eforge:endregion plan-02-sidecar-resume-option ---
   RecoveryVerdictSidecar,
   RecoveryAppliedMetadata,
   ReadSidecarResponse,

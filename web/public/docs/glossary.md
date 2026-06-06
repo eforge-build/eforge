@@ -91,11 +91,11 @@ An optional PRD frontmatter number. Lower numbers run before higher numbers with
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, split, abandon, or require manual intervention.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, split, abandon, or require manual intervention, and may include read-only compiled-build resume eligibility plus a recommended `eforge_resume_build` option.
 
 ## Recovery verdict
 
-The outcome of a recovery sidecar analysis: `retry`, `split`, `abandon`, or `manual`. Applied via `/eforge:recover`, `eforge_apply_recovery`, or `eforge apply-recovery <prdId>`. See [Troubleshooting - Recover from a failed build](/docs/troubleshooting#recover-from-a-failed-build).
+The outcome of a recovery sidecar analysis: `retry`, `split`, `abandon`, or `manual`. Applied via `/eforge:recover`, `eforge_apply_recovery`, or `eforge apply-recovery <prdId>`. Compiled-build resume is not a verdict; sidecars may recommend it through a separate `eforge_resume_build` recovery option. See [Troubleshooting - Recover from a failed build](/docs/troubleshooting#recover-from-a-failed-build).
 
 ## Reviewer
 
