@@ -8,9 +8,7 @@ import { createSessionPlanSetRoutes } from './session-plan-sets.js';
 export const EXTENSION_CONTENT_ROUTE_KEYS = [
   'extensionList','extensionShow','extensionValidate',
   'extensionContributionManifest','extensionActionInvoke',
-  // --- eforge:region plan-05-monitor-frame-assets ---
   'extensionWorkstationFrame','extensionWorkstationAsset',
-  // --- eforge:endregion plan-05-monitor-frame-assets ---
   'extensionNew','extensionReload','extensionTest','extensionTrust','extensionUntrust','extensionInstall','extensionUpdate','extensionRemove','extensionPromote','extensionDemote',
   'playbookList','playbookShow','playbookSave','playbookRun','playbookPromote','playbookDemote','playbookValidate','playbookCopy','sessionPlanCreateFromPlaybook',
   'sessionPlanList','sessionPlanShow','sessionPlanCreate','sessionPlanSetSection','sessionPlanSkipDimension','sessionPlanSetStatus','sessionPlanSelectDimensions','sessionPlanReadiness','sessionPlanMigrateLegacy',

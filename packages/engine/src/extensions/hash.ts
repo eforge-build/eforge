@@ -74,7 +74,6 @@ async function collectManifest(root: string, dir: string, underWorkstationAssets
     if (info.isSymbolicLink()) {
       throw new Error(`Extension directory contains unsupported symbolic link: ${normalizeManifestPath(root, fullPath)}`);
     }
-    // --- eforge:region plan-04-engine-registration-manifest-trust ---
     const childUnderWorkstationAssets = underWorkstationAssets || (dir === root && item === WORKSTATION_ASSETS_DIR);
     if (info.isDirectory()) {
       if (!childUnderWorkstationAssets && EXCLUDED_DIRS.has(item)) continue;
@@ -89,7 +88,6 @@ async function collectManifest(root: string, dir: string, underWorkstationAssets
       const content = await readFile(fullPath);
       entries.push([relativePath, content]);
     }
-    // --- eforge:endregion plan-04-engine-registration-manifest-trust ---
   }
   return entries;
 }

@@ -79,7 +79,6 @@ export interface ConsoleContribution {
   blocks: ConsoleContributionBlock[];
 }
 
-// --- eforge:region plan-03-extension-sdk-api ---
 export interface ConsoleWorkstationBase {
   id: string;
   title: string;
@@ -107,7 +106,6 @@ export interface ConsoleWorkstationFrameBundleWorkstation extends ConsoleWorksta
 }
 
 export type ConsoleWorkstation = ConsoleWorkstationSrcDoc | ConsoleWorkstationFrameBundleWorkstation;
-// --- eforge:endregion plan-03-extension-sdk-api ---
 
 export interface IntegrationCommand<TInput extends TObject | undefined = TObject | undefined> {
   id: string;
@@ -136,11 +134,9 @@ export function defineConsoleContribution(contribution: ConsoleContribution): Co
   return contribution;
 }
 
-// --- eforge:region plan-03-extension-sdk-api ---
 export function defineConsoleWorkstation<TWorkstation extends ConsoleWorkstation>(workstation: TWorkstation): TWorkstation {
   return workstation;
 }
-// --- eforge:endregion plan-03-extension-sdk-api ---
 
 export function defineIntegrationCommand<TInput extends TObject | undefined = TObject | undefined>(
   command: IntegrationCommand<TInput>,

@@ -91,12 +91,10 @@ export function validateConsoleWorkstationSpec(value: unknown): RegistrationVali
   const hasFrameBundle = value.frameBundle !== undefined;
   if (hasSrcDoc === hasFrameBundle) return fail(id, 'registerConsoleWorkstation requires exactly one of srcDoc or frameBundle');
   if (hasSrcDoc && !isNonBlankString(value.srcDoc)) return fail(id, 'registerConsoleWorkstation srcDoc must be a non-empty string');
-  // --- eforge:region plan-04-engine-registration-manifest-trust ---
   if (hasFrameBundle) {
     const frameBundleResult = validateWorkstationFrameBundleSource(value.frameBundle);
     if (!frameBundleResult.ok) return fail(id, `registerConsoleWorkstation ${frameBundleResult.message}`);
   }
-  // --- eforge:endregion plan-04-engine-registration-manifest-trust ---
   if (value.allowedActions !== undefined) {
     if (!Array.isArray(value.allowedActions)) return fail(id, 'registerConsoleWorkstation allowedActions must be an array of local action ids');
     if (!value.allowedActions.every((actionId) => isValidExtensionLocalContributionId(actionId))) return fail(id, 'registerConsoleWorkstation allowedActions must contain only local action ids matching ^[a-z][a-z0-9-]{0,63}$');

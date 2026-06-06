@@ -98,13 +98,11 @@ export type ConsoleContributionBlockSpec =
   | { rendererId: 'action-button'; title?: string; content: string; action: ExtensionActionBindingSpec }
   | { rendererId: 'action-form'; title?: string; content: string; action: ExtensionActionBindingSpec };
 export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[] }
-// --- eforge:region plan-04-engine-registration-manifest-trust ---
 export interface ConsoleWorkstationBaseSpec { id: string; title: string; description?: string; allowedActions?: string[] }
 export interface ConsoleWorkstationFrameBundleSpec { root: string; entrypoint: string; styles?: string[]; assets?: string[]; browserSdkVersion?: 1 }
 export interface ConsoleWorkstationSrcDocSpec extends ConsoleWorkstationBaseSpec { srcDoc: string; frameBundle?: never }
 export interface ConsoleWorkstationFrameBundleWorkstationSpec extends ConsoleWorkstationBaseSpec { srcDoc?: never; frameBundle: ConsoleWorkstationFrameBundleSpec }
 export type ConsoleWorkstationSpec = ConsoleWorkstationSrcDocSpec | ConsoleWorkstationFrameBundleWorkstationSpec;
-// --- eforge:endregion plan-04-engine-registration-manifest-trust ---
 export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; action: ExtensionActionBindingSpec }
 export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; action?: ExtensionActionBindingSpec }
 

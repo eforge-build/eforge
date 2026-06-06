@@ -83,11 +83,9 @@ export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegi
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
     allowedActions: projectAllowedActions(reg, registry),
   };
-  // --- eforge:region plan-04-engine-registration-manifest-trust ---
   if (reg.value.frameBundle !== undefined) {
     return omitUndefined({ ...base, frameBundle: buildConsoleWorkstationFrameBundleManifest(reg) }) as ConsoleWorkstationManifestEntry;
   }
-  // --- eforge:endregion plan-04-engine-registration-manifest-trust ---
   return omitUndefined({ ...base, srcDoc: reg.value.srcDoc }) as ConsoleWorkstationManifestEntry;
 }
 
@@ -153,7 +151,6 @@ function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string
   return omitUndefined(jsonSafeClone(base)) as ConsoleContributionBlock;
 }
 
-// --- eforge:region plan-04-engine-registration-manifest-trust ---
 function collectConsoleWorkstationManifestEntries(registry: NativeExtensionRegistry, diagnostics: NativeExtensionDiagnostic[]): ConsoleWorkstationManifestEntry[] {
   return registry.consoleWorkstations.flatMap((reg) => {
     try {
@@ -174,7 +171,6 @@ function collectConsoleWorkstationManifestEntries(registry: NativeExtensionRegis
     }
   });
 }
-// --- eforge:endregion plan-04-engine-registration-manifest-trust ---
 
 function projectAllowedActions(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): string[] {
   const localActionIds = reg.value.allowedActions ?? registry.actions.filter((action) => belongsTo(action, reg.extensionName, reg.extensionPath)).map((action) => action.localId);

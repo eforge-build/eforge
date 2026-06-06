@@ -135,7 +135,6 @@ export type {
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
 export { EXTENSION_LOCAL_CONTRIBUTION_ID_RE, isValidExtensionLocalContributionId, resolveExtensionContributionId } from './ids.js';
-// --- eforge:region plan-04-engine-registration-manifest-trust ---
 export {
   WORKSTATION_ASSETS_DIR,
   normalizeWorkstationBundleRoot,
@@ -153,7 +152,6 @@ export type {
   ConsoleWorkstationBundleAssetLookupResult,
   ConsoleWorkstationCatalogAsset,
 } from './workstation-assets.js';
-// --- eforge:endregion plan-04-engine-registration-manifest-trust ---
 export {
   buildExtensionContributionManifest,
   buildActionDetails,
