@@ -1,0 +1,118 @@
+name: reduce-complexity-in-top-eforge-hotspots
+description: Reduce cognitive complexity in the three top eforge hotspots while
+  preserving CLI/Pi output and queued PRD build semantics.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+  - pnpm complexity:scan
+plans:
+  - id: plan-01-cli-event-renderer
+    name: Decompose CLI Event Rendering
+    depends_on: []
+    branch: reduce-complexity-in-top-eforge-hotspots/plan-01-cli-event-renderer
+    build:
+      - implement
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The target is a large, user-facing switch in an oversized file;
+          implementation requires careful text-preserving helper extraction.
+      reviewer:
+        effort: high
+        rationale: Review must compare moved renderer branches against the original
+          output text and fallback behavior.
+  - id: plan-02-pi-status-renderer
+    name: Decompose Pi Status Tool Rendering
+    depends_on: []
+    branch: reduce-complexity-in-top-eforge-hotspots/plan-02-pi-status-renderer
+    build:
+      - implement
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The target is a dense user-facing renderer inside an oversized
+          extension entrypoint; output text, icons, colors, and fallback
+          behavior must be preserved.
+      reviewer:
+        effort: high
+        rationale: Review must verify the status render text semantics and
+          daemon-not-running/version metadata behavior remain unchanged.
+  - id: plan-03-engine-build-single-prd
+    name: Extract Queued PRD Build Phases
+    depends_on: []
+    branch: reduce-complexity-in-top-eforge-hotspots/plan-03-engine-build-single-prd
+    build:
+      - implement
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: This is a high-risk async-generator refactor with strict event
+          ordering, session-id, queue, resume, recovery, stack, and trunk-sync
+          semantics.
+      reviewer:
+        effort: high
+        rationale: Review must trace success, failure, skip, stale, compiled-resume,
+          recovery-continuation, stack, and trunk-sync event sequences.
+      tester:
+        effort: high
+        rationale: The targeted tests cover queue/session/resume/recovery invariants
+          that can regress during helper extraction.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a multi-file behavior-preserving refactor across engine, CLI,
+    and Pi integration code, but a single planner can enumerate the mechanical
+    helper extractions and dependencies, so excursion is appropriate rather than
+    expedition. A plan-review cycle reduces risk before build. The build runs
+    implementation, the registered maintainability validation gate, iterative
+    code review, and final test execution because the PRD emphasizes complexity
+    limits, event ordering, public API stability, and existing regression tests.
+    Review uses code and API perspectives to catch refactor regressions and
+    accidental contract/schema/output drift, with strict evaluation due the risk
+    around queue/session behavior.
+diff_base_ref: 6ca743b777565f55177f13637c6e2ae0b1d25a1e
