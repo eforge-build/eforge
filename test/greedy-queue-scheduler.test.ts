@@ -235,10 +235,14 @@ describe('discoverNewPrds in runQueue', () => {
 // ---------------------------------------------------------------------------
 
 describe('git reset --hard removal verification', () => {
-  it('eforge.ts does not contain git reset --hard in queue methods', async () => {
+  it('engine queue sources do not contain git reset --hard in queue methods', async () => {
     const { readFileSync } = await import('node:fs');
     const eforgeSrc = readFileSync(
       join(import.meta.dirname, '..', 'packages', 'engine', 'src', 'eforge.ts'),
+      'utf-8',
+    );
+    const queuedPrdHelperSrc = readFileSync(
+      join(import.meta.dirname, '..', 'packages', 'engine', 'src', 'queue', 'build-single-prd.ts'),
       'utf-8',
     );
 
@@ -248,12 +252,12 @@ describe('git reset --hard removal verification', () => {
     expect(runQueueStart).toBeGreaterThan(-1);
     expect(buildSinglePrdStart).toBeGreaterThan(-1);
 
-    // Check the entire file for git reset --hard (it should not appear at all in queue-related code)
-    // The compile method has its own worktree handling, so we check from buildSinglePrd onwards
-    const queueCode = eforgeSrc.slice(buildSinglePrdStart);
-    expect(queueCode).not.toContain('git reset --hard');
-    expect(queueCode).not.toContain("reset', '--hard'");
-    expect(queueCode).not.toContain("reset','--hard'");
+    const queueSources = [eforgeSrc.slice(buildSinglePrdStart), queuedPrdHelperSrc];
+    for (const queueCode of queueSources) {
+      expect(queueCode).not.toContain('git reset --hard');
+      expect(queueCode).not.toContain("reset', '--hard'");
+      expect(queueCode).not.toContain("reset','--hard'");
+    }
   });
 });
 

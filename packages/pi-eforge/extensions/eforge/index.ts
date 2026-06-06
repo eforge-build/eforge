@@ -197,6 +197,189 @@ async function stopDaemon(
   };
 }
 
+// --- eforge:region status-rendering ---
+type StatusToolPayload = {
+  status?: string;
+  message?: string;
+  builds?: StatusBuild[];
+  daemonVersion?: string;
+  piExtensionVersion?: string;
+  versionMismatch?: string;
+};
+
+type StatusBuild = {
+  sessionId: string;
+  runId: string;
+  command: string;
+  status: string;
+  runs?: StatusRun[];
+  plans?: StatusPlan[];
+  currentPhase?: string | null;
+  currentAgent?: string | null;
+  eventCounts?: { total: number; errors: number };
+  duration?: { startedAt: string | null; completedAt: string | null; seconds: number | null };
+};
+
+type StatusPlan = {
+  id: string;
+  status: string;
+  branch: string | null;
+  dependsOn: string[];
+};
+
+type StatusRun = {
+  id: string;
+  command: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+};
+
+type StatusTheme = {
+  fg(color: string, text: string): string;
+};
+
+type StatusStyle = {
+  icon: string;
+  color: string;
+};
+
+type StatusRenderResult = {
+  content: ReadonlyArray<{ type: string; text?: string }>;
+};
+
+const STATUS_STYLE_BY_STATUS: Record<string, StatusStyle> = {
+  completed: { icon: "✓", color: "success" },
+  running: { icon: "⟳", color: "warning" },
+  failed: { icon: "✗", color: "error" },
+};
+
+function statusStyle(status: string, unknownIcon: "?" | "○" = "?"): StatusStyle {
+  return STATUS_STYLE_BY_STATUS[status] ?? { icon: unknownIcon, color: "muted" };
+}
+
+function renderStatusPayload(data: StatusToolPayload, expanded: boolean, theme: StatusTheme): Text {
+  if (data.status === "idle") {
+    return new Text(theme.fg("muted", "⊘ No active sessions"), 0, 0);
+  }
+
+  const builds = data.builds ?? [];
+  if (builds.length === 0) {
+    return new Text(theme.fg("muted", "⊘ No active sessions"), 0, 0);
+  }
+
+  const lines = builds.length === 1
+    ? renderSingleBuildStatus(builds[0], expanded, theme)
+    : renderMultiBuildStatus(builds, theme);
+  return new Text(lines.join("\n"), 0, 0);
+}
+
+function renderSingleBuildStatus(build: StatusBuild, expanded: boolean, theme: StatusTheme): string[] {
+  const lines: string[] = [];
+  const { icon, color } = statusStyle(build.status);
+  let header = theme.fg(color, `${icon} ${build.status}`);
+  if (build.duration?.seconds != null) {
+    header += theme.fg("dim", `  ${formatDuration(build.duration.seconds)}`);
+  }
+  lines.push(header);
+
+  if (build.status === "running") {
+    appendActivityLine(lines, build, theme, { color: "accent", indent: "  ", marker: "▸" });
+  }
+
+  if (appendPlansProgress(lines, build.plans, theme, "  ")) {
+    appendPlanRows(lines, build.plans ?? [], theme);
+  }
+
+  appendEventCounts(lines, build, theme);
+  appendExpandedRuns(lines, build, expanded, theme);
+  return lines;
+}
+
+function renderMultiBuildStatus(builds: StatusBuild[], theme: StatusTheme): string[] {
+  const lines: string[] = [theme.fg("warning", `⟳ ${builds.length} builds running`)];
+  for (const build of builds) {
+    lines.push("");
+    lines.push(theme.fg("accent", `  ▸ ${build.command}`));
+    lines.push(theme.fg("dim", `    ${build.sessionId}`));
+    appendActivityLine(lines, build, theme, { color: "dim", indent: "    " });
+    appendPlansProgress(lines, build.plans, theme, "    ");
+    if (build.eventCounts && build.eventCounts.errors > 0) {
+      lines.push(theme.fg("error", `    ${build.eventCounts.errors} errors`));
+    }
+  }
+  return lines;
+}
+
+function appendActivityLine(
+  lines: string[],
+  build: Pick<StatusBuild, "currentPhase" | "currentAgent">,
+  theme: StatusTheme,
+  options: { color: string; indent: string; marker?: string },
+): void {
+  const parts: string[] = [];
+  if (build.currentPhase) parts.push(build.currentPhase);
+  if (build.currentAgent) parts.push(build.currentAgent);
+  if (parts.length === 0) return;
+
+  const prefix = options.marker ? `${options.indent}${options.marker} ` : options.indent;
+  lines.push(theme.fg(options.color, `${prefix}${parts.join(" › ")}`));
+}
+
+function appendPlansProgress(
+  lines: string[],
+  plans: StatusPlan[] | undefined,
+  theme: StatusTheme,
+  indent: string,
+): boolean {
+  if (!plans || plans.length === 0) return false;
+
+  const complete = plans.filter((plan) => plan.status === "completed").length;
+  lines.push(theme.fg("dim", `${indent}${complete}/${plans.length} plans`));
+  return true;
+}
+
+function appendPlanRows(lines: string[], plans: StatusPlan[], theme: StatusTheme): void {
+  lines.push("");
+  for (const plan of plans) {
+    const { icon, color } = statusStyle(plan.status, "○");
+    lines.push(`  ${theme.fg(color, icon)} ${theme.fg("text", plan.id)}`);
+  }
+}
+
+function appendEventCounts(lines: string[], build: Pick<StatusBuild, "eventCounts">, theme: StatusTheme): void {
+  if (!build.eventCounts) return;
+
+  lines.push("");
+  let countsStr = theme.fg("dim", `${build.eventCounts.total} events`);
+  if (build.eventCounts.errors > 0) {
+    countsStr += theme.fg("error", ` · ${build.eventCounts.errors} errors`);
+  } else {
+    countsStr += theme.fg("dim", " · 0 errors");
+  }
+  lines.push(`  ${countsStr}`);
+}
+
+function appendExpandedRuns(lines: string[], build: Pick<StatusBuild, "runs">, expanded: boolean, theme: StatusTheme): void {
+  if (!expanded || !build.runs || build.runs.length === 0) return;
+
+  lines.push("");
+  lines.push(theme.fg("muted", "  Runs:"));
+  for (const run of build.runs) {
+    const { icon, color } = statusStyle(run.status, "○");
+    lines.push(`    ${theme.fg(color, icon)} ${theme.fg("text", run.command)} ${theme.fg("dim", `(${run.status})`)}`);
+  }
+}
+
+function renderStatusParseFallback(result: StatusRenderResult, theme: StatusTheme): Text {
+  const text = result.content[0];
+  if (text?.type === "text") {
+    return new Text(theme.fg("muted", (text as { text: string }).text), 0, 0);
+  }
+  return new Text(theme.fg("muted", "Parse error"), 0, 0);
+}
+// --- eforge:endregion status-rendering ---
+
 // ---------------------------------------------------------------------------
 // .gitignore helper
 // ---------------------------------------------------------------------------
@@ -446,122 +629,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!text || text.type !== "text") {
           return new Text(theme.fg("muted", "No data"), 0, 0);
         }
-        const data = JSON.parse(text.text) as {
-          status?: string;
-          message?: string;
-          builds?: Array<{
-            sessionId: string;
-            runId: string;
-            command: string;
-            status: string;
-            runs?: Array<{ id: string; command: string; status: string; startedAt: string; completedAt: string | null }>;
-            plans?: Array<{ id: string; status: string; branch: string | null; dependsOn: string[] }>;
-            currentPhase?: string | null;
-            currentAgent?: string | null;
-            eventCounts?: { total: number; errors: number };
-            duration?: { startedAt: string | null; completedAt: string | null; seconds: number | null };
-          }>;
-        };
-
-        // Idle state
-        if (data.status === "idle") {
-          return new Text(theme.fg("muted", "⊘ No active sessions"), 0, 0);
-        }
-
-        const builds = data.builds ?? [];
-        if (builds.length === 0) {
-          return new Text(theme.fg("muted", "⊘ No active sessions"), 0, 0);
-        }
-
-        const lines: string[] = [];
-
-        if (builds.length === 1) {
-          // Single-build: use detailed rendering
-          const build = builds[0];
-          const statusIcon = build.status === "completed" ? "✓" : build.status === "running" ? "⟳" : build.status === "failed" ? "✗" : "?";
-          const statusColor = build.status === "completed" ? "success" : build.status === "running" ? "warning" : build.status === "failed" ? "error" : "muted";
-          let header = theme.fg(statusColor, `${statusIcon} ${build.status}`);
-          if (build.duration?.seconds != null) {
-            const timeStr = formatDuration(build.duration.seconds);
-            header += theme.fg("dim", `  ${timeStr}`);
-          }
-          lines.push(header);
-
-          if (build.status === "running") {
-            const parts: string[] = [];
-            if (build.currentPhase) parts.push(build.currentPhase);
-            if (build.currentAgent) parts.push(build.currentAgent);
-            if (parts.length > 0) {
-              lines.push(theme.fg("accent", `  ▸ ${parts.join(" › ")}`));
-            }
-          }
-
-          if (build.plans && build.plans.length > 0) {
-            const complete = build.plans.filter((p) => p.status === "completed").length;
-            lines.push(theme.fg("dim", `  ${complete}/${build.plans.length} plans`));
-            lines.push("");
-            for (const plan of build.plans) {
-              const pIcon = plan.status === "completed" ? "✓" : plan.status === "running" ? "⟳" : plan.status === "failed" ? "✗" : "○";
-              const pColor = plan.status === "completed" ? "success" : plan.status === "running" ? "warning" : plan.status === "failed" ? "error" : "muted";
-              lines.push(`  ${theme.fg(pColor, pIcon)} ${theme.fg("text", plan.id)}`);
-            }
-          }
-
-          if (build.eventCounts) {
-            lines.push("");
-            let countsStr = theme.fg("dim", `${build.eventCounts.total} events`);
-            if (build.eventCounts.errors > 0) {
-              countsStr += theme.fg("error", ` · ${build.eventCounts.errors} errors`);
-            } else {
-              countsStr += theme.fg("dim", " · 0 errors");
-            }
-            lines.push(`  ${countsStr}`);
-          }
-
-          if (expanded && build.runs && build.runs.length > 0) {
-            lines.push("");
-            lines.push(theme.fg("muted", "  Runs:"));
-            for (const run of build.runs) {
-              const rIcon = run.status === "completed" ? "✓" : run.status === "running" ? "⟳" : run.status === "failed" ? "✗" : "○";
-              const rColor = run.status === "completed" ? "success" : run.status === "running" ? "warning" : run.status === "failed" ? "error" : "muted";
-              lines.push(`    ${theme.fg(rColor, rIcon)} ${theme.fg("text", run.command)} ${theme.fg("dim", `(${run.status})`)}`);
-            }
-          }
-        } else {
-          // Multi-build: one section per build
-          lines.push(theme.fg("warning", `⟳ ${builds.length} builds running`));
-          for (const build of builds) {
-            lines.push("");
-            // Header: command
-            lines.push(theme.fg("accent", `  ▸ ${build.command}`));
-            lines.push(theme.fg("dim", `    ${build.sessionId}`));
-
-            // Activity
-            const activity: string[] = [];
-            if (build.currentPhase) activity.push(build.currentPhase);
-            if (build.currentAgent) activity.push(build.currentAgent);
-            if (activity.length > 0) {
-              lines.push(theme.fg("dim", `    ${activity.join(" › ")}`));
-            }
-
-            // Plans progress
-            if (build.plans && build.plans.length > 0) {
-              const complete = build.plans.filter((p) => p.status === "completed").length;
-              lines.push(theme.fg("dim", `    ${complete}/${build.plans.length} plans`));
-            }
-
-            // Error count
-            if (build.eventCounts && build.eventCounts.errors > 0) {
-              lines.push(theme.fg("error", `    ${build.eventCounts.errors} errors`));
-            }
-          }
-        }
-
-        return new Text(lines.join("\n"), 0, 0);
+        return renderStatusPayload(JSON.parse(text.text) as StatusToolPayload, expanded, theme);
       } catch {
-        // Fallback to raw JSON on parse error
-        const text = result.content[0];
-        return new Text(theme.fg("muted", text?.type === "text" ? text.text : "Parse error"), 0, 0);
+        return renderStatusParseFallback(result, theme);
       }
     },
   });
