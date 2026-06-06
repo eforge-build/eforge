@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 import { QueueStacks } from '../queue-stack-card';
 import type { NowQueueStack } from '@/lib/selectors/now';
@@ -107,4 +107,52 @@ describe('QueueStacks - row actions', () => {
     expect(screen.queryByRole('button', { name: 'Set priority' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
+
+  // --- eforge:region plan-03-console-override-control ---
+  it('renders Override dependency for waiting stack rows with dependencies', () => {
+    render(<QueueStacks stacks={[makeStack()]} onOverrideDependency={vi.fn()} />);
+    expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
+  });
+
+  it('renders Override dependency for pending stack rows with dependencies', () => {
+    const base = makeStack();
+    const stack: NowQueueStack = {
+      ...base,
+      items: base.items.map((item) =>
+        item.id === 'api' ? { ...item, status: 'pending' } : item,
+      ),
+    };
+    render(<QueueStacks stacks={[stack]} onOverrideDependency={vi.fn()} />);
+    expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
+  });
+
+  it('does not render Override dependency for running stack rows even with dependencies', () => {
+    const base = makeStack();
+    const stack: NowQueueStack = {
+      ...base,
+      items: base.items.map((item) =>
+        item.id === 'base' ? { ...item, dependsOn: ['root'] } : item,
+      ),
+    };
+    render(<QueueStacks stacks={[stack]} onOverrideDependency={vi.fn()} />);
+
+    expect(screen.queryByLabelText('Dependency to override for Base Build')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
+  });
+
+  it('confirms Override dependency for the selected stack row dependency', () => {
+    const onOverrideDependency = vi.fn();
+    render(<QueueStacks stacks={[makeStack()]} onOverrideDependency={onOverrideDependency} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Override dependency' })[1]);
+    const dialog = screen.getByRole('alertdialog');
+    fireEvent.change(within(dialog).getByLabelText('Reason for overriding Handoff Build'), {
+      target: { value: 'handoff approved' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Override dependency' }));
+
+    expect(onOverrideDependency).toHaveBeenCalledTimes(1);
+    expect(onOverrideDependency).toHaveBeenCalledWith('handoff', 'api', 'handoff approved');
+  });
+  // --- eforge:endregion plan-03-console-override-control ---
 });

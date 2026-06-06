@@ -17,7 +17,7 @@ import { selectNowSpendPanel } from '@/lib/selectors/spend';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
 import { toConsolePath } from '@/lib/navigation';
-import { removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
+import { overrideQueueDependency, removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
 
 // ---------------------------------------------------------------------------
 // Attention partitioning
@@ -112,6 +112,15 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     },
     [refreshQueue],
   );
+  // --- eforge:region plan-03-console-override-control ---
+  const handleQueueDependencyOverride = React.useCallback(
+    async (id: string, dependencyId: string, reason?: string) => {
+      await overrideQueueDependency(id, { dependencyId, reason });
+      await refreshQueue?.();
+    },
+    [refreshQueue],
+  );
+  // --- eforge:endregion plan-03-console-override-control ---
 
   return (
     <div data-testid="now-dashboard" className="mx-auto w-full max-w-[1600px] space-y-4">
@@ -155,13 +164,16 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
               the queue, shown as the Intake lane inside the card rather than as
               a full-width peer of active builds. The at-a-glance Intake/Queued/
               Active counts live in the global header (PipelineChips). */}
+          {/* --- eforge:region plan-03-console-override-control --- */}
           <QueueCard
             stacks={model.queueStacks}
             summary={model.queue}
             enqueueCards={model.enqueueCards}
             onSetPriority={handleQueuePriority}
             onRemove={handleQueueRemove}
+            onOverrideDependency={handleQueueDependencyOverride}
           />
+          {/* --- eforge:endregion plan-03-console-override-control --- */}
         </div>
 
         {/* RAIL — glanceable reference widgets. Build history (one row per

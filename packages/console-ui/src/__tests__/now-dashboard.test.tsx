@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { API_ROUTES } from '@eforge-build/client/browser';
+import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
 import type { ExtensionEntry } from '@eforge-build/client/browser';
 import { NowDashboard } from '@/views/now-dashboard';
 import type { UseActiveSessionStreamsResult } from '@/hooks/use-active-session-streams';
@@ -307,6 +307,118 @@ describe('NowDashboard', () => {
       await screen.findByText(/Queue removal request failed/);
       expect(refreshQueue).not.toHaveBeenCalled();
     });
+
+    // --- eforge:region plan-03-console-override-control ---
+    function dependencyState() {
+      return connectedState({
+        queue: [makeQueue({ id: 'q-blocked', title: 'Blocked Build', status: 'waiting', dependsOn: ['dep-a', 'dep-b'] })],
+      });
+    }
+
+    it('refreshes the queue only after the dependency override helper resolves', async () => {
+      const originalFetch = globalThis.fetch;
+      const overridePath = buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'q-blocked' });
+      let resolveOverride!: (response: Response) => void;
+      const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.startsWith(API_ROUTES.extensionList)) {
+          return Promise.resolve(jsonResponse(extListBody([])));
+        }
+        if (url === overridePath && init?.method === 'POST') {
+          return new Promise<Response>((resolve) => {
+            resolveOverride = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse({}, false, 500, 'Error'));
+      });
+      globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+      const refreshQueue = vi.fn().mockResolvedValue(undefined);
+
+      try {
+        render(
+          <NowDashboard
+            projectState={dependencyState()}
+            activeSessions={emptyActiveSessions}
+            refreshQueue={refreshQueue}
+          />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Override dependency' }));
+        const dialog = screen.getByRole('alertdialog');
+        fireEvent.change(within(dialog).getByLabelText('Dependency to override for Blocked Build'), {
+          target: { value: 'dep-b' },
+        });
+        fireEvent.change(within(dialog).getByLabelText('Reason for overriding Blocked Build'), {
+          target: { value: 'manual override' },
+        });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Override dependency' }));
+
+        await waitFor(() => {
+          const post = fetchMock.mock.calls.find(
+            ([url, init]) => url === overridePath && init?.method === 'POST',
+          );
+          expect(post).toBeDefined();
+          expect(JSON.parse((post![1] as RequestInit).body as string)).toEqual({
+            dependencyId: 'dep-b',
+            reason: 'manual override',
+          });
+        });
+        expect(refreshQueue).not.toHaveBeenCalled();
+
+        resolveOverride(jsonResponse({
+          id: 'q-blocked',
+          previousStatus: 'waiting',
+          currentStatus: 'pending',
+          removedDependency: 'dep-b',
+          previousDependsOn: ['dep-a', 'dep-b'],
+          currentDependsOn: ['dep-a'],
+          movedToQueueRoot: false,
+        }));
+
+        await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('shows row error text and does not refresh the queue when dependency override fails', async () => {
+      const originalFetch = globalThis.fetch;
+      const overridePath = buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'q-blocked' });
+      globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.startsWith(API_ROUTES.extensionList)) {
+          return Promise.resolve(jsonResponse(extListBody([])));
+        }
+        if (url === overridePath && init?.method === 'POST') {
+          return Promise.resolve({ ok: false, status: 409, text: () => Promise.resolve('dependency locked') } as Response);
+        }
+        return Promise.resolve(jsonResponse({}, false, 500, 'Error'));
+      }) as typeof globalThis.fetch;
+      const refreshQueue = vi.fn().mockResolvedValue(undefined);
+
+      try {
+        render(
+          <NowDashboard
+            projectState={dependencyState()}
+            activeSessions={emptyActiveSessions}
+            refreshQueue={refreshQueue}
+          />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Override dependency' }));
+        const dialog = screen.getByRole('alertdialog');
+        fireEvent.change(within(dialog).getByLabelText('Dependency to override for Blocked Build'), {
+          target: { value: 'dep-a' },
+        });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Override dependency' }));
+
+        await screen.findByText(/Queue dependency override request failed \(409\): dependency locked/);
+        expect(refreshQueue).not.toHaveBeenCalled();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+    // --- eforge:endregion plan-03-console-override-control ---
   });
 
   it('escalates a conflict stack sync into the Now alert strip with a retry control', () => {

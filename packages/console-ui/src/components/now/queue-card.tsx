@@ -61,6 +61,9 @@ function LooseQueueRow({
   item,
   onSetPriority,
   onRemove,
+  // --- eforge:region plan-03-console-override-control ---
+  onOverrideDependency,
+  // --- eforge:endregion plan-03-console-override-control ---
 }: { item: NowQueueItem } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   // Only forward queue work (pending/waiting) is mutable from Console; running
@@ -80,13 +83,19 @@ function LooseQueueRow({
           <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
         )}
         {showActions && (
-          <QueueRowActions
-            itemId={item.id}
-            itemTitle={item.title}
-            initialPriority={item.priority}
-            onSetPriority={onSetPriority}
-            onRemove={onRemove}
-          />
+          <>
+            {/* --- eforge:region plan-03-console-override-control --- */}
+            <QueueRowActions
+              itemId={item.id}
+              itemTitle={item.title}
+              initialPriority={item.priority}
+              onSetPriority={onSetPriority}
+              onRemove={onRemove}
+              dependencyIds={item.dependsOn ?? []}
+              onOverrideDependency={onOverrideDependency}
+            />
+            {/* --- eforge:endregion plan-03-console-override-control --- */}
+          </>
         )}
       </div>
     </li>
@@ -99,6 +108,9 @@ export function QueueCard({
   enqueueCards = [],
   onSetPriority,
   onRemove,
+  // --- eforge:region plan-03-console-override-control ---
+  onOverrideDependency,
+  // --- eforge:endregion plan-03-console-override-control ---
 }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
 
@@ -148,7 +160,14 @@ export function QueueCard({
 
         {hasStacks && (
           <div className={hasIntake ? 'border-t pt-3' : undefined}>
-            <QueueStacks stacks={stacks} onSetPriority={onSetPriority} onRemove={onRemove} />
+            {/* --- eforge:region plan-03-console-override-control --- */}
+            <QueueStacks
+              stacks={stacks}
+              onSetPriority={onSetPriority}
+              onRemove={onRemove}
+              onOverrideDependency={onOverrideDependency}
+            />
+            {/* --- eforge:endregion plan-03-console-override-control --- */}
           </div>
         )}
 
@@ -171,6 +190,7 @@ export function QueueCard({
                   item={item}
                   onSetPriority={onSetPriority}
                   onRemove={onRemove}
+                  onOverrideDependency={onOverrideDependency}
                 />
               ))}
             </ul>

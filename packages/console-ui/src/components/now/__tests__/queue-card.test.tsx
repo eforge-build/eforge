@@ -226,6 +226,61 @@ describe('QueueCard - loose row actions', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 
+  // --- eforge:region plan-03-console-override-control ---
+  it('renders Override dependency for blocked pending loose rows when callback is supplied', () => {
+    const summary = makeSummary({
+      total: 1,
+      pendingCount: 1,
+      withDependenciesCount: 1,
+      topItems: [
+        { id: 'q-1', title: 'Blocked Task', status: 'pending', priority: undefined, created: undefined, dependsOn: ['q-prev'], recoveryVerdict: undefined },
+      ],
+    });
+    const { container } = render(<QueueCard summary={summary} onOverrideDependency={vi.fn()} />);
+
+    expect(container.textContent).toContain('blocked by Q Prev');
+    expect(screen.getByRole('button', { name: 'Override dependency' })).toBeDefined();
+  });
+
+  it.each(['pending', 'waiting'] as const)('does not render Override dependency for dependency-free %s loose rows', (status) => {
+    render(<QueueCard summary={pendingSummary(status, 'Forward Task')} onOverrideDependency={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Override dependency' })).toBeNull();
+  });
+
+  it('confirms Override dependency with the selected dependency id and optional reason', () => {
+    const onOverrideDependency = vi.fn();
+    const summary = makeSummary({
+      total: 1,
+      waitingCount: 1,
+      withDependenciesCount: 1,
+      topItems: [
+        { id: 'q-1', title: 'Blocked Task', status: 'waiting', priority: undefined, created: undefined, dependsOn: ['dep-a', 'dep-b'], recoveryVerdict: undefined },
+      ],
+    });
+    render(<QueueCard summary={summary} onOverrideDependency={onOverrideDependency} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Override dependency' }));
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog.textContent).toContain('bypasses queue dependency ordering');
+    expect(dialog.textContent).toContain('pre-PR merge/reconciliation must handle overlap');
+    expect(onOverrideDependency).not.toHaveBeenCalled();
+    const dependencySelect = within(dialog).getByLabelText('Dependency to override for Blocked Task') as HTMLSelectElement;
+    const confirmButton = within(dialog).getByRole('button', { name: 'Override dependency' }) as HTMLButtonElement;
+    expect(dependencySelect.value).toBe('');
+    expect(confirmButton.disabled).toBe(true);
+    fireEvent.change(dependencySelect, {
+      target: { value: 'dep-b' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Reason for overriding Blocked Task'), {
+      target: { value: 'manual overlap review complete' },
+    });
+    fireEvent.click(confirmButton);
+
+    expect(onOverrideDependency).toHaveBeenCalledTimes(1);
+    expect(onOverrideDependency).toHaveBeenCalledWith('q-1', 'dep-b', 'manual overlap review complete');
+  });
+  // --- eforge:endregion plan-03-console-override-control ---
+
   it('disables the priority controls while the set-priority promise is pending, then re-enables', async () => {
     // Deferred callback so we can observe the pending window deterministically.
     let resolveSet!: () => void;

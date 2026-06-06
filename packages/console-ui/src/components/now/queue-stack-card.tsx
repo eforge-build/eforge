@@ -77,6 +77,9 @@ function QueueStackItemRow({
   isLast,
   onSetPriority,
   onRemove,
+  // --- eforge:region plan-03-console-override-control ---
+  onOverrideDependency,
+  // --- eforge:endregion plan-03-console-override-control ---
 }: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   if (status === 'running') {
@@ -103,20 +106,33 @@ function QueueStackItemRow({
         <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
         {showActions && (
-          <QueueRowActions
-            itemId={item.id}
-            itemTitle={item.title}
-            initialPriority={item.priority}
-            onSetPriority={onSetPriority}
-            onRemove={onRemove}
-          />
+          <>
+            {/* --- eforge:region plan-03-console-override-control --- */}
+            <QueueRowActions
+              itemId={item.id}
+              itemTitle={item.title}
+              initialPriority={item.priority}
+              onSetPriority={onSetPriority}
+              onRemove={onRemove}
+              dependencyIds={item.dependsOn}
+              onOverrideDependency={onOverrideDependency}
+            />
+            {/* --- eforge:endregion plan-03-console-override-control --- */}
+          </>
         )}
       </div>
     </li>
   );
 }
 
-export function QueueStacks({ stacks, onSetPriority, onRemove }: QueueStacksProps) {
+export function QueueStacks({
+  stacks,
+  onSetPriority,
+  onRemove,
+  // --- eforge:region plan-03-console-override-control ---
+  onOverrideDependency,
+  // --- eforge:endregion plan-03-console-override-control ---
+}: QueueStacksProps) {
   if (stacks.length === 0) return null;
 
   const totalPlans = stacks.reduce((sum, stack) => sum + stack.totalItems, 0);
@@ -154,6 +170,7 @@ export function QueueStacks({ stacks, onSetPriority, onRemove }: QueueStacksProp
                   isLast={itemIndex === stack.items.length - 1}
                   onSetPriority={onSetPriority}
                   onRemove={onRemove}
+                  onOverrideDependency={onOverrideDependency}
                 />
               ))}
             </ol>

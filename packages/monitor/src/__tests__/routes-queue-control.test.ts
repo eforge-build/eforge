@@ -66,11 +66,12 @@ describe('queue control routes', () => {
     expect((await harness.postJson(overridePath('prd-1'), { dependencyId: 'base', reason: 123 })).status).toBe(400);
   });
 
-  it('returns 404 for unknown ids on priority and removal', async () => {
+  it('returns 404 for unknown ids on priority, removal, and dependency override', async () => {
     harness = await startControlRouteHarness();
     await mkdir(join(harness.cwd, '.eforge', 'queue'), { recursive: true });
     expect((await harness.postJson(priorityPath('nope'), { priority: 1 })).status).toBe(404);
     expect((await del(harness.url, removePath('nope'))).status).toBe(404);
+    expect((await harness.postJson(overridePath('nope'), { dependencyId: 'base' })).status).toBe(404);
   });
 
   it('returns 409 for running priority, terminal priority, and dependency removal conflicts', async () => {
@@ -124,6 +125,16 @@ describe('queue control routes', () => {
   });
 
   // --- eforge:region plan-02-daemon-dependency-override ---
+  it('does not notify or audit failed dependency override attempts', async () => {
+    const reasons: string[] = [];
+    harness = await startControlRouteHarness({ serverOptions: { daemonState: recordingDaemonState(reasons), daemonSessionId: 'daemon-test' } });
+    await writePrd(harness.cwd, '', 'child', '\ndepends_on: [parent]');
+
+    expect((await harness.postJson(overridePath('child'), { dependencyId: 'missing' })).status).toBe(409);
+    expect(reasons).toEqual([]);
+    expect(harness.db.getDaemonEventsAfter(0).filter((row) => row.type === 'queue:prd:dependency-overridden')).toEqual([]);
+  });
+
   it('overrides dependencies, notifies once, moves waiting PRDs, and persists an audit event', async () => {
     const reasons: string[] = [];
     harness = await startControlRouteHarness({ serverOptions: { daemonState: recordingDaemonState(reasons), daemonSessionId: 'daemon-test' } });

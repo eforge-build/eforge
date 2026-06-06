@@ -50,7 +50,6 @@ export function createQueueControlRoutes(context: MonitorContext): RouteDefiniti
       if (reason !== undefined && typeof reason !== 'string') return sendJsonError(ctx.res, 400, 'Invalid reason: must be a string when provided');
       try {
         const result = await overrideQueuedPrdDependency({ cwd: context.cwd, queueDir: queueDir(context), prdId, dependencyId });
-        context.notifyQueueMutation('external');
         writeDaemonEvent(context.db, {
           type: 'queue:prd:dependency-overridden',
           prdId: result.id,
