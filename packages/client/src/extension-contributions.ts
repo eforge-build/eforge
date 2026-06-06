@@ -118,6 +118,20 @@ export const ConsoleContributionManifestEntrySchema = Type.Object({
   blocks: Type.Array(ConsoleContributionBlockSchema),
 }, { additionalProperties: false });
 
+// --- eforge:region plan-01-workstation-contract-runtime ---
+export const ConsoleWorkstationManifestEntrySchema = Type.Object({
+  id: Type.String(),
+  localId: Type.String(),
+  extensionName: Type.String(),
+  extensionPath: Type.String(),
+  title: Type.String(),
+  description: Type.Optional(Type.String()),
+  schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
+  srcDoc: Type.String(),
+  allowedActions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+// --- eforge:endregion plan-01-workstation-contract-runtime ---
+
 export const IntegrationCommandManifestEntrySchema = Type.Object({
   id: Type.String(),
   localId: Type.String(),
@@ -156,6 +170,9 @@ export const ExtensionContributionManifestResponseSchema = Type.Object({
   generatedAt: Type.String(),
   actions: Type.Array(ExtensionActionManifestEntrySchema),
   consoleContributions: Type.Array(ConsoleContributionManifestEntrySchema),
+  // --- eforge:region plan-01-workstation-contract-runtime ---
+  consoleWorkstations: Type.Array(ConsoleWorkstationManifestEntrySchema),
+  // --- eforge:endregion plan-01-workstation-contract-runtime ---
   integrationCommands: Type.Array(IntegrationCommandManifestEntrySchema),
   deepLinks: Type.Array(ExtensionDeepLinkManifestEntrySchema),
   diagnostics: Type.Optional(Type.Array(ExtensionContributionDiagnosticSchema)),
@@ -209,6 +226,9 @@ export type ConsoleContributionRendererId = Static<typeof ConsoleContributionRen
 export type ConsoleContributionBlock = Static<typeof ConsoleContributionBlockSchema>;
 export type ExtensionActionManifestEntry = Static<typeof ExtensionActionManifestEntrySchema>;
 export type ConsoleContributionManifestEntry = Static<typeof ConsoleContributionManifestEntrySchema>;
+// --- eforge:region plan-01-workstation-contract-runtime ---
+export type ConsoleWorkstationManifestEntry = Static<typeof ConsoleWorkstationManifestEntrySchema>;
+// --- eforge:endregion plan-01-workstation-contract-runtime ---
 export type IntegrationCommandManifestEntry = Static<typeof IntegrationCommandManifestEntrySchema>;
 export type ExtensionDeepLinkManifestEntry = Static<typeof ExtensionDeepLinkManifestEntrySchema>;
 export type ExtensionContributionDiagnostic = Static<typeof ExtensionContributionDiagnosticSchema>;

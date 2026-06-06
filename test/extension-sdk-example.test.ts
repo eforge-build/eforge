@@ -138,6 +138,12 @@ const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
     title: 'Hello panel',
     blocks: [{ rendererId: 'action-button', content: 'Say hi', action: { actionId: 'say-hi' } }],
   });
+  const workstation: sdk.ConsoleWorkstation = sdk.defineConsoleWorkstation({
+    id: 'hello-workstation',
+    title: 'Hello workstation',
+    srcDoc: '<h1>Hello</h1>',
+    allowedActions: ['say-hi'],
+  });
   const command: sdk.IntegrationCommand = sdk.defineIntegrationCommand({
     id: 'hello-command',
     label: 'Say hi',
@@ -153,6 +159,7 @@ const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
 
   api.registerAction(action);
   api.registerConsoleContribution(contribution);
+  api.registerConsoleWorkstation(workstation);
   api.registerIntegrationCommand(command);
   api.registerDeepLink(deepLink);
 };
@@ -537,6 +544,8 @@ type _TypeExports = [
   sdk.ConsoleContribution,
   sdk.ConsoleContributionBlock,
   sdk.ConsoleContributionRendererId,
+  sdk.ConsoleWorkstation,
+  sdk.EforgeConsoleBridge,
   sdk.IntegrationCommand,
   sdk.ExtensionDeepLink,
   sdk.TSchema,
@@ -552,6 +561,7 @@ type _Unused = _TypeExports;
 describe('SDK barrel surface', () => {
   it('exports defineEforgeExtension as a function', () => {
     expect(typeof sdk.defineEforgeExtension).toBe('function');
+    expect(typeof sdk.defineConsoleWorkstation).toBe('function');
   });
 
   it('exports compileEventPattern as a function', () => {

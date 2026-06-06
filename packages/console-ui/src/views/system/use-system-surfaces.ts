@@ -211,6 +211,7 @@ export function useSystemSurfaces() {
         if (signal.aborted) return;
         const status = data.actions.length === 0
           && data.consoleContributions.length === 0
+          && data.consoleWorkstations.length === 0
           && data.integrationCommands.length === 0
           && data.deepLinks.length === 0
           && (data.diagnostics?.length ?? 0) === 0

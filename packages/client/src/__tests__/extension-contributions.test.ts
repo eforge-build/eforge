@@ -40,6 +40,15 @@ function manifest() {
       schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
       blocks: [{ rendererId: 'text', content: 'Hello' }],
     }],
+    consoleWorkstations: [{
+      ...base,
+      id: 'example.workstation',
+      localId: 'workstation',
+      title: 'Workstation',
+      schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
+      srcDoc: '<h1>Hello</h1>',
+      allowedActions: ['example.say-hi'],
+    }],
     integrationCommands: [{
       ...base,
       id: 'example.command',
@@ -71,7 +80,7 @@ describe('extension contribution schemas', () => {
     expect(API_ROUTES.extensionActionInvoke).toBe('/api/extensions/actions/invoke');
   });
 
-  it('accepts a manifest with actions, Console contributions, commands, deep links, and diagnostics', () => {
+  it('accepts a manifest with actions, Console contributions, workstations, commands, deep links, and diagnostics', () => {
     expect(safeParseExtensionContributionManifest(manifest()).success).toBe(true);
   });
 
@@ -99,6 +108,20 @@ describe('extension contribution schemas', () => {
     const nonObjectInputSchema = manifest();
     nonObjectInputSchema.actions[0].inputSchema = Type.String() as never;
     expect(safeParseExtensionContributionManifest(nonObjectInputSchema).success).toBe(false);
+  });
+
+  it('rejects invalid Console workstation entries', () => {
+    const missingSrcDoc = manifest();
+    delete (missingSrcDoc.consoleWorkstations[0] as Partial<(typeof missingSrcDoc.consoleWorkstations)[number]>).srcDoc;
+    expect(safeParseExtensionContributionManifest(missingSrcDoc).success).toBe(false);
+
+    const invalidVersion = manifest();
+    invalidVersion.consoleWorkstations[0].schemaVersion = 2 as never;
+    expect(safeParseExtensionContributionManifest(invalidVersion).success).toBe(false);
+
+    const nonStringAllowedActions = manifest();
+    nonStringAllowedActions.consoleWorkstations[0].allowedActions = [123] as never;
+    expect(safeParseExtensionContributionManifest(nonStringAllowedActions).success).toBe(false);
   });
 
   it('validates requestedBy host values and non-blank action ids', () => {

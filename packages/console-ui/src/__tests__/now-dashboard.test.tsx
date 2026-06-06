@@ -458,7 +458,7 @@ function makeExt(overrides: Partial<ExtensionEntry> = {}): ExtensionEntry {
     registrations: {
       eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0,
       reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0,
-      consoleContributions: 0, integrationCommands: 0, deepLinks: 0,
+      consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0,
     },
     diagnostics: [],
     ...overrides,
@@ -472,7 +472,7 @@ function extListBody(extensions: ExtensionEntry[]) {
     totals: {
       eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0,
       reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0,
-      consoleContributions: 0, integrationCommands: 0, deepLinks: 0,
+      consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0,
     },
   };
 }

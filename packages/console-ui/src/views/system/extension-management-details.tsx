@@ -197,6 +197,7 @@ export function ExtensionManagementDetails({ ext, management }: ExtensionManagem
           {reg.prdEnrichers > 0 && <Badge variant="outline">prd enrichers: {reg.prdEnrichers}</Badge>}
           {reg.actions > 0 && <Badge variant="outline">actions: {reg.actions}</Badge>}
           {reg.consoleContributions > 0 && <Badge variant="outline">Console contributions: {reg.consoleContributions}</Badge>}
+          {reg.consoleWorkstations > 0 && <Badge variant="outline">workstations: {reg.consoleWorkstations}</Badge>}
           {reg.integrationCommands > 0 && <Badge variant="outline">integration commands: {reg.integrationCommands}</Badge>}
           {reg.deepLinks > 0 && <Badge variant="outline">deep links: {reg.deepLinks}</Badge>}
         </div>
@@ -213,6 +214,9 @@ export function ExtensionManagementDetails({ ext, management }: ExtensionManagem
       )}
       {(ext.consoleContributionDetails?.length ?? 0) > 0 && (
         <JsonDetails label="Console contribution details" value={ext.consoleContributionDetails} />
+      )}
+      {(ext.consoleWorkstationDetails?.length ?? 0) > 0 && (
+        <JsonDetails label="Console workstation details" value={ext.consoleWorkstationDetails} />
       )}
       {(ext.integrationCommandDetails?.length ?? 0) > 0 && (
         <JsonDetails label="Integration command details" value={ext.integrationCommandDetails} />

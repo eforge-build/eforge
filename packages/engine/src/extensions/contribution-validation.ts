@@ -5,6 +5,7 @@ import { isValidExtensionLocalContributionId } from './ids.js';
 import type {
   ConsoleContributionBlockSpec,
   ConsoleContributionSpec,
+  ConsoleWorkstationSpec,
   ExtensionActionBindingSpec,
   ExtensionActionSpec,
   ExtensionDeepLinkSpec,
@@ -78,6 +79,24 @@ export function validateConsoleContributionSpec(value: unknown): RegistrationVal
   }
   return { ok: true, id, value: value as unknown as ConsoleContributionSpec };
 }
+
+// --- eforge:region plan-01-workstation-contract-runtime ---
+export function validateConsoleWorkstationSpec(value: unknown): RegistrationValidationResult<ConsoleWorkstationSpec> {
+  if (!isNonArrayObject(value)) return fail(undefined, 'registerConsoleWorkstation requires an object spec');
+  const id = typeof value.id === 'string' ? value.id : undefined;
+  if (!isValidExtensionLocalContributionId(value.id)) return fail(id, 'registerConsoleWorkstation id must match ^[a-z][a-z0-9-]{0,63}$');
+  if (!isNonBlankString(value.title)) return fail(id, 'registerConsoleWorkstation title must be a non-empty string');
+  if (value.description !== undefined && typeof value.description !== 'string') return fail(id, 'registerConsoleWorkstation description must be a string');
+  if (!isNonBlankString(value.srcDoc)) return fail(id, 'registerConsoleWorkstation srcDoc must be a non-empty string');
+  if (value.allowedActions !== undefined) {
+    if (!Array.isArray(value.allowedActions)) return fail(id, 'registerConsoleWorkstation allowedActions must be an array of local action ids');
+    if (!value.allowedActions.every((actionId) => isValidExtensionLocalContributionId(actionId))) return fail(id, 'registerConsoleWorkstation allowedActions must contain only local action ids matching ^[a-z][a-z0-9-]{0,63}$');
+  }
+  const jsonSafe = validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: true });
+  if (!jsonSafe.ok) return fail(id, `registerConsoleWorkstation spec must be JSON-safe: ${jsonSafe.message}`);
+  return { ok: true, id, value: value as unknown as ConsoleWorkstationSpec };
+}
+// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export function validateIntegrationCommandSpec(value: unknown): RegistrationValidationResult<IntegrationCommandSpec> {
   const base = validateBase(value, 'registerIntegrationCommand', 'label');

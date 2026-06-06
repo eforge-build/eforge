@@ -105,6 +105,8 @@ export type {
   ConsoleContribution,
   ConsoleContributionBlock,
   ConsoleContributionRendererId,
+  ConsoleWorkstation,
+  EforgeConsoleBridge,
   ExtensionAction,
   ExtensionActionBinding,
   ExtensionActionContext,
@@ -117,6 +119,7 @@ export type {
 } from './contributions.js';
 export {
   defineConsoleContribution,
+  defineConsoleWorkstation,
   defineExtensionAction,
   defineExtensionDeepLink,
   defineIntegrationCommand,

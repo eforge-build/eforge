@@ -39,6 +39,7 @@ export default function extension(eforge) {
   eforge.registerAction({ id: 'schema-output', title: 'Schema output', inputSchema: empty, outputSchema: Type.Object({ ok: Type.Boolean() }), handler() { return { ok: 'no' }; } });
   eforge.registerAction({ id: 'slow', title: 'Slow', inputSchema: empty, async handler() { await new Promise((resolve) => setTimeout(resolve, 50)); return { ok: true }; } });
   eforge.registerConsoleContribution({ id: 'panel', title: 'Panel', blocks: [{ rendererId: 'text', content: 'Hello' }] });
+  eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', srcDoc: '<h1>Board</h1>', allowedActions: ['echo'] });
   eforge.registerIntegrationCommand({ id: 'cmd', label: 'Echo command', action: { actionId: 'echo' } });
   eforge.registerDeepLink({ id: 'link', label: 'Echo link', action: { actionId: 'echo' } });
 }
@@ -55,6 +56,7 @@ describe('extension contribution routes', () => {
       expect(safeParseExtensionContributionManifest(body).success).toBe(true);
       expect(body.actions.length).toBeGreaterThan(0);
       expect(body.consoleContributions.length).toBeGreaterThan(0);
+      expect(body.consoleWorkstations).toEqual([expect.objectContaining({ id: 'tools:board', allowedActions: ['tools:echo'], srcDoc: '<h1>Board</h1>' })]);
       expect(body.integrationCommands.length).toBeGreaterThan(0);
       expect(body.deepLinks.length).toBeGreaterThan(0);
       expect(JSON.stringify(body)).not.toMatch(/handler|module|out-secret/);

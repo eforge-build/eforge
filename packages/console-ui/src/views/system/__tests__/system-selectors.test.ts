@@ -99,12 +99,13 @@ describe('selectExtensionContributionManifestSummary', () => {
           { rendererId: 'action-form', content: 'Configure', action: { actionId: 'ext.echo' } },
         ],
       }],
+      consoleWorkstations: [{ id: 'ext.workstation', localId: 'workstation', extensionName: 'ext', extensionPath: '/ext.js', title: 'Workstation', schemaVersion: 1, srcDoc: '<p>hi</p>', allowedActions: ['ext.echo'] }],
       integrationCommands: [{ id: 'ext.cmd', localId: 'cmd', extensionName: 'ext', extensionPath: '/ext.js', label: 'Run', action: { actionId: 'ext.echo' } }],
       deepLinks: [{ id: 'ext.link', localId: 'link', extensionName: 'ext', extensionPath: '/ext.js', label: 'Open' }],
       diagnostics: [{ severity: 'warning', code: 'W1', message: 'heads up' }],
     });
 
-    expect(result.families).toEqual({ actions: 1, consoleContributions: 1, integrationCommands: 1, deepLinks: 1 });
+    expect(result.families).toEqual({ actions: 1, consoleContributions: 1, consoleWorkstations: 1, integrationCommands: 1, deepLinks: 1 });
     expect(result.renderers.text).toBe(1);
     expect(result.renderers.markdown).toBe(1);
     expect(result.renderers['status-badge']).toBe(1);
@@ -133,7 +134,7 @@ function makeExtension(
     source: 'project-team',
     status: 'loaded',
     shadows: [],
-    registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 },
+    registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     diagnostics: [],
     ...overrides,
   };
@@ -176,7 +177,7 @@ describe('selectExtensionsNeedingTrust', () => {
         makeExtension({ name: 'external-changed', scope: 'external', trustState: 'changed' }),
       ],
       diagnostics: [],
-      totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, integrationCommands: 0, deepLinks: 0 },
+      totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     };
     const selected = selectExtensionsNeedingTrust(response).map((e) => e.name);
     expect(selected).toEqual(['untrusted-pt', 'changed-pt', 'legacy-pt']);

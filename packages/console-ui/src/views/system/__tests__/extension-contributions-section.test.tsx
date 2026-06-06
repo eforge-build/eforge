@@ -55,6 +55,7 @@ function manifest(overrides: Partial<ExtensionContributionManifestResponse> = {}
         { rendererId: 'action-form', content: 'Configure echo', action: { actionId: 'demo.echo', inputDefaults: { message: 'default', count: 1 } } },
       ],
     }],
+    consoleWorkstations: [],
     integrationCommands: [],
     deepLinks: [],
     diagnostics: [],
@@ -100,7 +101,7 @@ describe('extension contribution rendering helpers', () => {
 
 describe('ExtensionContributionsSection', () => {
   it('renders empty and error states with family counts when stale data exists', () => {
-    render(<ExtensionContributionsSection manifest={{ status: 'empty', updatedAt: 1, data: manifest({ consoleContributions: [], actions: [], integrationCommands: [], deepLinks: [] }) }} />);
+    render(<ExtensionContributionsSection manifest={{ status: 'empty', updatedAt: 1, data: manifest({ consoleContributions: [], consoleWorkstations: [], actions: [], integrationCommands: [], deepLinks: [] }) }} />);
     expect(screen.getAllByText(/No Console contributions discovered/i).length).toBeGreaterThan(0);
 
     render(<ExtensionContributionsSection manifest={{ status: 'error', error: 'manifest failed', data: manifest({ diagnostics: [{ severity: 'warning', code: 'W1', message: 'warn' }] }) }} />);

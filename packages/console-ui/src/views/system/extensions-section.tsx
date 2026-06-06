@@ -175,6 +175,7 @@ export function ExtensionsSection({ list, validate, management }: ExtensionsSect
               {totals.prdEnrichers > 0 && <Badge variant="outline">prd enrichers: {totals.prdEnrichers}</Badge>}
               {totals.actions > 0 && <Badge variant="outline">actions: {totals.actions}</Badge>}
               {totals.consoleContributions > 0 && <Badge variant="outline">Console contributions: {totals.consoleContributions}</Badge>}
+              {totals.consoleWorkstations > 0 && <Badge variant="outline">workstations: {totals.consoleWorkstations}</Badge>}
               {totals.integrationCommands > 0 && <Badge variant="outline">integration commands: {totals.integrationCommands}</Badge>}
               {totals.deepLinks > 0 && <Badge variant="outline">deep links: {totals.deepLinks}</Badge>}
             </div>
@@ -209,6 +210,7 @@ export function ExtensionsSection({ list, validate, management }: ExtensionsSect
                     {ext.format && <Badge variant="outline" className="text-xs">{ext.format}</Badge>}
                     {(ext.actionDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">actions: {ext.actionDetails?.length}</Badge>}
                     {(ext.consoleContributionDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">Console panels: {ext.consoleContributionDetails?.length}</Badge>}
+                    {(ext.consoleWorkstationDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">workstations: {ext.consoleWorkstationDetails?.length}</Badge>}
                     {(ext.integrationCommandDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">commands: {ext.integrationCommandDetails?.length}</Badge>}
                     {(ext.deepLinkDetails?.length ?? 0) > 0 && <Badge variant="outline" className="text-xs">deep links: {ext.deepLinkDetails?.length}</Badge>}
                   </div>

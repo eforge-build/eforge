@@ -55,6 +55,7 @@ export interface ExtensionRegistrationTotals {
   prdEnrichers: number;
   actions: number;
   consoleContributions: number;
+  consoleWorkstations: number;
   integrationCommands: number;
   deepLinks: number;
 }
@@ -83,6 +84,7 @@ export interface ExtensionContributionManifestSummary {
   families: {
     actions: number;
     consoleContributions: number;
+    consoleWorkstations: number;
     integrationCommands: number;
     deepLinks: number;
   };
@@ -109,6 +111,7 @@ export function selectExtensionContributionManifestSummary(
     families: {
       actions: manifest.actions.length,
       consoleContributions: manifest.consoleContributions.length,
+      consoleWorkstations: manifest.consoleWorkstations.length,
       integrationCommands: manifest.integrationCommands.length,
       deepLinks: manifest.deepLinks.length,
     },

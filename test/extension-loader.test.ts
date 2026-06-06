@@ -583,6 +583,7 @@ describe('native extension loader', () => {
       agentRunHooks: 1,
       actions: 0,
       consoleContributions: 0,
+      consoleWorkstations: 0,
       integrationCommands: 0,
       deepLinks: 0,
       policyGates: 3,

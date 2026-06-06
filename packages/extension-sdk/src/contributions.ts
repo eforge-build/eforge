@@ -79,6 +79,21 @@ export interface ConsoleContribution {
   blocks: ConsoleContributionBlock[];
 }
 
+// --- eforge:region plan-01-workstation-contract-runtime ---
+export interface ConsoleWorkstation {
+  id: string;
+  title: string;
+  description?: string;
+  srcDoc: string;
+  /** Local action ids registered by this same extension. Omit to allow all same-extension actions. */
+  allowedActions?: string[];
+}
+
+export interface EforgeConsoleBridge {
+  invokeAction<TOutput = unknown>(actionId: string, input?: Record<string, unknown>): Promise<TOutput>;
+}
+// --- eforge:endregion plan-01-workstation-contract-runtime ---
+
 export interface IntegrationCommand<TInput extends TObject | undefined = TObject | undefined> {
   id: string;
   label: string;
@@ -105,6 +120,12 @@ export function defineExtensionAction<
 export function defineConsoleContribution(contribution: ConsoleContribution): ConsoleContribution {
   return contribution;
 }
+
+// --- eforge:region plan-01-workstation-contract-runtime ---
+export function defineConsoleWorkstation(workstation: ConsoleWorkstation): ConsoleWorkstation {
+  return workstation;
+}
+// --- eforge:endregion plan-01-workstation-contract-runtime ---
 
 export function defineIntegrationCommand<TInput extends TObject | undefined = TObject | undefined>(
   command: IntegrationCommand<TInput>,

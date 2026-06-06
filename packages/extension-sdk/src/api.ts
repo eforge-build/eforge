@@ -37,6 +37,7 @@ import type { EventPattern } from './patterns.js';
 import type { ExtensionTool } from './tools.js';
 import type {
   ConsoleContribution,
+  ConsoleWorkstation,
   ExtensionAction,
   ExtensionDeepLink,
   IntegrationCommand,
@@ -334,6 +335,7 @@ export interface EforgeExtensionAPI {
     action: ExtensionAction<TInput, TOutput>,
   ): void;
   registerConsoleContribution(contribution: ConsoleContribution): void;
+  registerConsoleWorkstation(workstation: ConsoleWorkstation): void;
   registerIntegrationCommand(command: IntegrationCommand): void;
   registerDeepLink(deepLink: ExtensionDeepLink): void;
 }

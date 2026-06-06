@@ -34,6 +34,7 @@ async function startServer(opts: { untypedInvokeResponse?: boolean } = {}) {
     generatedAt: '2026-06-03T00:00:00.000Z',
     actions: [],
     consoleContributions: [],
+    consoleWorkstations: [],
     integrationCommands: [],
     deepLinks: [],
   };
