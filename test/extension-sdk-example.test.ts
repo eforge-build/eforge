@@ -144,6 +144,55 @@ const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
     srcDoc: '<h1>Hello</h1>',
     allowedActions: ['say-hi'],
   });
+  const srcDocWorkstation = sdk.defineConsoleWorkstation({
+    id: 'srcdoc-workstation',
+    title: 'SrcDoc workstation',
+    srcDoc: '<h1>Hello</h1>',
+  });
+  const bundleWorkstation = sdk.defineConsoleWorkstation({
+    id: 'bundle-workstation',
+    title: 'Bundle workstation',
+    frameBundle: {
+      root: 'workstation-assets/demo',
+      entrypoint: 'index.js',
+      styles: ['index.css'],
+      assets: ['logo.svg'],
+      browserSdkVersion: 1,
+    },
+  });
+  const bundleWorkstationDefaultSdk = sdk.defineConsoleWorkstation({
+    id: 'bundle-workstation-default-sdk',
+    title: 'Bundle workstation default SDK',
+    frameBundle: {
+      root: 'workstation-assets/demo',
+      entrypoint: 'index.js',
+    },
+  });
+  // @ts-expect-error Console workstations must declare exactly one source mode.
+  sdk.defineConsoleWorkstation({
+    id: 'invalid-both-workstation',
+    title: 'Invalid both workstation',
+    srcDoc: '<h1>Hello</h1>',
+    frameBundle: { root: 'workstation-assets/demo', entrypoint: 'index.js' },
+  });
+  // @ts-expect-error Console workstations must declare exactly one source mode.
+  sdk.defineConsoleWorkstation({
+    id: 'invalid-neither-workstation',
+    title: 'Invalid neither workstation',
+  });
+  sdk.defineConsoleWorkstation({
+    id: 'invalid-sdk-version-workstation',
+    title: 'Invalid SDK version workstation',
+    frameBundle: {
+      root: 'workstation-assets/demo',
+      entrypoint: 'index.js',
+      // @ts-expect-error The source-level browser SDK version literal is v1 only.
+      browserSdkVersion: 2,
+    },
+  });
+  void srcDocWorkstation;
+  void bundleWorkstation;
+  void bundleWorkstationDefaultSdk;
   const command: sdk.IntegrationCommand = sdk.defineIntegrationCommand({
     id: 'hello-command',
     label: 'Say hi',
@@ -545,6 +594,10 @@ type _TypeExports = [
   sdk.ConsoleContributionBlock,
   sdk.ConsoleContributionRendererId,
   sdk.ConsoleWorkstation,
+  sdk.ConsoleWorkstationBase,
+  sdk.ConsoleWorkstationFrameBundle,
+  sdk.ConsoleWorkstationFrameBundleWorkstation,
+  sdk.ConsoleWorkstationSrcDoc,
   sdk.EforgeConsoleBridge,
   sdk.IntegrationCommand,
   sdk.ExtensionDeepLink,

@@ -79,18 +79,35 @@ export interface ConsoleContribution {
   blocks: ConsoleContributionBlock[];
 }
 
-export interface ConsoleWorkstation {
+// --- eforge:region plan-03-extension-sdk-api ---
+export interface ConsoleWorkstationBase {
   id: string;
   title: string;
   description?: string;
-  srcDoc: string;
   /** Local action ids registered by this same extension. Omit to allow all same-extension actions; use [] to expose no actions. */
   allowedActions?: string[];
 }
 
-export interface EforgeConsoleBridge {
-  invokeAction<TOutput = unknown>(actionId: string, input?: Record<string, unknown>): Promise<TOutput>;
+export interface ConsoleWorkstationFrameBundle {
+  root: string;
+  entrypoint: string;
+  styles?: string[];
+  assets?: string[];
+  browserSdkVersion?: 1;
 }
+
+export interface ConsoleWorkstationSrcDoc extends ConsoleWorkstationBase {
+  srcDoc: string;
+  frameBundle?: never;
+}
+
+export interface ConsoleWorkstationFrameBundleWorkstation extends ConsoleWorkstationBase {
+  srcDoc?: never;
+  frameBundle: ConsoleWorkstationFrameBundle;
+}
+
+export type ConsoleWorkstation = ConsoleWorkstationSrcDoc | ConsoleWorkstationFrameBundleWorkstation;
+// --- eforge:endregion plan-03-extension-sdk-api ---
 
 export interface IntegrationCommand<TInput extends TObject | undefined = TObject | undefined> {
   id: string;
@@ -119,9 +136,11 @@ export function defineConsoleContribution(contribution: ConsoleContribution): Co
   return contribution;
 }
 
-export function defineConsoleWorkstation(workstation: ConsoleWorkstation): ConsoleWorkstation {
+// --- eforge:region plan-03-extension-sdk-api ---
+export function defineConsoleWorkstation<TWorkstation extends ConsoleWorkstation>(workstation: TWorkstation): TWorkstation {
   return workstation;
 }
+// --- eforge:endregion plan-03-extension-sdk-api ---
 
 export function defineIntegrationCommand<TInput extends TObject | undefined = TObject | undefined>(
   command: IntegrationCommand<TInput>,

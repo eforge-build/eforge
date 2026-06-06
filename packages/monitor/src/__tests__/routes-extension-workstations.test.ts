@@ -10,7 +10,7 @@ import {
   type ExtensionContributionManifestResponse,
 } from '@eforge-build/client';
 import { startContentRouteHarness } from './route-test-harness.js';
-import { createExtensionWorkstationRoutes } from '../routes/extensions/workstations.js';
+import { createExtensionWorkstationRoutes, renderBridgeScript } from '../routes/extensions/workstations.js';
 
 const contributionMock = vi.hoisted(() => ({
   manifest: undefined as ExtensionContributionManifestResponse | undefined,
@@ -33,6 +33,28 @@ describe('extension workstation routes', () => {
     } finally { await harness.close(); }
   });
 
+  it('returns a route-specific 503 when the working directory is unavailable', async () => {
+    contributionMock.loadContributionRuntime.mockReset();
+    const harness = await startContentRouteHarness({ routes: createExtensionWorkstationRoutes });
+    try {
+      harness.context.cwd = undefined;
+      const res = await harness.get(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'bundle:board' }));
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error: 'Working directory not configured' });
+      expect(contributionMock.loadContributionRuntime).not.toHaveBeenCalled();
+    } finally { await harness.close(); }
+  });
+
+  it('returns a route-specific 500 when extension workstation runtime loading fails', async () => {
+    contributionMock.loadContributionRuntime.mockReset().mockRejectedValue(new Error('manifest unavailable'));
+    const harness = await startContentRouteHarness({ routes: createExtensionWorkstationRoutes });
+    try {
+      const res = await harness.get(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'bundle:board' }));
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({ error: 'Failed to load extension workstation runtime: manifest unavailable' });
+    } finally { await harness.close(); }
+  });
+
   it('rejects asset manifests whose id hash does not match sha256', async () => {
     const harness = await startContentRouteHarness({ routes: createExtensionWorkstationRoutes });
     try {
@@ -47,6 +69,27 @@ describe('extension workstation routes', () => {
       expect(res.status).toBe(409);
       expect(await res.json()).toMatchObject({ error: 'Extension workstation asset hash mismatch' });
     } finally { await harness.close(); }
+  });
+
+  it('posts the raw bridge token from Console-generated frame URL fragments', async () => {
+    const modulePath = '../../../console-ui/src/views/workstations/workstation-frame-url.js';
+    const { buildWorkstationFrameUrl } = await import(modulePath) as { buildWorkstationFrameUrl(frameUrl: string, bridgeToken: string): string };
+    const token = 'token one=value&two';
+    const frameUrl = buildWorkstationFrameUrl('/frame', token);
+    const posted: unknown[] = [];
+    const frameWindow = {
+      location: { hash: new URL(frameUrl, 'http://localhost').hash },
+      crypto: { randomUUID: () => 'request-1' },
+      parent: { postMessage: (message: unknown) => posted.push(message) },
+      addEventListener: () => undefined,
+      eforge: undefined,
+    };
+
+    Function('window', 'URLSearchParams', renderBridgeScript())(frameWindow, URLSearchParams);
+    expect((frameWindow.eforge as unknown as { version: number }).version).toBe(CONSOLE_WORKSTATION_BROWSER_SDK_VERSION);
+    void (frameWindow.eforge as unknown as { invokeAction(actionId: string, input: Record<string, unknown>): Promise<unknown> }).invokeAction('bundle:hello', { ok: true });
+
+    expect(posted[0]).toMatchObject({ bridgeToken: token });
   });
 
   it('serves frames and assets with response-level CSP protections', async () => {

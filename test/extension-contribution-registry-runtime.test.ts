@@ -82,6 +82,23 @@ describe('extension contribution registry runtime', () => {
     expect(dispatched).toMatchObject({ kind: 'success', output: { greeting: 'hi Lin' } });
   });
 
+  it('omits frameBundle workstations with unreadable bundle assets and emits diagnostics', async () => {
+    const result = await loadFixture(makeTempDir(), {
+      'bundle.js': `export default function extension(eforge) {
+        eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', frameBundle: { root: 'dist', entrypoint: 'missing.js' } });
+      }`,
+    });
+
+    const manifest = buildExtensionContributionManifest(result.registry);
+
+    expect(manifest.consoleWorkstations).toHaveLength(0);
+    expect(manifest.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'extension:invalid-registration',
+      name: 'bundle:board',
+      message: expect.stringContaining('frameBundle asset is unreadable'),
+    }));
+  });
+
   it('passes ctx.paths to extension action handlers', async () => {
     const root = makeTempDir();
     const result = await loadFixture(root, {

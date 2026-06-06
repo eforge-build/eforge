@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
+
 import type {
   ConsoleContributionBlock,
   ConsoleContributionDetail,
@@ -13,7 +17,7 @@ import type {
   IntegrationCommandDetail,
   IntegrationCommandManifestEntry,
 } from '@eforge-build/client';
-import { EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION } from '@eforge-build/client';
+import { API_ROUTES, buildPath, CONSOLE_WORKSTATION_BROWSER_SDK_VERSION, EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION } from '@eforge-build/client';
 
 import { jsonSafeClone } from './contribution-validation.js';
 import { resolveExtensionContributionId } from './ids.js';
@@ -30,15 +34,19 @@ import type {
 } from './types.js';
 
 export function buildExtensionContributionManifest(registry: NativeExtensionRegistry): ExtensionContributionManifestResponse {
+  const projectionDiagnostics: NativeExtensionDiagnostic[] = [];
   const manifest = {
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
     generatedAt: new Date().toISOString(),
     actions: registry.actions.map(buildActionManifestEntry).sort(sortById),
     consoleContributions: registry.consoleContributions.map(buildConsoleContributionManifestEntry).sort(sortById),
-    consoleWorkstations: registry.consoleWorkstations.map((reg) => buildConsoleWorkstationManifestEntry(reg, registry)).sort(sortById),
+    consoleWorkstations: registry.consoleWorkstations.flatMap((reg) => {
+      const entry = buildConsoleWorkstationManifestEntry(reg, registry, projectionDiagnostics);
+      return entry === undefined ? [] : [entry];
+    }).sort(sortById),
     integrationCommands: registry.integrationCommands.map(buildIntegrationCommandManifestEntry).sort(sortById),
     deepLinks: registry.deepLinks.map(buildDeepLinkManifestEntry).sort(sortById),
-    diagnostics: registry.diagnostics.map((diagnostic) => projectDiagnostic(diagnostic, registry)),
+    diagnostics: [...registry.diagnostics, ...projectionDiagnostics].map((diagnostic) => projectDiagnostic(diagnostic, registry)),
   };
   return manifest;
 }
@@ -70,8 +78,8 @@ export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRe
   }) as ConsoleContributionManifestEntry;
 }
 
-export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): ConsoleWorkstationManifestEntry {
-  return omitUndefined({
+export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry, diagnostics: NativeExtensionDiagnostic[] = []): ConsoleWorkstationManifestEntry | undefined {
+  const base = {
     id: reg.id,
     localId: reg.localId,
     extensionName: reg.extensionName,
@@ -79,9 +87,13 @@ export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegi
     title: reg.value.title,
     description: reg.value.description,
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
-    srcDoc: reg.value.srcDoc,
     allowedActions: projectAllowedActions(reg, registry),
-  }) as ConsoleWorkstationManifestEntry;
+  };
+  if ('frameBundle' in reg.value) {
+    const frameBundle = projectFrameBundle(reg, diagnostics);
+    return frameBundle === undefined ? undefined : omitUndefined({ ...base, frameBundle }) as ConsoleWorkstationManifestEntry;
+  }
+  return omitUndefined({ ...base, srcDoc: reg.value.srcDoc }) as ConsoleWorkstationManifestEntry;
 }
 
 export function buildIntegrationCommandManifestEntry(reg: IntegrationCommandRegistration): IntegrationCommandManifestEntry {
@@ -121,7 +133,10 @@ export function buildConsoleContributionDetails(registry: NativeExtensionRegistr
 }
 
 export function buildConsoleWorkstationDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): ConsoleWorkstationDetail[] | undefined {
-  const details = registry.consoleWorkstations.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map((reg) => buildConsoleWorkstationManifestEntry(reg, registry));
+  const details = registry.consoleWorkstations.filter((reg) => belongsTo(reg, extensionName, extensionPath)).flatMap((reg) => {
+    const entry = buildConsoleWorkstationManifestEntry(reg, registry);
+    return entry === undefined ? [] : [entry];
+  });
   return details.length > 0 ? details : undefined;
 }
 
@@ -143,6 +158,62 @@ function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string
   const base = { ...block } as Record<string, unknown>;
   if ('action' in block) base.action = projectBinding(block.action, extensionName);
   return omitUndefined(jsonSafeClone(base)) as ConsoleContributionBlock;
+}
+
+function projectFrameBundle(reg: ConsoleWorkstationRegistration, diagnostics: NativeExtensionDiagnostic[]) {
+  const bundle = reg.value.frameBundle;
+  if (bundle === undefined) return undefined;
+  const entrypoint = projectFrameBundleAsset(reg, diagnostics, bundle.root, bundle.entrypoint);
+  const styles = projectFrameBundleAssets(reg, diagnostics, bundle.root, bundle.styles ?? []);
+  const assets = projectFrameBundleAssets(reg, diagnostics, bundle.root, bundle.assets ?? []);
+  if (entrypoint === undefined || styles === undefined || assets === undefined) return undefined;
+  return {
+    browserSdkVersion: bundle.browserSdkVersion ?? CONSOLE_WORKSTATION_BROWSER_SDK_VERSION,
+    frameUrl: buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: reg.id }),
+    entrypoint,
+    styles,
+    assets,
+  };
+}
+
+function projectFrameBundleAssets(reg: ConsoleWorkstationRegistration, diagnostics: NativeExtensionDiagnostic[], root: string, paths: string[]) {
+  const assets = paths.map((path) => projectFrameBundleAsset(reg, diagnostics, root, path));
+  return assets.every((asset) => asset !== undefined) ? assets : undefined;
+}
+
+function projectFrameBundleAsset(reg: ConsoleWorkstationRegistration, diagnostics: NativeExtensionDiagnostic[], root: string, path: string) {
+  const relativePath = joinBundleRelativePath(root, path);
+  let content: Buffer;
+  try {
+    content = readFileSync(resolve(extensionRootForProjection(reg.extensionPath), relativePath));
+  } catch {
+    diagnostics.push({
+      severity: 'error',
+      code: 'extension:invalid-registration',
+      name: reg.id,
+      path: reg.extensionPath,
+      extensionName: reg.extensionName,
+      message: `registerConsoleWorkstation frameBundle asset is unreadable: ${relativePath}`,
+    });
+    return undefined;
+  }
+  const sha256 = createHash('sha256').update(content).digest('hex');
+  const pathHash = createHash('sha256').update(relativePath).digest('hex');
+  const id = `sha256-${sha256}-path-${pathHash}`;
+  return {
+    id,
+    url: buildPath(API_ROUTES.extensionWorkstationAsset, { workstationId: reg.id, assetId: id }),
+    relativePath,
+    sha256,
+  };
+}
+
+function joinBundleRelativePath(root: string, path: string): string {
+  return resolve('/', root, path).slice(1).split(sep).join('/');
+}
+
+function extensionRootForProjection(extensionPath: string): string {
+  return extensionPath.endsWith('.js') || extensionPath.endsWith('.mjs') || extensionPath.endsWith('.ts') || extensionPath.endsWith('.mts') ? resolve(extensionPath, '..') : extensionPath;
 }
 
 function projectAllowedActions(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): string[] {

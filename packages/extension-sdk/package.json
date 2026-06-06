@@ -16,6 +16,10 @@
     "./project-paths": {
       "types": "./dist/project-paths.d.ts",
       "import": "./dist/project-paths.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
     }
   },
   "types": "./dist/index.d.ts",

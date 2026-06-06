@@ -106,7 +106,10 @@ export type {
   ConsoleContributionBlock,
   ConsoleContributionRendererId,
   ConsoleWorkstation,
-  EforgeConsoleBridge,
+  ConsoleWorkstationBase,
+  ConsoleWorkstationFrameBundle,
+  ConsoleWorkstationFrameBundleWorkstation,
+  ConsoleWorkstationSrcDoc,
   ExtensionAction,
   ExtensionActionBinding,
   ExtensionActionContext,
@@ -117,6 +120,7 @@ export type {
   ExtensionDeepLink,
   IntegrationCommand,
 } from './contributions.js';
+export type { EforgeConsoleBridge } from './browser.js';
 export {
   defineConsoleContribution,
   defineConsoleWorkstation,

@@ -3,6 +3,7 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   API_ROUTES,
+  CONSOLE_WORKSTATION_BROWSER_SDK_VERSION,
   CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN,
   type ConsoleWorkstationFrameBundleManifestEntry,
   type ConsoleWorkstationFrameBundleAssetRef,
@@ -37,15 +38,17 @@ export function createExtensionWorkstationRoutes(): RouteDefinition[] {
 
 async function sendWorkstationFrame(ctx: RequestContext): Promise<void> {
   const workstation = await findFrameBundleWorkstation(ctx);
+  if (workstation === null) return;
   if (!workstation) {
     sendJsonError(ctx.res, 404, 'Extension workstation frame bundle not found');
     return;
   }
+  const bridgeScriptHash = createHash('sha256').update(renderBridgeScript()).digest('base64');
   sendText(ctx.res, 200, renderFrameHtml(workstation), {
     contentType: 'text/html; charset=utf-8',
     headers: {
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+      'Content-Security-Policy': `sandbox allow-scripts; default-src 'none'; script-src 'self' 'sha256-${bridgeScriptHash}'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'`,
       'X-Content-Type-Options': 'nosniff',
     },
   });
@@ -59,6 +62,7 @@ async function sendWorkstationAsset(ctx: RequestContext): Promise<void> {
   }
 
   const workstation = await findFrameBundleWorkstation(ctx);
+  if (workstation === null) return;
   if (!workstation) {
     sendJsonError(ctx.res, 404, 'Extension workstation frame bundle not found');
     return;
@@ -82,7 +86,13 @@ async function sendWorkstationAsset(ctx: RequestContext): Promise<void> {
     return;
   }
 
-  const body = await readFile(assetPath);
+  let body: Buffer;
+  try {
+    body = await readFile(assetPath);
+  } catch {
+    sendJsonError(ctx.res, 404, 'Extension workstation asset not found');
+    return;
+  }
   if (createHash('sha256').update(body).digest('hex') !== expectedSha256) {
     sendJsonError(ctx.res, 409, 'Extension workstation asset hash mismatch');
     return;
@@ -98,12 +108,22 @@ async function sendWorkstationAsset(ctx: RequestContext): Promise<void> {
   });
 }
 
-async function findFrameBundleWorkstation(ctx: RequestContext): Promise<ConsoleWorkstationFrameBundleManifestEntry | undefined> {
+async function findFrameBundleWorkstation(ctx: RequestContext): Promise<ConsoleWorkstationFrameBundleManifestEntry | undefined | null> {
   const workstationId = ctx.params.workstationId ?? '';
   if (workstationId.length === 0) return undefined;
-  const { manifest } = await loadContributionRuntime(ctx.monitor);
-  const workstation = manifest.consoleWorkstations.find((entry) => entry.id === workstationId);
-  return workstation !== undefined && 'frameBundle' in workstation ? workstation : undefined;
+  if (!ctx.monitor.cwd) {
+    sendJsonError(ctx.res, 503, 'Working directory not configured');
+    return null;
+  }
+  try {
+    const { manifest } = await loadContributionRuntime(ctx.monitor);
+    const workstation = manifest.consoleWorkstations.find((entry) => entry.id === workstationId);
+    return workstation !== undefined && 'frameBundle' in workstation ? workstation : undefined;
+  } catch (err) {
+    const detail = err instanceof Error ? `: ${err.message}` : '';
+    sendJsonError(ctx.res, 500, `Failed to load extension workstation runtime${detail}`);
+    return null;
+  }
 }
 
 function findAsset(workstation: ConsoleWorkstationFrameBundleManifestEntry, assetId: string): ConsoleWorkstationFrameBundleAssetRef | undefined {
@@ -117,7 +137,7 @@ function contentSha256ForAsset(asset: ConsoleWorkstationFrameBundleAssetRef): st
 }
 
 async function resolveAssetPath(cwd: string | undefined, extensionPath: string, relativePath: string): Promise<string | undefined> {
-  if (!cwd || relativePath.includes('\0') || isAbsolute(relativePath)) return undefined;
+  if (relativePath.includes('\0') || isAbsolute(relativePath)) return undefined;
   const extensionRoot = await resolveExtensionRoot(cwd, extensionPath);
   if (!extensionRoot) return undefined;
   const candidate = resolve(extensionRoot, relativePath);
@@ -132,10 +152,11 @@ async function resolveAssetPath(cwd: string | undefined, extensionPath: string, 
   }
 }
 
-async function resolveExtensionRoot(cwd: string, extensionPath: string): Promise<string | undefined> {
+async function resolveExtensionRoot(cwd: string | undefined, extensionPath: string): Promise<string | undefined> {
   if (extensionPath.includes('\0')) return undefined;
-  const resolved = resolve(cwd, extensionPath);
-  if (!isWithinDir(resolved, cwd)) return undefined;
+  if (!isAbsolute(extensionPath) && !cwd) return undefined;
+  const resolved = isAbsolute(extensionPath) ? extensionPath : resolve(cwd ?? '', extensionPath);
+  if (!isAbsolute(extensionPath) && cwd && !isWithinDir(resolved, cwd)) return undefined;
   try {
     const info = await lstat(resolved);
     return info.isDirectory() ? resolved : resolve(resolved, '..');
@@ -156,9 +177,14 @@ ${styles}
 </head>
 <body>
 <div id="root"></div>
+<script>${renderBridgeScript()}</script>
 <script type="module" src="${escapeHtmlAttribute(workstation.frameBundle.entrypoint.url)}"></script>
 </body>
 </html>`;
+}
+
+export function renderBridgeScript(): string {
+  return `(function(){var bridgeToken=new URLSearchParams(window.location.hash.slice(1)).get('bridgeToken')||'';var pending=new Map();function nextRequestId(){if(window.crypto&&typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();return 'req-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)}window.addEventListener('message',function(event){var message=event.data;if(!message||message.type!=='eforge:workstation:action-result'||typeof message.requestId!=='string')return;var entry=pending.get(message.requestId);if(!entry)return;pending.delete(message.requestId);if(message.error){var error=new Error(message.error.message||'Workstation action failed');error.code=message.error.code;entry.reject(error);return}if(!message.response||message.response.ok!==true){var responseError=message.response&&message.response.error;var failure=new Error((responseError&&responseError.message)||'Workstation action failed');failure.code=responseError&&responseError.code;entry.reject(failure);return}entry.resolve(message.response.output)});window.eforge=Object.freeze({version:${CONSOLE_WORKSTATION_BROWSER_SDK_VERSION},invokeAction:function(actionId,input){return new Promise(function(resolve,reject){if(typeof actionId!=='string'||actionId.length===0){reject(new Error('actionId must be a non-empty string'));return}var requestId=nextRequestId();var safeInput=input&&typeof input==='object'&&!Array.isArray(input)?input:{};pending.set(requestId,{resolve:resolve,reject:reject});try{window.parent.postMessage({type:'eforge:workstation:invoke-action',requestId:requestId,bridgeToken:bridgeToken,actionId:actionId,input:safeInput},'*')}catch(err){pending.delete(requestId);reject(err)}})}})}());`;
 }
 
 function contentTypeForPath(path: string): string {

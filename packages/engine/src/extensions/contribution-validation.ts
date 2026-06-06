@@ -1,4 +1,4 @@
-import { safeParseWithSchema, type ExtensionActionSideEffect } from '@eforge-build/client';
+import { CONSOLE_WORKSTATION_BROWSER_SDK_VERSION, safeParseWithSchema, type ExtensionActionSideEffect } from '@eforge-build/client';
 import type { TSchema } from '@sinclair/typebox';
 
 import { isValidExtensionLocalContributionId } from './ids.js';
@@ -86,7 +86,14 @@ export function validateConsoleWorkstationSpec(value: unknown): RegistrationVali
   if (!isValidExtensionLocalContributionId(value.id)) return fail(id, 'registerConsoleWorkstation id must match ^[a-z][a-z0-9-]{0,63}$');
   if (!isNonBlankString(value.title)) return fail(id, 'registerConsoleWorkstation title must be a non-empty string');
   if (value.description !== undefined && typeof value.description !== 'string') return fail(id, 'registerConsoleWorkstation description must be a string');
-  if (!isNonBlankString(value.srcDoc)) return fail(id, 'registerConsoleWorkstation srcDoc must be a non-empty string');
+  const hasSrcDoc = value.srcDoc !== undefined;
+  const hasFrameBundle = value.frameBundle !== undefined;
+  if (hasSrcDoc === hasFrameBundle) return fail(id, 'registerConsoleWorkstation requires exactly one of srcDoc or frameBundle');
+  if (hasSrcDoc && !isNonBlankString(value.srcDoc)) return fail(id, 'registerConsoleWorkstation srcDoc must be a non-empty string');
+  if (hasFrameBundle) {
+    const frameBundleResult = validateFrameBundleSpec(value.frameBundle);
+    if (!frameBundleResult.ok) return fail(id, frameBundleResult.message ?? 'registerConsoleWorkstation frameBundle is invalid');
+  }
   if (value.allowedActions !== undefined) {
     if (!Array.isArray(value.allowedActions)) return fail(id, 'registerConsoleWorkstation allowedActions must be an array of local action ids');
     if (!value.allowedActions.every((actionId) => isValidExtensionLocalContributionId(actionId))) return fail(id, 'registerConsoleWorkstation allowedActions must contain only local action ids matching ^[a-z][a-z0-9-]{0,63}$');
@@ -220,6 +227,20 @@ function isSafeConsoleHref(value: string): boolean {
   if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
   if (value.startsWith('/console/')) return true;
   return isSafeUrlString(value, SAFE_CONSOLE_LINK_SCHEMES);
+}
+
+function validateFrameBundleSpec(value: unknown): JsonSafeValidationResult {
+  if (!isNonArrayObject(value)) return { ok: false, message: 'registerConsoleWorkstation frameBundle must be an object' };
+  if (!isSafeRelativeBundlePath(value.root)) return { ok: false, message: 'registerConsoleWorkstation frameBundle.root must be a safe relative path' };
+  if (!isSafeRelativeBundlePath(value.entrypoint)) return { ok: false, message: 'registerConsoleWorkstation frameBundle.entrypoint must be a safe relative path' };
+  if (value.browserSdkVersion !== undefined && value.browserSdkVersion !== CONSOLE_WORKSTATION_BROWSER_SDK_VERSION) return { ok: false, message: 'registerConsoleWorkstation frameBundle.browserSdkVersion must be 1 when provided' };
+  if (value.styles !== undefined && (!Array.isArray(value.styles) || !value.styles.every(isSafeRelativeBundlePath))) return { ok: false, message: 'registerConsoleWorkstation frameBundle.styles must contain only safe relative paths' };
+  if (value.assets !== undefined && (!Array.isArray(value.assets) || !value.assets.every(isSafeRelativeBundlePath))) return { ok: false, message: 'registerConsoleWorkstation frameBundle.assets must contain only safe relative paths' };
+  return { ok: true };
+}
+
+function isSafeRelativeBundlePath(value: unknown): value is string {
+  return isNonBlankString(value) && !value.includes('\0') && !value.startsWith('/') && !value.split(/[\\/]/u).includes('..');
 }
 
 function isValidActionBindingSpec(value: unknown): value is ExtensionActionBindingSpec {
