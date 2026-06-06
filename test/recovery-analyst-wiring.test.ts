@@ -10,6 +10,7 @@ import { parseRecoveryVerdictBlock } from '@eforge-build/engine/agents/common';
 import { recoveryVerdictSchema, getRecoveryVerdictSchemaYaml } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
 import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst';
+import { RECOVERY_ANALYST_PROMPT_INPUT_BUDGET_CHARS } from '@eforge-build/engine/recovery/analyst-context';
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
@@ -296,6 +297,75 @@ describe('runRecoveryAnalyst wiring', () => {
     }));
 
     const complete = findEvent(events, 'recovery:complete');
+    expect(complete!.verdict.verdict).toBe('manual');
+  });
+
+  it('bounds oversized prompt inputs and still emits recovery:complete for valid agent output', async () => {
+    // Fixed allowance for recovery-analyst.md prose, verdict schema YAML, and deterministic policy text.
+    const TEST_RECOVERY_ANALYST_TEMPLATE_OVERHEAD_CHARS = 25_000;
+    const rawValidationOutput = 'RAW_VALIDATION_OUTPUT_SENTINEL '.repeat(8_000);
+    const oversizedPrd = [
+      '# Oversized Recovery PRD',
+      'intro filler '.repeat(8_000),
+      '## Acceptance Criteria',
+      '- The bounded prompt must preserve this acceptance criterion heading.',
+      'tail filler '.repeat(8_000),
+    ].join('\n\n');
+    const oversizedSummary: BuildFailureSummary = {
+      ...makeSummary(),
+      plans: [
+        { planId: 'plan-01', status: 'merged', completedAt: '2026-06-01T10:00:00.000Z' },
+        { planId: 'plan-02', status: 'failed', error: 'validation failed '.repeat(1_000) },
+      ],
+      failingPlan: { planId: 'plan-02', errorMessage: 'validation failed '.repeat(1_000) },
+      failingPlans: [{ planId: 'plan-02', errorMessage: 'validation failed '.repeat(1_000) }],
+      terminalFailure: { scope: 'post-merge-validation', stage: 'validation', message: 'type-check failed '.repeat(1_000), authoritative: true },
+      acceptanceValidation: {
+        passed: false,
+        total: 2,
+        pass: 1,
+        fail: 0,
+        unknown: 1,
+        verdicts: [
+          { criterion: 'Criterion A', verdict: 'pass', evidence: 'pass evidence '.repeat(1_000) },
+          { criterion: 'Criterion B', verdict: 'unknown', evidence: 'unknown evidence '.repeat(1_000) },
+        ],
+      },
+      validationCommands: [{ command: 'pnpm type-check', exitCode: 1, output: rawValidationOutput }],
+      landing: { status: 'skipped', reason: 'post-merge validation failed' },
+      diffStat: 'diff stat line\n'.repeat(2_000),
+      prdContent: oversizedPrd,
+      modelsUsed: ['claude-sonnet-4-6'],
+    };
+    const recoveryOutput = `<recovery verdict="manual" confidence="low">
+  <rationale>plan-02 failed during validation and the bounded context contains truncation notes, so manual review is safest.</rationale>
+  <completedWork><item>plan-01 merged before the failure</item></completedWork>
+  <remainingWork><item>plan-02 requires review</item></remainingWork>
+  <risks><item>Truncated evidence may hide relevant details</item></risks>
+</recovery>`;
+    const backend = new StubHarness([{ text: recoveryOutput }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runRecoveryAnalyst({
+      harness: backend,
+      prdId: 'test-prd',
+      prdContent: oversizedPrd,
+      summary: oversizedSummary,
+      cwd,
+    }));
+
+    const prompt = backend.prompts[0]!;
+    expect(prompt.length).toBeLessThanOrEqual(
+      RECOVERY_ANALYST_PROMPT_INPUT_BUDGET_CHARS + TEST_RECOVERY_ANALYST_TEMPLATE_OVERHEAD_CHARS,
+    );
+    expect(prompt).toContain('Context Completeness Notes');
+    expect(prompt).toContain('[truncated from');
+    expect(prompt).toContain('context is incomplete');
+    expect(prompt).toContain('Omitted evidence is not proof of absence');
+    expect(prompt).not.toContain(rawValidationOutput);
+
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
     expect(complete!.verdict.verdict).toBe('manual');
   });
 

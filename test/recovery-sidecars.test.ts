@@ -68,7 +68,7 @@ describe('writeRecoverySidecar', () => {
     expect(json.length).toBeGreaterThan(0);
   });
 
-  it('JSON includes schemaVersion: 2, summary, verdict, generatedAt', async () => {
+  it('JSON includes schemaVersion: 3, identity, verdict, report, boundedEvidence, generatedAt', async () => {
     const dir = makeTempDir();
     const { jsonPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
@@ -80,9 +80,11 @@ describe('writeRecoverySidecar', () => {
     const raw = await readFile(jsonPath, 'utf-8');
     const parsed = JSON.parse(raw);
 
-    expect(parsed.schemaVersion).toBe(2);
-    expect(parsed.summary).toBeDefined();
-    expect(parsed.summary.prdId).toBe('test-prd');
+    expect(parsed.schemaVersion).toBe(3);
+    expect(parsed.prdId).toBe('test-prd');
+    expect(parsed.setName).toBe('test-set');
+    expect(parsed.report).toBeDefined();
+    expect(parsed.boundedEvidence).toBeDefined();
     expect(parsed.verdict).toBeDefined();
     expect(parsed.verdict.verdict).toBe('split');
     expect(parsed.generatedAt).toBeDefined();
@@ -131,7 +133,7 @@ describe('writeRecoverySidecar', () => {
     });
 
     const raw = await readFile(jsonPath, 'utf-8');
-    expect(JSON.parse(raw).schemaVersion).toBe(2);
+    expect(JSON.parse(raw).schemaVersion).toBe(3);
   });
 
   it('produces valid JSON for each verdict type', async () => {
@@ -146,7 +148,7 @@ describe('writeRecoverySidecar', () => {
       });
       const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
       expect(parsed.verdict.verdict).toBe(verdict);
-      expect(parsed.schemaVersion).toBe(2);
+      expect(parsed.schemaVersion).toBe(3);
     }
   });
 
@@ -218,16 +220,16 @@ describe('writeRecoverySidecar', () => {
     });
 
     const md = await readFile(mdPath, 'utf-8');
-    expect(md).toContain('## Acceptance Validation');
+    expect(md).toContain('### Acceptance Validation');
     expect(md).toContain('| Criterion | Verdict | Evidence | Next Step |');
     expect(md).toContain('Must reject invalid tokens');
     expect(md).toContain('fail');
     expect(md).toContain('Invalid token request succeeded in acceptance trace');
-    expect(md).toContain('Update the implementation or tests cited by the evidence, then rerun acceptance validation for this criterion.');
+    expect(md).toContain('Update implementation/tests or waive the criterion with explicit human justification.');
     expect(md).toContain('Must expose audit trail');
     expect(md).toContain('unknown');
     expect(md).toContain('No deterministic audit trail proof found');
-    expect(md).toContain('Inspect the cited evidence manually; add deterministic proof or clarify/split the criterion before retrying.');
+    expect(md).toContain('Inspect manually and add deterministic proof or clarify the criterion.');
   });
 
   it('Markdown includes unknown acceptance verdict count when acceptanceValidation is present', async () => {
@@ -241,7 +243,7 @@ describe('writeRecoverySidecar', () => {
 
     const md = await readFile(mdPath, 'utf-8');
     expect(md).toContain('Acceptance Validation');
-    expect(md).toContain('**Total:** 2 | **Pass:** 0 | **Fail:** 0 | **Unknown (inconclusive):** 2');
+    expect(md).toContain('**Total:** 2 | **Pass:** 0 | **Fail:** 0 | **Unknown:** 2');
 
     expect(md).toContain('Must support OAuth login');
     expect(md).toContain('Must handle rate limiting');
@@ -276,7 +278,7 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('Acceptance criteria');
   });
 
-  it('JSON sidecar serializes all new optional summary fields', async () => {
+  it('JSON sidecar serializes all new optional bounded evidence fields', async () => {
     const dir = makeTempDir();
     const { jsonPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
@@ -286,13 +288,80 @@ describe('writeRecoverySidecar', () => {
     });
 
     const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
-    expect(parsed.summary.terminalFailure).toBeDefined();
-    expect(parsed.summary.terminalFailure.stage).toBe('acceptance-validation');
-    expect(parsed.summary.acceptanceValidation).toBeDefined();
-    expect(parsed.summary.acceptanceValidation.unknown).toBe(2);
-    expect(parsed.summary.validationCommands).toBeDefined();
-    expect(parsed.summary.validationCommands).toHaveLength(1);
-    expect(parsed.summary.landing).toBeDefined();
-    expect(parsed.summary.landing.status).toBe('skipped');
+    expect(parsed.boundedEvidence.terminalFailure).toBeDefined();
+    expect(parsed.boundedEvidence.terminalFailure.stage).toBe('acceptance-validation');
+    expect(parsed.boundedEvidence.acceptanceValidation).toBeDefined();
+    expect(parsed.boundedEvidence.acceptanceValidation.unknown).toBe(2);
+    expect(parsed.boundedEvidence.validationCommands).toBeDefined();
+    expect(parsed.boundedEvidence.validationCommands).toHaveLength(1);
+    expect(parsed.boundedEvidence.landing).toBeDefined();
+    expect(parsed.boundedEvidence.landing.status).toBe('skipped');
+  });
+
+  it('bounds oversized validation command output in JSON and Markdown sidecars', async () => {
+    const dir = makeTempDir();
+    const summary = makeSummaryWithAcceptanceFailure();
+    summary.validationCommands = [
+      {
+        command: 'pnpm test -- --large-output',
+        exitCode: 1,
+        output: `BEGIN_OVERSIZED_VALIDATION_OUTPUT ${'x'.repeat(5_000)} END_UNBOUNDED_VALIDATION_SENTINEL`,
+      },
+    ];
+
+    const { jsonPath, mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary,
+      verdict: makeVerdict('manual')!,
+    });
+
+    const jsonRaw = await readFile(jsonPath, 'utf-8');
+    const md = await readFile(mdPath, 'utf-8');
+    const parsed = JSON.parse(jsonRaw);
+
+    expect(jsonRaw).not.toContain('END_UNBOUNDED_VALIDATION_SENTINEL');
+    expect(md).not.toContain('END_UNBOUNDED_VALIDATION_SENTINEL');
+    expect(parsed.boundedEvidence.validationCommands[0].truncated).toBe(true);
+    expect(parsed.boundedEvidence.validationCommands[0].outputPreview).toContain('[truncated from');
+    expect(parsed.boundedEvidence.evidenceOmissions).toContain('Validation command output was truncated for: pnpm test -- --large-output');
+    expect(md).toContain('[truncated]');
+    expect(md).toContain('Validation command output was truncated for: pnpm test -- --large-output');
+  });
+
+  it('places operator guidance before detailed evidence in Markdown sidecars', async () => {
+    const dir = makeTempDir();
+    const summary = makeSummaryWithAcceptanceFailure();
+    summary.terminalFailure = {
+      stage: 'acceptance-validation',
+      scope: 'acceptance-validation',
+      message: 'Acceptance validation failed before landing.',
+    };
+    const verdict = {
+      ...makeVerdict('manual')!,
+      recommendationSource: 'deterministic' as const,
+    };
+
+    const { mdPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary,
+      verdict,
+    });
+
+    const md = await readFile(mdPath, 'utf-8');
+    const nonEmptyLines = md.split('\n').filter((line) => line.trim() !== '');
+    const first80 = nonEmptyLines.slice(0, 80).join('\n');
+    const detailedIndex = md.indexOf('## Detailed Evidence');
+
+    expect(first80).toContain('**Verdict:** MANUAL (confidence: medium)');
+    expect(first80).toContain('**Verdict Source:** deterministic');
+    expect(first80).toContain('**Root Failure Scope:** acceptance-validation');
+    expect(first80).toContain('**Root Failure Stage:** acceptance-validation');
+    expect(first80).toContain('### Recommended Action');
+    expect(first80).toContain('Review the recovery report manually before taking further action.');
+    expect(md.indexOf('### Plans')).toBeGreaterThan(detailedIndex);
+    expect(md.indexOf('### Acceptance Validation')).toBeGreaterThan(detailedIndex);
+    expect(md.indexOf('### Validation Commands')).toBeGreaterThan(detailedIndex);
   });
 });

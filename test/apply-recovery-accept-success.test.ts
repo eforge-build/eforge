@@ -59,18 +59,24 @@ async function seedAcceptScenario(dir: string, prdId: string, opts: SeedOpts = {
   await mkdir(failedDir, { recursive: true });
   await writeFile(join(failedDir, `${prdId}.md`), `---\ntitle: ${prdId}\n---\n# ${prdId}`, 'utf-8');
   await writeFile(join(failedDir, `${prdId}.recovery.md`), '## Recovery', 'utf-8');
+  const generatedAt = new Date().toISOString();
   const sidecar = {
-    schemaVersion: 2,
-    generatedAt: new Date().toISOString(),
-    summary: {
-      prdId, setName, featureBranch: feature, baseBranch: 'main',
-      plans: [], failingPlan: { planId: 'plan-01' },
-      landedCommits: [{ sha: 'deadbeef', subject: 'work', author: 'Test', date: new Date().toISOString() }],
-      diffStat: '', modelsUsed: [], failedAt: new Date().toISOString(),
+    schemaVersion: 3,
+    generatedAt,
+    prdId,
+    setName,
+    verdict: { verdict: 'manual', confidence: 'low', rationale: 'manual', completedWork: [], remainingWork: [], risks: [] },
+    report: { operatorSummary: 'manual', recommendedAction: 'Review manually.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName, featureBranch: feature, baseBranch: 'main', failedAt: generatedAt },
+      plans: [],
+      failingPlan: { planId: 'plan-01' },
+      landedCommits: [{ sha: 'deadbeef', subject: 'work', author: 'Test', date: generatedAt }],
+      diffStat: '',
+      modelsUsed: [],
       acceptanceValidation: { passed: false, total: 1, pass: 0, fail: 1, unknown: 0, verdicts: [] },
       validationCommands: [{ command: 'pnpm test', exitCode: 0 }],
     },
-    verdict: { verdict: 'manual', confidence: 'low', rationale: 'manual', completedWork: [], remainingWork: [], risks: [] },
   };
   await writeFile(join(failedDir, `${prdId}.recovery.json`), JSON.stringify(sidecar, null, 2), 'utf-8');
 

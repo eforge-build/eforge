@@ -100,10 +100,32 @@ function sidecarFixture(): ReadSidecarResponse {
   return {
     markdown: REPORT_MARKDOWN,
     json: {
-      schemaVersion: 1,
+      schemaVersion: 3,
       generatedAt: '2026-06-04T18:22:50.611Z',
-      summary: { prdId: 'add-queued-prd-priority-and-removal-controls', setName: 'add-queued-prd-priority-and-removal-controls' },
+      prdId: 'add-queued-prd-priority-and-removal-controls',
+      setName: 'add-queued-prd-priority-and-removal-controls',
       verdict: { verdict: 'split', confidence: 'high' },
+      report: {
+        operatorSummary: 'Meaningful work was already merged before the failure.',
+        recommendedAction: 'Enqueue the suggested successor PRD.',
+        keyEvidence: ['plan-02-host-queue-controls failed review'],
+        completedWork: ['Core and Console queue-control work landed.'],
+        remainingWork: ['Finish host queue controls and docs.'],
+        risks: ['Race-safety defects may remain.'],
+      },
+      boundedEvidence: {
+        identity: {
+          prdId: 'add-queued-prd-priority-and-removal-controls',
+          setName: 'add-queued-prd-priority-and-removal-controls',
+          featureBranch: 'eforge/add-queued-prd-priority-and-removal-controls',
+          baseBranch: 'main',
+          failedAt: '2026-06-04T18:22:50.611Z',
+        },
+        plans: [],
+        failingPlan: { planId: 'plan-02-host-queue-controls' },
+        landedCommits: [],
+        modelsUsed: [],
+      },
     },
   } as unknown as ReadSidecarResponse;
 }
@@ -226,7 +248,7 @@ export const Missing: Story = {
 export const ErrorState: Story = {
   args: {
     reportStatus: 'error',
-    reportError: 'Recovery report is malformed: missing verdict or summary fields.',
+    reportError: 'Recovery report is malformed: missing verdict or setName fields.',
   },
 };
 

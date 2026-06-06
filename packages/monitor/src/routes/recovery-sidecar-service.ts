@@ -1,9 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { parseWithSchema, safeParseEforgeEvent } from '@eforge-build/client';
-import type { BuildFailureSummary, RecoveryVerdict, RecoveryVerdictSidecar } from '@eforge-build/client';
-import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
+import { type BuildFailureSummary, type RecoveryVerdict, type RecoveryVerdictSidecar } from '@eforge-build/client';
 import { parseRecoveryAppliedMetadata, parseAcceptSuccessAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
+import { parseRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-read';
 import type { MonitorContext } from '../context.js';
 import { HttpRouteError } from '../http/route-errors.js';
 import { isWithinDir } from './control-validation.js';
@@ -23,53 +22,61 @@ export async function readRecoverySidecar(context: MonitorContext, prdId: string
   let jsonContent: string;
   try { [markdown, jsonContent] = await Promise.all([readFile(mdPath, 'utf-8'), readFile(jsonPath, 'utf-8')]); }
   catch { throw new HttpRouteError(404, 'Recovery sidecar not found'); }
-  return { markdown, json: parseRecoverySidecar(jsonContent, prdId) };
+  return { markdown, json: parseRecoverySidecar(jsonContent, prdId, 500) };
 }
 
-function parseRecoverySidecar(jsonContent: string, prdId: string): RecoveryVerdictSidecar {
-  let parsed: unknown;
-  try { parsed = JSON.parse(jsonContent); }
-  catch { throw new HttpRouteError(500, `Recovery sidecar JSON is malformed for prdId: ${prdId}`); }
-  if (typeof parsed !== 'object' || parsed === null) throw new HttpRouteError(500, `Recovery sidecar JSON is invalid for prdId: ${prdId}`);
-  const sidecar = parsed as Record<string, unknown>;
-  if (typeof sidecar.schemaVersion !== 'number' || typeof sidecar.generatedAt !== 'string') throw new HttpRouteError(500, `Recovery sidecar JSON is invalid for prdId: ${prdId}`);
-  const summary = safeParseEforgeEvent({ type: 'recovery:summary', timestamp: sidecar.generatedAt, prdId, summary: sidecar.summary });
-  if (!summary.success) throw new HttpRouteError(500, `Recovery sidecar summary is invalid for prdId: ${prdId}`);
-  const verdict = safeParseEforgeEvent({ type: 'recovery:complete', timestamp: sidecar.generatedAt, prdId, verdict: sidecar.verdict });
-  if (!verdict.success) throw new HttpRouteError(500, `Recovery sidecar verdict is invalid for prdId: ${prdId}`);
-  const result = { schemaVersion: sidecar.schemaVersion, generatedAt: sidecar.generatedAt, summary: sidecar.summary, verdict: sidecar.verdict } as RecoveryVerdictSidecar;
-  // Preserve the optional durable applied marker only when its required metadata
-  // fields (action literal, appliedAt, and split-specific successorPrdId) are
-  // valid. Validate and normalize via the shared parser so contract-invalid known
-  // fields (e.g. `commitSha: 123`, or `successorPrdId` on a non-split marker)
-  // never reach the wire. Forward-compatible unknown keys are copied through, but
-  // the validated known fields always overlay them. Legacy sidecars without the
-  // marker parse unchanged, and a malformed marker is omitted entirely.
-  if (typeof sidecar.applied === 'object' && sidecar.applied !== null) {
-    const appliedObj = sidecar.applied as Record<string, unknown>;
-    // The rich `accepted-success` marker (keyed by `acceptedAt`) is validated by
-    // its own parser; all other actions use the base `appliedAt`-keyed parser.
-    const acceptApplied = parseAcceptSuccessAppliedMetadata(appliedObj);
-    if (acceptApplied !== undefined) {
-      const KNOWN_ACCEPT_FIELDS = new Set(['action', 'acceptedAt', 'reasonCategory', 'reason', 'cleanup', 'landing', 'dependents']);
-      const forwardCompat: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(appliedObj)) {
-        if (!KNOWN_ACCEPT_FIELDS.has(key)) forwardCompat[key] = value;
-      }
-      result.applied = { ...forwardCompat, ...acceptApplied } as RecoveryVerdictSidecar['applied'];
-    } else {
-      const parsedApplied = parseRecoveryAppliedMetadata(appliedObj);
-      if (parsedApplied !== undefined) {
-        const KNOWN_APPLIED_FIELDS = new Set(['action', 'appliedAt', 'successorPrdId', 'commitSha']);
-        const forwardCompat: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(appliedObj)) {
-          if (!KNOWN_APPLIED_FIELDS.has(key)) forwardCompat[key] = value;
-        }
-        result.applied = { ...forwardCompat, ...parsedApplied } as RecoveryVerdictSidecar['applied'];
-      }
-    }
+function parseRecoverySidecar(jsonContent: string, prdId: string, statusForInvalid: 400 | 500): RecoveryVerdictSidecar {
+  let raw: unknown;
+  try { raw = JSON.parse(jsonContent); }
+  catch { throw new HttpRouteError(statusForInvalid, `Recovery sidecar JSON is malformed for prdId: ${prdId}`); }
+  try {
+    const parsed = parseRecoverySidecarPayload(JSON.stringify(raw), prdId);
+    const applied = parseAppliedMarker(parsed.applied);
+    const { applied: _applied, ...withoutApplied } = parsed;
+    return { ...withoutApplied, ...(applied !== undefined ? { applied } : {}) };
+  } catch (err) {
+    throw new HttpRouteError(statusForInvalid, `Recovery sidecar v3 contract is invalid for prdId: ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
   }
-  return result;
+}
+
+function parseAppliedMarker(value: unknown): RecoveryVerdictSidecar['applied'] | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const appliedObj = value as Record<string, unknown>;
+  const acceptApplied = parseAcceptSuccessAppliedMetadata(appliedObj);
+  if (acceptApplied !== undefined) return mergeForwardCompatible(appliedObj, acceptApplied, ['action', 'acceptedAt', 'reasonCategory', 'reason', 'cleanup', 'landing', 'dependents']) as unknown as RecoveryVerdictSidecar['applied'];
+  const parsedApplied = parseRecoveryAppliedMetadata(appliedObj);
+  if (parsedApplied !== undefined) return mergeForwardCompatible(appliedObj, parsedApplied, ['action', 'appliedAt', 'successorPrdId', 'commitSha']) as unknown as RecoveryVerdictSidecar['applied'];
+  return undefined;
+}
+
+function mergeForwardCompatible<T>(raw: Record<string, unknown>, parsed: T, knownFields: string[]): T & Record<string, unknown> {
+  const known = new Set(knownFields);
+  const forwardCompat: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) if (!known.has(key)) forwardCompat[key] = value;
+  return { ...forwardCompat, ...(parsed as Record<string, unknown>) } as T & Record<string, unknown>;
+}
+
+function projectSummary(sidecar: RecoveryVerdictSidecar): BuildFailureSummary {
+  const evidence = sidecar.boundedEvidence;
+  return {
+    prdId: evidence.identity.prdId,
+    setName: evidence.identity.setName,
+    featureBranch: evidence.identity.featureBranch,
+    baseBranch: evidence.identity.baseBranch,
+    plans: evidence.plans,
+    failingPlan: evidence.failingPlan,
+    landedCommits: evidence.landedCommits,
+    diffStat: evidence.diffStat ?? '',
+    modelsUsed: evidence.modelsUsed,
+    failedAt: evidence.identity.failedAt,
+    ...(evidence.identity.partial !== undefined ? { partial: evidence.identity.partial } : {}),
+    ...(evidence.failingPlans !== undefined ? { failingPlans: evidence.failingPlans } : {}),
+    ...(evidence.terminalFailure !== undefined ? { terminalFailure: evidence.terminalFailure as BuildFailureSummary['terminalFailure'] } : {}),
+    ...(evidence.acceptanceValidation !== undefined ? { acceptanceValidation: evidence.acceptanceValidation as BuildFailureSummary['acceptanceValidation'] } : {}),
+    ...(evidence.validationCommands !== undefined ? { validationCommands: evidence.validationCommands.map((command) => ({ command: command.command, exitCode: command.exitCode, ...(command.outputPreview !== undefined ? { output: command.outputPreview } : {}) })) } : {}),
+    ...(evidence.landing !== undefined ? { landing: evidence.landing } : {}),
+    ...(evidence.reviewFailure !== undefined ? { reviewFailure: evidence.reviewFailure as BuildFailureSummary['reviewFailure'] } : {}),
+  };
 }
 
 export interface RecoveryApplySidecarData {
@@ -87,21 +94,6 @@ export async function readRecoveryVerdictForApply(context: MonitorContext, prdId
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new HttpRouteError(404, `No recovery sidecar found for ${prdId}`);
     throw new HttpRouteError(400, `Failed to read recovery sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
   }
-  let sidecarJson: unknown;
-  try { sidecarJson = JSON.parse(sidecarRaw); }
-  catch { throw new HttpRouteError(400, `Malformed recovery sidecar JSON for ${prdId}`); }
-  if (typeof sidecarJson !== 'object' || sidecarJson === null || !('verdict' in sidecarJson)) {
-    throw new HttpRouteError(400, `Recovery sidecar for ${prdId} is missing the verdict field`);
-  }
-  const sidecar = sidecarJson as Record<string, unknown>;
-  const generatedAt = typeof sidecar.generatedAt === 'string' ? sidecar.generatedAt : new Date().toISOString();
-  const summary = safeParseEforgeEvent({ type: 'recovery:summary', timestamp: generatedAt, prdId, summary: sidecar.summary });
-  if (!summary.success) throw new HttpRouteError(400, `Invalid recovery summary in sidecar for ${prdId}`);
-  try {
-    return {
-      summary: sidecar.summary as BuildFailureSummary,
-      verdict: parseWithSchema(recoveryVerdictSchema, sidecar.verdict) as RecoveryVerdict,
-    };
-  }
-  catch (err) { throw new HttpRouteError(400, `Invalid recovery verdict in sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`); }
+  const sidecar = parseRecoverySidecar(sidecarRaw, prdId, 400);
+  return { summary: projectSummary(sidecar), verdict: sidecar.verdict };
 }

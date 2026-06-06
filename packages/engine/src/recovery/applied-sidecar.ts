@@ -6,9 +6,10 @@
  * Console prompt).
  *
  * Reads tolerate legacy sidecars that predate the field and never throw on a
- * missing or invalid marker. Writes preserve every existing sidecar field
- * (`schemaVersion`, `generatedAt`, `summary`, `verdict`, and any unrelated keys)
- * and are atomic via write-to-temp-then-rename.
+ * missing or invalid marker. Writes preserve every existing v3 sidecar field
+ * (`schemaVersion`, `generatedAt`, top-level identity, `verdict`, `report`,
+ * `boundedEvidence`, and any unrelated keys) and are atomic via
+ * write-to-temp-then-rename.
  */
 
 import { readFile, writeFile, rename, open } from 'node:fs/promises';

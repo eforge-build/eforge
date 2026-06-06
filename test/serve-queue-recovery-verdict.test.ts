@@ -51,20 +51,10 @@ async function seedQueueFixtures(dir: string): Promise<void> {
   await writeFile(
     join(failedDir, `${FAILED_WITH_SIDECAR_ID}.recovery.json`),
     JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
-      summary: {
-        prdId: FAILED_WITH_SIDECAR_ID,
-        setName: 'test-set',
-        featureBranch: 'eforge/test-set',
-        baseBranch: 'main',
-        plans: [],
-        failingPlan: { planId: 'plan-01' },
-        landedCommits: [],
-        diffStat: '',
-        modelsUsed: [],
-        failedAt: new Date().toISOString(),
-      },
+      prdId: FAILED_WITH_SIDECAR_ID,
+      setName: 'test-set',
       verdict: {
         verdict: 'retry',
         confidence: 'high',
@@ -72,6 +62,15 @@ async function seedQueueFixtures(dir: string): Promise<void> {
         completedWork: [],
         remainingWork: [],
         risks: [],
+      },
+      report: { operatorSummary: 'Transient build failure.', recommendedAction: 'Retry.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      boundedEvidence: {
+        identity: { prdId: FAILED_WITH_SIDECAR_ID, setName: 'test-set', featureBranch: 'eforge/test-set', baseBranch: 'main', failedAt: new Date().toISOString() },
+        plans: [],
+        failingPlan: { planId: 'plan-01' },
+        landedCommits: [],
+        diffStat: '',
+        modelsUsed: [],
       },
     }, null, 2),
   );

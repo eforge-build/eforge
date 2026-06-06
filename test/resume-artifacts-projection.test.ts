@@ -171,12 +171,13 @@ function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { 
 }
 
 describe('resolveResumeSetName — sidecar-aware set-name resolution', () => {
-  it('returns summary.setName from the recovery sidecar when present', async () => {
+  it('returns top-level setName from the recovery sidecar when present', async () => {
     const cwd = makeTempDir();
     const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+    const generatedAt = new Date().toISOString();
     writeFileEnsuringDir(
       join(failedDir, 'prd-x.recovery.json'),
-      JSON.stringify({ summary: { setName: 'resolved-set' } }),
+      JSON.stringify({ schemaVersion: 3, generatedAt, prdId: 'prd-x', setName: 'resolved-set', verdict: { verdict: 'manual', confidence: 'low', rationale: 'metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'metadata', recommendedAction: 'Resume.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId: 'prd-x', setName: 'resolved-set', featureBranch: 'eforge/resolved-set', baseBranch: 'main', failedAt: generatedAt }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] } }),
     );
 
     const setName = await resolveResumeSetName({ prdId: 'prd-x', failedDir });
@@ -190,24 +191,22 @@ describe('resolveResumeSetName — sidecar-aware set-name resolution', () => {
     expect(setName).toBe('prd-fallback');
   });
 
-  it('falls back to prdId when the sidecar lacks a valid setName', async () => {
+  it('throws when the sidecar lacks a valid setName', async () => {
     const cwd = makeTempDir();
     const failedDir = join(cwd, '.eforge', 'queue', 'failed');
     writeFileEnsuringDir(
       join(failedDir, 'prd-y.recovery.json'),
       JSON.stringify({ summary: {} }),
     );
-    const setName = await resolveResumeSetName({ prdId: 'prd-y', failedDir });
-    expect(setName).toBe('prd-y');
+    await expect(resolveResumeSetName({ prdId: 'prd-y', failedDir })).rejects.toThrow(/schemaVersion|setName/);
   });
 
-  it('falls back to prdId when the recovery sidecar JSON is malformed', async () => {
+  it('throws when the recovery sidecar JSON is malformed', async () => {
     const cwd = makeTempDir();
     const failedDir = join(cwd, '.eforge', 'queue', 'failed');
     writeFileEnsuringDir(join(failedDir, 'prd-bad.recovery.json'), '{ not json');
 
-    const setName = await resolveResumeSetName({ prdId: 'prd-bad', failedDir });
-    expect(setName).toBe('prd-bad');
+    await expect(resolveResumeSetName({ prdId: 'prd-bad', failedDir })).rejects.toThrow(/malformed/);
   });
 });
 

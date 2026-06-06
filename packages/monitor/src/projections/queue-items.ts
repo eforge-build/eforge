@@ -1,9 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
-import { parseWithSchema, type QueueItem } from '@eforge-build/client';
-import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
+import { type QueueItem } from '@eforge-build/client';
 import { parseRecoveryAppliedMetadata, parseAcceptSuccessAppliedMetadata } from '@eforge-build/engine/recovery/applied-sidecar';
+import { parseRecoverySidecarPayload } from '@eforge-build/engine/recovery/sidecar-read';
 
 export function parseQueueFrontmatter(content: string): Record<string, unknown> | null {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -64,27 +64,25 @@ function postProcessQueueDependsOn(items: QueueItem[]): void {
   }
 }
 
-function parseRecoverySidecarProjection(raw: string): RecoverySidecarProjection {
-  const sidecarData = JSON.parse(raw) as Record<string, unknown>;
-  const projection: RecoverySidecarProjection = {};
-  if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
-    const parsed = parseWithSchema(recoveryVerdictSchema, sidecarData.verdict);
-    projection.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
-  }
+function parseRecoverySidecarProjection(raw: string, id: string): RecoverySidecarProjection {
+  const sidecarData = parseRecoverySidecarPayload(raw, id);
+  const projection: RecoverySidecarProjection = {
+    recoveryVerdict: { verdict: sidecarData.verdict.verdict, confidence: sidecarData.verdict.confidence },
+  };
   // Prefer the rich accepted-success marker (keyed by `acceptedAt`); fall back to
   // the base `appliedAt`-keyed retry/split/abandon marker.
-  const applied = parseAcceptSuccessAppliedMetadata(sidecarData?.applied)
-    ?? parseRecoveryAppliedMetadata(sidecarData?.applied);
+  const applied = parseAcceptSuccessAppliedMetadata(sidecarData.applied)
+    ?? parseRecoveryAppliedMetadata(sidecarData.applied);
   if (applied !== undefined) projection.recoveryApplied = applied;
   return projection;
 }
 
 function readRecoverySidecarProjectionSync(dir: string, id: string): RecoverySidecarProjection {
-  try { return parseRecoverySidecarProjection(readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8')); } catch { return {}; }
+  try { return parseRecoverySidecarProjection(readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8'), id); } catch { return {}; }
 }
 
 async function readRecoverySidecarProjection(dir: string, id: string): Promise<RecoverySidecarProjection> {
-  try { return parseRecoverySidecarProjection(await readFile(resolve(dir, `${id}.recovery.json`), 'utf-8')); } catch { return {}; }
+  try { return parseRecoverySidecarProjection(await readFile(resolve(dir, `${id}.recovery.json`), 'utf-8'), id); } catch { return {}; }
 }
 
 export function loadQueueItemsSync(queueDir: string, lockDir: string): QueueItem[] {

@@ -86,16 +86,22 @@ async function seed(repo: string, prdId = 'accept-pr') {
   writeFileSync(join(failed, `${prdId}.md`), `---\ntitle: ${prdId}\nlanding: pr\nlanding_auto_merge: true\n---\n# ${prdId}\n`);
   writeFileSync(join(failed, `${prdId}.recovery.md`), 'recovery');
   writeFileSync(join(failed, `${prdId}.recovery.json`), JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date().toISOString(),
-    summary: {
-      prdId, setName, featureBranch: feature, baseBranch: 'main', plans: [], failingPlan: { planId: 'plan-01' },
+    prdId,
+    setName,
+    verdict: { verdict: 'manual', confidence: 'low', rationale: 'manual', completedWork: [], remainingWork: [], risks: [] },
+    report: { operatorSummary: 'manual', recommendedAction: 'Review manually.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName, featureBranch: feature, baseBranch: 'main', failedAt: new Date().toISOString() },
+      plans: [{ planId: 'plan-01', status: 'failed' }],
+      failingPlan: { planId: 'plan-01' },
       landedCommits: [{ sha: 'abc', subject: 'feature', author: 'Test', date: new Date().toISOString() }],
-      diffStat: '', modelsUsed: [], failedAt: new Date().toISOString(),
+      diffStat: '',
+      modelsUsed: [],
       acceptanceValidation: { passed: false, total: 1, pass: 0, fail: 1, unknown: 0, verdicts: [] },
       validationCommands: [{ command: 'true', exitCode: 0 }],
     },
-    verdict: { verdict: 'manual', confidence: 'low', rationale: 'manual', completedWork: [], remainingWork: [], risks: [] },
   }, null, 2));
   return { queueDir: join(repo, '.eforge', 'queue'), feature };
 }

@@ -10,11 +10,12 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { buildFailureSummary } from '../recovery/failure-summary.js';
+import { tryReadRecoverySidecarProjection } from '../recovery/sidecar-read.js';
 import type { BuildFailureSummary } from '../events.js';
 
 const exec = promisify(execFile);
@@ -272,9 +273,9 @@ export async function checkResumeEligibility(opts: {
 }
 
 /**
- * Resolve the plan-set name for a resume. Reads `summary.setName` from
- * `<failedDir>/<prdId>.recovery.json` when a valid sidecar exists, otherwise
- * falls back to `prdId`. Never throws — missing/malformed sidecars use `prdId`.
+ * Resolve the plan-set name for a resume. Reads top-level `setName` from the
+ * current v3 recovery sidecar when one exists, otherwise falls back to `prdId`.
+ * Missing sidecars use `prdId`; malformed current sidecars throw validation errors.
  */
 export async function resolveResumeSetName(opts: {
   prdId: string;
@@ -291,15 +292,10 @@ export async function resolveResumeSetName(opts: {
   ) {
     return opts.prdId;
   }
-  try {
-    const sidecarPath = join(opts.failedDir, `${opts.prdId}.recovery.json`);
-    const parsed = JSON.parse(await readFile(sidecarPath, 'utf-8')) as { summary?: { setName?: string } };
-    return typeof parsed.summary?.setName === 'string' && parsed.summary.setName.length > 0
-      ? parsed.summary.setName
-      : opts.prdId;
-  } catch {
-    return opts.prdId;
-  }
+  const projection = await tryReadRecoverySidecarProjection(opts.failedDir, opts.prdId);
+  return typeof projection?.sidecar.setName === 'string' && projection.sidecar.setName.length > 0
+    ? projection.sidecar.setName
+    : opts.prdId;
 }
 
 // ---------------------------------------------------------------------------

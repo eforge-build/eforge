@@ -18,6 +18,14 @@ The following JSON summarizes the failed build session, including which plans ra
 {{summary}}
 ```
 
+### Context Completeness Notes
+
+{{contextNotes}}
+
+Explicit truncation markers such as `[truncated from N chars to M chars]` mean the prompt context is incomplete. Treat omitted or truncated context as missing evidence, not as proof that the omitted facts or evidence sources do not exist.
+
+Omitted evidence is not proof of absence. If the bounded context is insufficient to justify `retry`, `split`, or `abandon` with concrete evidence, choose `manual`.
+
 ## Recovery Verdict Schema
 
 The following YAML documents the required fields and allowed values for your verdict:

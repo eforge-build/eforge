@@ -688,7 +688,7 @@ describe('writeRecoverySidecar partial analysis warning', () => {
       verdict: { verdict: 'manual', confidence: 'low', rationale: 'partial', completedWork: [], remainingWork: [], risks: [] },
     });
     const md = await readFile(mdPath, 'utf-8');
-    expect(md).toContain('Partial analysis');
+    expect(md).toContain('**Partial Evidence:** yes');
   });
 });
 

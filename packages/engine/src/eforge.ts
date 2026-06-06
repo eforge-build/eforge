@@ -31,10 +31,9 @@ import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { finalizeFailedQueuedResumeSidecars } from './recovery/failed-resume-sidecar-finalization.js';
 import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd, checkSplitRecoveryIdempotency } from './recovery/apply.js';
-import { recoveryVerdictSchema } from './schemas.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
+import { parseRecoverySidecarPayload, projectRecoverySidecar } from './recovery/sidecar-read.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
-import { safeParseWithSchema } from '@eforge-build/client';
 import { emitBuildDecisionForPlan } from './decisions.js';
 import { runFormatter } from './agents/formatter.js';
 import { runAcceptanceCriteriaExtractor } from './agents/acceptance-criteria-extractor.js';
@@ -2473,16 +2472,11 @@ export class EforgeEngine {
         throw new Error(`Recovery sidecar not found for ${prdId}; run recover() first`);
       }
 
-      // Parse and validate the verdict; also extract failing plan ID for decision attribution
-      const parsed = JSON.parse(rawJson) as { verdict?: unknown; summary?: BuildFailureSummary };
-      const failingPlanId = parsed.summary?.failingPlan?.planId ?? prdId;
-      const verdictResult = safeParseWithSchema(recoveryVerdictSchema, parsed.verdict);
-      if (!verdictResult.success) {
-        throw new Error(
-          `Recovery verdict validation failed for ${prdId}: ${verdictResult.error.message}`,
-        );
-      }
-      const verdict = verdictResult.data;
+      // Parse and validate the current v3 sidecar; derive decision attribution
+      // and split-continuation context from bounded evidence.
+      const projectedSidecar = projectRecoverySidecar(parseRecoverySidecarPayload(rawJson, prdId));
+      const failingPlanId = projectedSidecar.summary.failingPlan?.planId ?? prdId;
+      const verdict = projectedSidecar.verdict;
 
       const helperOptions = { cwd, prdId, queueDir };
 
@@ -2533,7 +2527,7 @@ export class EforgeEngine {
             }
             acceptanceCriteriaInventory = extractorResult.value;
           }
-          const { commitSha, successorPrdId, status } = await applyRecoverySplit(helperOptions, verdict, { summary: parsed.summary, acceptanceCriteriaInventory });
+          const { commitSha, successorPrdId, status } = await applyRecoverySplit(helperOptions, verdict, { summary: projectedSidecar.summary, acceptanceCriteriaInventory });
           result = { verdict: 'split', noAction: false, commitSha, successorPrdId, status };
           break;
         }

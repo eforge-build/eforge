@@ -18,6 +18,8 @@ export type {
   RecoverRequest,
   RecoverResponse,
   ReadSidecarRequest,
+  RecoverySidecarReport,
+  RecoverySidecarBoundedEvidence,
   RecoveryVerdictSidecar,
   RecoveryAppliedMetadata,
   ReadSidecarResponse,

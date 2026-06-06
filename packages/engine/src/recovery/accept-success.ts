@@ -16,7 +16,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFile, writeFile, rm } from 'node:fs/promises';
+import { writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
@@ -53,6 +53,7 @@ import {
   writeAcceptSuccessAppliedMetadata,
 } from './applied-sidecar.js';
 import { landAcceptedSuccessBuild } from './accept-success-landing.js';
+import { readRecoverySidecarProjection } from './sidecar-read.js';
 
 const exec = promisify(execFile);
 
@@ -125,24 +126,13 @@ interface LoadedSidecar {
 async function loadFailedSidecar(options: AcceptSuccessHelperOptions): Promise<LoadedSidecar> {
   const { cwd, prdId, queueDir } = options;
   const sidecarJsonPath = join(queueDir, 'failed', `${prdId}.recovery.json`);
-  let raw: string;
+  let summary: BuildFailureSummary;
   try {
-    raw = await readFile(sidecarJsonPath, 'utf-8');
-  } catch {
-    throw new AcceptSuccessError(`No recovery sidecar found for ${prdId}`, 404);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new AcceptSuccessError(`Malformed recovery sidecar JSON for ${prdId}`, 400);
-  }
-  if (typeof parsed !== 'object' || parsed === null || !('summary' in parsed)) {
-    throw new AcceptSuccessError(`Recovery sidecar for ${prdId} is missing the summary field`, 400);
-  }
-  const summary = (parsed as { summary?: unknown }).summary as BuildFailureSummary;
-  if (typeof summary !== 'object' || summary === null || typeof summary.featureBranch !== 'string') {
-    throw new AcceptSuccessError(`Invalid recovery summary in sidecar for ${prdId}`, 400);
+    summary = (await readRecoverySidecarProjection(join(queueDir, 'failed'), prdId)).summary;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/ENOENT|no such file|not found/i.test(message)) throw new AcceptSuccessError(`No recovery sidecar found for ${prdId}`, 404);
+    throw new AcceptSuccessError(`Invalid recovery sidecar for ${prdId}: ${message}`, 400);
   }
   // Defend destructive cleanup/landing against a tampered/mismatched sidecar.
   if (summary.prdId !== prdId) {
@@ -163,8 +153,8 @@ interface EligibilityResult {
 }
 
 /**
- * Accepted-success eligibility requires a sidecar summary that indicates PRD or
- * acceptance validation failure plus evidence of acceptable implementation:
+ * Accepted-success eligibility requires a v3 sidecar projection that indicates
+ * PRD or acceptance validation failure plus evidence of acceptable implementation:
  * non-empty landed commits and deterministic validation command evidence whose
  * exit codes are all `0` when commands are present.
  */
