@@ -124,7 +124,6 @@ describe('queue control routes', () => {
     expect(reasons).toEqual(['external']);
   });
 
-  // --- eforge:region plan-02-daemon-dependency-override ---
   it('does not notify or audit failed dependency override attempts', async () => {
     const reasons: string[] = [];
     harness = await startControlRouteHarness({ serverOptions: { daemonState: recordingDaemonState(reasons), daemonSessionId: 'daemon-test' } });
@@ -170,5 +169,4 @@ describe('queue control routes', () => {
     });
     expect(typeof audit.timestamp).toBe('string');
   });
-  // --- eforge:endregion plan-02-daemon-dependency-override ---
 });

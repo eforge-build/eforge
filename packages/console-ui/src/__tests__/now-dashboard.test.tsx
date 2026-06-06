@@ -308,7 +308,6 @@ describe('NowDashboard', () => {
       expect(refreshQueue).not.toHaveBeenCalled();
     });
 
-    // --- eforge:region plan-03-console-override-control ---
     function dependencyState() {
       return connectedState({
         queue: [makeQueue({ id: 'q-blocked', title: 'Blocked Build', status: 'waiting', dependsOn: ['dep-a', 'dep-b'] })],
@@ -418,7 +417,6 @@ describe('NowDashboard', () => {
         globalThis.fetch = originalFetch;
       }
     });
-    // --- eforge:endregion plan-03-console-override-control ---
   });
 
   it('escalates a conflict stack sync into the Now alert strip with a retry control', () => {

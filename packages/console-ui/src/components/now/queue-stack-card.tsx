@@ -77,9 +77,7 @@ function QueueStackItemRow({
   isLast,
   onSetPriority,
   onRemove,
-  // --- eforge:region plan-03-console-override-control ---
   onOverrideDependency,
-  // --- eforge:endregion plan-03-console-override-control ---
 }: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   if (status === 'running') {
@@ -107,7 +105,6 @@ function QueueStackItemRow({
         <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
         {showActions && (
           <>
-            {/* --- eforge:region plan-03-console-override-control --- */}
             <QueueRowActions
               itemId={item.id}
               itemTitle={item.title}
@@ -117,7 +114,6 @@ function QueueStackItemRow({
               dependencyIds={item.dependsOn}
               onOverrideDependency={onOverrideDependency}
             />
-            {/* --- eforge:endregion plan-03-console-override-control --- */}
           </>
         )}
       </div>
@@ -129,9 +125,7 @@ export function QueueStacks({
   stacks,
   onSetPriority,
   onRemove,
-  // --- eforge:region plan-03-console-override-control ---
   onOverrideDependency,
-  // --- eforge:endregion plan-03-console-override-control ---
 }: QueueStacksProps) {
   if (stacks.length === 0) return null;
 

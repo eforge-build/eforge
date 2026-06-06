@@ -2,17 +2,13 @@ import { resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
 import { API_ROUTES } from '@eforge-build/client';
 import { isQueueControlError, removeQueuedPrd, updateQueuedPrdPriority,
-  // --- eforge:region plan-02-daemon-dependency-override ---
   overrideQueuedPrdDependency,
-  // --- eforge:endregion plan-02-daemon-dependency-override ---
 } from '@eforge-build/engine/queue/control';
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
 import { sendJson, sendJsonError } from '../http/response.js';
 import { localMutation } from '../http/security.js';
-// --- eforge:region plan-02-daemon-dependency-override ---
 import { writeDaemonEvent } from '../daemon-events.js';
-// --- eforge:endregion plan-02-daemon-dependency-override ---
 import { isPlainObject, isValidPathSegment, readJsonBody, sendInvalidJson } from './control-validation.js';
 
 export function createQueueControlRoutes(context: MonitorContext): RouteDefinition[] {

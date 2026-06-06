@@ -108,7 +108,6 @@ describe('QueueStacks - row actions', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 
-  // --- eforge:region plan-03-console-override-control ---
   it('renders Override dependency for waiting stack rows with dependencies', () => {
     render(<QueueStacks stacks={[makeStack()]} onOverrideDependency={vi.fn()} />);
     expect(screen.getAllByRole('button', { name: 'Override dependency' })).toHaveLength(2);
@@ -154,5 +153,4 @@ describe('QueueStacks - row actions', () => {
     expect(onOverrideDependency).toHaveBeenCalledTimes(1);
     expect(onOverrideDependency).toHaveBeenCalledWith('handoff', 'api', 'handoff approved');
   });
-  // --- eforge:endregion plan-03-console-override-control ---
 });

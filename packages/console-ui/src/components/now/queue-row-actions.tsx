@@ -27,18 +27,14 @@ import {
 export interface QueueRowActionCallbacks {
   onSetPriority?: (id: string, priority: number) => Promise<void> | void;
   onRemove?: (id: string) => Promise<void> | void;
-  // --- eforge:region plan-03-console-override-control ---
   onOverrideDependency?: (id: string, dependencyId: string, reason?: string) => Promise<void> | void;
-  // --- eforge:endregion plan-03-console-override-control ---
 }
 
 interface QueueRowActionsProps extends QueueRowActionCallbacks {
   itemId: string;
   itemTitle: string;
   initialPriority?: number;
-  // --- eforge:region plan-03-console-override-control ---
   dependencyIds?: string[];
-  // --- eforge:endregion plan-03-console-override-control ---
 }
 
 export function QueueRowActions({
@@ -56,7 +52,6 @@ export function QueueRowActions({
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = React.useState(false);
-  // --- eforge:region plan-03-console-override-control ---
   const [overrideOpen, setOverrideOpen] = React.useState(false);
   const [selectedDependencyId, setSelectedDependencyId] = React.useState(
     dependencyIds.length === 1 ? dependencyIds[0] : '',
@@ -69,7 +64,6 @@ export function QueueRowActions({
       setSelectedDependencyId(dependencyIds.length === 1 ? dependencyIds[0] : '');
     }
   }, [dependencyIds, selectedDependencyId]);
-  // --- eforge:endregion plan-03-console-override-control ---
 
   // Hide entirely when no action is wired (e.g. read-only callers).
   if (!onSetPriority && !onRemove && !showOverrideDependency) return null;
@@ -105,7 +99,6 @@ export function QueueRowActions({
     if (ok) setRemoveOpen(false);
   }
 
-  // --- eforge:region plan-03-console-override-control ---
   async function handleConfirmOverrideDependency() {
     if (!onOverrideDependency || !selectedDependencyId) return;
     const reason = overrideReason.trim();
@@ -115,7 +108,6 @@ export function QueueRowActions({
       setOverrideReason('');
     }
   }
-  // --- eforge:endregion plan-03-console-override-control ---
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -171,7 +163,6 @@ export function QueueRowActions({
           </AlertDialogContent>
         </AlertDialog>
       )}
-      {/* --- eforge:region plan-03-console-override-control --- */}
       {showOverrideDependency && (
         <AlertDialog open={overrideOpen} onOpenChange={setOverrideOpen}>
           <AlertDialogTrigger asChild>
@@ -230,7 +221,6 @@ export function QueueRowActions({
           </AlertDialogContent>
         </AlertDialog>
       )}
-      {/* --- eforge:endregion plan-03-console-override-control --- */}
       {error && (
         <span role="alert" className="text-xs text-destructive">
           {error}

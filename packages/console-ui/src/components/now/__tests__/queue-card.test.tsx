@@ -226,7 +226,6 @@ describe('QueueCard - loose row actions', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 
-  // --- eforge:region plan-03-console-override-control ---
   it('renders Override dependency for blocked pending loose rows when callback is supplied', () => {
     const summary = makeSummary({
       total: 1,
@@ -279,7 +278,6 @@ describe('QueueCard - loose row actions', () => {
     expect(onOverrideDependency).toHaveBeenCalledTimes(1);
     expect(onOverrideDependency).toHaveBeenCalledWith('q-1', 'dep-b', 'manual overlap review complete');
   });
-  // --- eforge:endregion plan-03-console-override-control ---
 
   it('disables the priority controls while the set-priority promise is pending, then re-enables', async () => {
     // Deferred callback so we can observe the pending window deterministically.
