@@ -85,7 +85,7 @@ export interface ConsoleWorkstation {
   title: string;
   description?: string;
   srcDoc: string;
-  /** Local action ids registered by this same extension. Omit to allow all same-extension actions. */
+  /** Local action ids registered by this same extension. Omit or use [] to expose no actions. */
   allowedActions?: string[];
 }
 

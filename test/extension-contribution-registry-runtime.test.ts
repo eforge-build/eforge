@@ -288,7 +288,7 @@ describe('extension contribution registry runtime', () => {
     }
   });
 
-  it('projects Console workstation allowed actions as same-extension effective action ids', async () => {
+  it('projects Console workstation allowed actions explicitly and defaults omitted lists to empty', async () => {
     const result = await loadFixture(makeTempDir(), {
       'alpha.js': `import { Type } from '@eforge-build/extension-sdk';
       export default function extension(eforge) {
@@ -306,7 +306,7 @@ describe('extension contribution registry runtime', () => {
     const manifest = buildExtensionContributionManifest(result.registry);
     expect(manifest.consoleWorkstations.map((workstation) => workstation.id)).toEqual(['alpha:derived', 'alpha:explicit']);
     expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'explicit')?.allowedActions).toEqual(['alpha:two']);
-    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'derived')?.allowedActions).toEqual(['alpha:one', 'alpha:two']);
+    expect(manifest.consoleWorkstations.find((workstation) => workstation.localId === 'derived')?.allowedActions).toEqual([]);
     expect(JSON.stringify(manifest.consoleWorkstations)).not.toContain('beta:other');
   });
 

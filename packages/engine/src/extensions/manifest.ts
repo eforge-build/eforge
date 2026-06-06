@@ -150,10 +150,8 @@ function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string
 }
 
 // --- eforge:region plan-01-workstation-contract-runtime ---
-function projectAllowedActions(reg: ConsoleWorkstationRegistration, registry: NativeExtensionRegistry): string[] {
-  const localActionIds = reg.value.allowedActions ?? registry.actions
-    .filter((action) => belongsTo(action, reg.extensionName, reg.extensionPath))
-    .map((action) => action.localId);
+function projectAllowedActions(reg: ConsoleWorkstationRegistration, _registry: NativeExtensionRegistry): string[] {
+  const localActionIds = reg.value.allowedActions ?? [];
   return [...new Set(localActionIds.map((actionId) => resolveExtensionContributionId(reg.extensionName, actionId)))].sort();
 }
 // --- eforge:endregion plan-01-workstation-contract-runtime ---

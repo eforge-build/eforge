@@ -84,6 +84,7 @@ describe('ConsoleShell header', () => {
 
     expect(screen.getByRole('button', { name: /^now$/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /^plans$/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /^workstations$/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /^system$/i })).toBeDefined();
     expect(screen.queryByRole('link', { name: /monitor/i })).toBeNull();
   });
@@ -94,6 +95,14 @@ describe('ConsoleShell header', () => {
     fireEvent.click(screen.getByRole('button', { name: /^plans$/i }));
 
     expect(onNavigate).toHaveBeenCalledWith('/console/plans');
+  });
+
+  it('routes Workstations header navigation through onNavigate', () => {
+    const { onNavigate } = renderShell();
+
+    fireEvent.click(screen.getByRole('button', { name: /^workstations$/i }));
+
+    expect(onNavigate).toHaveBeenCalledWith('/console/workstations');
   });
 
   it('disables auto-build immediately without confirmation', () => {

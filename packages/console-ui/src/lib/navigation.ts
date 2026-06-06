@@ -1,16 +1,22 @@
 // --- eforge:region console-shell ---
 
 /** Base string ID for each top-level Console route (without parameters). */
-export type ConsoleRouteBaseId = 'now' | 'plans' | 'buildDetail' | 'system';
+export type ConsoleRouteBaseId = 'now' | 'plans' | 'workstations' | 'buildDetail' | 'workstationDetail' | 'system';
 
 /**
  * Full route identifier — either a simple string for top-level routes
- * or a parameterised object for the build detail route.
+ * or a parameterised object for detail routes.
  *
  * Note: `detailId` is a session id. Internally the daemon models a build as a
  * session of phase "runs"; the Console surfaces that session as one "build".
  */
-export type ConsoleRouteId = 'now' | 'plans' | 'system' | { id: 'buildDetail'; detailId: string };
+export type ConsoleRouteId =
+  | 'now'
+  | 'plans'
+  | 'workstations'
+  | 'system'
+  | { id: 'buildDetail'; detailId: string }
+  | { id: 'workstationDetail'; workstationId: string };
 
 /** Metadata for a single Console navigation item. */
 export interface ConsoleNavItem {
@@ -20,13 +26,15 @@ export interface ConsoleNavItem {
 }
 
 /** Canonical route ordering by base ID. */
-export const consoleRouteOrder: ConsoleRouteBaseId[] = ['now', 'plans', 'buildDetail', 'system'];
+export const consoleRouteOrder: ConsoleRouteBaseId[] = ['now', 'plans', 'workstations', 'buildDetail', 'workstationDetail', 'system'];
 
 /** Route labels for all base route IDs. */
 const ROUTE_LABELS: Record<ConsoleRouteBaseId, string> = {
   now: 'Now',
   plans: 'Plans',
+  workstations: 'Workstations',
   buildDetail: 'Build Detail',
+  workstationDetail: 'Workstation Detail',
   system: 'System',
 };
 
@@ -34,7 +42,9 @@ const ROUTE_LABELS: Record<ConsoleRouteBaseId, string> = {
 export function toConsolePath(id: ConsoleRouteId): string {
   if (id === 'now') return '/console/';
   if (id === 'plans') return '/console/plans';
+  if (id === 'workstations') return '/console/workstations';
   if (id === 'system') return '/console/system';
+  if (id.id === 'workstationDetail') return `/console/workstations/${encodeURIComponent(id.workstationId)}`;
   return `/console/builds/${id.detailId}`;
 }
 
@@ -44,6 +54,8 @@ export function toConsolePath(id: ConsoleRouteId): string {
  * - `/console/builds/:detailId` → `{ id: 'buildDetail', detailId }`
  * - `/console/runs/:detailId`   → `{ id: 'buildDetail', detailId }` (legacy alias)
  * - `/console/plans`            → `'plans'`
+ * - `/console/workstations`     → `'workstations'`
+ * - `/console/workstations/:id` → `{ id: 'workstationDetail', workstationId }`
  * - `/console/system`           → `'system'`
  * - Deleted routes and unrecognized paths → `'now'`
  */
@@ -58,6 +70,12 @@ export function parseConsoleRoute(pathname: string): ConsoleRouteId {
   if ((section === 'builds' || section === 'runs') && parts.length >= 3 && parts[2]) {
     return { id: 'buildDetail', detailId: parts[2] };
   }
+  if (section === 'workstations') {
+    if (parts.length >= 3 && parts[2]) {
+      return { id: 'workstationDetail', workstationId: decodeRouteSegment(parts[2]) };
+    }
+    return 'workstations';
+  }
   if (section === 'plans') return 'plans';
   if (section === 'system') return 'system';
   // queue, activity, and a detail-less builds/runs path all redirect to now
@@ -66,12 +84,20 @@ export function parseConsoleRoute(pathname: string): ConsoleRouteId {
 
 /** Build the nav item list for directly-navigable top-level routes. */
 export function buildNavItems(): ConsoleNavItem[] {
-  const navRouteIds: ConsoleRouteBaseId[] = ['now', 'plans', 'system'];
+  const navRouteIds: ConsoleRouteBaseId[] = ['now', 'plans', 'workstations', 'system'];
   return navRouteIds.map((id) => ({
     id,
     label: ROUTE_LABELS[id],
     href: id === 'now' ? '/console/' : `/console/${id}`,
   }));
+}
+
+function decodeRouteSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
 }
 
 // --- eforge:endregion console-shell ---

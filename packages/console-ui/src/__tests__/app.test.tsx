@@ -58,6 +58,13 @@ vi.mock('@/views/plans', () => ({
   PlansView: () => <div data-testid="plans-view">Planning Workspace</div>,
 }));
 
+// Mock the Workstations route so it resolves synchronously without network calls
+vi.mock('@/views/workstations', () => ({
+  WorkstationsView: ({ selectedWorkstationId }: { selectedWorkstationId?: string }) => (
+    <div data-testid="workstations-view">Workstations {selectedWorkstationId ?? 'list'}</div>
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // jsdom compatibility
 // ---------------------------------------------------------------------------
@@ -130,6 +137,23 @@ describe('App — popstate routing', () => {
     expect(screen.getByTestId('plans-view')).toBeDefined();
   });
 
+  it('initial render at /console/workstations mounts the Workstations route, not NowDashboard', async () => {
+    window.history.pushState(null, '', '/console/workstations');
+    render(<App />);
+
+    expect(screen.queryByTestId(NOW_MARKER_TESTID)).toBeNull();
+    await act(async () => {});
+    expect(screen.getByTestId('workstations-view').textContent).toContain('list');
+  });
+
+  it('initial render at /console/workstations/:id passes the selected workstation id', async () => {
+    window.history.pushState(null, '', '/console/workstations/demo%3Aboard');
+    render(<App />);
+
+    await act(async () => {});
+    expect(screen.getByTestId('workstations-view').textContent).toContain('demo:board');
+  });
+
   it('unknown routes render the Now dashboard', () => {
     window.history.pushState(null, '', '/console/not-a-route');
     render(<App />);
@@ -151,6 +175,21 @@ describe('App — popstate routing', () => {
 
     // NowDashboard should now be rendered
     expect(screen.getByTestId(NOW_MARKER_TESTID)).toBeDefined();
+  });
+
+  it('switches to Workstations when popstate fires with /console/workstations pathname', async () => {
+    window.history.pushState(null, '', '/console/');
+    render(<App />);
+
+    expect(screen.getByTestId(NOW_MARKER_TESTID)).toBeDefined();
+
+    await act(async () => {
+      window.history.pushState(null, '', '/console/workstations');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(screen.queryByTestId(NOW_MARKER_TESTID)).toBeNull();
+    expect(screen.getByTestId('workstations-view')).toBeDefined();
   });
 
   it('returns to now-dashboard after forward navigation + popstate back', async () => {
