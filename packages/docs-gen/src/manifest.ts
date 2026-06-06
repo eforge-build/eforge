@@ -53,12 +53,12 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Extensions guide',
       url: '/docs/extensions.md',
-      description: 'How native eforge extensions are discovered, trusted, loaded, authored, including the LLM-first extension authoring checklist and Console workstations',
+      description: 'How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including the LLM-first extension authoring checklist and Console workstations',
     },
     {
       title: 'Extensions API reference',
       url: '/docs/extensions-api.md',
-      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, SDK stability and migration guidance, hook registration, context objects, and runtime boundaries',
+      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries',
     },
     {
       title: 'Profiles guide',
@@ -73,7 +73,7 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Integrations guide',
       url: '/docs/integrations.md',
-      description: 'Use shell hooks, input sources, Langfuse tracing, and the Console dashboard',
+      description: 'Use Claude Code, Pi, the standalone CLI, shell hooks, input sources, Langfuse tracing, daemon APIs, and the Console dashboard',
     },
     {
       title: 'Troubleshooting guide',
