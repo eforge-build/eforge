@@ -1,0 +1,56 @@
+name: fix-eforge-plan-list-board-json-safe-output
+description: Fix eforge-plan:list-board so structured board action output is
+  JSON-safe through the extension action dispatch path while preserving
+  render-board-markdown and runtime JSON-safe validation.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm vitest run --config vitest.main.config.ts
+    eforge/extensions/eforge-plan/__tests__/registration.test.ts
+    test/extension-contribution-registry-runtime.test.ts
+plans:
+  - id: plan-01-json-safe-list-board
+    name: JSON-safe eforge-plan list-board output
+    depends_on: []
+    branch: fix-eforge-plan-list-board-json-safe-output/plan-01-json-safe-list-board
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - validate
+      - test-write
+    - doc-sync
+    - test
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a localized but non-trivial bug fix crossing the extension
+    action output contract, runtime JSON-safety boundary, and host-facing
+    structured data path, so excursion is appropriate. Planning plus a plan
+    review should catch scope mistakes without expedition overhead.
+    Implementation is followed by the required validation provider gate,
+    regression test authoring, documentation sync for any action-output wording
+    drift, test execution, and an iterative review cycle. Review focuses on code
+    correctness and API/output-contract compatibility with standard strictness.
+diff_base_ref: e937e43d91722ae86e954119f235c857279c6509
