@@ -82,19 +82,22 @@ export async function* runEforgePlanPlanningDraftTask(
     resultSchema: getSchemaYaml('eforge-plan-planning-draft-result', EforgePlanPlanningDraftResultSchema),
   }, options.promptAppend);
 
+  const effectiveSubmitToolName = options.harness.effectiveCustomToolName(submitToolName);
+  const allowedTools = options.allowedTools === undefined
+    ? undefined
+    : [...new Set([...options.allowedTools, effectiveSubmitToolName])];
   const sdkOptions = pickSdkOptions({
     model: options.model,
     thinking: options.thinking,
     effort: options.effort,
     maxBudgetUsd: options.maxBudgetUsd,
     fallbackModel: options.fallbackModel,
-    allowedTools: options.allowedTools,
+    allowedTools,
     disallowedTools: options.disallowedTools,
     phase: options.phase,
     stage: options.stage,
   });
 
-  let proseOutput = '';
   for await (const event of options.harness.run(
     {
       prompt,
@@ -108,17 +111,13 @@ export async function* runEforgePlanPlanningDraftTask(
     'planner',
     options.taskId,
   )) {
-    if (event.type === 'agent:message' && event.content) {
-      proseOutput += event.content;
-    }
     if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
       yield event;
     }
   }
 
   if (submitted === undefined) {
-    const suffix = proseOutput.trim() ? ` Agent emitted prose but did not submit: ${proseOutput.trim().slice(0, 500)}` : '';
-    throw new Error(`eforge-plan planning draft task did not call ${options.harness.effectiveCustomToolName(submitToolName)}.${suffix}`);
+    throw new Error(`eforge-plan planning draft task did not call ${options.harness.effectiveCustomToolName(submitToolName)}.`);
   }
 
   return submitted;

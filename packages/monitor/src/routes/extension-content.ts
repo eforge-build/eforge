@@ -8,6 +8,9 @@ import { createSessionPlanSetRoutes } from './session-plan-sets.js';
 export const EXTENSION_CONTENT_ROUTE_KEYS = [
   'extensionList','extensionShow','extensionValidate',
   'extensionContributionManifest','extensionActionInvoke',
+  // --- eforge:region extension-agent-task-context ---
+  'extensionAgentTaskStart','extensionAgentTaskGet','extensionAgentTaskCancel',
+  // --- eforge:endregion extension-agent-task-context ---
   'extensionWorkstationFrame','extensionWorkstationAsset',
   'extensionNew','extensionReload','extensionTest','extensionTrust','extensionUntrust','extensionInstall','extensionUpdate','extensionRemove','extensionPromote','extensionDemote',
   'playbookList','playbookShow','playbookSave','playbookRun','playbookPromote','playbookDemote','playbookValidate','playbookCopy','sessionPlanCreateFromPlaybook',

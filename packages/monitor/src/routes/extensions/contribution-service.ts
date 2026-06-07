@@ -3,6 +3,7 @@ import type {
   ExtensionActionInvokeRequest,
   ExtensionActionInvokeResponse,
   ExtensionActionManifestEntry,
+  ExtensionAgentTaskStartRequest,
   ExtensionContributionManifestResponse,
 } from '@eforge-build/client';
 import type { MonitorContext } from '../../context.js';
@@ -13,6 +14,9 @@ import {
   emitExtensionActionTimeout,
   type ExtensionActionEventProvenance,
 } from './action-events.js';
+// --- eforge:region extension-agent-task-context ---
+import type { ExtensionAgentTaskService } from './agent-task-service.js';
+// --- eforge:endregion extension-agent-task-context ---
 
 export interface LoadedContributionRuntime {
   config: { extensions: unknown };
@@ -41,6 +45,9 @@ export async function invokeExtensionAction(
   context: MonitorContext,
   request: ExtensionActionInvokeRequest,
   invocationId: string,
+  // --- eforge:region extension-agent-task-context ---
+  agentTaskService?: ExtensionAgentTaskService,
+  // --- eforge:endregion extension-agent-task-context ---
 ): Promise<{ status: number; body: ExtensionActionInvokeResponse }> {
   if (request.actionId.trim().length === 0) {
     return {
@@ -73,6 +80,15 @@ export async function invokeExtensionAction(
       configDir: runtime.configDir,
       timeoutMs: getActionTimeoutMs(runtime.config),
       invocationId,
+      // --- eforge:region extension-agent-task-context ---
+      ...(agentTaskService !== undefined && {
+        agentTasks: (extension: { extensionName: string; extensionPath: string }) => ({
+          start: (taskRequest: Omit<ExtensionAgentTaskStartRequest, 'requestedBy'>) => agentTaskService.start({ ...taskRequest, requestedBy: request.requestedBy }, { owner: extension, requestedBy: request.requestedBy }),
+          get: (taskId: string) => agentTaskService.get(taskId, extension),
+          cancel: (taskId: string, reason?: string) => agentTaskService.cancel(taskId, reason, extension),
+        }),
+      }),
+      // --- eforge:endregion extension-agent-task-context ---
     });
   } catch (err) {
     const message = sanitizeUnexpectedActionError(err);

@@ -32,6 +32,10 @@ function productionLines(relativePath: string): string[] {
   return readRouteFile(relativePath).split('\n');
 }
 
+function productionBodyWithoutImports(relativePath: string): string {
+  return readRouteFile(relativePath).replace(/^import[\s\S]*?;\n/gm, '');
+}
+
 describe('extension content route source contracts', () => {
   it('does not embed daemon endpoint path literals in content route modules', () => {
     for (const file of CONTENT_ROUTE_FILES) {
@@ -49,7 +53,7 @@ describe('extension content route source contracts', () => {
 
   it('does not declare duplicate client-owned response wire shapes', () => {
     for (const file of CONTENT_ROUTE_FILES) {
-      const declarations = productionLines(file).filter((line) => !line.trimStart().startsWith('import '))
+      const declarations = productionBodyWithoutImports(file).split('\n')
         .filter((line) => /\b(?:interface|type)\s+\w*Response\b/.test(line));
       expect(declarations, file).toEqual([]);
     }

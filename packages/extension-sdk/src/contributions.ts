@@ -2,6 +2,10 @@ import type { TObject, TSchema, Static } from './schema.js';
 import type { ExtensionLogger } from './context.js';
 import type { EforgeProjectPaths } from './project-paths.js';
 import type {
+  ExtensionAgentTaskCancelResponse,
+  ExtensionAgentTaskGetResponse,
+  ExtensionAgentTaskStartRequest,
+  ExtensionAgentTaskStartResponse,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
 } from '@eforge-build/client';
@@ -15,6 +19,14 @@ export type ExtensionActionSideEffect =
   | 'network'
   | 'daemon-state'
   | 'build-queue';
+
+// --- eforge:region extension-agent-task-context ---
+export interface ExtensionAgentTasksApi {
+  start(request: Omit<ExtensionAgentTaskStartRequest, 'requestedBy'>): Promise<ExtensionAgentTaskStartResponse>;
+  get(taskId: string): Promise<ExtensionAgentTaskGetResponse>;
+  cancel(taskId: string, reason?: string): Promise<ExtensionAgentTaskCancelResponse>;
+}
+// --- eforge:endregion extension-agent-task-context ---
 
 export interface ExtensionActionContext {
   invocationId: string;
@@ -30,6 +42,10 @@ export interface ExtensionActionContext {
   logger: ExtensionLogger;
   /** Scoped path helpers for resolving eforge-owned storage locations. */
   paths: EforgeProjectPaths;
+  // --- eforge:region extension-agent-task-context ---
+  /** Daemon-owned single-shot agent tasks available to extension actions. */
+  agentTasks: ExtensionAgentTasksApi;
+  // --- eforge:endregion extension-agent-task-context ---
 }
 
 export type ExtensionActionOutput<TOutput extends TSchema | undefined = undefined> =

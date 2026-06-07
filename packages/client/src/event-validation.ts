@@ -45,7 +45,7 @@ const ACTION_EVENT_TYPES = new Set([
   'extension:action:timeout',
 ]);
 
-// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:region extension-agent-task-contracts ---
 const TASK_EVENT_FORBIDDEN_FIELDS = new Set(['prompt', 'context', 'result', 'transcript', 'rawTranscript', 'raw_transcript']);
 const TASK_EVENT_TYPES = new Set([
   'extension:agent-task:start',
@@ -54,7 +54,7 @@ const TASK_EVENT_TYPES = new Set([
   'extension:agent-task:failed',
   'extension:agent-task:cancelled',
 ]);
-// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:endregion extension-agent-task-contracts ---
 
 export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaError | undefined {
   if (ACTION_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
@@ -65,12 +65,12 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
     }
   }
 
-  // --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+  // --- eforge:region extension-agent-task-contracts ---
   if (TASK_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
     const rawFieldError = findForbiddenTaskEventField(event, '');
     if (rawFieldError) return rawFieldError;
   }
-  // --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+  // --- eforge:endregion extension-agent-task-contracts ---
 
   if (
     event.type === 'extension:policy:decision' &&
@@ -161,7 +161,7 @@ function visitMetadataObject(value: Record<string, unknown>, path: string, depth
   return undefined;
 }
 
-// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:region extension-agent-task-contracts ---
 function findForbiddenTaskEventField(value: unknown, path: string): SchemaError | undefined {
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
@@ -181,7 +181,7 @@ function findForbiddenTaskEventField(value: unknown, path: string): SchemaError 
   }
   return undefined;
 }
-// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:endregion extension-agent-task-contracts ---
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;

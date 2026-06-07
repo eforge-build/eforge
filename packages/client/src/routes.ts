@@ -106,7 +106,7 @@ export type {
   StackSyncResponse,
 } from './routes/stack.js';
 
-// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:region extension-agent-task-contracts ---
 export type {
   ExtensionAgentTaskCancelRequest,
   ExtensionAgentTaskCancelResponse,
@@ -122,4 +122,4 @@ export type {
   EforgePlanPlanningDraftInput,
   EforgePlanPlanningDraftResult,
 } from './extension-agent-tasks.js';
-// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:endregion extension-agent-task-contracts ---

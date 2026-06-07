@@ -10,12 +10,6 @@ import {
 } from '../routes/index.js';
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'DELETE', 'OPTIONS']);
-const DAEMON_OWNED_AGENT_TASK_ROUTES = new Set([
-  'extensionAgentTaskStart',
-  'extensionAgentTaskGet',
-  'extensionAgentTaskCancel',
-]);
-
 describe('monitor route aggregation', () => {
   it('registers one route key for every client daemon route', async () => {
     const db = openDatabase(':memory:');
@@ -26,10 +20,7 @@ describe('monitor route aggregation', () => {
       const routeKeys = getMonitorRouteKeysFromRoutes(routes);
 
       expect(new Set(routeKeys).size).toBe(routeKeys.length);
-      const runtimeRouteKeys = Object.keys(API_ROUTES).filter(
-        (routeKey) => !DAEMON_OWNED_AGENT_TASK_ROUTES.has(routeKey),
-      );
-      expect([...routeKeys].sort()).toEqual(runtimeRouteKeys.sort());
+      expect([...routeKeys].sort()).toEqual(Object.keys(API_ROUTES).sort());
 
       for (const route of routes) {
         expect(route.pattern).toBe(API_ROUTES[route.routeKey]);

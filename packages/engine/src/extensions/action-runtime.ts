@@ -5,7 +5,7 @@ import { safeParseWithSchema, type ExtensionActionRequestedBy, type ExtensionJso
 import type { TSchema } from '@sinclair/typebox';
 
 import { validateJsonSafeValue, jsonSafeClone } from './contribution-validation.js';
-import type { ActionRegistration, NativeExtensionRegistry } from './types.js';
+import type { ActionRegistration, ExtensionAgentTasksApiShape, NativeExtensionRegistry } from './types.js';
 
 export interface DispatchExtensionActionOptions {
   actionId: string;
@@ -15,6 +15,9 @@ export interface DispatchExtensionActionOptions {
   configDir?: string;
   timeoutMs: number;
   invocationId?: string;
+  // --- eforge:region extension-agent-task-context ---
+  agentTasks?: (extension: { extensionName: string; extensionPath: string }) => ExtensionAgentTasksApiShape;
+  // --- eforge:endregion extension-agent-task-context ---
 }
 
 export type DispatchExtensionActionResult =
@@ -104,8 +107,24 @@ function buildActionContext(action: ActionRegistration, options: DispatchExtensi
     signal,
     logger: buildLogger(action),
     paths: createEforgeProjectPaths({ cwd: options.cwd, configDir: options.configDir, extensionName: action.extensionName }),
+    // --- eforge:region extension-agent-task-context ---
+    agentTasks: options.agentTasks?.({ extensionName: action.extensionName, extensionPath: action.extensionPath }) ?? unavailableAgentTasks(),
+    // --- eforge:endregion extension-agent-task-context ---
   };
 }
+
+// --- eforge:region extension-agent-task-context ---
+function unavailableAgentTasks(): ExtensionAgentTasksApiShape {
+  const fail = async (): Promise<never> => {
+    throw new Error('Extension agent tasks are unavailable in this runtime');
+  };
+  return {
+    start: fail,
+    get: fail,
+    cancel: fail,
+  };
+}
+// --- eforge:endregion extension-agent-task-context ---
 
 function buildLogger(action: ActionRegistration) {
   const prefix = `[eforge extension ${action.extensionName} action ${action.id}]`;

@@ -194,13 +194,13 @@ const eventRegistry = {
   'extension:action:failed': { scope: 'daemon', persist: true, summary: (e) => `Extension action ${e.actionId} failed for ${e.extensionName}: ${e.errorCode}` },
   'extension:action:timeout': { scope: 'daemon', persist: true, summary: (e) => `Extension action ${e.actionId} timed out for ${e.extensionName} after ${e.timeoutMs}ms` },
 
-  // --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+  // --- eforge:region extension-agent-task-contracts ---
   'extension:agent-task:start': { scope: 'daemon', persist: true, summary: (e) => `Extension agent task ${e.taskId} started (${e.taskKind})` },
   'extension:agent-task:progress': { scope: 'daemon', persist: true, summary: (e) => `Extension agent task ${e.taskId} progress: ${e.message}` },
   'extension:agent-task:complete': { scope: 'daemon', persist: true, summary: (e) => `Extension agent task ${e.taskId} completed (${e.taskKind})` },
   'extension:agent-task:failed': { scope: 'daemon', persist: true, summary: (e) => `Extension agent task ${e.taskId} failed (${e.errorCode}): ${e.message}` },
   'extension:agent-task:cancelled': { scope: 'daemon', persist: true, summary: (e) => `Extension agent task ${e.taskId} cancelled${e.reason ? `: ${e.reason}` : ''}` },
-  // --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+  // --- eforge:endregion extension-agent-task-contracts ---
 
   'extension:agent-context:applied': {
     scope: 'session',

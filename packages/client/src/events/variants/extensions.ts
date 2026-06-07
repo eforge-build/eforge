@@ -104,7 +104,7 @@ export const extensionEventVariants = [
   }),
   // --- eforge:endregion action-events ---
 
-  // --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+  // --- eforge:region extension-agent-task-contracts ---
   Type.Object({
     type: Type.Literal('extension:agent-task:start'),
     taskId: Type.String(),
@@ -141,7 +141,7 @@ export const extensionEventVariants = [
     reason: Type.Optional(Type.String()),
     metadata: Type.Optional(ExtensionAgentTaskSanitizedMetadataSchema),
   }),
-  // --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+  // --- eforge:endregion extension-agent-task-contracts ---
 
   // --- eforge:region agent-context-tool-events ---
   // Native extension agent-context hook diagnostics and tool decisions

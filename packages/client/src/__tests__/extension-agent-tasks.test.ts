@@ -89,10 +89,11 @@ describe('extension agent task contracts', () => {
 
   it('defines task routes and builds parameterized paths through buildPath', () => {
     expect(API_ROUTES.extensionAgentTaskStart).toBe('/api/extensions/agent-tasks');
-    expect(buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'task/1' })).toBe('/api/extensions/agent-tasks/task%2F1');
-    expect(buildPath(API_ROUTES.extensionAgentTaskCancel, { taskId: 'task/1' })).toBe('/api/extensions/agent-tasks/task%2F1/cancel');
+    expect(buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'task-1' })).toBe('/api/extensions/agent-tasks/task-1');
+    expect(buildPath(API_ROUTES.extensionAgentTaskCancel, { taskId: 'task-1' })).toBe('/api/extensions/agent-tasks/task-1/cancel');
     expect(() => assertExtensionAgentTaskId('')).toThrow();
     expect(() => assertExtensionAgentTaskId('   ')).toThrow();
+    expect(() => assertExtensionAgentTaskId('task/1')).toThrow();
   });
 
   it('Node helpers use API_ROUTES and buildPath for all task routes', () => {

@@ -3,6 +3,10 @@ import type { Scope } from '@eforge-build/scopes';
 import type {
   ExtensionActionRequestedBy,
   ExtensionActionSideEffect,
+  ExtensionAgentTaskCancelResponse,
+  ExtensionAgentTaskGetResponse,
+  ExtensionAgentTaskStartRequest,
+  ExtensionAgentTaskStartResponse,
   ExtensionJsonValue,
 } from '@eforge-build/client';
 
@@ -66,6 +70,14 @@ export interface PrdEnricherSpec { name: string; description: string; enrich: Ex
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
 export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
 
+// --- eforge:region extension-agent-task-context ---
+export interface ExtensionAgentTasksApiShape {
+  start(request: Omit<ExtensionAgentTaskStartRequest, 'requestedBy'>): Promise<ExtensionAgentTaskStartResponse>;
+  get(taskId: string): Promise<ExtensionAgentTaskGetResponse>;
+  cancel(taskId: string, reason?: string): Promise<ExtensionAgentTaskCancelResponse>;
+}
+// --- eforge:endregion extension-agent-task-context ---
+
 export interface ExtensionActionContextShape {
   invocationId: string;
   actionId: string;
@@ -79,6 +91,9 @@ export interface ExtensionActionContextShape {
   signal: AbortSignal;
   logger: { debug(message: string): void; info(message: string): void; warn(message: string): void; error(message: string): void };
   paths: EforgeProjectPaths;
+  // --- eforge:region extension-agent-task-context ---
+  agentTasks: ExtensionAgentTasksApiShape;
+  // --- eforge:endregion extension-agent-task-context ---
 }
 export interface ExtensionActionSpec {
   id: string;

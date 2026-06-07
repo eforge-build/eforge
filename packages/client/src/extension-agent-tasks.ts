@@ -31,7 +31,8 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
   Type.Literal('sessionPlanPatch'),
 ]);
 
-export const ExtensionAgentTaskIdSchema = Type.String({ minLength: 1, pattern: '\\S' });
+export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
+export const ExtensionAgentTaskIdSchema = Type.String({ minLength: 1, maxLength: 128, pattern: EXTENSION_AGENT_TASK_ID_PATTERN });
 export const EforgePlanPlanningTopicSchema = Type.String({ minLength: 1, pattern: '\\S' });
 
 export const EforgePlanPlanningDraftInputSchema = Type.Object({

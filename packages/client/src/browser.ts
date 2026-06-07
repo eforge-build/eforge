@@ -148,14 +148,14 @@ export {
   fetchExtensionContributionManifest,
   invokeExtensionAction,
 } from './browser-extension-contributions.js';
-// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:region extension-agent-task-contracts ---
 export * from './extension-agent-tasks.js';
 export {
   cancelExtensionAgentTask,
   getExtensionAgentTask,
   startExtensionAgentTask,
 } from './browser-extension-agent-tasks.js';
-// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+// --- eforge:endregion extension-agent-task-contracts ---
 export {
   readWorkstationBridgeContext,
   navigateWorkstation,
