@@ -1,0 +1,60 @@
+name: improve-acceptance-criteria-quality-and-inconclusive-validation-handling
+description: Improve acceptance criteria planning guidance and make all-unknown
+  acceptance validation failures explicitly inconclusive while preserving
+  fail-closed gates and existing event wire shapes.
+base_branch: main
+mode: excursion
+validate:
+  - node scripts/check-skill-parity.mjs
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test -- test/skills-docs-wiring.test.ts
+    packages/client/src/__tests__/events-schemas-validation-recovery.test.ts
+    test/recovery-terminal-failure.test.ts test/recovery-sidecars.test.ts
+    test/acceptance-criteria-quality.test.ts
+plans:
+  - id: plan-01-acceptance-guidance-diagnostics
+    name: Acceptance Criteria Guidance and Inconclusive Validation Diagnostics
+    depends_on: []
+    branch: improve-acceptance-criteria-quality-and-inconclusive-validation-handling/plan-01-acceptance-guidance-diagnostics
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - validate
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is a focused but cross-cutting feature touching planning
+    skills, client summaries, engine terminal failure wording, recovery
+    sidecars, and tests, so excursion is appropriate. A planner plus plan-review
+    cycle is enough because one planning session can enumerate the work without
+    delegated module planning. The build runs implementation and documentation
+    authoring together, syncs docs, writes focused tests, runs the registered
+    maintainability validation provider before review, then executes tests and
+    an iterative review cycle. Parallel code/docs review targets the main risks:
+    behavior correctness and synchronized user-facing guidance."
+diff_base_ref: a064b9edc711553afb29848ffffaa54382f558c9
