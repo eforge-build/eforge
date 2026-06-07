@@ -106,6 +106,54 @@ describe('eforge-plan kanban projection', () => {
     expect(laneIds(board, 'in-progress')).toEqual([]);
   });
 
+  it('enriches cards with priority, tags, dependency refs, dependents, and notes', () => {
+    const board = projectKanbanBoard([
+      item({ id: 'dep', status: 'shipped', title: 'Dependency' }),
+      item({ id: 'child', status: 'planned', priority: 'high', tags: ['ux'], depends_on: ['dep', 'ghost'], body: '# Child\n\n## Claim\n\nDo the thing.\n' }),
+    ], [], { epics: [{ id: 'epic-a', status: 'active', title: 'Epic A', tags: [], body: '' }] });
+
+    const child = board.items.find((card) => card.id === 'child');
+    expect(child?.priority).toBe('high');
+    expect(child?.tags).toEqual(['ux']);
+    expect(child?.notes.claim).toBe('Do the thing.');
+    const ghost = child?.dependencies.find((ref) => ref.id === 'ghost');
+    expect(ghost).toMatchObject({ missing: true, blocking: true });
+    const dep = child?.dependencies.find((ref) => ref.id === 'dep');
+    expect(dep).toMatchObject({ missing: false, blocking: false, title: 'Dependency' });
+    expect(board.items.find((card) => card.id === 'dep')?.dependents.map((ref) => ref.id)).toEqual(['child']);
+  });
+
+  it('resolves epic refs and flags missing epics', () => {
+    const board = projectKanbanBoard([
+      item({ id: 'a', status: 'planned', epic: 'epic-a' }),
+      item({ id: 'b', status: 'planned', epic: 'gone' }),
+    ], [], { epics: [{ id: 'epic-a', status: 'active', title: 'Epic A', tags: [], body: '' }] });
+
+    expect(board.items.find((card) => card.id === 'a')?.epicRef).toMatchObject({ title: 'Epic A', missing: false });
+    expect(board.items.find((card) => card.id === 'b')?.epicRef).toMatchObject({ missing: true });
+  });
+
+  it('flags review-due items past their stale_after date and projects recommendation signals', () => {
+    const board = projectKanbanBoard([
+      item({ id: 'overdue', status: 'planned', stale_after: '2000-01-01' }),
+      item({ id: 'fresh', status: 'planned', stale_after: '2999-01-01' }),
+    ], [], {
+      now: '2026-06-07',
+      recommendationIndex: {
+        rankById: new Map([['overdue', 1]]),
+        lanesById: new Map([['overdue', ['Foundations']]]),
+        unblockById: new Map([['overdue', 'Resolve the blocker.']]),
+      },
+    });
+
+    const overdue = board.items.find((card) => card.id === 'overdue');
+    expect(overdue?.reviewDue).toBe(true);
+    expect(overdue?.recRank).toBe(1);
+    expect(overdue?.recLanes).toEqual(['Foundations']);
+    expect(overdue?.recUnblock).toBe('Resolve the blocker.');
+    expect(board.items.find((card) => card.id === 'fresh')?.reviewDue).toBe(false);
+  });
+
   it('can filter by epic and omit archive lane output', () => {
     const board = projectKanbanBoard([
       item({ id: 'a', status: 'planned', epic: 'epic-a' }),

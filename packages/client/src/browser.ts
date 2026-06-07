@@ -137,6 +137,12 @@ export {
   invokeExtensionAction,
 } from './browser-extension-contributions.js';
 export {
+  readWorkstationBridgeContext,
+  navigateWorkstation,
+  onWorkstationRoute,
+} from './browser-workstation-routing.js';
+export type { WorkstationBridgeContext } from './browser-workstation-routing.js';
+export {
   EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
   CONSOLE_WORKSTATION_BROWSER_SDK_VERSION,
   CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN,

@@ -18,16 +18,43 @@ export interface Artifact {
   childCount?: number;
 }
 
-export interface BoardItem { id: string; title: string; status: string; lane?: string; reasons?: string[]; }
+export interface DependencyRef { id: string; title: string; status?: string; missing: boolean; blocking: boolean; }
+export interface EpicRef { id: string; title: string; status?: string; missing: boolean; }
+export interface CardNotes { claim: string; evidence: string; recheck: string; promotionPaths: string; }
+export interface BoardItem {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  tags: string[];
+  lane: string;
+  reasons: string[];
+  unresolvedDependsOn: string[];
+  activeTraceReasons: string[];
+  blocked: boolean;
+  ready: boolean;
+  reviewDue: boolean;
+  closed: boolean;
+  epic?: string;
+  epicRef?: EpicRef;
+  dependencies: DependencyRef[];
+  dependents: DependencyRef[];
+  notes: CardNotes;
+  recRank?: number;
+  recLanes: string[];
+  recUnblock?: string;
+}
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; }
 export interface Epic { id: string; title?: string; status?: string; }
 export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; }
 
 export interface RecommendationEntry { ref?: string; itemId: string; rationale?: string; title?: string; }
 export interface RecommendationGroup { ref: string; title?: string; itemIds: string[]; epicIds?: string[]; rationale?: string; recommendedProfile?: string; }
+export interface RecommendationBlockedChain { ref?: string; itemIds: string[]; blockedBy: string[]; rationale?: string; }
 export interface RecommendationModel {
   recommendedNextSequence: RecommendationEntry[];
   safeParallelizableGroups: RecommendationGroup[];
+  blockedChains?: RecommendationBlockedChain[];
   rationaleAndAssumptions?: string[];
 }
 
@@ -42,6 +69,7 @@ export interface PlanData {
   planning_depth?: string;
   open_questions?: string[];
   body?: string;
+  sections?: Record<string, string>;
 }
 
 export interface Readiness { ready?: boolean; missingDimensions?: string[]; acDiagnostics?: { message?: string }[]; }

@@ -53,6 +53,18 @@ describe('toConsolePath', () => {
     expect(toConsolePath({ id: 'workstationDetail', workstationId: 'demo:board' })).toBe('/console/workstations/demo%3Aboard');
   });
 
+  it('appends a workstation sub-path as a nested segment', () => {
+    expect(toConsolePath({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: 'backlog' })).toBe('/console/workstations/eforge-plan/backlog');
+  });
+
+  it('appends a workstation sub-path that carries a query string', () => {
+    expect(toConsolePath({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: 'backlog?group=epic' })).toBe('/console/workstations/eforge-plan/backlog?group=epic');
+  });
+
+  it('attaches a query-only sub-path directly to the workstation id', () => {
+    expect(toConsolePath({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: '?group=epic' })).toBe('/console/workstations/eforge-plan?group=epic');
+  });
+
   it('maps a buildDetail object to /console/builds/:detailId', () => {
     expect(toConsolePath({ id: 'buildDetail', detailId: 'abc123' })).toBe('/console/builds/abc123');
   });
@@ -92,6 +104,24 @@ describe('parseConsoleRoute', () => {
   it('returns workstationDetail for /console/workstations/:workstationId', () => {
     expect(parseConsoleRoute('/console/workstations/demo:board')).toEqual({ id: 'workstationDetail', workstationId: 'demo:board' });
     expect(parseConsoleRoute('/console/workstations/demo%3Aboard')).toEqual({ id: 'workstationDetail', workstationId: 'demo:board' });
+  });
+
+  it('captures a nested workstation sub-path', () => {
+    expect(parseConsoleRoute('/console/workstations/eforge-plan/backlog')).toEqual({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: 'backlog' });
+  });
+
+  it('preserves the query string in a workstation sub-path', () => {
+    expect(parseConsoleRoute('/console/workstations/eforge-plan/backlog?group=epic')).toEqual({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: 'backlog?group=epic' });
+  });
+
+  it('captures a query-only workstation sub-path', () => {
+    expect(parseConsoleRoute('/console/workstations/eforge-plan?group=epic')).toEqual({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: '?group=epic' });
+  });
+
+  it('round-trips a workstation sub-path through toConsolePath', () => {
+    const route = parseConsoleRoute('/console/workstations/eforge-plan/plans/plan:2026?tab=readiness');
+    expect(route).toEqual({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: 'plans/plan:2026?tab=readiness' });
+    expect(toConsolePath(route)).toBe('/console/workstations/eforge-plan/plans/plan:2026?tab=readiness');
   });
 
   it('returns buildDetail object for /console/builds/:detailId', () => {

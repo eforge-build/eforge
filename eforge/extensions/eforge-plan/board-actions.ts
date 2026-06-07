@@ -1,5 +1,6 @@
 import { defineExtensionAction, type Static } from '../../../packages/extension-sdk/src/index.js';
 import { projectKanbanBoard } from './kanban.js';
+import { buildRecommendationIndex } from './recommendation-index.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { toJsonSafeObject } from './json-safe.js';
@@ -52,7 +53,13 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
     // --- eforge:endregion recommendations ---
   ]);
   const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
-  const board = projectKanbanBoard(items, traceSummaries, { epic: input.epic, includeArchive: input.includeArchive });
+  const recommendationIndex = buildRecommendationIndex(recommendations);
+  const board = projectKanbanBoard(items, traceSummaries, {
+    epic: input.epic,
+    includeArchive: input.includeArchive,
+    epics,
+    recommendationIndex,
+  });
   return {
     epics,
     items,

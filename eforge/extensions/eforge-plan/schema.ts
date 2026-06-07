@@ -327,15 +327,47 @@ export const TraceSidecarSchema = Type.Object({
   landingResults: Type.Array(TraceLandingResultSchema),
   lastEvent: Type.Optional(TraceLastEventMetadataSchema),
 });
+export const KanbanDependencyRefSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: Type.Optional(BacklogStatusSchema),
+  missing: Type.Boolean(),
+  blocking: Type.Boolean(),
+});
+export const KanbanEpicRefSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: Type.Optional(BacklogStatusSchema),
+  missing: Type.Boolean(),
+});
+export const KanbanCardNotesSchema = Type.Object({
+  claim: Type.String(),
+  evidence: Type.String(),
+  recheck: Type.String(),
+  promotionPaths: Type.String(),
+});
 export const KanbanCardSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
   status: BacklogStatusSchema,
+  priority: Type.String(),
+  tags: Type.Array(Type.String()),
   lane: KanbanLaneSchema,
   reasons: Type.Array(Type.String()),
   unresolvedDependsOn: Type.Array(Type.String()),
   activeTraceReasons: Type.Array(Type.String()),
+  blocked: Type.Boolean(),
+  ready: Type.Boolean(),
+  reviewDue: Type.Boolean(),
+  closed: Type.Boolean(),
   epic: Type.Optional(Type.String()),
+  epicRef: Type.Optional(KanbanEpicRefSchema),
+  dependencies: Type.Array(KanbanDependencyRefSchema),
+  dependents: Type.Array(KanbanDependencyRefSchema),
+  notes: KanbanCardNotesSchema,
+  recRank: Type.Optional(Type.Number()),
+  recLanes: Type.Array(Type.String()),
+  recUnblock: Type.Optional(Type.String()),
 });
 export const KanbanLaneOutputSchema = Type.Object({
   lane: KanbanLaneSchema,

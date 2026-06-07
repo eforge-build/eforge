@@ -23,4 +23,12 @@ describe('buildWorkstationFrameUrl', () => {
     const token = 'a?b&c=d#e f';
     expect(buildWorkstationFrameUrl('/frame', token)).toBe(`/frame#bridgeToken=${encodeURIComponent(token)}`);
   });
+
+  it('appends an encoded initial path after the bridge token', () => {
+    expect(buildWorkstationFrameUrl('/frame', 'tok', 'backlog?group=epic')).toBe('/frame#bridgeToken=tok&path=backlog%3Fgroup%3Depic');
+  });
+
+  it('omits the path fragment when no initial path is supplied', () => {
+    expect(buildWorkstationFrameUrl('/frame', 'tok', '')).toBe('/frame#bridgeToken=tok');
+  });
 });

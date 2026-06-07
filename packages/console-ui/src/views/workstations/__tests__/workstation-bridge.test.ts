@@ -3,7 +3,9 @@ import type { ExtensionActionInvokeResponse } from '@eforge-build/client/browser
 import type { FrameBundleWorkstationManifestEntry, SrcDocWorkstationManifestEntry } from '../workstation-manifest-mode';
 import {
   buildWorkstationRequestedBy,
+  buildWorkstationRouteMessage,
   handleWorkstationBridgeEvent,
+  validateWorkstationNavigateMessage,
   type InvokeExtensionActionFn,
 } from '../workstation-bridge';
 
@@ -263,6 +265,51 @@ describe('workstation bridge', () => {
       requestId: 'req-1',
       response,
     }, '*');
+  });
+
+  it('routes child navigate messages to onNavigate without invoking the daemon', async () => {
+    const source = sourceWindow();
+    const invokeAction = vi.fn<InvokeExtensionActionFn>();
+    const onNavigate = vi.fn();
+
+    const result = await handleWorkstationBridgeEvent({
+      event: bridgeEvent(source, { type: 'eforge:workstation:navigate', bridgeToken: 'bridge-token', path: 'backlog?group=epic' }),
+      sourceWindow: source,
+      workstation: frameBundleWorkstation(),
+      bridgeToken: 'bridge-token',
+      invokeAction,
+      onNavigate,
+    });
+
+    expect(result).toBe('navigated');
+    expect(onNavigate).toHaveBeenCalledWith('backlog?group=epic');
+    expect(invokeAction).not.toHaveBeenCalled();
+    expect(source.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores navigate messages carrying the wrong bridge token', async () => {
+    const source = sourceWindow();
+    const onNavigate = vi.fn();
+
+    const result = await handleWorkstationBridgeEvent({
+      event: bridgeEvent(source, { type: 'eforge:workstation:navigate', bridgeToken: 'wrong', path: 'backlog' }),
+      sourceWindow: source,
+      workstation: frameBundleWorkstation(),
+      bridgeToken: 'bridge-token',
+      invokeAction: vi.fn<InvokeExtensionActionFn>(),
+      onNavigate,
+    });
+
+    // Falls through to invoke-action validation, which rejects the malformed message.
+    expect(result).toBe('posted-error');
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('validates and builds route-sync messages', () => {
+    expect(validateWorkstationNavigateMessage({ type: 'eforge:workstation:navigate', bridgeToken: 't', path: 'plans' }, 't')).toEqual({ ok: true, path: 'plans' });
+    expect(validateWorkstationNavigateMessage({ type: 'eforge:workstation:navigate', bridgeToken: 'x', path: 'plans' }, 't')).toEqual({ ok: false });
+    expect(validateWorkstationNavigateMessage({ type: 'other' }, 't')).toEqual({ ok: false });
+    expect(buildWorkstationRouteMessage('t', 'backlog')).toEqual({ type: 'eforge:workstation:route', bridgeToken: 't', path: 'backlog' });
   });
 
   it('posts bridge errors when invocation rejects', async () => {

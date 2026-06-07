@@ -20,6 +20,15 @@
   --color-ring: #67f553;
   --color-text-bright: #f0f6fc;
   --radius: 0.375rem;
+  --lane-inbox: #7d8aa0;
+  --lane-ready: #58a6ff;
+  --lane-blocked: #f0613a;
+  --lane-progress: #67f553;
+  --lane-done: #a371f7;
+  --lane-archive: #6e7681;
+  --prio-high: #f0613a;
+  --prio-medium: #d2a022;
+  --prio-low: #5b6678;
 }
 
 @layer base {
