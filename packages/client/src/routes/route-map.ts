@@ -44,6 +44,11 @@ export const API_ROUTES = {
   extensionWorkstationFrame: '/api/extensions/workstations/:workstationId/frame',
   extensionWorkstationAsset: '/api/extensions/workstations/:workstationId/assets/:assetId',
   extensionActionInvoke: '/api/extensions/actions/invoke',
+  // --- eforge:region extension-agent-task-routes ---
+  extensionAgentTaskStart: '/api/extensions/agent-tasks',
+  extensionAgentTaskGet: '/api/extensions/agent-tasks/:taskId',
+  extensionAgentTaskCancel: '/api/extensions/agent-tasks/:taskId/cancel',
+  // --- eforge:endregion extension-agent-task-routes ---
   queue: '/api/queue',
   queuePriority: '/api/queue/:prdId/priority',
   queueRemove: '/api/queue/:prdId',

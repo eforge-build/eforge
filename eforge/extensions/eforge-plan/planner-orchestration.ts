@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
+import { createSessionPlanningWorkflowAdapter } from '../../../packages/input/src/index.js';
 import {
   blockerRiskProjection,
   dependencyProjection,
@@ -20,7 +22,14 @@ import {
   summarizeRecommendations,
   writeRecommendations,
 } from './recommendations-store.js';
-import type { ApplyPlannerResultInput, PlannerContextInput } from './schema.js';
+import type {
+  ApplyPlannerResultInput,
+  ApplyPlanningAgentTaskResultInput,
+  ApplyPlanningAgentTaskResultOutput,
+  BacklogRecommendationModel,
+  PlannerContextInput,
+  PlannerHandoffDraft,
+} from './schema.js';
 
 export async function preparePlannerContext(cwd: string, input: PlannerContextInput = {}) {
   const includeRoadmap = input.includeRoadmap ?? true;
@@ -68,6 +77,145 @@ export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultI
     });
   }
   return result;
+}
+
+interface PlanningAgentTaskRecordLike {
+  taskId: string;
+  kind: string;
+  status: string;
+  result?: unknown;
+}
+
+export async function applyCompletedPlanningAgentTaskResult(
+  cwd: string,
+  task: PlanningAgentTaskRecordLike,
+  input: ApplyPlanningAgentTaskResultInput,
+): Promise<ApplyPlanningAgentTaskResultOutput> {
+  assertCompletedPlanningDraftTask(task);
+  const rawResult = task.result as Record<string, unknown> | undefined;
+  if (rawResult === undefined || Object.keys(rawResult).length === 0) throw new Error(`Planning task ${task.taskId} completed without a result.`);
+  const output: ApplyPlanningAgentTaskResultOutput = {
+    schemaVersion: 1,
+    taskId: task.taskId,
+    applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0 },
+  };
+  const recommendations = input.applyRecommendations ? rawResult.recommendations : undefined;
+  if (input.applyRecommendations && !isRecord(recommendations)) throw new Error(`Planning task ${task.taskId} result does not include generated recommendations.`);
+  const handoffDrafts = input.applyHandoffDrafts?.map((selection) => mergeHandoffSelection(resolveHandoffDraft(rawResult, selection.index), selection));
+  const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
+  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts);
+
+  if (input.applyRecommendations) {
+    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel });
+    output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
+    output.applied.recommendations = true;
+  }
+  if (handoffDrafts !== undefined) {
+    const handoffs: NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']> = [];
+    for (const handoffDraft of handoffDrafts) {
+      const applied = await applyPlannerResult(cwd, { handoffDraft });
+      if (applied.handoff !== undefined) handoffs.push(applied.handoff as NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']>[number]);
+    }
+    output.handoffs = handoffs;
+    output.applied.handoffDrafts = handoffs.length;
+  }
+  if (sessionPlanDrafts !== undefined) {
+    output.sessionPlanDrafts = await applySelectedSessionPlanSections(cwd, sessionPlanDrafts);
+    output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
+  }
+  return output;
+}
+
+function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): asserts task is PlanningAgentTaskRecordLike & { status: 'completed'; result: unknown } {
+  if (task.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) throw new Error(`Task ${task.taskId} is not an eforge-plan planning-draft task.`);
+  if (task.status !== 'completed') throw new Error(`Planning task ${task.taskId} is ${task.status}; only completed tasks can be applied.`);
+  if (!('result' in task)) throw new Error(`Planning task ${task.taskId} completed without a result.`);
+}
+
+function resolveHandoffDraft(result: Record<string, unknown>, index: number | undefined): Partial<PlannerHandoffDraft> {
+  const drafts = Array.isArray(result.handoffDrafts) ? result.handoffDrafts : result.handoffDraft !== undefined ? [result.handoffDraft] : [];
+  const draft = drafts[index ?? 0];
+  if (!isRecord(draft)) throw new Error('Selected planning task handoff draft is missing.');
+  return draft as Partial<PlannerHandoffDraft>;
+}
+
+function mergeHandoffSelection(draft: Partial<PlannerHandoffDraft>, selection: NonNullable<ApplyPlanningAgentTaskResultInput['applyHandoffDrafts']>[number]): PlannerHandoffDraft {
+  const selected = selection.selection ?? draft.selection;
+  if (selected === undefined) throw new Error('Applying a handoff draft requires a selected backlog item, epic, or recommendation ref.');
+  return {
+    selection: selected,
+    session: selection.session ?? draft.session,
+    title: selection.title ?? draft.title,
+    profile: selection.profile ?? draft.profile,
+  };
+}
+
+function resolveSelectedSessionPlanSections(
+  result: Record<string, unknown>,
+  selections: NonNullable<ApplyPlanningAgentTaskResultInput['applySessionPlanDrafts']>,
+): Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> {
+  const patch = resolveSessionPlanPatch(result);
+  return selections.map((selection) => {
+    const requested = new Set(selection.sections);
+    const sections = patch.sections.filter((section) => requested.has(section.dimension));
+    const resolved = new Set(sections.map((section) => section.dimension));
+    const missing = selection.sections.filter((dimension) => !resolved.has(dimension));
+    if (missing.length > 0) throw new Error(`Planning task result is missing selected session-plan sections for ${selection.session}: ${missing.join(', ')}.`);
+    return { session: selection.session, sections };
+  });
+}
+
+async function validatePlanningAgentTaskApplyTargets(
+  cwd: string,
+  handoffDrafts: PlannerHandoffDraft[] | undefined,
+  sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
+): Promise<void> {
+  await Promise.all([
+    ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
+      cwd,
+      ...draft.selection,
+      session: draft.session ?? draft.selection.session,
+      title: draft.title ?? draft.selection.title,
+      profile: draft.profile ?? draft.selection.profile,
+    })),
+    ...sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })),
+  ]);
+}
+
+function sessionPlanSessions(selections: Array<{ session: string }> | undefined): string[] {
+  return [...new Set((selections ?? []).map((selection) => selection.session))];
+}
+
+async function applySelectedSessionPlanSections(
+  cwd: string,
+  selections: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }>,
+): Promise<NonNullable<ApplyPlanningAgentTaskResultOutput['sessionPlanDrafts']>> {
+  const planning = createSessionPlanningWorkflowAdapter();
+  const applied = [];
+  for (const selection of selections) {
+    for (const section of selection.sections) {
+      await planning.flat.setSection({ cwd, session: selection.session, dimension: section.dimension, content: section.content });
+    }
+    applied.push({ session: selection.session, sections: selection.sections.map((section) => section.dimension) });
+  }
+  return applied;
+}
+
+function resolveSessionPlanPatch(result: Record<string, unknown>): { sections: Array<{ dimension: string; content: string }> } {
+  if (isSessionPlanPatch(result.sessionPlanPatch)) return result.sessionPlanPatch;
+  if (Array.isArray(result.sessionPlanDrafts)) {
+    const patch = result.sessionPlanDrafts.find(isSessionPlanPatch);
+    if (patch !== undefined) return patch;
+  }
+  throw new Error('Planning task result does not include session-plan draft sections.');
+}
+
+function isSessionPlanPatch(value: unknown): value is { sections: Array<{ dimension: string; content: string }> } {
+  return isRecord(value) && Array.isArray(value.sections) && value.sections.every((entry) => isRecord(entry) && typeof entry.dimension === 'string' && typeof entry.content === 'string');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 async function resolvePlannerSelection(cwd: string, input: PlannerContextInput): Promise<{ items: BacklogItem[]; epics: BacklogEpic[] }> {

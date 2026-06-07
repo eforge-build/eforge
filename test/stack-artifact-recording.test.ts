@@ -650,7 +650,7 @@ describe('recordArtifact — artifact registry writes', () => {
       prdId: 'rerun-command-failed-prd',
       landingAction: 'leave',
       validateCommands: [
-        'if [ -f .eforge/validation-rerun-marker ]; then exit 1; else mkdir -p .eforge && touch .eforge/validation-rerun-marker; fi',
+        'if [ -f .git/validation-rerun-marker ]; then exit 1; else touch .git/validation-rerun-marker; fi',
       ],
       gapCloser: async function* () {
         yield { type: 'gap_close:start', timestamp: new Date().toISOString() } as EforgeEvent;

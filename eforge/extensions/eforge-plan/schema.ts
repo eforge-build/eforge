@@ -1,4 +1,5 @@
 import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { ExtensionAgentTaskCancelResponseSchema, ExtensionAgentTaskGetResponseSchema, ExtensionAgentTaskIdSchema, ExtensionAgentTaskStartResponseSchema } from '../../../packages/client/src/extension-agent-tasks.js';
 
 // --- eforge:region backlog-schemas ---
 export const BACKLOG_STATUSES = ['candidate', 'planned', 'active', 'shipped', 'stale', 'superseded'] as const;
@@ -65,7 +66,6 @@ export const ActionObjectOutputSchema = Type.Object({}, { additionalProperties: 
 export const MarkdownOutputSchema = Type.Object({ markdown: Type.String() });
 
 // --- eforge:endregion json-schemas ---
-
 // --- eforge:region recommendations ---
 export const PlanningProfileSchema = Type.Union([
   Type.Literal('errand'),
@@ -123,7 +123,6 @@ export const PutRecommendationsOutputSchema = Type.Object({
   path: Type.String(),
 });
 // --- eforge:endregion recommendations ---
-
 // --- eforge:region promotion-selection ---
 export const PromotionSelectionSourceItemSchema = Type.Object({
   id: Type.String(),
@@ -249,7 +248,17 @@ export const ApplyPlannerResultOutputSchema = Type.Object({
   recommendations: Type.Optional(PutRecommendationsOutputSchema),
   handoff: Type.Optional(PromotionSelectionOutputSchema),
 }, { additionalProperties: false });
-
+const PlanningTypeLiteralSchemas = PLANNING_TYPES.map((value) => Type.Literal(value)) as [ReturnType<typeof Type.Literal>, ...Array<ReturnType<typeof Type.Literal>>]; const PlanningDepthLiteralSchemas = PLANNING_DEPTHS.map((value) => Type.Literal(value)) as [ReturnType<typeof Type.Literal>, ...Array<ReturnType<typeof Type.Literal>>];
+export const PlanningAgentRequestedOutputSectionSchema = Type.Union([Type.Literal('recommendations'), Type.Literal('handoffDrafts'), Type.Literal('planDrafts'), Type.Literal('playbookDraft'), Type.Literal('sessionPlanPatch')]);
+export const MAX_PLANNING_AGENT_USER_GOAL_LENGTH = 4000;
+export const StartPlanningAgentTaskInputSchema = Type.Object({ userGoal: Type.String({ minLength: 1, maxLength: MAX_PLANNING_AGENT_USER_GOAL_LENGTH, pattern: '\\S' }), itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })), epicId: Type.Optional(Type.String()), recommendationRef: Type.Optional(Type.String()), includeRoadmap: Type.Optional(Type.Boolean()), session: Type.Optional(Type.String()), planningType: Type.Optional(Type.Union(PlanningTypeLiteralSchemas)), planningDepth: Type.Optional(Type.Union(PlanningDepthLiteralSchemas)), requestedOutputSections: Type.Optional(Type.Array(PlanningAgentRequestedOutputSectionSchema, { minItems: 1 })) }, { additionalProperties: false, not: { anyOf: [{ required: ['itemIds', 'epicId'] }, { required: ['itemIds', 'recommendationRef'] }, { required: ['epicId', 'recommendationRef'] }] } });
+export const GetPlanningAgentTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema }, { additionalProperties: false });
+export const CancelPlanningAgentTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema, reason: Type.Optional(Type.String()) }, { additionalProperties: false });
+export const ApplyPlanningAgentTaskHandoffSelectionSchema = Type.Object({ index: Type.Optional(Type.Integer({ minimum: 0 })), selection: Type.Optional(PromotionSelectionInputSchema), session: Type.Optional(Type.String()), title: Type.Optional(Type.String()), profile: Type.Optional(PlanningProfileSchema) }, { additionalProperties: false });
+export const ApplyPlanningAgentTaskSessionPlanDraftSchema = Type.Object({ session: Type.String(), sections: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }) }, { additionalProperties: false });
+export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema, applyRecommendations: Type.Optional(Type.Boolean()), applyHandoffDrafts: Type.Optional(Type.Array(ApplyPlanningAgentTaskHandoffSelectionSchema, { minItems: 1 })), applySessionPlanDrafts: Type.Optional(Type.Array(ApplyPlanningAgentTaskSessionPlanDraftSchema, { minItems: 1 })) }, { additionalProperties: false });
+export const PlanningAgentTaskStartOutputSchema = ExtensionAgentTaskStartResponseSchema; export const PlanningAgentTaskGetOutputSchema = ExtensionAgentTaskGetResponseSchema; export const PlanningAgentTaskCancelOutputSchema = ExtensionAgentTaskCancelResponseSchema;
+export const ApplyPlanningAgentTaskResultOutputSchema = Type.Object({ schemaVersion: Type.Literal(1), taskId: ExtensionAgentTaskIdSchema, applied: Type.Object({ recommendations: Type.Boolean(), handoffDrafts: Type.Number(), sessionPlanSections: Type.Number() }, { additionalProperties: false }), recommendations: Type.Optional(PutRecommendationsOutputSchema), handoffs: Type.Optional(Type.Array(PromotionSelectionOutputSchema)), sessionPlanDrafts: Type.Optional(Type.Array(Type.Object({ session: Type.String(), sections: Type.Array(Type.String()) }, { additionalProperties: JsonValueSchema }))) }, { additionalProperties: JsonValueSchema });
 // --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
   epic: Type.Optional(Type.String()),
@@ -569,6 +578,9 @@ export type PlannerContextInput = Static<typeof PreparePlannerContextInputSchema
 export type PlannerContextOutput = Static<typeof PreparePlannerContextOutputSchema>;
 export type ApplyPlannerResultInput = Static<typeof ApplyPlannerResultInputSchema>;
 export type ApplyPlannerResultOutput = Static<typeof ApplyPlannerResultOutputSchema>;
+export type PlannerHandoffDraft = Static<typeof PlannerHandoffDraftSchema>;
+export type StartPlanningAgentTaskInput = Static<typeof StartPlanningAgentTaskInputSchema>; export type GetPlanningAgentTaskInput = Static<typeof GetPlanningAgentTaskInputSchema>; export type CancelPlanningAgentTaskInput = Static<typeof CancelPlanningAgentTaskInputSchema>;
+export type ApplyPlanningAgentTaskHandoffSelection = Static<typeof ApplyPlanningAgentTaskHandoffSelectionSchema>; export type ApplyPlanningAgentTaskSessionPlanDraft = Static<typeof ApplyPlanningAgentTaskSessionPlanDraftSchema>; export type ApplyPlanningAgentTaskResultInput = Static<typeof ApplyPlanningAgentTaskResultInputSchema>; export type ApplyPlanningAgentTaskResultOutput = Static<typeof ApplyPlanningAgentTaskResultOutputSchema>;
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
 export type PlanningProfileInput = Static<typeof PlanningProfileSchema>;

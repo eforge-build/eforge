@@ -6,8 +6,16 @@ import { isRequestBodyTooLargeError, parseJsonBody } from '../../http/request.js
 import { sendJson, sendJsonError } from '../../http/response.js';
 import { localMutation, localOnly, rejectCrossSiteBrowser } from '../../http/security.js';
 import { failureBody, getContributionManifest, invokeExtensionAction } from './contribution-service.js';
+// --- eforge:region extension-agent-task-context ---
+import type { ExtensionAgentTaskService } from './agent-task-service.js';
+// --- eforge:endregion extension-agent-task-context ---
 
-export function createExtensionContributionRoutes(context: MonitorContext): RouteDefinition[] {
+export function createExtensionContributionRoutes(
+  context: MonitorContext,
+  // --- eforge:region extension-agent-task-context ---
+  agentTaskService?: ExtensionAgentTaskService,
+  // --- eforge:endregion extension-agent-task-context ---
+): RouteDefinition[] {
   return [
     defineRoute({
       routeKey: 'extensionContributionManifest',
@@ -21,7 +29,7 @@ export function createExtensionContributionRoutes(context: MonitorContext): Rout
       method: 'POST',
       pattern: API_ROUTES.extensionActionInvoke,
       security: [localMutation('Extension action invocation')],
-      handler: (ctx) => handleInvoke(ctx, context),
+      handler: (ctx) => handleInvoke(ctx, context, agentTaskService),
     }),
   ];
 }
@@ -35,7 +43,13 @@ async function handleManifest(ctx: RequestContext, context: MonitorContext): Pro
   }
 }
 
-async function handleInvoke(ctx: RequestContext, context: MonitorContext): Promise<void> {
+async function handleInvoke(
+  ctx: RequestContext,
+  context: MonitorContext,
+  // --- eforge:region extension-agent-task-context ---
+  agentTaskService?: ExtensionAgentTaskService,
+  // --- eforge:endregion extension-agent-task-context ---
+): Promise<void> {
   const invocationId = randomUUID();
   if (!context.cwd) {
     return sendJson(ctx.res, failureBody(invocationId, 'daemon-unavailable', 'Working directory not configured'), 503);
@@ -59,7 +73,7 @@ async function handleInvoke(ctx: RequestContext, context: MonitorContext): Promi
   }
 
   try {
-    const result = await invokeExtensionAction(context, parsed.data, invocationId);
+    const result = await invokeExtensionAction(context, parsed.data, invocationId, agentTaskService);
     sendJson(ctx.res, result.body, result.status);
   } catch (err) {
     sendJson(ctx.res, failureBody(invocationId, 'daemon-unavailable', err instanceof Error ? err.message : 'Extension action runtime unavailable'), 503);

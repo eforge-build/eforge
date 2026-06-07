@@ -67,6 +67,60 @@ export const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
+export const extensionAgentTaskVariants: EforgeEvent[] = [
+  {
+    type: 'extension:agent-task:start',
+    timestamp: '2025-01-01T00:00:00.000Z',
+    taskId: 'task-1',
+    taskKind: 'eforge-plan.planning-draft',
+    extensionName: 'planning-extension',
+    status: 'running',
+    metadata: { label: 'Draft planning for Demo' },
+  },
+  {
+    type: 'extension:agent-task:progress',
+    timestamp: '2025-01-01T00:00:01.000Z',
+    taskId: 'task-1',
+    taskKind: 'eforge-plan.planning-draft',
+    extensionName: 'planning-extension',
+    status: 'running',
+    message: 'Inspecting project context',
+    metadata: { progressMessage: 'Inspecting project context' },
+  },
+  {
+    type: 'extension:agent-task:complete',
+    timestamp: '2025-01-01T00:00:02.000Z',
+    taskId: 'task-1',
+    taskKind: 'eforge-plan.planning-draft',
+    extensionName: 'planning-extension',
+    status: 'completed',
+    durationMs: 1200,
+    metadata: { summary: 'Created a focused plan draft', outputSectionCount: 1 },
+  },
+  {
+    type: 'extension:agent-task:failed',
+    timestamp: '2025-01-01T00:00:03.000Z',
+    taskId: 'task-2',
+    taskKind: 'eforge-plan.planning-draft',
+    extensionName: 'planning-extension',
+    status: 'failed',
+    durationMs: 500,
+    errorCode: 'agent-error',
+    message: 'Planner failed',
+    metadata: { label: 'Draft planning for Broken' },
+  },
+  {
+    type: 'extension:agent-task:cancelled',
+    timestamp: '2025-01-01T00:00:04.000Z',
+    taskId: 'task-3',
+    taskKind: 'eforge-plan.planning-draft',
+    extensionName: 'planning-extension',
+    status: 'cancelled',
+    reason: 'User cancelled',
+    metadata: { label: 'Cancelled draft' },
+  },
+];
+
 export const extensionActionVariants: EforgeEvent[] = [
   {
     type: 'extension:action:start',

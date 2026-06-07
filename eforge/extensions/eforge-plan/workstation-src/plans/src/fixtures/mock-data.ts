@@ -1,4 +1,4 @@
-import type { Artifact, Board, BoardItem, Detail, PlanData, PlanDetail, Readiness, RecommendationModel } from '@/types';
+import type { Artifact, Board, BoardItem, Detail, PlanData, PlanDetail, PlanningAgentTaskRecord, Readiness, RecommendationModel } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -67,6 +67,9 @@ export const mockBoard: Board = {
 };
 
 export const mockRecommendations: RecommendationModel = {
+  schemaVersion: 1,
+  activeWork: [],
+  readyCandidates: [],
   recommendedNextSequence: [
     { ref: 'next-recommendations', itemId: 'recommend-next-work', rationale: 'Foundation for choosing useful follow-up work.' },
     { ref: 'next-import-preview', itemId: 'add-import-preview', rationale: 'Ready, scoped, and user-visible.' },
@@ -78,6 +81,32 @@ export const mockRecommendations: RecommendationModel = {
     { ref: 'auto-mode-chain', itemIds: ['auto-mode'], blockedBy: ['traceability'], rationale: 'Land traceability first, then re-scope.' },
   ],
   rationaleAndAssumptions: ['Favor extension-owned workflow UX over engine changes.', 'Keep recommendations in private extension storage.'],
+};
+
+export const mockPlanningTask: PlanningAgentTaskRecord = {
+  taskId: 'task-mock-planning-draft',
+  kind: 'eforge-plan.planning-draft',
+  status: 'completed',
+  createdAt: '2026-06-07T00:00:00.000Z',
+  updatedAt: '2026-06-07T00:00:04.000Z',
+  startedAt: '2026-06-07T00:00:01.000Z',
+  completedAt: '2026-06-07T00:00:04.000Z',
+  metadata: { progressMessage: 'Planner task completed', summary: 'Drafted focused planning output.', outputSectionCount: 2, warningCount: 1 },
+  result: {
+    summary: 'Drafted recommendations and a session-plan patch for the selected backlog work.',
+    assumptionsOpenQuestions: ['Confirm whether import preview should be CLI-only or workstation-visible too.'],
+    nextSteps: ['Preview the generated sections.', 'Apply only the pieces you want to keep.'],
+    recommendations: mockRecommendations,
+    handoffDrafts: [{ selection: { itemIds: ['import-preview'], status: 'active' }, session: '2026-06-07-import-preview' }],
+    planDrafts: [{ title: 'Import preview plan', body: '# Import preview plan\n\n## Scope\n\nAdd an explicit preview before import writes.' }],
+    playbookDraft: { name: 'planning-import-preview', body: '# Playbook\n\nUse this when import preview planning repeats.' },
+    sessionPlanPatch: {
+      sections: [
+        { dimension: 'scope', content: 'Add a bounded import preview flow that shows generated changes before writing.' },
+        { dimension: 'acceptance-criteria', content: '- Preview renders without writing files.\n- Apply requires explicit user action.' },
+      ],
+    },
+  },
 };
 
 export const mockArtifacts: Artifact[] = [

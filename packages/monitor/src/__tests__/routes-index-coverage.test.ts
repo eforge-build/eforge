@@ -20,8 +20,7 @@ describe('monitor route aggregation', () => {
       const routeKeys = getMonitorRouteKeysFromRoutes(routes);
 
       expect(new Set(routeKeys).size).toBe(routeKeys.length);
-      const runtimeRouteKeys = Object.keys(API_ROUTES);
-      expect([...routeKeys].sort()).toEqual(runtimeRouteKeys.sort());
+      expect([...routeKeys].sort()).toEqual(Object.keys(API_ROUTES).sort());
 
       for (const route of routes) {
         expect(route.pattern).toBe(API_ROUTES[route.routeKey]);

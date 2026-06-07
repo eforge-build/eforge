@@ -113,6 +113,9 @@ export type {
   ExtensionAction,
   ExtensionActionBinding,
   ExtensionActionContext,
+  // --- eforge:region extension-agent-task-context ---
+  ExtensionAgentTasksApi,
+  // --- eforge:endregion extension-agent-task-context ---
   ExtensionActionOutput,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,

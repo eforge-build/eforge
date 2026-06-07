@@ -763,6 +763,295 @@
           "type": "object",
           "required": [
             "type",
+            "taskId",
+            "taskKind",
+            "extensionName",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-task:start",
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "taskKind": {
+              "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "running",
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "progressMessage": {
+                  "type": "string"
+                },
+                "outputSectionCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "warningCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "taskId",
+            "taskKind",
+            "extensionName",
+            "status",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-task:progress",
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "taskKind": {
+              "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "running",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "progressMessage": {
+                  "type": "string"
+                },
+                "outputSectionCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "warningCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "taskId",
+            "taskKind",
+            "extensionName",
+            "status",
+            "durationMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-task:complete",
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "taskKind": {
+              "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "completed",
+              "type": "string"
+            },
+            "durationMs": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "progressMessage": {
+                  "type": "string"
+                },
+                "outputSectionCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "warningCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "taskId",
+            "taskKind",
+            "extensionName",
+            "status",
+            "errorCode",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-task:failed",
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "taskKind": {
+              "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "failed",
+              "type": "string"
+            },
+            "durationMs": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "errorCode": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "progressMessage": {
+                  "type": "string"
+                },
+                "outputSectionCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "warningCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "taskId",
+            "taskKind",
+            "extensionName",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-task:cancelled",
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "taskKind": {
+              "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "cancelled",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "progressMessage": {
+                  "type": "string"
+                },
+                "outputSectionCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "warningCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "extensionName",
             "extensionPath",
             "role",

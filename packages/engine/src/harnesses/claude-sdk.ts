@@ -1,16 +1,5 @@
-/**
- * Claude Agent SDK harness — the sole file that imports @anthropic-ai/claude-agent-sdk.
- * All other engine code uses the AgentHarness interface.
- *
- * This file also contains the TypeBox-to-Zod adapter (`typeboxObjectToZodRawShape`).
- * It is the ONLY engine source file that imports Zod, because the Claude Agent SDK's
- * `tool()` helper requires a Zod raw shape for its schema parameter. Custom tools are
- * authored in TypeBox; this adapter converts them at the SDK registration boundary.
- */
+/** Claude Agent SDK harness — the sole engine source file that imports the Claude SDK and Zod. */
 import { query as sdkQuery, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
-// TypeBox-to-Zod adapter — required by the Claude Agent SDK's tool() registration API.
-// This is the explicit third-party compatibility surface: TypeBox is eforge's canonical
-// schema language; Zod is isolated to this file to satisfy the SDK's type contract.
 import { z, type ZodRawShape } from 'zod';
 import { TypeGuard, type TObject, type TSchema } from '@sinclair/typebox';
 import type {
@@ -31,10 +20,6 @@ import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from './eforge-resource-filter.js';
 import { mergeMutationDisallowedTools } from './tool-safety.js';
-
-// ---------------------------------------------------------------------------
-// TypeBox → Zod adapter
-// ---------------------------------------------------------------------------
 
 /**
  * Recursively converts a TypeBox TSchema to a Zod type.
@@ -70,7 +55,16 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     if (typeof schema.maxItems === 'number') a = a.max(schema.maxItems);
     zodType = a;
   } else if (TypeGuard.IsObject(schema)) {
-    zodType = z.object(typeboxObjectToZodRawShape(schema as TObject));
+    const objectSchema = schema as TObject;
+    const objectZod = z.object(typeboxObjectToZodRawShape(objectSchema));
+    const additionalProperties = objectSchema.additionalProperties as boolean | TSchema | undefined;
+    if (additionalProperties === true) {
+      zodType = objectZod.passthrough();
+    } else if (typeof additionalProperties === 'object') {
+      zodType = objectZod.catchall(typeboxToZod(additionalProperties));
+    } else {
+      zodType = objectZod;
+    }
   } else if (TypeGuard.IsLiteral(schema)) {
     zodType = z.literal(schema.const as string | number | boolean);
   } else if (TypeGuard.IsUnion(schema)) {
@@ -96,9 +90,6 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     throw new Error(`typeboxToZod: unsupported TypeBox schema kind (type: ${String(schemaType)})`);
   }
 
-  // Preserve the field-level description so the Claude SDK's generated JSON
-  // Schema (visible to the model as the tool's input contract) keeps the
-  // documentation that the TypeBox source schema carries.
   const description = (schema as { description?: unknown }).description;
   if (typeof description === 'string' && description.length > 0) {
     zodType = zodType.describe(description);
@@ -114,8 +105,6 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
  * Unknown kinds throw with a descriptive error message.
  */
 export function typeboxObjectToZodRawShape(schema: TObject): ZodRawShape {
-  // Build the shape in a mutable Record first, then return as ZodRawShape.
-  // ZodRawShape in Zod v4 has a Readonly index signature so direct assignment to it is rejected.
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [key, propSchema] of Object.entries(schema.properties as Record<string, TSchema>)) {
     shape[key] = typeboxToZod(propSchema);
@@ -241,15 +230,7 @@ export class ClaudeSDKHarness implements AgentHarness {
 
     let error: string | undefined;
     try {
-      // Register custom tools as an in-process SDK MCP server per the official docs:
-      // https://code.claude.com/docs/en/agent-sdk/custom-tools
-      // Tools registered this way are exposed with the name mcp__<serverName>__<toolName>.
-      // The in-process SDK MCP server is named `eforge_engine` (not `eforge`)
-      // to avoid a namespace collision with the eforge Claude Code plugin's
-      // MCP server, which is also named `eforge`. The plugin's tools are
-      // always blocked via `mcp__eforge__*` in disallowedTools; the engine's
-      // own tools (planner submissions, etc.) live under `mcp__eforge_engine__*`
-      // so they remain callable.
+      // Register custom tools as an in-process SDK MCP server named `eforge_engine`.
       const customMcpServers: Record<string, McpServerConfig> = {};
       if (options.customTools && options.customTools.length > 0) {
         customMcpServers.eforge_engine = createSdkMcpServer({
@@ -287,17 +268,22 @@ export class ClaudeSDKHarness implements AgentHarness {
         : resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
 
       // Fire debug capture hook with the request eforge is about to hand to the SDK.
-      // The Claude Code CLI subprocess may add its own preset preamble on top when
-      // `tools === 'coding'`; that extra framing is not visible here.
       if (this.onDebugPayload) {
         const debugPayload: HarnessDebugPayload = {
           harness: 'claude-sdk',
           agent,
           userPrompt: options.prompt,
           systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""
-          tools: usesPreset
-            ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
-            : [],
+          tools: [
+            ...(usesPreset
+              ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
+              : []),
+            ...(usesPreset ? (options.customTools ?? []).map((ct) => ({
+              name: this.effectiveCustomToolName(ct.name),
+              description: ct.description,
+              parameters: ct.inputSchema,
+            })) : []),
+          ],
           model: { id: options.model?.id ?? 'default' },
           ...(options.effort !== undefined ? { effort: options.effort } : {}),
           ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
@@ -333,12 +319,16 @@ export class ClaudeSDKHarness implements AgentHarness {
           tools: usesPreset
             ? { type: 'preset', preset: 'claude_code' }
             : [],
-          // For read-only agents, omit mcpServers/plugins/settingSources — project config
-          // could inject mutating tools via MCP servers or plugins.
+          // For read-only agents, preserve engine-internal custom-tool MCP servers
+          // while omitting project mcpServers/plugins/settingSources, which could
+          // inject mutating tools via project config.
           ...(usesPreset && !isReadOnly ? {
             mcpServers: mergedMcpServers,
             plugins: this.plugins,
             settingSources: this.settingSources,
+          } : {}),
+          ...(usesPreset && isReadOnly && Object.keys(customMcpServers).length > 0 ? {
+            mcpServers: customMcpServers,
           } : {}),
           abortController: options.abortSignal
             ? abortControllerFromSignal(options.abortSignal)

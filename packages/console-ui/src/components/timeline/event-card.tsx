@@ -26,6 +26,13 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:failed') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:timeout') return { cls: 'failed', label: type };
+  // --- eforge:region extension-agent-task-contracts ---
+  if (type === 'extension:agent-task:start') return { cls: 'start', label: type };
+  if (type === 'extension:agent-task:progress') return { cls: 'progress', label: type };
+  if (type === 'extension:agent-task:complete') return { cls: 'complete', label: type };
+  if (type === 'extension:agent-task:failed') return { cls: 'failed', label: type };
+  if (type === 'extension:agent-task:cancelled') return { cls: 'info', label: type };
+  // --- eforge:endregion extension-agent-task-contracts ---
   if (type === 'extension:agent-context:applied') return { cls: 'info', label: type };
   if (type === 'extension:agent-context:failed') return { cls: 'failed', label: type };
   if (type === 'extension:agent-context:timeout') return { cls: 'failed', label: type };
@@ -163,6 +170,13 @@ function eventSummary(event: EforgeEvent): string {
     case 'recovery:error': return `Recovery failed: ${event.prdId} — ${event.error}`;
     case 'extension:event-handler:failed': return `Extension hook failed: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) — ${event.message}`;
     case 'extension:event-handler:timeout': return `Extension hook timed out: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) after ${event.timeoutMs}ms`;
+    // --- eforge:region extension-agent-task-contracts ---
+    case 'extension:agent-task:start': return `Agent task started: ${event.taskKind} (${event.taskId})`;
+    case 'extension:agent-task:progress': return `Agent task progress: ${event.message}`;
+    case 'extension:agent-task:complete': return `Agent task complete: ${event.taskKind} (${event.taskId})`;
+    case 'extension:agent-task:failed': return `Agent task failed: ${event.errorCode} — ${event.message}`;
+    case 'extension:agent-task:cancelled': return `Agent task cancelled: ${event.taskId}${event.reason ? ' — ' + event.reason : ''}`;
+    // --- eforge:endregion extension-agent-task-contracts ---
     case 'extension:agent-context:applied': return `Extension applied: ${event.extensionName} appended ${event.promptCharCount} chars (${event.fragmentCount} fragment(s))`;
     case 'extension:agent-context:failed': return `Extension hook failed: ${event.extensionName} (${event.role}) — ${event.message}`;
     case 'extension:agent-context:timeout': return `Extension hook timed out: ${event.extensionName} (${event.role}) after ${event.timeoutMs}ms`;
@@ -306,6 +320,26 @@ function eventDetail(event: EforgeEvent): string | null {
       if ('timeoutMs' in event && event.timeoutMs !== undefined) parts.push(`Timeout: ${event.timeoutMs}ms`);
       return parts.join('\n');
     }
+    // --- eforge:region extension-agent-task-contracts ---
+    case 'extension:agent-task:start':
+    case 'extension:agent-task:progress':
+    case 'extension:agent-task:complete':
+    case 'extension:agent-task:failed':
+    case 'extension:agent-task:cancelled': {
+      const parts = [
+        `Task: ${event.taskId}`,
+        `Kind: ${event.taskKind}`,
+      ];
+      if ('message' in event && event.message) parts.push(`Message: ${event.message}`);
+      if ('errorCode' in event && event.errorCode) parts.push(`Error code: ${event.errorCode}`);
+      if ('durationMs' in event && event.durationMs !== undefined) parts.push(`Duration: ${event.durationMs}ms`);
+      if ('reason' in event && event.reason) parts.push(`Reason: ${event.reason}`);
+      if (event.metadata) {
+        parts.push(`Metadata: ${JSON.stringify(event.metadata, null, 2)}`);
+      }
+      return parts.join('\n');
+    }
+    // --- eforge:endregion extension-agent-task-contracts ---
     case 'extension:agent-context:applied': {
       const parts = [
         `Extension: ${event.extensionName}`,

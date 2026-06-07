@@ -85,6 +85,18 @@ export type {
   StackSyncProviderCommandWire,
   StackSyncStatusWire,
   StackSyncStatusResponse,
+  ExtensionAgentTaskCancelRequest,
+  ExtensionAgentTaskCancelResponse,
+  ExtensionAgentTaskGetRequest,
+  ExtensionAgentTaskGetResponse,
+  ExtensionAgentTaskKind,
+  ExtensionAgentTaskRecord,
+  ExtensionAgentTaskSanitizedMetadata,
+  ExtensionAgentTaskStartRequest,
+  ExtensionAgentTaskStartResponse,
+  ExtensionAgentTaskStatus,
+  EforgePlanPlanningDraftInput,
+  EforgePlanPlanningDraftResult,
 } from './routes.js';
 
 export type {
@@ -136,6 +148,14 @@ export {
   fetchExtensionContributionManifest,
   invokeExtensionAction,
 } from './browser-extension-contributions.js';
+// --- eforge:region extension-agent-task-contracts ---
+export * from './extension-agent-tasks.js';
+export {
+  cancelExtensionAgentTask,
+  getExtensionAgentTask,
+  startExtensionAgentTask,
+} from './browser-extension-agent-tasks.js';
+// --- eforge:endregion extension-agent-task-contracts ---
 export {
   readWorkstationBridgeContext,
   navigateWorkstation,

@@ -50,6 +50,10 @@ import {
 } from '../shared/extension-actions.js';
 import { BuildDecisionSchema, PlanningDecisionEventSchema } from '../decisions.js';
 import { queueEventVariants } from '../queue-events.js';
+import {
+  ExtensionAgentTaskKindSchema,
+  ExtensionAgentTaskSanitizedMetadataSchema,
+} from '../../extension-agent-tasks.js';
 
 export const extensionEventVariants = [
   // --- eforge:region hook-diagnostics ---
@@ -99,6 +103,55 @@ export const extensionEventVariants = [
     message: Type.String(),
   }),
   // --- eforge:endregion action-events ---
+
+  // --- eforge:region extension-agent-task-contracts ---
+  Type.Object({
+    type: Type.Literal('extension:agent-task:start'),
+    taskId: Type.String(),
+    taskKind: ExtensionAgentTaskKindSchema,
+    extensionName: Type.String(),
+    status: Type.Literal('running'),
+    metadata: Type.Optional(ExtensionAgentTaskSanitizedMetadataSchema),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-task:progress'),
+    taskId: Type.String(),
+    taskKind: ExtensionAgentTaskKindSchema,
+    extensionName: Type.String(),
+    status: Type.Literal('running'),
+    message: Type.String(),
+    metadata: Type.Optional(ExtensionAgentTaskSanitizedMetadataSchema),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-task:complete'),
+    taskId: Type.String(),
+    taskKind: ExtensionAgentTaskKindSchema,
+    extensionName: Type.String(),
+    status: Type.Literal('completed'),
+    durationMs: Type.Integer({ minimum: 0 }),
+    metadata: Type.Optional(ExtensionAgentTaskSanitizedMetadataSchema),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-task:failed'),
+    taskId: Type.String(),
+    taskKind: ExtensionAgentTaskKindSchema,
+    extensionName: Type.String(),
+    status: Type.Literal('failed'),
+    durationMs: Type.Optional(Type.Integer({ minimum: 0 })),
+    errorCode: Type.String(),
+    message: Type.String(),
+    metadata: Type.Optional(ExtensionAgentTaskSanitizedMetadataSchema),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-task:cancelled'),
+    taskId: Type.String(),
+    taskKind: ExtensionAgentTaskKindSchema,
+    extensionName: Type.String(),
+    status: Type.Literal('cancelled'),
+    reason: Type.Optional(Type.String()),
+    metadata: Type.Optional(ExtensionAgentTaskSanitizedMetadataSchema),
+  }),
+  // --- eforge:endregion extension-agent-task-contracts ---
 
   // --- eforge:region agent-context-tool-events ---
   // Native extension agent-context hook diagnostics and tool decisions

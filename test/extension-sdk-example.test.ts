@@ -586,6 +586,7 @@ type _TypeExports = [
   sdk.ExtensionAction,
   sdk.ExtensionActionBinding,
   sdk.ExtensionActionContext,
+  sdk.ExtensionAgentTasksApi,
   sdk.ExtensionActionOutput,
   sdk.ExtensionActionRequestedBy,
   sdk.ExtensionActionRequestedByHost,

@@ -312,6 +312,8 @@ The SDK also exposes registration methods for extension-authored actions and hos
 
 Registers an extension-authored action handler. Action handlers run as trusted unsandboxed Node code. Action inputs require object-root TypeBox input schemas (`Type.Object(...)`). Action handlers must return JSON-safe outputs; optional output schemas are validated before eforge reports a successful invocation.
 
+Action contexts include `ctx.agentTasks`, a daemon-owned API for starting, reading, and cancelling supported single-shot agent tasks. The daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events; extensions never import provider SDKs or `AgentHarness`. The MVP task runner resolves the `planner` role and enforces read-only tools. Extensions cannot provide arbitrary raw prompt templates, register custom task kinds, or implement multi-turn chat through this API.
+
 #### `registerConsoleContribution(contribution)`
 
 Registers declarative Console metadata rendered under `/console/system`. Blocks must use one of the closed renderer IDs: `text`, `markdown`, `status-badge`, `link`, `action-button`, or `action-form`. Action blocks bind to a local action ID with optional JSON-safe input defaults.
@@ -432,9 +434,9 @@ const result = await invokeAction("render-board-markdown", {});
 
 `EFORGE_WORKSTATION_BROWSER_SDK_VERSION` is the helper package's current browser SDK version. `getEforgeConsoleBridge()` returns the injected `window.eforge` bridge and throws if it is unavailable. `assertEforgeConsoleBridgeVersion(expected)` verifies the injected bridge major version before app code depends on it. `invokeAction(actionId, input)` is a convenience wrapper around the bridge's action invocation. These helpers are for code running inside the workstation iframe only; browser bundles must not import private Console React/components/CSS modules, parent Console context, or parent-Console plugins.
 
-Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `ConsoleWorkstation`, `ConsoleWorkstationBase`, `ConsoleWorkstationFrameBundle`, `ConsoleWorkstationFrameBundleWorkstation`, `ConsoleWorkstationSrcDoc`, `EforgeConsoleBridge`, `IntegrationCommand`, and `ExtensionDeepLink`. `EforgeConsoleBridge` is the browser-side shape for `window.eforge`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
+Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionAgentTasksApi`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `ConsoleWorkstation`, `ConsoleWorkstationBase`, `ConsoleWorkstationFrameBundle`, `ConsoleWorkstationFrameBundleWorkstation`, `ConsoleWorkstationSrcDoc`, `EforgeConsoleBridge`, `IntegrationCommand`, and `ExtensionDeepLink`. `EforgeConsoleBridge` is the browser-side shape for `window.eforge`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
 
-**Runtime status:** engine registry/runtime support plus daemon manifest/action routes, Console System rendering for declarative contributions, Console workstation rendering under `/console/workstations`, and CLI, MCP/Claude, and Pi host dispatch for action-backed contributions, plus sandboxed iframe workstation rendering. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs` and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input payloads or raw output payloads.
+**Runtime status:** engine registry/runtime support plus daemon manifest/action routes, Console System rendering for declarative contributions, Console workstation rendering under `/console/workstations`, and CLI, MCP/Claude, and Pi host dispatch for action-backed contributions, plus sandboxed iframe workstation rendering. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs`, receive `ctx.agentTasks` for supported daemon-owned single-shot planner tasks, and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input payloads or raw output payloads.
 
 ---
 
@@ -1028,6 +1030,42 @@ interface EforgeExtensionContext {
 }
 ```
 
+Action handlers receive an `ExtensionActionContext`, which extends the base context shape with invocation provenance and daemon-owned task controls:
+
+```ts
+interface ExtensionActionContext {
+  invocationId: string;
+  actionId: string;
+  requestedBy: ExtensionActionRequestedBy;
+  cwd: string;
+  signal: AbortSignal;
+  logger: ExtensionLogger;
+  paths: EforgeProjectPaths;
+  agentTasks: ExtensionAgentTasksApi;
+}
+```
+
+#### `ctx.agentTasks`
+
+`ctx.agentTasks` lets an action delegate a supported single-shot agent run to the daemon while keeping the extension out of provider/runtime internals.
+
+```ts
+interface ExtensionAgentTasksApi {
+  start(request: ExtensionAgentTaskStartInput): Promise<ExtensionAgentTaskStartResponse>;
+  get(taskId: string): Promise<ExtensionAgentTaskGetResponse>;
+  cancel(taskId: string, reason?: string): Promise<ExtensionAgentTaskCancelResponse>;
+}
+
+type ExtensionAgentTaskStartInput = {
+  kind: "eforge-plan.planning-draft";
+  input: EforgePlanPlanningDraftInput;
+};
+```
+
+`start` persists a task record before the background run is queued and returns it as `{ task }`. `get` returns `{ task }` for the persisted record. `cancel` requests cancellation for a running task, records `status: "cancelled"` when accepted, and returns the updated record as `{ task }`. Task records use `status: "queued" | "running" | "completed" | "failed" | "cancelled"`; completed records contain a JSON-safe result, failed records contain a sanitized error message, and lifecycle events never include raw task input or raw result payloads.
+
+The action dispatcher binds task provenance to the invoking extension and host request. Do not pass secrets or raw prompt templates through task metadata. The MVP supports only the daemon-owned read-only planner task kind shown above; custom task-kind registration, arbitrary prompt templates, write-capable tools, and multi-turn chat are unsupported.
+
 **`ExtensionLogger`:**
 
 ```ts
@@ -1148,6 +1186,8 @@ All event types are exposed through `packages/client/src/events.schemas.ts` as t
 
 Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 
+Daemon-owned agent tasks emit `extension:agent-task:start`, `extension:agent-task:progress`, `extension:agent-task:complete`, `extension:agent-task:failed`, and `extension:agent-task:cancelled`. These events carry `taskId`, `taskKind`, duration/error fields where applicable, and sanitized metadata only; raw task context and result payloads stay in the persisted task record instead of the event stream.
+
 ### `EventOfType<T>`
 
 Extract a specific event variant by type string:
@@ -1239,11 +1279,11 @@ The canonical SDK stability and migration guidance lives here. Public exports fr
 4. Rebuild packaged extensions against the new SDK and avoid private imports from `packages/console-ui`, `packages/engine`, or daemon internals.
 5. For Console workstations, target the documented `ConsoleWorkstation` source union and `window.eforge.invokeAction` bridge. Iframe bundle code can use the versioned `@eforge-build/extension-sdk/browser` helpers instead of private Console React imports; omitted `frameBundle.browserSdkVersion` means browser SDK v1.
 
-Breaking changes to daemon HTTP routes, event schemas, manifest wire shapes, or workstation bridge semantics require a daemon API version bump and migration notes in this section. Bundle-backed workstation manifest metadata and daemon-owned workstation frame/asset routes are part of the client contract; extension-authored arbitrary asset bundle serving outside the workstation frame/asset contract, direct React component loading into the parent Console, raw extension-owned HTTP routes, and extension-owned AI planning/chat APIs are not migration targets for V1 because they remain deferred.
+Breaking changes to daemon HTTP routes, event schemas, manifest wire shapes, or workstation bridge semantics require a daemon API version bump and migration notes in this section. Bundle-backed workstation manifest metadata, daemon-owned workstation frame/asset routes, and daemon-owned agent-task routes are part of the client contract; extension-authored arbitrary asset bundle serving outside the workstation frame/asset contract, direct React component loading into the parent Console remains unsupported, raw extension-owned HTTP routes are unsupported, extension-owned AI planning/chat APIs outside `ctx.agentTasks` are unsupported, arbitrary raw prompt templates and multi-turn chat are not migration targets for V1 because they remain deferred or unsupported.
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution registry support, daemon contribution manifest/action invocation routes, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions, plus sandboxed iframe workstation rendering. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The bundled playbook and session-planning adapters are internal/built-in and are not user-authored native extension workflow registration APIs. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs, and arbitrary frontend plugin bundles outside registered workstation iframes are unsupported runtime phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Direct React component loading into the parent Console is unsupported for extensions, private Console React/components/CSS imports are unsupported, parent Console context imports are unsupported, and parent-Console plugins are unsupported. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution/workstation registry support, daemon contribution manifest/action invocation routes, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, Console System rendering, and CLI/MCP/Pi host discovery/invocation for action-backed contributions, plus sandboxed iframe workstation rendering. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The bundled playbook and session-planning adapters are internal/built-in and are not user-authored native extension workflow registration APIs. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and arbitrary frontend plugin bundles outside registered workstation iframes are intentionally deferred or unsupported runtime phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -1258,7 +1298,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerPrdEnricher` | Yes | Yes | Yes (fail-open content enrichment before queue write) |
 | `registerReviewerPerspective` | Yes | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider` | Yes | Yes | Yes (per-plan `validate` build stage) |
-| `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route |
+| `registerAction` / `ExtensionAction` | Yes | Yes | Engine action dispatcher via daemon action invocation route; action context includes daemon-owned `ctx.agentTasks` |
 | `registerConsoleContribution` / `ConsoleContribution` | Yes | Yes | Daemon contribution manifest projection; Console renders declarative panels under `/console/system` |
 | `registerConsoleWorkstation` / `ConsoleWorkstation` | Yes | Yes | Daemon contribution manifest projection; Console renders sandboxed iframe workstations under `/console/workstations` from `srcDoc` entries or source `frameBundle` entries projected to daemon frame/asset URLs |
 | `registerIntegrationCommand` / `IntegrationCommand` | Yes | Yes | Daemon contribution manifest projection; host integrations can invoke action-backed commands |
@@ -1266,7 +1306,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs, and arbitrary frontend plugin bundles outside registered workstation iframes are unsupported runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics for runtime-wired families. Event-hook, agent context/tool injection, profile-router, policy-gate, input-source fetching, PRD enrichment, reviewer perspective, validation-provider, daemon-owned action agent tasks, and contribution-family examples can be loaded and validated at runtime. Action lifecycle diagnostics use the `extension:action:*` event family; daemon-owned task diagnostics use the `extension:agent-task:*` event family with sanitized metadata. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and arbitrary frontend plugin bundles outside registered workstation iframes are future or unsupported runtime work.
 
 ---
 

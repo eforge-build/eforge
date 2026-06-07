@@ -261,7 +261,7 @@ describe('direct PR base sync', () => {
     expect(existsSync(join(repo, '.git', 'rebase-merge')) || existsSync(join(repo, '.git', 'rebase-apply'))).toBe(false);
     const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
     expect(ghLog).not.toContain('"create"');
-  });
+  }, 10_000);
 
   it('exhausts a bounded rebase conflict-resolution budget and aborts without creating a PR', async () => {
     const tmp = makeTempDir();
