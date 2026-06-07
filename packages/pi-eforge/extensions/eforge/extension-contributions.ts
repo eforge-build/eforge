@@ -10,6 +10,7 @@ import {
   type ExtensionHostContributionKind,
 } from '@eforge-build/client';
 import { DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
+import { formatInvocationPanel, prepareContributionInput } from './extension-contribution-ux.js';
 import { showInfoPanel, showSearchableSelectPanel, withLoader, type UIContext } from './ui-helpers.js';
 
 const TOOL_ACTIONS = ['list', 'invoke'] as const;
@@ -135,7 +136,13 @@ async function runInteractiveFlow(ctx: UIContext): Promise<void> {
     await showInfoPanel(ctx, 'eforge extensions', `Deep link \`${entry.id}\` is URL-only. Generic host invocation only supports action-backed deep links.`);
     return;
   }
-  const inputText = await ctx.ui.editor('eforge extensions - JSON input', '{}');
+  if (!entry) return;
+  const inputDecision = prepareContributionInput(entry);
+  if (inputDecision.kind === 'no-prompt') {
+    await invokeAndShow(ctx, id, kind, inputDecision.input);
+    return;
+  }
+  const inputText = await ctx.ui.editor(inputDecision.title, inputDecision.prefillText);
   if (inputText === undefined) return;
   let input: Record<string, unknown>;
   try {
@@ -167,14 +174,8 @@ async function invokeAndShow(
       await showInfoPanel(ctx, 'eforge - Daemon Not Running', DAEMON_NOT_RUNNING_GUIDANCE);
       return;
     }
-    const body = result.response.ok
-      ? JSON.stringify(result.response.output, null, 2)
-      : `${result.response.error.code}: ${result.response.error.message}\n${JSON.stringify(result.response.error.details ?? null, null, 2)}`;
-    await showInfoPanel(
-      ctx,
-      result.response.ok ? 'eforge extensions - Success' : 'eforge extensions - Failure',
-      [`Invocation: ${result.response.invocationId}`, `Target: ${result.target.kind}:${result.target.id}`, `Action: ${result.target.actionId}`, '', body].join('\n'),
-    );
+    const panel = formatInvocationPanel(result);
+    await showInfoPanel(ctx, panel.title, panel.content);
   } catch (err) {
     await showInfoPanel(ctx, 'eforge extensions - Error', err instanceof Error ? err.message : String(err));
   }

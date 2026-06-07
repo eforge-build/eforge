@@ -67,14 +67,17 @@ interface ResolveResult {
   target: ExtensionHostContributionInvokeTarget;
 }
 
+type ActionLookup = Map<string, ExtensionActionManifestEntry>;
+
 export function summarizeExtensionContributionManifest(
   manifest: ExtensionContributionManifestResponse,
   options?: { kind?: ExtensionHostContributionKind | 'all' },
 ): ExtensionHostContributionListResponse {
   const kind = options?.kind === 'all' ? undefined : options?.kind;
+  const actionLookup = buildActionLookup(manifest.actions);
   const actionEntries = kind && kind !== 'action' ? [] : manifest.actions.map(actionEntry);
-  const commandEntries = kind && kind !== 'command' ? [] : manifest.integrationCommands.map(commandEntry);
-  const deepLinkEntries = kind && kind !== 'deep-link' ? [] : manifest.deepLinks.map(deepLinkEntry);
+  const commandEntries = kind && kind !== 'command' ? [] : manifest.integrationCommands.map((entry) => commandEntry(entry, actionLookup));
+  const deepLinkEntries = kind && kind !== 'deep-link' ? [] : manifest.deepLinks.map((entry) => deepLinkEntry(entry, actionLookup));
   return {
     generatedAt: manifest.generatedAt,
     entries: [...actionEntries, ...commandEntries, ...deepLinkEntries],
@@ -162,7 +165,8 @@ function actionEntry(entry: ExtensionActionManifestEntry): ExtensionHostContribu
   };
 }
 
-function commandEntry(entry: IntegrationCommandManifestEntry): ExtensionHostContributionEntry {
+function commandEntry(entry: IntegrationCommandManifestEntry, actionLookup: ActionLookup): ExtensionHostContributionEntry {
+  const boundAction = actionLookup.get(entry.action.actionId);
   return {
     kind: 'command',
     id: entry.id,
@@ -172,12 +176,13 @@ function commandEntry(entry: IntegrationCommandManifestEntry): ExtensionHostCont
     extensionPath: entry.extensionPath,
     actionId: entry.action.actionId,
     actionBacked: true,
-    inputSchema: entry.inputSchema,
+    inputSchema: entry.inputSchema ?? boundAction?.inputSchema,
     inputDefaults: entry.action.inputDefaults,
   };
 }
 
-function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry): ExtensionHostContributionEntry {
+function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry, actionLookup: ActionLookup): ExtensionHostContributionEntry {
+  const boundAction = entry.action ? actionLookup.get(entry.action.actionId) : undefined;
   return {
     kind: 'deep-link',
     id: entry.id,
@@ -188,8 +193,13 @@ function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry): ExtensionHostCont
     actionId: entry.action?.actionId,
     urlTemplate: entry.urlTemplate,
     actionBacked: Boolean(entry.action),
+    inputSchema: boundAction?.inputSchema,
     inputDefaults: entry.action?.inputDefaults,
   };
+}
+
+function buildActionLookup(entries: ExtensionActionManifestEntry[]): ActionLookup {
+  return new Map(entries.map((entry) => [entry.id, entry]));
 }
 
 function inferKind(manifest: ExtensionContributionManifestResponse, id: string): ExtensionHostContributionKind {

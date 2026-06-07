@@ -103,6 +103,7 @@ describe('host contribution MCP surface', () => {
 describe('host contribution Pi surface', () => {
   it('registers passive Pi tool and native command surfaces', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/extension-contributions.ts');
+    const uxSource = readRepoFile('packages/pi-eforge/extensions/eforge/extension-contribution-ux.ts');
 
     expect(source).toContain('eforge_extension_contribution');
     expect(source).toContain('eforge:extensions');
@@ -110,9 +111,14 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain('listEforgeExtensionContributionsIfRunning');
     expect(source).toContain('invokeEforgeExtensionContributionIfRunning');
     expect(source).toContain('DAEMON_NOT_RUNNING_GUIDANCE');
-    expect(source).not.toContain('ensureDaemon');
-    expect(source).not.toContain('daemonRequest(');
-    expect(source).not.toContain('/api/');
+    expect(source).toContain('prepareContributionInput');
+    expect(source).toContain('formatInvocationPanel');
+    expect(source).not.toContain("ctx.ui.editor('eforge extensions - JSON input', '{}')");
+    for (const contributionSource of [source, uxSource]) {
+      expect(contributionSource).not.toContain('ensureDaemon');
+      expect(contributionSource).not.toContain('daemonRequest(');
+      expect(contributionSource).not.toContain('/api/');
+    }
   });
 
   it('wires the Pi registration helpers from the bounded extension entrypoint', () => {
