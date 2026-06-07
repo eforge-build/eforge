@@ -586,9 +586,7 @@ type _TypeExports = [
   sdk.ExtensionAction,
   sdk.ExtensionActionBinding,
   sdk.ExtensionActionContext,
-  // --- eforge:region plan-02-daemon-task-service-extension-api ---
   sdk.ExtensionAgentTasksApi,
-  // --- eforge:endregion plan-02-daemon-task-service-extension-api ---
   sdk.ExtensionActionOutput,
   sdk.ExtensionActionRequestedBy,
   sdk.ExtensionActionRequestedByHost,

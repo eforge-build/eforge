@@ -61,7 +61,6 @@ export interface RecommendationModel {
   rationaleAndAssumptions?: string[];
 }
 
-// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
 export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export interface PlanningTaskPlanDraft { title: string; body: string; }
 export interface PlanningTaskPlaybookDraft { name: string; body: string; }
@@ -102,7 +101,6 @@ export interface ApplyPlanningTaskResponse {
   handoffs?: unknown[];
   sessionPlanDrafts?: Array<{ session: string; sections: string[] }>;
 }
-// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 
 export interface SkippedDimension { name: string; reason: string; }
 export interface PlanData {

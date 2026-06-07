@@ -79,7 +79,6 @@ export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultI
   return result;
 }
 
-// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
 interface PlanningAgentTaskRecordLike {
   taskId: string;
   kind: string;
@@ -218,7 +217,6 @@ function isSessionPlanPatch(value: unknown): value is { sections: Array<{ dimens
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 
 async function resolvePlannerSelection(cwd: string, input: PlannerContextInput): Promise<{ items: BacklogItem[]; epics: BacklogEpic[] }> {
   if (input.itemIds !== undefined || input.epicId !== undefined || input.recommendationRef !== undefined) {

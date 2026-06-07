@@ -131,12 +131,10 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
-      // --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
       { rendererId: 'action-form', title: 'Start planning agent task', content: 'Prepare bounded context and start a daemon-owned planning draft task.', action: { actionId: 'start-planning-agent-task', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Get planning agent task', content: 'Read daemon-owned planning task status and result preview data.', action: { actionId: 'get-planning-agent-task' } },
       { rendererId: 'action-form', title: 'Cancel planning agent task', content: 'Cancel a running daemon-owned planning draft task.', action: { actionId: 'cancel-planning-agent-task' } },
       { rendererId: 'action-form', title: 'Apply planning agent task result', content: 'Apply only selected generated recommendations, handoff drafts, or session-plan sections.', action: { actionId: 'apply-planning-agent-task-result' } },
-      // --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
     ],
@@ -153,12 +151,10 @@ export default defineEforgeExtension((eforge) => {
       'put-recommendations',
       'prepare-planner-context',
       'apply-planner-result',
-      // --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
       'start-planning-agent-task',
       'get-planning-agent-task',
       'cancel-planning-agent-task',
       'apply-planning-agent-task-result',
-      // --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
       'list-planning-artifacts',
       'show-session-plan',
       'show-session-plan-set',

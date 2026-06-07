@@ -67,7 +67,6 @@ export const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
-// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
 export const extensionAgentTaskVariants: EforgeEvent[] = [
   {
     type: 'extension:agent-task:start',
@@ -121,7 +120,6 @@ export const extensionAgentTaskVariants: EforgeEvent[] = [
     metadata: { label: 'Cancelled draft' },
   },
 ];
-// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
 
 export const extensionActionVariants: EforgeEvent[] = [
   {

@@ -41,12 +41,10 @@ function createMockBridge(): EforgeBridge {
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
         case 'promote-selection': return { session: '2026-06-07-promoted-selection', sessionPlanPath: '.eforge/session-plans/2026-06-07-promoted-selection.md' } as TOutput;
         case 'prepare-planner-context': return { items: mockBoard.items, epics: mockBoard.epics, recommendations: { model: mockRecommendations } } as TOutput;
-        // --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
         case 'start-planning-agent-task': return { task: { ...mockPlanningTask, status: 'running', completedAt: undefined, result: undefined, metadata: { progressMessage: `Planning ${String(input.userGoal ?? 'draft')}…` } } } as TOutput;
         case 'get-planning-agent-task': return { task: mockPlanningTask } as TOutput;
         case 'cancel-planning-agent-task': return { task: { ...mockPlanningTask, status: 'cancelled', cancelledAt: new Date().toISOString(), errorMessage: String(input.reason ?? 'cancelled') } } as TOutput;
         case 'apply-planning-agent-task-result': return { schemaVersion: 1, taskId: String(input.taskId ?? mockPlanningTask.taskId), applied: { recommendations: Boolean(input.applyRecommendations), handoffDrafts: Array.isArray(input.applyHandoffDrafts) ? input.applyHandoffDrafts.length : 0, sessionPlanSections: Array.isArray(input.applySessionPlanDrafts) ? input.applySessionPlanDrafts.length : 0 }, recommendations: { recommendations: mockRecommendations, path: 'mock://recommendations/current.json' } } as TOutput;
-        // --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
         case 'check-session-plan-readiness': return { session: String(input.session ?? ''), readiness: { ready: true, missingDimensions: [], coveredDimensions: [], skippedDimensions: [] } } as TOutput;
         case 'set-session-plan-ready': return { kind: 'ready', ...mockMutationResult(String(input.session ?? '')), status: 'ready' } as TOutput;
         case 'set-session-plan-section': return mockMutationResult(String(input.session ?? '')) as TOutput;

@@ -83,7 +83,6 @@ export const mockRecommendations: RecommendationModel = {
   rationaleAndAssumptions: ['Favor extension-owned workflow UX over engine changes.', 'Keep recommendations in private extension storage.'],
 };
 
-// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
 export const mockPlanningTask: PlanningAgentTaskRecord = {
   taskId: 'task-mock-planning-draft',
   kind: 'eforge-plan.planning-draft',
@@ -109,7 +108,6 @@ export const mockPlanningTask: PlanningAgentTaskRecord = {
     },
   },
 };
-// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 
 export const mockArtifacts: Artifact[] = [
   { key: 'plan:2026-06-07-import-preview', kind: 'plan', session: '2026-06-07-import-preview', title: 'Add import preview', status: 'planning', ready: false },

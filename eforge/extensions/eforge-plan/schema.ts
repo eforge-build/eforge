@@ -248,7 +248,6 @@ export const ApplyPlannerResultOutputSchema = Type.Object({
   recommendations: Type.Optional(PutRecommendationsOutputSchema),
   handoff: Type.Optional(PromotionSelectionOutputSchema),
 }, { additionalProperties: false });
-// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
 const PlanningTypeLiteralSchemas = PLANNING_TYPES.map((value) => Type.Literal(value)) as [ReturnType<typeof Type.Literal>, ...Array<ReturnType<typeof Type.Literal>>]; const PlanningDepthLiteralSchemas = PLANNING_DEPTHS.map((value) => Type.Literal(value)) as [ReturnType<typeof Type.Literal>, ...Array<ReturnType<typeof Type.Literal>>];
 export const PlanningAgentRequestedOutputSectionSchema = Type.Union([Type.Literal('recommendations'), Type.Literal('handoffDrafts'), Type.Literal('planDrafts'), Type.Literal('playbookDraft'), Type.Literal('sessionPlanPatch')]);
 export const MAX_PLANNING_AGENT_USER_GOAL_LENGTH = 4000;
@@ -260,7 +259,6 @@ export const ApplyPlanningAgentTaskSessionPlanDraftSchema = Type.Object({ sessio
 export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema, applyRecommendations: Type.Optional(Type.Boolean()), applyHandoffDrafts: Type.Optional(Type.Array(ApplyPlanningAgentTaskHandoffSelectionSchema, { minItems: 1 })), applySessionPlanDrafts: Type.Optional(Type.Array(ApplyPlanningAgentTaskSessionPlanDraftSchema, { minItems: 1 })) }, { additionalProperties: false });
 export const PlanningAgentTaskStartOutputSchema = ExtensionAgentTaskStartResponseSchema; export const PlanningAgentTaskGetOutputSchema = ExtensionAgentTaskGetResponseSchema; export const PlanningAgentTaskCancelOutputSchema = ExtensionAgentTaskCancelResponseSchema;
 export const ApplyPlanningAgentTaskResultOutputSchema = Type.Object({ schemaVersion: Type.Literal(1), taskId: ExtensionAgentTaskIdSchema, applied: Type.Object({ recommendations: Type.Boolean(), handoffDrafts: Type.Number(), sessionPlanSections: Type.Number() }, { additionalProperties: false }), recommendations: Type.Optional(PutRecommendationsOutputSchema), handoffs: Type.Optional(Type.Array(PromotionSelectionOutputSchema)), sessionPlanDrafts: Type.Optional(Type.Array(Type.Object({ session: Type.String(), sections: Type.Array(Type.String()) }, { additionalProperties: JsonValueSchema }))) }, { additionalProperties: JsonValueSchema });
-// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 // --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
   epic: Type.Optional(Type.String()),
@@ -581,10 +579,8 @@ export type PlannerContextOutput = Static<typeof PreparePlannerContextOutputSche
 export type ApplyPlannerResultInput = Static<typeof ApplyPlannerResultInputSchema>;
 export type ApplyPlannerResultOutput = Static<typeof ApplyPlannerResultOutputSchema>;
 export type PlannerHandoffDraft = Static<typeof PlannerHandoffDraftSchema>;
-// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
 export type StartPlanningAgentTaskInput = Static<typeof StartPlanningAgentTaskInputSchema>; export type GetPlanningAgentTaskInput = Static<typeof GetPlanningAgentTaskInputSchema>; export type CancelPlanningAgentTaskInput = Static<typeof CancelPlanningAgentTaskInputSchema>;
 export type ApplyPlanningAgentTaskHandoffSelection = Static<typeof ApplyPlanningAgentTaskHandoffSelectionSchema>; export type ApplyPlanningAgentTaskSessionPlanDraft = Static<typeof ApplyPlanningAgentTaskSessionPlanDraftSchema>; export type ApplyPlanningAgentTaskResultInput = Static<typeof ApplyPlanningAgentTaskResultInputSchema>; export type ApplyPlanningAgentTaskResultOutput = Static<typeof ApplyPlanningAgentTaskResultOutputSchema>;
-// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
 export type PlanningProfileInput = Static<typeof PlanningProfileSchema>;
