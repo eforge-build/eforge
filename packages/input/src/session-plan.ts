@@ -1081,8 +1081,7 @@ function isSessionPlanPath(sourcePath: string): boolean {
  * This is the single chokepoint for session-plan handling at the boundary —
  * both daemon and in-process CLI paths call this to avoid divergent behavior.
  *
- * @throws If the path matches the session-plan pattern but the content cannot
- *   be parsed as a valid session plan.
+ * @throws If the path matches the session-plan pattern but the content cannot be parsed as a valid session plan.
  */
 export function normalizeBuildSource(input: NormalizeBuildSourceInput): NormalizeBuildSourceResult {
   if (!isSessionPlanPath(input.sourcePath)) {
