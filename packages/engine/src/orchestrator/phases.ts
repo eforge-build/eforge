@@ -36,6 +36,7 @@ import { synthesizeMissingVerdicts } from '../validation/acceptance-criteria.js'
 import { type AcceptanceValidationEvent } from '../validation/acceptance-unknown-resolution.js';
 import { resolveAcceptanceUnknownsIfNeeded } from '../validation/acceptance-unknown-resolution-runner.js';
 import { buildAcceptanceValidationEvents } from './acceptance-conflict-policy.js';
+import { detectValidationDirtyWorktree } from './validation-dirty-worktree.js';
 import { recordSuccessfulBuildArtifact } from '../stacking/artifacts.js';
 import type { StackBaseContext } from '../stacking/base-resolver.js';
 import { upsertArtifact } from '../artifacts/registry.js';
@@ -642,20 +643,28 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       } as EforgeEvent;
     }
 
-    // Reset evidence accumulator at the start of each attempt so the final attempt's
-    // results are what gets passed to the PRD validator.
     ctx.validationCommandEvidence = [];
 
     yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: allValidationCommands };
     const failures: Array<{ command: string; exitCode: number; output: string }> = [];
     let validationPassed = true;
 
+    const initialDirtyFailure = await detectValidationDirtyWorktree(mergeWorktreePath, 'pre-validation worktree cleanliness check', 'before validation commands ran');
+    if (initialDirtyFailure) {
+      yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: initialDirtyFailure.command, exitCode: initialDirtyFailure.exitCode, output: initialDirtyFailure.output };
+      ctx.validationCommandEvidence!.push(initialDirtyFailure);
+      failures.push(initialDirtyFailure);
+      validationPassed = false;
+    }
+
     for (const cmd of allValidationCommands) {
+      if (!validationPassed) break;
       if (signal?.aborted) { validationPassed = false; break; }
 
       yield { timestamp: new Date().toISOString(), type: 'validation:command:start', command: cmd };
 
       const result = await execWithTimeout(cmd, { cwd: mergeWorktreePath, timeoutMs: effectiveTimeoutMs, signal });
+      const commandOutput = (result.stdout + result.stderr).trim();
 
       if (result.timedOut) {
         yield {
@@ -672,25 +681,28 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         validationPassed = false;
         break; // Stop on timeout, same as non-zero exit
       } else if (result.exitCode !== 0) {
-        const output = (result.stdout + result.stderr).trim();
-        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: result.exitCode, output };
-        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: result.exitCode, output });
-        failures.push({ command: cmd, exitCode: result.exitCode, output });
+        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: result.exitCode, output: commandOutput };
+        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: result.exitCode, output: commandOutput });
+        failures.push({ command: cmd, exitCode: result.exitCode, output: commandOutput });
         validationPassed = false;
         break; // Stop on first non-zero exit code
       } else {
-        const output = (result.stdout + result.stderr).trim();
-        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
-        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: 0, output });
+        const dirtyFailure = await detectValidationDirtyWorktree(mergeWorktreePath, cmd, 'after validation command exited 0', commandOutput);
+        if (dirtyFailure) {
+          yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: dirtyFailure.exitCode, output: dirtyFailure.output };
+          ctx.validationCommandEvidence!.push(dirtyFailure);
+          failures.push(dirtyFailure);
+          validationPassed = false;
+          break;
+        }
+        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output: commandOutput };
+        ctx.validationCommandEvidence!.push({ command: cmd, exitCode: 0, output: commandOutput });
       }
     }
 
     yield { timestamp: new Date().toISOString(), type: 'validation:complete', passed: validationPassed };
 
-    if (validationPassed) {
-      passed = true;
-      break;
-    }
+    if (validationPassed) { passed = true; break; }
 
     // Attempt fix if retries remain and a fixer is available
     if (attempt < maxRetries && validationFixer && !signal?.aborted) {

@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
@@ -33,6 +36,15 @@ function makeState(): EforgeState {
     plans: {},
     completedPlans: [],
   };
+}
+
+function initGitRepo(dir: string): void {
+  execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir });
+  execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir });
+  writeFileSync(join(dir, 'tracked.txt'), 'initial\n');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  execFileSync('git', ['commit', '-m', 'initial'], { cwd: dir, stdio: 'ignore' });
 }
 
 function makeConfig(): OrchestrationConfig {
@@ -98,6 +110,7 @@ describe('validate phase — timeout behavior', () => {
   const makeTempDir = useTempDir();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     // Default behaviour: commands succeed instantly.
     mockExecWithTimeout.mockResolvedValue(successResult());
   });
@@ -183,6 +196,70 @@ describe('validate phase — timeout behavior', () => {
 
     // The fixer should have been invoked (maxValidationRetries: 1)
     expect(fixerInvocations).toHaveLength(1);
+  });
+
+  it('fails validation when a successful command leaves the merge worktree dirty', async () => {
+    const stateDir = makeTempDir();
+    const mergeWorktreePath = makeTempDir();
+    initGitRepo(mergeWorktreePath);
+
+    mockExecWithTimeout.mockImplementation(async () => {
+      writeFileSync(join(mergeWorktreePath, 'generated.js'), 'generated\n');
+      return { stdout: 'build ok', stderr: '', exitCode: 0, timedOut: false, pid: 123 };
+    });
+
+    const fixerInvocations: Array<{ failures: Array<{ command: string; output: string }> }> = [];
+    const validationFixer: PhaseContext['validationFixer'] = async function* (_cwd, failures) {
+      fixerInvocations.push({ failures });
+    };
+
+    const ctx = makeCtx(stateDir, mergeWorktreePath, {
+      validateCommands: ['pnpm build', 'pnpm test'],
+      maxValidationRetries: 1,
+      validationFixer,
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of validate(ctx)) events.push(event);
+
+    expect(mockExecWithTimeout).toHaveBeenCalledTimes(1);
+    expect(mockExecWithTimeout).toHaveBeenNthCalledWith(1, 'pnpm build', expect.anything());
+    expect(mockExecWithTimeout).not.toHaveBeenCalledWith('pnpm test', expect.anything());
+
+    const commandComplete = events.find((event) => event.type === 'validation:command:complete') as
+      | Extract<EforgeEvent, { type: 'validation:command:complete' }>
+      | undefined;
+    expect(commandComplete).toMatchObject({ command: 'pnpm build', exitCode: 1 });
+    expect(commandComplete?.output).toContain('build ok');
+    expect(commandComplete?.output).toContain('Validation detected a dirty merge worktree after validation command exited 0');
+    expect(commandComplete?.output).toContain('?? generated.js');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'validation:complete', passed: false }));
+    expect(fixerInvocations).toHaveLength(1);
+    expect(fixerInvocations[0]?.failures[0]?.command).toBe('pnpm build');
+  });
+
+  it('fails validation before commands when the merge worktree starts dirty', async () => {
+    const stateDir = makeTempDir();
+    const mergeWorktreePath = makeTempDir();
+    initGitRepo(mergeWorktreePath);
+    writeFileSync(join(mergeWorktreePath, 'tracked.txt'), 'dirty\n');
+
+    const ctx = makeCtx(stateDir, mergeWorktreePath, {
+      validateCommands: ['pnpm build'],
+      maxValidationRetries: 0,
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of validate(ctx)) events.push(event);
+
+    expect(mockExecWithTimeout).not.toHaveBeenCalled();
+    const commandComplete = events.find((event) => event.type === 'validation:command:complete') as
+      | Extract<EforgeEvent, { type: 'validation:command:complete' }>
+      | undefined;
+    expect(commandComplete).toMatchObject({ command: 'pre-validation worktree cleanliness check', exitCode: 1 });
+    expect(commandComplete?.output).toContain('before validation commands ran');
+    expect(commandComplete?.output).toContain('M tracked.txt');
+    expect(events).toContainEqual(expect.objectContaining({ type: 'validation:complete', passed: false }));
   });
 
   it('emits config:warning before commands when postMergeCommandTimeoutMs is below the floor', async () => {
