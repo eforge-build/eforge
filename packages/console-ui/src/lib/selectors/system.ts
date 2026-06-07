@@ -10,7 +10,6 @@ import type {
   ExtensionContributionManifestResponse,
   ConsoleContributionRendererId,
   PlaybookListEntry,
-  SessionPlanListEntryWire,
   ConfigShowVerboseResponse,
   ModelInfo,
 } from '@eforge-build/client/browser';
@@ -168,32 +167,6 @@ export function selectPlaybookModeCounts(playbooks: PlaybookListEntry[]): Playbo
     else if (p.mode === 'planning') planning++;
   }
   return { autonomous, planning, total: playbooks.length };
-}
-
-// ---------------------------------------------------------------------------
-// Session-plan selectors
-// ---------------------------------------------------------------------------
-
-export interface SessionPlanReadinessCounts {
-  ready: number;
-  notReady: number;
-  total: number;
-  byStatus: Record<string, number>;
-}
-
-/** Count session plans by readiness and status. */
-export function selectSessionPlanReadinessCounts(
-  plans: SessionPlanListEntryWire[],
-): SessionPlanReadinessCounts {
-  let ready = 0;
-  let notReady = 0;
-  const byStatus: Record<string, number> = {};
-  for (const p of plans) {
-    if (p.ready) ready++;
-    else notReady++;
-    byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
-  }
-  return { ready, notReady, total: plans.length, byStatus };
 }
 
 // ---------------------------------------------------------------------------

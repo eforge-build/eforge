@@ -47,12 +47,16 @@ export const listPlanningArtifacts = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const planning = adapter();
-    const [plans, planSets, board] = await Promise.all([
+    const [plans, planSets] = await Promise.all([
       planning.flat.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
       planning.planSets.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
-      buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive }),
     ]);
-    return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board) }));
+    try {
+      const board = await buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive });
+      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board) }));
+    } catch {
+      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets }));
+    }
   },
 });
 

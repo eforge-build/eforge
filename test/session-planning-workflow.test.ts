@@ -57,7 +57,7 @@ describe('session planning workflow adapter', () => {
       kind: 'workflow-input-adapter',
       sourceScope: 'project-local',
     });
-    expect(Object.keys(createSessionPlanningWorkflowAdapter().planSets).sort()).toEqual(['list', 'load', 'validate']);
+    expect(Object.keys(createSessionPlanningWorkflowAdapter().planSets).sort()).toEqual(['list', 'load', 'validate', 'validateLoaded']);
   });
 
   it('creates, loads, updates, skips, selects dimensions, migrates legacy, and resolves flat plan paths', async () => {
@@ -161,6 +161,16 @@ describe('session planning workflow adapter', () => {
     expect(loaded.manifest.status).toBe('planning');
     const validation = await adapter.planSets.validate({ cwd, planSetId: 'planning-set' });
     expect(validation.ok).toBe(true);
+  });
+
+  it('throws a domain readiness error when setting ready with missing required dimensions', async () => {
+    const cwd = makeTempDir();
+    const adapter = createSessionPlanningWorkflowAdapter();
+    const created = await adapter.flat.create({ cwd, session: 'missing-dimension-ready-plan', topic: 'Missing Dimension Ready' });
+
+    await expect(adapter.flat.setStatus({ cwd, session: created.plan.session, status: 'ready' })).rejects.toSatisfy(
+      (err: unknown) => isSessionPlanReadinessError(err) && err.readiness.missingDimensions.length > 0,
+    );
   });
 
   it('throws a domain readiness error when setting ready with invalid acceptance criteria', async () => {

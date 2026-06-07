@@ -30,6 +30,14 @@ Registered action IDs can be invoked by hosts that expose extension actions:
 - `update-item` example input: `{ "id": "add-import-preview", "status": "planned", "priority": "high", "tags": ["ux", "ready"], "evidenceNotes": "Validated with design review.", "recheckNotes": "Recheck after first import flow lands.", "dependsOn": ["import-parser"], "epic": "planning" }`
 - `promote-item` example input: `{ "itemId": "add-import-preview", "status": "active", "session": "2026-06-05-add-import-preview", "profile": "excursion" }`
 - `render-board-markdown` example input: `{ "includeArchive": false }`
+- `list-planning-artifacts` example input: `{ "includeSubmitted": false, "includeArchive": false }`; by default submitted flat plans and submitted plan sets are omitted, and `includeSubmitted: true` includes them.
+- `show-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`
+- `show-session-plan-set` example input: `{ "planSetId": "import-workflow" }`
+- `create-session-plan` example input: `{ "session": "2026-06-05-add-import-preview", "topic": "Add import preview", "planningType": "feature", "planningDepth": "focused", "profile": "excursion", "agentProfile": "frontend" }`
+- `set-session-plan-section` example input: `{ "session": "2026-06-05-add-import-preview", "dimension": "scope", "content": "Implement preview rendering and cancel handling." }`
+- `check-session-plan-readiness` example input: `{ "session": "2026-06-05-add-import-preview" }`
+- `set-session-plan-ready` example input: `{ "session": "2026-06-05-add-import-preview" }`; returns `kind: "not-ready"` instead of mutating when required dimensions or acceptance criteria checks fail.
+- `handoff-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`; requires the plan to be ready and returns a source-path command without enqueueing.
 
 Integration command IDs are `render-board` and `promote-item`. Deep-link IDs are `board` and `promote`; they dispatch `render-board-markdown` and `promote-item` respectively. The input-source URI form is:
 

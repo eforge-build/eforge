@@ -18,7 +18,6 @@ import {
   fetchSystemExtensionValidate,
   fetchSystemExtensionContributionManifest,
   fetchSystemPlaybookList,
-  fetchSystemSessionPlanList,
   fetchSystemModelProviders,
   fetchSystemModelList,
 } from './system-fetches';
@@ -44,9 +43,6 @@ function makeInitialState(): SystemSurfacesState {
       contributions: { status: 'idle' },
     },
     playbooks: {
-      list: { status: 'idle' },
-    },
-    sessionPlans: {
       list: { status: 'idle' },
     },
     models: {
@@ -96,9 +92,6 @@ export function useSystemSurfaces() {
       },
       playbooks: {
         list: { status: 'loading', data: prev.playbooks.list.data },
-      },
-      sessionPlans: {
-        list: { status: 'loading', data: prev.sessionPlans.list.data },
       },
       models: {
         catalogs: {
@@ -233,17 +226,6 @@ export function useSystemSurfaces() {
       .catch((err) => {
         if (signal.aborted) return;
         setState((prev) => ({ ...prev, playbooks: { list: { status: 'error', error: errorMessage(err), data: prev.playbooks.list.data, updatedAt: prev.playbooks.list.updatedAt } } }));
-      });
-
-    fetchSystemSessionPlanList(signal)
-      .then((data) => {
-        if (signal.aborted) return;
-        const status = data.plans.length === 0 ? 'empty' : 'success';
-        setState((prev) => ({ ...prev, sessionPlans: { list: { status, data, updatedAt: now } } }));
-      })
-      .catch((err) => {
-        if (signal.aborted) return;
-        setState((prev) => ({ ...prev, sessionPlans: { list: { status: 'error', error: errorMessage(err), data: prev.sessionPlans.list.data, updatedAt: prev.sessionPlans.list.updatedAt } } }));
       });
 
     for (const harness of SYSTEM_MODEL_HARNESSES) {

@@ -328,7 +328,9 @@ el.handoff?.addEventListener('click', () => {
   if (!confirmed) return;
   invoke('handoff-session-plan', { session }).then((result) => {
     setStatus(result.command || result.message || JSON.stringify(result));
-    renderDetail({ plan: state.selectedDetail?.plan, readiness: result.readiness, path: state.selectedDetail?.path });
+    const detail = { ...state.selectedDetail, plan: result.plan || state.selectedDetail?.plan, readiness: result.readiness || state.selectedDetail?.readiness };
+    state.selectedDetail = detail;
+    renderDetail(detail);
   }).catch(showError);
 });
 
@@ -346,7 +348,11 @@ function selectedPlanAction(actionId) {
   if (!session) return;
   invoke(actionId, { session }).then((result) => {
     setStatus(result.message || `${actionId} complete.`);
-    if (result.plan || result.readiness) renderDetail({ plan: result.plan || state.selectedDetail?.plan, readiness: result.readiness, path: state.selectedDetail?.path });
+    if (result.plan || result.readiness) {
+      const detail = { ...state.selectedDetail, plan: result.plan || state.selectedDetail?.plan, readiness: result.readiness || state.selectedDetail?.readiness };
+      state.selectedDetail = detail;
+      renderDetail(detail);
+    }
     return refresh();
   }).catch(showError);
 }

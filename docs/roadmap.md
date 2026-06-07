@@ -15,7 +15,7 @@
 **Goal**: Make console-ui the canonical local-first control surface for observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
 
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
-- **Planning workstations** - Keep planning product UX in extension-owned workstations hosted by Console while preserving daemon/client session-plan compatibility plumbing for bundled playbook and session-plan input adapters.
+- **Planning workstations** - Keep planning workflow UX in extension-owned workstations hosted by Console while preserving daemon/client session-plan compatibility plumbing for non-Console consumers and extension-owned input adapters.
 - **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, and model/runtime preferences through typed daemon/client APIs.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.
 

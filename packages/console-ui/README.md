@@ -32,9 +32,9 @@ daemon REST (session-plan compatibility routes)
   → API_ROUTES.sessionPlanShow     GET /api/session-plan/show?session=:session
   → API_ROUTES.sessionPlanSetList  GET /api/session-plan-set/list[?includeSubmitted=true]
   → API_ROUTES.sessionPlanSetShow  GET /api/session-plan-set/show?planSetId=:planSetId
-  → Extension-owned planning workstation iframe (for example, eforge-plan under `/console/workstations`)
+  → Non-Console consumers that still fetch session-plan and plan-set artifacts directly
 
-Console keeps these client-owned route constants available for extension compatibility, but it no longer mounts a first-party planning route or view.
+Console keeps these client-owned route constants available as compatibility plumbing for non-Console consumers, but it no longer mounts a first-party planning route, summary surface, or view. Extension-owned planning workstations under `/console/workstations` use the workstation manifest/action bridge (`window.eforge.invokeAction`) rather than direct session-plan REST calls from Console.
 
 daemon REST (Now failed-build recovery)
   → fetchRecoverySidecar / fetchResumeEligibility   (lead: sidecar verdict + resume eligibility)
@@ -115,7 +115,7 @@ The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all
 
 The run-state reducer is Console-owned and folds per-session SSE events into view-ready snapshots.
 
-Planning product UX is extension-workstation-owned. Console exposes the Workstations host at `/console/workstations`, where planning extensions can render their own sandboxed iframe UI and invoke allowed actions through the workstation bridge. The daemon/client session-plan and plan-set REST routes remain as compatibility plumbing for those extensions, but Console does not provide a first-party `/console/plans` route, navigation item, or `src/views/plans` implementation.
+Planning product UX is extension-workstation-owned. Console exposes the Workstations host at `/console/workstations`, where planning extensions can render their own sandboxed iframe UI and invoke allowed actions through the workstation bridge. The daemon/client session-plan and plan-set REST routes remain as compatibility plumbing for non-Console consumers and extension-owned workflows, but Console does not provide a first-party `/console/plans` route, navigation item, planning-summary section, or `src/views/plans` implementation.
 
 ## Lane model
 

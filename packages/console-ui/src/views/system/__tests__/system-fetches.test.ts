@@ -13,7 +13,6 @@ import {
   fetchSystemExtensionValidate,
   fetchSystemExtensionContributionManifest,
   fetchSystemPlaybookList,
-  fetchSystemSessionPlanList,
   fetchSystemModelProviders,
   fetchSystemModelList,
   trustSystemExtension,
@@ -136,14 +135,6 @@ describe('system-fetches', () => {
     await fetchSystemPlaybookList();
     const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toBe(API_ROUTES.playbookList);
-  });
-
-  it('fetchSystemSessionPlanList calls API_ROUTES.sessionPlanList', async () => {
-    const mockBody = { plans: [] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemSessionPlanList();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.sessionPlanList);
   });
 
   it('fetchSystemModelProviders includes harness=pi query param', async () => {

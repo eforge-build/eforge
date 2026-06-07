@@ -3,7 +3,6 @@ import {
   selectProfileCounts,
   selectExtensionDiagnosticCounts,
   selectPlaybookModeCounts,
-  selectSessionPlanReadinessCounts,
   selectConfigSourceRows,
   selectModelTotals,
   selectExtensionContributionManifestSummary,
@@ -20,7 +19,6 @@ import type {
   ExtensionTrust,
   ExtensionTrustState,
   PlaybookListEntry,
-  SessionPlanListEntryWire,
   ConfigShowVerboseResponse,
   ModelInfo,
 } from '@eforge-build/client/browser';
@@ -214,36 +212,6 @@ describe('selectPlaybookModeCounts', () => {
     expect(result.autonomous).toBe(2);
     expect(result.planning).toBe(1);
     expect(result.total).toBe(3);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Session-plan readiness selectors
-// ---------------------------------------------------------------------------
-
-describe('selectSessionPlanReadinessCounts', () => {
-  it('returns zero counts for empty array', () => {
-    const result = selectSessionPlanReadinessCounts([]);
-    expect(result.ready).toBe(0);
-    expect(result.notReady).toBe(0);
-    expect(result.total).toBe(0);
-    expect(result.byStatus).toEqual({});
-  });
-
-  it('counts plans by readiness and status', () => {
-    const plans: SessionPlanListEntryWire[] = [
-      { session: 'sess-1', topic: 'add feature', status: 'ready', path: '/a', ready: true, missingDimensions: [] },
-      { session: 'sess-2', topic: 'fix bug', status: 'planning', path: '/b', ready: false, missingDimensions: ['acceptance_criteria'] },
-      { session: 'sess-3', topic: 'refactor', status: 'ready', path: '/c', ready: true, missingDimensions: [] },
-      { session: 'sess-4', topic: 'docs', status: 'abandoned', path: '/d', ready: false, missingDimensions: [] },
-    ];
-    const result = selectSessionPlanReadinessCounts(plans);
-    expect(result.ready).toBe(2);
-    expect(result.notReady).toBe(2);
-    expect(result.total).toBe(4);
-    expect(result.byStatus['ready']).toBe(2);
-    expect(result.byStatus['planning']).toBe(1);
-    expect(result.byStatus['abandoned']).toBe(1);
   });
 });
 
