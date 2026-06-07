@@ -7,22 +7,22 @@ const liveDaemonUrl = import.meta.env.VITE_EFORGE_DAEMON_URL as string | undefin
 
 export function getBridge(): EforgeBridge {
   if (window.eforge?.invokeAction) return window.eforge;
-  if (import.meta.env.DEV && liveDaemonUrl) return createLiveBridge(liveDaemonUrl);
+  if (import.meta.env.DEV && liveDaemonUrl) return createLiveBridge();
   return createMockBridge();
 }
 
-function createLiveBridge(baseUrl: string): EforgeBridge {
+function createLiveBridge(): EforgeBridge {
   return {
     version: 1,
     async invokeAction<TOutput>(actionId: string, input: JsonObject = {}): Promise<TOutput> {
       const effectiveId = actionId.includes(':') ? actionId : `eforge-plan:${actionId}`;
-      const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/extensions/actions/invoke`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ actionId: effectiveId, input, requestedBy: { host: 'console', surface: 'workstation-dev:eforge-plan' } }),
+      const { invokeExtensionAction } = await import('@eforge-build/client/browser');
+      const payload = await invokeExtensionAction({
+        actionId: effectiveId,
+        input,
+        requestedBy: { host: 'console', surface: 'workstation-dev:eforge-plan' },
       });
-      const payload = await res.json() as { ok?: boolean; output?: TOutput; error?: { message?: string } };
-      if (!res.ok || payload.ok === false) throw new Error(payload.error?.message ?? `Action ${effectiveId} failed`);
+      if (!payload.ok) throw new Error(payload.error.message ?? `Action ${effectiveId} failed`);
       return payload.output as TOutput;
     },
   };

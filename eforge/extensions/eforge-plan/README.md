@@ -161,11 +161,12 @@ The planning workstation appears under `/console/workstations` as an extension-o
 The workstation has a frontend development loop independent of eforge builds:
 
 ```bash
-pnpm dev:eforge-plan-workstation
+pnpm dev:eforge-plan-workstation          # mock bridge / fixture data
+pnpm dev:eforge-plan-workstation:daemon   # auto-detect or start daemon, then proxy /api to it
 pnpm build:eforge-plan-workstation
 ```
 
-`dev:eforge-plan-workstation` runs the Vite app with a mock `window.eforge.invokeAction` bridge and fixture data for rapid UI iteration. To try the same UI against a running daemon, set `VITE_EFORGE_DAEMON_URL=http://localhost:4567` when launching the dev server. Production Console rendering continues to use the built files in `workstation-assets/plans`.
+`dev:eforge-plan-workstation` runs the Vite app with a mock `window.eforge.invokeAction` bridge and fixture data for rapid UI iteration. `dev:eforge-plan-workstation:daemon` reads the project daemon lockfile, starts the daemon when needed, sets `VITE_EFORGE_DAEMON_URL` automatically, and launches the same Vite app against live daemon data; Vite proxies `/api` to the daemon so local-only action security still sees same-origin requests. Production Console rendering continues to use the built files in `workstation-assets/plans`.
 
 The workstation can browse backlog-derived board data, recommendation summary data, epics, flat session plans, and session plan sets; create or edit session plans; update metadata and selected dimensions; run readiness checks; mark ready plans; promote a recommended item, recommended group, epic, or user-selected one-or-more-item set through `promote-selection`; and perform source-path handoff after an explicit confirmation. All reads and mutations go through `window.eforge.invokeAction` and the workstation manifest's `allowedActions` list.
 

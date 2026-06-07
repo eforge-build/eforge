@@ -40,8 +40,8 @@ export function App() {
     setSelectedKey(artifact.key);
     setStatus(`Loading ${artifactTitle(artifact)}…`);
     const loaded = artifact.kind === 'plan-set'
-      ? await bridge.invokeAction<PlanSetDetail>('show-session-plan-set', { planSetId: artifact.planSetId })
-      : await bridge.invokeAction<PlanDetail>('show-session-plan', { session: artifact.session });
+      ? await bridge.invokeAction<PlanSetDetail>('show-session-plan-set', { planSetId: artifact.planSetId ?? '' })
+      : await bridge.invokeAction<PlanDetail>('show-session-plan', { session: artifact.session ?? '' });
     setDetail(loaded);
     setStatus(`${artifactTitle(artifact)} loaded.`);
   }

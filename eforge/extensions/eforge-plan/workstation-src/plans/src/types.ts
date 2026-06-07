@@ -1,4 +1,6 @@
-export type JsonObject = Record<string, unknown>;
+import type { ExtensionJsonObject } from '@eforge-build/client/browser';
+
+export type JsonObject = ExtensionJsonObject;
 
 export interface EforgeBridge {
   version?: number;

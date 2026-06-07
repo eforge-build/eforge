@@ -18,6 +18,7 @@
     "build-and-restart": "pnpm build && pnpm restart-daemon",
     "dev:console": "pnpm --filter @eforge-build/console-ui dev",
     "dev:eforge-plan-workstation": "pnpm --filter @eforge-build/eforge-plan-workstation dev",
+    "dev:eforge-plan-workstation:daemon": "node scripts/dev-eforge-plan-workstation.mjs",
     "build:eforge-plan-workstation": "pnpm --filter @eforge-build/eforge-plan-workstation build",
     "storybook": "pnpm --filter @eforge-build/console-ui storybook",
     "storybook:build": "pnpm --filter @eforge-build/console-ui build-storybook",
