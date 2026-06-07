@@ -12,8 +12,8 @@ import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['capture-item', 'upsert-epic', 'update-item', 'promote-item']);
-const READ_ACTIONS = new Set(['list-board', 'render-board-markdown']);
+const WRITE_ACTIONS = new Set(['capture-item', 'upsert-epic', 'update-item', 'promote-item', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata']);
+const READ_ACTIONS = new Set(['list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-registration-'));
@@ -54,10 +54,27 @@ describe('eforge-plan extension registration', () => {
     });
   });
 
-  it('registers the six MVP actions with object-root inputs and safe side effects', () => {
+  it('registers backlog and planning actions with object-root inputs and safe side effects', () => {
     const state = load();
     const actions = state.actions.map((entry) => entry.value);
-    expect(actions.map((action) => action.id).sort()).toEqual(['capture-item', 'list-board', 'promote-item', 'render-board-markdown', 'update-item', 'upsert-epic']);
+    expect(actions.map((action) => action.id).sort()).toEqual([
+      'capture-item',
+      'check-session-plan-readiness',
+      'create-session-plan',
+      'handoff-session-plan',
+      'list-board',
+      'list-planning-artifacts',
+      'promote-item',
+      'render-board-markdown',
+      'select-session-plan-dimensions',
+      'set-session-plan-ready',
+      'set-session-plan-section',
+      'show-session-plan',
+      'show-session-plan-set',
+      'update-item',
+      'update-session-plan-metadata',
+      'upsert-epic',
+    ]);
     for (const action of actions) {
       expect(action.inputSchema.type).toBe('object');
       expect(action.outputSchema).toBeDefined();
@@ -134,8 +151,22 @@ describe('eforge-plan extension registration', () => {
     }
 
     expect(state.consoleWorkstations).toHaveLength(1);
-    expect(state.consoleWorkstations[0]?.value.allowedActions).toEqual(['render-board-markdown']);
-    expect(state.consoleWorkstations[0]?.value.srcDoc).toContain("window.eforge.invokeAction('render-board-markdown'");
+    const workstation = state.consoleWorkstations[0]?.value;
+    expect(workstation).toMatchObject({
+      id: 'planning-workstation',
+      allowedActions: expect.arrayContaining([
+        'list-planning-artifacts',
+        'show-session-plan',
+        'show-session-plan-set',
+        'create-session-plan',
+        'set-session-plan-section',
+        'check-session-plan-readiness',
+        'set-session-plan-ready',
+        'handoff-session-plan',
+      ]),
+      frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
+    });
+    expect('srcDoc' in workstation!).toBe(false);
 
     expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
     expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);

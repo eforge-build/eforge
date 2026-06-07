@@ -10,7 +10,6 @@ The canonical route list lives in [`src/lib/navigation.ts`](src/lib/navigation.t
 |------|----------|-------------|
 | `/console/` | `now` | Now dashboard - active builds, queue, and live status |
 | `/console/builds/:detailId` | `buildDetail` | Build detail view for a session (legacy `/console/runs/:detailId` still resolves and canonicalizes to this path) |
-| `/console/plans` | `plans` | Planning Workspace - read-only browsing of flat session plans and grouped session plan sets |
 | `/console/system` | `system` | System - configuration, profiles, playbooks, extensions, and diagnostic surfaces |
 | `/console/workstations` | `workstations` | Workstations - extension-registered sandboxed iframe workstations |
 | `/console/workstations/:workstationId` | `workstationDetail` | Workstation detail route for a selected extension workstation |
@@ -28,13 +27,14 @@ daemon SSE
 
 Lane-model behavior (planning vs validation vs gap-close lanes, PRD pill on the planning lane) is verified end-to-end by `multi-plan-gap-close.e2e.test.tsx` against `fixtures/multi-plan-gap-close.json`.
 
-daemon REST (session plans + plan sets)
+daemon REST (session-plan compatibility routes)
   → API_ROUTES.sessionPlanList     GET /api/session-plan/list[?includeSubmitted=true]
   → API_ROUTES.sessionPlanShow     GET /api/session-plan/show?session=:session
   → API_ROUTES.sessionPlanSetList  GET /api/session-plan-set/list[?includeSubmitted=true]
   → API_ROUTES.sessionPlanSetShow  GET /api/session-plan-set/show?planSetId=:planSetId
-  → use-session-plans.ts           (src/views/plans/use-session-plans.ts)
-  → PlansView
+  → Non-Console consumers that still fetch session-plan and plan-set artifacts directly
+
+Console keeps these client-owned route constants available as compatibility plumbing for non-Console consumers, but it no longer mounts a first-party planning route, summary surface, or view. Extension-owned planning workstations under `/console/workstations` use the workstation manifest/action bridge (`window.eforge.invokeAction`) rather than direct session-plan REST calls from Console.
 
 daemon REST (Now failed-build recovery)
   → fetchRecoverySidecar / fetchResumeEligibility   (lead: sidecar verdict + resume eligibility)
@@ -115,7 +115,7 @@ The `useActiveSessionStreams` hook subscribes to per-session SSE streams for all
 
 The run-state reducer is Console-owned and folds per-session SSE events into view-ready snapshots.
 
-The Planning Workspace (`/console/plans`) uses REST requests rather than SSE and browses two read-only artifact kinds side by side: flat session plans and grouped session plan sets. On load it fetches both `API_ROUTES.sessionPlanList` and `API_ROUTES.sessionPlanSetList` (filtering to active artifacts by default, or including handed-off/submitted artifacts when the Include handed off toggle is enabled - the flag is forwarded to both list routes). The combined list is modeled as a discriminated union in `planning-artifacts.ts`, with selection keys encoded as `plan:<session>` and `plan-set:<planSetId>` so the two id spaces cannot collide. After the user selects an artifact, the detail fetch is dispatched by kind: flat plans call `API_ROUTES.sessionPlanShow` (metadata, readiness detail, markdown body via `SessionPlanDetail`), and plan sets call `API_ROUTES.sessionPlanSetShow` (manifest metadata, validation diagnostics, umbrella anchor content or a `missing-anchor` diagnostic, and per-child summary metadata via `SessionPlanSetDetail`). Plan-set child markdown is never fetched; only the summary returned by the show route is displayed. No daemon state is derived from the list responses alone, and the workspace exposes no mutation controls for either artifact kind.
+Planning product UX is extension-workstation-owned. Console exposes the Workstations host at `/console/workstations`, where planning extensions can render their own sandboxed iframe UI and invoke allowed actions through the workstation bridge. The daemon/client session-plan and plan-set REST routes remain as compatibility plumbing for non-Console consumers and extension-owned workflows, but Console does not provide a first-party `/console/plans` route, navigation item, planning-summary section, or `src/views/plans` implementation.
 
 ## Lane model
 

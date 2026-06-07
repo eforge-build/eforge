@@ -115,8 +115,8 @@ describe('frameBundle workstation documentation contract', () => {
     }
 
     const dogfoodReadme = read('eforge/extensions/eforge-plan/README.md');
-    expect(dogfoodReadme).toMatch(/small `srcDoc` proof-of-concept/i);
-    expect(dogfoodReadme).toMatch(/full eforge-plan bundle workstation UX remains a follow-up/i);
+    expect(dogfoodReadme).toMatch(/planning workstation appears under `\/console\/workstations` as an extension-owned `frameBundle`/i);
+    expect(dogfoodReadme).toMatch(/All reads and mutations go through `window\.eforge\.invokeAction`/i);
   });
 
   it('keeps Claude and Pi extension authoring guidance in sync without bumping the Pi package version', () => {

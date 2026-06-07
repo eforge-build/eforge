@@ -56,9 +56,6 @@ function makeState(overrides: Partial<SystemSurfacesState> = {}): SystemSurfaces
     playbooks: {
       list: empty({ playbooks: [], warnings: [] }),
     },
-    sessionPlans: {
-      list: empty({ plans: [] }),
-    },
     models: {
       catalogs: {
         pi: {
@@ -85,7 +82,6 @@ function makeState(overrides: Partial<SystemSurfacesState> = {}): SystemSurfaces
     profiles: { ...state.profiles, ...overrides.profiles },
     extensions: { ...state.extensions, ...overrides.extensions },
     playbooks: { ...state.playbooks, ...overrides.playbooks },
-    sessionPlans: { ...state.sessionPlans, ...overrides.sessionPlans },
     models: { ...state.models, ...overrides.models },
   };
 }
@@ -151,6 +147,7 @@ describe('SystemViewContent', () => {
     expect(screen.getByText('/home/user/my-project')).toBeDefined();
     expect(screen.getAllByText('local-profile').length).toBeGreaterThan(0);
     expect(screen.getByText('17')).toBeDefined();
+    expect(screen.queryByRole('heading', { name: 'Session Plans' })).toBeNull();
   });
 
   it('calls onRefresh from the single refresh control', () => {

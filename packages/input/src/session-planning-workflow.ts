@@ -1,5 +1,6 @@
 import {
   createSessionPlan,
+  createSessionPlanFile,
   getReadinessDetail,
   listSessionPlans,
   loadSessionPlan,
@@ -26,6 +27,7 @@ import {
 import {
   listSessionPlanSets,
   loadSessionPlanSet,
+  validateLoadedSessionPlanSet,
   validateSessionPlanSet,
   type ListSessionPlanSetsOpts,
   type LoadSessionPlanSetOpts,
@@ -130,6 +132,7 @@ export interface SessionPlanningWorkflowAdapter {
     list(opts: { cwd: string; includeSubmitted?: boolean }): Promise<SessionPlanSetListEntry[]>;
     load(opts: LoadSessionPlanSetOpts): Promise<SessionPlanSetLoadResult>;
     validate(opts: ValidateSessionPlanSetOpts): Promise<SessionPlanSetValidationResult>;
+    validateLoaded(loadResult: SessionPlanSetLoadResult): SessionPlanSetValidationResult;
   };
 }
 
@@ -157,7 +160,7 @@ async function loadFlatPlan(opts: LoadSessionPlanOpts): Promise<SessionPlanningL
 
 async function createFlatPlan(opts: SessionPlanningCreateAndWriteOptions): Promise<SessionPlanningCreateResult> {
   const plan = createSessionPlan(opts);
-  await writeSessionPlan({ cwd: opts.cwd, plan });
+  await createSessionPlanFile({ cwd: opts.cwd, plan });
   return { plan, path: resolveSessionPlanPath({ cwd: opts.cwd, session: plan.session }) };
 }
 
@@ -177,11 +180,17 @@ async function skipFlatDimension(opts: SessionPlanningSkipDimensionOptions): Pro
 
 function assertReadyStatusAllowed(plan: SessionPlan): void {
   const readiness = getReadinessDetail(plan);
-  if (readiness.acDiagnostics?.length) {
-    const issueMsg = readiness.acDiagnostics.map((diagnostic) => diagnostic.message).join('; ');
+  if (!readiness.ready) {
+    const issues: string[] = [];
+    if (readiness.missingDimensions.length) {
+      issues.push(`missing required dimensions: ${readiness.missingDimensions.join(', ')}`);
+    }
+    if (readiness.acDiagnostics?.length) {
+      issues.push(`acceptance criteria quality issues: ${readiness.acDiagnostics.map((diagnostic) => diagnostic.message).join('; ')}`);
+    }
     throw new SessionPlanReadinessError(
       readiness,
-      `Cannot mark session plan ready: acceptance criteria quality issues: ${issueMsg}`,
+      `Cannot mark session plan ready${issues.length ? `: ${issues.join('; ')}` : ': readiness checks failed'}`,
     );
   }
 }
@@ -240,6 +249,7 @@ export function createSessionPlanningWorkflowAdapter(): SessionPlanningWorkflowA
       list: listReadOnlyPlanSets,
       load: loadSessionPlanSet,
       validate: validateSessionPlanSet,
+      validateLoaded: validateLoadedSessionPlanSet,
     },
   };
 }

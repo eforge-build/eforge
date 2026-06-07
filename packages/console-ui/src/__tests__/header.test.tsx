@@ -83,18 +83,22 @@ describe('ConsoleShell header', () => {
     renderShell();
 
     expect(screen.getByRole('button', { name: /^now$/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: /^plans$/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /^plans$/i })).toBeNull();
     expect(screen.getByRole('button', { name: /^workstations$/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /^system$/i })).toBeDefined();
     expect(screen.queryByRole('link', { name: /monitor/i })).toBeNull();
   });
 
-  it('routes header navigation through onNavigate', () => {
+  it('does not render navigation to the removed plans path', () => {
     const { onNavigate } = renderShell();
+    const removedPath = '/console/' + 'plans';
 
-    fireEvent.click(screen.getByRole('button', { name: /^plans$/i }));
+    for (const button of screen.getAllByRole('button')) {
+      fireEvent.click(button);
+    }
 
-    expect(onNavigate).toHaveBeenCalledWith('/console/plans');
+    expect(screen.queryByRole('button', { name: /^plans$/i })).toBeNull();
+    expect(onNavigate).not.toHaveBeenCalledWith(removedPath);
   });
 
   it('routes Workstations header navigation through onNavigate', () => {

@@ -3,7 +3,7 @@ import type { ConsoleWorkstation, EforgeExtensionAPI } from '../packages/extensi
 import eforgePlanExtension from '../eforge/extensions/eforge-plan/index.js';
 
 describe('eforge-plan Console workstation dogfood registration', () => {
-  it('registers the board workstation with render-board-markdown bridge invocation', () => {
+  it('registers the planning workstation as a frame bundle with planning actions', () => {
     const workstations: ConsoleWorkstation[] = [];
     const api = {
       registerAction() {},
@@ -21,9 +21,19 @@ describe('eforge-plan Console workstation dogfood registration', () => {
 
     expect(workstations).toHaveLength(1);
     expect(workstations[0]).toMatchObject({
-      id: 'board-workstation',
-      allowedActions: ['render-board-markdown'],
+      id: 'planning-workstation',
+      frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
+      allowedActions: expect.arrayContaining([
+        'list-planning-artifacts',
+        'show-session-plan',
+        'show-session-plan-set',
+        'create-session-plan',
+        'set-session-plan-section',
+        'check-session-plan-readiness',
+        'set-session-plan-ready',
+        'handoff-session-plan',
+      ]),
     });
-    expect(workstations[0]?.srcDoc).toContain("window.eforge.invokeAction('render-board-markdown'");
+    expect('srcDoc' in workstations[0]!).toBe(false);
   });
 });

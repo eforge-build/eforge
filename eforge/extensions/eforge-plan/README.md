@@ -30,6 +30,14 @@ Registered action IDs can be invoked by hosts that expose extension actions:
 - `update-item` example input: `{ "id": "add-import-preview", "status": "planned", "priority": "high", "tags": ["ux", "ready"], "evidenceNotes": "Validated with design review.", "recheckNotes": "Recheck after first import flow lands.", "dependsOn": ["import-parser"], "epic": "planning" }`
 - `promote-item` example input: `{ "itemId": "add-import-preview", "status": "active", "session": "2026-06-05-add-import-preview", "profile": "excursion" }`
 - `render-board-markdown` example input: `{ "includeArchive": false }`
+- `list-planning-artifacts` example input: `{ "includeSubmitted": false, "includeArchive": false }`; by default submitted flat plans and submitted plan sets are omitted, and `includeSubmitted: true` includes them.
+- `show-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`
+- `show-session-plan-set` example input: `{ "planSetId": "import-workflow" }`
+- `create-session-plan` example input: `{ "session": "2026-06-05-add-import-preview", "topic": "Add import preview", "planningType": "feature", "planningDepth": "focused", "profile": "excursion", "agentProfile": "frontend" }`
+- `set-session-plan-section` example input: `{ "session": "2026-06-05-add-import-preview", "dimension": "scope", "content": "Implement preview rendering and cancel handling." }`
+- `check-session-plan-readiness` example input: `{ "session": "2026-06-05-add-import-preview" }`
+- `set-session-plan-ready` example input: `{ "session": "2026-06-05-add-import-preview" }`; returns `kind: "not-ready"` instead of mutating when required dimensions or acceptance criteria checks fail.
+- `handoff-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`; requires the plan to be ready and returns a source-path command without enqueueing.
 
 Integration command IDs are `render-board` and `promote-item`. Deep-link IDs are `board` and `promote`; they dispatch `render-board-markdown` and `promote-item` respectively. The input-source URI form is:
 
@@ -67,7 +75,7 @@ Statuses are `candidate`, `planned`, `active`, `shipped`, `stale`, and `supersed
 
 ## Actions
 
-The MVP registers six actions:
+The extension registers backlog, board, and planning-workstation actions:
 
 | Action | Purpose | Side effects |
 | --- | --- | --- |
@@ -77,8 +85,18 @@ The MVP registers six actions:
 | `upsert-epic` | Create or update `.backlog/epics/<id>.md` without duplicating item membership lists. | `local-write` |
 | `update-item` | Update status, priority, tags, evidence/recheck notes, dependencies, and epic link while preserving body content. | `local-write` |
 | `promote-item` | Write a session plan, update trace evidence, and set item status to `active` or `planned`. | `local-write` |
+| `list-planning-artifacts` | Return backlog board summaries plus flat session plans and session plan sets using stable artifact keys such as `plan:<session>` and `plan-set:<planSetId>`. | `local-read` |
+| `show-session-plan` | Return a flat session-plan detail view with frontmatter metadata, body, readiness detail, and absolute path. | `local-read` |
+| `show-session-plan-set` | Return a plan-set detail projection with manifest summary, validation detail, directory paths, manifest path, and anchor content when present. | `local-read` |
+| `create-session-plan` | Write `.eforge/session-plans/<session>.md` using the shared session-planning workflow format. | `local-write` |
+| `set-session-plan-section` | Replace a named planning dimension section in a flat session plan. Duplicate headings for that dimension are collapsed to one section. | `local-write` |
+| `update-session-plan-metadata` | Update session-plan metadata fields that are not exposed through section editing, such as `profile`, `agent_profile`, and `open_questions`. | `local-write` |
+| `select-session-plan-dimensions` | Update the selected planning dimensions for a flat session plan. | `local-write` |
+| `check-session-plan-readiness` | Run adapter-backed readiness and acceptance-criteria diagnostics without mutating the file. | `local-read` |
+| `set-session-plan-ready` | Mark a plan `ready` only when required dimensions are covered and readiness diagnostics pass; otherwise return a structured `not-ready` result. | `local-write` |
+| `handoff-session-plan` | Verify readiness and `status: ready`, then return a source-path fallback command for the existing session-plan workflow. | `local-read` |
 
-No MVP action declares `build-queue` side effects.
+No extension action declares `build-queue` side effects. `handoff-session-plan` does not enqueue directly and does not mark the plan `submitted`.
 
 ## Promotion flow
 
@@ -123,7 +141,11 @@ The Console System contribution is declarative and uses only the closed renderer
 
 The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, promoting an item, capturing an item, and updating an item. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
 
-Host integrations register commands and action-backed deep links for board rendering and promotion workflows. The proof-of-concept board workstation appears under `/console/workstations` and invokes `render-board-markdown` through `window.eforge.invokeAction`.
+Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
+
+The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are vanilla iframe code served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
+
+The workstation can browse backlog-derived board data, flat session plans, and session plan sets; create or edit session plans; update metadata and selected dimensions; run readiness checks; mark ready plans; and perform source-path handoff after an explicit confirmation. All reads and mutations go through `window.eforge.invokeAction` and the workstation manifest's `allowedActions` list.
 
 ## Trace sidecars
 
@@ -163,8 +185,12 @@ Lifecycle status mutation is conservative:
 - `landing:auto-merge:complete` may mark the item `shipped`.
 - Ambiguous correlation writes no backlog status mutation. Diagnostic trace evidence is recorded only when a single trace can be identified.
 
-## Deferred platform gaps
+## Planning workstation boundary
 
-V1 sandboxed iframe Console workstations now exist, and `eforge-plan` registers a small `srcDoc` proof-of-concept board workstation through the supported `registerConsoleWorkstation` / `srcDoc` / `window.eforge.invokeAction` path.
+Planning artifact semantics are owned by `@eforge-build/input` through `createSessionPlanningWorkflowAdapter()`. The extension action handlers use that adapter for flat session-plan and plan-set reads, mutations, readiness checks, acceptance-criteria diagnostics, path containment, and plan-set validation.
 
-The full eforge-plan bundle workstation UX remains a follow-up. Supported `frameBundle` workstation assets must be declared under `workstation-assets/` and served through the daemon-owned iframe frame/asset contract. Parent-Console plugins, direct React loading into the parent Console, private Console imports/routes, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain deferred or unsupported.
+Daemon and client session-plan and session plan-set routes remain compatibility plumbing for Pi, Claude, CLI, daemon clients, and other tools. The extension workstation uses extension actions instead of raw extension-owned HTTP routes or private Console APIs.
+
+The handoff flow is a source-path fallback. After confirming the plan is ready and has `status: ready`, `handoff-session-plan` returns a JSON-safe result containing `.eforge/session-plans/<session>.md`, the absolute path, compatibility command text, and readiness detail. It does not call the daemon enqueue route.
+
+Parent-Console plugins, direct React loading into the parent Console, private Console imports/routes, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain unsupported.

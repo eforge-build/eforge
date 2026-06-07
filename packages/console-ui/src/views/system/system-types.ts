@@ -34,7 +34,6 @@ import type {
   ExtensionJsonObject,
   ExtensionJsonValue,
   PlaybookListResponse,
-  SessionPlanListResponse,
   ModelProvidersResponse,
   ModelListResponse,
 } from '@eforge-build/client/browser';
@@ -72,7 +71,6 @@ export type {
   ExtensionJsonObject,
   ExtensionJsonValue,
   PlaybookListResponse,
-  SessionPlanListResponse,
   ModelProvidersResponse,
   ModelListResponse,
 };
@@ -120,9 +118,6 @@ export interface SystemSurfacesState {
   playbooks: {
     list: Loadable<PlaybookListResponse>;
   };
-  sessionPlans: {
-    list: Loadable<SessionPlanListResponse>;
-  };
   models: {
     catalogs: Record<SystemModelHarness, SystemModelCatalog>;
   };
@@ -141,7 +136,6 @@ export type SystemSurfaceKey =
   | 'extensions.validate'
   | 'extensions.contributions'
   | 'playbooks.list'
-  | 'sessionPlans.list'
   | 'models.pi.providers'
   | 'models.pi.models'
   | 'models.claude-sdk.providers'

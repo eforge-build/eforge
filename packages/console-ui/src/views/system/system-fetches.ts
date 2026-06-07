@@ -16,7 +16,6 @@ import type {
   ExtensionValidateResponse,
   ExtensionContributionManifestResponse,
   PlaybookListResponse,
-  SessionPlanListResponse,
   ModelProvidersResponse,
   ModelListResponse,
   ExtensionTrustResponse,
@@ -237,11 +236,6 @@ export async function fetchSystemExtensionContributionManifest(signal?: AbortSig
 
 export async function fetchSystemPlaybookList(signal?: AbortSignal): Promise<PlaybookListResponse> {
   const data = await fetchJson<PlaybookListResponse>(API_ROUTES.playbookList, { signal });
-  return data!;
-}
-
-export async function fetchSystemSessionPlanList(signal?: AbortSignal): Promise<SessionPlanListResponse> {
-  const data = await fetchJson<SessionPlanListResponse>(API_ROUTES.sessionPlanList, { signal });
   return data!;
 }
 

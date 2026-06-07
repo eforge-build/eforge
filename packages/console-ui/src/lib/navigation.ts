@@ -1,7 +1,7 @@
 // --- eforge:region console-shell ---
 
 /** Base string ID for each top-level Console route (without parameters). */
-export type ConsoleRouteBaseId = 'now' | 'plans' | 'workstations' | 'buildDetail' | 'workstationDetail' | 'system';
+export type ConsoleRouteBaseId = 'now' | 'workstations' | 'buildDetail' | 'workstationDetail' | 'system';
 
 /**
  * Full route identifier — either a simple string for top-level routes
@@ -12,7 +12,6 @@ export type ConsoleRouteBaseId = 'now' | 'plans' | 'workstations' | 'buildDetail
  */
 export type ConsoleRouteId =
   | 'now'
-  | 'plans'
   | 'workstations'
   | 'system'
   | { id: 'buildDetail'; detailId: string }
@@ -26,12 +25,11 @@ export interface ConsoleNavItem {
 }
 
 /** Canonical route ordering by base ID. */
-export const consoleRouteOrder: ConsoleRouteBaseId[] = ['now', 'plans', 'workstations', 'buildDetail', 'workstationDetail', 'system'];
+export const consoleRouteOrder: ConsoleRouteBaseId[] = ['now', 'workstations', 'buildDetail', 'workstationDetail', 'system'];
 
 /** Route labels for all base route IDs. */
 const ROUTE_LABELS: Record<ConsoleRouteBaseId, string> = {
   now: 'Now',
-  plans: 'Plans',
   workstations: 'Workstations',
   buildDetail: 'Build Detail',
   workstationDetail: 'Workstation Detail',
@@ -41,7 +39,6 @@ const ROUTE_LABELS: Record<ConsoleRouteBaseId, string> = {
 /** Resolve the path for a Console route. */
 export function toConsolePath(id: ConsoleRouteId): string {
   if (id === 'now') return '/console/';
-  if (id === 'plans') return '/console/plans';
   if (id === 'workstations') return '/console/workstations';
   if (id === 'system') return '/console/system';
   if (id.id === 'workstationDetail') return `/console/workstations/${encodeURIComponent(id.workstationId)}`;
@@ -53,7 +50,6 @@ export function toConsolePath(id: ConsoleRouteId): string {
  *
  * - `/console/builds/:detailId` → `{ id: 'buildDetail', detailId }`
  * - `/console/runs/:detailId`   → `{ id: 'buildDetail', detailId }` (legacy alias)
- * - `/console/plans`            → `'plans'`
  * - `/console/workstations`     → `'workstations'`
  * - `/console/workstations/:id` → `{ id: 'workstationDetail', workstationId }`
  * - `/console/system`           → `'system'`
@@ -76,7 +72,6 @@ export function parseConsoleRoute(pathname: string): ConsoleRouteId {
     }
     return 'workstations';
   }
-  if (section === 'plans') return 'plans';
   if (section === 'system') return 'system';
   // queue, activity, and a detail-less builds/runs path all redirect to now
   return 'now';
@@ -84,7 +79,7 @@ export function parseConsoleRoute(pathname: string): ConsoleRouteId {
 
 /** Build the nav item list for directly-navigable top-level routes. */
 export function buildNavItems(): ConsoleNavItem[] {
-  const navRouteIds: ConsoleRouteBaseId[] = ['now', 'plans', 'workstations', 'system'];
+  const navRouteIds: ConsoleRouteBaseId[] = ['now', 'workstations', 'system'];
   return navRouteIds.map((id) => ({
     id,
     label: ROUTE_LABELS[id],
