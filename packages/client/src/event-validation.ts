@@ -45,6 +45,17 @@ const ACTION_EVENT_TYPES = new Set([
   'extension:action:timeout',
 ]);
 
+// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+const TASK_EVENT_FORBIDDEN_FIELDS = new Set(['prompt', 'context', 'result', 'transcript', 'rawTranscript', 'raw_transcript']);
+const TASK_EVENT_TYPES = new Set([
+  'extension:agent-task:start',
+  'extension:agent-task:progress',
+  'extension:agent-task:complete',
+  'extension:agent-task:failed',
+  'extension:agent-task:cancelled',
+]);
+// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+
 export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaError | undefined {
   if (ACTION_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
     for (const field of ACTION_EVENT_FORBIDDEN_FIELDS) {
@@ -53,6 +64,13 @@ export function validateEforgeEventSemanticFields(event: EforgeEvent): SchemaErr
       }
     }
   }
+
+  // --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+  if (TASK_EVENT_TYPES.has(event.type) && isPlainObject(event)) {
+    const rawFieldError = findForbiddenTaskEventField(event, '');
+    if (rawFieldError) return rawFieldError;
+  }
+  // --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
 
   if (
     event.type === 'extension:policy:decision' &&
@@ -142,6 +160,28 @@ function visitMetadataObject(value: Record<string, unknown>, path: string, depth
   }
   return undefined;
 }
+
+// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+function findForbiddenTaskEventField(value: unknown, path: string): SchemaError | undefined {
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      const childError = findForbiddenTaskEventField(value[index], `${path}/${index}`);
+      if (childError) return childError;
+    }
+    return undefined;
+  }
+  if (!isPlainObject(value)) return undefined;
+  for (const [key, child] of Object.entries(value)) {
+    if (TASK_EVENT_FORBIDDEN_FIELDS.has(key)) {
+      const fieldPath = `${path}/${key}`;
+      return validationError(fieldPath, 'extension agent task lifecycle events must not include raw prompt, context, result, or transcript fields');
+    }
+    const childError = findForbiddenTaskEventField(child, `${path}/${key}`);
+    if (childError) return childError;
+  }
+  return undefined;
+}
+// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;

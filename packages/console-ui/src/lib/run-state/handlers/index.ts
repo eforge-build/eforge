@@ -197,6 +197,13 @@ export const IGNORED_EVENT_TYPES = [
   'extension:action:complete',
   'extension:action:failed',
   'extension:action:timeout',
+  // --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+  'extension:agent-task:start',
+  'extension:agent-task:progress',
+  'extension:agent-task:complete',
+  'extension:agent-task:failed',
+  'extension:agent-task:cancelled',
+  // --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
   'extension:agent-context:applied',
   'extension:agent-context:failed',
   'extension:agent-context:timeout',

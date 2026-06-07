@@ -138,7 +138,8 @@ export {
 export * from './extension-contributions.js';
 export * from './api/extension-contributions.js';
 export * from './api/extension-contribution-dispatch.js';
-
+export * from './extension-agent-tasks.js';
+export * from './api/extension-agent-tasks.js';
 export {
   dispatchEforgeExtensionAction,
   EFORGE_EXTENSION_ACTIONS,

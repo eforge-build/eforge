@@ -9,7 +9,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 82
+Total routes: 85
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -27,6 +27,9 @@ Total routes: 82
 | `enqueue` | `/api/enqueue` |
 | `events` | `/api/events/:runId` |
 | `extensionActionInvoke` | `/api/extensions/actions/invoke` |
+| `extensionAgentTaskCancel` | `/api/extensions/agent-tasks/:taskId/cancel` |
+| `extensionAgentTaskGet` | `/api/extensions/agent-tasks/:taskId` |
+| `extensionAgentTaskStart` | `/api/extensions/agent-tasks` |
 | `extensionContributionManifest` | `/api/extensions/contributions` |
 | `extensionDemote` | `/api/extensions/demote` |
 | `extensionInstall` | `/api/extensions/install` |

@@ -67,6 +67,52 @@ export const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
+// --- eforge:region plan-01-agent-task-contracts-engine-runner ---
+export const extensionAgentTaskVariants: EforgeEvent[] = [
+  {
+    type: 'extension:agent-task:start',
+    timestamp: '2025-01-01T00:00:00.000Z',
+    taskId: 'task-1',
+    taskKind: 'eforge-plan.planning-draft',
+    metadata: { label: 'Draft planning for Demo' },
+  },
+  {
+    type: 'extension:agent-task:progress',
+    timestamp: '2025-01-01T00:00:01.000Z',
+    taskId: 'task-1',
+    taskKind: 'eforge-plan.planning-draft',
+    message: 'Inspecting project context',
+    metadata: { progressMessage: 'Inspecting project context' },
+  },
+  {
+    type: 'extension:agent-task:complete',
+    timestamp: '2025-01-01T00:00:02.000Z',
+    taskId: 'task-1',
+    taskKind: 'eforge-plan.planning-draft',
+    durationMs: 1200,
+    metadata: { summary: 'Created a focused plan draft', outputSectionCount: 1 },
+  },
+  {
+    type: 'extension:agent-task:failed',
+    timestamp: '2025-01-01T00:00:03.000Z',
+    taskId: 'task-2',
+    taskKind: 'eforge-plan.planning-draft',
+    durationMs: 500,
+    errorCode: 'agent-error',
+    message: 'Planner failed',
+    metadata: { label: 'Draft planning for Broken' },
+  },
+  {
+    type: 'extension:agent-task:cancelled',
+    timestamp: '2025-01-01T00:00:04.000Z',
+    taskId: 'task-3',
+    taskKind: 'eforge-plan.planning-draft',
+    reason: 'User cancelled',
+    metadata: { label: 'Cancelled draft' },
+  },
+];
+// --- eforge:endregion plan-01-agent-task-contracts-engine-runner ---
+
 export const extensionActionVariants: EforgeEvent[] = [
   {
     type: 'extension:action:start',

@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 221
+Total variants: 226
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -29,6 +29,11 @@ Total variants: 221
 | `extension:action:complete` | `actionId`, `durationMs`, `extensionName`, `extensionPath`, `invocationId`, `requestedBy` |
 | `extension:action:failed` | `actionId`, `durationMs`, `errorCode`, `extensionName`, `extensionPath`, `invocationId`, `message`, `requestedBy`, `validationErrors` |
 | `extension:action:timeout` | `actionId`, `durationMs`, `extensionName`, `extensionPath`, `invocationId`, `message`, `requestedBy`, `timeoutMs` |
+| `extension:agent-task:start` | `metadata`, `taskId`, `taskKind` |
+| `extension:agent-task:progress` | `message`, `metadata`, `taskId`, `taskKind` |
+| `extension:agent-task:complete` | `durationMs`, `metadata`, `taskId`, `taskKind` |
+| `extension:agent-task:failed` | `durationMs`, `errorCode`, `message`, `metadata`, `taskId`, `taskKind` |
+| `extension:agent-task:cancelled` | `metadata`, `reason`, `taskId`, `taskKind` |
 | `extension:agent-context:applied` | `extensionName`, `extensionPath`, `fragmentCount`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `promptCharCount`, `role`, `stage`, `tier`, `toolbelt` |
 | `extension:agent-context:failed` | `extensionName`, `extensionPath`, `harness`, `message`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stack`, `stage`, `tier`, `toolbelt` |
 | `extension:agent-context:timeout` | `extensionName`, `extensionPath`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stage`, `tier`, `timeoutMs`, `toolbelt` |

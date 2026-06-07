@@ -295,9 +295,16 @@ export class ClaudeSDKHarness implements AgentHarness {
           agent,
           userPrompt: options.prompt,
           systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""
-          tools: usesPreset
-            ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
-            : [],
+          tools: [
+            ...(usesPreset
+              ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
+              : []),
+            ...(usesPreset ? (options.customTools ?? []).map((ct) => ({
+              name: this.effectiveCustomToolName(ct.name),
+              description: ct.description,
+              parameters: ct.inputSchema,
+            })) : []),
+          ],
           model: { id: options.model?.id ?? 'default' },
           ...(options.effort !== undefined ? { effort: options.effort } : {}),
           ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
@@ -333,12 +340,16 @@ export class ClaudeSDKHarness implements AgentHarness {
           tools: usesPreset
             ? { type: 'preset', preset: 'claude_code' }
             : [],
-          // For read-only agents, omit mcpServers/plugins/settingSources — project config
-          // could inject mutating tools via MCP servers or plugins.
+          // For read-only agents, preserve engine-internal custom-tool MCP servers
+          // while omitting project mcpServers/plugins/settingSources, which could
+          // inject mutating tools via project config.
           ...(usesPreset && !isReadOnly ? {
             mcpServers: mergedMcpServers,
             plugins: this.plugins,
             settingSources: this.settingSources,
+          } : {}),
+          ...(usesPreset && isReadOnly && Object.keys(customMcpServers).length > 0 ? {
+            mcpServers: customMcpServers,
           } : {}),
           abortController: options.abortSignal
             ? abortControllerFromSignal(options.abortSignal)
