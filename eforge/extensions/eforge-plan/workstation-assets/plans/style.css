@@ -127,6 +127,30 @@ pre {
   gap: 0.5rem;
 }
 
+/* --- eforge:region plan-03-planner-orchestration-workstation --- */
+.recommendations {
+  margin-bottom: 1rem;
+}
+
+.recommendations ul {
+  padding-left: 1rem;
+}
+
+.recommendations li, .item-select {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+/* --- eforge:endregion plan-03-planner-orchestration-workstation --- */
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;

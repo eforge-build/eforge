@@ -731,7 +731,7 @@ When an LLM or assisted authoring flow creates an extension, keep the loop expli
 4. **Test behavior** with `eforge extension test <name-or-path>` and, for event hooks, a fixture or `--run latest` replay.
 5. **Trust only after inspection**: for project/team extensions, read the source and then run `eforge extension trust <name>` so the local `.eforge/extension-trust.json` records the reviewed hash.
 6. **Reload deliberately** with `eforge extension reload` after validation, testing, and trust are complete.
-7. **Re-check trust and boundaries** whenever code changes: changed project/team hashes must be re-trusted, workstation `srcDoc` HTML and bundle metadata/code are trusted iframe UI rather than sanitized declarative content, extension-owned raw routes, extension-authored arbitrary asset bundles outside the workstation frame/asset contract, React injection, and extension-owned AI planning or chat APIs remain deferred.
+7. **Re-check trust and boundaries** whenever code changes: changed project/team hashes must be re-trusted, workstation `srcDoc` HTML and bundle metadata/code are trusted iframe UI rather than sanitized declarative content, extension-owned raw routes, extension-authored arbitrary asset bundles outside the workstation frame/asset contract, React injection, and extension-owned AI planning/chat APIs remain deferred.
 
 ## Configuration
 

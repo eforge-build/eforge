@@ -154,14 +154,21 @@ export const PromotionSelectionSourceEpicSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const PromotionSelectionInputSchema = Type.Object({
-  itemIds: Type.Optional(Type.Array(Type.String())),
+  itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })),
   epicId: Type.Optional(Type.String()),
   recommendationRef: Type.Optional(Type.String()),
   session: Type.Optional(Type.String()),
   status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('planned')])),
   profile: Type.Optional(PlanningProfileSchema),
   title: Type.Optional(Type.String()),
-}, { additionalProperties: false });
+}, {
+  additionalProperties: false,
+  oneOf: [
+    { required: ['itemIds'] },
+    { required: ['epicId'] },
+    { required: ['recommendationRef'] },
+  ],
+});
 
 export const PromotionSelectionOutputSchema = Type.Object({
   itemIds: Type.Array(Type.String()),
@@ -176,6 +183,101 @@ export const PromotionSelectionOutputSchema = Type.Object({
   epics: Type.Array(PromotionSelectionSourceEpicSchema),
 }, { additionalProperties: false });
 // --- eforge:endregion promotion-selection ---
+
+// --- eforge:region plan-03-planner-orchestration-workstation ---
+export const PlannerRoadmapEvidenceSchema = Type.Object({
+  path: Type.Literal('docs/roadmap.md'),
+  exists: Type.Boolean(),
+  headings: Type.Array(Type.String()),
+  excerpts: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const PlannerDependencyContextSchema = Type.Object({
+  itemId: Type.String(),
+  dependsOn: Type.Array(Type.String()),
+  internalDependsOn: Type.Array(Type.String()),
+  externalDependsOn: Type.Array(Type.String()),
+  blockers: Type.Array(Type.String()),
+  risks: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const PlannerContextSelectionSchema = Type.Object({
+  kind: Type.String(),
+  itemIds: Type.Array(Type.String()),
+  epicIds: Type.Array(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const PlannerItemProjectionSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  epic: Type.Optional(Type.String()),
+  tags: Type.Array(Type.String()),
+  dependencies: Type.Array(Type.String()),
+  sections: Type.Record(Type.String(), Type.String()),
+  sourceReferences: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const PlannerEpicProjectionSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  tags: Type.Array(Type.String()),
+  sections: Type.Record(Type.String(), Type.String()),
+}, { additionalProperties: false });
+
+export const PlannerRecommendationsPacketSchema = Type.Object({
+  exists: Type.Boolean(),
+  model: BacklogRecommendationModelSchema,
+  summary: Type.Optional(RecommendationSummarySchema),
+}, { additionalProperties: false });
+
+export const PreparePlannerContextInputSchema = Type.Object({
+  itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })),
+  epicId: Type.Optional(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+  includeRoadmap: Type.Optional(Type.Boolean()),
+}, {
+  additionalProperties: false,
+  not: {
+    anyOf: [
+      { required: ['itemIds', 'epicId'] },
+      { required: ['itemIds', 'recommendationRef'] },
+      { required: ['epicId', 'recommendationRef'] },
+    ],
+  },
+});
+
+export const PreparePlannerContextOutputSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  selection: PlannerContextSelectionSchema,
+  items: Type.Array(PlannerItemProjectionSchema),
+  epics: Type.Array(PlannerEpicProjectionSchema),
+  recommendations: PlannerRecommendationsPacketSchema,
+  recommendationRationale: Type.Array(Type.String()),
+  dependencies: Type.Array(PlannerDependencyContextSchema),
+  roadmapEvidence: PlannerRoadmapEvidenceSchema,
+}, { additionalProperties: false });
+
+export const PlannerHandoffDraftSchema = Type.Object({
+  selection: PromotionSelectionInputSchema,
+  session: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String()),
+  profile: Type.Optional(PlanningProfileSchema),
+}, { additionalProperties: false });
+
+export const ApplyPlannerResultInputSchema = Type.Object({
+  recommendations: Type.Optional(BacklogRecommendationModelSchema),
+  handoffDraft: Type.Optional(PlannerHandoffDraftSchema),
+}, { additionalProperties: false, minProperties: 1 });
+
+export const ApplyPlannerResultOutputSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  recommendations: Type.Optional(PutRecommendationsOutputSchema),
+  handoff: Type.Optional(PromotionSelectionOutputSchema),
+}, { additionalProperties: false });
+// --- eforge:endregion plan-03-planner-orchestration-workstation ---
 
 // --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
@@ -488,6 +590,14 @@ export type PromotionSelectionSourceEpic = Static<typeof PromotionSelectionSourc
 export type PromotionSelectionInput = Static<typeof PromotionSelectionInputSchema>;
 export type PromotionSelectionOutput = Static<typeof PromotionSelectionOutputSchema>;
 // --- eforge:endregion promotion-selection ---
+// --- eforge:region plan-03-planner-orchestration-workstation ---
+export type PlannerRoadmapEvidence = Static<typeof PlannerRoadmapEvidenceSchema>;
+export type PlannerDependencyContext = Static<typeof PlannerDependencyContextSchema>;
+export type PlannerContextInput = Static<typeof PreparePlannerContextInputSchema>;
+export type PlannerContextOutput = Static<typeof PreparePlannerContextOutputSchema>;
+export type ApplyPlannerResultInput = Static<typeof ApplyPlannerResultInputSchema>;
+export type ApplyPlannerResultOutput = Static<typeof ApplyPlannerResultOutputSchema>;
+// --- eforge:endregion plan-03-planner-orchestration-workstation ---
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
 export type PlanningProfileInput = Static<typeof PlanningProfileSchema>;
