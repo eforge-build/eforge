@@ -21,6 +21,9 @@ import { applyLifecycleEvent } from './lifecycle.js';
 import { fetchEforgePlanInputSource, promoteBacklogItem } from './promote.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { sessionPlanActions } from './session-plan-actions.js';
+// --- eforge:region plan-01-recommendations ---
+import { recommendationActions } from './recommendation-actions.js';
+// --- eforge:endregion plan-01-recommendations ---
 import { ActionObjectOutputSchema, BoardActionInputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
@@ -93,6 +96,9 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(updateItem);
   eforge.registerAction(promoteItem);
   eforge.registerAction(renderBoardMarkdown);
+  // --- eforge:region plan-01-recommendations ---
+  for (const action of recommendationActions) eforge.registerAction(action);
+  // --- eforge:endregion plan-01-recommendations ---
   for (const action of sessionPlanActions) eforge.registerAction(action);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile .backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
@@ -114,6 +120,10 @@ export default defineEforgeExtension((eforge) => {
     allowedActions: [
       'list-board',
       'render-board-markdown',
+      // --- eforge:region plan-01-recommendations ---
+      'get-recommendations',
+      'put-recommendations',
+      // --- eforge:endregion plan-01-recommendations ---
       'list-planning-artifacts',
       'show-session-plan',
       'show-session-plan-set',

@@ -73,6 +73,71 @@ export const MarkdownOutputSchema = Type.Object({ markdown: Type.String() });
 
 // --- eforge:endregion json-schemas ---
 
+// --- eforge:region plan-01-recommendations ---
+export const PlanningProfileSchema = Type.Union([
+  Type.Literal('errand'),
+  Type.Literal('excursion'),
+  Type.Literal('expedition'),
+]);
+
+export const RecommendationItemRefSchema = Type.Object({
+  ref: Type.Optional(Type.String()),
+  itemId: Type.String(),
+  rationale: Type.Optional(Type.String()),
+  confidence: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const RecommendationProfileSchema = PlanningProfileSchema;
+
+export const RecommendationGroupSchema = Type.Object({
+  ref: Type.String(),
+  title: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String()),
+  epicIds: Type.Optional(Type.Array(Type.String())),
+  safeToPlanTogether: Type.Optional(Type.Boolean()),
+  rationale: Type.Optional(Type.String()),
+  recommendedProfile: Type.Optional(RecommendationProfileSchema),
+}, { additionalProperties: false });
+
+export const RecommendationBlockedChainSchema = Type.Object({
+  ref: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String()),
+  blockedBy: Type.Array(Type.String()),
+  rationale: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const BacklogRecommendationModelSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  updatedAt: Type.Optional(Type.String()),
+  activeWork: Type.Array(RecommendationItemRefSchema),
+  readyCandidates: Type.Array(RecommendationItemRefSchema),
+  recommendedNextSequence: Type.Array(RecommendationItemRefSchema),
+  safeParallelizableGroups: Type.Array(RecommendationGroupSchema),
+  blockedChains: Type.Array(RecommendationBlockedChainSchema),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const RecommendationSummarySchema = Type.Object({
+  recommendedNextItemIds: Type.Array(Type.String()),
+  safeParallelizableGroups: Type.Array(RecommendationGroupSchema),
+  blockedChainCount: Type.Number(),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const GetRecommendationsInputSchema = Type.Object({});
+export const GetRecommendationsOutputSchema = Type.Object({
+  recommendations: Type.Union([BacklogRecommendationModelSchema, Type.Null()]),
+  recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  path: Type.String(),
+});
+export const PutRecommendationsInputSchema = BacklogRecommendationModelSchema;
+export const PutRecommendationsOutputSchema = Type.Object({
+  recommendations: BacklogRecommendationModelSchema,
+  recommendationSummary: RecommendationSummarySchema,
+  path: Type.String(),
+});
+// --- eforge:endregion plan-01-recommendations ---
+
 // --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
   epic: Type.Optional(Type.String()),
@@ -188,6 +253,9 @@ export const ListBoardOutputSchema = Type.Object({
   lanes: Type.Array(Type.Unknown()),
   blockedReasons: Type.Array(Type.Object({ itemId: Type.String(), reasons: Type.Array(Type.String()) })),
   traceSummaries: Type.Array(Type.Unknown()),
+  // --- eforge:region plan-01-recommendations ---
+  recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  // --- eforge:endregion plan-01-recommendations ---
 });
 // --- eforge:endregion board-schemas ---
 
@@ -206,12 +274,6 @@ export const PlanningDepthSchema = Type.Union([
   Type.Literal('quick'),
   Type.Literal('focused'),
   Type.Literal('deep'),
-]);
-
-export const PlanningProfileSchema = Type.Union([
-  Type.Literal('errand'),
-  Type.Literal('excursion'),
-  Type.Literal('expedition'),
 ]);
 
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
@@ -370,6 +432,17 @@ export type TraceLastEventMetadata = Static<typeof TraceLastEventMetadataSchema>
 export type TraceSidecar = Static<typeof TraceSidecarSchema>;
 export type KanbanBoardOutput = Static<typeof KanbanBoardOutputSchema>;
 export type ListBoardOutput = Static<typeof ListBoardOutputSchema>;
+// --- eforge:region plan-01-recommendations ---
+export type RecommendationItemRef = Static<typeof RecommendationItemRefSchema>;
+export type RecommendationGroup = Static<typeof RecommendationGroupSchema>;
+export type RecommendationBlockedChain = Static<typeof RecommendationBlockedChainSchema>;
+export type BacklogRecommendationModel = Static<typeof BacklogRecommendationModelSchema>;
+export type RecommendationSummary = Static<typeof RecommendationSummarySchema>;
+export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
+export type GetRecommendationsOutput = Static<typeof GetRecommendationsOutputSchema>;
+export type PutRecommendationsInput = Static<typeof PutRecommendationsInputSchema>;
+export type PutRecommendationsOutput = Static<typeof PutRecommendationsOutputSchema>;
+// --- eforge:endregion plan-01-recommendations ---
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
 export type PlanningProfileInput = Static<typeof PlanningProfileSchema>;
