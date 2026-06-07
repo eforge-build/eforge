@@ -154,7 +154,26 @@ The contribution includes board summary content, status badges, and action-backe
 
 Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
 
-The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are vanilla iframe code served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
+The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are built from the TypeScript/React Vite app in `workstation-src/plans`, use local shadcn-style components owned by the extension, and are served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
+
+The workstation is view-first and deep-linkable. It exposes two tabs:
+
+- **Backlog** renders the derived kanban with Lane / Epic / Recommended grouping, status filters (`all`, `ready`, `blocked`, `review`, `closed`), free-text and epic filters, a next-up recommendations rail with blocked chains and rationale, and multi-select promotion through `promote-selection`.
+- **Plans** lists session plans and plan sets and renders a structured detail view. Flat plans show an actionable readiness checklist (missing dimensions open inline section editors backed by `set-session-plan-section`; acceptance-criteria diagnostics offer a revise affordance; an unselected plan offers a dimension-selection form backed by `select-session-plan-dimensions`), editable metadata backed by `update-session-plan-metadata`, and rendered dimension sections. Plan sets render their children by relationship strategy (`parallel` as a grid; `sequential` and `dag` as a numbered ordered list, with `dag` also surfacing each child's `dependsOn`) plus a validation summary.
+
+Because the workstation runs as a cross-origin sandboxed iframe (`sandbox="allow-scripts"`, opaque origin), it has no shared History and cannot open native `window.confirm`/modal dialogs. The Console host owns the URL: the active sub-path and query are carried on `/console/workstations/<id>/<subPath>?<query>` and synced to the iframe over a token-authed `postMessage` bridge without remounting the frame. Mutations that need confirmation (such as handoff) use a two-step in-app confirmation instead of a browser dialog.
+
+### Workstation UI development
+
+The workstation has a frontend development loop independent of eforge builds:
+
+```bash
+pnpm dev:eforge-plan-workstation          # mock bridge / fixture data
+pnpm dev:eforge-plan-workstation:daemon   # auto-detect or start daemon, then proxy /api to it
+pnpm build:eforge-plan-workstation
+```
+
+`dev:eforge-plan-workstation` runs the Vite app with a mock `window.eforge.invokeAction` bridge and fixture data for rapid UI iteration. `dev:eforge-plan-workstation:daemon` reads the project daemon lockfile, starts the daemon when needed, sets `VITE_EFORGE_DAEMON_URL` automatically, and launches the same Vite app against live daemon data; Vite proxies `/api` to the daemon so local-only action security still sees same-origin requests. Production Console rendering continues to use the built files in `workstation-assets/plans`.
 
 The workstation can browse backlog-derived board data, recommendation summary data, epics, flat session plans, and session plan sets; create or edit session plans; update metadata and selected dimensions; run readiness checks; mark ready plans; promote a recommended item, recommended group, epic, or user-selected one-or-more-item set through `promote-selection`; and perform source-path handoff after an explicit confirmation. All reads and mutations go through `window.eforge.invokeAction` and the workstation manifest's `allowedActions` list.
 

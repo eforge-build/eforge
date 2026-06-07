@@ -9,10 +9,11 @@ import { WorkstationIframe } from './workstation-iframe';
 
 interface WorkstationsViewProps {
   selectedWorkstationId?: string;
+  subPath?: string;
   onNavigate?: (href: string) => void;
 }
 
-export function WorkstationsView({ selectedWorkstationId, onNavigate }: WorkstationsViewProps) {
+export function WorkstationsView({ selectedWorkstationId, subPath, onNavigate }: WorkstationsViewProps) {
   const manifest = useWorkstationManifest();
   const [localSelectedId, setLocalSelectedId] = React.useState<string | null>(selectedWorkstationId ?? null);
 
@@ -106,7 +107,11 @@ export function WorkstationsView({ selectedWorkstationId, onNavigate }: Workstat
                   {selected.description && <p className="mt-1 text-xs text-muted-foreground">{selected.description}</p>}
                 </header>
                 <div className="min-h-0 flex-1">
-                  <WorkstationIframe workstation={selected} />
+                  <WorkstationIframe
+                    workstation={selected}
+                    subPath={subPath}
+                    onNavigate={(childPath) => onNavigate?.(toConsolePath({ id: 'workstationDetail', workstationId: selected.id, ...(childPath ? { subPath: childPath } : {}) }))}
+                  />
                 </div>
               </section>
             )}

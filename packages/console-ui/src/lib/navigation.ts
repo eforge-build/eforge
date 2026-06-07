@@ -15,7 +15,7 @@ export type ConsoleRouteId =
   | 'workstations'
   | 'system'
   | { id: 'buildDetail'; detailId: string }
-  | { id: 'workstationDetail'; workstationId: string };
+  | { id: 'workstationDetail'; workstationId: string; subPath?: string };
 
 /** Metadata for a single Console navigation item. */
 export interface ConsoleNavItem {
@@ -41,7 +41,13 @@ export function toConsolePath(id: ConsoleRouteId): string {
   if (id === 'now') return '/console/';
   if (id === 'workstations') return '/console/workstations';
   if (id === 'system') return '/console/system';
-  if (id.id === 'workstationDetail') return `/console/workstations/${encodeURIComponent(id.workstationId)}`;
+  if (id.id === 'workstationDetail') {
+    const base = `/console/workstations/${encodeURIComponent(id.workstationId)}`;
+    if (!id.subPath) return base;
+    // subPath is the workstation-internal location (path and optional ?query).
+    // A leading `?` attaches directly; anything else is a nested path segment.
+    return id.subPath.startsWith('?') ? `${base}${id.subPath}` : `${base}/${id.subPath}`;
+  }
   return `/console/builds/${id.detailId}`;
 }
 
@@ -56,10 +62,16 @@ export function toConsolePath(id: ConsoleRouteId): string {
  * - Deleted routes and unrecognized paths → `'now'`
  */
 export function parseConsoleRoute(pathname: string): ConsoleRouteId {
-  const clean = pathname.replace(/[?#].*$/, '').replace(/\/$/, '');
+  // Split off hash, then query — the query is preserved for workstation
+  // sub-routing (the embedded workstation owns its own filter/group state) but
+  // stripped for every other route.
+  const withoutHash = pathname.replace(/#.*$/, '');
+  const queryIndex = withoutHash.indexOf('?');
+  const search = queryIndex >= 0 ? withoutHash.slice(queryIndex) : '';
+  const clean = (queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash).replace(/\/$/, '');
   if (clean === '/console' || clean === '') return 'now';
   const parts = clean.split('/').filter(Boolean);
-  // parts: ['console', section?, detailId?]
+  // parts: ['console', section?, detailId?, ...subPath?]
   const section = parts[1];
   // `runs` is the legacy path for build detail; it still resolves so old links
   // and bookmarks keep working (the shell canonicalizes the URL to `builds`).
@@ -68,7 +80,10 @@ export function parseConsoleRoute(pathname: string): ConsoleRouteId {
   }
   if (section === 'workstations') {
     if (parts.length >= 3 && parts[2]) {
-      return { id: 'workstationDetail', workstationId: decodeRouteSegment(parts[2]) };
+      const workstationId = decodeRouteSegment(parts[2]);
+      const nested = parts.slice(3).join('/');
+      const subPath = nested + search;
+      return subPath ? { id: 'workstationDetail', workstationId, subPath } : { id: 'workstationDetail', workstationId };
     }
     return 'workstations';
   }

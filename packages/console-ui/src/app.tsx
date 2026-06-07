@@ -24,9 +24,13 @@ const SystemConfigurationView = lazy(() =>
 );
 // --- eforge:endregion system-configuration-view ---
 
+function currentLocationPath(): string {
+  return window.location.pathname + window.location.search;
+}
+
 function getInitialRoute(): ConsoleRouteId {
   if (typeof window !== 'undefined') {
-    return parseConsoleRoute(window.location.pathname);
+    return parseConsoleRoute(currentLocationPath());
   }
   return 'now';
 }
@@ -49,7 +53,7 @@ export function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentRoute(parseConsoleRoute(window.location.pathname));
+      setCurrentRoute(parseConsoleRoute(currentLocationPath()));
     };
     window.addEventListener('popstate', handlePopState);
     return () => {
@@ -98,9 +102,10 @@ export function App() {
 
     if (currentRoute === 'workstations' || (typeof currentRoute === 'object' && currentRoute.id === 'workstationDetail')) {
       const selectedWorkstationId = typeof currentRoute === 'object' ? currentRoute.workstationId : undefined;
+      const workstationSubPath = typeof currentRoute === 'object' ? currentRoute.subPath : undefined;
       return (
         <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
-          <WorkstationsView selectedWorkstationId={selectedWorkstationId} onNavigate={handleNavigate} />
+          <WorkstationsView selectedWorkstationId={selectedWorkstationId} subPath={workstationSubPath} onNavigate={handleNavigate} />
         </Suspense>
       );
     }

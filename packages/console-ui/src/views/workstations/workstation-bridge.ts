@@ -21,12 +21,42 @@ export type WorkstationActionResultMessage = {
   error?: { code: 'invalid-request' | 'disallowed-action' | 'bridge-error'; message: string };
 };
 
+/** Child -> host: the embedded workstation navigated its internal router. */
+export type WorkstationNavigateMessage = {
+  type: 'eforge:workstation:navigate';
+  bridgeToken: string;
+  path: string;
+};
+
+/** Host -> child: push a new internal route into the embedded workstation. */
+export type WorkstationRouteMessage = {
+  type: 'eforge:workstation:route';
+  bridgeToken: string;
+  path: string;
+};
+
 export type InvokeExtensionActionFn = (
   request: ExtensionActionInvokeRequest,
   init?: RequestInit,
 ) => Promise<ExtensionActionInvokeResponse>;
 
-export type WorkstationBridgeResult = 'ignored' | 'posted-error' | 'invoked';
+export type WorkstationBridgeResult = 'ignored' | 'posted-error' | 'invoked' | 'navigated';
+
+/** Validate a child -> host navigate message and extract its path. */
+export function validateWorkstationNavigateMessage(
+  data: unknown,
+  expectedBridgeToken: string,
+): { ok: true; path: string } | { ok: false } {
+  if (!isRecord(data) || data.type !== 'eforge:workstation:navigate') return { ok: false };
+  if (typeof data.bridgeToken !== 'string' || data.bridgeToken !== expectedBridgeToken) return { ok: false };
+  if (typeof data.path !== 'string') return { ok: false };
+  return { ok: true, path: data.path };
+}
+
+/** Build a host -> child route message. */
+export function buildWorkstationRouteMessage(bridgeToken: string, path: string): WorkstationRouteMessage {
+  return { type: 'eforge:workstation:route', bridgeToken, path };
+}
 
 interface ValidationResult {
   ok: boolean;
@@ -128,9 +158,16 @@ export async function handleWorkstationBridgeEvent(args: {
   workstation: ConsoleWorkstationManifestEntry | null;
   bridgeToken: string;
   invokeAction: InvokeExtensionActionFn;
+  onNavigate?: (path: string) => void;
 }): Promise<WorkstationBridgeResult> {
-  const { event, sourceWindow, workstation, bridgeToken, invokeAction } = args;
+  const { event, sourceWindow, workstation, bridgeToken, invokeAction, onNavigate } = args;
   if (!sourceWindow || event.source !== sourceWindow) return 'ignored';
+
+  const navigate = validateWorkstationNavigateMessage(event.data, bridgeToken);
+  if (navigate.ok) {
+    onNavigate?.(navigate.path);
+    return 'navigated';
+  }
 
   const validation = validateWorkstationBridgeMessage(event.data, bridgeToken);
   const requestId = validation.message?.requestId
