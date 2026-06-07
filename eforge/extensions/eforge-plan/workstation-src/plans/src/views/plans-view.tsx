@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowRight, CheckCircle2, ClipboardList, Plus } from 'lucide-react';
+import { ClipboardList, Plus } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
-import type { Artifact, Detail, PlanDetail, PlanSetDetail } from '@/types';
+import type { Artifact, Detail, PlanData, PlanDetail, PlanSetDetail, Readiness } from '@/types';
+import { PlanDetailCard } from './plans/plan-detail';
+import { PlanSetDetailCard } from './plans/plan-set-detail';
 
 const bridge = getBridge();
 
@@ -41,17 +43,18 @@ export function PlansView({ artifacts, onRefresh }: PlansViewProps) {
     return () => { active = false; };
   }, [selectedKey, artifacts, toast]);
 
-  const planAction = async (actionId: string) => {
-    const plan = isPlanDetail(detail) ? detail.plan : undefined;
-    if (!plan) { toast.push('Select a flat session plan first.', 'error'); return; }
-    try {
-      const result = await bridge.invokeAction<{ message?: string; command?: string }>(actionId, { session: plan.session });
-      toast.push(result.command ?? result.message ?? `${actionId} complete.`, 'success');
-      await onRefresh();
-    } catch (caught) {
-      toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
-    }
-  };
+  // Merge a mutation result (plan and/or readiness) into the loaded flat-plan
+  // detail without a full reload, keeping inline edits responsive.
+  const applyResult = React.useCallback((result: { plan?: PlanData; readiness?: Readiness }) => {
+    setDetail((current) => {
+      if (!isPlanDetail(current)) return current;
+      return {
+        ...current,
+        plan: result.plan ?? current.plan,
+        readiness: result.readiness ?? current.readiness,
+      };
+    });
+  }, []);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
@@ -86,76 +89,13 @@ export function PlansView({ artifacts, onRefresh }: PlansViewProps) {
       </aside>
 
       <section className="min-w-0">
-        <PlanDetailCard detail={detail} onPlanAction={(actionId) => void planAction(actionId)} />
+        {isPlanDetail(detail) && detail.plan
+          ? <PlanDetailCard detail={{ ...detail, plan: detail.plan }} onApply={applyResult} onRefresh={onRefresh} />
+          : detail
+            ? <PlanSetDetailCard detail={detail as PlanSetDetail} />
+            : <Card><CardHeader><CardTitle>Details</CardTitle><CardDescription>Select an artifact to inspect it.</CardDescription></CardHeader></Card>}
       </section>
     </div>
-  );
-}
-
-function PlanDetailCard({ detail, onPlanAction }: { detail: Detail; onPlanAction: (actionId: string) => void }) {
-  // Two-step in-app confirmation for the handoff mutation. window.confirm is not
-  // usable here: the workstation iframe is sandboxed without allow-modals, so the
-  // browser blocks native dialogs.
-  const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
-
-  if (!detail) {
-    return <Card><CardHeader><CardTitle>Details</CardTitle><CardDescription>Select an artifact to inspect it.</CardDescription></CardHeader></Card>;
-  }
-  if (isPlanDetail(detail) && detail.plan) {
-    const plan = detail.plan;
-    const sections = plan.sections ?? {};
-    const sectionEntries = Object.entries(sections);
-    const handoff = () => {
-      if (!confirmingHandoff) { setConfirmingHandoff(true); return; }
-      setConfirmingHandoff(false);
-      onPlanAction('handoff-session-plan');
-    };
-    return (
-      <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle>{plan.topic}</CardTitle>
-            <CardDescription>{plan.session}</CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => onPlanAction('check-session-plan-readiness')}>Check readiness</Button>
-            <Button size="sm" onClick={() => onPlanAction('set-session-plan-ready')}><CheckCircle2 className="h-4 w-4" /> Set ready</Button>
-            <Button variant={confirmingHandoff ? 'destructive' : 'secondary'} size="sm" onClick={handoff} onBlur={() => setConfirmingHandoff(false)}>
-              {confirmingHandoff ? 'Confirm handoff' : 'Handoff'} <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <div className="flex flex-wrap gap-2">
-            <Badge>{plan.status}</Badge>
-            <Badge variant="outline">{detail.readiness?.ready ? 'ready' : 'not ready'}</Badge>
-            <Badge variant="secondary">{plan.profile ?? 'no profile'}</Badge>
-          </div>
-          <p className="text-muted-foreground">Missing: {(detail.readiness?.missingDimensions ?? []).join(', ') || 'none'}</p>
-          {sectionEntries.length > 0
-            ? sectionEntries.map(([title, content]) => (
-              <section key={title} className="rounded-md border bg-background/50 p-3">
-                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-                <pre className="whitespace-pre-wrap break-words text-xs text-foreground">{content}</pre>
-              </section>
-            ))
-            : <pre className="max-h-96 overflow-auto rounded-md border bg-background p-3 text-xs">{plan.body ?? ''}</pre>}
-        </CardContent>
-      </Card>
-    );
-  }
-  const planSet = (detail as PlanSetDetail).planSet;
-  return (
-    <Card>
-      <CardHeader><CardTitle>{planSet?.title ?? planSet?.id ?? 'Plan set'}</CardTitle><CardDescription>{(detail as PlanSetDetail).manifestPath}</CardDescription></CardHeader>
-      <CardContent>
-        <ul className="grid gap-2 text-sm">
-          {(planSet?.children ?? []).map((child) => (
-            <li key={child.id} className="rounded-md border p-2"><strong className="text-text-bright">{child.id}</strong> · {child.status}{child.buildable ? '' : ' · not buildable'}</li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
   );
 }
 

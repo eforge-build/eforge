@@ -58,23 +58,70 @@ export interface RecommendationModel {
   rationaleAndAssumptions?: string[];
 }
 
+export interface SkippedDimension { name: string; reason: string; }
 export interface PlanData {
   session: string;
   topic: string;
   status: string;
   ready?: boolean;
+  confidence?: string;
   profile?: string | null;
   agent_profile?: string | null;
   planning_type?: string;
   planning_depth?: string;
+  required_dimensions?: string[];
+  optional_dimensions?: string[];
+  skipped_dimensions?: SkippedDimension[];
   open_questions?: string[];
   body?: string;
   sections?: Record<string, string>;
 }
 
-export interface Readiness { ready?: boolean; missingDimensions?: string[]; acDiagnostics?: { message?: string }[]; }
+export interface AcDiagnostic { kind?: string; line?: string; message?: string; suggestion?: string; }
+export interface Readiness {
+  ready?: boolean;
+  missingDimensions?: string[];
+  coveredDimensions?: string[];
+  skippedDimensions?: string[];
+  acDiagnostics?: AcDiagnostic[];
+}
 export interface PlanDetail { path?: string; plan?: PlanData; readiness?: Readiness; }
-export interface PlanSetDetail { planSet?: { id: string; title?: string; status?: string; strategy?: string; children?: { id: string; status: string; buildable?: boolean; file?: string }[] }; manifestPath?: string; validation?: { ok?: boolean }; anchorContent?: string; }
+
+export interface PlanSetChild {
+  id: string;
+  file?: string;
+  kind?: string;
+  status: string;
+  buildable?: boolean;
+  profile?: string;
+  dependsOn?: string[];
+  exists?: boolean;
+  validation?: { ok?: boolean; diagnosticCount?: number };
+}
+export interface PlanSetDiagnostic {
+  severity?: string;
+  code?: string;
+  message?: string;
+  childId?: string;
+  file?: string;
+  dependency?: string;
+  path?: string;
+}
+export interface PlanSetSummary {
+  id: string;
+  title?: string;
+  status?: string;
+  strategy?: string;
+  children?: PlanSetChild[];
+  diagnostics?: PlanSetDiagnostic[];
+}
+export interface PlanSetDetail {
+  planSet?: PlanSetSummary;
+  validation?: { ok?: boolean; diagnostics?: PlanSetDiagnostic[] };
+  dir?: string;
+  manifestPath?: string;
+  anchorContent?: string;
+}
 export type Detail = PlanDetail | PlanSetDetail | null;
 
 export interface WorkstationData { artifacts: Artifact[]; board: Board; recommendations: RecommendationModel | null; }

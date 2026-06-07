@@ -5,7 +5,8 @@ const ASSET = 'eforge/extensions/eforge-plan/workstation-assets/plans/index.js';
 const SRC = 'eforge/extensions/eforge-plan/workstation-src/plans/src';
 const BACKLOG_VIEW = `${SRC}/views/backlog-view.tsx`;
 const RECOMMENDATIONS_PANEL = `${SRC}/views/backlog/recommendations-panel.tsx`;
-const PLANS_VIEW = `${SRC}/views/plans-view.tsx`;
+const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
+const PLAN_SET_DETAIL = `${SRC}/views/plans/plan-set-detail.tsx`;
 
 describe('eforge-plan planning workstation assets', () => {
   it('stays inside extension-owned browser assets without private Console imports', async () => {
@@ -42,12 +43,28 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('requires explicit in-app confirmation before handoff', async () => {
-    const source = await readFile(PLANS_VIEW, 'utf-8');
+    const source = await readFile(PLAN_DETAIL, 'utf-8');
 
     expect(source).toContain("'handoff-session-plan'");
     // window.confirm is unusable in the sandboxed (allow-modals-less) iframe, so
     // handoff gates on an in-app confirmation step instead.
     expect(source).not.toMatch(/window\.confirm\s*\(/);
     expect(source).toContain('confirmingHandoff');
+  });
+
+  it('turns readiness diagnostics into actionable section and dimension mutations', async () => {
+    const source = await readFile(PLAN_DETAIL, 'utf-8');
+
+    expect(source).toContain("'set-session-plan-section'");
+    expect(source).toContain("'select-session-plan-dimensions'");
+    expect(source).toContain("'update-session-plan-metadata'");
+  });
+
+  it('renders plan-set children by relationship strategy with validation', async () => {
+    const source = await readFile(PLAN_SET_DETAIL, 'utf-8');
+
+    expect(source).toContain("strategy === 'parallel'");
+    expect(source).toContain('dependsOn');
+    expect(source).toContain('diagnostics');
   });
 });

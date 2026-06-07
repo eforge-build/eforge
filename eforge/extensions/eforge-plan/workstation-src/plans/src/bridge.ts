@@ -1,5 +1,5 @@
-import { mockArtifacts, mockBoard, mockDetail, mockRecommendations } from '@/fixtures/mock-data';
-import type { EforgeBridge, JsonObject } from '@/types';
+import { mockArtifacts, mockBoard, mockDetail, mockMutationResult, mockRecommendations } from '@/fixtures/mock-data';
+import type { EforgeBridge, JsonObject, PlanData } from '@/types';
 
 declare global { interface Window { eforge?: EforgeBridge; } }
 
@@ -41,8 +41,11 @@ function createMockBridge(): EforgeBridge {
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
         case 'promote-selection': return { session: '2026-06-07-promoted-selection', sessionPlanPath: '.eforge/session-plans/2026-06-07-promoted-selection.md' } as TOutput;
         case 'prepare-planner-context': return { items: mockBoard.items, epics: mockBoard.epics, recommendations: { model: mockRecommendations } } as TOutput;
-        case 'check-session-plan-readiness': return { message: 'Readiness checked.', readiness: { ready: true, missingDimensions: [] } } as TOutput;
-        case 'set-session-plan-ready': return { message: 'Plan marked ready.', readiness: { ready: true, missingDimensions: [] } } as TOutput;
+        case 'check-session-plan-readiness': return { session: String(input.session ?? ''), readiness: { ready: true, missingDimensions: [], coveredDimensions: [], skippedDimensions: [] } } as TOutput;
+        case 'set-session-plan-ready': return { kind: 'ready', ...mockMutationResult(String(input.session ?? '')), status: 'ready' } as TOutput;
+        case 'set-session-plan-section': return mockMutationResult(String(input.session ?? '')) as TOutput;
+        case 'select-session-plan-dimensions': return { ...mockMutationResult(String(input.session ?? '')), required_dimensions: ['scope', 'acceptance-criteria'], optional_dimensions: [] } as TOutput;
+        case 'update-session-plan-metadata': return mockMutationResult(String(input.session ?? ''), { profile: (input.profile as PlanData['profile']) ?? null, agent_profile: (input.agentProfile as string) ?? null, open_questions: (input.openQuestions as string[]) ?? [] }) as TOutput;
         case 'handoff-session-plan': return { message: 'Ready for handoff.', command: `/eforge:build .eforge/session-plans/${String(input.session ?? 'mock')}.md` } as TOutput;
         default: return { message: `${actionId} accepted by mock bridge.` } as TOutput;
       }

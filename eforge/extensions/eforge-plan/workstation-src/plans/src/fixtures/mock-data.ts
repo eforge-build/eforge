@@ -1,4 +1,4 @@
-import type { Artifact, Board, BoardItem, Detail, RecommendationModel } from '@/types';
+import type { Artifact, Board, BoardItem, Detail, PlanData, PlanDetail, Readiness, RecommendationModel } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -88,17 +88,56 @@ export const mockArtifacts: Artifact[] = [
 
 export function mockDetail(key: string): Detail {
   if (key.startsWith('plan-set:')) {
-    return { planSet: { id: 'planning-foundations', title: 'Planning foundations', status: 'draft', strategy: 'sequential', children: [{ id: 'plan-01', status: 'ready', buildable: true, file: '01.md' }] }, manifestPath: '.eforge/session-plan-sets/planning-foundations/manifest.yaml', validation: { ok: true } };
+    return {
+      planSet: {
+        id: 'planning-foundations', title: 'Planning foundations', status: 'planning', strategy: 'dag',
+        children: [
+          { id: 'recommendations', file: 'recommendations.md', kind: 'plan', status: 'ready', buildable: true, exists: true, dependsOn: [], validation: { ok: true, diagnosticCount: 0 } },
+          { id: 'import-preview', file: 'import-preview.md', kind: 'plan', status: 'planning', buildable: true, exists: true, dependsOn: ['recommendations'], validation: { ok: true, diagnosticCount: 0 } },
+          { id: 'design-notes', file: 'design-notes.md', kind: 'note', status: 'planning', buildable: false, exists: false, dependsOn: [], validation: { ok: false, diagnosticCount: 1 } },
+        ],
+        diagnostics: [{ severity: 'error', code: 'missing-child-file', message: 'Child file design-notes.md does not exist.', childId: 'design-notes', file: 'design-notes.md' }],
+      },
+      validation: { ok: false, diagnostics: [{ severity: 'error', code: 'missing-child-file', message: 'Child file design-notes.md does not exist.', childId: 'design-notes', file: 'design-notes.md' }] },
+      dir: '.eforge/session-plan-sets/planning-foundations',
+      manifestPath: '.eforge/session-plan-sets/planning-foundations/manifest.yaml',
+    };
   }
   const artifact = mockArtifacts.find((entry) => entry.key === key) ?? mockArtifacts[0];
+  const ready = Boolean(artifact.ready);
   return {
     path: `.eforge/session-plans/${artifact.session}.md`,
-    readiness: { ready: artifact.ready, missingDimensions: artifact.ready ? [] : ['acceptance-criteria'], acDiagnostics: [] },
+    readiness: {
+      ready,
+      missingDimensions: ready ? [] : ['scope'],
+      coveredDimensions: ready ? ['scope', 'acceptance-criteria'] : ['acceptance-criteria'],
+      skippedDimensions: ['assumptions-and-validation'],
+      acDiagnostics: ready ? [] : [{ kind: 'vague', line: '- It works well', message: 'Criterion is not objectively verifiable.', suggestion: 'State a measurable, testable outcome.' }],
+    },
     plan: {
       session: artifact.session ?? 'mock-session', topic: artifact.title ?? 'Mock plan', status: artifact.status ?? 'planning',
-      profile: 'excursion', planning_type: 'feature', planning_depth: 'focused', open_questions: ['What edge cases matter?'],
-      sections: { Scope: 'A friendly fixture for rapid UI iteration.', 'Acceptance Criteria': '- It renders.\n- It promotes.' },
+      profile: 'excursion', planning_type: 'feature', planning_depth: 'focused', confidence: 'medium',
+      required_dimensions: ['scope', 'acceptance-criteria', 'assumptions-and-validation'],
+      optional_dimensions: [],
+      skipped_dimensions: [{ name: 'assumptions-and-validation', reason: 'No external dependencies.' }],
+      open_questions: ['What edge cases matter?'],
+      sections: { scope: 'A friendly fixture for rapid UI iteration.', 'acceptance criteria': '- It renders.\n- It promotes.' },
       body: '# Mock plan\n\n## Scope\n\nA friendly fixture for rapid UI iteration.',
     },
+  };
+}
+
+/**
+ * Mutation result for the section/dimension/metadata actions in the mock bridge.
+ * Returns a now-ready plan so the inline editors demonstrate the success path.
+ */
+export function mockMutationResult(session: string, patch: Partial<PlanData> = {}): { session: string; path: string; plan: PlanData; readiness: Readiness } {
+  const detail = mockDetail(`plan:${session}`) as PlanDetail;
+  const plan = detail.plan ?? { session, topic: 'Mock plan', status: 'planning' };
+  return {
+    session,
+    path: detail.path ?? `.eforge/session-plans/${session}.md`,
+    plan: { ...plan, status: 'ready', ...patch },
+    readiness: { ready: true, missingDimensions: [], coveredDimensions: plan.required_dimensions ?? [], skippedDimensions: ['assumptions-and-validation'], acDiagnostics: [] },
   };
 }
