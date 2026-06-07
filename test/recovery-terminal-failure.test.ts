@@ -103,6 +103,51 @@ describe('recovery run selection', () => {
 describe('authoritative terminal failure precedence', () => {
   const makeTempDir = useTempDir('eforge-tf-test-');
 
+  it('emits an inconclusive terminal failure message for unknown-only acceptance validation failures', () => {
+    const tracker = createBuildTerminalFailureTracker('run-acceptance-unknown');
+    tracker.observe({
+      type: 'acceptance_validation:complete',
+      timestamp: '2026-01-01T10:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support OAuth login', verdict: 'unknown', evidence: 'Cannot verify OAuth from diff alone' },
+        { criterion: 'Must handle rate limiting', verdict: 'unknown', evidence: 'No rate-limiting proof found' },
+      ],
+      source: 'prd',
+    });
+
+    const event = tracker.toEvent('failed', 'Build failed');
+
+    expect(event).toEqual(expect.objectContaining({
+      type: 'build:terminal-failure',
+      failure: expect.objectContaining({
+        scope: 'acceptance-validation',
+        message: expect.stringContaining('inconclusive'),
+      }),
+    }));
+    expect((event as { failure: { message: string } }).failure.message).toContain('no concrete failed criteria were produced');
+  });
+
+  it('emits failed acceptance criterion previews for concrete acceptance validation failures', () => {
+    const tracker = createBuildTerminalFailureTracker('run-acceptance-fail');
+    tracker.observe({
+      type: 'acceptance_validation:complete',
+      timestamp: '2026-01-01T10:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must reject invalid tokens', verdict: 'fail', evidence: 'Invalid token request succeeded' },
+        { criterion: 'Must expose audit trail', verdict: 'unknown', evidence: 'No deterministic proof found' },
+      ],
+      source: 'prd',
+    });
+
+    const event = tracker.toEvent('failed', 'Build failed');
+    const message = (event as { failure: { message: string } }).failure.message;
+
+    expect(message).toContain('1 criterion/criteria failed');
+    expect(message).toContain('Must reject invalid tokens');
+  });
+
   it('copies plan build failure terminalSubtype into the authoritative terminal failure event', () => {
     const tracker = createBuildTerminalFailureTracker('run-tracker-subtype');
     tracker.observe({

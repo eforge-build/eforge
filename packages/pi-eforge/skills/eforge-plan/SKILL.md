@@ -174,7 +174,16 @@ Work through `required_dimensions` in order, then any `optional_dimensions` for 
 
 **acceptance-criteria** — Specific, testable conditions that confirm the change is complete. Include validation criteria for important assumptions when practical. This is a required dimension for every work type, including the `unknown` fallback.
 
-Each criterion must be **flat, standalone, atomic, and objectively validatable** — a third party can determine pass or fail without judgment. The following are required:
+Each criterion must be **flat, standalone, atomic, and objectively validatable** — a third party can determine pass or fail without judgment.
+
+Before marking acceptance criteria complete, review the whole acceptance criteria set, not only individual bullets:
+
+- Run a `semantic-level review` for `over-granular field-by-field duplication`.
+- Use `contract-vs-behavior consolidation`: collapse related contract-shape field requirements into one objectively testable contract criterion, while keeping distinct behavior-level obligations as separate criteria.
+- Preserve distinct criteria when fields represent different observable behaviors, validation rules, or failure modes.
+- Keep criteria flat, standalone, atomic, objective, and automatable.
+
+The following are required:
 
 - **No grouping labels** — bullets ending with `:` are headers, not criteria. Do not write `- Tests cover:` or `- Targeted validation passes:`. Write each sub-item as its own standalone bullet.
 - **No bare command fragments** — `` - `pnpm type-check`. `` cannot be verified without an expected outcome. Write the outcome: `` - `pnpm type-check` exits 0. ``

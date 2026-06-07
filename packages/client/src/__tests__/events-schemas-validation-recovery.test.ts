@@ -258,7 +258,7 @@ describe('safeParseEforgeEvent — acceptance_validation:complete', () => {
     };
     const result = safeParseEforgeEvent(event);
     expect(result.success).toBe(true);
-    expect(getEventSummary(event)).toBe('Acceptance validation failed: 1 criterion/criteria not passed (1 conflict(s) reported)');
+    expect(getEventSummary(event)).toBe('Acceptance validation inconclusive: 1 criterion/criteria unknown; no criterion was verified (1 conflict(s) reported)');
   });
 
   it('rejects acceptance_validation:complete passed:true with non-passing verdicts unless waived', () => {
@@ -507,7 +507,39 @@ describe('eventRegistry — validation evidence summaries', () => {
         { criterion: 'Must be accessible', verdict: 'unknown', evidence: 'Cannot verify from diff' },
       ],
       source: 'prd',
-    })).toBe('Acceptance validation failed: 2 criterion/criteria not passed');
+    })).toBe('Acceptance validation failed: 1 criterion/criteria failed, 1 unknown');
+  });
+
+  it('summarizes all-unknown failed acceptance_validation:complete events as inconclusive', () => {
+    const summary = getEventSummary({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must support OAuth', verdict: 'unknown', evidence: 'Cannot verify from diff' },
+        { criterion: 'Must support SSO', verdict: 'unknown', evidence: 'Cannot verify from diff' },
+      ],
+      source: 'prd',
+    });
+
+    expect(summary).toContain('inconclusive');
+    expect(summary).toContain('2 criterion/criteria unknown');
+    expect(summary).toContain('no criterion was verified');
+    expect(summary).not.toContain('not passed');
+  });
+
+  it('summarizes mixed fail and unknown acceptance_validation:complete events with separate counts', () => {
+    expect(getEventSummary({
+      type: 'acceptance_validation:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      passed: false,
+      verdicts: [
+        { criterion: 'Must reject invalid tokens', verdict: 'fail', evidence: 'Invalid token request succeeded' },
+        { criterion: 'Must expose audit trail', verdict: 'unknown', evidence: 'No deterministic proof found' },
+        { criterion: 'Must support login', verdict: 'pass', evidence: 'Login proof found' },
+      ],
+      source: 'prd',
+    })).toBe('Acceptance validation failed: 1 criterion/criteria failed, 1 unknown');
   });
 });
 

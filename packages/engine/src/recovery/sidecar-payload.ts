@@ -169,11 +169,20 @@ function keyEvidence(summary: BuildFailureSummary, evidence: RecoverySidecarBoun
   const lines: string[] = [];
   if (evidence.failingPlan.planId !== 'unknown') lines.push(`Failing plan: ${evidence.failingPlan.planId}`);
   if (summary.terminalFailure?.scope) lines.push(`Terminal failure scope: ${summary.terminalFailure.scope}${summary.terminalFailure.stage ? ` (${summary.terminalFailure.stage})` : ''}`);
-  if (summary.acceptanceValidation) lines.push(`Acceptance validation: ${summary.acceptanceValidation.pass}/${summary.acceptanceValidation.total} pass, ${summary.acceptanceValidation.fail} fail, ${summary.acceptanceValidation.unknown} unknown`);
+  if (summary.acceptanceValidation) {
+    lines.push(`Acceptance validation: ${summary.acceptanceValidation.pass}/${summary.acceptanceValidation.total} pass, ${summary.acceptanceValidation.fail} fail, ${summary.acceptanceValidation.unknown} unknown`);
+    if (isAllUnknownAcceptanceFailure(summary.acceptanceValidation)) {
+      lines.push('Acceptance validation is inconclusive: no concrete failed criteria were produced; inspect validator output/context or clarify acceptance criteria.');
+    }
+  }
   if (summary.validationCommands?.length) lines.push(`${summary.validationCommands.length} validation command(s) recorded with bounded output previews`);
   if (summary.landedCommits.length) lines.push(`${summary.landedCommits.length} landed commit(s) on ${summary.featureBranch}`);
   if (evidence.evidenceOmissions?.length) lines.push(...evidence.evidenceOmissions.slice(0, 3));
   return lines.length > 0 ? lines : ['No detailed failure evidence was available; inspect the failed PRD and build logs manually.'];
+}
+
+function isAllUnknownAcceptanceFailure(acceptance: NonNullable<BuildFailureSummary['acceptanceValidation']>): boolean {
+  return !acceptance.passed && acceptance.fail === 0 && acceptance.unknown === acceptance.total;
 }
 
 function recoveryOptionsFor(
