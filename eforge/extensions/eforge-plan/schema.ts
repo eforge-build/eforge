@@ -167,7 +167,6 @@ export const PromotionSelectionOutputSchema = Type.Object({
 }, { additionalProperties: false });
 // --- eforge:endregion promotion-selection ---
 
-// --- eforge:region plan-03-planner-orchestration-workstation ---
 export const PlannerRoadmapEvidenceSchema = Type.Object({
   path: Type.Literal('docs/roadmap.md'),
   exists: Type.Boolean(),
@@ -250,7 +249,6 @@ export const ApplyPlannerResultOutputSchema = Type.Object({
   recommendations: Type.Optional(PutRecommendationsOutputSchema),
   handoff: Type.Optional(PromotionSelectionOutputSchema),
 }, { additionalProperties: false });
-// --- eforge:endregion plan-03-planner-orchestration-workstation ---
 
 // --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
@@ -533,14 +531,12 @@ export type PromotionSelectionSourceEpic = Static<typeof PromotionSelectionSourc
 export type PromotionSelectionInput = Static<typeof PromotionSelectionInputSchema>;
 export type PromotionSelectionOutput = Static<typeof PromotionSelectionOutputSchema>;
 // --- eforge:endregion promotion-selection ---
-// --- eforge:region plan-03-planner-orchestration-workstation ---
 export type PlannerRoadmapEvidence = Static<typeof PlannerRoadmapEvidenceSchema>;
 export type PlannerDependencyContext = Static<typeof PlannerDependencyContextSchema>;
 export type PlannerContextInput = Static<typeof PreparePlannerContextInputSchema>;
 export type PlannerContextOutput = Static<typeof PreparePlannerContextOutputSchema>;
 export type ApplyPlannerResultInput = Static<typeof ApplyPlannerResultInputSchema>;
 export type ApplyPlannerResultOutput = Static<typeof ApplyPlannerResultOutputSchema>;
-// --- eforge:endregion plan-03-planner-orchestration-workstation ---
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
 export type PlanningProfileInput = Static<typeof PlanningProfileSchema>;

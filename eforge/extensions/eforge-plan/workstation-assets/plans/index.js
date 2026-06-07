@@ -73,12 +73,10 @@ const state = {
   artifacts: [],
   selectedKey: '',
   selectedDetail: null,
-  // --- eforge:region plan-03-planner-orchestration-workstation ---
   boardItems: [],
   boardEpics: [],
   recommendations: null,
   selectedItemIds: new Set(),
-  // --- eforge:endregion plan-03-planner-orchestration-workstation ---
 };
 
 const el = {
@@ -86,11 +84,9 @@ const el = {
   artifactList: document.querySelector('[data-role="artifact-list"]'),
   detail: document.querySelector('[data-role="detail"]'),
   board: document.querySelector('[data-role="board"]'),
-  // --- eforge:region plan-03-planner-orchestration-workstation ---
   recommendations: document.querySelector('[data-role="recommendations"]'),
   promoteSelected: document.querySelector('[data-action="promote-selected"]'),
   preparePlanner: document.querySelector('[data-action="prepare-planner"]'),
-  // --- eforge:endregion plan-03-planner-orchestration-workstation ---
   refresh: document.querySelector('[data-action="refresh"]'),
   createForm: document.querySelector('[data-role="create-form"]'),
   sectionForm: document.querySelector('[data-role="section-form"]'),
@@ -165,7 +161,6 @@ function renderBoard(board) {
   }
 }
 
-// --- eforge:region plan-03-planner-orchestration-workstation ---
 function renderRecommendations() {
   if (!el.recommendations) return;
   const model = state.recommendations;
@@ -207,7 +202,6 @@ async function promoteSelection(selection) {
   await refresh();
   setStatus(`Promoted to ${result.sessionPlanPath || result.session}.`);
 }
-// --- eforge:endregion plan-03-planner-orchestration-workstation ---
 
 function renderDetail(detail) {
   if (!el.detail) return;
@@ -332,7 +326,6 @@ function formValue(form, name) {
 
 el.refresh?.addEventListener('click', () => refresh().catch(showError));
 
-// --- eforge:region plan-03-planner-orchestration-workstation ---
 el.promoteSelected?.addEventListener('click', () => {
   const itemIds = Array.from(state.selectedItemIds);
   if (itemIds.length === 0) {
@@ -349,7 +342,6 @@ el.preparePlanner?.addEventListener('click', () => {
     setStatus(`Planner context ready: ${result.items?.length || 0} items, ${result.epics?.length || 0} epics.`);
   }).catch(showError);
 });
-// --- eforge:endregion plan-03-planner-orchestration-workstation ---
 
 el.createForm?.addEventListener('submit', (event) => {
   event.preventDefault();

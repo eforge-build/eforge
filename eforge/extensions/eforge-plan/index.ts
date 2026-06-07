@@ -116,9 +116,7 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
   for (const action of recommendationActions) eforge.registerAction(action);
-  // --- eforge:region plan-03-planner-orchestration-workstation ---
   for (const action of plannerActions) eforge.registerAction(action);
-  // --- eforge:endregion plan-03-planner-orchestration-workstation ---
   for (const action of sessionPlanActions) eforge.registerAction(action);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile .backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
@@ -130,11 +128,9 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-button', title: 'Render board', content: 'Show current board Markdown', action: { actionId: 'render-board-markdown' } },
       { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
-      // --- eforge:region plan-03-planner-orchestration-workstation ---
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
-      // --- eforge:endregion plan-03-planner-orchestration-workstation ---
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
     ],
@@ -149,10 +145,8 @@ export default defineEforgeExtension((eforge) => {
       'promote-selection',
       'get-recommendations',
       'put-recommendations',
-      // --- eforge:region plan-03-planner-orchestration-workstation ---
       'prepare-planner-context',
       'apply-planner-result',
-      // --- eforge:endregion plan-03-planner-orchestration-workstation ---
       'list-planning-artifacts',
       'show-session-plan',
       'show-session-plan-set',
