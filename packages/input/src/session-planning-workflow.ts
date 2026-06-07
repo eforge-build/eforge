@@ -26,6 +26,7 @@ import {
 import {
   listSessionPlanSets,
   loadSessionPlanSet,
+  validateLoadedSessionPlanSet,
   validateSessionPlanSet,
   type ListSessionPlanSetsOpts,
   type LoadSessionPlanSetOpts,
@@ -130,6 +131,7 @@ export interface SessionPlanningWorkflowAdapter {
     list(opts: { cwd: string; includeSubmitted?: boolean }): Promise<SessionPlanSetListEntry[]>;
     load(opts: LoadSessionPlanSetOpts): Promise<SessionPlanSetLoadResult>;
     validate(opts: ValidateSessionPlanSetOpts): Promise<SessionPlanSetValidationResult>;
+    validateLoaded(loadResult: SessionPlanSetLoadResult): SessionPlanSetValidationResult;
   };
 }
 
@@ -240,6 +242,7 @@ export function createSessionPlanningWorkflowAdapter(): SessionPlanningWorkflowA
       list: listReadOnlyPlanSets,
       load: loadSessionPlanSet,
       validate: validateSessionPlanSet,
+      validateLoaded: validateLoadedSessionPlanSet,
     },
   };
 }

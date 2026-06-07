@@ -324,30 +324,27 @@ Registers a sandboxed Console workstation rendered under `/console/workstations`
 ```ts
 import { Type, defineConsoleWorkstation, defineExtensionAction } from "@eforge-build/extension-sdk";
 
-const renderBoard = defineExtensionAction({
-  id: "render-board-markdown",
-  title: "Render board",
+const listPlanningArtifacts = defineExtensionAction({
+  id: "list-planning-artifacts",
+  title: "List planning artifacts",
   inputSchema: Type.Object({}),
-  outputSchema: Type.Object({ markdown: Type.String() }),
-  sideEffects: ["none"],
-  handler: () => ({ markdown: "# Board\nReady." }),
+  outputSchema: Type.Object({ artifacts: Type.Array(Type.Unknown()) }),
+  sideEffects: ["local-read"],
+  handler: () => ({ artifacts: [] }),
 });
 
-eforge.registerAction(renderBoard);
+eforge.registerAction(listPlanningArtifacts);
 eforge.registerConsoleWorkstation(defineConsoleWorkstation({
-  id: "board-workstation",
-  title: "Board workstation",
-  description: "Interactive board backed by extension actions.",
-  srcDoc: `<!doctype html>
-<button id="refresh">Refresh</button>
-<pre id="output"></pre>
-<script>
-  document.getElementById('refresh').onclick = async () => {
-    const result = await window.eforge.invokeAction('render-board-markdown', {});
-    document.getElementById('output').textContent = result.markdown;
-  };
-</script>`,
-  allowedActions: ["render-board-markdown"],
+  id: "planning-workstation",
+  title: "Planning workstation",
+  description: "Interactive planning UI backed by extension actions.",
+  frameBundle: {
+    root: "workstation-assets/plans",
+    entrypoint: "index.js",
+    styles: ["style.css"],
+    browserSdkVersion: 1,
+  },
+  allowedActions: ["list-planning-artifacts"],
 }));
 ```
 

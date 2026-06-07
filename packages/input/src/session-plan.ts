@@ -10,12 +10,13 @@
  * mutation, build-source normalization, and safe project-local storage I/O.
  */
 import { readFile, readdir, writeFile, mkdir, rename } from 'node:fs/promises';
-import { resolve, basename, dirname, sep } from 'node:path';
+import { resolve, dirname, sep } from 'node:path';
 import { resolveProjectLocalStoragePath } from '@eforge-build/extension-sdk/project-storage';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 import { playbookToPlanSeed, type Playbook } from './playbook.js';
 import { analyzeAcceptanceCriteria, type AcDiagnostic } from './acceptance-criteria-quality.js';
+import { assertSessionPlanRealpathWithinRoot } from './session-plan-realpath.js';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -428,6 +429,7 @@ export async function listSessionPlans(opts: ListSessionPlansOpts): Promise<Sess
     mdFiles.map(async (filename) => {
       const filePath = resolve(sessionPlansDir, filename);
       try {
+        await assertSessionPlanRealpathWithinRoot(opts.cwd, filePath);
         const raw = await readFile(filePath, 'utf-8');
         const plan = parseSessionPlan(raw);
         if (statusSet.has(plan.status)) {
@@ -887,6 +889,7 @@ export interface LoadSessionPlanOpts {
  */
 export async function loadSessionPlan(opts: LoadSessionPlanOpts): Promise<SessionPlan> {
   const filePath = resolveSessionPlanPath(opts);
+  await assertSessionPlanRealpathWithinRoot(opts.cwd, filePath);
   const raw = await readFile(filePath, 'utf-8');
   return parseSessionPlan(raw);
 }
