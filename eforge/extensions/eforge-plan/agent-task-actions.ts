@@ -8,6 +8,7 @@ import {
   ApplyPlanningAgentTaskResultInputSchema,
   ApplyPlanningAgentTaskResultOutputSchema,
   CancelPlanningAgentTaskInputSchema,
+  MAX_PLANNING_AGENT_USER_GOAL_LENGTH,
   GetPlanningAgentTaskInputSchema,
   PlanningAgentTaskCancelOutputSchema,
   PlanningAgentTaskGetOutputSchema,
@@ -36,12 +37,13 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
       includeRoadmap: input.includeRoadmap,
     });
     throwIfAborted(ctx.signal);
-    const sourceText = boundedSourceText(input.userGoal, context);
+    const userGoal = boundedUserGoal(input.userGoal);
+    const sourceText = boundedSourceText(userGoal, context);
     throwIfAborted(ctx.signal);
     return await ctx.agentTasks.start({
       kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
       input: {
-        topic: input.userGoal,
+        topic: userGoal,
         sourceText,
         ...(input.session !== undefined && { session: input.session }),
         ...(typeof input.planningType === 'string' && { planningType: input.planningType }),
@@ -92,6 +94,11 @@ export const applyPlanningAgentTaskResultAction = defineExtensionAction({
 
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new Error('Planning agent task start was aborted before enqueueing the daemon task.');
+}
+
+function boundedUserGoal(userGoal: string): string {
+  const suffix = '…[truncated]';
+  return userGoal.length > MAX_PLANNING_AGENT_USER_GOAL_LENGTH ? `${userGoal.slice(0, MAX_PLANNING_AGENT_USER_GOAL_LENGTH - suffix.length)}${suffix}` : userGoal;
 }
 
 function boundedSourceText(userGoal: string, context: Record<string, unknown>): string {

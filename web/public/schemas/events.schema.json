@@ -764,7 +764,9 @@
           "required": [
             "type",
             "taskId",
-            "taskKind"
+            "taskKind",
+            "extensionName",
+            "status"
           ],
           "properties": {
             "type": {
@@ -776,6 +778,13 @@
             },
             "taskKind": {
               "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "running",
               "type": "string"
             },
             "metadata": {
@@ -809,6 +818,8 @@
             "type",
             "taskId",
             "taskKind",
+            "extensionName",
+            "status",
             "message"
           ],
           "properties": {
@@ -821,6 +832,13 @@
             },
             "taskKind": {
               "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "running",
               "type": "string"
             },
             "message": {
@@ -857,6 +875,8 @@
             "type",
             "taskId",
             "taskKind",
+            "extensionName",
+            "status",
             "durationMs"
           ],
           "properties": {
@@ -869,6 +889,13 @@
             },
             "taskKind": {
               "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "completed",
               "type": "string"
             },
             "durationMs": {
@@ -906,6 +933,8 @@
             "type",
             "taskId",
             "taskKind",
+            "extensionName",
+            "status",
             "errorCode",
             "message"
           ],
@@ -919,6 +948,13 @@
             },
             "taskKind": {
               "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "failed",
               "type": "string"
             },
             "durationMs": {
@@ -961,7 +997,9 @@
           "required": [
             "type",
             "taskId",
-            "taskKind"
+            "taskKind",
+            "extensionName",
+            "status"
           ],
           "properties": {
             "type": {
@@ -973,6 +1011,13 @@
             },
             "taskKind": {
               "const": "eforge-plan.planning-draft",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "status": {
+              "const": "cancelled",
               "type": "string"
             },
             "reason": {

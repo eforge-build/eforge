@@ -39,11 +39,14 @@ describe('extension agent task routes and service', () => {
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
       expect(completed.result).toEqual(submittedResult);
       expect(harness.calls[0]?.tools).toBe('read-only');
-      expect(taskEvents(db, startBody.task.taskId).map((event) => event.type)).toEqual([
+      const events = taskEvents(db, startBody.task.taskId);
+      expect(events.map((event) => event.type)).toEqual([
         'extension:agent-task:start',
         'extension:agent-task:progress',
         'extension:agent-task:complete',
       ]);
+      expect(events.map((event) => event.extensionName)).toEqual(['daemon-route', 'daemon-route', 'daemon-route']);
+      expect(events.map((event) => event.status)).toEqual(['running', 'running', 'completed']);
     } finally {
       await server.stop();
       db.close();
@@ -82,6 +85,26 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('emits owner extension name for extension-owned service tasks', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-owner-'));
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(submittedResult)) });
+    try {
+      const service = new ExtensionAgentTaskService(context);
+      const started = await service.start(
+        { kind: 'eforge-plan.planning-draft', input: { topic: 'Build owner plans' } },
+        { owner: { extensionName: 'owner-extension', extensionPath: '/project/.eforge/extensions/owner-extension.js' } },
+      );
+      await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
+      const events = taskEvents(db, started.task.taskId);
+      expect(events.map((event) => event.extensionName)).toEqual(['owner-extension', 'owner-extension', 'owner-extension']);
+      expect(events.map((event) => event.status)).toEqual(['running', 'running', 'completed']);
+    } finally {
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('cancels a running task and emits cancellation', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-cancel-'));
     const harness = new AbortAwareHarness();
@@ -94,7 +117,9 @@ describe('extension agent task routes and service', () => {
       expect(cancel.status).toBe(200);
       expect((await cancel.json()).task.status).toBe('cancelled');
       expect(harness.aborted).toBe(true);
-      expect(taskEvents(db, startBody.task.taskId).map((event) => event.type)).toContain('extension:agent-task:cancelled');
+      const events = taskEvents(db, startBody.task.taskId);
+      expect(events.map((event) => event.type)).toContain('extension:agent-task:cancelled');
+      expect(events.find((event) => event.type === 'extension:agent-task:cancelled')).toMatchObject({ extensionName: 'daemon-route', status: 'cancelled' });
     } finally {
       await server.stop();
       db.close();
@@ -112,7 +137,9 @@ describe('extension agent task routes and service', () => {
       const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
       expect(failed.errorMessage).toContain('secret failure details');
       expect(await fetch(`${server.url}${API_ROUTES.health}`)).toBeDefined();
-      expect(taskEvents(db, startBody.task.taskId).map((event) => event.type)).toContain('extension:agent-task:failed');
+      const events = taskEvents(db, startBody.task.taskId);
+      expect(events.map((event) => event.type)).toContain('extension:agent-task:failed');
+      expect(events.find((event) => event.type === 'extension:agent-task:failed')).toMatchObject({ extensionName: 'daemon-route', status: 'failed' });
     } finally {
       await server.stop();
       db.close();

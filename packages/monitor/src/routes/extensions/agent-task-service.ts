@@ -245,10 +245,14 @@ export class ExtensionAgentTaskService {
   }
 }
 
-function eventBase(record: StoredExtensionAgentTaskRecord): { taskId: string; taskKind: ExtensionAgentTaskKind; metadata?: ExtensionAgentTaskSanitizedMetadata } {
+const DAEMON_ROUTE_EXTENSION_NAME = 'daemon-route';
+
+function eventBase(record: StoredExtensionAgentTaskRecord): { taskId: string; taskKind: ExtensionAgentTaskKind; extensionName: string; status: StoredExtensionAgentTaskRecord['status']; metadata?: ExtensionAgentTaskSanitizedMetadata } {
   return {
     taskId: record.taskId,
     taskKind: record.kind,
+    extensionName: record.owner?.extensionName ?? DAEMON_ROUTE_EXTENSION_NAME,
+    status: record.status,
     ...(record.metadata !== undefined && { metadata: record.metadata }),
   };
 }

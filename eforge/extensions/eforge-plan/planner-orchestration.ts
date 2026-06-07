@@ -104,6 +104,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   if (input.applyRecommendations && !isRecord(recommendations)) throw new Error(`Planning task ${task.taskId} result does not include generated recommendations.`);
   const handoffDrafts = input.applyHandoffDrafts?.map((selection) => mergeHandoffSelection(resolveHandoffDraft(rawResult, selection.index), selection));
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
+  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts);
 
   if (input.applyRecommendations) {
     const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel });
@@ -158,9 +159,32 @@ function resolveSelectedSessionPlanSections(
   return selections.map((selection) => {
     const requested = new Set(selection.sections);
     const sections = patch.sections.filter((section) => requested.has(section.dimension));
-    if (sections.length === 0) throw new Error(`Planning task result has no selected session-plan sections for ${selection.session}.`);
+    const resolved = new Set(sections.map((section) => section.dimension));
+    const missing = selection.sections.filter((dimension) => !resolved.has(dimension));
+    if (missing.length > 0) throw new Error(`Planning task result is missing selected session-plan sections for ${selection.session}: ${missing.join(', ')}.`);
     return { session: selection.session, sections };
   });
+}
+
+async function validatePlanningAgentTaskApplyTargets(
+  cwd: string,
+  handoffDrafts: PlannerHandoffDraft[] | undefined,
+  sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
+): Promise<void> {
+  await Promise.all([
+    ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
+      cwd,
+      ...draft.selection,
+      session: draft.session ?? draft.selection.session,
+      title: draft.title ?? draft.selection.title,
+      profile: draft.profile ?? draft.selection.profile,
+    })),
+    ...sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })),
+  ]);
+}
+
+function sessionPlanSessions(selections: Array<{ session: string }> | undefined): string[] {
+  return [...new Set((selections ?? []).map((selection) => selection.session))];
 }
 
 async function applySelectedSessionPlanSections(

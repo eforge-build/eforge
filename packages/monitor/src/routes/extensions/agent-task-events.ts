@@ -1,10 +1,12 @@
-import type { ExtensionAgentTaskKind, ExtensionAgentTaskSanitizedMetadata } from '@eforge-build/client';
+import type { ExtensionAgentTaskKind, ExtensionAgentTaskSanitizedMetadata, ExtensionAgentTaskStatus } from '@eforge-build/client';
 import type { MonitorContext } from '../../context.js';
 import { writeDaemonEvent } from '../../daemon-events.js';
 
 export interface AgentTaskEventBase {
   taskId: string;
   taskKind: ExtensionAgentTaskKind;
+  extensionName: string;
+  status: ExtensionAgentTaskStatus;
   metadata?: ExtensionAgentTaskSanitizedMetadata;
 }
 
@@ -51,7 +53,8 @@ export function sanitizeMetadata(metadata: ExtensionAgentTaskSanitizedMetadata |
 
 function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {
   const metadata = sanitizeMetadata(base.metadata);
-  return metadata === undefined ? { taskId: base.taskId, taskKind: base.taskKind } : { taskId: base.taskId, taskKind: base.taskKind, metadata };
+  const eventBase = { taskId: base.taskId, taskKind: base.taskKind, extensionName: base.extensionName, status: base.status };
+  return metadata === undefined ? eventBase : { ...eventBase, metadata };
 }
 
 function sanitizeEventMessage(message: string): string {
