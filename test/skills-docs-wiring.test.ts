@@ -18,6 +18,16 @@ function readRepoFile(relative: string): string {
   return readFileSync(resolve(REPO_ROOT, relative), 'utf-8');
 }
 
+function compareSemver(a: string, b: string): number {
+  const left = a.split('.').map(Number);
+  const right = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin profile skill - scope column and precedence docs
 // ---------------------------------------------------------------------------
@@ -640,6 +650,29 @@ describe('docs/config.md — planning playbook prose', () => {
 
   it('planning playbook prose contains "implementation-ready session plan"', () => {
     expect(docsConfig).toContain('implementation-ready session plan');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('plan skills — acceptance criteria set semantic review guidance', () => {
+  const piPlan = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
+  const pluginPlan = readRepoFile('eforge-plugin/skills/plan/plan.md');
+
+  it('both planning skills mention semantic-level review, over-granular field-by-field duplication, and contract-vs-behavior consolidation', () => {
+    for (const raw of [piPlan, pluginPlan]) {
+      expect(raw).toContain('semantic-level review');
+      expect(raw).toContain('over-granular field-by-field duplication');
+      expect(raw).toContain('contract-vs-behavior consolidation');
+    }
+  });
+
+  it('bumps the Claude plugin patch version and leaves the Pi package version unchanged', () => {
+    const plugin = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
+    const piPackage = JSON.parse(readRepoFile('packages/pi-eforge/package.json')) as { version: string };
+
+    expect(compareSemver(plugin.version, '0.25.55')).toBeGreaterThan(0);
+    expect(piPackage.version).toBe('0.7.21');
   });
 });
 

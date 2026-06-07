@@ -47,6 +47,26 @@ function scopePriority(scope: TerminalFailureScope): number {
   return SCOPE_PRIORITY.indexOf(scope);
 }
 
+function acceptanceValidationFailureMessage(event: Extract<EforgeEvent, { type: 'acceptance_validation:complete' }>): string {
+  const failed = event.verdicts.filter((verdict) => verdict.verdict === 'fail');
+  const unknown = event.verdicts.filter((verdict) => verdict.verdict === 'unknown').length;
+  if (failed.length === 0 && unknown > 0) {
+    return `Acceptance criteria validation inconclusive: ${unknown} criterion/criteria unknown and no concrete failed criteria were produced`;
+  }
+  if (failed.length > 0) {
+    const preview = failed.slice(0, 3).map((verdict) => truncateCriterion(verdict.criterion)).join('; ');
+    const omitted = failed.length > 3 ? `; ${failed.length - 3} more omitted` : '';
+    const unknownPart = unknown > 0 ? `, ${unknown} unknown` : '';
+    return `Acceptance criteria validation failed: ${failed.length} criterion/criteria failed${unknownPart}: ${preview}${omitted}`;
+  }
+  return 'Acceptance criteria validation failed';
+}
+
+function truncateCriterion(criterion: string): string {
+  const max = 160;
+  return criterion.length <= max ? criterion : `${criterion.slice(0, max - 3)}...`;
+}
+
 // ---------------------------------------------------------------------------
 // Tracker factory
 // ---------------------------------------------------------------------------
@@ -75,7 +95,7 @@ export function createBuildTerminalFailureTracker(runId: string): BuildTerminalF
       } else if (event.type === 'prd_validation:complete' && !event.passed) {
         update({ scope: 'prd-validation', message: `PRD validation failed: ${(event.gaps ?? []).length} gap(s) found`, sourceEventType: event.type, sourceEventTimestamp: event.timestamp, prdValidationPassed: false });
       } else if (event.type === 'acceptance_validation:complete' && !event.passed) {
-        update({ scope: 'acceptance-validation', message: 'Acceptance criteria validation failed', sourceEventType: event.type, sourceEventTimestamp: event.timestamp, acceptanceValidationPassed: false });
+        update({ scope: 'acceptance-validation', message: acceptanceValidationFailureMessage(event), sourceEventType: event.type, sourceEventTimestamp: event.timestamp, acceptanceValidationPassed: false });
       } else if (event.type === 'daemon:error' && event.source === 'stack:artifact-recording') {
         update({ scope: 'artifact-recording', message: event.message, sourceEventType: event.type, sourceEventTimestamp: event.timestamp });
       } else if (event.type === 'stack:landing:update' && event.status === 'failed') {

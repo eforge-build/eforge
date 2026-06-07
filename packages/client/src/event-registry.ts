@@ -1229,10 +1229,19 @@ const eventRegistry = {
     scope: 'session',
     persist: false,
     summary: (e) => {
-      const failing = e.verdicts.filter((v) => v.verdict !== 'pass').length;
+      const counts = e.verdicts.reduce((acc, verdict) => {
+        acc[verdict.verdict] += 1;
+        return acc;
+      }, { pass: 0, fail: 0, unknown: 0 });
       const conflicts = e.acceptanceConflicts?.length ?? 0;
       const suffix = conflicts > 0 ? ` (${conflicts} conflict(s) reported)` : '';
-      return e.passed ? `Acceptance validation passed: ${e.verdicts.length} criterion/criteria verified${suffix}` : `Acceptance validation failed: ${failing} criterion/criteria not passed${suffix}`;
+      if (e.passed) return `Acceptance validation passed: ${e.verdicts.length} criterion/criteria verified${suffix}`;
+      if (counts.fail > 0) {
+        const unknownPart = counts.unknown > 0 ? `, ${counts.unknown} unknown` : '';
+        return `Acceptance validation failed: ${counts.fail} criterion/criteria failed${unknownPart}${suffix}`;
+      }
+      const allUnknown = counts.unknown === e.verdicts.length ? '; no criterion was verified' : '';
+      return `Acceptance validation inconclusive: ${counts.unknown} criterion/criteria unknown${allUnknown}${suffix}`;
     },
   },
 

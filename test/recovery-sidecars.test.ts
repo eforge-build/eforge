@@ -278,6 +278,21 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('Acceptance criteria');
   });
 
+  it('JSON sidecar report keyEvidence includes all-unknown acceptance validation diagnostics', async () => {
+    const dir = makeTempDir();
+    const { jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: dir,
+      prdId: 'test-prd',
+      summary: makeSummaryWithAcceptanceFailure(),
+      verdict: makeVerdict('manual')!,
+    });
+
+    const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    const keyEvidence = parsed.report.keyEvidence.join('\n');
+    expect(keyEvidence).toContain('Acceptance validation is inconclusive');
+    expect(keyEvidence).toContain('no concrete failed criteria were produced');
+  });
+
   it('JSON sidecar serializes all new optional bounded evidence fields', async () => {
     const dir = makeTempDir();
     const { jsonPath } = await writeRecoverySidecar({
