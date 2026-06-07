@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME } from '@eforge-build/engine/harnesses/claude-sdk';
+import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME, typeboxObjectToZodRawShape } from '@eforge-build/engine/harnesses/claude-sdk';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from '@eforge-build/engine/harnesses/eforge-resource-filter';
 import { MUTATION_TOOL_DENYLIST_CLAUDE, MUTATION_TOOL_DENYLIST_PI } from '@eforge-build/engine/harnesses/tool-safety';
 import { AgentTerminalError } from '@eforge-build/engine/harness';
@@ -7,6 +7,27 @@ import { AgentTerminalError } from '@eforge-build/engine/harness';
 async function* iter<T>(items: T[]): AsyncGenerator<T> {
   for (const item of items) yield item;
 }
+
+describe('typeboxObjectToZodRawShape', () => {
+  it('preserves open-object recommendation fields', () => {
+    const kind = Symbol.for('TypeBox.Kind');
+    const stringSchema = { type: 'string', [kind]: 'String' };
+    const shape = typeboxObjectToZodRawShape({
+      type: 'object',
+      properties: {
+        recommendations: { type: 'object', properties: { schemaVersion: { type: 'number', [kind]: 'Number' } }, required: ['schemaVersion'], additionalProperties: true, [kind]: 'Object' },
+        typedExtras: { type: 'object', properties: { known: stringSchema }, required: ['known'], additionalProperties: stringSchema, [kind]: 'Object' },
+      },
+      required: ['recommendations', 'typedExtras'],
+      [kind]: 'Object',
+    } as never);
+    const parsedRecommendations = shape.recommendations.parse({ schemaVersion: 1, readyCandidates: [{ itemId: 'item-one' }], rationaleAndAssumptions: ['ready'] });
+    const parsedTypedExtras = shape.typedExtras.parse({ known: 'yes', dynamic: 'kept' });
+
+    expect(parsedRecommendations).toMatchObject({ readyCandidates: [{ itemId: 'item-one' }], rationaleAndAssumptions: ['ready'] });
+    expect(parsedTypedExtras).toEqual({ known: 'yes', dynamic: 'kept' });
+  });
+});
 
 describe('mapSDKMessages error formatting', () => {
   // Regression: the SDK's result error carries both a `subtype` (e.g. `error_max_turns`)

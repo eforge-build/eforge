@@ -52,11 +52,57 @@ export interface RecommendationEntry { ref?: string; itemId: string; rationale?:
 export interface RecommendationGroup { ref: string; title?: string; itemIds: string[]; epicIds?: string[]; rationale?: string; recommendedProfile?: string; }
 export interface RecommendationBlockedChain { ref?: string; itemIds: string[]; blockedBy: string[]; rationale?: string; }
 export interface RecommendationModel {
+  schemaVersion?: 1;
+  activeWork?: RecommendationEntry[];
+  readyCandidates?: RecommendationEntry[];
   recommendedNextSequence: RecommendationEntry[];
   safeParallelizableGroups: RecommendationGroup[];
   blockedChains?: RecommendationBlockedChain[];
   rationaleAndAssumptions?: string[];
 }
+
+// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
+export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export interface PlanningTaskPlanDraft { title: string; body: string; }
+export interface PlanningTaskPlaybookDraft { name: string; body: string; }
+export interface PlanningTaskSessionPlanSection { dimension: string; content: string; }
+export interface PlanningTaskSessionPlanPatch { sections: PlanningTaskSessionPlanSection[]; skippedDimensions?: Array<{ dimension: string; reason: string }>; }
+export interface PlanningTaskHandoffDraft { selection: JsonObject; session?: string; title?: string; profile?: string; }
+export interface PlanningTaskResult {
+  summary: string;
+  assumptionsOpenQuestions: string[];
+  nextSteps?: string[];
+  recommendations?: RecommendationModel;
+  handoffDraft?: PlanningTaskHandoffDraft;
+  handoffDrafts?: PlanningTaskHandoffDraft[];
+  planDrafts?: PlanningTaskPlanDraft[];
+  playbookDraft?: PlanningTaskPlaybookDraft;
+  sessionPlanPatch?: PlanningTaskSessionPlanPatch;
+}
+export interface PlanningAgentTaskRecord {
+  taskId: string;
+  kind: string;
+  status: AgentTaskStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  metadata?: { label?: string; summary?: string; progressMessage?: string; outputSectionCount?: number; warningCount?: number };
+  result?: PlanningTaskResult;
+}
+export interface PlanningAgentTaskResponse { task: PlanningAgentTaskRecord; }
+export interface ApplyPlanningTaskResponse {
+  schemaVersion: 1;
+  taskId: string;
+  applied: { recommendations: boolean; handoffDrafts: number; sessionPlanSections: number };
+  recommendations?: { path?: string; recommendationSummary?: unknown; recommendations?: RecommendationModel };
+  handoffs?: unknown[];
+  sessionPlanDrafts?: Array<{ session: string; sections: string[] }>;
+}
+// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 
 export interface SkippedDimension { name: string; reason: string; }
 export interface PlanData {

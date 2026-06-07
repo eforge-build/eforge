@@ -7,6 +7,9 @@ import type { Board as BoardData, BoardItem, RecommendationModel } from '@/types
 import { Board } from './backlog/board';
 import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
+// --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
+import { PlanWithAiPanel } from './backlog/plan-with-ai-panel';
+// --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 
 const bridge = getBridge();
 const GROUP_MODES: GroupMode[] = ['lane', 'epic', 'recommended'];
@@ -56,9 +59,18 @@ export function BacklogView({ board, recommendations, onRefresh }: BacklogViewPr
 
   const titles = React.useMemo(() => new Map((board.items ?? []).map((item) => [item.id, item.title])), [board.items]);
   const selectedIds = Array.from(selected);
+  // --- eforge:region plan-03-eforge-plan-ai-workstation-flow ---
+  const recommendationRefs = React.useMemo(() => [
+    ...(recommendations?.recommendedNextSequence ?? []).flatMap((entry) => entry.ref ? [entry.ref] : []),
+    ...(recommendations?.safeParallelizableGroups ?? []).map((group) => group.ref),
+  ], [recommendations]);
+  // --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow ---
 
   return (
     <div className="grid gap-4">
+      {/* --- eforge:region plan-03-eforge-plan-ai-workstation-flow --- */}
+      <PlanWithAiPanel selectedItemIds={selectedIds} recommendationRefs={recommendationRefs} recommendations={recommendations} onRefresh={onRefresh} />
+      {/* --- eforge:endregion plan-03-eforge-plan-ai-workstation-flow --- */}
       <RecommendationsPanel recommendations={recommendations} titles={titles} onPromote={promote} />
       <Board
         board={board}

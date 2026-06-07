@@ -26,6 +26,9 @@ const planningDraftSubmissionToolSchema = Type.Object({
   summary: Type.String(),
   assumptionsOpenQuestions: Type.Array(Type.String()),
   nextSteps: Type.Optional(Type.Array(Type.String())),
+  recommendations: Type.Optional(Type.Object({}, { additionalProperties: true })),
+  handoffDraft: Type.Optional(Type.Object({}, { additionalProperties: true })),
+  handoffDrafts: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: true }), { minItems: 1 })),
   planDrafts: Type.Optional(Type.Array(Type.Object({
     title: Type.String(),
     body: Type.String(),

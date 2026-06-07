@@ -13,8 +13,8 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['apply-planner-result', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan', 'get-recommendations']);
+const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan', 'get-recommendations']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-registration-'));
@@ -67,9 +67,12 @@ describe('eforge-plan extension registration', () => {
     const actions = state.actions.map((entry) => entry.value);
     expect(actions.map((action) => action.id).sort()).toEqual([
       'apply-planner-result',
+      'apply-planning-agent-task-result',
+      'cancel-planning-agent-task',
       'capture-item',
       'check-session-plan-readiness',
       'create-session-plan',
+      'get-planning-agent-task',
       'get-recommendations',
       'handoff-session-plan',
       'list-board',
@@ -84,6 +87,7 @@ describe('eforge-plan extension registration', () => {
       'set-session-plan-section',
       'show-session-plan',
       'show-session-plan-set',
+      'start-planning-agent-task',
       'update-item',
       'update-session-plan-metadata',
       'upsert-epic',
@@ -94,6 +98,7 @@ describe('eforge-plan extension registration', () => {
       expect(JSON.stringify(action.outputSchema)).not.toMatch(/function|undefined/);
       expect(action.sideEffects).not.toContain('build-queue');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
+      if (action.id === 'start-planning-agent-task') expect(action.sideEffects).toContain('daemon-state');
       if (READ_ACTIONS.has(action.id)) {
         expect(action.sideEffects).toContain('local-read');
         expect(action.sideEffects).not.toContain('local-write');
@@ -267,7 +272,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'capture-item', 'update-item']) {
+    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 
@@ -289,6 +294,10 @@ describe('eforge-plan extension registration', () => {
         'promote-selection',
         'prepare-planner-context',
         'apply-planner-result',
+        'start-planning-agent-task',
+        'get-planning-agent-task',
+        'cancel-planning-agent-task',
+        'apply-planning-agent-task-result',
       ]),
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
     });

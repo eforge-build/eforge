@@ -26,6 +26,8 @@ export const ExtensionAgentTaskRequestedBySchema = Type.Object({
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
+  Type.Literal('recommendations'),
+  Type.Literal('handoffDrafts'),
   Type.Literal('planDrafts'),
   Type.Literal('playbookDraft'),
   Type.Literal('sessionPlanPatch'),
@@ -66,15 +68,81 @@ export const EforgePlanPlanningSessionPlanPatchSchema = Type.Object({
   }, { additionalProperties: false }))),
 }, { additionalProperties: false });
 
+export const EforgePlanPlanningRecommendationItemRefSchema = Type.Object({
+  ref: Type.Optional(Type.String()),
+  itemId: Type.String(),
+  rationale: Type.Optional(Type.String()),
+  confidence: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningRecommendationGroupSchema = Type.Object({
+  ref: Type.String(),
+  title: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String(), { minItems: 1 }),
+  epicIds: Type.Optional(Type.Array(Type.String())),
+  safeToPlanTogether: Type.Optional(Type.Boolean()),
+  rationale: Type.Optional(Type.String()),
+  recommendedProfile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningRecommendationBlockedChainSchema = Type.Object({
+  ref: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String()),
+  blockedBy: Type.Array(Type.String()),
+  rationale: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningRecommendationsSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  updatedAt: Type.Optional(Type.String()),
+  activeWork: Type.Array(EforgePlanPlanningRecommendationItemRefSchema),
+  readyCandidates: Type.Array(EforgePlanPlanningRecommendationItemRefSchema),
+  recommendedNextSequence: Type.Array(EforgePlanPlanningRecommendationItemRefSchema),
+  safeParallelizableGroups: Type.Array(EforgePlanPlanningRecommendationGroupSchema),
+  blockedChains: Type.Array(EforgePlanPlanningRecommendationBlockedChainSchema),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningHandoffDraftSchema = Type.Object({
+  selection: Type.Object({}, { additionalProperties: true }),
+  session: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String()),
+  profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
+}, { additionalProperties: false });
+
 const eforgePlanPlanningDraftResultBaseFields = {
   summary: Type.String(),
   assumptionsOpenQuestions: Type.Array(Type.String()),
   nextSteps: Type.Optional(Type.Array(Type.String())),
+  recommendations: Type.Optional(EforgePlanPlanningRecommendationsSchema),
+  handoffDraft: Type.Optional(EforgePlanPlanningHandoffDraftSchema),
+  handoffDrafts: Type.Optional(Type.Array(EforgePlanPlanningHandoffDraftSchema, { minItems: 1 })),
 } as const;
 
 export const EforgePlanPlanningDraftResultBaseSchema = Type.Object(eforgePlanPlanningDraftResultBaseFields, { additionalProperties: false });
 
 export const EforgePlanPlanningDraftResultSchema = Type.Union([
+  Type.Object({
+    ...eforgePlanPlanningDraftResultBaseFields,
+    recommendations: EforgePlanPlanningRecommendationsSchema,
+    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+  }, { additionalProperties: false }),
+  Type.Object({
+    ...eforgePlanPlanningDraftResultBaseFields,
+    handoffDraft: EforgePlanPlanningHandoffDraftSchema,
+    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+  }, { additionalProperties: false }),
+  Type.Object({
+    ...eforgePlanPlanningDraftResultBaseFields,
+    handoffDrafts: Type.Array(EforgePlanPlanningHandoffDraftSchema, { minItems: 1 }),
+    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+  }, { additionalProperties: false }),
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     planDrafts: Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 }),
@@ -180,6 +248,8 @@ export type EforgePlanPlanningDraftInput = Static<typeof EforgePlanPlanningDraft
 export type EforgePlanPlanningPlanDraft = Static<typeof EforgePlanPlanningPlanDraftSchema>;
 export type EforgePlanPlanningPlaybookDraft = Static<typeof EforgePlanPlanningPlaybookDraftSchema>;
 export type EforgePlanPlanningSessionPlanPatch = Static<typeof EforgePlanPlanningSessionPlanPatchSchema>;
+export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
+export type EforgePlanPlanningHandoffDraft = Static<typeof EforgePlanPlanningHandoffDraftSchema>;
 export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraftResultSchema>;
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
 export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRequestSchema>;
@@ -191,7 +261,7 @@ export type ExtensionAgentTaskGetResponse = Static<typeof ExtensionAgentTaskGetR
 export type ExtensionAgentTaskCancelResponse = Static<typeof ExtensionAgentTaskCancelResponseSchema>;
 
 export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlanningDraftResult): boolean {
-  return (value.planDrafts?.length ?? 0) > 0 || value.playbookDraft !== undefined || value.sessionPlanPatch !== undefined;
+  return value.recommendations !== undefined || value.handoffDraft !== undefined || (value.handoffDrafts?.length ?? 0) > 0 || (value.planDrafts?.length ?? 0) > 0 || value.playbookDraft !== undefined || value.sessionPlanPatch !== undefined;
 }
 
 export function safeParseEforgePlanPlanningDraftResult(value: unknown): SafeParseResult<EforgePlanPlanningDraftResult> {

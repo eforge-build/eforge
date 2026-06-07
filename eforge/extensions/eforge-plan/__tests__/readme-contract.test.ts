@@ -11,6 +11,14 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toContain('promote-selection');
     expect(readme).toContain('prepare-planner-context');
     expect(readme).toContain('apply-planner-result');
+    expect(readme).toContain('daemon-owned');
+    expect(readme).toContain('start-planning-agent-task');
+    expect(readme).toContain('get-planning-agent-task');
+    expect(readme).toContain('cancel-planning-agent-task');
+    expect(readme).toContain('apply-planning-agent-task-result');
+    expect(readme).toContain('read-only');
+    expect(readme).toContain('multi-turn chat');
+    expect(readme).toContain('explicitly chooses');
     expect(readme).toMatch(/recommended item|recommended group|epic|selected item set/s);
     expect(readme).toMatch(/general extension-owned AI chat runtime support is not implemented/i);
   });

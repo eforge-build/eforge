@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
+import { createSessionPlanningWorkflowAdapter } from '../../../../packages/input/src/index.js';
+import { applyCompletedPlanningAgentTaskResult, applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
 
@@ -102,6 +103,57 @@ describe('planner orchestration', () => {
       expect(result.handoff).toMatchObject({ session: 'planner-handoff', itemIds: ['item-one'] });
       const files = await readdir(join(cwd, '.eforge', 'session-plans'));
       expect(files).toEqual(['planner-handoff.md']);
+    });
+  });
+
+  it('applies completed planning task session-plan sections through the adapter', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'task-session', topic: 'Task session' });
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, {
+        taskId: 'task-complete',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        result: {
+          summary: 'Done',
+          assumptionsOpenQuestions: [],
+          recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-two' }] },
+          handoffDrafts: [{ selection: { itemIds: ['item-two'], status: 'active' }, session: 'unselected-handoff' }],
+          sessionPlanPatch: { sections: [{ dimension: 'scope', content: 'Generated scope.' }, { dimension: 'risks', content: 'Generated risks.' }] },
+        },
+      }, { taskId: 'task-complete', applySessionPlanDrafts: [{ session: 'task-session', sections: ['scope'] }] });
+      expect(result.applied).toMatchObject({ recommendations: false, handoffDrafts: 0, sessionPlanSections: 1 });
+      const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'task-session.md'), 'utf-8');
+      expect(markdown).toContain('Generated scope.');
+      expect(markdown).not.toContain('Generated risks.');
+      expect(await readRecommendations(cwd)).toMatchObject({ recommendedNextSequence: [{ itemId: 'item-one' }] });
+      expect(existsSync(join(cwd, '.eforge', 'session-plans', 'unselected-handoff.md'))).toBe(false);
+    });
+  });
+
+  it('applies completed planning task handoff drafts by single draft, index, and overrides', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      const single = await applyCompletedPlanningAgentTaskResult(cwd, {
+        taskId: 'task-single-handoff',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        result: { summary: 'Done', assumptionsOpenQuestions: [], handoffDraft: { selection: { itemIds: ['item-one'], status: 'active' }, session: 'single-handoff' } },
+      }, { taskId: 'task-single-handoff', applyHandoffDrafts: [{}] });
+      expect(single.applied.handoffDrafts).toBe(1);
+      expect(single.handoffs?.[0]).toMatchObject({ session: 'single-handoff', itemIds: ['item-one'] });
+
+      const indexed = await applyCompletedPlanningAgentTaskResult(cwd, {
+        taskId: 'task-array-handoff',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        result: { summary: 'Done', assumptionsOpenQuestions: [], handoffDrafts: [
+          { selection: { itemIds: ['item-one'], status: 'active' }, session: 'first-handoff' },
+          { selection: { itemIds: ['item-two'], status: 'planned' }, session: 'second-handoff' },
+        ] },
+      }, { taskId: 'task-array-handoff', applyHandoffDrafts: [{ index: 1, session: 'override-handoff', selection: { itemIds: ['item-two'], status: 'active' } }] });
+      expect(indexed.applied.handoffDrafts).toBe(1);
+      expect(indexed.handoffs?.[0]).toMatchObject({ session: 'override-handoff', itemIds: ['item-two'] });
     });
   });
 });

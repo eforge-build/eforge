@@ -70,7 +70,16 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     if (typeof schema.maxItems === 'number') a = a.max(schema.maxItems);
     zodType = a;
   } else if (TypeGuard.IsObject(schema)) {
-    zodType = z.object(typeboxObjectToZodRawShape(schema as TObject));
+    const objectSchema = schema as TObject;
+    const objectZod = z.object(typeboxObjectToZodRawShape(objectSchema));
+    const additionalProperties = objectSchema.additionalProperties as boolean | TSchema | undefined;
+    if (additionalProperties === true) {
+      zodType = objectZod.passthrough();
+    } else if (typeof additionalProperties === 'object') {
+      zodType = objectZod.catchall(typeboxToZod(additionalProperties));
+    } else {
+      zodType = objectZod;
+    }
   } else if (TypeGuard.IsLiteral(schema)) {
     zodType = z.literal(schema.const as string | number | boolean);
   } else if (TypeGuard.IsUnion(schema)) {

@@ -270,7 +270,8 @@ function isAgentRuntimeRegistry(value: AgentRuntimeRegistry | AgentHarness): val
 }
 
 function countOutputSections(result: EforgePlanPlanningDraftResult): number {
-  return (result.planDrafts?.length ?? 0) + (result.playbookDraft ? 1 : 0) + (result.sessionPlanPatch ? 1 : 0);
+  const taskResult = result as Record<string, unknown>;
+  return (taskResult.recommendations ? 1 : 0) + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (result.planDrafts?.length ?? 0) + (result.playbookDraft ? 1 : 0) + (result.sessionPlanPatch ? 1 : 0);
 }
 
 function sanitizeErrorMessage(message: string): string {

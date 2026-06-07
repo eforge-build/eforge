@@ -1,5 +1,5 @@
 import { request } from 'node:http';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -16,6 +16,8 @@ import { resolveAgentTaskRecordPath } from '../routes/extensions/agent-task-stor
 const submittedResult = {
   summary: 'Drafted a plan',
   assumptionsOpenQuestions: ['Confirm scope'],
+  recommendations: { schemaVersion: 1, activeWork: [], readyCandidates: [{ itemId: 'item-one' }], recommendedNextSequence: [], safeParallelizableGroups: [], blockedChains: [], rationaleAndAssumptions: [] },
+  handoffDrafts: [{ selection: { itemIds: ['item-one'], status: 'active' }, session: 'handoff-one' }],
   planDrafts: [{ title: 'Plan A', body: 'Implement A' }],
 };
 
@@ -44,22 +46,39 @@ describe('extension agent task routes and service', () => {
       ]);
     } finally {
       await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 
   it('writes a running record before queueing the harness call', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-service-'));
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    const harness = new SubmitHarness(submittedResult);
+    let startedTaskId = '';
+    let resolveRecorded!: () => void;
+    let rejectRecorded!: (error: unknown) => void;
+    const recordedRunning = new Promise<void>((resolve, reject) => { resolveRecorded = resolve; rejectRecorded = reject; });
+    const harness = new SubmitHarness(submittedResult, async (_options, _agent, taskId) => {
+      try {
+        startedTaskId = taskId ?? '';
+        const raw = JSON.parse(await readFile(resolveAgentTaskRecordPath(cwd, startedTaskId), 'utf-8')) as { status: string };
+        expect(raw.status).toBe('running');
+        resolveRecorded();
+      } catch (error) {
+        rejectRecorded(error);
+        throw error;
+      }
+    });
     const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
     try {
       const service = new ExtensionAgentTaskService(context);
       const started = await service.start({ kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans' } });
-      const raw = JSON.parse(await readFile(resolveAgentTaskRecordPath(cwd, started.task.taskId), 'utf-8')) as { status: string };
-      expect(raw.status).toBe('running');
-      expect(harness.calls).toHaveLength(0);
+      expect(started.task.status).toBe('running');
+      await waitFor(() => startedTaskId === started.task.taskId);
+      await recordedRunning;
     } finally {
       db.close();
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 
@@ -78,6 +97,8 @@ describe('extension agent task routes and service', () => {
       expect(taskEvents(db, startBody.task.taskId).map((event) => event.type)).toContain('extension:agent-task:cancelled');
     } finally {
       await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 
@@ -94,12 +115,15 @@ describe('extension agent task routes and service', () => {
       expect(taskEvents(db, startBody.task.taskId).map((event) => event.type)).toContain('extension:agent-task:failed');
     } finally {
       await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 
   it('rejects unsafe requests with expected status codes', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-security-'));
-    const server = await startServer(openDatabase(join(cwd, '.eforge', 'monitor.db')), 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(submittedResult)) });
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(new SubmitHarness(submittedResult)) });
     try {
       expect((await rawPost(server.port, API_ROUTES.extensionAgentTaskStart, '{}', { Host: 'evil.example', 'content-type': 'application/json' })).status).toBe(403);
       expect((await rawPost(server.port, API_ROUTES.extensionAgentTaskStart, '{}', { Host: 'localhost', 'Sec-Fetch-Site': 'cross-site', 'content-type': 'application/json' })).status).toBe(403);
@@ -109,6 +133,8 @@ describe('extension agent task routes and service', () => {
       expect((await fetch(`${server.url}${buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'task-missing' })}`)).status).toBe(404);
     } finally {
       await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 });
@@ -117,8 +143,16 @@ async function postJson(base: string, path: string, body: unknown): Promise<Resp
   return fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 }
 
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 250; i += 1) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('Timed out waiting for condition');
+}
+
 async function waitForTask(base: string, taskId: string, status: string): Promise<any> {
-  for (let i = 0; i < 50; i += 1) {
+  for (let i = 0; i < 250; i += 1) {
     const body = await (await fetch(`${base}${buildPath(API_ROUTES.extensionAgentTaskGet, { taskId })}`)).json() as { task: any };
     if (body.task.status === status) return body.task;
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -148,11 +182,15 @@ function rawPost(port: number, path: string, body: string, headers: Record<strin
 
 class SubmitHarness implements AgentHarness {
   readonly calls: AgentRunOptions[] = [];
-  constructor(private readonly submission: unknown) {}
+  constructor(
+    private readonly submission: unknown,
+    private readonly onRun?: (options: AgentRunOptions, agent: AgentRole, planId?: string) => Promise<void>,
+  ) {}
 
   effectiveCustomToolName(name: string): string { return name; }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    await this.onRun?.(options, agent, planId);
     this.calls.push(options);
     const agentId = 'agent-submit';
     yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };

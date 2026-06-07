@@ -31,6 +31,8 @@ The payload MUST include:
 1. `summary` — concise human-readable summary of the proposed planning draft.
 2. `assumptionsOpenQuestions` — an array of assumptions or open questions. Use an empty array only when there are truly none.
 3. At least one applicable output section:
+   - `recommendations` for generated backlog recommendation model updates.
+   - `handoffDraft` or `handoffDrafts` for draft promotion selections the user may apply.
    - `planDrafts` for eforge plan-file draft content.
    - `playbookDraft` for a reusable playbook draft.
    - `sessionPlanPatch` for updates to an existing session plan.

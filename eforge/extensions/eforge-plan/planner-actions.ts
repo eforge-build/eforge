@@ -1,5 +1,6 @@
 import { defineExtensionAction } from '../../../packages/extension-sdk/src/index.js';
 import { toJsonSafeObject } from './json-safe.js';
+import { planningAgentTaskActions } from './agent-task-actions.js';
 import { applyPlannerResult, preparePlannerContext } from './planner-orchestration.js';
 import {
   ApplyPlannerResultInputSchema,
@@ -32,4 +33,4 @@ export const applyPlannerResultAction = defineExtensionAction({
   },
 });
 
-export const plannerActions = [preparePlannerContextAction, applyPlannerResultAction] as const;
+export const plannerActions = [preparePlannerContextAction, applyPlannerResultAction, ...planningAgentTaskActions] as const;

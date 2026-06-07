@@ -40,6 +40,7 @@ describe('extension agent task contracts', () => {
       requestedBy: { host: 'console', surface: 'workstation:eforge-plan' },
     };
     expect(safeParseExtensionAgentTaskStartRequest(valid).success).toBe(true);
+    expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: 'Demo', requestedOutputSections: ['recommendations', 'handoffDrafts'] } }).success).toBe(true);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: '', requestedOutputSections: ['planDrafts'] } }).success).toBe(false);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: '   ', requestedOutputSections: ['planDrafts'] } }).success).toBe(false);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: 'Demo', requestedOutputSections: ['unsupported'] } }).success).toBe(false);
@@ -81,6 +82,19 @@ describe('extension agent task contracts', () => {
 
   it('requires planning results to include an applicable output section', () => {
     expect(parseEforgePlanPlanningDraftResult(validResult).summary).toContain('Drafted');
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: {
+      summary: 'Generated recommendations and handoffs.',
+      assumptionsOpenQuestions: [],
+      recommendations: { schemaVersion: 1, activeWork: [], readyCandidates: [{ itemId: 'item-one' }], recommendedNextSequence: [], safeParallelizableGroups: [], blockedChains: [], rationaleAndAssumptions: [] },
+      handoffDrafts: [{ selection: { itemIds: ['item-one'], status: 'active' }, session: 'handoff-one' }],
+    } })).success).toBe(true);
+    const sessionPlanOnly = {
+      summary: 'Generated session-plan sections.',
+      assumptionsOpenQuestions: [],
+      sessionPlanPatch: { sections: [{ dimension: 'scope', content: 'Generated scope.' }] },
+    };
+    expect(parseEforgePlanPlanningDraftResult(sessionPlanOnly).sessionPlanPatch?.sections).toHaveLength(1);
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: sessionPlanOnly })).success).toBe(true);
     expect(() => parseEforgePlanPlanningDraftResult({
       summary: 'No output sections',
       assumptionsOpenQuestions: [],
