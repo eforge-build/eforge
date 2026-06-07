@@ -140,14 +140,19 @@ function renderDetail(detail) {
   if (!el.detail) return;
   if (!detail) {
     el.detail.innerHTML = '<p class="empty">Select a plan or plan set.</p>';
+    clearPlanForms();
+    setEditFormsEnabled(false);
     return;
   }
   if (detail.plan) {
     el.detail.innerHTML = renderPlanDetail(detail);
     fillPlanForms(detail.plan);
+    setEditFormsEnabled(true);
     return;
   }
   el.detail.innerHTML = renderPlanSetDetail(detail);
+  clearPlanForms();
+  setEditFormsEnabled(false);
 }
 
 function renderPlanDetail(detail) {
@@ -186,7 +191,25 @@ function renderPlanSetDetail(detail) {
   `;
 }
 
+function setEditFormsEnabled(enabled) {
+  for (const form of [el.sectionForm, el.metadataForm, el.dimensionsForm]) {
+    for (const field of form?.elements || []) {
+      field.disabled = !enabled;
+    }
+  }
+}
+
+function clearPlanForms() {
+  if (el.sectionForm) {
+    el.sectionForm.reset();
+    el.sectionForm.elements.dimension.value = 'scope';
+  }
+  if (el.metadataForm) el.metadataForm.reset();
+  if (el.dimensionsForm) el.dimensionsForm.reset();
+}
+
 function fillPlanForms(plan) {
+  clearPlanForms();
   for (const form of [el.sectionForm, el.metadataForm, el.dimensionsForm]) {
     if (form?.elements.session) form.elements.session.value = plan.session;
   }
@@ -194,6 +217,11 @@ function fillPlanForms(plan) {
     el.metadataForm.elements.profile.value = plan.profile || '';
     el.metadataForm.elements.agentProfile.value = plan.agent_profile || '';
     el.metadataForm.elements.openQuestions.value = (plan.open_questions || []).join('\n');
+  }
+  if (el.dimensionsForm) {
+    el.dimensionsForm.elements.planningType.value = plan.planning_type || 'unknown';
+    el.dimensionsForm.elements.planningDepth.value = plan.planning_depth || 'focused';
+    el.dimensionsForm.elements.overwrite.checked = false;
   }
 }
 
@@ -244,8 +272,10 @@ el.createForm?.addEventListener('submit', (event) => {
 el.sectionForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.currentTarget;
+  const session = selectedPlanSession();
+  if (!session) return;
   invoke('set-session-plan-section', {
-    session: formValue(form, 'session'),
+    session,
     dimension: formValue(form, 'dimension'),
     content: String(form.elements.content.value || ''),
   }).then((detail) => {
@@ -258,8 +288,10 @@ el.sectionForm?.addEventListener('submit', (event) => {
 el.metadataForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.currentTarget;
+  const session = selectedPlanSession();
+  if (!session) return;
   invoke('update-session-plan-metadata', {
-    session: formValue(form, 'session'),
+    session,
     profile: formValue(form, 'profile') || null,
     agentProfile: formValue(form, 'agentProfile') || null,
     openQuestions: String(form.elements.openQuestions.value || '').split('\n').map((line) => line.trim()).filter(Boolean),
@@ -273,8 +305,10 @@ el.metadataForm?.addEventListener('submit', (event) => {
 el.dimensionsForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.currentTarget;
+  const session = selectedPlanSession();
+  if (!session) return;
   invoke('select-session-plan-dimensions', {
-    session: formValue(form, 'session'),
+    session,
     planningType: formValue(form, 'planningType') || undefined,
     planningDepth: formValue(form, 'planningDepth') || undefined,
     overwrite: Boolean(form.elements.overwrite.checked),
@@ -324,5 +358,7 @@ function showError(error) {
   setStatus(error instanceof Error ? error.message : String(error));
 }
 
+clearPlanForms();
+setEditFormsEnabled(false);
 refresh().catch(showError);
 // --- eforge:endregion initialization ---

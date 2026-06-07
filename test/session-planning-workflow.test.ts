@@ -99,6 +99,18 @@ describe('session planning workflow adapter', () => {
     expect(migrated.plan.required_dimensions).toContain('assumptions-and-validation');
   });
 
+  it('fails clearly instead of overwriting an existing flat plan on create', async () => {
+    const cwd = makeTempDir();
+    const adapter = createSessionPlanningWorkflowAdapter();
+    const created = await adapter.flat.create({ cwd, session: 'duplicate-plan', topic: 'Original Plan' });
+
+    await expect(adapter.flat.create({ cwd, session: 'duplicate-plan', topic: 'Replacement Plan' })).rejects.toMatchObject({ code: 'EEXIST' });
+
+    const content = await readFile(created.path, 'utf-8');
+    expect(content).toContain('topic: Original Plan');
+    expect(content).not.toContain('Replacement Plan');
+  });
+
   it('normalizes flat session-plan build sources and returns agent profile frontmatter', async () => {
     const cwd = makeTempDir();
     const adapter = createSessionPlanningWorkflowAdapter();

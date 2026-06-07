@@ -1,5 +1,6 @@
 import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
 
+// --- eforge:region backlog-schemas ---
 export const BACKLOG_STATUSES = ['candidate', 'planned', 'active', 'shipped', 'stale', 'superseded'] as const;
 export const KANBAN_LANES = ['inbox', 'ready', 'blocked', 'in-progress', 'done', 'archive'] as const;
 export const PLANNING_TYPES = ['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown'] as const;
@@ -54,7 +55,9 @@ export const BacklogEpicFrontmatterSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String())),
   eforge_plan: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
+// --- eforge:endregion backlog-schemas ---
 
+// --- eforge:region json-schemas ---
 export const JsonValueSchema = Type.Recursive((Self) => Type.Union([
   Type.Null(),
   Type.Boolean(),
@@ -68,6 +71,9 @@ export const ActionObjectOutputSchema = Type.Object({}, { additionalProperties: 
 
 export const MarkdownOutputSchema = Type.Object({ markdown: Type.String() });
 
+// --- eforge:endregion json-schemas ---
+
+// --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
   epic: Type.Optional(Type.String()),
   includeArchive: Type.Optional(Type.Boolean()),
@@ -183,7 +189,9 @@ export const ListBoardOutputSchema = Type.Object({
   blockedReasons: Type.Array(Type.Object({ itemId: Type.String(), reasons: Type.Array(Type.String()) })),
   traceSummaries: Type.Array(Type.Unknown()),
 });
+// --- eforge:endregion board-schemas ---
 
+// --- eforge:region session-plan-schemas ---
 export const PlanningTypeSchema = Type.Union([
   Type.Literal('bugfix'),
   Type.Literal('feature'),
@@ -348,6 +356,7 @@ export const HandoffSessionPlanOutputSchema = Type.Union([
     readiness: SessionPlanReadinessDetailSchema,
   }, JsonObjectAdditionalProperties),
 ]);
+// --- eforge:endregion session-plan-schemas ---
 
 export type BoardActionInput = Static<typeof BoardActionInputSchema>;
 export type ItemActionInput = Static<typeof ItemActionInputSchema>;

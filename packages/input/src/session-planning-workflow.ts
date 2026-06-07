@@ -1,5 +1,6 @@
 import {
   createSessionPlan,
+  createSessionPlanFile,
   getReadinessDetail,
   listSessionPlans,
   loadSessionPlan,
@@ -159,7 +160,7 @@ async function loadFlatPlan(opts: LoadSessionPlanOpts): Promise<SessionPlanningL
 
 async function createFlatPlan(opts: SessionPlanningCreateAndWriteOptions): Promise<SessionPlanningCreateResult> {
   const plan = createSessionPlan(opts);
-  await writeSessionPlan({ cwd: opts.cwd, plan });
+  await createSessionPlanFile({ cwd: opts.cwd, plan });
   return { plan, path: resolveSessionPlanPath({ cwd: opts.cwd, session: plan.session }) };
 }
 

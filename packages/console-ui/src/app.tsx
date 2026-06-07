@@ -11,9 +11,7 @@ import type { ConsoleRouteId } from '@/lib/navigation';
 const RunDetailView = lazy(() =>
   import('@/views/run-detail').then((m) => ({ default: m.RunDetailView })),
 );
-const PlansView = lazy(() =>
-  import('@/views/plans').then((m) => ({ default: m.PlansView })),
-);
+
 const WorkstationsView = lazy(() =>
   import('@/views/workstations').then((m) => ({ default: m.WorkstationsView })),
 );
@@ -97,13 +95,6 @@ export function App() {
     }
     // --- eforge:endregion system-configuration-view ---
 
-    if (currentRoute === 'plans') {
-      return (
-        <Suspense fallback={<div className="flex items-center justify-center h-full text-text-dim text-sm">Loading...</div>}>
-          <PlansView onNavigate={handleNavigate} />
-        </Suspense>
-      );
-    }
 
     if (currentRoute === 'workstations' || (typeof currentRoute === 'object' && currentRoute.id === 'workstationDetail')) {
       const selectedWorkstationId = typeof currentRoute === 'object' ? currentRoute.workstationId : undefined;
