@@ -52,7 +52,20 @@ export async function writeRecommendations(cwd: string, value: unknown): Promise
 }
 
 export function validateRecommendationModel(value: unknown): BacklogRecommendationModel {
+  assertRecommendationGroupsHaveItems(value);
   return parseWithSchema(BacklogRecommendationModelSchema, value);
+}
+
+function assertRecommendationGroupsHaveItems(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const groups = (value as { safeParallelizableGroups?: unknown }).safeParallelizableGroups;
+  if (!Array.isArray(groups)) return;
+  for (const group of groups) {
+    if (!group || typeof group !== 'object') continue;
+    const ref = typeof (group as { ref?: unknown }).ref === 'string' ? (group as { ref: string }).ref : '<unknown>';
+    const itemIds = (group as { itemIds?: unknown }).itemIds;
+    if (Array.isArray(itemIds) && itemIds.length === 0) throw new Error(`Recommendation group ${ref} must include at least one item id.`);
+  }
 }
 
 export function summarizeRecommendations(model: BacklogRecommendationModel | null | undefined): RecommendationSummary | undefined {

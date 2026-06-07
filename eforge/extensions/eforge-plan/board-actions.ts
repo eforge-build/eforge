@@ -3,9 +3,9 @@ import { projectKanbanBoard } from './kanban.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { toJsonSafeObject } from './json-safe.js';
-// --- eforge:region plan-01-recommendations ---
+// --- eforge:region recommendations ---
 import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
-// --- eforge:endregion plan-01-recommendations ---
+// --- eforge:endregion recommendations ---
 import {
   BoardActionInputSchema,
   ListBoardOutputSchema,
@@ -21,9 +21,9 @@ export const listBoard = defineExtensionAction({
   outputSchema: ListBoardOutputSchema,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
-    // --- eforge:region plan-01-recommendations ---
+    // --- eforge:region recommendations ---
     return projectBoardOutput(await buildBoard(ctx.cwd, input, resolveRecommendationsPath(ctx.paths)));
-    // --- eforge:endregion plan-01-recommendations ---
+    // --- eforge:endregion recommendations ---
   },
 });
 
@@ -35,9 +35,9 @@ export const renderBoardMarkdown = defineExtensionAction({
   outputSchema: MarkdownOutputSchema,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
-    // --- eforge:region plan-01-recommendations ---
+    // --- eforge:region recommendations ---
     return { markdown: renderBoard(await buildBoard(ctx.cwd, input, resolveRecommendationsPath(ctx.paths))) };
-    // --- eforge:endregion plan-01-recommendations ---
+    // --- eforge:endregion recommendations ---
   },
 });
 
@@ -47,9 +47,9 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
     listBacklogEpics(cwd),
     listBacklogItems(cwd),
     listTraceSidecars(cwd),
-    // --- eforge:region plan-01-recommendations ---
+    // --- eforge:region recommendations ---
     readRecommendationsFromPath(resolvedRecommendationsPath),
-    // --- eforge:endregion plan-01-recommendations ---
+    // --- eforge:endregion recommendations ---
   ]);
   const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
   const board = projectKanbanBoard(items, traceSummaries, { epic: input.epic, includeArchive: input.includeArchive });
@@ -61,9 +61,9 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
       .filter((item) => item.unresolvedDependsOn.length > 0)
       .map((item) => ({ itemId: item.id, reasons: item.reasons })),
     traceSummaries,
-    // --- eforge:region plan-01-recommendations ---
+    // --- eforge:region recommendations ---
     recommendationSummary: summarizeRecommendations(recommendations),
-    // --- eforge:endregion plan-01-recommendations ---
+    // --- eforge:endregion recommendations ---
   };
 }
 
@@ -73,7 +73,7 @@ export function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>
 
 export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
   const lines = ['# eforge-plan board', ''];
-  // --- eforge:region plan-01-recommendations ---
+  // --- eforge:region recommendations ---
   if (board.recommendationSummary) {
     lines.push('## Recommended Next Work', '');
     if (board.recommendationSummary.recommendedNextItemIds.length === 0) {
@@ -100,7 +100,7 @@ export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): stri
       lines.push('');
     }
   }
-  // --- eforge:endregion plan-01-recommendations ---
+  // --- eforge:endregion recommendations ---
   for (const lane of board.lanes) {
     lines.push(`## ${lane.title}`, '');
     if (lane.items.length === 0) lines.push('_No items._', '');

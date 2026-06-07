@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { EforgeEvent } from '../../../packages/extension-sdk/src/index.js';
-import { readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
+import { parseMarkdownRecord, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
 import {
   listTraceSidecars,
   updateLastEventMetadata,
@@ -12,11 +12,12 @@ import {
   type TraceLastEventMetadata,
   type TraceSidecar,
 } from './trace-store.js';
-import type { BacklogStatus } from './backlog-domain.js';
+import type { BacklogItem, BacklogStatus } from './backlog-domain.js';
 
 export interface LifecycleCorrelation {
-  kind: 'none' | 'single' | 'ambiguous';
+  kind: 'none' | 'single' | 'multi' | 'ambiguous';
   itemId?: string;
+  itemIds?: string[];
   reason: string;
 }
 
@@ -36,6 +37,9 @@ export function correlateLifecycleEvent(event: EforgeEvent | Record<string, unkn
   const keys = eventCorrelationKeys(event, cwd);
   const matches = traces.filter((trace) => traceMatches(trace, keys));
   if (matches.length === 1) return { kind: 'single', itemId: matches[0].itemId, reason: 'matched trace evidence' };
+  if (matches.length > 1 && canApplyMultiSourceCorrelation(matches, keys)) {
+    return { kind: 'multi', itemIds: matches.map((trace) => trace.itemId), reason: 'matched shared promoted plan trace evidence' };
+  }
   if (matches.length > 1) return { kind: 'ambiguous', reason: `matched ${matches.length} trace sidecars` };
   const directItemId = directInputItemId(event);
   if (directItemId) return { kind: 'single', itemId: directItemId, reason: 'matched eforge-plan input source item id' };
@@ -44,33 +48,45 @@ export function correlateLifecycleEvent(event: EforgeEvent | Record<string, unkn
 
 export function decideLifecycleUpdate(event: EforgeEvent | Record<string, unknown>, traces: readonly TraceSidecar[], cwd?: string): LifecycleDecision {
   const correlation = correlateLifecycleEvent(event, traces, cwd);
-  const trace = correlation.kind === 'single' ? traceMutationForEvent(event) : undefined;
-  const status = correlation.kind === 'single' ? statusForEvent(event) : undefined;
+  const trace = correlation.kind === 'single' || correlation.kind === 'multi' ? traceMutationForEvent(event) : undefined;
+  const status = correlation.kind === 'single' || correlation.kind === 'multi' ? statusForEvent(event) : undefined;
   return { correlation, trace, status };
 }
 
 export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<LifecycleDecision> {
   const traces = await listTraceSidecars(cwd);
   const decision = decideLifecycleUpdate(event, traces, cwd);
-  let itemId = decision.correlation.kind === 'single' ? decision.correlation.itemId : undefined;
-  let epicId = itemId ? traces.find((candidate) => candidate.itemId === itemId)?.epicId : undefined;
-  let bootstrapped = false;
-  if (!itemId && decision.correlation.kind === 'none') {
-    const bootstrap = await bootstrapItemFromQueuedPrd(cwd, event);
-    itemId = bootstrap?.itemId;
-    epicId = bootstrap?.epicId;
-    bootstrapped = itemId !== undefined;
+  let itemIds = decision.correlation.kind === 'single'
+    ? [decision.correlation.itemId].filter((itemId): itemId is string => itemId !== undefined)
+    : decision.correlation.kind === 'multi'
+      ? decision.correlation.itemIds ?? []
+      : [];
+  let bootstrapped: { itemIds: string[]; epicIdsByItemId: Map<string, string | undefined> } | undefined;
+  if (itemIds.length === 0 && decision.correlation.kind === 'none') {
+    bootstrapped = await bootstrapItemFromQueuedPrd(cwd, event);
+    itemIds = bootstrapped?.itemIds ?? [];
   }
-  if (!itemId) {
+  if (itemIds.length === 0) {
     return decision;
   }
   const traceMutation = decision.trace ?? (bootstrapped ? traceMutationForEvent(event) : undefined);
-  await applyTraceMutation(cwd, itemId, epicId, traceMutation);
-  await updateLastEventMetadata(cwd, itemId, lastEventMetadata(event), epicId);
-  if (decision.status === 'shipped') {
-    await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
+  for (const itemId of itemIds) {
+    const epicId = bootstrapped?.epicIdsByItemId.get(itemId) ?? traces.find((candidate) => candidate.itemId === itemId)?.epicId;
+    await applyTraceMutation(cwd, itemId, epicId, traceMutation);
+    await updateLastEventMetadata(cwd, itemId, lastEventMetadata(event), epicId);
+    if (decision.status === 'shipped') {
+      await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
+    }
   }
-  return decision.correlation.kind === 'single' ? decision : { ...decision, correlation: { kind: 'single', itemId, reason: 'bootstrapped from queued eforge-plan PRD' }, trace: traceMutation };
+  return decision.correlation.kind === 'none' && bootstrapped
+    ? {
+      ...decision,
+      correlation: bootstrapped.itemIds.length === 1
+        ? { kind: 'single', itemId: bootstrapped.itemIds[0]!, reason: 'bootstrapped from queued eforge-plan PRD' }
+        : { kind: 'multi', itemIds: bootstrapped.itemIds, reason: 'bootstrapped from queued eforge-plan PRD source items' },
+      trace: traceMutation,
+    }
+    : decision;
 }
 
 export function eventCorrelationKeys(event: EforgeEvent | Record<string, unknown>, cwd?: string): Set<string> {
@@ -87,12 +103,20 @@ export function eventCorrelationKeys(event: EforgeEvent | Record<string, unknown
 
 function traceMatches(trace: TraceSidecar, keys: Set<string>): boolean {
   if (keys.has(trace.itemId)) return true;
+  return traceMatchesSharedLifecycleEvidence(trace, keys)
+    || hasAny(keys, [trace.lastEvent?.sessionId, trace.lastEvent?.runId, trace.lastEvent?.source, trace.lastEvent?.filePath, trace.lastEvent?.path, trace.lastEvent?.id]);
+}
+
+function canApplyMultiSourceCorrelation(matches: readonly TraceSidecar[], keys: Set<string>): boolean {
+  return matches.every((trace) => traceMatchesSharedLifecycleEvidence(trace, keys));
+}
+
+function traceMatchesSharedLifecycleEvidence(trace: TraceSidecar, keys: Set<string>): boolean {
   return trace.promotedSessionPlans.some((entry) => hasAny(keys, [entry.session, entry.path]))
     || trace.queuePrds.some((entry) => hasAny(keys, [entry.prdId, entry.path]))
     || trace.buildRuns.some((entry) => hasAny(keys, [entry.runId, entry.sessionId]))
     || trace.buildSessions.some((entry) => hasAny(keys, [entry.sessionId, entry.runId]))
-    || trace.landingResults.some((entry) => hasAny(keys, [entry.featureBranch, entry.commitSha]))
-    || hasAny(keys, [trace.lastEvent?.sessionId, trace.lastEvent?.runId, trace.lastEvent?.source, trace.lastEvent?.filePath, trace.lastEvent?.path, trace.lastEvent?.id]);
+    || trace.landingResults.some((entry) => hasAny(keys, [entry.featureBranch, entry.commitSha]));
 }
 
 function traceMutationForEvent(event: EforgeEvent | Record<string, unknown>): TraceMutation | undefined {
@@ -174,24 +198,31 @@ function directInputItemId(event: EforgeEvent | Record<string, unknown>): string
   return decodeURIComponent(source.slice('eforge://input/eforge-plan/'.length));
 }
 
-async function bootstrapItemFromQueuedPrd(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<{ itemId: string; epicId?: string } | undefined> {
+async function bootstrapItemFromQueuedPrd(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<{ itemIds: string[]; epicIdsByItemId: Map<string, string | undefined> } | undefined> {
   if (valueAt(event, 'type') !== 'enqueue:complete') return undefined;
   const filePath = stringValue(valueAt(event, 'filePath'));
   if (!filePath) return undefined;
   try {
     const raw = await readFile(isAbsolute(filePath) ? filePath : resolve(cwd, filePath), 'utf-8');
-    const itemId = extractSourceItemId(raw);
-    if (!itemId) return undefined;
-    const item = await readBacklogItem(cwd, itemId);
-    return item ? { itemId: item.id, epicId: item.epic } : undefined;
+    const itemIds = extractSourceItemIds(raw);
+    if (itemIds.length === 0) return undefined;
+    const items = (await Promise.all(itemIds.map((itemId) => readBacklogItem(cwd, itemId)))).filter((item): item is BacklogItem => item !== null);
+    return items.length > 0 ? { itemIds: items.map((item) => item.id), epicIdsByItemId: new Map(items.map((item) => [item.id, item.epic])) } : undefined;
   } catch {
     return undefined;
   }
 }
 
-function extractSourceItemId(markdown: string): string | undefined {
-  return firstRegexCapture(markdown, /source_item_id:\s*["']?([^"'\s]+)/i)
-    ?? firstRegexCapture(markdown, /Backlog item id:\s*([^\s]+)/i);
+function extractSourceItemIds(markdown: string): string[] {
+  const eforgePlan = parseMarkdownRecord(markdown).frontmatter.eforge_plan;
+  if (eforgePlan && typeof eforgePlan === 'object') {
+    const sourceItemIds = (eforgePlan as { source_item_ids?: unknown }).source_item_ids;
+    if (Array.isArray(sourceItemIds)) return sourceItemIds.filter((itemId): itemId is string => typeof itemId === 'string' && itemId.length > 0);
+    const sourceItemId = (eforgePlan as { source_item_id?: unknown }).source_item_id;
+    if (typeof sourceItemId === 'string' && sourceItemId.length > 0) return [sourceItemId];
+  }
+  const itemId = firstRegexCapture(markdown, /Backlog item id:\s*([^\s]+)/i);
+  return itemId ? [itemId] : [];
 }
 
 function firstRegexCapture(value: string, pattern: RegExp): string | undefined {

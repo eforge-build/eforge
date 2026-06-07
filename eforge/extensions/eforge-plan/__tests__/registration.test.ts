@@ -13,7 +13,7 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['capture-item', 'upsert-epic', 'update-item', 'promote-item', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations']);
+const WRITE_ACTIONS = new Set(['capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations']);
 const READ_ACTIONS = new Set(['list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan', 'get-recommendations']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -74,6 +74,7 @@ describe('eforge-plan extension registration', () => {
       'list-board',
       'list-planning-artifacts',
       'promote-item',
+      'promote-selection',
       'put-recommendations',
       'render-board-markdown',
       'select-session-plan-dimensions',
@@ -264,7 +265,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'capture-item', 'update-item']) {
+    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'capture-item', 'update-item']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 
@@ -288,8 +289,8 @@ describe('eforge-plan extension registration', () => {
     });
     expect('srcDoc' in workstation!).toBe(false);
 
-    expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
-    expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
+    expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);
+    expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);
     expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:start', 'session:end', 'session:start']);
   });
 

@@ -18,13 +18,11 @@ import {
   writeBacklogItem,
 } from './markdown-store.js';
 import { applyLifecycleEvent } from './lifecycle.js';
-import { fetchEforgePlanInputSource, promoteBacklogItem } from './promote.js';
+import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection } from './promote.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { sessionPlanActions } from './session-plan-actions.js';
-// --- eforge:region plan-01-recommendations ---
 import { recommendationActions } from './recommendation-actions.js';
-// --- eforge:endregion plan-01-recommendations ---
-import { ActionObjectOutputSchema, BoardActionInputSchema } from './schema.js';
+import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
 const CaptureInput = Type.Object({
@@ -38,6 +36,8 @@ const UpdateInput = Type.Object({
   evidenceNotes: Type.Optional(Type.String()), recheckNotes: Type.Optional(Type.String()), dependsOn: Type.Optional(Type.Array(Type.String())), epic: Type.Optional(Type.String()),
 });
 const PromoteInput = Type.Object({ itemId: Type.String(), status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('planned')])), session: Type.Optional(Type.String()), profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])) });
+const PromoteSelectionInput = PromotionSelectionInputSchema;
+const PromoteSelectionOutput = PromotionSelectionOutputSchema;
 const ActionObjectOutput = ActionObjectOutputSchema;
 
 const captureItem = defineExtensionAction({
@@ -88,6 +88,23 @@ const promoteItem = defineExtensionAction({
   async handler(input, ctx) { return toJsonSafeObject(await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null })); },
 });
 
+const promoteSelection = defineExtensionAction({
+  id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan for selected backlog items, an epic, or a recommendation ref.',
+  inputSchema: PromoteSelectionInput, outputSchema: PromoteSelectionOutput, sideEffects: ['local-write'],
+  async handler(input, ctx) {
+    return toJsonSafeObject(await promoteBacklogSelection({
+      cwd: ctx.cwd,
+      itemIds: input.itemIds,
+      epicId: input.epicId,
+      recommendationRef: input.recommendationRef,
+      session: input.session,
+      status: input.status,
+      ...(input.profile !== undefined && { profile: input.profile }),
+      title: input.title,
+    }));
+  },
+});
+
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
   eforge.registerAction(listBoard);
@@ -95,10 +112,9 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(upsertEpic);
   eforge.registerAction(updateItem);
   eforge.registerAction(promoteItem);
+  eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
-  // --- eforge:region plan-01-recommendations ---
   for (const action of recommendationActions) eforge.registerAction(action);
-  // --- eforge:endregion plan-01-recommendations ---
   for (const action of sessionPlanActions) eforge.registerAction(action);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile .backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
@@ -109,6 +125,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-button', title: 'List board data', content: 'Return current board JSON.', action: { actionId: 'list-board' } },
       { rendererId: 'action-button', title: 'Render board', content: 'Show current board Markdown', action: { actionId: 'render-board-markdown' } },
       { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
+      { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
     ],
@@ -120,10 +137,9 @@ export default defineEforgeExtension((eforge) => {
     allowedActions: [
       'list-board',
       'render-board-markdown',
-      // --- eforge:region plan-01-recommendations ---
+      'promote-selection',
       'get-recommendations',
       'put-recommendations',
-      // --- eforge:endregion plan-01-recommendations ---
       'list-planning-artifacts',
       'show-session-plan',
       'show-session-plan-set',
@@ -139,8 +155,10 @@ export default defineEforgeExtension((eforge) => {
   }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'render-board', label: 'Render eforge-plan board', inputSchema: BoardInput, action: { actionId: 'render-board-markdown' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-item', label: 'Promote eforge-plan item', inputSchema: PromoteInput, action: { actionId: 'promote-item' } }));
+  eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-selection', label: 'Promote eforge-plan selection', inputSchema: PromoteSelectionInput, action: { actionId: 'promote-selection' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'board', label: 'Open eforge-plan board', action: { actionId: 'render-board-markdown' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote', label: 'Promote eforge-plan item', action: { actionId: 'promote-item' } }));
+  eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote-selection', label: 'Promote eforge-plan selection', action: { actionId: 'promote-selection' } }));
   for (const pattern of ['enqueue:start', 'enqueue:complete', 'queue:prd:start', 'queue:prd:complete', 'session:start', 'session:end', 'landing:complete', 'landing:auto-merge:complete'] as const) {
     eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(await resolveHookCwd(ctx), event); });
   }
