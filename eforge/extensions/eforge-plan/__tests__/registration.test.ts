@@ -9,11 +9,12 @@ import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../.
 import type { EforgeEvent, EventHookContext } from '../../../../packages/extension-sdk/src/index.js';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { createEmptyRecommendationModel, writeRecommendations } from '../recommendations-store.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['capture-item', 'upsert-epic', 'update-item', 'promote-item', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata']);
-const READ_ACTIONS = new Set(['list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan']);
+const WRITE_ACTIONS = new Set(['apply-planner-result', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan', 'get-recommendations']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-registration-'));
@@ -44,6 +45,13 @@ function expectRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function markdownSection(markdown: string, heading: string): string {
+  const start = markdown.indexOf(`${heading}\n`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const nextHeading = markdown.indexOf('\n## ', start + heading.length + 1);
+  return markdown.slice(start, nextHeading === -1 ? undefined : nextHeading);
+}
+
 describe('eforge-plan extension registration', () => {
   it('loads without creating runtime storage', async () => {
     await withTempProject(async (cwd) => {
@@ -58,13 +66,18 @@ describe('eforge-plan extension registration', () => {
     const state = load();
     const actions = state.actions.map((entry) => entry.value);
     expect(actions.map((action) => action.id).sort()).toEqual([
+      'apply-planner-result',
       'capture-item',
       'check-session-plan-readiness',
       'create-session-plan',
+      'get-recommendations',
       'handoff-session-plan',
       'list-board',
       'list-planning-artifacts',
+      'prepare-planner-context',
       'promote-item',
+      'promote-selection',
+      'put-recommendations',
       'render-board-markdown',
       'select-session-plan-dimensions',
       'set-session-plan-ready',
@@ -81,10 +94,14 @@ describe('eforge-plan extension registration', () => {
       expect(JSON.stringify(action.outputSchema)).not.toMatch(/function|undefined/);
       expect(action.sideEffects).not.toContain('build-queue');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
-      if (READ_ACTIONS.has(action.id)) expect(action.sideEffects?.every((effect) => effect === 'local-read' || effect === 'none')).toBe(true);
+      if (READ_ACTIONS.has(action.id)) {
+        expect(action.sideEffects).toContain('local-read');
+        expect(action.sideEffects).not.toContain('local-write');
+        expect(action.sideEffects).not.toContain('build-queue');
+      }
     }
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
-    expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'traceSummaries']);
+    expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'recommendationSummary', 'traceSummaries']);
   });
 
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {
@@ -96,6 +113,29 @@ describe('eforge-plan extension registration', () => {
       await writeTraceSidecar(cwd, createTraceSidecar('item-one'));
 
       const registry = registryFromRecorderState(load());
+      await dispatchExtensionAction(registry, {
+        actionId: 'eforge-plan:put-recommendations',
+        input: {
+          schemaVersion: 1,
+          activeWork: [],
+          readyCandidates: [],
+          recommendedNextSequence: [{ itemId: 'item-one', rationale: 'Next best work.' }],
+          safeParallelizableGroups: [{
+            ref: 'group-one',
+            title: 'Parallel group',
+            itemIds: ['item-one', 'item-proto'],
+            epicIds: ['epic-one'],
+            safeToPlanTogether: true,
+            rationale: 'Independent files.',
+            recommendedProfile: 'errand',
+          }],
+          blockedChains: [{ ref: 'blocked-one', itemIds: ['item-blocked'], blockedBy: ['item-one'], rationale: 'Needs item one first.' }],
+          rationaleAndAssumptions: ['Prefer thin vertical slices.'],
+        },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+      });
       const listResult = await dispatchExtensionAction(registry, {
         actionId: 'eforge-plan:list-board',
         input: { includeArchive: false },
@@ -110,6 +150,20 @@ describe('eforge-plan extension registration', () => {
       for (const key of ['epics', 'items', 'lanes', 'blockedReasons', 'traceSummaries']) {
         expect(output[key]).toEqual(expect.any(Array));
       }
+      expect(output.recommendationSummary).toEqual({
+        recommendedNextItemIds: ['item-one'],
+        safeParallelizableGroups: [{
+          ref: 'group-one',
+          title: 'Parallel group',
+          itemIds: ['item-one', 'item-proto'],
+          epicIds: ['epic-one'],
+          safeToPlanTogether: true,
+          rationale: 'Independent files.',
+          recommendedProfile: 'errand',
+        }],
+        blockedChainCount: 1,
+        rationaleAndAssumptions: ['Prefer thin vertical slices.'],
+      });
       expect(collectUndefinedPaths(output)).toEqual([]);
 
       const item = expectRecord((output.items as unknown[]).find((entry) => expectRecord(entry).id === 'item-one'));
@@ -133,7 +187,74 @@ describe('eforge-plan extension registration', () => {
 
       expect(markdownResult).toMatchObject({ kind: 'success' });
       if (markdownResult.kind !== 'success') throw new Error(markdownResult.message);
-      expect(typeof expectRecord(markdownResult.output).markdown).toBe('string');
+      const markdown = expectRecord(markdownResult.output).markdown;
+      if (typeof markdown !== 'string') throw new Error('Expected markdown output');
+      const recommendedSection = markdownSection(markdown, '## Recommended Next Work');
+      expect(recommendedSection).toContain('- **item-one**');
+    });
+  });
+
+  it('omits recommendation projections and markdown section when recommendation storage is missing', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nShip item one.\n' });
+      const registry = registryFromRecorderState(load());
+      const listResult = await dispatchExtensionAction(registry, {
+        actionId: 'eforge-plan:list-board',
+        input: { includeArchive: false },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+      });
+      expect(listResult).toMatchObject({ kind: 'success' });
+      if (listResult.kind !== 'success') throw new Error(listResult.message);
+      expect('recommendationSummary' in expectRecord(listResult.output)).toBe(false);
+
+      const markdownResult = await dispatchExtensionAction(registry, {
+        actionId: 'eforge-plan:render-board-markdown',
+        input: { includeArchive: false },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+      });
+      expect(markdownResult).toMatchObject({ kind: 'success' });
+      if (markdownResult.kind !== 'success') throw new Error(markdownResult.message);
+      expect(expectRecord(markdownResult.output).markdown).not.toContain('## Recommended Next Work');
+    });
+  });
+
+  it('renders empty recommendation projections when recommendation storage is empty', async () => {
+    await withTempProject(async (cwd) => {
+      await writeRecommendations(cwd, createEmptyRecommendationModel());
+      const registry = registryFromRecorderState(load());
+      const listResult = await dispatchExtensionAction(registry, {
+        actionId: 'eforge-plan:list-board',
+        input: { includeArchive: false },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+      });
+      expect(listResult).toMatchObject({ kind: 'success' });
+      if (listResult.kind !== 'success') throw new Error(listResult.message);
+      expect(expectRecord(listResult.output).recommendationSummary).toEqual({
+        recommendedNextItemIds: [],
+        safeParallelizableGroups: [],
+        blockedChainCount: 0,
+        rationaleAndAssumptions: [],
+      });
+
+      const markdownResult = await dispatchExtensionAction(registry, {
+        actionId: 'eforge-plan:render-board-markdown',
+        input: { includeArchive: false },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+      });
+      expect(markdownResult).toMatchObject({ kind: 'success' });
+      if (markdownResult.kind !== 'success') throw new Error(markdownResult.message);
+      const markdown = expectRecord(markdownResult.output).markdown;
+      if (typeof markdown !== 'string') throw new Error('Expected markdown output');
+      const recommendedSection = markdownSection(markdown, '## Recommended Next Work');
+      expect(recommendedSection).toContain('_No recommended next items._');
     });
   });
 
@@ -146,7 +267,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'capture-item', 'update-item']) {
+    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'capture-item', 'update-item']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 
@@ -163,13 +284,18 @@ describe('eforge-plan extension registration', () => {
         'check-session-plan-readiness',
         'set-session-plan-ready',
         'handoff-session-plan',
+        'get-recommendations',
+        'put-recommendations',
+        'promote-selection',
+        'prepare-planner-context',
+        'apply-planner-result',
       ]),
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
     });
     expect('srcDoc' in workstation!).toBe(false);
 
-    expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
-    expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'render-board-markdown']);
+    expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);
+    expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);
     expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:start', 'session:end', 'session:start']);
   });
 

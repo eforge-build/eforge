@@ -75,11 +75,19 @@ describe('eforge-plan lifecycle correlation', () => {
     });
   });
 
-  it('does not mutate backlog status when correlation is ambiguous', () => {
+  it('correlates shared promoted-plan evidence to all source item traces', async () => {
     const traces = [trace('one'), trace('two')];
     const decision = decideLifecycleUpdate({ type: 'queue:prd:complete', prdId: 'prd-one', status: 'completed' }, traces);
-    expect(decision.correlation.kind).toBe('ambiguous');
+    expect(decision.correlation).toMatchObject({ kind: 'multi', itemIds: ['one', 'two'] });
+    expect(decision.trace).toMatchObject({ kind: 'queue-prd', prdId: 'prd-one', status: 'completed' });
     expect(decision.status).toBeUndefined();
-    expect(decision.trace).toBeUndefined();
+
+    await withTempProject(async (cwd) => {
+      await writeTraceSidecar(cwd, trace('one'));
+      await writeTraceSidecar(cwd, trace('two'));
+      await applyLifecycleEvent(cwd, { type: 'queue:prd:complete', prdId: 'prd-one', status: 'completed' });
+      expect((await readTraceSidecar(cwd, 'one'))?.queuePrds.find((entry) => entry.prdId === 'prd-one')?.status).toBe('completed');
+      expect((await readTraceSidecar(cwd, 'two'))?.queuePrds.find((entry) => entry.prdId === 'prd-one')?.status).toBe('completed');
+    });
   });
 });

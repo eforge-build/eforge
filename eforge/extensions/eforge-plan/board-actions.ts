@@ -3,6 +3,9 @@ import { projectKanbanBoard } from './kanban.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { toJsonSafeObject } from './json-safe.js';
+// --- eforge:region recommendations ---
+import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
+// --- eforge:endregion recommendations ---
 import {
   BoardActionInputSchema,
   ListBoardOutputSchema,
@@ -18,7 +21,9 @@ export const listBoard = defineExtensionAction({
   outputSchema: ListBoardOutputSchema,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
-    return projectBoardOutput(await buildBoard(ctx.cwd, input));
+    // --- eforge:region recommendations ---
+    return projectBoardOutput(await buildBoard(ctx.cwd, input, resolveRecommendationsPath(ctx.paths)));
+    // --- eforge:endregion recommendations ---
   },
 });
 
@@ -30,12 +35,22 @@ export const renderBoardMarkdown = defineExtensionAction({
   outputSchema: MarkdownOutputSchema,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
-    return { markdown: renderBoard(await buildBoard(ctx.cwd, input)) };
+    // --- eforge:region recommendations ---
+    return { markdown: renderBoard(await buildBoard(ctx.cwd, input, resolveRecommendationsPath(ctx.paths))) };
+    // --- eforge:endregion recommendations ---
   },
 });
 
-export async function buildBoard(cwd: string, input: BoardActionInput) {
-  const [epics, items, traces] = await Promise.all([listBacklogEpics(cwd), listBacklogItems(cwd), listTraceSidecars(cwd)]);
+export async function buildBoard(cwd: string, input: BoardActionInput, recommendationsPath?: string) {
+  const resolvedRecommendationsPath = recommendationsPath ?? resolveRecommendationsPathForCwd(cwd);
+  const [epics, items, traces, recommendations] = await Promise.all([
+    listBacklogEpics(cwd),
+    listBacklogItems(cwd),
+    listTraceSidecars(cwd),
+    // --- eforge:region recommendations ---
+    readRecommendationsFromPath(resolvedRecommendationsPath),
+    // --- eforge:endregion recommendations ---
+  ]);
   const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
   const board = projectKanbanBoard(items, traceSummaries, { epic: input.epic, includeArchive: input.includeArchive });
   return {
@@ -46,6 +61,9 @@ export async function buildBoard(cwd: string, input: BoardActionInput) {
       .filter((item) => item.unresolvedDependsOn.length > 0)
       .map((item) => ({ itemId: item.id, reasons: item.reasons })),
     traceSummaries,
+    // --- eforge:region recommendations ---
+    recommendationSummary: summarizeRecommendations(recommendations),
+    // --- eforge:endregion recommendations ---
   };
 }
 
@@ -55,6 +73,34 @@ export function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>
 
 export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
   const lines = ['# eforge-plan board', ''];
+  // --- eforge:region recommendations ---
+  if (board.recommendationSummary) {
+    lines.push('## Recommended Next Work', '');
+    if (board.recommendationSummary.recommendedNextItemIds.length === 0) {
+      lines.push('_No recommended next items._', '');
+    } else {
+      for (const itemId of board.recommendationSummary.recommendedNextItemIds) {
+        lines.push(`- **${itemId}**`);
+      }
+      lines.push('');
+    }
+    if (board.recommendationSummary.safeParallelizableGroups.length > 0) {
+      lines.push('### Safe Parallelizable Groups', '');
+      for (const group of board.recommendationSummary.safeParallelizableGroups) {
+        lines.push(`- **${group.ref}**${group.title ? ` — ${group.title}` : ''}: ${group.itemIds.join(', ')}`);
+      }
+      lines.push('');
+    }
+    if (board.recommendationSummary.blockedChainCount > 0) {
+      lines.push(`Blocked chains: ${board.recommendationSummary.blockedChainCount}`, '');
+    }
+    if (board.recommendationSummary.rationaleAndAssumptions.length > 0) {
+      lines.push('### Rationale and Assumptions', '');
+      for (const entry of board.recommendationSummary.rationaleAndAssumptions) lines.push(`- ${entry}`);
+      lines.push('');
+    }
+  }
+  // --- eforge:endregion recommendations ---
   for (const lane of board.lanes) {
     lines.push(`## ${lane.title}`, '');
     if (lane.items.length === 0) lines.push('_No items._', '');

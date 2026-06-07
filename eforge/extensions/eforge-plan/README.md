@@ -38,8 +38,13 @@ Registered action IDs can be invoked by hosts that expose extension actions:
 - `check-session-plan-readiness` example input: `{ "session": "2026-06-05-add-import-preview" }`
 - `set-session-plan-ready` example input: `{ "session": "2026-06-05-add-import-preview" }`; returns `kind: "not-ready"` instead of mutating when required dimensions or acceptance criteria checks fail.
 - `handoff-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`; requires the plan to be ready and returns a source-path command without enqueueing.
+- `get-recommendations` reads the private recommendation model.
+- `put-recommendations` validates and writes the private recommendation model.
+- `promote-selection` example input: `{ "itemIds": ["add-import-preview"], "status": "active" }`; also accepts `{ "recommendationRef": "next-one" }` or `{ "epicId": "planning" }` selectors.
+- `prepare-planner-context` example input: `{ "itemIds": ["add-import-preview"], "includeRoadmap": true }`; returns JSON-safe selected/open backlog items, epics, recommendations, dependency/blocker context, and roadmap evidence.
+- `apply-planner-result` example input: `{ "recommendations": { "schemaVersion": 1, "activeWork": [], "readyCandidates": [{ "itemId": "add-import-preview" }], "recommendedNextSequence": [{ "itemId": "add-import-preview", "rationale": "Ready and high priority." }], "safeParallelizableGroups": [], "blockedChains": [], "rationaleAndAssumptions": ["Import preview is unblocked."] } }` or `{ "handoffDraft": { "selection": { "itemIds": ["add-import-preview"], "status": "active" } } }`; applies only structured recommendation models and promotion selections.
 
-Integration command IDs are `render-board` and `promote-item`. Deep-link IDs are `board` and `promote`; they dispatch `render-board-markdown` and `promote-item` respectively. The input-source URI form is:
+Integration command IDs are `render-board`, `promote-item`, and `promote-selection`. Deep-link IDs are `board`, `promote`, and `promote-selection`; they dispatch `render-board-markdown`, `promote-item`, and `promote-selection` respectively. The input-source URI form is:
 
 ```text
 eforge://input/eforge-plan/<itemId>
@@ -55,6 +60,7 @@ For example, enqueue `eforge://input/eforge-plan/add-import-preview` to compile 
 - `.backlog/epics/<id>.md` stores epics.
 - `.eforge/session-plans/<session>.md` stores promoted session-plan artifacts.
 - `.eforge/storage/extensions/eforge-plan/traces/<itemId>.json` stores lifecycle trace sidecars as extension-owned private metadata.
+- `.eforge/storage/extensions/eforge-plan/recommendations/current.json` stores the project-local private recommendation model used by recommendation and planner actions.
 
 Backlog item and epic files are Markdown documents with frontmatter. The item body remains the durable human-authored planning record; update actions preserve body content while changing supported frontmatter fields, including `evidence_notes` and `recheck_notes`.
 
@@ -75,7 +81,7 @@ Statuses are `candidate`, `planned`, `active`, `shipped`, `stale`, and `supersed
 
 ## Actions
 
-The extension registers backlog, board, and planning-workstation actions:
+The extension registers backlog, board, recommendation, planner-orchestration, and planning-workstation actions:
 
 | Action | Purpose | Side effects |
 | --- | --- | --- |
@@ -85,6 +91,11 @@ The extension registers backlog, board, and planning-workstation actions:
 | `upsert-epic` | Create or update `.backlog/epics/<id>.md` without duplicating item membership lists. | `local-write` |
 | `update-item` | Update status, priority, tags, evidence/recheck notes, dependencies, and epic link while preserving body content. | `local-write` |
 | `promote-item` | Write a session plan, update trace evidence, and set item status to `active` or `planned`. | `local-write` |
+| `promote-selection` | Promote selected item IDs, a recommendation ref, or an epic into one session plan using the same build-source synthesis path. | `local-write` |
+| `get-recommendations` | Read `.eforge/storage/extensions/eforge-plan/recommendations/current.json` and return summary data. | `local-read` |
+| `put-recommendations` | Validate and write `.eforge/storage/extensions/eforge-plan/recommendations/current.json`. | `local-write` |
+| `prepare-planner-context` | Prepare JSON-safe backlog, epic, recommendation, dependency/blocker, and roadmap evidence for external AI planning orchestration. | `local-read` |
+| `apply-planner-result` | Apply structured planner recommendation updates and/or handoff drafts through private recommendation storage and `promote-selection`. | `local-write` |
 | `list-planning-artifacts` | Return backlog board summaries plus flat session plans and session plan sets using stable artifact keys such as `plan:<session>` and `plan-set:<planSetId>`. | `local-read` |
 | `show-session-plan` | Return a flat session-plan detail view with frontmatter metadata, body, readiness detail, and absolute path. | `local-read` |
 | `show-session-plan-set` | Return a plan-set detail projection with manifest summary, validation detail, directory paths, manifest path, and anchor content when present. | `local-read` |
@@ -100,7 +111,7 @@ No extension action declares `build-queue` side effects. `handoff-session-plan` 
 
 ## Promotion flow
 
-`promote-item` is the primary handoff. It reads the source backlog item and related epic/dependency context, synthesizes build-source Markdown, writes a normal session-plan artifact, and records the promotion in the trace sidecar.
+`promote-item` and `promote-selection` are the primary handoffs. They read source backlog item and related epic/dependency context, synthesize build-source Markdown, write a normal session-plan artifact, and record the promotion in the trace sidecar. `promote-selection` supports multi-source promotion from a recommended item, recommended group, epic, or user-selected item set while preserving the same session-plan helper and trace behavior.
 
 ```mermaid
 flowchart TD
@@ -139,13 +150,13 @@ The Console System contribution is declarative and uses only the closed renderer
 - `action-button`
 - `action-form`
 
-The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, promoting an item, capturing an item, and updating an item. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
+The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, reading recommendations, promoting an item or selection, preparing planner context, applying structured planner results, capturing an item, and updating an item. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
 
 Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
 
 The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are vanilla iframe code served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
 
-The workstation can browse backlog-derived board data, flat session plans, and session plan sets; create or edit session plans; update metadata and selected dimensions; run readiness checks; mark ready plans; and perform source-path handoff after an explicit confirmation. All reads and mutations go through `window.eforge.invokeAction` and the workstation manifest's `allowedActions` list.
+The workstation can browse backlog-derived board data, recommendation summary data, epics, flat session plans, and session plan sets; create or edit session plans; update metadata and selected dimensions; run readiness checks; mark ready plans; promote a recommended item, recommended group, epic, or user-selected one-or-more-item set through `promote-selection`; and perform source-path handoff after an explicit confirmation. All reads and mutations go through `window.eforge.invokeAction` and the workstation manifest's `allowedActions` list.
 
 ## Trace sidecars
 
@@ -175,7 +186,7 @@ The extension registers hooks for enqueue, queue PRD, session, landing, and auto
 - `landing:complete`
 - `landing:auto-merge:complete`
 
-Correlation can use promoted session-plan paths, input-source ids, `enqueue:complete.id`, `queue:prd:complete.prdId`, and event envelope `sessionId` or `runId` values when exactly one trace matches.
+Correlation can use promoted session-plan paths, input-source ids, `enqueue:complete.id`, `queue:prd:complete.prdId`, and event envelope `sessionId` or `runId` values. Shared promoted-plan evidence can correlate one lifecycle event to multiple source item traces when those items were promoted together into the same session plan, PRD, build, or landing flow.
 
 Lifecycle status mutation is conservative:
 
@@ -183,7 +194,7 @@ Lifecycle status mutation is conservative:
 - `landing:complete` with a `prUrl` and no merge confirmation records PR evidence and leaves the item active.
 - `landing:complete` with confirmed local merge evidence may mark the item `shipped`.
 - `landing:auto-merge:complete` may mark the item `shipped`.
-- Ambiguous correlation writes no backlog status mutation. Diagnostic trace evidence is recorded only when a single trace can be identified.
+- Unrelated ambiguous correlation writes no backlog status mutation. Diagnostic trace evidence is recorded for all traces in a shared multi-source promoted-plan correlation, but unrelated ambiguous matches are left unmutated.
 
 ## Planning workstation boundary
 
@@ -193,4 +204,6 @@ Daemon and client session-plan and session plan-set routes remain compatibility 
 
 The handoff flow is a source-path fallback. After confirming the plan is ready and has `status: ready`, `handoff-session-plan` returns a JSON-safe result containing `.eforge/session-plans/<session>.md`, the absolute path, compatibility command text, and readiness detail. It does not call the daemon enqueue route.
 
-Parent-Console plugins, direct React loading into the parent Console, private Console imports/routes, raw extension-owned HTTP routes, extension-owned AI planning/chat runtime APIs, and promotion into a bundled/core distribution remain unsupported.
+Planner orchestration is action-first: `prepare-planner-context` prepares bounded JSON-safe evidence packets, and `apply-planner-result` accepts structured recommendation models or handoff drafts. It does not accept raw Markdown or arbitrary filesystem paths from planner output, and handoff drafts use the existing `promote-selection` path.
+
+Parent-Console plugins, direct React loading into the parent Console, private Console imports/routes, raw extension-owned HTTP routes, daemon-owned chat state, scheduling, auto-mode backlog draining, queue orchestration, `.backlog/recommendations.json` import/export, and promotion into a bundled/core distribution remain unsupported. General extension-owned AI chat runtime support is not implemented by this extension.

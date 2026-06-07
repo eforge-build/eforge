@@ -160,6 +160,112 @@ export function summarizeTraceActivity(summary: TraceSummary | undefined): strin
   return summary?.activeReasons ?? [];
 }
 
+export interface SourceItemSummary {
+  id: string;
+  title: string;
+  status: BacklogStatus;
+  epic?: string;
+  dependsOn: string[];
+}
+
+export interface SourceEpicSummary {
+  id: string;
+  title: string;
+  status: BacklogStatus;
+}
+
+export interface DependencyProjection {
+  itemId: string;
+  dependsOn: string[];
+  internalDependsOn: string[];
+  externalDependsOn: string[];
+}
+
+export interface RiskProjection {
+  itemId: string;
+  blockers: string[];
+  risks: string[];
+}
+
+export function itemsForEpic(items: readonly BacklogItem[], epicId: string): BacklogItem[] {
+  return items.filter((item) => item.epic === epicId && isOpenStatus(item.status));
+}
+
+export function selectedSourceSummaries(items: readonly BacklogItem[]): SourceItemSummary[] {
+  return items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    ...(item.epic !== undefined && { epic: item.epic }),
+    dependsOn: item.depends_on,
+  }));
+}
+
+export function selectedEpicSummaries(epics: readonly BacklogEpic[]): SourceEpicSummary[] {
+  return epics.map((epic) => ({ id: epic.id, title: epic.title, status: epic.status }));
+}
+
+export function dependencyProjection(items: readonly BacklogItem[]): DependencyProjection[] {
+  const selectedIds = new Set(items.map((item) => item.id));
+  return items.map((item) => ({
+    itemId: item.id,
+    dependsOn: item.depends_on,
+    internalDependsOn: item.depends_on.filter((id) => selectedIds.has(id)),
+    externalDependsOn: item.depends_on.filter((id) => !selectedIds.has(id)),
+  }));
+}
+
+export function blockerRiskProjection(items: readonly BacklogItem[]): RiskProjection[] {
+  return items.map((item) => {
+    const sections = extractMarkdownSections(item.body);
+    return {
+      itemId: item.id,
+      blockers: linesFromSection(firstAvailableSection(sections, ['Blockers', 'Blocked By'])),
+      risks: linesFromSection(firstAvailableSection(sections, ['Risks', 'Risk Notes'])),
+    };
+  });
+}
+
+export function orderedSourceReferenceSummaries(items: readonly BacklogItem[], epics: readonly BacklogEpic[]): string[] {
+  return [
+    ...items.map((item, index) => `${index + 1}. backlog item ${item.id}: ${item.title}`),
+    ...epics.map((epic, index) => `${items.length + index + 1}. epic ${epic.id}: ${epic.title}`),
+  ];
+}
+
+export function sortItemsDependencyBeforeDependent(items: readonly BacklogItem[]): BacklogItem[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const sortedIds = [...byId.keys()].sort();
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const result: BacklogItem[] = [];
+  const visit = (id: string): void => {
+    if (visited.has(id) || visiting.has(id)) return;
+    visiting.add(id);
+    const item = byId.get(id);
+    for (const dependencyId of item?.depends_on ?? []) {
+      if (byId.has(dependencyId)) visit(dependencyId);
+    }
+    visiting.delete(id);
+    visited.add(id);
+    if (item) result.push(item);
+  };
+  for (const id of sortedIds) visit(id);
+  return result;
+}
+
+function firstAvailableSection(sections: Map<string, string>, names: string[]): string {
+  for (const name of names) {
+    const value = sections.get(name);
+    if (value && value.trim().length > 0) return value.trim();
+  }
+  return '';
+}
+
+function linesFromSection(section: string): string[] {
+  return section.split(/\r?\n/).map((line) => line.replace(/^[-*]\s+/, '').trim()).filter((line) => line.length > 0);
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`Backlog frontmatter field "${field}" must be a non-empty string`);

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { parseMarkdownRecord, readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { fetchEforgePlanInputSource, promoteBacklogItem, synthesizeBuildSourceMarkdown } from '../promote.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -32,6 +32,13 @@ describe('eforge-plan promotion', () => {
       for (const section of ['## Context', '## Scope', '## Assumptions', '## Design Decisions', '## Acceptance Criteria', '## Source Backlog Evidence', '## Source Epic Evidence', '## Dependency Context']) {
         expect(raw).toContain(section);
       }
+      const frontmatter = parseMarkdownRecord(raw).frontmatter;
+      expect(frontmatter.eforge_plan).toMatchObject({
+        source_item_id: 'item-one',
+        source_item_ids: ['item-one'],
+        source_epic_id: 'epic-one',
+        source_epic_ids: ['epic-one'],
+      });
       expect(raw).toContain('Backlog item id: item-one');
     });
   });

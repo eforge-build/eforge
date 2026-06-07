@@ -20,6 +20,17 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).not.toMatch(/XMLHttpRequest/);
   });
 
+  it('wires promotion controls through promote-selection action', async () => {
+    const source = await readFile(ASSET, 'utf-8');
+
+    expect(source).toContain("invoke('promote-selection'");
+    expect(source).toContain('itemIds: [itemId]');
+    expect(source).toContain('recommendationRef: ref');
+    expect(source).toContain('recommendationRef: button.dataset.promoteGroup');
+    expect(source).toContain('epicId: button.dataset.promoteEpic');
+    expect(source).toMatch(/const itemIds = Array\.from\(state\.selectedItemIds\)/);
+  });
+
   it('requires explicit confirmation before handoff', async () => {
     const source = await readFile(ASSET, 'utf-8');
 

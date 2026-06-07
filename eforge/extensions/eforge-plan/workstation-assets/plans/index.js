@@ -51,6 +51,16 @@ root.innerHTML = `
         <button data-action="ready" type="button">Set ready</button>
         <button data-action="handoff" type="button">Handoff source path</button>
       </div>
+      <!-- --- eforge:region plan-03-planner-orchestration-workstation --- -->
+      <section class="panel recommendations">
+        <h2>Recommendations and promotion</h2>
+        <div data-role="recommendations"></div>
+        <div class="selection-actions">
+          <button data-action="promote-selected" type="button">Promote selected item set</button>
+          <button data-action="prepare-planner" type="button">Prepare planner context</button>
+        </div>
+      </section>
+      <!-- --- eforge:endregion plan-03-planner-orchestration-workstation --- -->
       <section class="detail" data-role="detail"></section>
       <section class="board"><h2>Backlog board</h2><div class="board-grid" data-role="board"></div></section>
     </section>
@@ -63,6 +73,10 @@ const state = {
   artifacts: [],
   selectedKey: '',
   selectedDetail: null,
+  boardItems: [],
+  boardEpics: [],
+  recommendations: null,
+  selectedItemIds: new Set(),
 };
 
 const el = {
@@ -70,6 +84,9 @@ const el = {
   artifactList: document.querySelector('[data-role="artifact-list"]'),
   detail: document.querySelector('[data-role="detail"]'),
   board: document.querySelector('[data-role="board"]'),
+  recommendations: document.querySelector('[data-role="recommendations"]'),
+  promoteSelected: document.querySelector('[data-action="promote-selected"]'),
+  preparePlanner: document.querySelector('[data-action="prepare-planner"]'),
   refresh: document.querySelector('[data-action="refresh"]'),
   createForm: document.querySelector('[data-role="create-form"]'),
   sectionForm: document.querySelector('[data-role="section-form"]'),
@@ -128,12 +145,62 @@ function renderArtifacts() {
 function renderBoard(board) {
   if (!el.board) return;
   const lanes = Array.isArray(board?.lanes) ? board.lanes : [];
+  state.boardItems = Array.isArray(board?.items) ? board.items : lanes.flatMap((lane) => lane.items || []);
+  state.boardEpics = Array.isArray(board?.epics) ? board.epics : [];
   el.board.innerHTML = lanes.map((lane) => `
     <section class="lane">
       <h3>${escapeText(lane.title || lane.lane)}</h3>
-      <ul>${(lane.items || []).map((item) => `<li><strong>${escapeText(item.id)}</strong> ${escapeText(item.title)} <small>${escapeText(item.status)}</small></li>`).join('') || '<li class="empty">No items</li>'}</ul>
+      <ul>${(lane.items || []).map((item) => `<li><label class="item-select"><input type="checkbox" data-item-id="${escapeText(item.id)}" ${state.selectedItemIds.has(item.id) ? 'checked' : ''}> <strong>${escapeText(item.id)}</strong> ${escapeText(item.title)} <small>${escapeText(item.status)}</small></label></li>`).join('') || '<li class="empty">No items</li>'}</ul>
     </section>
   `).join('') || '<p class="empty">No board data.</p>';
+  for (const checkbox of el.board.querySelectorAll('input[data-item-id]')) {
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) state.selectedItemIds.add(checkbox.dataset.itemId);
+      else state.selectedItemIds.delete(checkbox.dataset.itemId);
+    });
+  }
+}
+
+function renderRecommendations() {
+  if (!el.recommendations) return;
+  const model = state.recommendations;
+  if (!model) {
+    el.recommendations.innerHTML = '<p class="empty">No private recommendation data found.</p>';
+    return;
+  }
+  const next = Array.isArray(model.recommendedNextSequence) ? model.recommendedNextSequence : [];
+  const groups = Array.isArray(model.safeParallelizableGroups) ? model.safeParallelizableGroups : [];
+  const epics = state.boardEpics;
+  el.recommendations.innerHTML = `
+    <h3>Recommended next items</h3>
+    <ul>${next.map((entry) => `<li><strong>${escapeText(entry.itemId)}</strong> ${escapeText(entry.rationale || '')} <button type="button" data-promote-recommended-item="${escapeText(entry.itemId)}" data-ref="${escapeText(entry.ref || '')}">Promote item</button></li>`).join('') || '<li class="empty">No recommended next items.</li>'}</ul>
+    <h3>Recommended groups</h3>
+    <ul>${groups.map((group) => `<li><strong>${escapeText(group.title || group.ref)}</strong> <small>${escapeText((group.itemIds || []).join(', '))}</small> <button type="button" data-promote-group="${escapeText(group.ref)}">Promote group</button></li>`).join('') || '<li class="empty">No recommended groups.</li>'}</ul>
+    <h3>Epics</h3>
+    <ul>${epics.map((epic) => `<li><strong>${escapeText(epic.id)}</strong> ${escapeText(epic.title || '')} <button type="button" data-promote-epic="${escapeText(epic.id)}">Promote epic</button></li>`).join('') || '<li class="empty">No epics.</li>'}</ul>
+    <h3>Rationale</h3>
+    <ul>${(model.rationaleAndAssumptions || []).map((entry) => `<li>${escapeText(entry)}</li>`).join('') || '<li class="empty">None.</li>'}</ul>
+  `;
+  for (const button of el.recommendations.querySelectorAll('button[data-promote-recommended-item]')) {
+    button.addEventListener('click', () => {
+      const ref = button.dataset.ref;
+      const itemId = button.dataset.promoteRecommendedItem;
+      const selection = ref ? { recommendationRef: ref, status: 'active' } : { itemIds: [itemId], status: 'active' };
+      promoteSelection(selection).catch(showError);
+    });
+  }
+  for (const button of el.recommendations.querySelectorAll('button[data-promote-group]')) {
+    button.addEventListener('click', () => promoteSelection({ recommendationRef: button.dataset.promoteGroup, status: 'active' }).catch(showError));
+  }
+  for (const button of el.recommendations.querySelectorAll('button[data-promote-epic]')) {
+    button.addEventListener('click', () => promoteSelection({ epicId: button.dataset.promoteEpic, status: 'active' }).catch(showError));
+  }
+}
+
+async function promoteSelection(selection) {
+  const result = await invoke('promote-selection', selection);
+  await refresh();
+  setStatus(`Promoted to ${result.sessionPlanPath || result.session}.`);
 }
 
 function renderDetail(detail) {
@@ -230,6 +297,9 @@ async function refresh() {
   const result = await invoke('list-planning-artifacts', {});
   state.artifacts = Array.isArray(result.artifacts) ? result.artifacts : [];
   renderBoard(result.board);
+  const recommendationResult = await invoke('get-recommendations', {});
+  state.recommendations = recommendationResult.recommendations || null;
+  renderRecommendations();
   renderArtifacts();
   setStatus('Planning artifacts loaded.');
 }
@@ -255,6 +325,23 @@ function formValue(form, name) {
 }
 
 el.refresh?.addEventListener('click', () => refresh().catch(showError));
+
+el.promoteSelected?.addEventListener('click', () => {
+  const itemIds = Array.from(state.selectedItemIds);
+  if (itemIds.length === 0) {
+    setStatus('Select one or more visible backlog items first.');
+    return;
+  }
+  promoteSelection({ itemIds, status: 'active' }).catch(showError);
+});
+
+el.preparePlanner?.addEventListener('click', () => {
+  const itemIds = Array.from(state.selectedItemIds);
+  const input = itemIds.length > 0 ? { itemIds, includeRoadmap: true } : { includeRoadmap: true };
+  invoke('prepare-planner-context', input).then((result) => {
+    setStatus(`Planner context ready: ${result.items?.length || 0} items, ${result.epics?.length || 0} epics.`);
+  }).catch(showError);
+});
 
 el.createForm?.addEventListener('submit', (event) => {
   event.preventDefault();

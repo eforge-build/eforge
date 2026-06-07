@@ -6,10 +6,8 @@ export const KANBAN_LANES = ['inbox', 'ready', 'blocked', 'in-progress', 'done',
 export const PLANNING_TYPES = ['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown'] as const;
 export const PLANNING_DEPTHS = ['quick', 'focused', 'deep'] as const;
 export const PLANNING_PROFILES = ['errand', 'excursion', 'expedition'] as const;
-
 export type BacklogStatus = (typeof BACKLOG_STATUSES)[number];
 export type KanbanLane = (typeof KANBAN_LANES)[number];
-
 export const BacklogStatusSchema = Type.Union([
   Type.Literal('candidate'),
   Type.Literal('planned'),
@@ -18,7 +16,6 @@ export const BacklogStatusSchema = Type.Union([
   Type.Literal('stale'),
   Type.Literal('superseded'),
 ]);
-
 export const KanbanLaneSchema = Type.Union([
   Type.Literal('inbox'),
   Type.Literal('ready'),
@@ -27,7 +24,6 @@ export const KanbanLaneSchema = Type.Union([
   Type.Literal('done'),
   Type.Literal('archive'),
 ]);
-
 export const BacklogItemFrontmatterSchema = Type.Object({
   id: Type.String(),
   status: BacklogStatusSchema,
@@ -42,7 +38,6 @@ export const BacklogItemFrontmatterSchema = Type.Object({
   epic: Type.Optional(Type.String()),
   eforge_plan: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
-
 export const BacklogEpicFrontmatterSchema = Type.Object({
   id: Type.String(),
   status: BacklogStatusSchema,
@@ -66,41 +61,218 @@ export const JsonValueSchema = Type.Recursive((Self) => Type.Union([
   Type.Array(Self),
   Type.Record(Type.String(), Self),
 ]));
-
 export const ActionObjectOutputSchema = Type.Object({}, { additionalProperties: JsonValueSchema });
-
 export const MarkdownOutputSchema = Type.Object({ markdown: Type.String() });
 
 // --- eforge:endregion json-schemas ---
+
+// --- eforge:region recommendations ---
+export const PlanningProfileSchema = Type.Union([
+  Type.Literal('errand'),
+  Type.Literal('excursion'),
+  Type.Literal('expedition'),
+]);
+export const RecommendationItemRefSchema = Type.Object({
+  ref: Type.Optional(Type.String()),
+  itemId: Type.String(),
+  rationale: Type.Optional(Type.String()),
+  confidence: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export const RecommendationProfileSchema = PlanningProfileSchema;
+export const RecommendationGroupSchema = Type.Object({
+  ref: Type.String(),
+  title: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String(), { minItems: 1 }),
+  epicIds: Type.Optional(Type.Array(Type.String())),
+  safeToPlanTogether: Type.Optional(Type.Boolean()),
+  rationale: Type.Optional(Type.String()),
+  recommendedProfile: Type.Optional(RecommendationProfileSchema),
+}, { additionalProperties: false });
+export const RecommendationBlockedChainSchema = Type.Object({
+  ref: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String()),
+  blockedBy: Type.Array(Type.String()),
+  rationale: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export const BacklogRecommendationModelSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  updatedAt: Type.Optional(Type.String()),
+  activeWork: Type.Array(RecommendationItemRefSchema),
+  readyCandidates: Type.Array(RecommendationItemRefSchema),
+  recommendedNextSequence: Type.Array(RecommendationItemRefSchema),
+  safeParallelizableGroups: Type.Array(RecommendationGroupSchema),
+  blockedChains: Type.Array(RecommendationBlockedChainSchema),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const RecommendationSummarySchema = Type.Object({
+  recommendedNextItemIds: Type.Array(Type.String()),
+  safeParallelizableGroups: Type.Array(RecommendationGroupSchema),
+  blockedChainCount: Type.Number(),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const GetRecommendationsInputSchema = Type.Object({});
+export const GetRecommendationsOutputSchema = Type.Object({
+  recommendations: Type.Union([BacklogRecommendationModelSchema, Type.Null()]),
+  recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  path: Type.String(),
+});
+export const PutRecommendationsInputSchema = BacklogRecommendationModelSchema;
+export const PutRecommendationsOutputSchema = Type.Object({
+  recommendations: BacklogRecommendationModelSchema,
+  recommendationSummary: RecommendationSummarySchema,
+  path: Type.String(),
+});
+// --- eforge:endregion recommendations ---
+
+// --- eforge:region promotion-selection ---
+export const PromotionSelectionSourceItemSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  epic: Type.Optional(Type.String()),
+  dependsOn: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const PromotionSelectionSourceEpicSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+}, { additionalProperties: false });
+export const PromotionSelectionInputSchema = Type.Object({
+  itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })),
+  epicId: Type.Optional(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+  session: Type.Optional(Type.String()),
+  status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('planned')])),
+  profile: Type.Optional(PlanningProfileSchema),
+  title: Type.Optional(Type.String()),
+}, {
+  additionalProperties: false,
+  oneOf: [
+    { required: ['itemIds'] },
+    { required: ['epicId'] },
+    { required: ['recommendationRef'] },
+  ],
+});
+export const PromotionSelectionOutputSchema = Type.Object({
+  itemIds: Type.Array(Type.String()),
+  epicIds: Type.Array(Type.String()),
+  session: Type.String(),
+  sessionPlanPath: Type.String(),
+  buildSource: Type.String(),
+  status: BacklogStatusSchema,
+  profile: Type.Union([PlanningProfileSchema, Type.Null()]),
+  recommendationRef: Type.Optional(Type.String()),
+  sources: Type.Array(PromotionSelectionSourceItemSchema),
+  epics: Type.Array(PromotionSelectionSourceEpicSchema),
+}, { additionalProperties: false });
+// --- eforge:endregion promotion-selection ---
+
+export const PlannerRoadmapEvidenceSchema = Type.Object({
+  path: Type.Literal('docs/roadmap.md'),
+  exists: Type.Boolean(),
+  headings: Type.Array(Type.String()),
+  excerpts: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const PlannerDependencyContextSchema = Type.Object({
+  itemId: Type.String(),
+  dependsOn: Type.Array(Type.String()),
+  internalDependsOn: Type.Array(Type.String()),
+  externalDependsOn: Type.Array(Type.String()),
+  blockers: Type.Array(Type.String()),
+  risks: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const PlannerContextSelectionSchema = Type.Object({
+  kind: Type.String(),
+  itemIds: Type.Array(Type.String()),
+  epicIds: Type.Array(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export const PlannerItemProjectionSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  epic: Type.Optional(Type.String()),
+  tags: Type.Array(Type.String()),
+  dependencies: Type.Array(Type.String()),
+  sections: Type.Record(Type.String(), Type.String()),
+  sourceReferences: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const PlannerEpicProjectionSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  tags: Type.Array(Type.String()),
+  sections: Type.Record(Type.String(), Type.String()),
+}, { additionalProperties: false });
+export const PlannerRecommendationsPacketSchema = Type.Object({
+  exists: Type.Boolean(),
+  model: BacklogRecommendationModelSchema,
+  summary: Type.Optional(RecommendationSummarySchema),
+}, { additionalProperties: false });
+export const PreparePlannerContextInputSchema = Type.Object({
+  itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })),
+  epicId: Type.Optional(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+  includeRoadmap: Type.Optional(Type.Boolean()),
+}, {
+  additionalProperties: false,
+  not: {
+    anyOf: [
+      { required: ['itemIds', 'epicId'] },
+      { required: ['itemIds', 'recommendationRef'] },
+      { required: ['epicId', 'recommendationRef'] },
+    ],
+  },
+});
+export const PreparePlannerContextOutputSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  selection: PlannerContextSelectionSchema,
+  items: Type.Array(PlannerItemProjectionSchema),
+  epics: Type.Array(PlannerEpicProjectionSchema),
+  recommendations: PlannerRecommendationsPacketSchema,
+  recommendationRationale: Type.Array(Type.String()),
+  dependencies: Type.Array(PlannerDependencyContextSchema),
+  roadmapEvidence: PlannerRoadmapEvidenceSchema,
+}, { additionalProperties: false });
+export const PlannerHandoffDraftSchema = Type.Object({
+  selection: PromotionSelectionInputSchema,
+  session: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String()),
+  profile: Type.Optional(PlanningProfileSchema),
+}, { additionalProperties: false });
+export const ApplyPlannerResultInputSchema = Type.Object({
+  recommendations: Type.Optional(BacklogRecommendationModelSchema),
+  handoffDraft: Type.Optional(PlannerHandoffDraftSchema),
+}, { additionalProperties: false, minProperties: 1 });
+export const ApplyPlannerResultOutputSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  recommendations: Type.Optional(PutRecommendationsOutputSchema),
+  handoff: Type.Optional(PromotionSelectionOutputSchema),
+}, { additionalProperties: false });
 
 // --- eforge:region board-schemas ---
 export const BoardActionInputSchema = Type.Object({
   epic: Type.Optional(Type.String()),
   includeArchive: Type.Optional(Type.Boolean()),
 });
-
 export const ItemActionInputSchema = Type.Object({
   id: Type.String(),
 });
-
 export const TraceActionInputSchema = Type.Object({
   itemId: Type.String(),
 });
-
 export const TracePromotedSessionPlanSchema = Type.Object({
   session: Type.String(),
   path: Type.Optional(Type.String()),
   status: Type.Optional(Type.String()),
   promotedAt: Type.Optional(Type.String()),
 });
-
 export const TraceQueuePrdSchema = Type.Object({
   prdId: Type.String(),
   path: Type.Optional(Type.String()),
   status: Type.Optional(Type.String()),
   queuedAt: Type.Optional(Type.String()),
 });
-
 export const TraceBuildRunSchema = Type.Object({
   runId: Type.String(),
   sessionId: Type.String(),
@@ -108,7 +280,6 @@ export const TraceBuildRunSchema = Type.Object({
   startedAt: Type.Optional(Type.String()),
   completedAt: Type.Optional(Type.String()),
 });
-
 export const TraceBuildSessionSchema = Type.Object({
   sessionId: Type.String(),
   runId: Type.Optional(Type.String()),
@@ -116,7 +287,6 @@ export const TraceBuildSessionSchema = Type.Object({
   startedAt: Type.Optional(Type.String()),
   completedAt: Type.Optional(Type.String()),
 });
-
 export const TraceLandingResultSchema = Type.Union([
   Type.Object({
     featureBranch: Type.String(),
@@ -133,7 +303,6 @@ export const TraceLandingResultSchema = Type.Union([
     prUrl: Type.Optional(Type.String()),
   }),
 ]);
-
 export const TraceLastEventMetadataSchema = Type.Object({
   type: Type.Optional(Type.String()),
   timestamp: Type.Optional(Type.String()),
@@ -145,7 +314,6 @@ export const TraceLastEventMetadataSchema = Type.Object({
   id: Type.Optional(Type.String()),
   cursor: Type.Optional(Type.Number()),
 });
-
 export const TraceSidecarSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   itemId: Type.String(),
@@ -159,7 +327,6 @@ export const TraceSidecarSchema = Type.Object({
   landingResults: Type.Array(TraceLandingResultSchema),
   lastEvent: Type.Optional(TraceLastEventMetadataSchema),
 });
-
 export const KanbanCardSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -170,24 +337,24 @@ export const KanbanCardSchema = Type.Object({
   activeTraceReasons: Type.Array(Type.String()),
   epic: Type.Optional(Type.String()),
 });
-
 export const KanbanLaneOutputSchema = Type.Object({
   lane: KanbanLaneSchema,
   title: Type.String(),
   items: Type.Array(KanbanCardSchema),
 });
-
 export const KanbanBoardOutputSchema = Type.Object({
   lanes: Type.Array(KanbanLaneOutputSchema),
   items: Type.Array(KanbanCardSchema),
 });
-
 export const ListBoardOutputSchema = Type.Object({
   epics: Type.Array(Type.Unknown()),
   items: Type.Array(Type.Unknown()),
   lanes: Type.Array(Type.Unknown()),
   blockedReasons: Type.Array(Type.Object({ itemId: Type.String(), reasons: Type.Array(Type.String()) })),
   traceSummaries: Type.Array(Type.Unknown()),
+  // --- eforge:region recommendations ---
+  recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  // --- eforge:endregion recommendations ---
 });
 // --- eforge:endregion board-schemas ---
 
@@ -201,21 +368,12 @@ export const PlanningTypeSchema = Type.Union([
   Type.Literal('maintenance'),
   Type.Literal('unknown'),
 ]);
-
 export const PlanningDepthSchema = Type.Union([
   Type.Literal('quick'),
   Type.Literal('focused'),
   Type.Literal('deep'),
 ]);
-
-export const PlanningProfileSchema = Type.Union([
-  Type.Literal('errand'),
-  Type.Literal('excursion'),
-  Type.Literal('expedition'),
-]);
-
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
-
 export const SessionPlanReadinessDetailSchema = Type.Object({
   ready: Type.Boolean(),
   missingDimensions: Type.Array(Type.String()),
@@ -223,25 +381,21 @@ export const SessionPlanReadinessDetailSchema = Type.Object({
   skippedDimensions: Type.Array(Type.String()),
   acDiagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), JsonValueSchema))),
 }, JsonObjectAdditionalProperties);
-
 export const SessionPlanProjectionSchema = Type.Object({
   session: Type.String(),
   topic: Type.String(),
   status: Type.String(),
   body: Type.String(),
 }, JsonObjectAdditionalProperties);
-
 export const SessionPlanDetailOutputSchema = Type.Object({
   plan: SessionPlanProjectionSchema,
   readiness: SessionPlanReadinessDetailSchema,
   path: Type.String(),
 }, JsonObjectAdditionalProperties);
-
 export const PlanningArtifactSchema = Type.Object({
   kind: Type.Union([Type.Literal('plan'), Type.Literal('plan-set')]),
   key: Type.String(),
 }, JsonObjectAdditionalProperties);
-
 export const ListPlanningArtifactsInputSchema = Type.Object({
   includeSubmitted: Type.Optional(Type.Boolean()),
   includeArchive: Type.Optional(Type.Boolean()),
@@ -253,10 +407,8 @@ export const ListPlanningArtifactsOutputSchema = Type.Object({
   planSets: Type.Array(PlanningArtifactSchema),
   board: Type.Optional(JsonValueSchema),
 }, JsonObjectAdditionalProperties);
-
 export const ShowSessionPlanInputSchema = Type.Object({ session: Type.String() });
 export const ShowSessionPlanOutputSchema = SessionPlanDetailOutputSchema;
-
 export const ShowSessionPlanSetInputSchema = Type.Object({ planSetId: Type.String() });
 export const ShowSessionPlanSetOutputSchema = Type.Object({
   planSet: Type.Record(Type.String(), JsonValueSchema),
@@ -265,7 +417,6 @@ export const ShowSessionPlanSetOutputSchema = Type.Object({
   manifestPath: Type.String(),
   anchorContent: Type.Optional(Type.String()),
 }, JsonObjectAdditionalProperties);
-
 export const CreateSessionPlanInputSchema = Type.Object({
   session: Type.String(),
   topic: Type.String(),
@@ -280,7 +431,6 @@ export const CreateSessionPlanOutputSchema = Type.Object({
   plan: SessionPlanProjectionSchema,
   readiness: SessionPlanReadinessDetailSchema,
 }, JsonObjectAdditionalProperties);
-
 export const SetSessionPlanSectionInputSchema = Type.Object({
   session: Type.String(),
   dimension: Type.String(),
@@ -292,7 +442,6 @@ export const SetSessionPlanSectionOutputSchema = Type.Object({
   readiness: SessionPlanReadinessDetailSchema,
   plan: SessionPlanProjectionSchema,
 }, JsonObjectAdditionalProperties);
-
 export const SelectSessionPlanDimensionsInputSchema = Type.Object({
   session: Type.String(),
   planningType: Type.Optional(PlanningTypeSchema),
@@ -307,13 +456,11 @@ export const SelectSessionPlanDimensionsOutputSchema = Type.Object({
   readiness: SessionPlanReadinessDetailSchema,
   plan: SessionPlanProjectionSchema,
 }, JsonObjectAdditionalProperties);
-
 export const CheckSessionPlanReadinessInputSchema = Type.Object({ session: Type.String() });
 export const CheckSessionPlanReadinessOutputSchema = Type.Object({
   session: Type.String(),
   readiness: SessionPlanReadinessDetailSchema,
 }, JsonObjectAdditionalProperties);
-
 export const SetSessionPlanReadyInputSchema = Type.Object({ session: Type.String() });
 export const SetSessionPlanReadyOutputSchema = Type.Union([
   Type.Object({
@@ -330,7 +477,6 @@ export const SetSessionPlanReadyOutputSchema = Type.Union([
     plan: SessionPlanProjectionSchema,
   }, JsonObjectAdditionalProperties),
 ]);
-
 export const UpdateSessionPlanMetadataInputSchema = Type.Object({
   session: Type.String(),
   profile: Type.Optional(Type.Union([PlanningProfileSchema, Type.Null()])),
@@ -338,7 +484,6 @@ export const UpdateSessionPlanMetadataInputSchema = Type.Object({
   openQuestions: Type.Optional(Type.Array(Type.String())),
 });
 export const UpdateSessionPlanMetadataOutputSchema = SessionPlanDetailOutputSchema;
-
 export const HandoffSessionPlanInputSchema = Type.Object({ session: Type.String() });
 export const HandoffSessionPlanOutputSchema = Type.Union([
   Type.Object({
@@ -357,7 +502,6 @@ export const HandoffSessionPlanOutputSchema = Type.Union([
   }, JsonObjectAdditionalProperties),
 ]);
 // --- eforge:endregion session-plan-schemas ---
-
 export type BoardActionInput = Static<typeof BoardActionInputSchema>;
 export type ItemActionInput = Static<typeof ItemActionInputSchema>;
 export type TraceActionInput = Static<typeof TraceActionInputSchema>;
@@ -370,6 +514,29 @@ export type TraceLastEventMetadata = Static<typeof TraceLastEventMetadataSchema>
 export type TraceSidecar = Static<typeof TraceSidecarSchema>;
 export type KanbanBoardOutput = Static<typeof KanbanBoardOutputSchema>;
 export type ListBoardOutput = Static<typeof ListBoardOutputSchema>;
+// --- eforge:region recommendations ---
+export type RecommendationItemRef = Static<typeof RecommendationItemRefSchema>;
+export type RecommendationGroup = Static<typeof RecommendationGroupSchema>;
+export type RecommendationBlockedChain = Static<typeof RecommendationBlockedChainSchema>;
+export type BacklogRecommendationModel = Static<typeof BacklogRecommendationModelSchema>;
+export type RecommendationSummary = Static<typeof RecommendationSummarySchema>;
+export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
+export type GetRecommendationsOutput = Static<typeof GetRecommendationsOutputSchema>;
+export type PutRecommendationsInput = Static<typeof PutRecommendationsInputSchema>;
+export type PutRecommendationsOutput = Static<typeof PutRecommendationsOutputSchema>;
+// --- eforge:endregion recommendations ---
+// --- eforge:region promotion-selection ---
+export type PromotionSelectionSourceItem = Static<typeof PromotionSelectionSourceItemSchema>;
+export type PromotionSelectionSourceEpic = Static<typeof PromotionSelectionSourceEpicSchema>;
+export type PromotionSelectionInput = Static<typeof PromotionSelectionInputSchema>;
+export type PromotionSelectionOutput = Static<typeof PromotionSelectionOutputSchema>;
+// --- eforge:endregion promotion-selection ---
+export type PlannerRoadmapEvidence = Static<typeof PlannerRoadmapEvidenceSchema>;
+export type PlannerDependencyContext = Static<typeof PlannerDependencyContextSchema>;
+export type PlannerContextInput = Static<typeof PreparePlannerContextInputSchema>;
+export type PlannerContextOutput = Static<typeof PreparePlannerContextOutputSchema>;
+export type ApplyPlannerResultInput = Static<typeof ApplyPlannerResultInputSchema>;
+export type ApplyPlannerResultOutput = Static<typeof ApplyPlannerResultOutputSchema>;
 export type PlanningTypeInput = Static<typeof PlanningTypeSchema>;
 export type PlanningDepthInput = Static<typeof PlanningDepthSchema>;
 export type PlanningProfileInput = Static<typeof PlanningProfileSchema>;

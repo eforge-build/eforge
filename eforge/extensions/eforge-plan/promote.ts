@@ -4,8 +4,17 @@ import { basename, relative } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { resolveProjectLocalStoragePath, type InputTransformContext } from '../../../packages/extension-sdk/src/index.js';
 import { normalizeBuildSource } from '../../../packages/input/src/index.js';
-import { extractMarkdownSections, type BacklogEpic, type BacklogItem, type BacklogStatus } from './backlog-domain.js';
+import {
+  blockerRiskProjection,
+  dependencyProjection,
+  extractMarkdownSections,
+  orderedSourceReferenceSummaries,
+  type BacklogEpic,
+  type BacklogItem,
+  type BacklogStatus,
+} from './backlog-domain.js';
 import { readBacklogEpic, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
+import { resolvePromotionSelection, type PromotionSelection } from './promotion-selection.js';
 import { upsertPromotedSessionPlan } from './trace-store.js';
 
 export interface SynthesisInput {
@@ -17,12 +26,38 @@ export interface SynthesisInput {
   profile?: 'errand' | 'excursion' | 'expedition' | null;
 }
 
+export interface SelectionSynthesisInput {
+  items: BacklogItem[];
+  epics?: BacklogEpic[];
+  epicIds?: string[];
+  cwd: string;
+  title?: string;
+  session?: string;
+  profile?: 'errand' | 'excursion' | 'expedition' | null;
+  recommendationRef?: string;
+  recommendation?: PromotionSelection['recommendationGroup'] | PromotionSelection['recommendationItem'];
+  recommendationAssumptions?: string[];
+}
+
 export interface PromotionResult {
   itemId: string;
   session: string;
   sessionPlanPath: string;
   buildSource: string;
   status: BacklogStatus;
+}
+
+export interface PromotionSelectionResult {
+  itemIds: string[];
+  epicIds: string[];
+  session: string;
+  sessionPlanPath: string;
+  buildSource: string;
+  status: Extract<BacklogStatus, 'active' | 'planned'>;
+  profile: 'errand' | 'excursion' | 'expedition' | null;
+  recommendationRef?: string;
+  sources: PromotionSelection['sources'];
+  epics: PromotionSelection['epicSources'];
 }
 
 const REQUIRED_DIMENSIONS = ['scope', 'acceptance-criteria', 'assumptions-and-validation'];
@@ -33,11 +68,32 @@ export function generateSessionId(item: BacklogItem, now = new Date()): string {
   return `${date}-${slugify(item.id || item.title)}`;
 }
 
+export function generateSelectionSessionId(items: readonly BacklogItem[], now = new Date()): string {
+  const date = now.toISOString().slice(0, 10);
+  const seed = items.length === 1 ? items[0]!.id || items[0]!.title : `${items[0]?.id ?? 'selection'}-and-${items.length - 1}-more`;
+  return `${date}-${slugify(seed)}`;
+}
+
 export function synthesizeSessionPlanMarkdown(input: SynthesisInput): string {
   const session = input.session ?? generateSessionId(input.item);
+  return synthesizeSelectionSessionPlanMarkdown({
+    cwd: input.cwd,
+    items: [input.item],
+    epics: input.epic ? [input.epic] : [],
+    title: input.item.title,
+    session,
+    profile: input.profile,
+  });
+}
+
+export function synthesizeSelectionSessionPlanMarkdown(input: SelectionSynthesisInput): string {
+  if (input.items.length === 0) throw new Error('Cannot synthesize a promotion session plan without selected backlog items.');
+  const session = input.session ?? generateSelectionSessionId(input.items);
+  const itemIds = input.items.map((item) => item.id);
+  const epicIds = [...new Set(input.epicIds ?? (input.epics ?? []).map((epic) => epic.id))];
   const frontmatter = {
     session,
-    topic: input.item.title,
+    topic: input.title ?? (input.items.length === 1 ? input.items[0]!.title : `Promote ${input.items.length} backlog items`),
     status: 'ready',
     planning_type: 'feature',
     planning_depth: 'focused',
@@ -47,11 +103,14 @@ export function synthesizeSessionPlanMarkdown(input: SynthesisInput): string {
     open_questions: [],
     profile: input.profile ?? null,
     eforge_plan: {
-      source_item_id: input.item.id,
-      source_epic_id: input.item.epic ?? input.epic?.id,
+      source_item_ids: itemIds,
+      source_epic_ids: epicIds,
+      ...(input.recommendationRef !== undefined && { source_recommendation_ref: input.recommendationRef }),
+      ...(itemIds.length === 1 && { source_item_id: itemIds[0] }),
+      ...(epicIds.length === 1 && { source_epic_id: epicIds[0] }),
     },
   };
-  return `---\n${stringifyYaml(frontmatter, { lineWidth: 0 }).trimEnd()}\n---\n${synthesizePlanBody(input.item, input.epic)}`;
+  return `---\n${stringifyYaml(frontmatter, { lineWidth: 0 }).trimEnd()}\n---\n${synthesizeSelectionPlanBody(input)}`;
 }
 
 export function synthesizeBuildSourceMarkdown(input: SynthesisInput): string {
@@ -68,37 +127,73 @@ export async function promoteBacklogItem(input: {
   session?: string;
   profile?: 'errand' | 'excursion' | 'expedition' | null;
 }): Promise<PromotionResult> {
-  const item = await requireBacklogItem(input.cwd, input.itemId);
-  const epic = item.epic ? await readBacklogEpic(input.cwd, item.epic) : null;
+  const selection = await promoteBacklogSelection({ cwd: input.cwd, itemIds: [input.itemId], status: input.status, session: input.session, profile: input.profile });
+  return {
+    itemId: selection.itemIds[0]!,
+    session: selection.session,
+    sessionPlanPath: selection.sessionPlanPath,
+    buildSource: selection.buildSource,
+    status: selection.status,
+  };
+}
+
+export async function promoteBacklogSelection(input: {
+  cwd: string;
+  itemIds?: string[];
+  epicId?: string;
+  recommendationRef?: string;
+  status?: Extract<BacklogStatus, 'active' | 'planned'>;
+  session?: string;
+  profile?: 'errand' | 'excursion' | 'expedition' | null;
+  title?: string;
+}): Promise<PromotionSelectionResult> {
+  const selection = await resolvePromotionSelection(input);
   const root = resolveSessionPlanRoot(input.cwd);
   await mkdir(root, { recursive: true });
-  const { session, sessionPlanPath } = resolvePromotionTarget(input.cwd, item, input.session);
-  const sessionPlan = synthesizeSessionPlanMarkdown({ cwd: input.cwd, item, epic, session, profile: input.profile });
-  await writeFile(sessionPlanPath, sessionPlan, { encoding: 'utf-8', flag: 'wx' });
-  const status = input.status ?? 'active';
-  const updated = new Date().toISOString();
-  await updateBacklogItemFrontmatter(input.cwd, item.id, {
-    status,
-    updated,
-    eforge_plan: {
-      ...(item.eforge_plan ?? {}),
-      promoted_session: session,
-      promoted_session_path: relative(input.cwd, sessionPlanPath),
-      promoted_at: updated,
-    },
-  });
-  await upsertPromotedSessionPlan(input.cwd, item.id, {
+  const { session, sessionPlanPath } = resolveSelectionPromotionTarget(input.cwd, selection.items, selection.session);
+  const sessionPlan = synthesizeSelectionSessionPlanMarkdown({
+    cwd: input.cwd,
+    items: selection.items,
+    epics: selection.epics,
+    epicIds: selection.epicIds,
+    title: selection.title,
     session,
-    path: sessionPlanPath,
-    status: 'ready',
-    promotedAt: updated,
-  }, item.epic);
+    profile: selection.profile,
+    recommendationRef: selection.recommendationRef,
+    recommendation: selection.recommendationGroup ?? selection.recommendationItem,
+    recommendationAssumptions: selection.recommendationModel?.rationaleAndAssumptions,
+  });
+  await writeFile(sessionPlanPath, sessionPlan, { encoding: 'utf-8', flag: 'wx' });
+  const updated = new Date().toISOString();
+  for (const item of selection.items) {
+    await updateBacklogItemFrontmatter(input.cwd, item.id, {
+      status: selection.status,
+      updated,
+      eforge_plan: {
+        ...(item.eforge_plan ?? {}),
+        promoted_session: session,
+        promoted_session_path: relative(input.cwd, sessionPlanPath),
+        promoted_at: updated,
+      },
+    });
+    await upsertPromotedSessionPlan(input.cwd, item.id, {
+      session,
+      path: sessionPlanPath,
+      status: 'ready',
+      promotedAt: updated,
+    }, item.epic);
+  }
   return {
-    itemId: item.id,
+    itemIds: selection.itemIds,
+    epicIds: selection.epicIds,
     session,
     sessionPlanPath,
     buildSource: normalizeBuildSource({ sourcePath: sessionPlanPath, content: sessionPlan }).content,
-    status,
+    status: selection.status,
+    profile: selection.profile,
+    ...(selection.recommendationRef !== undefined && { recommendationRef: selection.recommendationRef }),
+    sources: selection.sources,
+    epics: selection.epicSources,
   };
 }
 
@@ -127,12 +222,6 @@ export function readinessGuidance(item: BacklogItem): { assumptions: string; acc
   };
 }
 
-async function requireBacklogItem(cwd: string, itemId: string): Promise<BacklogItem> {
-  const item = await readBacklogItem(cwd, itemId);
-  if (!item) throw new Error(`Backlog item not found: ${itemId}`);
-  return item;
-}
-
 // Promoted session plans are built-in eforge workflow artifacts consumed by the engine,
 // not private extension-owned metadata, so they intentionally remain under `.eforge/session-plans/`.
 function resolveSessionPlanRoot(cwd: string): string {
@@ -143,8 +232,8 @@ function resolveSessionPlanPath(cwd: string, session: string): string {
   return resolveProjectLocalStoragePath({ cwd, segments: ['session-plans', `${session}.md`] });
 }
 
-function resolvePromotionTarget(cwd: string, item: BacklogItem, explicitSession?: string): { session: string; sessionPlanPath: string } {
-  const baseSession = explicitSession ?? generateSessionId(item);
+function resolveSelectionPromotionTarget(cwd: string, items: readonly BacklogItem[], explicitSession?: string): { session: string; sessionPlanPath: string } {
+  const baseSession = explicitSession ?? generateSelectionSessionId(items);
   for (let index = 0; index < 100; index += 1) {
     const session = index === 0 ? baseSession : `${baseSession}-${index + 1}`;
     const sessionPlanPath = resolveSessionPlanPath(cwd, session);
@@ -154,50 +243,103 @@ function resolvePromotionTarget(cwd: string, item: BacklogItem, explicitSession?
   throw new Error(`Could not allocate a unique session plan path for ${baseSession}`);
 }
 
-function synthesizePlanBody(item: BacklogItem, epic?: BacklogEpic | null): string {
-  const guidance = readinessGuidance(item);
-  const dependencies = item.depends_on.length > 0 ? item.depends_on.map((id) => `- ${id}`).join('\n') : 'No dependencies declared.';
+function synthesizeSelectionPlanBody(input: SelectionSynthesisInput): string {
+  const title = input.title ?? (input.items.length === 1 ? input.items[0]!.title : `Promote ${input.items.length} backlog items`);
   return [
-    `# ${item.title}`,
+    `# ${title}`,
     '',
     '## Context',
     '',
-    extractClaim(item),
+    input.items.map(extractClaim).join('\n\n'),
     '',
     '## Scope',
     '',
-    item.body.trim(),
+    input.items.map((item) => `### ${item.id}: ${item.title}\n\n${item.body.trim()}`).join('\n\n'),
     '',
     '## Assumptions',
     '',
-    guidance.assumptions,
+    assumptionsGuidance(input),
     '',
     '## Design Decisions',
     '',
-    firstSection(extractMarkdownSections(item.body), ['Design Decisions']) || 'Use the backlog evidence as the source of truth; keep implementation scoped to this item.',
+    designDecisionGuidance(input.items),
     '',
     '## Acceptance Criteria',
     '',
-    guidance.acceptanceCriteria,
+    acceptanceCriteriaGuidance(input.items),
     '',
     '## Source Backlog Evidence',
     '',
-    sourceEvidence(item),
+    input.items.map(sourceEvidence).join('\n\n'),
     '',
     '## Source Epic Evidence',
     '',
-    epic ? `Epic ${epic.id}: ${epic.title}\n\n${epic.body.trim()}` : 'No source epic linked.',
+    sourceEpicEvidence(input.epics ?? []),
     '',
     '## Dependency Context',
     '',
-    dependencies,
+    dependencyContext(input.items),
+    '',
+    '## Recommendation Context',
+    '',
+    recommendationContext(input),
     '',
   ].join('\n');
 }
 
+function assumptionsGuidance(input: SelectionSynthesisInput): string {
+  const itemGuidance = input.items.map((item) => `### ${item.id}\n\n${readinessGuidance(item).assumptions}`).join('\n\n');
+  const recommendationGuidance = (input.recommendationAssumptions ?? []).length > 0
+    ? `\n\nRecommendation assumptions:\n${input.recommendationAssumptions!.map((entry) => `- ${entry}`).join('\n')}`
+    : '';
+  return `${itemGuidance}${recommendationGuidance}`;
+}
+
+function designDecisionGuidance(items: readonly BacklogItem[]): string {
+  return items.map((item) => {
+    const decision = firstSection(extractMarkdownSections(item.body), ['Design Decisions']) || 'Use the backlog evidence as the source of truth; keep implementation scoped to this item.';
+    return `### ${item.id}\n\n${decision}`;
+  }).join('\n\n');
+}
+
+function acceptanceCriteriaGuidance(items: readonly BacklogItem[]): string {
+  return items.map((item) => `### ${item.id}\n\n${readinessGuidance(item).acceptanceCriteria}`).join('\n\n');
+}
+
+function sourceEpicEvidence(epics: readonly BacklogEpic[]): string {
+  if (epics.length === 0) return 'No source epic linked.';
+  return epics.map((epic) => `### ${epic.id}: ${epic.title}\n\nEpic ${epic.id}: ${epic.title}\n\n${epic.body.trim()}`).join('\n\n');
+}
+
+function dependencyContext(items: readonly BacklogItem[]): string {
+  const projections = dependencyProjection(items);
+  const risks = new Map(blockerRiskProjection(items).map((entry) => [entry.itemId, entry]));
+  return projections.map((entry) => {
+    const risk = risks.get(entry.itemId);
+    return [
+      `### ${entry.itemId}`,
+      '',
+      `Depends on: ${entry.dependsOn.length > 0 ? entry.dependsOn.join(', ') : 'No dependencies declared.'}`,
+      `Internal dependencies: ${entry.internalDependsOn.length > 0 ? entry.internalDependsOn.join(', ') : 'None.'}`,
+      `External dependencies: ${entry.externalDependsOn.length > 0 ? entry.externalDependsOn.join(', ') : 'None.'}`,
+      `Blockers: ${risk && risk.blockers.length > 0 ? risk.blockers.join('; ') : 'None declared.'}`,
+      `Risks: ${risk && risk.risks.length > 0 ? risk.risks.join('; ') : 'None declared.'}`,
+    ].join('\n');
+  }).join('\n\n');
+}
+
+function recommendationContext(input: SelectionSynthesisInput): string {
+  const refs = orderedSourceReferenceSummaries(input.items, input.epics ?? []);
+  const lines = [`Selected source order:\n${refs.map((entry) => `- ${entry}`).join('\n')}`];
+  if (input.recommendationRef !== undefined) lines.push(`Recommendation ref: ${input.recommendationRef}`);
+  if (input.recommendation && 'rationale' in input.recommendation && input.recommendation.rationale) lines.push(`Recommendation rationale: ${input.recommendation.rationale}`);
+  if (input.recommendation && 'confidence' in input.recommendation && input.recommendation.confidence) lines.push(`Recommendation confidence: ${input.recommendation.confidence}`);
+  return lines.join('\n\n');
+}
+
 function sourceEvidence(item: BacklogItem): string {
   const evidence = firstSection(extractMarkdownSections(item.body), ['Evidence', 'Source Evidence']);
-  return [`Backlog item id: ${item.id}`, `Status at handoff: ${item.status}`, evidence || 'No explicit evidence section found in the backlog item.'].join('\n\n');
+  return [`### ${item.id}: ${item.title}`, `Backlog item id: ${item.id}`, `Status at handoff: ${item.status}`, evidence || 'No explicit evidence section found in the backlog item.'].join('\n\n');
 }
 
 function extractClaim(item: BacklogItem): string {
