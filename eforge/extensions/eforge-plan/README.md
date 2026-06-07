@@ -154,7 +154,18 @@ The contribution includes board summary content, status badges, and action-backe
 
 Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
 
-The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are vanilla iframe code served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
+The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are built from the TypeScript/React Vite app in `workstation-src/plans`, use local shadcn-style components owned by the extension, and are served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
+
+### Workstation UI development
+
+The workstation has a frontend development loop independent of eforge builds:
+
+```bash
+pnpm dev:eforge-plan-workstation
+pnpm build:eforge-plan-workstation
+```
+
+`dev:eforge-plan-workstation` runs the Vite app with a mock `window.eforge.invokeAction` bridge and fixture data for rapid UI iteration. To try the same UI against a running daemon, set `VITE_EFORGE_DAEMON_URL=http://localhost:4567` when launching the dev server. Production Console rendering continues to use the built files in `workstation-assets/plans`.
 
 The workstation can browse backlog-derived board data, recommendation summary data, epics, flat session plans, and session plan sets; create or edit session plans; update metadata and selected dimensions; run readiness checks; mark ready plans; promote a recommended item, recommended group, epic, or user-selected one-or-more-item set through `promote-selection`; and perform source-path handoff after an explicit confirmation. All reads and mutations go through `window.eforge.invokeAction` and the workstation manifest's `allowedActions` list.
 

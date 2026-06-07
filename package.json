@@ -17,6 +17,8 @@
     "restart-daemon": "eforge daemon stop && eforge daemon start",
     "build-and-restart": "pnpm build && pnpm restart-daemon",
     "dev:console": "pnpm --filter @eforge-build/console-ui dev",
+    "dev:eforge-plan-workstation": "pnpm --filter @eforge-build/eforge-plan-workstation dev",
+    "build:eforge-plan-workstation": "pnpm --filter @eforge-build/eforge-plan-workstation build",
     "storybook": "pnpm --filter @eforge-build/console-ui storybook",
     "storybook:build": "pnpm --filter @eforge-build/console-ui build-storybook",
     "test": "node scripts/check-skill-parity.mjs && vitest run",
