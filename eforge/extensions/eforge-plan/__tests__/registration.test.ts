@@ -13,9 +13,9 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
+const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
 const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations']);
-const DAEMON_STATE_ACTIONS = new Set(['start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'handoff-session-plan']);
+const DAEMON_STATE_ACTIONS = new Set(['start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -85,6 +85,7 @@ describe('eforge-plan extension registration', () => {
       'promote-selection',
       'put-recommendations',
       'redraft-planning-agent-task',
+      'refresh-recommendations',
       'remove-planning-agent-task',
       'render-board-markdown',
       'retry-planning-agent-task',
@@ -106,6 +107,7 @@ describe('eforge-plan extension registration', () => {
       else expect(action.sideEffects).not.toContain('build-queue');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
       if (DAEMON_STATE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('daemon-state');
+      if (action.id === 'refresh-recommendations') expect(action.sideEffects).toContain('local-read');
       if (READ_ACTIONS.has(action.id)) {
         expect(action.sideEffects).toContain('local-read');
         expect(action.sideEffects).not.toContain('local-write');
@@ -115,8 +117,10 @@ describe('eforge-plan extension registration', () => {
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'recommendationSummary', 'traceSummaries']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
-    expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['path', 'recommendationSummary', 'recommendations', 'status']);
-    expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|staleReasons|missing|fresh|stale/);
+    expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationSummary', 'recommendations', 'status']);
+    expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|staleReasons|missing|fresh|stale|activeRefreshTask/);
+    const refreshOutput = actions.find((action) => action.id === 'refresh-recommendations')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(refreshOutput)).toMatch(/task|entry|sourceFingerprint|recommendation-refresh/);
   });
 
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {
@@ -283,7 +287,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item']) {
+    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'refresh-recommendations', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 
@@ -305,6 +309,7 @@ describe('eforge-plan extension registration', () => {
         'prepare-planner-context',
         'apply-planner-result',
         'start-planning-agent-task',
+        'refresh-recommendations',
         'get-planning-agent-task',
         'cancel-planning-agent-task',
         'list-planning-agent-tasks',
