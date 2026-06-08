@@ -73,7 +73,6 @@ export async function recordPlannerRecommendationApplied(cwd: string): Promise<R
   return recordPlannerRecommendationAppliedForSourceFingerprint(cwd, await computeRecommendationSourceFingerprint(cwd));
 }
 
-// --- eforge:region plan-02-refresh-invalidation ---
 export async function recordPlannerRecommendationAppliedForSourceFingerprint(cwd: string, appliedSourceFingerprint: string): Promise<RecommendationDerivedStatus> {
   const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
   await writeRecommendationStatusSidecar(resolveRecommendationStatusPathForCwd(cwd), {
@@ -120,7 +119,6 @@ export async function markRecommendationsStaleForLifecycleUpdate(cwd: string, ev
     message: `Recommendations are stale after correlated lifecycle update ${eventType}${itemSuffix}${refSuffix}.`,
   });
 }
-// --- eforge:endregion plan-02-refresh-invalidation ---
 
 export async function computeRecommendationSourceFingerprint(cwd: string): Promise<string> {
   return sha256(canonicalJson(await buildRecommendationSourceProjection(cwd)));
@@ -221,11 +219,9 @@ function sourceDriftReason(sourceFingerprint: string, lastAppliedSourceFingerpri
   };
 }
 
-// --- eforge:region plan-02-refresh-invalidation ---
 function appendStaleReason(existing: RecommendationStaleReason[], reason: RecommendationStaleReason): RecommendationStaleReason[] {
   return [...existing.filter((candidate) => candidate.code !== reason.code || candidate.message !== reason.message), reason];
 }
-// --- eforge:endregion plan-02-refresh-invalidation ---
 
 function resolveCurrentPath(cwd: string): string {
   return createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' }).extensionStoragePath('project-local', ['recommendations', 'current.json']);

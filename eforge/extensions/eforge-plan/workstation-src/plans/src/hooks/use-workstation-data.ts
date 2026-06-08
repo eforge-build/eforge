@@ -9,10 +9,8 @@ export interface WorkstationDataState {
   board: Board;
   artifacts: Artifact[];
   recommendations: RecommendationModel | null;
-  // --- eforge:region plan-03-workstation-docs ---
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
-  // --- eforge:endregion plan-03-workstation-docs ---
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -23,10 +21,8 @@ export function useWorkstationData(): WorkstationDataState {
   const [board, setBoard] = React.useState<Board>(emptyBoard);
   const [artifacts, setArtifacts] = React.useState<Artifact[]>([]);
   const [recommendations, setRecommendations] = React.useState<RecommendationModel | null>(null);
-  // --- eforge:region plan-03-workstation-docs ---
   const [recommendationStatus, setRecommendationStatus] = React.useState<RecommendationStatus | null>(null);
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
-  // --- eforge:endregion plan-03-workstation-docs ---
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 

@@ -24,9 +24,7 @@ export interface PlanningTaskWorkflowsApi {
   busy: boolean;
   reload: () => Promise<void>;
   start: (input: JsonObject) => Promise<PlanningAgentTaskRecord | null>;
-  // --- eforge:region plan-03-workstation-docs ---
   refreshRecommendations: () => Promise<PlanningAgentTaskRecord | null>;
-  // --- eforge:endregion plan-03-workstation-docs ---
   retry: (taskId: string) => Promise<void>;
   redraft: (taskId: string, input: RedraftInput) => Promise<void>;
   cancel: (taskId: string) => Promise<void>;
@@ -117,7 +115,6 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [reload, reportError, toast]);
 
-  // --- eforge:region plan-03-workstation-docs ---
   const refreshRecommendations = React.useCallback(async (): Promise<PlanningAgentTaskRecord | null> => {
     setBusy(true);
     try {
@@ -133,7 +130,6 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
       setBusy(false);
     }
   }, [onRefresh, reload, reportError, toast]);
-  // --- eforge:endregion plan-03-workstation-docs ---
 
   const retry = React.useCallback(async (taskId: string) => {
     setBusy(true);

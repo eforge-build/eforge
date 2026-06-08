@@ -54,12 +54,10 @@ export async function writeRecommendations(cwd: string, value: unknown): Promise
   return writeRecommendationsToPath(resolveRecommendationsPathForCwd(cwd), model);
 }
 
-// --- eforge:region plan-01-freshness-foundation ---
 export function parseRecommendationModel(value: unknown): BacklogRecommendationModel {
   assertRecommendationGroupsHaveItems(value);
   return parseWithSchema(BacklogRecommendationModelSchema, value);
 }
-// --- eforge:endregion plan-01-freshness-foundation ---
 
 export function validateRecommendationModel(value: unknown): BacklogRecommendationModel {
   return parseRecommendationModel(value);

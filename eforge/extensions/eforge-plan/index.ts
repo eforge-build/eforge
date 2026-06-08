@@ -50,9 +50,7 @@ const captureItem = defineExtensionAction({
     const now = new Date().toISOString();
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria ?? 'Missing acceptance criteria: add concrete, verifiable done conditions before build handoff.', ''].join('\n');
     const item = await writeBacklogItem(ctx.cwd, { id, status: 'candidate', priority: input.priority, tags: input.tags ?? [], depends_on: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
-    // --- eforge:region plan-02-refresh-invalidation ---
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
-    // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject({ itemId: item.id, status: item.status, path: `.backlog/items/${item.id}.md` });
   },
 });
@@ -66,9 +64,7 @@ const upsertEpic = defineExtensionAction({
     const existing = await readBacklogEpic(ctx.cwd, id);
     const body = input.body ?? (existing ? undefined : `# ${input.title}\n\n`);
     const epic = await writeBacklogEpic(ctx.cwd, { id, status: normalizedStatus(input.status, 'candidate'), priority: input.priority, tags: input.tags ?? [], updated: now, body });
-    // --- eforge:region plan-02-refresh-invalidation ---
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'upsert-epic', [epic.id]);
-    // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject({ epicId: epic.id, status: epic.status, path: `.backlog/epics/${epic.id}.md` });
   },
 });
@@ -86,9 +82,7 @@ const updateItem = defineExtensionAction({
     if (input.evidenceNotes !== undefined) updates.evidence_notes = input.evidenceNotes;
     if (input.recheckNotes !== undefined) updates.recheck_notes = input.recheckNotes;
     const item = await updateBacklogItemFrontmatter(ctx.cwd, input.id, updates);
-    // --- eforge:region plan-02-refresh-invalidation ---
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
-    // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject({ itemId: item.id, status: item.status });
   },
 });
@@ -98,9 +92,7 @@ const promoteItem = defineExtensionAction({
   inputSchema: PromoteInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null });
-    // --- eforge:region plan-02-refresh-invalidation ---
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-item', [result.itemId]);
-    // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject(result);
   },
 });
@@ -119,9 +111,7 @@ const promoteSelection = defineExtensionAction({
       ...(input.profile !== undefined && { profile: input.profile }),
       title: input.title,
     });
-    // --- eforge:region plan-02-refresh-invalidation ---
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-selection', result.itemIds);
-    // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject(result);
   },
 });
@@ -149,9 +139,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
-      // --- eforge:region plan-02-refresh-invalidation ---
       { rendererId: 'action-button', title: 'Refresh recommendations', content: 'Start or reuse a daemon-owned recommendation refresh task.', action: { actionId: 'refresh-recommendations' } },
-      // --- eforge:endregion plan-02-refresh-invalidation ---
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
       { rendererId: 'action-form', title: 'Start planning agent task', content: 'Prepare bounded context and start a daemon-owned planning draft task.', action: { actionId: 'start-planning-agent-task', inputDefaults: { includeRoadmap: true } } },
@@ -172,9 +160,7 @@ export default defineEforgeExtension((eforge) => {
       'render-board-markdown',
       'get-recommendations',
       'put-recommendations',
-      // --- eforge:region plan-02-refresh-invalidation ---
       'refresh-recommendations',
-      // --- eforge:endregion plan-02-refresh-invalidation ---
       'prepare-planner-context',
       'apply-planner-result',
       'start-planning-agent-task',

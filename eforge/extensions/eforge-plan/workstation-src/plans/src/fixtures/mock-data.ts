@@ -83,7 +83,6 @@ export const mockRecommendations: RecommendationModel = {
   rationaleAndAssumptions: ['Favor extension-owned workflow UX over engine changes.', 'Keep recommendations in private extension storage.'],
 };
 
-// --- eforge:region plan-03-workstation-docs ---
 export const mockRecommendationStatusMissing: RecommendationStatus = {
   state: 'missing',
   currentPath: 'mock://recommendations/current.json',
@@ -111,7 +110,6 @@ export const mockRecommendationStatusStale: RecommendationStatus = {
     { code: 'backlog-mutation:update-item', message: 'Recommendations are stale after eforge-plan backlog mutation update-item for add-import-preview.' },
   ],
 };
-// --- eforge:endregion plan-03-workstation-docs ---
 
 export const mockPlanningTask: PlanningAgentTaskRecord = {
   taskId: 'task-mock-planning-draft',
@@ -139,7 +137,6 @@ export const mockPlanningTask: PlanningAgentTaskRecord = {
   },
 };
 
-// --- eforge:region plan-03-workstation-docs ---
 export const mockActiveRecommendationRefreshTask: PlanningAgentTaskRecord = {
   taskId: 'task-refresh-recommendations',
   kind: 'eforge-plan.planning-draft',
@@ -169,7 +166,6 @@ export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = {
   status: mockRecommendationStatusStale,
   activeRefreshTask: mockActiveRecommendationRefreshTask,
 };
-// --- eforge:endregion plan-03-workstation-docs ---
 
 export const mockArtifacts: Artifact[] = [
   { key: 'plan:2026-06-07-import-preview', kind: 'plan', session: '2026-06-07-import-preview', title: 'Add import preview', status: 'planning', ready: false },
@@ -318,9 +314,7 @@ export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
 const dynamicPlanningTasks: PlanningAgentTaskListItem[] = [];
 const appliedCreationDraftArtifacts: Artifact[] = [];
 let dynamicTaskCounter = 0;
-// --- eforge:region plan-03-workstation-docs ---
 let activeRecommendationRefreshTask: PlanningAgentTaskRecord | null = null;
-// --- eforge:endregion plan-03-workstation-docs ---
 
 function selectionFromMockInput(input: JsonObject): PlanningTaskWorkflowSelection {
   return {
@@ -365,7 +359,6 @@ export function startMockPlanningTaskFromInput(input: JsonObject): { task: Plann
   return pushDynamicTask({ selection, derivedRequest: describeSelection(selection), idPrefix: 'task-started' });
 }
 
-// --- eforge:region plan-03-workstation-docs ---
 export function getMockRecommendationsResponse(): GetRecommendationsResponse {
   return {
     ...mockGetRecommendationsFreshResponse,
@@ -388,7 +381,6 @@ export function refreshMockRecommendations(): RefreshRecommendationsResponse {
   activeRecommendationRefreshTask = response.task;
   return { ...response, sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint ?? 'fresh-source-fingerprint' };
 }
-// --- eforge:endregion plan-03-workstation-docs ---
 
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
   return pushDynamicTask({ parentTaskId, derivedRequest: `${mode === 'retry' ? 'Retry' : 'Redraft'} of ${parentTaskId}`, idPrefix: `task-${mode}` });

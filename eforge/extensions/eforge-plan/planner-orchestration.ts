@@ -61,9 +61,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
     recommendationRationale: recommendations.rationaleAndAssumptions,
     dependencies: dependencyContext(selected.items),
     roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] },
-    // --- eforge:region plan-01-freshness-foundation ---
     traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
-    // --- eforge:endregion plan-01-freshness-foundation ---
   };
 }
 
@@ -92,10 +90,8 @@ export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultI
       title: input.handoffDraft.title ?? input.handoffDraft.selection.title,
       profile: input.handoffDraft.profile ?? input.handoffDraft.selection.profile,
     });
-    // --- eforge:region plan-02-refresh-invalidation ---
     const staleStatus = await markRecommendationsStaleForBacklogMutation(cwd, 'planner-result-handoff', handoff.itemIds);
     if (staleStatus !== null && isRecord(result.recommendations)) result.recommendations = { ...result.recommendations, status: staleStatus };
-    // --- eforge:endregion plan-02-refresh-invalidation ---
     result.handoff = handoff;
   }
   return result;
@@ -314,13 +310,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-// --- eforge:region plan-02-refresh-invalidation ---
 async function resolveRecommendationApplySourceFingerprint(cwd: string, taskId: string): Promise<string | undefined> {
   const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
   if (entry === undefined || !isRecommendationRefreshWorkflowEntry(entry)) return undefined;
   return entry.sourceFingerprint;
 }
-// --- eforge:endregion plan-02-refresh-invalidation ---
 
 async function resolvePlannerSelection(cwd: string, input: PlannerContextInput): Promise<{ items: BacklogItem[]; epics: BacklogEpic[] }> {
   if (input.itemIds !== undefined || input.epicId !== undefined || input.recommendationRef !== undefined) {

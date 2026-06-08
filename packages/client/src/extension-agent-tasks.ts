@@ -48,9 +48,7 @@ export const EforgePlanPlanningDraftInputSchema = Type.Object({
   sourceText: Type.Optional(Type.String()),
   existingSessionPlan: Type.Optional(Type.String()),
   requestedOutputSections: Type.Optional(Type.Array(EforgePlanPlanningRequestedOutputSectionSchema, { minItems: 1 })),
-  // --- eforge:region plan-02-refresh-invalidation ---
   includeRoadmap: Type.Optional(Type.Boolean()),
-  // --- eforge:endregion plan-02-refresh-invalidation ---
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningPlanDraftSchema = Type.Object({

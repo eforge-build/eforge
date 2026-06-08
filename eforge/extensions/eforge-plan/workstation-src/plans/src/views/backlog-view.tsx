@@ -14,10 +14,8 @@ const STATUS_FILTERS: StatusFilter[] = ['all', 'ready', 'blocked', 'review', 'cl
 interface BacklogViewProps {
   board: BoardData;
   recommendations: RecommendationModel | null;
-  // --- eforge:region plan-03-workstation-docs ---
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
-  // --- eforge:endregion plan-03-workstation-docs ---
   onRefresh: () => Promise<void>;
 }
 
@@ -56,11 +54,9 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
     await workflows.start(input);
   }, [workflows]);
 
-  // --- eforge:region plan-03-workstation-docs ---
   const refreshRecommendations = React.useCallback(async () => {
     await workflows.refreshRecommendations();
   }, [workflows]);
-  // --- eforge:endregion plan-03-workstation-docs ---
 
   const promoteSelectedReady = async () => {
     if (selectedReadyIds.length === 0) return;

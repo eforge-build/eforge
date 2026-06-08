@@ -6,9 +6,7 @@ import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type P
 
 const EXTENSION_NAME = 'eforge-plan';
 const INDEX_SEGMENTS = ['planning-tasks', 'index.json'] as const;
-// --- eforge:region plan-02-refresh-invalidation ---
 export const RECOMMENDATION_REFRESH_WORKFLOW_PURPOSE = 'recommendation-refresh' as const;
-// --- eforge:endregion plan-02-refresh-invalidation ---
 
 // Per-index-path serialization: chain read-modify-write operations so concurrent
 // starts/retries in the same daemon process never race the shared index file.
@@ -93,7 +91,6 @@ export function listPlanningTaskWorkflowEntries(index: PlanningTaskWorkflowIndex
   return orderIndex(index).entries;
 }
 
-// --- eforge:region plan-02-refresh-invalidation ---
 export function isRecommendationRefreshWorkflowEntry(entry: PlanningTaskWorkflowEntry): boolean {
   return entry.purpose === RECOMMENDATION_REFRESH_WORKFLOW_PURPOSE;
 }
@@ -108,7 +105,6 @@ export function listRecommendationRefreshWorkflowEntries(index: PlanningTaskWork
 export function findRecommendationRefreshWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string): PlanningTaskWorkflowEntry | undefined {
   return listRecommendationRefreshWorkflowEntries(index, sourceFingerprint)[0];
 }
-// --- eforge:endregion plan-02-refresh-invalidation ---
 
 async function writePlanningTaskWorkflowIndex(cwd: string, index: PlanningTaskWorkflowIndex): Promise<void> {
   const path = resolvePlanningTaskWorkflowIndexPath(cwd);
