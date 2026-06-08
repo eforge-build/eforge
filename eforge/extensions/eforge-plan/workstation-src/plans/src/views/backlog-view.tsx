@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from '@/router';
-import type { Board as BoardData, BoardItem, JsonObject, RecommendationModel } from '@/types';
+import type { Board as BoardData, BoardItem, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 import { Board } from './backlog/board';
 import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
@@ -14,10 +14,14 @@ const STATUS_FILTERS: StatusFilter[] = ['all', 'ready', 'blocked', 'review', 'cl
 interface BacklogViewProps {
   board: BoardData;
   recommendations: RecommendationModel | null;
+  // --- eforge:region plan-03-workstation-docs ---
+  recommendationStatus: RecommendationStatus | null;
+  activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
+  // --- eforge:endregion plan-03-workstation-docs ---
   onRefresh: () => Promise<void>;
 }
 
-export function BacklogView({ board, recommendations, onRefresh }: BacklogViewProps) {
+export function BacklogView({ board, recommendations, recommendationStatus, activeRecommendationRefreshTask, onRefresh }: BacklogViewProps) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const workflows = usePlanningTaskWorkflows(onRefresh);
@@ -48,14 +52,15 @@ export function BacklogView({ board, recommendations, onRefresh }: BacklogViewPr
   // AI promotion only uses the ready subset of the selection; blocked/closed/non-ready
   // items are excluded and the action is disabled when no ready items remain.
   const selectedReadyIds = React.useMemo(() => Array.from(selected).filter((id) => readyById.get(id) === true), [selected, readyById]);
-  const recommendationRefs = React.useMemo(() => [
-    ...(recommendations?.recommendedNextSequence ?? []).flatMap((entry) => entry.ref ? [entry.ref] : []),
-    ...(recommendations?.safeParallelizableGroups ?? []).map((group) => group.ref),
-  ], [recommendations]);
-
   const startPlan = React.useCallback(async (input: JsonObject) => {
     await workflows.start(input);
   }, [workflows]);
+
+  // --- eforge:region plan-03-workstation-docs ---
+  const refreshRecommendations = React.useCallback(async () => {
+    await workflows.refreshRecommendations();
+  }, [workflows]);
+  // --- eforge:endregion plan-03-workstation-docs ---
 
   const promoteSelectedReady = async () => {
     if (selectedReadyIds.length === 0) return;
@@ -66,7 +71,15 @@ export function BacklogView({ board, recommendations, onRefresh }: BacklogViewPr
   return (
     <div className="grid gap-4">
       <PlanWithAiPanel workflows={workflows} />
-      <RecommendationsPanel recommendations={recommendations} titles={titles} onStartPlan={startPlan} busy={workflows.busy} />
+      <RecommendationsPanel
+        recommendations={recommendations}
+        status={recommendationStatus}
+        activeRefreshTask={activeRecommendationRefreshTask}
+        titles={titles}
+        onStartPlan={startPlan}
+        onRefreshRecommendations={refreshRecommendations}
+        busy={workflows.busy}
+      />
       <Board
         board={board}
         query={query}

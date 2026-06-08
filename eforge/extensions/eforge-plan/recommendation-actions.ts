@@ -22,7 +22,7 @@ import {
 export const getRecommendations = defineExtensionAction({
   id: 'get-recommendations',
   title: 'Get eforge-plan recommendations',
-  description: 'Read the project-local private recommendation model for eforge-plan.',
+  description: 'Read the project-local private recommendation model, derived freshness status, and any active refresh task for eforge-plan.',
   inputSchema: GetRecommendationsInputSchema,
   outputSchema: GetRecommendationsWithStatusOutputSchema,
   sideEffects: ['local-read'],
@@ -31,7 +31,7 @@ export const getRecommendations = defineExtensionAction({
     const recommendations = await readRecommendationsFromPath(path);
     const status = await readDerivedRecommendationStatus(ctx.cwd, path);
     // --- eforge:region plan-02-refresh-invalidation ---
-    const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx);
+    const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
     // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject({
       recommendations,
@@ -48,7 +48,7 @@ export const getRecommendations = defineExtensionAction({
 export const putRecommendations = defineExtensionAction({
   id: 'put-recommendations',
   title: 'Put eforge-plan recommendations',
-  description: 'Validate and write the project-local private recommendation model for eforge-plan.',
+  description: 'Validate and write the project-local private recommendation model for eforge-plan, then refresh the status sidecar.',
   inputSchema: PutRecommendationsInputSchema,
   outputSchema: PutRecommendationsOutputSchema,
   sideEffects: ['local-write'],
@@ -66,9 +66,9 @@ export const putRecommendations = defineExtensionAction({
 });
 
 // --- eforge:region plan-02-refresh-invalidation ---
-async function readActiveRefreshTaskIfAvailable(ctx: Parameters<typeof getRecommendations.handler>[1]) {
+async function readActiveRefreshTaskIfAvailable(ctx: Parameters<typeof getRecommendations.handler>[1], statusSourceFingerprint?: string) {
   try {
-    const sourceFingerprint = await computeRecommendationSourceFingerprint(ctx.cwd);
+    const sourceFingerprint = statusSourceFingerprint ?? await computeRecommendationSourceFingerprint(ctx.cwd);
     return await findActiveRecommendationRefreshTask(ctx, sourceFingerprint);
   } catch {
     return undefined;

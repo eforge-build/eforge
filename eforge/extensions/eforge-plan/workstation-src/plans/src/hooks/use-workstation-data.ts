@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
-import type { Artifact, Board, RecommendationModel } from '@/types';
+import type { Artifact, Board, GetRecommendationsResponse, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [] };
@@ -9,6 +9,10 @@ export interface WorkstationDataState {
   board: Board;
   artifacts: Artifact[];
   recommendations: RecommendationModel | null;
+  // --- eforge:region plan-03-workstation-docs ---
+  recommendationStatus: RecommendationStatus | null;
+  activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
+  // --- eforge:endregion plan-03-workstation-docs ---
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -19,6 +23,10 @@ export function useWorkstationData(): WorkstationDataState {
   const [board, setBoard] = React.useState<Board>(emptyBoard);
   const [artifacts, setArtifacts] = React.useState<Artifact[]>([]);
   const [recommendations, setRecommendations] = React.useState<RecommendationModel | null>(null);
+  // --- eforge:region plan-03-workstation-docs ---
+  const [recommendationStatus, setRecommendationStatus] = React.useState<RecommendationStatus | null>(null);
+  const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
+  // --- eforge:endregion plan-03-workstation-docs ---
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -29,7 +37,7 @@ export function useWorkstationData(): WorkstationDataState {
     const [boardResult, artifactsResult, recommendationsResult] = await Promise.allSettled([
       bridge.invokeAction<Board>('list-board', {}),
       bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', {}),
-      bridge.invokeAction<{ recommendations?: RecommendationModel | null }>('get-recommendations', {}),
+      bridge.invokeAction<GetRecommendationsResponse>('get-recommendations', {}),
     ]);
     const failures: string[] = [];
     if (boardResult.status === 'fulfilled') {
@@ -40,15 +48,18 @@ export function useWorkstationData(): WorkstationDataState {
     } else failures.push(reason('board', boardResult.reason));
     if (artifactsResult.status === 'fulfilled') setArtifacts(artifactsResult.value.artifacts ?? []);
     else failures.push(reason('plans', artifactsResult.reason));
-    if (recommendationsResult.status === 'fulfilled') setRecommendations(recommendationsResult.value.recommendations ?? null);
-    else failures.push(reason('recommendations', recommendationsResult.reason));
+    if (recommendationsResult.status === 'fulfilled') {
+      setRecommendations(recommendationsResult.value.recommendations ?? null);
+      setRecommendationStatus(recommendationsResult.value.status ?? null);
+      setActiveRecommendationRefreshTask(recommendationsResult.value.activeRefreshTask ?? null);
+    } else failures.push(reason('recommendations', recommendationsResult.reason));
     setError(failures.length > 0 ? failures.join(' · ') : null);
     setLoading(false);
   }, []);
 
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, loading, error, refresh, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

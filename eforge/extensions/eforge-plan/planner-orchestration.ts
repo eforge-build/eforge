@@ -62,7 +62,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
     dependencies: dependencyContext(selected.items),
     roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] },
     // --- eforge:region plan-01-freshness-foundation ---
-    traceSummaries: await readPlannerTraceSummaries(cwd),
+    traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
     // --- eforge:endregion plan-01-freshness-foundation ---
   };
 }

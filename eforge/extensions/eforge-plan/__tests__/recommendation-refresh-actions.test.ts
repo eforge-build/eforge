@@ -151,6 +151,45 @@ describe('recommendation refresh action', () => {
     });
   });
 
+  it('preserves refresh metadata on retry so applying drifted retry output records stale status', async () => {
+    await withTempProject(async (cwd) => {
+      await seedRecommendationContext(cwd);
+      let startCount = 0;
+      const agentTasks = () => ({
+        async start() {
+          startCount += 1;
+          return { task: task(startCount === 1 ? 'refresh-original' : 'refresh-retry', 'queued') };
+        },
+        async get(taskId: string) { return { task: task(taskId, 'completed') }; },
+        async cancel() { throw new Error('unexpected cancel'); },
+      });
+      await refresh(cwd, agentTasks);
+      await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', body: '# Item Two\n\n## Claim\n\nRetry source drift.\n' });
+
+      const retry = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:retry-planning-agent-task',
+        input: { taskId: 'refresh-original' },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks,
+      });
+      expect(retry).toMatchObject({ kind: 'success', output: { entry: { purpose: 'recommendation-refresh', sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
+      const retryFingerprint = (retry as { output: { entry: { sourceFingerprint: string } } }).output.entry.sourceFingerprint;
+      await writeBacklogItem(cwd, { id: 'item-three', status: 'candidate', body: '# Item Three\n\n## Claim\n\nPost-retry drift.\n' });
+
+      const applied = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'refresh-retry', applyRecommendations: true },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks,
+      });
+      expect(applied).toMatchObject({ kind: 'success', output: { recommendations: { status: { state: 'stale', lastAppliedSourceFingerprint: retryFingerprint } } } });
+    });
+  });
+
   it('includes a readable active refresh task status in get-recommendations when a tracked task is available', async () => {
     await withTempProject(async (cwd) => {
       await seedRecommendationContext(cwd);

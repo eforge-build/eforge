@@ -65,12 +65,15 @@ describe('planner orchestration', () => {
     });
   });
 
-  it('returns only selected item IDs for item selectors', async () => {
+  it('returns only selected item IDs and relevant trace summaries for item selectors', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
+      await writeTraceSidecar(cwd, { ...createTraceSidecar('item-one', 'epic-one'), buildRunIds: ['run-one'], buildRuns: [{ runId: 'run-one', sessionId: 'session-one', status: 'running' }] });
+      await writeTraceSidecar(cwd, { ...createTraceSidecar('item-two'), buildRunIds: ['run-two'], buildRuns: [{ runId: 'run-two', sessionId: 'session-two', status: 'running' }] });
       const packet = await preparePlannerContext(cwd, { itemIds: ['item-two'] });
       expect(packet.selection.itemIds).toEqual(['item-two']);
       expect(packet.items.map((item) => item.id)).toEqual(['item-two']);
+      expect(packet.traceSummaries.map((summary) => summary.itemId)).toEqual(['item-two']);
     });
   });
 

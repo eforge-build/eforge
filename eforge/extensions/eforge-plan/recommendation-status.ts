@@ -130,7 +130,8 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
   const [allItems, allEpics, traceSidecars] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
   const items = allItems.filter((item) => isOpenStatus(item.status)).sort(byId);
   const epics = allEpics.filter((epic) => isOpenStatus(epic.status)).sort(byId);
-  const traceSummaries = compactTraceSummaries(traceSidecars.flatMap((trace) => summarizeTrace(trace) ?? []));
+  const openItemIds = new Set(items.map((item) => item.id));
+  const traceSummaries = compactTraceSummaries(traceSidecars.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => openItemIds.has(summary.itemId)));
   return {
     schemaVersion: 1,
     items: items.map(projectSourceItem),
@@ -142,9 +143,11 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
   };
 }
 
-export async function readPlannerTraceSummaries(cwd: string): Promise<Array<Record<string, unknown>>> {
+export async function readPlannerTraceSummaries(cwd: string, itemIds?: readonly string[]): Promise<Array<Record<string, unknown>>> {
   const traces = await listTraceSidecars(cwd);
-  return compactTraceSummaries(traces.flatMap((trace) => summarizeTrace(trace) ?? []));
+  const relevantItemIds = itemIds === undefined ? undefined : new Set(itemIds);
+  const summaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => relevantItemIds === undefined || relevantItemIds.has(summary.itemId));
+  return compactTraceSummaries(summaries);
 }
 
 export async function validateRecommendationReferences(cwd: string, model: BacklogRecommendationModel): Promise<void> {

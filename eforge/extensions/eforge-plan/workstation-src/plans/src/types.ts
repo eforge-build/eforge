@@ -61,6 +61,24 @@ export interface RecommendationModel {
   rationaleAndAssumptions?: string[];
 }
 
+// --- eforge:region plan-03-workstation-docs ---
+export type RecommendationStatusState = 'missing' | 'fresh' | 'stale';
+export interface RecommendationStaleReason {
+  code: string;
+  message: string;
+  sourceFingerprint?: string;
+  lastAppliedSourceFingerprint?: string;
+}
+export interface RecommendationStatus {
+  state: RecommendationStatusState;
+  currentPath: string;
+  statusPath: string;
+  sourceFingerprint?: string;
+  lastAppliedSourceFingerprint?: string;
+  staleReasons: RecommendationStaleReason[];
+}
+// --- eforge:endregion plan-03-workstation-docs ---
+
 export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type PlanningTaskDecision = 'ready' | 'needs-input';
 export interface PlanningTaskPlanDraft { title: string; body: string; }
@@ -134,6 +152,10 @@ export interface PlanningTaskWorkflowEntry {
   planningType?: string;
   planningDepth?: string;
   includeRoadmap?: boolean;
+  // --- eforge:region plan-03-workstation-docs ---
+  purpose?: 'recommendation-refresh';
+  sourceFingerprint?: string;
+  // --- eforge:endregion plan-03-workstation-docs ---
   createdAt: string;
 }
 export interface PlanningAgentTaskListItem {
@@ -145,6 +167,21 @@ export interface PlanningAgentTaskListItem {
 }
 export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; }
 export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry; }
+// --- eforge:region plan-03-workstation-docs ---
+export interface GetRecommendationsResponse {
+  recommendations: RecommendationModel | null;
+  recommendationSummary?: unknown;
+  path: string;
+  status: RecommendationStatus;
+  activeRefreshTask?: PlanningAgentTaskRecord;
+}
+export interface RefreshRecommendationsResponse {
+  task: PlanningAgentTaskRecord;
+  entry: PlanningTaskWorkflowEntry;
+  sourceFingerprint: string;
+  reused?: boolean;
+}
+// --- eforge:endregion plan-03-workstation-docs ---
 
 export interface AppliedSessionPlanCreationDraft { session: string; relativePath: string; readiness: Readiness; }
 export interface ApplyPlanningTaskResponse {
@@ -223,4 +260,12 @@ export interface PlanSetDetail {
 }
 export type Detail = PlanDetail | PlanSetDetail | null;
 
-export interface WorkstationData { artifacts: Artifact[]; board: Board; recommendations: RecommendationModel | null; }
+export interface WorkstationData {
+  artifacts: Artifact[];
+  board: Board;
+  recommendations: RecommendationModel | null;
+  // --- eforge:region plan-03-workstation-docs ---
+  recommendationStatus: RecommendationStatus | null;
+  activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
+  // --- eforge:endregion plan-03-workstation-docs ---
+}

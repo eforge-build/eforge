@@ -45,7 +45,7 @@ export const refreshRecommendationsAction = defineExtensionAction({
   sideEffects: ['local-read', 'local-write', 'daemon-state'],
   async handler(_input, ctx) {
     throwIfAborted(ctx.signal);
-    const { sourceFingerprint, sourceText } = await buildRefreshSource(ctx.cwd);
+    const { sourceFingerprint, sourceText } = await buildRecommendationRefreshSource(ctx.cwd);
     throwIfAborted(ctx.signal);
     return await runRefreshStartExclusive(ctx.cwd, sourceFingerprint, async () => {
       const active = await findActiveRecommendationRefreshTask(ctx, sourceFingerprint);
@@ -77,12 +77,12 @@ export async function findActiveRecommendationRefreshTask(
   return undefined;
 }
 
-async function buildRefreshSource(cwd: string): Promise<{ sourceFingerprint: string; sourceText: string }> {
+export async function buildRecommendationRefreshSource(cwd: string, redraft?: Record<string, unknown>): Promise<{ sourceFingerprint: string; sourceText: string }> {
   const [context, sourceFingerprint] = await Promise.all([
     preparePlannerContext(cwd, { includeRoadmap: true }),
     computeRecommendationSourceFingerprint(cwd),
   ]);
-  const sourceText = boundedSourceText(REFRESH_TOPIC, { ...context, sourceFingerprint });
+  const sourceText = boundedSourceText(REFRESH_TOPIC, { ...context, sourceFingerprint }, redraft);
   return { sourceFingerprint, sourceText };
 }
 

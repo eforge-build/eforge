@@ -7,6 +7,8 @@ export default defineConfig({
       './vitest.main.config.ts',
       // Console UI: run-state, pipeline component, and related tests
       './packages/console-ui/vitest.config.ts',
+      // eforge-plan workstation: extension-owned frame source tests
+      './eforge/extensions/eforge-plan/workstation-src/plans/vitest.config.ts',
     ],
   },
 });

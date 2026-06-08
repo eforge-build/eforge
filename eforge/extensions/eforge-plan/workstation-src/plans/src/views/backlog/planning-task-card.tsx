@@ -39,6 +39,7 @@ export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRe
             <span className={`rounded border px-1.5 py-0.5 text-xs ${STATUS_TONE[status] ?? STATUS_TONE.queued}`}>{status}</span>
             <span className="font-mono text-xs text-muted-foreground">{entry.taskId}</span>
             {entry.parentTaskId && <span className="text-[0.65rem] text-muted-foreground">↳ from {entry.parentTaskId}</span>}
+            {entry.purpose === 'recommendation-refresh' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-text-bright">Recommendation refresh</span>}
           </div>
           <p className="mt-1 truncate text-foreground" title={label}>{label}</p>
         </div>

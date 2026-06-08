@@ -7,11 +7,13 @@ import {
 import { toJsonSafeObject } from './json-safe.js';
 import {
   findPlanningTaskWorkflowEntry,
+  isRecommendationRefreshWorkflowEntry,
   listPlanningTaskWorkflowEntries,
   readPlanningTaskWorkflowIndex,
   recordPlanningTaskWorkflowEntry,
   removePlanningTaskWorkflowEntry,
 } from './planning-task-workflow-store.js';
+import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
@@ -166,15 +168,17 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
   async handler(input, ctx) {
     throwIfAborted(ctx.signal);
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'retry');
-    const context = await preparePlannerContext(ctx.cwd, plannerSelection(parent));
+    const refreshSource = isRecommendationRefreshWorkflowEntry(parent) ? await buildRecommendationRefreshSource(ctx.cwd) : undefined;
+    const context = refreshSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
-    const derivedGoal = explicitOrPreservedGoal(input.userGoal, parent, context);
-    const sourceText = boundedSourceText(derivedGoal, context);
+    const derivedGoal = refreshSource === undefined ? explicitOrPreservedGoal(input.userGoal, parent, context!) : parent.derivedRequest;
+    const sourceText = refreshSource?.sourceText ?? boundedSourceText(derivedGoal, context!);
     throwIfAborted(ctx.signal);
     return await startLinkedTask(ctx, {
       parent,
       derivedGoal,
       sourceText,
+      sourceFingerprint: refreshSource?.sourceFingerprint,
       requestedOutputSections: parent.requestedOutputSections,
     });
   },
@@ -192,16 +196,18 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'redraft');
     const previous = await ctx.agentTasks.get(input.taskId);
     assertRedraftableParent(previous.task, input.taskId);
-    const context = await preparePlannerContext(ctx.cwd, plannerSelection(parent));
-    throwIfAborted(ctx.signal);
-    const derivedGoal = explicitOrPreservedGoal(undefined, parent, context);
     const redraft = buildRedraftContext(parent, previous.task, input);
-    const sourceText = boundedSourceText(derivedGoal, context, redraft);
+    const refreshSource = isRecommendationRefreshWorkflowEntry(parent) ? await buildRecommendationRefreshSource(ctx.cwd, redraft) : undefined;
+    const context = refreshSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
+    throwIfAborted(ctx.signal);
+    const derivedGoal = refreshSource === undefined ? explicitOrPreservedGoal(undefined, parent, context!) : parent.derivedRequest;
+    const sourceText = refreshSource?.sourceText ?? boundedSourceText(derivedGoal, context!, redraft);
     throwIfAborted(ctx.signal);
     return await startLinkedTask(ctx, {
       parent,
       derivedGoal,
       sourceText,
+      sourceFingerprint: refreshSource?.sourceFingerprint,
       requestedOutputSections: parent.requestedOutputSections,
     });
   },
@@ -225,6 +231,7 @@ interface StartLinkedTaskParams {
   parent: PlanningTaskWorkflowEntry;
   derivedGoal: string;
   sourceText: string;
+  sourceFingerprint?: string;
   requestedOutputSections: RequestedOutputSections;
 }
 
@@ -253,6 +260,8 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     planningType: parent.planningType,
     planningDepth: parent.planningDepth,
     includeRoadmap: parent.includeRoadmap,
+    purpose: isRecommendationRefreshWorkflowEntry(parent) ? parent.purpose : undefined,
+    sourceFingerprint: params.sourceFingerprint ?? parent.sourceFingerprint,
   }));
   return toJsonSafeObject({ task: response.task, entry });
 }
@@ -289,6 +298,8 @@ interface BuildEntryParams {
   planningType?: string;
   planningDepth?: string;
   includeRoadmap?: boolean;
+  purpose?: PlanningTaskWorkflowEntry['purpose'];
+  sourceFingerprint?: string;
 }
 
 function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
@@ -303,6 +314,8 @@ function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
     ...(params.planningType !== undefined && { planningType: params.planningType }),
     ...(params.planningDepth !== undefined && { planningDepth: params.planningDepth }),
     ...(params.includeRoadmap !== undefined && { includeRoadmap: params.includeRoadmap }),
+    ...(params.purpose !== undefined && { purpose: params.purpose }),
+    ...(params.sourceFingerprint !== undefined && { sourceFingerprint: params.sourceFingerprint }),
     createdAt: new Date().toISOString(),
   };
 }

@@ -8,6 +8,8 @@ import { createExtensionRecorder } from '../../../../packages/engine/src/extensi
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
+import { buildRecommendationSourceProjection, computeRecommendationSourceFingerprint } from '../recommendation-status.js';
+import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-recommendation-status-'));
@@ -115,6 +117,18 @@ describe('recommendation freshness status', () => {
       expect(JSON.stringify(status.staleReasons ?? [])).toBe('[]');
       expect(String(status.sourceFingerprint)).toMatch(/^[a-f0-9]{64}$/);
       expect(existsSync(join(cwd, '.backlog', 'recommendations.json'))).toBe(false);
+    });
+  });
+
+  it('ignores trace sidecars for closed backlog items in the open-backlog source fingerprint', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await writeBacklogItem(cwd, { id: 'item-closed', status: 'shipped', body: '# Closed\n\n## Claim\n\nDone.\n' });
+      const before = await computeRecommendationSourceFingerprint(cwd);
+      await writeTraceSidecar(cwd, { ...createTraceSidecar('item-closed'), buildRunIds: ['closed-run'], buildRuns: [{ runId: 'closed-run', sessionId: 'closed-session', status: 'running' }] });
+      const projection = await buildRecommendationSourceProjection(cwd);
+      expect((projection.traceSummaries as Array<{ itemId: string }>).map((summary) => summary.itemId)).not.toContain('item-closed');
+      expect(await computeRecommendationSourceFingerprint(cwd)).toBe(before);
     });
   });
 
