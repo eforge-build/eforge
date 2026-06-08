@@ -1,15 +1,13 @@
 import * as React from 'react';
-import { getBridge } from '@/bridge';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
-import type { Board as BoardData, BoardItem, RecommendationModel } from '@/types';
+import type { Board as BoardData, BoardItem, JsonObject, RecommendationModel } from '@/types';
 import { Board } from './backlog/board';
 import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
 import { PlanWithAiPanel } from './backlog/plan-with-ai-panel';
+import { usePlanningTaskWorkflows } from './backlog/use-planning-task-workflows';
 
-const bridge = getBridge();
 const GROUP_MODES: GroupMode[] = ['lane', 'epic', 'recommended'];
 const STATUS_FILTERS: StatusFilter[] = ['all', 'ready', 'blocked', 'review', 'closed'];
 
@@ -20,9 +18,9 @@ interface BacklogViewProps {
 }
 
 export function BacklogView({ board, recommendations, onRefresh }: BacklogViewProps) {
-  const toast = useToast();
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const workflows = usePlanningTaskWorkflows(onRefresh);
 
   const group = readEnum(router.query.get('group'), GROUP_MODES, 'lane');
   const filter = readEnum(router.query.get('filter'), STATUS_FILTERS, 'all');
@@ -44,28 +42,31 @@ export function BacklogView({ board, recommendations, onRefresh }: BacklogViewPr
     });
   };
 
-  const promote = async (selection: Record<string, unknown>, label: string) => {
-    try {
-      const result = await bridge.invokeAction<{ session?: string; sessionPlanPath?: string }>('promote-selection', { status: 'active', ...selection });
-      toast.push(`Promoted ${label} → ${result.sessionPlanPath ?? result.session ?? 'a session plan'}.`, 'success');
-      setSelected(new Set());
-      await onRefresh();
-    } catch (caught) {
-      toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
-    }
-  };
-
   const titles = React.useMemo(() => new Map((board.items ?? []).map((item) => [item.id, item.title])), [board.items]);
+  const readyById = React.useMemo(() => new Map((board.items ?? []).map((item) => [item.id, item.ready])), [board.items]);
   const selectedIds = Array.from(selected);
+  // AI promotion only uses the ready subset of the selection; blocked/closed/non-ready
+  // items are excluded and the action is disabled when no ready items remain.
+  const selectedReadyIds = React.useMemo(() => Array.from(selected).filter((id) => readyById.get(id) === true), [selected, readyById]);
   const recommendationRefs = React.useMemo(() => [
     ...(recommendations?.recommendedNextSequence ?? []).flatMap((entry) => entry.ref ? [entry.ref] : []),
     ...(recommendations?.safeParallelizableGroups ?? []).map((group) => group.ref),
   ], [recommendations]);
 
+  const startPlan = React.useCallback(async (input: JsonObject) => {
+    await workflows.start(input);
+  }, [workflows]);
+
+  const promoteSelectedReady = async () => {
+    if (selectedReadyIds.length === 0) return;
+    const task = await workflows.start({ itemIds: selectedReadyIds });
+    if (task) setSelected(new Set());
+  };
+
   return (
     <div className="grid gap-4">
-      <PlanWithAiPanel selectedItemIds={selectedIds} recommendationRefs={recommendationRefs} recommendations={recommendations} onRefresh={onRefresh} />
-      <RecommendationsPanel recommendations={recommendations} titles={titles} onPromote={promote} />
+      <PlanWithAiPanel workflows={workflows} />
+      <RecommendationsPanel recommendations={recommendations} titles={titles} onStartPlan={startPlan} busy={workflows.busy} />
       <Board
         board={board}
         query={query}
@@ -81,8 +82,8 @@ export function BacklogView({ board, recommendations, onRefresh }: BacklogViewPr
       />
       {selectedIds.length > 0 && (
         <div className="sticky bottom-4 z-20 mx-auto flex items-center gap-3 rounded-full border border-border bg-card px-4 py-2 shadow-lg">
-          <span className="text-sm text-muted-foreground">{selectedIds.length} selected</span>
-          <Button size="sm" onClick={() => void promote({ itemIds: selectedIds }, `${selectedIds.length} items`)}>Promote as one plan</Button>
+          <span className="text-sm text-muted-foreground">{selectedIds.length} selected{selectedReadyIds.length !== selectedIds.length ? ` · ${selectedReadyIds.length} ready` : ''}</span>
+          <Button size="sm" disabled={workflows.busy || selectedReadyIds.length === 0} onClick={() => void promoteSelectedReady()}>Promote to a build plan</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}

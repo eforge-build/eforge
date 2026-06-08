@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
-import { createSessionPlanningWorkflowAdapter } from '../../../packages/input/src/index.js';
+import { createSessionPlanningWorkflowAdapter, type PlanningDepth, type PlanningType } from '../../../packages/input/src/index.js';
 import {
   blockerRiskProjection,
   dependencyProjection,
@@ -22,14 +22,22 @@ import {
   summarizeRecommendations,
   writeRecommendations,
 } from './recommendations-store.js';
+import { updateSessionPlanMetadata } from './session-plan-metadata.js';
+import {
+  PLANNING_DEPTHS,
+  PLANNING_PROFILES,
+  PLANNING_TYPES,
+  type ApplyPlannerResultInput,
+  type BacklogRecommendationModel,
+  type PlannerContextInput,
+  type PlannerHandoffDraft,
+} from './schema.js';
 import type {
-  ApplyPlannerResultInput,
+  ApplyPlanningAgentTaskCreationDraftSelection,
   ApplyPlanningAgentTaskResultInput,
   ApplyPlanningAgentTaskResultOutput,
-  BacklogRecommendationModel,
-  PlannerContextInput,
-  PlannerHandoffDraft,
-} from './schema.js';
+  AppliedSessionPlanCreationDraft,
+} from './planning-agent-task-schemas.js';
 
 export async function preparePlannerContext(cwd: string, input: PlannerContextInput = {}) {
   const includeRoadmap = input.includeRoadmap ?? true;
@@ -103,7 +111,8 @@ export async function applyCompletedPlanningAgentTaskResult(
   if (input.applyRecommendations && !isRecord(recommendations)) throw new Error(`Planning task ${task.taskId} result does not include generated recommendations.`);
   const handoffDrafts = input.applyHandoffDrafts?.map((selection) => mergeHandoffSelection(resolveHandoffDraft(rawResult, selection.index), selection));
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
-  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts);
+  const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
+  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft);
 
   if (input.applyRecommendations) {
     const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel });
@@ -123,7 +132,74 @@ export async function applyCompletedPlanningAgentTaskResult(
     output.sessionPlanDrafts = await applySelectedSessionPlanSections(cwd, sessionPlanDrafts);
     output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
   }
+  if (creationDraft !== undefined) {
+    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft);
+  }
   return output;
+}
+
+interface SessionPlanCreationDraftShape {
+  session: string;
+  topic: string;
+  planningType: string;
+  planningDepth: string;
+  profile?: (typeof PLANNING_PROFILES)[number];
+  agentProfile?: string;
+  sections: Array<{ dimension: string; content: string }>;
+  skippedDimensions?: Array<{ dimension: string; reason: string }>;
+}
+
+interface ResolvedSessionPlanCreationDraft {
+  draft: SessionPlanCreationDraftShape;
+  session: string;
+  selection: ApplyPlanningAgentTaskCreationDraftSelection;
+  openQuestions?: string[];
+}
+
+function resolveSessionPlanCreationDraft(result: Record<string, unknown>, selection: ApplyPlanningAgentTaskCreationDraftSelection): ResolvedSessionPlanCreationDraft {
+  const draft = result.sessionPlanCreationDraft;
+  if (!isSessionPlanCreationDraft(draft)) throw new Error('Planning task result does not include a session-plan creation draft.');
+  if (!(PLANNING_TYPES as readonly string[]).includes(draft.planningType)) throw new Error(`Session-plan creation draft has an unsupported planning type "${draft.planningType}"; expected one of ${PLANNING_TYPES.join(', ')}.`);
+  if (!(PLANNING_DEPTHS as readonly string[]).includes(draft.planningDepth)) throw new Error(`Session-plan creation draft has an unsupported planning depth "${draft.planningDepth}"; expected one of ${PLANNING_DEPTHS.join(', ')}.`);
+  const session = (selection.session ?? draft.session).trim();
+  if (session.length === 0) throw new Error('Session-plan creation draft requires a non-empty target session id.');
+  const openQuestions = selection.openQuestions ?? (Array.isArray(result.assumptionsOpenQuestions) ? result.assumptionsOpenQuestions.filter((value): value is string => typeof value === 'string') : undefined);
+  return { draft, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
+}
+
+async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft): Promise<AppliedSessionPlanCreationDraft> {
+  const planning = createSessionPlanningWorkflowAdapter();
+  const { draft, session, selection } = resolved;
+  const planningType = draft.planningType as PlanningType;
+  const planningDepth = draft.planningDepth as PlanningDepth;
+  await planning.flat.create({ cwd, session, topic: draft.topic, planningType, planningDepth });
+  await planning.flat.selectDimensions({ cwd, session, planningType, planningDepth });
+  for (const section of draft.sections) {
+    await planning.flat.setSection({ cwd, session, dimension: section.dimension, content: section.content });
+  }
+  for (const skipped of draft.skippedDimensions ?? []) {
+    await planning.flat.skipDimension({ cwd, session, dimension: skipped.dimension, reason: skipped.reason });
+  }
+  await updateSessionPlanMetadata({
+    cwd,
+    session,
+    ...(selection.profile !== undefined && { profile: selection.profile }),
+    ...(selection.agentProfile !== undefined && { agentProfile: selection.agentProfile }),
+    ...(resolved.openQuestions !== undefined && { openQuestions: resolved.openQuestions }),
+  });
+  const readiness = await planning.flat.readiness({ cwd, session });
+  const relativePath = relative(cwd, planning.flat.resolvePath({ cwd, session })).replace(/\\/g, '/');
+  return { session, relativePath, readiness } as AppliedSessionPlanCreationDraft;
+}
+
+function isSessionPlanCreationDraft(value: unknown): value is SessionPlanCreationDraftShape {
+  if (!isRecord(value)) return false;
+  if (typeof value.session !== 'string' || typeof value.topic !== 'string') return false;
+  if (typeof value.planningType !== 'string' || typeof value.planningDepth !== 'string') return false;
+  if (value.profile !== undefined && !(PLANNING_PROFILES as readonly string[]).includes(value.profile as string)) return false;
+  if (value.agentProfile !== undefined && typeof value.agentProfile !== 'string') return false;
+  if (!Array.isArray(value.sections) || value.sections.length === 0) return false;
+  return value.sections.every((entry) => isRecord(entry) && typeof entry.dimension === 'string' && typeof entry.content === 'string');
 }
 
 function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): asserts task is PlanningAgentTaskRecordLike & { status: 'completed'; result: unknown } {
@@ -169,7 +245,12 @@ async function validatePlanningAgentTaskApplyTargets(
   cwd: string,
   handoffDrafts: PlannerHandoffDraft[] | undefined,
   sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
+  creationDraft: ResolvedSessionPlanCreationDraft | undefined,
 ): Promise<void> {
+  if (creationDraft !== undefined) {
+    const path = createSessionPlanningWorkflowAdapter().flat.resolvePath({ cwd, session: creationDraft.session });
+    if (existsSync(path)) throw new Error(`Session plan "${creationDraft.session}" already exists; choose a different target session id before applying a creation draft.`);
+  }
   await Promise.all([
     ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
       cwd,

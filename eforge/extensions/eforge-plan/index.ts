@@ -146,7 +146,6 @@ export default defineEforgeExtension((eforge) => {
     allowedActions: [
       'list-board',
       'render-board-markdown',
-      'promote-selection',
       'get-recommendations',
       'put-recommendations',
       'prepare-planner-context',
@@ -154,6 +153,9 @@ export default defineEforgeExtension((eforge) => {
       'start-planning-agent-task',
       'get-planning-agent-task',
       'cancel-planning-agent-task',
+      'list-planning-agent-tasks',
+      'retry-planning-agent-task',
+      'redraft-planning-agent-task',
       'apply-planning-agent-task-result',
       'list-planning-artifacts',
       'show-session-plan',

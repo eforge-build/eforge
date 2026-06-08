@@ -85,7 +85,14 @@ export const extensionAgentTaskVariants: EforgeEvent[] = [
     extensionName: 'planning-extension',
     status: 'running',
     message: 'Inspecting project context',
-    metadata: { progressMessage: 'Inspecting project context' },
+    metadata: {
+      progressMessage: 'Drafting section: scope',
+      sectionProgress: {
+        currentSection: 'scope',
+        coveredSections: ['summary'],
+        remainingSections: ['risks', 'verification'],
+      },
+    },
   },
   {
     type: 'extension:agent-task:complete',

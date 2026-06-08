@@ -54,6 +54,58 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('persists section progress reports to the record and daemon events', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-progress-'));
+    const progress = { currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks', 'verification'], message: 'Drafting scope' };
+    const harness = new ProgressSubmitHarness(submittedResult, progress);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['planDrafts'] } })).json() as { task: { taskId: string } };
+      const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
+      expect(completed.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks', 'verification'] });
+      const events = taskEvents(db, startBody.task.taskId);
+      const progressEvents = events.filter((event) => event.type === 'extension:agent-task:progress');
+      const sectionEvent = progressEvents.find((event) => event.metadata?.sectionProgress?.currentSection === 'scope');
+      expect(sectionEvent).toBeDefined();
+      expect(sectionEvent?.metadata.sectionProgress).toEqual({ currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks', 'verification'] });
+      expect(sectionEvent?.status).toBe('running');
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('completes a task with a ready session-plan creation draft', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-creation-'));
+    const creationResult = {
+      summary: 'Created a session-plan draft.',
+      assumptionsOpenQuestions: [],
+      decision: 'ready',
+      sessionPlanCreationDraft: {
+        session: 'demo-session',
+        topic: 'Build plans',
+        planningType: 'feature',
+        planningDepth: 'focused',
+        sections: [{ dimension: 'scope', content: 'Generated scope.' }],
+      },
+    };
+    const harness = new SubmitHarness(creationResult);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Build plans', requestedOutputSections: ['sessionPlanCreationDraft'] } })).json() as { task: { taskId: string } };
+      const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
+      expect(completed.result).toEqual(creationResult);
+      expect(completed.metadata.outputSectionCount).toBe(1);
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('writes a running record before queueing the harness call', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-service-'));
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
@@ -147,6 +199,30 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('fails a task whose harness never submits with the sanitized non-submission error', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-no-submit-'));
+    const harness = new NoSubmitHarness();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Never submit' } })).json() as { task: { taskId: string } };
+      const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
+      expect(failed.errorMessage).toContain('did not call submit_eforge_plan_planning_result');
+      expect(failed.errorMessage.length).toBeLessThanOrEqual(1000);
+      // Sanitized: no ASCII control characters survive into the persisted error message.
+      // eslint-disable-next-line no-control-regex
+      expect(/[\u0000-\u001f\u007f]/.test(failed.errorMessage)).toBe(false);
+      expect(failed.result).toBeUndefined();
+      const events = taskEvents(db, startBody.task.taskId);
+      const failedEvent = events.find((event) => event.type === 'extension:agent-task:failed');
+      expect(failedEvent).toMatchObject({ extensionName: 'daemon-route', status: 'failed' });
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('rejects unsafe requests with expected status codes', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-security-'));
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
@@ -232,12 +308,49 @@ class SubmitHarness implements AgentHarness {
   }
 }
 
+class ProgressSubmitHarness implements AgentHarness {
+  readonly calls: AgentRunOptions[] = [];
+  constructor(private readonly submission: unknown, private readonly progress: unknown) {}
+
+  effectiveCustomToolName(name: string): string { return name; }
+
+  async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    this.calls.push(options);
+    const agentId = 'agent-progress';
+    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    const progressTool = options.customTools?.find((candidate) => candidate.name === 'report_eforge_plan_planning_progress');
+    if (progressTool) {
+      yield { type: 'agent:tool_use', agent, planId, agentId, tool: progressTool.name, toolUseId: 'tool-progress', input: this.progress, timestamp: new Date().toISOString() };
+      const output = await progressTool.handler(this.progress);
+      yield { type: 'agent:tool_result', agent, planId, agentId, tool: progressTool.name, toolUseId: 'tool-progress', output, timestamp: new Date().toISOString() };
+    }
+    const submitTool = options.customTools?.find((candidate) => candidate.name === 'submit_eforge_plan_planning_result');
+    if (submitTool) {
+      yield { type: 'agent:tool_use', agent, planId, agentId, tool: submitTool.name, toolUseId: 'tool-1', input: this.submission, timestamp: new Date().toISOString() };
+      const output = await submitTool.handler(this.submission);
+      yield { type: 'agent:tool_result', agent, planId, agentId, tool: submitTool.name, toolUseId: 'tool-1', output, timestamp: new Date().toISOString() };
+    }
+    yield { type: 'agent:result', agent, planId, agentId, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} }, timestamp: new Date().toISOString() };
+    yield { type: 'agent:stop', agent, planId, agentId, timestamp: new Date().toISOString() };
+  }
+}
+
 class FailingHarness implements AgentHarness {
   constructor(private readonly error: Error) {}
   effectiveCustomToolName(name: string): string { return name; }
   async *run(_options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     yield { type: 'agent:start', agent, planId, agentId: 'agent-fail', model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
     throw this.error;
+  }
+}
+
+class NoSubmitHarness implements AgentHarness {
+  effectiveCustomToolName(name: string): string { return name; }
+  async *run(_options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+    const agentId = 'agent-no-submit';
+    yield { type: 'agent:start', agent, planId, agentId, model: 'stub', harness: 'claude-sdk', harnessSource: 'tier', tier: 'planning', tierSource: 'tier', timestamp: new Date().toISOString() };
+    yield { type: 'agent:result', agent, planId, agentId, result: { durationMs: 1, durationApiMs: 1, numTurns: 1, totalCostUsd: 0, usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 }, modelUsage: {} }, timestamp: new Date().toISOString() };
+    yield { type: 'agent:stop', agent, planId, agentId, timestamp: new Date().toISOString() };
   }
 }
 

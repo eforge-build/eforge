@@ -3,7 +3,7 @@ import { loadSessionPlan, writeSessionPlan, type PlanningProfile, type SessionPl
 export interface SessionPlanMetadataUpdate {
   cwd: string;
   session: string;
-  profile?: PlanningProfile;
+  profile?: PlanningProfile | null;
   agentProfile?: string | null;
   openQuestions?: string[];
 }

@@ -62,21 +62,47 @@ export interface RecommendationModel {
 }
 
 export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type PlanningTaskDecision = 'ready' | 'needs-input';
 export interface PlanningTaskPlanDraft { title: string; body: string; }
 export interface PlanningTaskPlaybookDraft { name: string; body: string; }
 export interface PlanningTaskSessionPlanSection { dimension: string; content: string; }
-export interface PlanningTaskSessionPlanPatch { sections: PlanningTaskSessionPlanSection[]; skippedDimensions?: Array<{ dimension: string; reason: string }>; }
+export interface PlanningTaskSkippedDimension { dimension: string; reason: string; }
+export interface PlanningTaskSessionPlanPatch { sections: PlanningTaskSessionPlanSection[]; skippedDimensions?: PlanningTaskSkippedDimension[]; }
+export interface PlanningTaskSessionPlanCreationDraft {
+  session: string;
+  topic: string;
+  planningType: string;
+  planningDepth: string;
+  profile?: string;
+  agentProfile?: string;
+  sections: PlanningTaskSessionPlanSection[];
+  skippedDimensions?: PlanningTaskSkippedDimension[];
+}
+export interface PlanningTaskClarificationQuestion { question: string; why?: string; options?: string[]; }
 export interface PlanningTaskHandoffDraft { selection: JsonObject; session?: string; title?: string; profile?: string; }
+export interface PlanningTaskSectionProgress { currentSection?: string; coveredSections?: string[]; remainingSections?: string[]; }
 export interface PlanningTaskResult {
   summary: string;
   assumptionsOpenQuestions: string[];
   nextSteps?: string[];
+  decision?: PlanningTaskDecision;
+  rationale?: string;
+  clarificationQuestions?: PlanningTaskClarificationQuestion[];
   recommendations?: RecommendationModel;
   handoffDraft?: PlanningTaskHandoffDraft;
   handoffDrafts?: PlanningTaskHandoffDraft[];
   planDrafts?: PlanningTaskPlanDraft[];
   playbookDraft?: PlanningTaskPlaybookDraft;
   sessionPlanPatch?: PlanningTaskSessionPlanPatch;
+  sessionPlanCreationDraft?: PlanningTaskSessionPlanCreationDraft;
+}
+export interface PlanningAgentTaskMetadata {
+  label?: string;
+  summary?: string;
+  progressMessage?: string;
+  outputSectionCount?: number;
+  warningCount?: number;
+  sectionProgress?: PlanningTaskSectionProgress;
 }
 export interface PlanningAgentTaskRecord {
   taskId: string;
@@ -89,10 +115,37 @@ export interface PlanningAgentTaskRecord {
   cancelledAt?: string;
   errorCode?: string;
   errorMessage?: string;
-  metadata?: { label?: string; summary?: string; progressMessage?: string; outputSectionCount?: number; warningCount?: number };
+  metadata?: PlanningAgentTaskMetadata;
   result?: PlanningTaskResult;
 }
 export interface PlanningAgentTaskResponse { task: PlanningAgentTaskRecord; }
+
+// Durable planning task workflow projections (extension-owned index joined with daemon task records).
+export interface PlanningTaskWorkflowSelection { itemIds?: string[]; epicId?: string; recommendationRef?: string; }
+export interface PlanningTaskWorkflowEntry {
+  taskId: string;
+  parentTaskId?: string;
+  originalRequest: string;
+  derivedRequest: string;
+  selection: PlanningTaskWorkflowSelection;
+  requestedOutputSections: string[];
+  session?: string;
+  planningType?: string;
+  planningDepth?: string;
+  includeRoadmap?: boolean;
+  createdAt: string;
+}
+export interface PlanningAgentTaskListItem {
+  entry: PlanningTaskWorkflowEntry;
+  available: boolean;
+  status?: AgentTaskStatus;
+  task?: PlanningAgentTaskRecord;
+  staleReason?: string;
+}
+export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; }
+export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry; }
+
+export interface AppliedSessionPlanCreationDraft { session: string; relativePath: string; readiness: Readiness; }
 export interface ApplyPlanningTaskResponse {
   schemaVersion: 1;
   taskId: string;
@@ -100,6 +153,7 @@ export interface ApplyPlanningTaskResponse {
   recommendations?: { path?: string; recommendationSummary?: unknown; recommendations?: RecommendationModel };
   handoffs?: unknown[];
   sessionPlanDrafts?: Array<{ session: string; sections: string[] }>;
+  sessionPlanCreationDraft?: AppliedSessionPlanCreationDraft;
 }
 
 export interface SkippedDimension { name: string; reason: string; }

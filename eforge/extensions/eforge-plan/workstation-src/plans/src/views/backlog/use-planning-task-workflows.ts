@@ -1,0 +1,173 @@
+import * as React from 'react';
+import { getBridge } from '@/bridge';
+import { useToast } from '@/components/toast';
+import type {
+  ApplyPlanningTaskResponse,
+  JsonObject,
+  ListPlanningAgentTasksResponse,
+  PlanningAgentTaskListItem,
+  PlanningAgentTaskRecord,
+  PlanningAgentTaskResponse,
+  PlanningAgentTaskWorkflowStartResponse,
+} from '@/types';
+
+const bridge = getBridge();
+const POLL_MS = 1600;
+
+export interface RedraftInput { answers?: string[]; steering?: string; }
+
+export interface PlanningTaskWorkflowsApi {
+  items: PlanningAgentTaskListItem[];
+  loading: boolean;
+  busy: boolean;
+  reload: () => Promise<void>;
+  start: (input: JsonObject) => Promise<PlanningAgentTaskRecord | null>;
+  retry: (taskId: string) => Promise<void>;
+  redraft: (taskId: string, input: RedraftInput) => Promise<void>;
+  cancel: (taskId: string) => Promise<void>;
+  apply: (taskId: string, input: JsonObject) => Promise<void>;
+}
+
+function isRunning(item: PlanningAgentTaskListItem): boolean {
+  const status = item.task?.status ?? item.status;
+  return status === 'queued' || status === 'running';
+}
+
+/**
+ * Shared workflow hook for the durable planning task monitor. Task discovery is
+ * extension-owned: the hook always lists tasks through `list-planning-agent-tasks`
+ * on mount and after every mutation, caches the current render in React state, and
+ * polls running tasks through `get-planning-agent-task`.
+ */
+export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): PlanningTaskWorkflowsApi {
+  const toast = useToast();
+  const [items, setItems] = React.useState<PlanningAgentTaskListItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+
+  const reportError = React.useCallback((caught: unknown) => {
+    toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
+  }, [toast]);
+
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await bridge.invokeAction<ListPlanningAgentTasksResponse>('list-planning-agent-tasks', {});
+      setItems(response.tasks ?? []);
+    } catch (caught) {
+      reportError(caught);
+    } finally {
+      setLoading(false);
+    }
+  }, [reportError]);
+
+  React.useEffect(() => { void reload(); }, [reload]);
+
+  const itemsRef = React.useRef(items);
+  itemsRef.current = items;
+  const hasRunning = items.some(isRunning);
+
+  // Tracks the last poll error message reported per task so a persistently
+  // failing/stale task does not re-toast the same error every poll interval.
+  // A successful poll clears the entry so a later error notifies once again.
+  const pollErrorRef = React.useRef<Map<string, string>>(new Map());
+
+  React.useEffect(() => {
+    if (!hasRunning) return undefined;
+    let cancelled = false;
+    const poll = () => {
+      for (const item of itemsRef.current.filter(isRunning)) {
+        void bridge.invokeAction<PlanningAgentTaskResponse>('get-planning-agent-task', { taskId: item.entry.taskId }).then((response) => {
+          if (cancelled) return;
+          pollErrorRef.current.delete(item.entry.taskId);
+          setItems((prev) => prev.map((existing) => existing.entry.taskId === item.entry.taskId
+            ? { ...existing, task: response.task, status: response.task.status, available: true }
+            : existing));
+        }).catch((caught) => {
+          if (cancelled) return;
+          const message = caught instanceof Error ? caught.message : String(caught);
+          if (pollErrorRef.current.get(item.entry.taskId) === message) return;
+          pollErrorRef.current.set(item.entry.taskId, message);
+          reportError(caught);
+        });
+      }
+    };
+    const timer = window.setInterval(poll, POLL_MS);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [hasRunning, reportError]);
+
+  const start = React.useCallback(async (input: JsonObject): Promise<PlanningAgentTaskRecord | null> => {
+    setBusy(true);
+    try {
+      const response = await bridge.invokeAction<PlanningAgentTaskResponse>('start-planning-agent-task', input);
+      toast.push(`Started planning task ${response.task.taskId}.`, 'success');
+      await reload();
+      return response.task;
+    } catch (caught) {
+      reportError(caught);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, [reload, reportError, toast]);
+
+  const retry = React.useCallback(async (taskId: string) => {
+    setBusy(true);
+    try {
+      const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('retry-planning-agent-task', { taskId });
+      toast.push(`Retrying as ${response.task.taskId}.`, 'success');
+      await reload();
+    } catch (caught) {
+      reportError(caught);
+    } finally {
+      setBusy(false);
+    }
+  }, [reload, reportError, toast]);
+
+  const redraft = React.useCallback(async (taskId: string, input: RedraftInput) => {
+    setBusy(true);
+    try {
+      const payload: JsonObject = { taskId };
+      if (input.answers && input.answers.length > 0) payload.answers = input.answers;
+      if (input.steering && input.steering.trim().length > 0) payload.steering = input.steering.trim();
+      const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('redraft-planning-agent-task', payload);
+      toast.push(`Redrafting as ${response.task.taskId}.`, 'success');
+      await reload();
+    } catch (caught) {
+      reportError(caught);
+    } finally {
+      setBusy(false);
+    }
+  }, [reload, reportError, toast]);
+
+  const cancel = React.useCallback(async (taskId: string) => {
+    setBusy(true);
+    try {
+      const response = await bridge.invokeAction<PlanningAgentTaskResponse>('cancel-planning-agent-task', { taskId, reason: 'user requested cancellation' });
+      toast.push(`Cancelled ${response.task.taskId}.`, 'success');
+      setItems((prev) => prev.map((existing) => existing.entry.taskId === taskId
+        ? { ...existing, task: response.task, status: response.task.status }
+        : existing));
+    } catch (caught) {
+      reportError(caught);
+    } finally {
+      setBusy(false);
+    }
+  }, [reportError, toast]);
+
+  const apply = React.useCallback(async (taskId: string, input: JsonObject) => {
+    setBusy(true);
+    try {
+      const response = await bridge.invokeAction<ApplyPlanningTaskResponse>('apply-planning-agent-task-result', { taskId, ...input });
+      toast.push(`Applied generated output from ${response.taskId}.`, 'success');
+      await onRefresh();
+      await reload();
+    } catch (caught) {
+      reportError(caught);
+    } finally {
+      setBusy(false);
+    }
+  }, [onRefresh, reload, reportError, toast]);
+
+  return { items, loading, busy, reload, start, retry, redraft, cancel, apply };
+}

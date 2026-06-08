@@ -31,6 +31,9 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
   Type.Literal('planDrafts'),
   Type.Literal('playbookDraft'),
   Type.Literal('sessionPlanPatch'),
+  // --- eforge:region session-plan-creation-draft ---
+  Type.Literal('sessionPlanCreationDraft'),
+  // --- eforge:endregion session-plan-creation-draft ---
 ]);
 
 export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
@@ -67,6 +70,68 @@ export const EforgePlanPlanningSessionPlanPatchSchema = Type.Object({
     reason: Type.String(),
   }, { additionalProperties: false }))),
 }, { additionalProperties: false });
+
+// --- eforge:region session-plan-creation-draft ---
+// Constrain to the same literals the eforge-plan apply path accepts
+// (`PLANNING_TYPES`/`PLANNING_DEPTHS`) so the daemon never persists a "ready" task
+// whose planningType/planningDepth the workstation previews but cannot apply.
+export const EforgePlanPlanningTypeSchema = Type.Union([
+  Type.Literal('bugfix'),
+  Type.Literal('feature'),
+  Type.Literal('refactor'),
+  Type.Literal('architecture'),
+  Type.Literal('docs'),
+  Type.Literal('maintenance'),
+  Type.Literal('unknown'),
+]);
+
+export const EforgePlanPlanningDepthSchema = Type.Union([
+  Type.Literal('quick'),
+  Type.Literal('focused'),
+  Type.Literal('deep'),
+]);
+
+export const EforgePlanPlanningSessionPlanCreationDraftSchema = Type.Object({
+  session: Type.String({ minLength: 1, pattern: '\\S' }),
+  topic: Type.String({ minLength: 1, pattern: '\\S' }),
+  planningType: EforgePlanPlanningTypeSchema,
+  planningDepth: EforgePlanPlanningDepthSchema,
+  profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
+  agentProfile: Type.Optional(Type.String()),
+  sections: Type.Array(Type.Object({
+    dimension: Type.String(),
+    content: Type.String(),
+  }, { additionalProperties: false }), { minItems: 1 }),
+  skippedDimensions: Type.Optional(Type.Array(Type.Object({
+    dimension: Type.String(),
+    reason: Type.String(),
+  }, { additionalProperties: false }))),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningClarificationQuestionSchema = Type.Object({
+  question: Type.String({ minLength: 1, pattern: '\\S' }),
+  why: Type.Optional(Type.String()),
+  options: Type.Optional(Type.Array(Type.String())),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningDecisionSchema = Type.Union([
+  Type.Literal('ready'),
+  Type.Literal('needs-input'),
+]);
+
+// Bounds mirror the daemon section-progress sanitizer
+// (`sanitizeEventMessage` caps strings at 500 chars; `MAX_SECTION_PROGRESS_ITEMS`
+// caps lists at 50 entries) so client/event validation rejects oversized payloads.
+export const SECTION_PROGRESS_MAX_STRING_LENGTH = 500 as const;
+export const SECTION_PROGRESS_MAX_ITEMS = 50 as const;
+const EforgePlanPlanningSectionNameSchema = Type.String({ maxLength: SECTION_PROGRESS_MAX_STRING_LENGTH });
+
+export const EforgePlanPlanningSectionProgressSchema = Type.Object({
+  currentSection: Type.Optional(EforgePlanPlanningSectionNameSchema),
+  coveredSections: Type.Optional(Type.Array(EforgePlanPlanningSectionNameSchema, { maxItems: SECTION_PROGRESS_MAX_ITEMS })),
+  remainingSections: Type.Optional(Type.Array(EforgePlanPlanningSectionNameSchema, { maxItems: SECTION_PROGRESS_MAX_ITEMS })),
+}, { additionalProperties: false });
+// --- eforge:endregion session-plan-creation-draft ---
 
 export const EforgePlanPlanningRecommendationItemRefSchema = Type.Object({
   ref: Type.Optional(Type.String()),
@@ -110,13 +175,26 @@ export const EforgePlanPlanningHandoffDraftSchema = Type.Object({
   profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
 }, { additionalProperties: false });
 
-const eforgePlanPlanningDraftResultBaseFields = {
+// Common, non-output-bearing fields shared by every result variant, including
+// needs-input. These never count as output sections.
+const eforgePlanPlanningDraftResultCommonFields = {
   summary: Type.String(),
   assumptionsOpenQuestions: Type.Array(Type.String()),
   nextSteps: Type.Optional(Type.Array(Type.String())),
+} as const;
+
+// Optional output-bearing fields. These must NOT appear on the needs-input
+// variant so the ready-vs-needs-input split stays clean and output counting
+// cannot double-count a needs-input decision plus stray output sections.
+const eforgePlanPlanningDraftResultOutputFields = {
   recommendations: Type.Optional(EforgePlanPlanningRecommendationsSchema),
   handoffDraft: Type.Optional(EforgePlanPlanningHandoffDraftSchema),
   handoffDrafts: Type.Optional(Type.Array(EforgePlanPlanningHandoffDraftSchema, { minItems: 1 })),
+} as const;
+
+const eforgePlanPlanningDraftResultBaseFields = {
+  ...eforgePlanPlanningDraftResultCommonFields,
+  ...eforgePlanPlanningDraftResultOutputFields,
 } as const;
 
 export const EforgePlanPlanningDraftResultBaseSchema = Type.Object(eforgePlanPlanningDraftResultBaseFields, { additionalProperties: false });
@@ -161,6 +239,22 @@ export const EforgePlanPlanningDraftResultSchema = Type.Union([
     playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
     sessionPlanPatch: EforgePlanPlanningSessionPlanPatchSchema,
   }, { additionalProperties: false }),
+  // --- eforge:region session-plan-creation-draft ---
+  Type.Object({
+    ...eforgePlanPlanningDraftResultBaseFields,
+    decision: Type.Literal('ready'),
+    sessionPlanCreationDraft: EforgePlanPlanningSessionPlanCreationDraftSchema,
+    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+  }, { additionalProperties: false }),
+  Type.Object({
+    ...eforgePlanPlanningDraftResultCommonFields,
+    decision: Type.Literal('needs-input'),
+    clarificationQuestions: Type.Array(EforgePlanPlanningClarificationQuestionSchema, { minItems: 1 }),
+    rationale: Type.String({ minLength: 1, pattern: '\\S' }),
+  }, { additionalProperties: false }),
+  // --- eforge:endregion session-plan-creation-draft ---
 ]);
 
 export const ExtensionAgentTaskStartRequestSchema = Type.Object({
@@ -183,6 +277,9 @@ export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   progressMessage: Type.Optional(Type.String()),
   outputSectionCount: Type.Optional(Type.Integer({ minimum: 0 })),
   warningCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  // --- eforge:region session-plan-creation-draft ---
+  sectionProgress: Type.Optional(EforgePlanPlanningSectionProgressSchema),
+  // --- eforge:endregion session-plan-creation-draft ---
 }, { additionalProperties: false });
 
 const extensionAgentTaskRecordBaseFields = {
@@ -248,6 +345,10 @@ export type EforgePlanPlanningDraftInput = Static<typeof EforgePlanPlanningDraft
 export type EforgePlanPlanningPlanDraft = Static<typeof EforgePlanPlanningPlanDraftSchema>;
 export type EforgePlanPlanningPlaybookDraft = Static<typeof EforgePlanPlanningPlaybookDraftSchema>;
 export type EforgePlanPlanningSessionPlanPatch = Static<typeof EforgePlanPlanningSessionPlanPatchSchema>;
+export type EforgePlanPlanningSessionPlanCreationDraft = Static<typeof EforgePlanPlanningSessionPlanCreationDraftSchema>;
+export type EforgePlanPlanningClarificationQuestion = Static<typeof EforgePlanPlanningClarificationQuestionSchema>;
+export type EforgePlanPlanningDecision = Static<typeof EforgePlanPlanningDecisionSchema>;
+export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanningSectionProgressSchema>;
 export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
 export type EforgePlanPlanningHandoffDraft = Static<typeof EforgePlanPlanningHandoffDraftSchema>;
 export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraftResultSchema>;
@@ -261,7 +362,15 @@ export type ExtensionAgentTaskGetResponse = Static<typeof ExtensionAgentTaskGetR
 export type ExtensionAgentTaskCancelResponse = Static<typeof ExtensionAgentTaskCancelResponseSchema>;
 
 export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlanningDraftResult): boolean {
-  return value.recommendations !== undefined || value.handoffDraft !== undefined || (value.handoffDrafts?.length ?? 0) > 0 || (value.planDrafts?.length ?? 0) > 0 || value.playbookDraft !== undefined || value.sessionPlanPatch !== undefined;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.decision === 'ready' && candidate.sessionPlanCreationDraft !== undefined) return true;
+  if (candidate.decision === 'needs-input' && Array.isArray(candidate.clarificationQuestions) && candidate.clarificationQuestions.length > 0) return true;
+  return candidate.recommendations !== undefined
+    || candidate.handoffDraft !== undefined
+    || (Array.isArray(candidate.handoffDrafts) && candidate.handoffDrafts.length > 0)
+    || (Array.isArray(candidate.planDrafts) && candidate.planDrafts.length > 0)
+    || candidate.playbookDraft !== undefined
+    || candidate.sessionPlanPatch !== undefined;
 }
 
 export function safeParseEforgePlanPlanningDraftResult(value: unknown): SafeParseResult<EforgePlanPlanningDraftResult> {

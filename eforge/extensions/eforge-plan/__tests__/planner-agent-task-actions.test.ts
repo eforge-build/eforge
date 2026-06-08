@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -9,7 +9,8 @@ import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../.
 import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '../../../../packages/client/src/extension-agent-tasks.js';
 import eforgePlanExtension from '../index.js';
 import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
-import { createEmptyRecommendationModel, readRecommendations } from '../recommendations-store.js';
+import { createEmptyRecommendationModel, readRecommendations, writeRecommendations } from '../recommendations-store.js';
+import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-agent-task-'));
@@ -48,6 +49,25 @@ function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): Exten
       sessionPlanPatch: { sections: [{ dimension: 'scope', content: 'Generated scope.' }] },
     },
     ...overrides,
+  });
+}
+
+function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
+  return parseExtensionAgentTaskRecord({
+    taskId,
+    kind: 'eforge-plan.planning-draft',
+    status: 'completed',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    completedAt: '2026-01-01T00:00:01.000Z',
+    result: {
+      summary: 'Need more detail before drafting.',
+      assumptionsOpenQuestions: ['Assumes REST transport.'],
+      decision: 'needs-input',
+      clarificationQuestions: [{ question: 'What is the target API surface?' }],
+      rationale: 'Scope is ambiguous.',
+    },
   });
 }
 
@@ -231,6 +251,494 @@ describe('planning agent task actions', () => {
         });
         expect(result.kind).toBe('handler-error');
       }
+    });
+  });
+
+  it('records a durable workflow index entry when starting from selected items without a user goal', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { itemIds: ['item-one'], includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) {
+            expect(typeof request.input.topic).toBe('string');
+            expect(String(request.input.topic)).toContain('Item One');
+            expect(request.input.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+            return { task: runningTask('task-derived') };
+          },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      // Inspect the on-disk index directly (not through the resolver the implementation
+      // uses) to prove the entry is written to the required project-local extension
+      // storage path rather than wherever the shared resolver happens to point.
+      const indexPath = join(cwd, '.eforge', 'storage', 'extensions', 'eforge-plan', 'planning-tasks', 'index.json');
+      const rawIndex = JSON.parse(await readFile(indexPath, 'utf-8')) as { entries: Array<Record<string, unknown>> };
+      expect(rawIndex.entries).toHaveLength(1);
+      expect(rawIndex.entries[0]).toMatchObject({
+        taskId: 'task-derived',
+        selection: { itemIds: ['item-one'] },
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+        originalRequest: '',
+      });
+      const index = await readPlanningTaskWorkflowIndex(cwd);
+      expect(index.entries).toHaveLength(1);
+      const entry = index.entries[0]!;
+      expect(entry.taskId).toBe('task-derived');
+      expect(entry.selection.itemIds).toEqual(['item-one']);
+      expect(entry.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+      expect(entry.derivedRequest).toContain('Item One');
+      expect(entry.originalRequest).toBe('');
+      expect(typeof entry.createdAt).toBe('string');
+      expect(entry.createdAt.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('derives a goal from a recommendation ref and records its selection when no user goal is supplied', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await writeRecommendations(cwd, { ...createEmptyRecommendationModel(), recommendedNextSequence: [{ ref: 'next-one', itemId: 'item-one', rationale: 'Best next.' }] });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { recommendationRef: 'next-one', includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) {
+            expect(String(request.input.topic)).toContain('recommendation next-one');
+            expect(request.input.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+            const source = JSON.parse(String(request.input.sourceText));
+            expect(source.context.selection).toMatchObject({ kind: 'recommendationRef', recommendationRef: 'next-one' });
+            return { task: runningTask('task-rec') };
+          },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      const entry = (await readPlanningTaskWorkflowIndex(cwd)).entries[0]!;
+      expect(entry.taskId).toBe('task-rec');
+      expect(entry.selection.recommendationRef).toBe('next-one');
+      expect(entry.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+      expect(entry.originalRequest).toBe('');
+      expect(entry.derivedRequest).toContain('recommendation next-one');
+    });
+  });
+
+  it('derives a goal from an epic id and records its selection when no user goal is supplied', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n\n## Goal\n\nDo epic.\n' });
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', epic: 'epic-one', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { epicId: 'epic-one', includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) {
+            expect(String(request.input.topic)).toContain('epic epic-one');
+            expect(request.input.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+            const source = JSON.parse(String(request.input.sourceText));
+            expect(source.context.selection).toMatchObject({ kind: 'epicId' });
+            return { task: runningTask('task-epic') };
+          },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      const entry = (await readPlanningTaskWorkflowIndex(cwd)).entries[0]!;
+      expect(entry.taskId).toBe('task-epic');
+      expect(entry.selection.epicId).toBe('epic-one');
+      expect(entry.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+      expect(entry.originalRequest).toBe('');
+      expect(entry.derivedRequest).toContain('epic epic-one');
+    });
+  });
+
+  it('lists indexed running, completed, failed, cancelled, and missing daemon task records without a caller-supplied task id', async () => {
+    await withTempProject(async (cwd) => {
+      const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-running', createdAt: '2026-01-01T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-complete', createdAt: '2026-01-02T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-failed', createdAt: '2026-01-03T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-cancelled', createdAt: '2026-01-04T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-missing', createdAt: '2026-01-05T00:00:00.000Z', ...base });
+      const records: Record<string, ExtensionAgentTaskRecord> = {
+        'task-running': runningTask('task-running'),
+        'task-complete': completedTask(),
+        'task-failed': { ...runningTask('task-failed'), status: 'failed', completedAt: '2026-01-03T00:00:01.000Z', errorCode: 'failed', errorMessage: 'boom' } as ExtensionAgentTaskRecord,
+        'task-cancelled': { ...runningTask('task-cancelled'), status: 'cancelled', cancelledAt: '2026-01-04T00:00:01.000Z' } as ExtensionAgentTaskRecord,
+      };
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:list-planning-agent-tasks',
+        input: {},
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get(taskId: string) {
+            const record = records[taskId];
+            if (record === undefined) throw new Error(`No such task ${taskId}`);
+            return { task: record };
+          },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      const tasks = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      expect(tasks.map((task) => (task.entry as { taskId: string }).taskId)).toEqual(['task-missing', 'task-cancelled', 'task-failed', 'task-complete', 'task-running']);
+      const byId = new Map(tasks.map((task) => [(task.entry as { taskId: string }).taskId, task]));
+      expect(byId.get('task-running')).toMatchObject({ available: true, status: 'running' });
+      expect(byId.get('task-complete')).toMatchObject({ available: true, status: 'completed' });
+      expect(byId.get('task-failed')).toMatchObject({ available: true, status: 'failed' });
+      expect(byId.get('task-cancelled')).toMatchObject({ available: true, status: 'cancelled' });
+      expect(byId.get('task-missing')).toMatchObject({ available: false });
+      expect(typeof (byId.get('task-missing') as { staleReason?: unknown }).staleReason).toBe('string');
+    });
+  });
+
+  it.each([
+    { includeRoadmap: false },
+    { includeRoadmap: true },
+  ])('retries a planning task preserving its selection, roadmap flag (%o), session, planning dimensions, and requested output sections', async ({ includeRoadmap }) => {
+    await withTempProject(async (cwd) => {
+      await mkdir(join(cwd, 'docs'), { recursive: true });
+      await writeFile(join(cwd, 'docs', 'roadmap.md'), '# Roadmap\n\n## Planning\n\nShip planner retries.\n');
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-original',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: 'Original goal',
+        derivedRequest: 'Draft a session plan for Item One.',
+        selection: { itemIds: ['item-one'] },
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+        session: 'session-x',
+        planningType: 'feature',
+        planningDepth: 'deep',
+        includeRoadmap,
+      });
+      let started: { kind: string; input: Record<string, unknown> } | undefined;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:retry-planning-agent-task',
+        input: { taskId: 'task-original' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) { started = request as { kind: string; input: Record<string, unknown> }; return { task: runningTask('task-retry') }; },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      expect(started?.input).toMatchObject({ topic: 'Draft a session plan for Item One.', session: 'session-x', planningType: 'feature', planningDepth: 'deep', requestedOutputSections: ['sessionPlanCreationDraft'] });
+      // Parse the serialized planner context to prove the preserved roadmap flag is honored:
+      // a regression that ignored includeRoadmap would surface roadmap evidence in both cases.
+      const source = JSON.parse(String(started?.input.sourceText));
+      expect(source.context.roadmapEvidence.exists).toBe(includeRoadmap);
+      if (includeRoadmap) {
+        expect(source.context.roadmapEvidence.headings).toContain('Roadmap');
+      } else {
+        expect(source.context.roadmapEvidence).toMatchObject({ path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] });
+      }
+      expect((result.output as { entry: { parentTaskId?: string; selection: { itemIds?: string[] } } }).entry).toMatchObject({ parentTaskId: 'task-original', selection: { itemIds: ['item-one'] } });
+      const index = await readPlanningTaskWorkflowIndex(cwd);
+      expect(index.entries.map((entry) => entry.taskId).sort()).toEqual(['task-original', 'task-retry']);
+    });
+  });
+
+  it('retries from the preserved workflow entry without consulting the daemon parent status (status validation out of scope)', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-original',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: 'Original goal',
+        derivedRequest: 'Draft a session plan for Item One.',
+        selection: { itemIds: ['item-one'] },
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+      });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:retry-planning-agent-task',
+        input: { taskId: 'task-original' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { return { task: runningTask('task-retry') }; },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+    });
+  });
+
+  it('redrafts from a needs-input parent including the original request, prior summary or questions, and user answers and steering', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-needs-input',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: 'Plan the auth refactor',
+        derivedRequest: 'Draft a session plan for Item One.',
+        selection: { itemIds: ['item-one'] },
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+      });
+      let started: { input: Record<string, unknown> } | undefined;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:redraft-planning-agent-task',
+        input: { taskId: 'task-needs-input', answers: ['Use REST endpoints'], steering: 'Focus on the backend first' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) { started = request as { input: Record<string, unknown> }; return { task: runningTask('task-redraft') }; },
+          async get(taskId: string) { return { task: needsInputTask(taskId) }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      const sourceText = String(started?.input.sourceText);
+      expect(sourceText).toContain('Plan the auth refactor');
+      expect(sourceText).toContain('Need more detail before drafting.');
+      expect(sourceText).toContain('What is the target API surface?');
+      expect(sourceText).toContain('Use REST endpoints');
+      expect(sourceText).toContain('Focus on the backend first');
+      expect((result.output as { entry: { parentTaskId?: string } }).entry.parentTaskId).toBe('task-needs-input');
+    });
+  });
+
+  it('bounds oversized redraft context within the configured source-text cap while preserving essential fields', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-needs-input',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: 'Plan the auth refactor',
+        derivedRequest: 'Draft a session plan for Item One.',
+        selection: { itemIds: ['item-one'] },
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+      });
+      // Oversized parent clarification result plus oversized user answers/steering so the
+      // first-pass serialized context blows past the cap and forces the redraft summary path.
+      const oversizedParent = parseExtensionAgentTaskRecord({
+        taskId: 'task-needs-input',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:01.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:01.000Z',
+        result: {
+          summary: `Prior summary ${'s'.repeat(9000)}`,
+          assumptionsOpenQuestions: ['Assumes REST transport.'],
+          decision: 'needs-input',
+          clarificationQuestions: Array.from({ length: 40 }, (_, index) => ({ question: `Question ${index} ${'q'.repeat(5000)}` })),
+          rationale: 'Scope is ambiguous.',
+        },
+      });
+      let started: { input: Record<string, unknown> } | undefined;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:redraft-planning-agent-task',
+        input: {
+          taskId: 'task-needs-input',
+          answers: Array.from({ length: 40 }, (_, index) => `Answer ${index} ${'a'.repeat(5000)}`),
+          steering: `Focus on the backend ${'b'.repeat(9000)}`,
+        },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) { started = request as { input: Record<string, unknown> }; return { task: runningTask('task-redraft') }; },
+          async get() { return { task: oversizedParent }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      const sourceText = String(started?.input.sourceText);
+      expect(sourceText.length).toBeLessThanOrEqual(60000);
+      const parsed = JSON.parse(sourceText);
+      // Summary/truncation metadata records that the oversized payload was bounded.
+      expect(parsed.truncation).toMatchObject({ sourceTextTruncated: true, redraftSummarized: true });
+      expect(parsed.truncation.omittedRedraftQuestions).toBeGreaterThan(0);
+      expect(parsed.truncation.omittedRedraftAnswers).toBeGreaterThan(0);
+      // Essential redraft fields survive the summary pass.
+      expect(parsed.redraft.parentTaskId).toBe('task-needs-input');
+      expect(parsed.redraft.originalRequest).toBe('Plan the auth refactor');
+      expect(parsed.redraft.previousQuestions.length).toBeLessThanOrEqual(10);
+      expect(parsed.redraft.userAnswers.length).toBeLessThanOrEqual(10);
+      expect(String(parsed.redraft.steering)).toContain('…[truncated]');
+      expect(String(parsed.redraft.steering).length).toBeLessThanOrEqual(1100);
+      // Essential context fields preserved; oversized item/epic detail dropped.
+      expect(parsed.context).toMatchObject({ schemaVersion: 1, selection: { itemIds: ['item-one'] } });
+      expect(parsed.context.items).toBeUndefined();
+    });
+  });
+
+  it('rejects redraft when the parent is not a completed needs-input clarification result and starts no new task', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-parent',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: 'Plan the auth refactor',
+        derivedRequest: 'Draft a session plan for Item One.',
+        selection: { itemIds: ['item-one'] },
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+      });
+      const readyResult = parseExtensionAgentTaskRecord({
+        taskId: 'task-parent',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:01.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:01.000Z',
+        result: {
+          summary: 'Ready to draft.',
+          assumptionsOpenQuestions: [],
+          decision: 'ready',
+          sessionPlanCreationDraft: { session: 'task-parent', topic: 'Topic', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Scope.' }] },
+        },
+      });
+      // needs-input requires >= 1 clarification question at the schema level, so an
+      // empty-questions record can only be hand-crafted through unknown to exercise
+      // the handler guard's question check.
+      const needsInputNoQuestions = {
+        taskId: 'task-parent',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:01.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:01.000Z',
+        result: { summary: 'Need more detail.', assumptionsOpenQuestions: [], decision: 'needs-input', clarificationQuestions: [], rationale: 'Ambiguous.' },
+      } as unknown as ExtensionAgentTaskRecord;
+      const parents: ExtensionAgentTaskRecord[] = [
+        runningTask('task-parent'),
+        { ...runningTask('task-parent'), status: 'failed', completedAt: '2026-01-01T00:00:01.000Z', errorCode: 'failed', errorMessage: 'boom' } as ExtensionAgentTaskRecord,
+        completedTask({ taskId: 'task-parent' }),
+        readyResult,
+        needsInputNoQuestions,
+      ];
+      for (const parent of parents) {
+        let starts = 0;
+        const result = await dispatchExtensionAction(load(), {
+          actionId: 'eforge-plan:redraft-planning-agent-task',
+          input: { taskId: 'task-parent', steering: 'Refocus on the backend' },
+          requestedBy: { host: 'console' },
+          cwd,
+          timeoutMs: 1000,
+          agentTasks: () => ({
+            async start() { starts += 1; throw new Error('unexpected start'); },
+            async get() { return { task: parent }; },
+            async cancel() { throw new Error('unexpected cancel'); },
+          }),
+        });
+        expect(result.kind).toBe('handler-error');
+        expect(starts).toBe(0);
+      }
+    });
+  });
+
+  it('applies an AI creation draft to a fresh session without enqueueing builds, shipping items, or submitting the plan', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      const task = parseExtensionAgentTaskRecord({
+        taskId: 'task-creation',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:01.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:01.000Z',
+        result: {
+          summary: 'Drafted a plan.',
+          assumptionsOpenQuestions: ['Assumes API stable.'],
+          decision: 'ready',
+          sessionPlanCreationDraft: {
+            session: 'created-session',
+            topic: 'Created topic',
+            planningType: 'feature',
+            planningDepth: 'focused',
+            sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+          },
+        },
+      });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'task-creation', applySessionPlanCreationDraft: {} },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { return { task }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result).toMatchObject({ kind: 'success', output: { sessionPlanCreationDraft: { session: 'created-session', relativePath: '.eforge/session-plans/created-session.md' } } });
+      const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'created-session.md'), 'utf-8');
+      expect(markdown).toContain('Generated scope content.');
+      expect(markdown).not.toContain('status: submitted');
+      expect((await readBacklogItem(cwd, 'item-one'))?.status).toBe('planned');
+    });
+  });
+
+  it('rejects creation draft apply when the target session already exists', async () => {
+    await withTempProject(async (cwd) => {
+      await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'created-session', topic: 'Existing' });
+      const task = parseExtensionAgentTaskRecord({
+        taskId: 'task-creation',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:01.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:01.000Z',
+        result: {
+          summary: 'Drafted a plan.',
+          assumptionsOpenQuestions: [],
+          decision: 'ready',
+          recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-one', rationale: 'Ready.' }] },
+          sessionPlanCreationDraft: {
+            session: 'created-session',
+            topic: 'Created topic',
+            planningType: 'feature',
+            planningDepth: 'focused',
+            sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+          },
+        },
+      });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'task-creation', applyRecommendations: true, applySessionPlanCreationDraft: {} },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { return { task }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('handler-error');
+      expect(await readRecommendations(cwd)).toBeNull();
     });
   });
 });

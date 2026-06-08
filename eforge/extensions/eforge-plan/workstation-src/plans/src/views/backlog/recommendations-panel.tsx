@@ -1,15 +1,18 @@
 import * as React from 'react';
 import { Sparkles } from 'lucide-react';
-import type { RecommendationModel } from '@/types';
+import type { JsonObject, RecommendationModel } from '@/types';
 import { shortId } from './board-model';
 
 interface RecommendationsPanelProps {
   recommendations: RecommendationModel | null;
   titles: Map<string, string>;
-  onPromote: (selection: Record<string, unknown>, label: string) => Promise<void>;
+  // Starts an AI session-plan generation task for the given backlog item ids or
+  // recommendation ref. There is no deterministic promotion path here.
+  onStartPlan: (input: JsonObject, label: string) => Promise<void>;
+  busy?: boolean;
 }
 
-export function RecommendationsPanel({ recommendations, titles, onPromote }: RecommendationsPanelProps) {
+export function RecommendationsPanel({ recommendations, titles, onStartPlan, busy }: RecommendationsPanelProps) {
   if (!recommendations) return null;
   const next = recommendations.recommendedNextSequence ?? [];
   const groups = recommendations.safeParallelizableGroups ?? [];
@@ -32,8 +35,9 @@ export function RecommendationsPanel({ recommendations, titles, onPromote }: Rec
               <button
                 key={entry.ref ?? entry.itemId}
                 title={entry.rationale}
-                onClick={() => void onPromote(entry.ref ? { recommendationRef: entry.ref } : { itemIds: [entry.itemId] }, label(entry.itemId))}
-                className="inline-flex max-w-80 items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-left transition-colors hover:border-primary"
+                disabled={busy}
+                onClick={() => void onStartPlan(entry.ref ? { recommendationRef: entry.ref } : { itemIds: [entry.itemId] }, label(entry.itemId))}
+                className="inline-flex max-w-80 items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-left transition-colors hover:border-primary disabled:opacity-50"
               >
                 <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--lane-ready)]/20 text-xs font-bold text-[color:var(--lane-ready)]">{index + 1}</span>
                 <span className="truncate text-xs text-foreground">{label(entry.itemId)}</span>
@@ -53,7 +57,7 @@ export function RecommendationsPanel({ recommendations, titles, onPromote }: Rec
               <ul className="mt-1 grid gap-2">
                 {groups.map((group) => (
                   <li key={group.ref}>
-                    <button onClick={() => void onPromote({ recommendationRef: group.ref }, group.title ?? group.ref)} className="text-left text-xs font-semibold text-text-bright hover:underline">{group.title ?? group.ref}</button>
+                    <button disabled={busy} onClick={() => void onStartPlan({ recommendationRef: group.ref }, group.title ?? group.ref)} className="text-left text-xs font-semibold text-text-bright hover:underline disabled:opacity-50">{group.title ?? group.ref}</button>
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {group.itemIds.map((id) => <Chip key={id}>{label(id)}</Chip>)}
                     </div>
