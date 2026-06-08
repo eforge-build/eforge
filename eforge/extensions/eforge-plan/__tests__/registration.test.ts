@@ -114,6 +114,9 @@ describe('eforge-plan extension registration', () => {
     }
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'recommendationSummary', 'traceSummaries']);
+    const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
+    expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['path', 'recommendationSummary', 'recommendations', 'status']);
+    expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|staleReasons|missing|fresh|stale/);
   });
 
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {
