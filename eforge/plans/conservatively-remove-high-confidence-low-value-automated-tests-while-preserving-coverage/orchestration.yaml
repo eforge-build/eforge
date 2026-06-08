@@ -1,0 +1,62 @@
+name: conservatively-remove-high-confidence-low-value-automated-tests-while-preserving-coverage
+description: Conservatively remove or consolidate pre-identified high-confidence
+  low-value automated tests while preserving retained behavioral coverage and
+  recording temporary deleted-test coverage evidence.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-conservative-test-thinning
+    name: Conservative Test Thinning
+    depends_on: []
+    branch: conservatively-remove-high-confidence-low-value-automated-tests-while-preserving-coverage/plan-01-conservative-test-thinning
+    build:
+      - implement
+      - validate
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - test
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: The work deletes or consolidates tests, so the builder must map every
+          removal to retained coverage and avoid risky judgment-heavy changes.
+      reviewer:
+        effort: high
+        rationale: Review must verify that every deleted or consolidated test has
+          validator-visible retained coverage evidence.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - test
+      - code
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: Excursion fits because this is conservative multi-file test-suite
+    cleanup, not a large multi-subsystem expedition. A plan-review cycle helps
+    ensure removals are high-confidence and that deleted/consolidated test
+    coverage evidence is required only when applicable. The build runs
+    implementation, then the registered maintainability validation gate, then a
+    strict review cycle focused on test coverage and general code safety. A
+    final test-cycle ensures the relevant test command exits 0 after review
+    fixes.
+diff_base_ref: 33bec004710c732a0ca5c01a1931af6198a7f3a3
