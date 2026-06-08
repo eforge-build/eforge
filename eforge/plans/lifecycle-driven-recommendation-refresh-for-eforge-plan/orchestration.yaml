@@ -1,0 +1,59 @@
+name: lifecycle-driven-recommendation-refresh-for-eforge-plan
+description: "Lifecycle-driven recommendation freshness for the eforge-plan
+  extension: structured stale/fresh state, lifecycle invalidation,
+  action/board/workstation surfacing, and documentation/tests."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- eforge-plan
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-recommendation-freshness-state
+    name: Recommendation Freshness State and Workstation Surfacing
+    depends_on: []
+    branch: lifecycle-driven-recommendation-refresh-for-eforge-plan/plan-01-recommendation-freshness-state
+    build:
+      - - implement
+        - doc-author
+      - validate
+      - test-write
+      - doc-sync
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - validate
+    - test-write
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file feature inside the eforge-plan
+    extension, so excursion fits better than expedition. The plan-review cycle
+    is included because the work touches persisted state, schemas, lifecycle
+    hooks, actions, workstation UX, and tests. Build runs implementation with
+    documentation authoring, then the required validation provider gate, test
+    writing, documentation sync, iterative review, and final test cycling.
+    Review focuses on code quality and API/output compatibility without adding
+    unrelated security or infrastructure perspectives.
+diff_base_ref: 33bec004710c732a0ca5c01a1931af6198a7f3a3
