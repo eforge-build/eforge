@@ -23,6 +23,8 @@ import {
   writeRecommendations,
 } from './recommendations-store.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
+import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, recordPlannerRecommendationApplied, recordPlannerRecommendationAppliedForSourceFingerprint } from './recommendation-status.js';
+import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isRecommendationRefreshWorkflowEntry } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
   PLANNING_PROFILES,
@@ -59,30 +61,38 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
     recommendationRationale: recommendations.rationaleAndAssumptions,
     dependencies: dependencyContext(selected.items),
     roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] },
+    traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
   };
 }
 
-export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultInput) {
+export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultInput, options: { recommendationSourceFingerprint?: string } = {}) {
   if (input.recommendations === undefined && input.handoffDraft === undefined) {
     throw new Error('Planner result must include recommendations, handoffDraft, or both.');
   }
   const result: Record<string, unknown> = { schemaVersion: 1 };
   if (input.recommendations !== undefined) {
     const recommendations = await writeRecommendations(cwd, input.recommendations);
+    const status = options.recommendationSourceFingerprint !== undefined
+      ? await recordPlannerRecommendationAppliedForSourceFingerprint(cwd, options.recommendationSourceFingerprint)
+      : await recordPlannerRecommendationApplied(cwd);
     result.recommendations = {
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
       path: resolveRecommendationsPathForCwd(cwd),
+      status,
     };
   }
   if (input.handoffDraft !== undefined) {
-    result.handoff = await promoteBacklogSelection({
+    const handoff = await promoteBacklogSelection({
       cwd,
       ...input.handoffDraft.selection,
       session: input.handoffDraft.session ?? input.handoffDraft.selection.session,
       title: input.handoffDraft.title ?? input.handoffDraft.selection.title,
       profile: input.handoffDraft.profile ?? input.handoffDraft.selection.profile,
     });
+    const staleStatus = await markRecommendationsStaleForBacklogMutation(cwd, 'planner-result-handoff', handoff.itemIds);
+    if (staleStatus !== null && isRecord(result.recommendations)) result.recommendations = { ...result.recommendations, status: staleStatus };
+    result.handoff = handoff;
   }
   return result;
 }
@@ -115,7 +125,8 @@ export async function applyCompletedPlanningAgentTaskResult(
   await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft);
 
   if (input.applyRecommendations) {
-    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel });
+    const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
+    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint });
     output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
     output.applied.recommendations = true;
   }
@@ -297,6 +308,12 @@ function isSessionPlanPatch(value: unknown): value is { sections: Array<{ dimens
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function resolveRecommendationApplySourceFingerprint(cwd: string, taskId: string): Promise<string | undefined> {
+  const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
+  if (entry === undefined || !isRecommendationRefreshWorkflowEntry(entry)) return undefined;
+  return entry.sourceFingerprint;
 }
 
 async function resolvePlannerSelection(cwd: string, input: PlannerContextInput): Promise<{ items: BacklogItem[]; epics: BacklogEpic[] }> {

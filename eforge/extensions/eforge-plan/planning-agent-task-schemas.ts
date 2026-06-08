@@ -14,10 +14,10 @@ import {
   PromotionSelectionInputSchema,
   PromotionSelectionOutputSchema,
   PutRecommendationsOutputSchema,
-  SessionPlanReadinessDetailSchema,
   PLANNING_DEPTHS,
   PLANNING_TYPES,
 } from './schema.js';
+import { SessionPlanReadinessDetailSchema } from './session-plan-schemas.js';
 
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
 
@@ -105,6 +105,8 @@ export const PlanningTaskWorkflowEntrySchema = Type.Object({
   planningType: Type.Optional(Type.String()),
   planningDepth: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
+  purpose: Type.Optional(Type.Literal('recommendation-refresh')),
+  sourceFingerprint: Type.Optional(Type.String()),
   createdAt: Type.String(),
 }, { additionalProperties: false });
 

@@ -8,6 +8,7 @@ const RECOMMENDATIONS_PANEL = `${SRC}/views/backlog/recommendations-panel.tsx`;
 const PLAN_WITH_AI_PANEL = `${SRC}/views/backlog/plan-with-ai-panel.tsx`;
 const TASK_WORKFLOWS_HOOK = `${SRC}/views/backlog/use-planning-task-workflows.ts`;
 const TASK_RESULT_PREVIEW = `${SRC}/views/backlog/planning-task-result-preview.tsx`;
+const TASK_CARD = `${SRC}/views/backlog/planning-task-card.tsx`;
 const MOCK_DATA = `${SRC}/fixtures/mock-data.ts`;
 const BRIDGE = `${SRC}/bridge.ts`;
 const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
@@ -79,6 +80,22 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('recommendations: Boolean(input.applyRecommendations)');
   });
 
+  it('wires recommendation refresh through the bridge without queue actions', async () => {
+    const [hook, panel, bridge, asset] = await Promise.all([
+      readFile(TASK_WORKFLOWS_HOOK, 'utf-8'),
+      readFile(RECOMMENDATIONS_PANEL, 'utf-8'),
+      readFile(BRIDGE, 'utf-8'),
+      readFile(ASSET, 'utf-8'),
+    ]);
+
+    expect(hook).toContain("invokeAction<RefreshRecommendationsResponse>('refresh-recommendations', {})");
+    expect(panel).toContain('onRefreshRecommendations');
+    const refreshBridgeCase = bridge.match(/case 'refresh-recommendations':[^\n]+/)?.[0] ?? '';
+    expect(refreshBridgeCase).toContain("case 'refresh-recommendations'");
+    expect(asset).toContain('refresh-recommendations');
+    expect(`${hook}\n${panel}\n${refreshBridgeCase}`).not.toMatch(/enqueue|build-queue/);
+  });
+
   it('keeps a stateful mock fixture set for running, failed, needs-input, and ready creation drafts', async () => {
     const source = await readFile(MOCK_DATA, 'utf-8');
 
@@ -103,6 +120,13 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('Confirm create session plan');
     expect(source).toContain('Confirm apply recommendations');
     expect(source).toContain('Confirm apply session-plan content');
+  });
+
+  it('labels recommendation refresh workflow entries in the task monitor', async () => {
+    const source = await readFile(TASK_CARD, 'utf-8');
+
+    expect(source).toContain("entry.purpose === 'recommendation-refresh'");
+    expect(source).toContain('Recommendation refresh');
   });
 
   it('promotes selected ready backlog items through a single AI planning task', async () => {

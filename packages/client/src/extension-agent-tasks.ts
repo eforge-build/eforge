@@ -48,6 +48,7 @@ export const EforgePlanPlanningDraftInputSchema = Type.Object({
   sourceText: Type.Optional(Type.String()),
   existingSessionPlan: Type.Optional(Type.String()),
   requestedOutputSections: Type.Optional(Type.Array(EforgePlanPlanningRequestedOutputSectionSchema, { minItems: 1 })),
+  includeRoadmap: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningPlanDraftSchema = Type.Object({

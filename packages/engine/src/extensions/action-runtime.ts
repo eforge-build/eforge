@@ -66,6 +66,9 @@ export async function dispatchExtensionAction(
     if (err instanceof TimeoutError) {
       return failure('timeout', action, options, invocationId, started, `Action handler timed out after ${options.timeoutMs}ms`, undefined, options.timeoutMs);
     }
+    if (isExtensionActionInputValidationError(err)) {
+      return failure('invalid-input', action, options, invocationId, started, err.message, err.details);
+    }
     logHandlerError(action, err);
     return failure('handler-error', action, options, invocationId, started, 'Action handler failed');
   }
@@ -196,6 +199,19 @@ function failure(
 function logHandlerError(action: ActionRegistration, err: unknown): void {
   const name = err instanceof Error ? err.name : typeof err;
   process.stderr.write(`[eforge extension ${action.extensionName} action ${action.id}] handler-error: ${name}\n`);
+}
+
+function isExtensionActionInputValidationError(err: unknown): err is Error & { details: ValueError[] } {
+  if (!(err instanceof Error) || err.name !== 'ExtensionActionInputValidationError') return false;
+  const details = (err as unknown as { details?: unknown }).details;
+  return Array.isArray(details) && details.every((detail) => isValueError(detail));
+}
+
+function isValueError(value: unknown): value is ValueError {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { path?: unknown }).path === 'string'
+    && typeof (value as { message?: unknown }).message === 'string';
 }
 
 class TimeoutError extends Error {}

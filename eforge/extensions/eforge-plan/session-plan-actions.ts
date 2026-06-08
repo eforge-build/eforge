@@ -32,7 +32,7 @@ import {
   ShowSessionPlanSetOutputSchema,
   UpdateSessionPlanMetadataInputSchema,
   UpdateSessionPlanMetadataOutputSchema,
-} from './schema.js';
+} from './session-plan-schemas.js';
 
 function adapter() {
   return createSessionPlanningWorkflowAdapter();

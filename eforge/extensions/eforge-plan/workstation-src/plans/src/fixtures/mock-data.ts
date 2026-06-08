@@ -1,4 +1,4 @@
-import type { AppliedSessionPlanCreationDraft, Artifact, Board, BoardItem, Detail, JsonObject, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel } from '@/types';
+import type { AppliedSessionPlanCreationDraft, Artifact, Board, BoardItem, Detail, GetRecommendationsResponse, JsonObject, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -83,6 +83,34 @@ export const mockRecommendations: RecommendationModel = {
   rationaleAndAssumptions: ['Favor extension-owned workflow UX over engine changes.', 'Keep recommendations in private extension storage.'],
 };
 
+export const mockRecommendationStatusMissing: RecommendationStatus = {
+  state: 'missing',
+  currentPath: 'mock://recommendations/current.json',
+  statusPath: 'mock://recommendations/status.json',
+  staleReasons: [],
+};
+
+export const mockRecommendationStatusFresh: RecommendationStatus = {
+  state: 'fresh',
+  currentPath: 'mock://recommendations/current.json',
+  statusPath: 'mock://recommendations/status.json',
+  sourceFingerprint: 'fresh-source-fingerprint',
+  lastAppliedSourceFingerprint: 'fresh-source-fingerprint',
+  staleReasons: [],
+};
+
+export const mockRecommendationStatusStale: RecommendationStatus = {
+  state: 'stale',
+  currentPath: 'mock://recommendations/current.json',
+  statusPath: 'mock://recommendations/status.json',
+  sourceFingerprint: 'current-source-fingerprint',
+  lastAppliedSourceFingerprint: 'old-source-fingerprint',
+  staleReasons: [
+    { code: 'source-fingerprint-drift', message: 'Recommendation source fingerprint drifted since the model was last applied.', sourceFingerprint: 'current-source-fingerprint', lastAppliedSourceFingerprint: 'old-source-fingerprint' },
+    { code: 'backlog-mutation:update-item', message: 'Recommendations are stale after eforge-plan backlog mutation update-item for add-import-preview.' },
+  ],
+};
+
 export const mockPlanningTask: PlanningAgentTaskRecord = {
   taskId: 'task-mock-planning-draft',
   kind: 'eforge-plan.planning-draft',
@@ -107,6 +135,36 @@ export const mockPlanningTask: PlanningAgentTaskRecord = {
       ],
     },
   },
+};
+
+export const mockActiveRecommendationRefreshTask: PlanningAgentTaskRecord = {
+  taskId: 'task-refresh-recommendations',
+  kind: 'eforge-plan.planning-draft',
+  status: 'running',
+  createdAt: '2026-06-07T00:20:00.000Z',
+  updatedAt: '2026-06-07T00:20:04.000Z',
+  startedAt: '2026-06-07T00:20:01.000Z',
+  metadata: { progressMessage: 'Refreshing recommendations…', sectionProgress: { currentSection: 'recommendations', coveredSections: [], remainingSections: [] } },
+};
+
+export const mockGetRecommendationsFreshResponse: GetRecommendationsResponse = {
+  recommendations: mockRecommendations,
+  recommendationSummary: { recommendedNextItemIds: ['recommend-next-work', 'add-import-preview'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['add-import-preview', 'recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockRecommendations.rationaleAndAssumptions ?? [] },
+  path: 'mock://recommendations/current.json',
+  status: mockRecommendationStatusFresh,
+};
+
+export const mockGetRecommendationsMissingResponse: GetRecommendationsResponse = {
+  recommendations: null,
+  path: 'mock://recommendations/current.json',
+  status: mockRecommendationStatusMissing,
+};
+
+export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = {
+  recommendations: mockRecommendations,
+  path: 'mock://recommendations/current.json',
+  status: mockRecommendationStatusStale,
+  activeRefreshTask: mockActiveRecommendationRefreshTask,
 };
 
 export const mockArtifacts: Artifact[] = [
@@ -256,6 +314,7 @@ export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
 const dynamicPlanningTasks: PlanningAgentTaskListItem[] = [];
 const appliedCreationDraftArtifacts: Artifact[] = [];
 let dynamicTaskCounter = 0;
+let activeRecommendationRefreshTask: PlanningAgentTaskRecord | null = null;
 
 function selectionFromMockInput(input: JsonObject): PlanningTaskWorkflowSelection {
   return {
@@ -272,19 +331,20 @@ function describeSelection(selection: PlanningTaskWorkflowSelection): string {
   return 'Draft a session plan for the open backlog.';
 }
 
-function pushDynamicTask(params: { selection?: PlanningTaskWorkflowSelection; derivedRequest: string; parentTaskId?: string; idPrefix: string }): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
+function pushDynamicTask(params: { selection?: PlanningTaskWorkflowSelection; derivedRequest: string; parentTaskId?: string; idPrefix: string; entryPatch?: Partial<PlanningTaskWorkflowEntry> }): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
   dynamicTaskCounter += 1;
   const taskId = `${params.idPrefix}-${dynamicTaskCounter}`;
   const now = '2026-06-07T00:10:00.000Z';
   const task: PlanningAgentTaskRecord = {
     taskId, kind: TASK_KIND, status: 'running', createdAt: now, updatedAt: now, startedAt: now,
-    metadata: { progressMessage: 'Preparing planner context…', sectionProgress: { currentSection: 'scope', coveredSections: [], remainingSections: ['acceptance-criteria'] } },
+    metadata: { progressMessage: params.entryPatch?.purpose === 'recommendation-refresh' ? 'Refreshing recommendations…' : 'Preparing planner context…', sectionProgress: { currentSection: params.entryPatch?.purpose === 'recommendation-refresh' ? 'recommendations' : 'scope', coveredSections: [], remainingSections: params.entryPatch?.purpose === 'recommendation-refresh' ? [] : ['acceptance-criteria'] } },
   };
   const entry = workflowEntry({
     taskId,
     derivedRequest: params.derivedRequest,
     ...(params.parentTaskId && { parentTaskId: params.parentTaskId }),
     ...(params.selection && { selection: params.selection }),
+    ...params.entryPatch,
   });
   dynamicPlanningTasks.unshift({ entry, available: true, status: 'running', task });
   return { task, entry };
@@ -297,6 +357,29 @@ export function listMockPlanningTasks(): PlanningAgentTaskListItem[] {
 export function startMockPlanningTaskFromInput(input: JsonObject): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
   const selection = selectionFromMockInput(input);
   return pushDynamicTask({ selection, derivedRequest: describeSelection(selection), idPrefix: 'task-started' });
+}
+
+export function getMockRecommendationsResponse(): GetRecommendationsResponse {
+  return {
+    ...mockGetRecommendationsFreshResponse,
+    ...(activeRecommendationRefreshTask ? { activeRefreshTask: activeRecommendationRefreshTask } : {}),
+  };
+}
+
+export function refreshMockRecommendations(): RefreshRecommendationsResponse {
+  if (activeRecommendationRefreshTask && (activeRecommendationRefreshTask.status === 'queued' || activeRecommendationRefreshTask.status === 'running')) {
+    const entry = listMockPlanningTasks().find((item) => item.entry.taskId === activeRecommendationRefreshTask?.taskId)?.entry
+      ?? workflowEntry({ taskId: activeRecommendationRefreshTask.taskId, derivedRequest: 'Refresh eforge-plan recommendations for the current open backlog.', requestedOutputSections: ['recommendations'], purpose: 'recommendation-refresh', sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint });
+    return { task: activeRecommendationRefreshTask, entry, sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint ?? 'fresh-source-fingerprint', reused: true };
+  }
+  const response = pushDynamicTask({
+    selection: {},
+    derivedRequest: 'Refresh eforge-plan recommendations for the current open backlog.',
+    idPrefix: 'task-refresh-recommendations',
+    entryPatch: { requestedOutputSections: ['recommendations'], purpose: 'recommendation-refresh', sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint },
+  });
+  activeRecommendationRefreshTask = response.task;
+  return { ...response, sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint ?? 'fresh-source-fingerprint' };
 }
 
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
