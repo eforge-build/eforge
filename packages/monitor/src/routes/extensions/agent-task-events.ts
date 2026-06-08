@@ -48,7 +48,31 @@ export function sanitizeMetadata(metadata: ExtensionAgentTaskSanitizedMetadata |
   if (metadata.progressMessage !== undefined) result.progressMessage = sanitizeEventMessage(metadata.progressMessage);
   if (metadata.outputSectionCount !== undefined) result.outputSectionCount = Math.max(0, Math.trunc(metadata.outputSectionCount));
   if (metadata.warningCount !== undefined) result.warningCount = Math.max(0, Math.trunc(metadata.warningCount));
+  const sectionProgress = sanitizeSectionProgress(metadata.sectionProgress);
+  if (sectionProgress !== undefined) result.sectionProgress = sectionProgress;
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+const MAX_SECTION_PROGRESS_ITEMS = 50;
+
+function sanitizeSectionProgress(sectionProgress: ExtensionAgentTaskSanitizedMetadata['sectionProgress']): ExtensionAgentTaskSanitizedMetadata['sectionProgress'] {
+  if (!sectionProgress) return undefined;
+  const result: NonNullable<ExtensionAgentTaskSanitizedMetadata['sectionProgress']> = {};
+  if (sectionProgress.currentSection !== undefined) {
+    const current = sanitizeEventMessage(sectionProgress.currentSection);
+    if (current.length > 0) result.currentSection = current;
+  }
+  if (sectionProgress.coveredSections !== undefined) {
+    result.coveredSections = sanitizeSectionList(sectionProgress.coveredSections);
+  }
+  if (sectionProgress.remainingSections !== undefined) {
+    result.remainingSections = sanitizeSectionList(sectionProgress.remainingSections);
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function sanitizeSectionList(values: string[]): string[] {
+  return values.slice(0, MAX_SECTION_PROGRESS_ITEMS).map(sanitizeEventMessage).filter((entry) => entry.length > 0);
 }
 
 function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {

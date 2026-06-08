@@ -12,6 +12,15 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { loadPrompt } from '../prompts.js';
 
+export interface EforgePlanPlanningProgressUpdate {
+  currentSection?: string;
+  coveredSections?: string[];
+  remainingSections?: string[];
+  message?: string;
+}
+
+export type EforgePlanPlanningProgressCallback = (update: EforgePlanPlanningProgressUpdate) => void | Promise<void>;
+
 export interface ExtensionPlanningTaskOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
   cwd: string;
@@ -20,6 +29,47 @@ export interface ExtensionPlanningTaskOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   maxTurns?: number;
   taskId?: string;
+  /** Optional telemetry-only callback invoked with sanitized section progress reported by the agent. */
+  onProgress?: EforgePlanPlanningProgressCallback;
+}
+
+const MAX_PROGRESS_STRING_LENGTH = 200;
+const MAX_PROGRESS_ARRAY_ITEMS = 50;
+
+const planningProgressToolSchema = Type.Object({
+  currentSection: Type.Optional(Type.String()),
+  coveredSections: Type.Optional(Type.Array(Type.String())),
+  remainingSections: Type.Optional(Type.Array(Type.String())),
+  message: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+function sanitizeProgressString(value: string): string {
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.length > MAX_PROGRESS_STRING_LENGTH ? `${cleaned.slice(0, MAX_PROGRESS_STRING_LENGTH - 3)}...` : cleaned;
+}
+
+function sanitizeProgressArray(values: string[]): string[] {
+  return values.slice(0, MAX_PROGRESS_ARRAY_ITEMS).map(sanitizeProgressString).filter((entry) => entry.length > 0);
+}
+
+function sanitizeProgressUpdate(input: unknown): EforgePlanPlanningProgressUpdate {
+  const raw = (input ?? {}) as Record<string, unknown>;
+  const update: EforgePlanPlanningProgressUpdate = {};
+  if (typeof raw.currentSection === 'string') {
+    const current = sanitizeProgressString(raw.currentSection);
+    if (current.length > 0) update.currentSection = current;
+  }
+  if (Array.isArray(raw.coveredSections)) {
+    update.coveredSections = sanitizeProgressArray(raw.coveredSections.filter((entry): entry is string => typeof entry === 'string'));
+  }
+  if (Array.isArray(raw.remainingSections)) {
+    update.remainingSections = sanitizeProgressArray(raw.remainingSections.filter((entry): entry is string => typeof entry === 'string'));
+  }
+  if (typeof raw.message === 'string') {
+    const message = sanitizeProgressString(raw.message);
+    if (message.length > 0) update.message = message;
+  }
+  return update;
 }
 
 const planningDraftSubmissionToolSchema = Type.Object({
@@ -47,6 +97,27 @@ const planningDraftSubmissionToolSchema = Type.Object({
       reason: Type.String(),
     }, { additionalProperties: false }))),
   }, { additionalProperties: false })),
+  decision: Type.Optional(Type.Union([Type.Literal('ready'), Type.Literal('needs-input')])),
+  sessionPlanCreationDraft: Type.Optional(Type.Object({
+    session: Type.String(),
+    topic: Type.String(),
+    planningType: Type.String(),
+    planningDepth: Type.String(),
+    sections: Type.Array(Type.Object({
+      dimension: Type.String(),
+      content: Type.String(),
+    }, { additionalProperties: false }), { minItems: 1 }),
+    skippedDimensions: Type.Optional(Type.Array(Type.Object({
+      dimension: Type.String(),
+      reason: Type.String(),
+    }, { additionalProperties: false }))),
+  }, { additionalProperties: false })),
+  clarificationQuestions: Type.Optional(Type.Array(Type.Object({
+    question: Type.String(),
+    why: Type.Optional(Type.String()),
+    options: Type.Optional(Type.Array(Type.String())),
+  }, { additionalProperties: false }), { minItems: 1 })),
+  rationale: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
 export async function* runEforgePlanPlanningDraftTask(
@@ -73,6 +144,22 @@ export async function* runEforgePlanPlanningDraftTask(
     },
   };
 
+  const progressToolName = 'report_eforge_plan_planning_progress';
+  const progressTool: CustomTool = {
+    name: progressToolName,
+    description: 'Report telemetry-only section progress while drafting the session plan. This never replaces the final submission and does not affect readiness.',
+    inputSchema: planningProgressToolSchema,
+    handler: async (input: unknown) => {
+      const update = sanitizeProgressUpdate(input);
+      try {
+        await options.onProgress?.(update);
+      } catch {
+        // Progress reporting is telemetry-only; never fail the task because a progress update could not be recorded.
+      }
+      return 'Section progress recorded.';
+    },
+  };
+
   const prompt = await loadPrompt('eforge-plan-planning-draft', {
     topic: options.input.topic,
     session: options.input.session ?? '(none)',
@@ -82,13 +169,15 @@ export async function* runEforgePlanPlanningDraftTask(
     existingSessionPlan: options.input.existingSessionPlan ?? '(none)',
     requestedOutputSections: options.input.requestedOutputSections?.join(', ') ?? '(agent should choose applicable sections)',
     submitTool: options.harness.effectiveCustomToolName(submitToolName),
+    progressTool: options.harness.effectiveCustomToolName(progressToolName),
     resultSchema: getSchemaYaml('eforge-plan-planning-draft-result', EforgePlanPlanningDraftResultSchema),
   }, options.promptAppend);
 
   const effectiveSubmitToolName = options.harness.effectiveCustomToolName(submitToolName);
+  const effectiveProgressToolName = options.harness.effectiveCustomToolName(progressToolName);
   const allowedTools = options.allowedTools === undefined
     ? undefined
-    : [...new Set([...options.allowedTools, effectiveSubmitToolName])];
+    : [...new Set([...options.allowedTools, effectiveSubmitToolName, effectiveProgressToolName])];
   const sdkOptions = pickSdkOptions({
     model: options.model,
     thinking: options.thinking,
@@ -107,7 +196,7 @@ export async function* runEforgePlanPlanningDraftTask(
       cwd: options.cwd,
       maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
       tools: 'read-only',
-      customTools: [submitTool],
+      customTools: [submitTool, progressTool],
       abortSignal: options.abortController?.signal,
       ...sdkOptions,
     },

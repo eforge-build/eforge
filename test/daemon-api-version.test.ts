@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 61 for extension agent task routes and lifecycle events', () => {
-    expect(DAEMON_API_VERSION).toBe(61);
+  it('is 62 for the session-plan creation draft, needs-input decision, and section-progress contract', () => {
+    expect(DAEMON_API_VERSION).toBe(62);
   });
 });

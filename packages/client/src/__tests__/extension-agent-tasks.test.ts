@@ -5,6 +5,7 @@ import {
   DAEMON_API_VERSION,
   assertExtensionAgentTaskId,
   parseEforgePlanPlanningDraftResult,
+  safeParseEforgePlanPlanningDraftResult,
   safeParseExtensionAgentTaskCancelRequest,
   safeParseExtensionAgentTaskGetRequest,
   safeParseExtensionAgentTaskRecord,
@@ -93,12 +94,88 @@ describe('extension agent task contracts', () => {
       assumptionsOpenQuestions: [],
       sessionPlanPatch: { sections: [{ dimension: 'scope', content: 'Generated scope.' }] },
     };
-    expect(parseEforgePlanPlanningDraftResult(sessionPlanOnly).sessionPlanPatch?.sections).toHaveLength(1);
+    expect((parseEforgePlanPlanningDraftResult(sessionPlanOnly) as { sessionPlanPatch?: { sections: unknown[] } }).sessionPlanPatch?.sections).toHaveLength(1);
     expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: sessionPlanOnly })).success).toBe(true);
     expect(() => parseEforgePlanPlanningDraftResult({
       summary: 'No output sections',
       assumptionsOpenQuestions: [],
     })).toThrow();
+  });
+
+  it('accepts session-plan creation drafts, needs-input decisions, and section-progress metadata', () => {
+    expect(safeParseExtensionAgentTaskStartRequest({
+      kind: 'eforge-plan.planning-draft',
+      input: { topic: 'Demo', requestedOutputSections: ['sessionPlanCreationDraft'] },
+    }).success).toBe(true);
+
+    const readyResult = {
+      summary: 'Created a session plan draft.',
+      assumptionsOpenQuestions: [],
+      decision: 'ready',
+      sessionPlanCreationDraft: {
+        session: 'demo-session',
+        topic: 'Demo',
+        planningType: 'feature',
+        planningDepth: 'standard',
+        sections: [{ dimension: 'scope', content: 'Generated scope.' }],
+      },
+    };
+    expect(parseEforgePlanPlanningDraftResult(readyResult).summary).toContain('session plan');
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: readyResult })).success).toBe(true);
+
+    const needsInputResult = {
+      summary: 'Cannot draft a ready session plan yet.',
+      assumptionsOpenQuestions: [],
+      decision: 'needs-input',
+      clarificationQuestions: [{ question: 'Which milestone?' }],
+      rationale: 'Milestone is unspecified.',
+    };
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: needsInputResult })).success).toBe(true);
+
+    expect(safeParseEforgePlanPlanningDraftResult({
+      summary: 'Invalid creation draft',
+      assumptionsOpenQuestions: [],
+      decision: 'ready',
+      sessionPlanCreationDraft: { session: 's', topic: 't', planningType: 'p', planningDepth: 'd', sections: [] },
+    }).success).toBe(false);
+
+    expect(safeParseExtensionAgentTaskRecord({
+      taskId: 'task-1',
+      kind: 'eforge-plan.planning-draft',
+      status: 'running',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:01.000Z',
+      startedAt: '2025-01-01T00:00:01.000Z',
+      metadata: { sectionProgress: { currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks'] } },
+    }).success).toBe(true);
+  });
+
+  it('rejects oversized section-progress metadata beyond the daemon sanitizer bounds', () => {
+    const runningRecord = (sectionProgress: unknown) => ({
+      taskId: 'task-1',
+      kind: 'eforge-plan.planning-draft',
+      status: 'running',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:01.000Z',
+      startedAt: '2025-01-01T00:00:01.000Z',
+      metadata: { sectionProgress },
+    });
+
+    // Within bounds: max-length strings and max-count arrays are accepted.
+    expect(safeParseExtensionAgentTaskRecord(runningRecord({
+      currentSection: 'x'.repeat(500),
+      coveredSections: Array.from({ length: 50 }, (_, i) => `section-${i}`),
+      remainingSections: Array.from({ length: 50 }, (_, i) => `remaining-${i}`),
+    })).success).toBe(true);
+
+    // currentSection longer than the 500-char cap is rejected.
+    expect(safeParseExtensionAgentTaskRecord(runningRecord({ currentSection: 'x'.repeat(501) })).success).toBe(false);
+    // A single oversized entry inside coveredSections is rejected.
+    expect(safeParseExtensionAgentTaskRecord(runningRecord({ coveredSections: ['ok', 'y'.repeat(501)] })).success).toBe(false);
+    // More than 50 covered sections is rejected.
+    expect(safeParseExtensionAgentTaskRecord(runningRecord({ coveredSections: Array.from({ length: 51 }, (_, i) => `section-${i}`) })).success).toBe(false);
+    // More than 50 remaining sections is rejected.
+    expect(safeParseExtensionAgentTaskRecord(runningRecord({ remainingSections: Array.from({ length: 51 }, (_, i) => `remaining-${i}`) })).success).toBe(false);
   });
 
   it('defines task routes and builds parameterized paths through buildPath', () => {
@@ -117,10 +194,13 @@ describe('extension agent task contracts', () => {
     expect(source).toContain('buildPath(API_ROUTES.extensionAgentTaskCancel');
   });
 
-  it('bumps the daemon API version for extension agent task routes and events', () => {
-    expect(DAEMON_API_VERSION).toBe(61);
+  it('bumps the daemon API version for the session-plan creation draft, needs-input decision, and section-progress contract', () => {
+    expect(DAEMON_API_VERSION).toBe(62);
     const source = readFileSync(new URL('../api-version-const.ts', import.meta.url), 'utf8');
     expect(source).toContain('extension agent task routes');
     expect(source).toContain('lifecycle events');
+    expect(source).toContain('sessionPlanCreationDraft');
+    expect(source).toContain('needs-input decision');
+    expect(source).toContain('sectionProgress metadata');
   });
 });

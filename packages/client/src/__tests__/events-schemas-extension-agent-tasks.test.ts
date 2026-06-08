@@ -50,6 +50,17 @@ describe('extension agent task lifecycle event schemas', () => {
     }
   });
 
+  it('accepts sanitized section-progress metadata on progress events and round trips it', () => {
+    const progressEvent = extensionAgentTaskVariants.find((candidate) => candidate.type === 'extension:agent-task:progress')!;
+    const metadata = (progressEvent as { metadata?: { sectionProgress?: { currentSection?: string; coveredSections?: string[]; remainingSections?: string[] } } }).metadata;
+    expect(metadata?.sectionProgress?.currentSection).toBe('scope');
+    expect(metadata?.sectionProgress?.coveredSections).toEqual(['summary']);
+    expect(metadata?.sectionProgress?.remainingSections).toEqual(['risks', 'verification']);
+    expect(safeParseEforgeEvent(progressEvent).success).toBe(true);
+    expectJsonRoundTrip(progressEvent);
+    expect(safeParseEforgeEvent({ ...progressEvent, metadata: { sectionProgress: { currentSection: 'scope', unexpected: true } } }).success).toBe(false);
+  });
+
   it('rejects raw result, context, prompt, and transcript fields on task events', () => {
     for (const event of extensionAgentTaskVariants) {
       for (const field of ['result', 'context', 'prompt', 'transcript', 'rawTranscript'] as const) {

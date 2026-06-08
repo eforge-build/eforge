@@ -45,6 +45,7 @@ export interface ExtensionAgentTaskStartOptions {
   requestedBy?: ExtensionAgentTaskRequestedBy;
 }
 
+// --- eforge:region agent-task-service-class ---
 export class ExtensionAgentTaskService {
   private readonly controllers = new Map<string, AbortController>();
 
@@ -148,6 +149,7 @@ export class ExtensionAgentTaskService {
       taskId: options.taskId,
       phase: 'standalone',
       stage: 'extension-agent-task',
+      onProgress: (update) => this.updateSectionProgress(options.taskId, update),
     });
     let next = await task.next();
     while (!next.done) {
@@ -224,6 +226,28 @@ export class ExtensionAgentTaskService {
     emitAgentTaskProgress(this.context, eventBase(updated), message);
   }
 
+  private async updateSectionProgress(taskId: string, update: SectionProgressUpdate): Promise<void> {
+    const cwd = this.requireCwd();
+    const current = await readAgentTaskRecord(cwd, taskId);
+    if (!current || current.status !== 'running') return;
+    const sectionProgress: NonNullable<ExtensionAgentTaskSanitizedMetadata['sectionProgress']> = { ...current.metadata?.sectionProgress };
+    if (update.currentSection !== undefined) sectionProgress.currentSection = update.currentSection;
+    if (update.coveredSections !== undefined) sectionProgress.coveredSections = update.coveredSections;
+    if (update.remainingSections !== undefined) sectionProgress.remainingSections = update.remainingSections;
+    const message = update.message ?? sectionProgressMessage(update);
+    const updated: StoredExtensionAgentTaskRecord = {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      metadata: sanitizeMetadata({
+        ...current.metadata,
+        progressMessage: message,
+        ...(Object.keys(sectionProgress).length > 0 && { sectionProgress }),
+      }),
+    };
+    await writeAgentTaskRecord(cwd, updated);
+    emitAgentTaskProgress(this.context, eventBase(updated), message);
+  }
+
   private async readExisting(taskId: string, owner?: ExtensionAgentTaskOwner): Promise<StoredExtensionAgentTaskRecord> {
     try {
       assertValidAgentTaskId(taskId);
@@ -244,7 +268,9 @@ export class ExtensionAgentTaskService {
     return this.context.cwd;
   }
 }
+// --- eforge:endregion agent-task-service-class ---
 
+// --- eforge:region agent-task-service-helpers ---
 const DAEMON_ROUTE_EXTENSION_NAME = 'daemon-route';
 
 function eventBase(record: StoredExtensionAgentTaskRecord): { taskId: string; taskKind: ExtensionAgentTaskKind; extensionName: string; status: StoredExtensionAgentTaskRecord['status']; metadata?: ExtensionAgentTaskSanitizedMetadata } {
@@ -273,9 +299,24 @@ function isAgentRuntimeRegistry(value: AgentRuntimeRegistry | AgentHarness): val
   return typeof (value as AgentRuntimeRegistry).forRoleResolved === 'function';
 }
 
+interface SectionProgressUpdate {
+  currentSection?: string;
+  coveredSections?: string[];
+  remainingSections?: string[];
+  message?: string;
+}
+
+function sectionProgressMessage(update: SectionProgressUpdate): string {
+  if (update.currentSection) return `Drafting section: ${update.currentSection}`;
+  const covered = update.coveredSections?.length ?? 0;
+  return covered > 0 ? `Covered ${covered} section(s)` : 'Section progress update';
+}
+
 function countOutputSections(result: EforgePlanPlanningDraftResult): number {
   const taskResult = result as Record<string, unknown>;
-  return (taskResult.recommendations ? 1 : 0) + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (result.planDrafts?.length ?? 0) + (result.playbookDraft ? 1 : 0) + (result.sessionPlanPatch ? 1 : 0);
+  const creationDraft = taskResult.decision === 'ready' && taskResult.sessionPlanCreationDraft ? 1 : 0;
+  const needsInput = taskResult.decision === 'needs-input' && Array.isArray(taskResult.clarificationQuestions) && taskResult.clarificationQuestions.length > 0 ? 1 : 0;
+  return (taskResult.recommendations ? 1 : 0) + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.playbookDraft ? 1 : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft + needsInput;
 }
 
 function sanitizeErrorMessage(message: string): string {
@@ -292,3 +333,4 @@ function errorCodeFor(err: unknown): string {
   if (err instanceof Error && err.name) return err.name.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 80) || 'error';
   return 'error';
 }
+// --- eforge:endregion agent-task-service-helpers ---

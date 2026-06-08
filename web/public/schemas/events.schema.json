@@ -807,6 +807,32 @@
                 "warningCount": {
                   "minimum": 0,
                   "type": "integer"
+                },
+                "sectionProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "currentSection": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "coveredSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "remainingSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -864,6 +890,32 @@
                 "warningCount": {
                   "minimum": 0,
                   "type": "integer"
+                },
+                "sectionProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "currentSection": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "coveredSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "remainingSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -922,6 +974,32 @@
                 "warningCount": {
                   "minimum": 0,
                   "type": "integer"
+                },
+                "sectionProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "currentSection": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "coveredSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "remainingSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -987,6 +1065,32 @@
                 "warningCount": {
                   "minimum": 0,
                   "type": "integer"
+                },
+                "sectionProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "currentSection": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "coveredSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "remainingSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1043,6 +1147,32 @@
                 "warningCount": {
                   "minimum": 0,
                   "type": "integer"
+                },
+                "sectionProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "currentSection": {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    "coveredSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "remainingSections": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
