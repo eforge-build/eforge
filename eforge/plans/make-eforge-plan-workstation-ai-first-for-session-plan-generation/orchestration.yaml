@@ -1,0 +1,123 @@
+name: make-eforge-plan-workstation-ai-first-for-session-plan-generation
+description: Make the eforge-plan Backlog workstation AI-first for selected
+  ready backlog item promotion, with durable planning task workflow monitoring,
+  retry/redraft recovery, section progress, and explicit AI-authored
+  session-plan creation draft apply.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/eforge-plan-workstation type-check
+  - pnpm build:eforge-plan-workstation
+  - pnpm type-check
+  - pnpm test
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-task-contracts-progress
+    name: Extend Planning Task Contracts and Progress Telemetry
+    depends_on: []
+    branch: make-eforge-plan-workstation-ai-first-for-session-plan-generation/plan-01-task-contracts-progress
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: This plan changes persisted daemon/client task result schemas, engine
+          custom tools, and monitor sanitization; careful compatibility handling
+          is required.
+      reviewer:
+        effort: high
+        rationale: Review must check wire contract compatibility, sanitized telemetry,
+          and prompt/tool non-submission behavior.
+  - id: plan-02-eforge-plan-task-workflows
+    name: Add eforge-plan Durable Task Workflows and Creation Draft Apply
+    depends_on:
+      - plan-01-task-contracts-progress
+    branch: make-eforge-plan-workstation-ai-first-for-session-plan-generation/plan-02-eforge-plan-task-workflows
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan adds extension-owned durable workflow metadata,
+          retry/redraft actions, and safe session-plan creation using existing
+          adapters.
+      reviewer:
+        effort: high
+        rationale: Review must verify no deterministic promotion path is used for
+          creation draft apply and no build enqueue side effects are introduced.
+  - id: plan-03-ai-first-workstation-ux
+    name: Replace Backlog Promotion UI with AI-first Workstation Flow
+    depends_on:
+      - plan-02-eforge-plan-task-workflows
+    branch: make-eforge-plan-workstation-ai-first-for-session-plan-generation/plan-03-ai-first-workstation-ux
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan refactors the workstation Backlog UX, mock bridge state,
+          generated assets, and docs while preserving iframe/action boundaries.
+      reviewer:
+        effort: high
+        rationale: Review must verify user-facing deterministic promotion is removed
+          from the workstation and preview/confirm semantics remain intact.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - test-write
+      - doc-sync
+    - test-cycle
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: standard
+  rationale: This is a deep but cohesive vertical feature spanning the eforge-plan
+    workstation, extension actions, shared task schemas, prompt/runtime
+    telemetry, docs, generated assets, and tests. A single planner can enumerate
+    the ordered contract/UI/application work, so excursion is preferred over
+    expedition. Plan review is included because the scope is cross-cutting and
+    user-facing. Build runs implementation alongside doc authoring, then test
+    writing and doc sync, followed by iterative tests, the registered
+    maintainability validation gate, and a review cycle. Code and API review
+    perspectives focus on implementation correctness and shared daemon/client
+    contract compatibility without adding unrelated security review.
+diff_base_ref: 3f9a99387d1e3c4014ecc3e55dbae197b7d8f426
