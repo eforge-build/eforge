@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
 const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  root,
   plugins: [react()],
   test: {
     environment: 'jsdom',

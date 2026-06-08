@@ -14,10 +14,10 @@ import {
   PromotionSelectionInputSchema,
   PromotionSelectionOutputSchema,
   PutRecommendationsOutputSchema,
-  SessionPlanReadinessDetailSchema,
   PLANNING_DEPTHS,
   PLANNING_TYPES,
 } from './schema.js';
+import { SessionPlanReadinessDetailSchema } from './session-plan-schemas.js';
 
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
 

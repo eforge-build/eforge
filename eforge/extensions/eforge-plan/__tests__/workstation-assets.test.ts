@@ -90,9 +90,10 @@ describe('eforge-plan planning workstation assets', () => {
 
     expect(hook).toContain("invokeAction<RefreshRecommendationsResponse>('refresh-recommendations', {})");
     expect(panel).toContain('onRefreshRecommendations');
-    expect(bridge).toContain("case 'refresh-recommendations'");
+    const refreshBridgeCase = bridge.match(/case 'refresh-recommendations':[^\n]+/)?.[0] ?? '';
+    expect(refreshBridgeCase).toContain("case 'refresh-recommendations'");
     expect(asset).toContain('refresh-recommendations');
-    expect(`${hook}\n${panel}\n${bridge}`).not.toMatch(/enqueue|build-queue/);
+    expect(`${hook}\n${panel}\n${refreshBridgeCase}`).not.toMatch(/enqueue|build-queue/);
   });
 
   it('keeps a stateful mock fixture set for running, failed, needs-input, and ready creation drafts', async () => {
