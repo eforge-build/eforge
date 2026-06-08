@@ -15,7 +15,7 @@ interface PlanWithAiPanelProps {
  * apply controls.
  */
 export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
-  const { items, loading, busy, reload, cancel, retry, redraft, apply } = workflows;
+  const { items, loading, busy, reload, cancel, retry, redraft, remove, apply } = workflows;
   const activeCount = items.filter((item) => {
     const status = item.task?.status ?? item.status;
     return status === 'queued' || status === 'running';
@@ -47,6 +47,7 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
               item={item}
               busy={busy}
               onCancel={cancel}
+              onRemove={remove}
               onRetry={retry}
               onRedraft={redraft}
               onApply={apply}

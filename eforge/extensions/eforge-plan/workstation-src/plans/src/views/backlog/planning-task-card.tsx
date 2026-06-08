@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Loader2, XCircle } from 'lucide-react';
+import { Loader2, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord } from '@/types';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
@@ -9,6 +9,7 @@ interface PlanningTaskCardProps {
   item: PlanningAgentTaskListItem;
   busy: boolean;
   onCancel: (taskId: string) => Promise<void>;
+  onRemove: (taskId: string) => Promise<void>;
   onRetry: (taskId: string) => Promise<void>;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
   onApply: (taskId: string, input: JsonObject) => Promise<void>;
@@ -22,12 +23,13 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: 'border-border text-muted-foreground',
 };
 
-export function PlanningTaskCard({ item, busy, onCancel, onRetry, onRedraft, onApply }: PlanningTaskCardProps) {
+export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRedraft, onApply }: PlanningTaskCardProps) {
   const { entry, task } = item;
   const status = task?.status ?? item.status ?? 'queued';
   const running = status === 'queued' || status === 'running';
   const label = entry.derivedRequest || entry.originalRequest || entry.taskId;
   const retryable = (status === 'failed' || status === 'cancelled') && item.available;
+  const removable = !running;
 
   return (
     <article className="rounded-md border border-border bg-background/60 p-3 text-sm">
@@ -40,9 +42,14 @@ export function PlanningTaskCard({ item, busy, onCancel, onRetry, onRedraft, onA
           </div>
           <p className="mt-1 truncate text-foreground" title={label}>{label}</p>
         </div>
-        {running && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void onCancel(entry.taskId)}><XCircle className="h-4 w-4" /> Cancel</Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {running && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void onCancel(entry.taskId)}><XCircle className="h-4 w-4" /> Cancel</Button>
+          )}
+          {removable && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void onRemove(entry.taskId)}><Trash2 className="h-4 w-4" /> Dismiss</Button>
+          )}
+        </div>
       </div>
 
       {!item.available && <p className="mt-2 text-xs text-muted-foreground">{item.staleReason ?? 'Task record is no longer available from the daemon.'}</p>}

@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { ConsoleWorkstationManifestEntry } from '@eforge-build/client/browser';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toConsolePath } from '@/lib/navigation';
 import { useWorkstationManifest } from './use-workstation-manifest';
 import { selectWorkstation, sortWorkstations } from './workstation-selectors';
@@ -37,6 +38,13 @@ export function WorkstationsView({ selectedWorkstationId, subPath, onNavigate }:
     onNavigate?.(toConsolePath({ id: 'workstationDetail', workstationId: workstation.id }));
   };
 
+  const selectById = (id: string) => {
+    const next = workstations.find((workstation) => workstation.id === id);
+    if (next) select(next);
+  };
+
+  const hasMultiple = workstations.length > 1;
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="workstations-view">
       <header className="flex items-center gap-4 border-b border-border px-4 py-2 shrink-0">
@@ -68,55 +76,43 @@ export function WorkstationsView({ selectedWorkstationId, subPath, onNavigate }:
       )}
 
       {hasWorkstations && (
-        <div className="grid flex-1 min-h-0 grid-cols-[280px_minmax(0,1fr)] overflow-hidden">
-          <aside className="min-h-0 overflow-auto border-r border-border p-3">
-            <div className="space-y-2">
-              {workstations.map((workstation) => (
-                <button
-                  key={workstation.id}
-                  type="button"
-                  className={`w-full rounded-md border p-3 text-left transition-colors ${selected?.id === workstation.id ? 'border-primary bg-muted' : 'border-border hover:bg-muted/60'}`}
-                  onClick={() => select(workstation)}
-                  aria-current={selected?.id === workstation.id ? 'page' : undefined}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{workstation.title}</span>
-                    <Badge variant="outline" className="ml-auto text-xs">{workstation.extensionName}</Badge>
-                  </div>
-                  {workstation.description && (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{workstation.description}</p>
-                  )}
-                </button>
-              ))}
-            </div>
-          </aside>
+        <main className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden p-4">
+          <div className="flex flex-wrap items-center gap-2 shrink-0" data-testid="workstation-switcher">
+            {hasMultiple ? (
+              <Select value={selected?.id ?? undefined} onValueChange={selectById}>
+                <SelectTrigger className="h-8 w-auto min-w-[16rem]" aria-label="Select workstation">
+                  <SelectValue placeholder="Select a workstation" />
+                </SelectTrigger>
+                <SelectContent>
+                  {workstations.map((workstation) => (
+                    <SelectItem key={workstation.id} value={workstation.id}>
+                      {workstation.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              selected && <h2 className="text-base font-semibold">{selected.title}</h2>
+            )}
+            {selected && <Badge variant="outline">{selected.extensionName}</Badge>}
+          </div>
+          {selected?.description && <p className="mt-1 text-xs text-muted-foreground shrink-0">{selected.description}</p>}
 
-          <main className="min-h-0 min-w-0 overflow-auto p-4">
-            {notFound && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
-                Workstation not found: {selectedWorkstationId}
-              </div>
-            )}
-            {!notFound && selected && (
-              <section className="flex h-full min-h-0 flex-col gap-3">
-                <header className="shrink-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold">{selected.title}</h2>
-                    <Badge variant="outline">{selected.extensionName}</Badge>
-                  </div>
-                  {selected.description && <p className="mt-1 text-xs text-muted-foreground">{selected.description}</p>}
-                </header>
-                <div className="min-h-0 flex-1">
-                  <WorkstationIframe
-                    workstation={selected}
-                    subPath={subPath}
-                    onNavigate={(childPath) => onNavigate?.(toConsolePath({ id: 'workstationDetail', workstationId: selected.id, ...(childPath ? { subPath: childPath } : {}) }))}
-                  />
-                </div>
-              </section>
-            )}
-          </main>
-        </div>
+          {notFound && (
+            <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+              Workstation not found: {selectedWorkstationId}
+            </div>
+          )}
+          {!notFound && selected && (
+            <div className="mt-3 min-h-0 flex-1">
+              <WorkstationIframe
+                workstation={selected}
+                subPath={subPath}
+                onNavigate={(childPath) => onNavigate?.(toConsolePath({ id: 'workstationDetail', workstationId: selected.id, ...(childPath ? { subPath: childPath } : {}) }))}
+              />
+            </div>
+          )}
+        </main>
       )}
     </div>
   );

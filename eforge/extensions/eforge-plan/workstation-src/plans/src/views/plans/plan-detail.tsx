@@ -64,7 +64,8 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
     setConfirmingHandoff(false);
     try {
       const result = await bridge.invokeAction<{ kind?: string; command?: string; message?: string }>('handoff-session-plan', { session: plan.session });
-      toast.push(result.command ?? result.message ?? 'Handoff prepared.', result.kind === 'not-ready' ? 'error' : 'success');
+      const failed = result.kind === 'not-ready' || result.kind === 'enqueue-failed';
+      toast.push(result.message ?? result.command ?? 'Handoff prepared.', failed ? 'error' : 'success');
       await onRefresh();
     } catch (caught) {
       toast.push(caught instanceof Error ? caught.message : String(caught), 'error');

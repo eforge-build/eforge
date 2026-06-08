@@ -8,6 +8,8 @@ import type {
   ExtensionAgentTaskStartResponse,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
+  EnqueueRequest,
+  EnqueueResponse,
 } from '@eforge-build/client';
 
 export type { ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
@@ -28,6 +30,12 @@ export interface ExtensionAgentTasksApi {
 }
 // --- eforge:endregion extension-agent-task-context ---
 
+// --- eforge:region extension-build-queue-context ---
+export interface ExtensionBuildQueueApi {
+  enqueue(request: EnqueueRequest): Promise<EnqueueResponse>;
+}
+// --- eforge:endregion extension-build-queue-context ---
+
 export interface ExtensionActionContext {
   invocationId: string;
   actionId: string;
@@ -46,6 +54,10 @@ export interface ExtensionActionContext {
   /** Daemon-owned single-shot agent tasks available to extension actions. */
   agentTasks: ExtensionAgentTasksApi;
   // --- eforge:endregion extension-agent-task-context ---
+  // --- eforge:region extension-build-queue-context ---
+  /** Daemon-owned build queue operations available to trusted extension actions. */
+  buildQueue: ExtensionBuildQueueApi;
+  // --- eforge:endregion extension-build-queue-context ---
 }
 
 export type ExtensionActionOutput<TOutput extends TSchema | undefined = undefined> =

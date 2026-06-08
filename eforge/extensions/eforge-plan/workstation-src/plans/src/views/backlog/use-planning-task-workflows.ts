@@ -9,6 +9,7 @@ import type {
   PlanningAgentTaskRecord,
   PlanningAgentTaskResponse,
   PlanningAgentTaskWorkflowStartResponse,
+  RemovePlanningTaskResponse,
 } from '@/types';
 
 const bridge = getBridge();
@@ -25,6 +26,7 @@ export interface PlanningTaskWorkflowsApi {
   retry: (taskId: string) => Promise<void>;
   redraft: (taskId: string, input: RedraftInput) => Promise<void>;
   cancel: (taskId: string) => Promise<void>;
+  remove: (taskId: string) => Promise<void>;
   apply: (taskId: string, input: JsonObject) => Promise<void>;
 }
 
@@ -155,6 +157,20 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [reportError, toast]);
 
+  const remove = React.useCallback(async (taskId: string) => {
+    setBusy(true);
+    try {
+      const response = await bridge.invokeAction<RemovePlanningTaskResponse>('remove-planning-agent-task', { taskId });
+      toast.push(response.removed ? `Removed ${response.taskId} from the planning task list.` : `${response.taskId} was not in the planning task list.`, 'success');
+      setItems((prev) => prev.filter((existing) => existing.entry.taskId !== taskId));
+      await reload();
+    } catch (caught) {
+      reportError(caught);
+    } finally {
+      setBusy(false);
+    }
+  }, [reload, reportError, toast]);
+
   const apply = React.useCallback(async (taskId: string, input: JsonObject) => {
     setBusy(true);
     try {
@@ -169,5 +185,5 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [onRefresh, reload, reportError, toast]);
 
-  return { items, loading, busy, reload, start, retry, redraft, cancel, apply };
+  return { items, loading, busy, reload, start, retry, redraft, cancel, remove, apply };
 }

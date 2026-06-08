@@ -13,9 +13,10 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'handoff-session-plan', 'get-recommendations']);
-const DAEMON_STATE_ACTIONS = new Set(['start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task']);
+const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations']);
+const DAEMON_STATE_ACTIONS = new Set(['start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'handoff-session-plan']);
+const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-registration-'));
@@ -84,6 +85,7 @@ describe('eforge-plan extension registration', () => {
       'promote-selection',
       'put-recommendations',
       'redraft-planning-agent-task',
+      'remove-planning-agent-task',
       'render-board-markdown',
       'retry-planning-agent-task',
       'select-session-plan-dimensions',
@@ -100,7 +102,8 @@ describe('eforge-plan extension registration', () => {
       expect(action.inputSchema.type).toBe('object');
       expect(action.outputSchema).toBeDefined();
       expect(JSON.stringify(action.outputSchema)).not.toMatch(/function|undefined/);
-      expect(action.sideEffects).not.toContain('build-queue');
+      if (BUILD_QUEUE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('build-queue');
+      else expect(action.sideEffects).not.toContain('build-queue');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
       if (DAEMON_STATE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('daemon-state');
       if (READ_ACTIONS.has(action.id)) {

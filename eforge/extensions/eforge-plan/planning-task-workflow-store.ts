@@ -71,6 +71,17 @@ export async function recordPlanningTaskWorkflowEntry(cwd: string, entry: Planni
   });
 }
 
+export async function removePlanningTaskWorkflowEntry(cwd: string, taskId: string): Promise<boolean> {
+  const path = resolvePlanningTaskWorkflowIndexPath(cwd);
+  return runExclusive(path, async () => {
+    const index = await readPlanningTaskWorkflowIndex(cwd);
+    const entries = index.entries.filter((existing) => existing.taskId !== taskId);
+    if (entries.length === index.entries.length) return false;
+    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries });
+    return true;
+  });
+}
+
 export function findPlanningTaskWorkflowEntry(index: PlanningTaskWorkflowIndex, taskId: string): PlanningTaskWorkflowEntry | undefined {
   return index.entries.find((entry) => entry.taskId === taskId);
 }

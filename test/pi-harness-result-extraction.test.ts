@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { piHarnessInternalsForTest } from '../packages/engine/src/harnesses/pi.js';
 
+describe('PiHarness custom tool registration contract', () => {
+  it('keeps engine custom tools available for read-only runs', () => {
+    expect(piHarnessInternalsForTest.shouldRegisterEforgeCustomTools({
+      tools: 'read-only',
+      customTools: [{ name: 'submit_result', description: 'Submit result', inputSchema: {} as never, handler: async () => 'ok' }],
+    })).toBe(true);
+  });
+});
+
 describe('PiHarness tool infrastructure classification', () => {
   it('does not classify successful tool output containing theme-init text as infrastructure failure', () => {
     expect(piHarnessInternalsForTest.isPiToolExecutionInfrastructureError({

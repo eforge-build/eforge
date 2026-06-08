@@ -5,3 +5,12 @@ import { afterEach } from 'vitest';
 afterEach(() => {
   cleanup();
 });
+
+// jsdom lacks the pointer-capture and scroll APIs Radix primitives (Select, etc.)
+// rely on. Stub them so Radix-driven components can be exercised in tests.
+if (typeof Element !== 'undefined') {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.setPointerCapture ??= () => {};
+  Element.prototype.releasePointerCapture ??= () => {};
+  Element.prototype.scrollIntoView ??= () => {};
+}

@@ -213,11 +213,11 @@ export const updateSessionPlanMetadataAction = defineExtensionAction({
 
 export const handoffSessionPlan = defineExtensionAction({
   id: 'handoff-session-plan',
-  title: 'Handoff session plan source path',
-  description: 'Verify readiness and ready status, then return a source-path fallback command without enqueueing.',
+  title: 'Handoff session plan to build queue',
+  description: 'Verify readiness and ready status, then enqueue the session plan through the daemon build queue.',
   inputSchema: HandoffSessionPlanInputSchema,
   outputSchema: HandoffSessionPlanOutputSchema,
-  sideEffects: ['local-read'],
+  sideEffects: ['local-read', 'local-write', 'daemon-state', 'build-queue'],
   async handler(input, ctx) {
     const planning = adapter();
     const loaded = await planning.flat.load({ cwd: ctx.cwd, session: input.session });
@@ -229,14 +229,32 @@ export const handoffSessionPlan = defineExtensionAction({
     }
     await readFile(loaded.path, 'utf-8');
     const sourcePath = relative(ctx.cwd, loaded.path).replace(/\\/g, '/');
-    return toJsonSafeObject({
-      kind: 'source-path',
-      session: input.session,
-      sourcePath,
-      absolutePath: loaded.path,
-      command: `eforge build ${quoteShellArg(sourcePath)}`,
-      readiness: loaded.readiness,
-    });
+    const command = `eforge build ${quoteShellArg(sourcePath)}`;
+    try {
+      const enqueued = await ctx.buildQueue.enqueue({ source: sourcePath });
+      return toJsonSafeObject({
+        kind: 'enqueued',
+        session: input.session,
+        sourcePath,
+        absolutePath: loaded.path,
+        queueSessionId: enqueued.sessionId,
+        pid: enqueued.pid,
+        autoBuild: enqueued.autoBuild,
+        message: `Enqueued ${sourcePath} for build${enqueued.autoBuild ? '; auto-build is enabled.' : '.'}`,
+        readiness: loaded.readiness,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return toJsonSafeObject({
+        kind: 'enqueue-failed',
+        session: input.session,
+        sourcePath,
+        absolutePath: loaded.path,
+        command,
+        message: `Session plan is ready, but enqueue failed: ${message}. You can run ${command} manually.`,
+        readiness: loaded.readiness,
+      });
+    }
   },
 });
 

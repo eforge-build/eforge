@@ -522,12 +522,13 @@ export const HandoffSessionPlanOutputSchema = Type.Union([
     message: Type.String(),
   }, JsonObjectAdditionalProperties),
   Type.Object({
-    kind: Type.Literal('source-path'),
-    session: Type.String(),
-    sourcePath: Type.String(),
-    absolutePath: Type.String(),
-    command: Type.String(),
+    kind: Type.Literal('enqueued'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
+    queueSessionId: Type.String(), pid: Type.Number(), autoBuild: Type.Boolean(), message: Type.String(),
     readiness: SessionPlanReadinessDetailSchema,
+  }, JsonObjectAdditionalProperties),
+  Type.Object({
+    kind: Type.Literal('enqueue-failed'), session: Type.String(), sourcePath: Type.String(), absolutePath: Type.String(),
+    command: Type.String(), message: Type.String(), readiness: SessionPlanReadinessDetailSchema,
   }, JsonObjectAdditionalProperties),
 ]);
 // --- eforge:endregion session-plan-schemas ---

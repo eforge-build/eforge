@@ -1,4 +1,5 @@
 import type {
+  EnqueueRequest,
   ExtensionActionInvokeErrorCode,
   ExtensionActionInvokeRequest,
   ExtensionActionInvokeResponse,
@@ -7,6 +8,7 @@ import type {
   ExtensionContributionManifestResponse,
 } from '@eforge-build/client';
 import type { MonitorContext } from '../../context.js';
+import { autoBuildStateToWire } from '../../projections/auto-build-state.js';
 import {
   emitExtensionActionComplete,
   emitExtensionActionFailed,
@@ -17,6 +19,7 @@ import {
 // --- eforge:region extension-agent-task-context ---
 import type { ExtensionAgentTaskService } from './agent-task-service.js';
 // --- eforge:endregion extension-agent-task-context ---
+import { prepareEnqueueRequest, markSessionPlanSubmittedAfterEnqueue } from '../enqueue-service.js';
 
 export interface LoadedContributionRuntime {
   config: { extensions: unknown };
@@ -72,7 +75,7 @@ export async function invokeExtensionAction(
   let result: Awaited<ReturnType<typeof import('@eforge-build/engine/extensions/index').dispatchExtensionAction>>;
   try {
     const { dispatchExtensionAction } = await import('@eforge-build/engine/extensions/index');
-    result = await dispatchExtensionAction(runtime.registry as never, {
+    const dispatchOptions = {
       actionId: request.actionId,
       input: request.input,
       requestedBy: request.requestedBy,
@@ -89,7 +92,13 @@ export async function invokeExtensionAction(
         }),
       }),
       // --- eforge:endregion extension-agent-task-context ---
-    });
+      buildQueue: () => ({
+        enqueue: (enqueueRequest: EnqueueRequest) => enqueueFromExtensionAction(context, enqueueRequest),
+      }),
+    } satisfies Parameters<typeof dispatchExtensionAction>[1] & {
+      buildQueue: () => { enqueue(enqueueRequest: EnqueueRequest): ReturnType<typeof enqueueFromExtensionAction> };
+    };
+    result = await dispatchExtensionAction(runtime.registry as never, dispatchOptions);
   } catch (err) {
     const message = sanitizeUnexpectedActionError(err);
     emitExtensionActionFailed(context, provenance, {
@@ -148,6 +157,18 @@ export function failureBody(
 
 function findAction(manifest: ExtensionContributionManifestResponse, actionId: string): ExtensionActionManifestEntry | undefined {
   return manifest.actions.find((entry) => entry.id === actionId);
+}
+
+async function enqueueFromExtensionAction(context: MonitorContext, body: EnqueueRequest) {
+  const workerTracker = context.options.workerTracker;
+  if (!workerTracker) throw new Error('Daemon mode not active');
+  if (context.options.config && (!context.options.config.agents?.tiers || Object.keys(context.options.config.agents.tiers).length === 0)) {
+    throw new Error('No agent tiers configured. Add agents.tiers entries (each with harness + model + effort) to eforge/config.yaml');
+  }
+  const prepared = await prepareEnqueueRequest(context, body as unknown as Record<string, unknown>);
+  const result = workerTracker.spawnWorker('enqueue', prepared.args);
+  await markSessionPlanSubmittedAfterEnqueue(context, prepared.source, result.sessionId);
+  return { sessionId: result.sessionId, pid: result.pid, autoBuild: autoBuildStateToWire({ state: context.options.daemonState, capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() } }).enabled };
 }
 
 function getActionTimeoutMs(config: { extensions: unknown }): number {

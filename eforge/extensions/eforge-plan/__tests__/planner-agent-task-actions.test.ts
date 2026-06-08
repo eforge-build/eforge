@@ -408,6 +408,31 @@ describe('planning agent task actions', () => {
     });
   });
 
+  it('removes non-running planning tasks from the workflow index and rejects running tasks', async () => {
+    await withTempProject(async (cwd) => {
+      const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-failed', createdAt: '2026-01-01T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-running', createdAt: '2026-01-02T00:00:00.000Z', ...base });
+      const registry = load();
+      const agentTasks = () => ({
+        async start() { throw new Error('unexpected start'); },
+        async get(taskId: string) {
+          if (taskId === 'task-failed') return { task: { ...runningTask(taskId), status: 'failed' as const, completedAt: '2026-01-01T00:00:01.000Z', errorCode: 'failed', errorMessage: 'boom' } };
+          return { task: runningTask(taskId) };
+        },
+        async cancel() { throw new Error('unexpected cancel'); },
+      });
+
+      const removed = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:remove-planning-agent-task', input: { taskId: 'task-failed' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
+      expect(removed).toMatchObject({ kind: 'success', output: { taskId: 'task-failed', removed: true } });
+      expect((await readPlanningTaskWorkflowIndex(cwd)).entries.map((entry) => entry.taskId)).toEqual(['task-running']);
+
+      const rejected = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:remove-planning-agent-task', input: { taskId: 'task-running' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
+      expect(rejected.kind).toBe('handler-error');
+      expect((await readPlanningTaskWorkflowIndex(cwd)).entries.map((entry) => entry.taskId)).toEqual(['task-running']);
+    });
+  });
+
   it.each([
     { includeRoadmap: false },
     { includeRoadmap: true },

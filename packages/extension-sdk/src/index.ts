@@ -116,6 +116,9 @@ export type {
   // --- eforge:region extension-agent-task-context ---
   ExtensionAgentTasksApi,
   // --- eforge:endregion extension-agent-task-context ---
+  // --- eforge:region extension-build-queue-context ---
+  ExtensionBuildQueueApi,
+  // --- eforge:endregion extension-build-queue-context ---
   ExtensionActionOutput,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
