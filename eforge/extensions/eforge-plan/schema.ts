@@ -1,3 +1,4 @@
+import { ExtensionAgentTaskRecordSchema } from '../../../packages/client/src/extension-agent-tasks.js';
 import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
 
 // --- eforge:region backlog-schemas ---
@@ -110,20 +111,48 @@ export const RecommendationSummarySchema = Type.Object({
   rationaleAndAssumptions: Type.Array(Type.String()),
 }, { additionalProperties: false });
 export const RecommendationStaleReasonSchema = Type.Object({
-  code: Type.String(), message: Type.String(), sourceFingerprint: Type.Optional(Type.String()), lastAppliedSourceFingerprint: Type.Optional(Type.String()),
+  eventType: Type.Optional(Type.String()),
+  itemIds: Type.Optional(Type.Array(Type.String())),
+  correlationKind: Type.Optional(Type.Union([Type.Literal('single'), Type.Literal('multi'), Type.Literal('bootstrapped')])),
+  timestamp: Type.Optional(Type.String()),
+  summary: Type.Optional(Type.String()),
+  code: Type.Optional(Type.String()),
+  message: Type.Optional(Type.String()),
+  refs: Type.Optional(Type.Array(Type.String())),
+  sourceFingerprint: Type.Optional(Type.String()),
+  lastAppliedSourceFingerprint: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 export const RecommendationStatusSidecarSchema = Type.Object({
-  schemaVersion: Type.Literal(1), lastAppliedAt: Type.String(), lastAppliedSourceFingerprint: Type.String(), sourceFingerprint: Type.Optional(Type.String()), staleReasons: Type.Array(RecommendationStaleReasonSchema),
+  schemaVersion: Type.Literal(1),
+  lastAppliedAt: Type.Optional(Type.String()),
+  freshAt: Type.Optional(Type.String()),
+  staleSince: Type.Optional(Type.String()),
+  lastRefreshedBy: Type.Optional(Type.String()),
+  lastAppliedSourceFingerprint: Type.Optional(Type.String()),
+  sourceFingerprint: Type.Optional(Type.String()),
+  reasons: Type.Optional(Type.Array(RecommendationStaleReasonSchema)),
+  staleReasons: Type.Optional(Type.Array(RecommendationStaleReasonSchema)),
 }, { additionalProperties: false });
 export const RecommendationDerivedStatusSchema = Type.Object({
-  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]), currentPath: Type.String(), statusPath: Type.String(), sourceFingerprint: Type.Optional(Type.String()), lastAppliedSourceFingerprint: Type.Optional(Type.String()), staleReasons: Type.Array(RecommendationStaleReasonSchema),
+  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]),
+  currentPath: Type.String(),
+  statusPath: Type.String(),
+  freshAt: Type.Optional(Type.String()),
+  staleSince: Type.Optional(Type.String()),
+  lastRefreshedBy: Type.Optional(Type.String()),
+  sourceFingerprint: Type.Optional(Type.String()),
+  lastAppliedSourceFingerprint: Type.Optional(Type.String()),
+  reasons: Type.Array(RecommendationStaleReasonSchema),
+  staleReasons: Type.Array(RecommendationStaleReasonSchema),
 }, { additionalProperties: false });
 export const GetRecommendationsInputSchema = Type.Object({});
 export const GetRecommendationsOutputSchema = Type.Object({
   recommendations: Type.Union([BacklogRecommendationModelSchema, Type.Null()]),
   recommendationSummary: Type.Optional(RecommendationSummarySchema),
   path: Type.String(),
-});
+  status: RecommendationDerivedStatusSchema,
+  activeRefreshTask: Type.Optional(ExtensionAgentTaskRecordSchema),
+}, { additionalProperties: false });
 export const PutRecommendationsInputSchema = BacklogRecommendationModelSchema;
 export const PutRecommendationsOutputSchema = Type.Object({
   recommendations: BacklogRecommendationModelSchema, recommendationSummary: RecommendationSummarySchema,
@@ -392,6 +421,7 @@ export const ListBoardOutputSchema = Type.Object({
   traceSummaries: Type.Array(Type.Unknown()),
   // --- eforge:region recommendations ---
   recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  recommendationStatus: RecommendationDerivedStatusSchema,
   // --- eforge:endregion recommendations ---
 });
 // --- eforge:endregion board-schemas ---

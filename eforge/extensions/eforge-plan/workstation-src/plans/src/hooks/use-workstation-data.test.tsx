@@ -34,7 +34,7 @@ describe('useWorkstationData recommendations mapping', () => {
     await waitFor(() => expect(result.current.recommendationStatus?.state).toBe('stale'));
 
     expect(result.current.recommendations?.recommendedNextSequence[0]?.itemId).toBe('recommend-next-work');
-    expect(result.current.recommendationStatus?.staleReasons.map((reason: { code: string }) => reason.code)).toContain('source-fingerprint-drift');
+    expect(result.current.recommendationStatus?.staleReasons.map((reason) => reason.code)).toContain('source-fingerprint-drift');
     expect(result.current.activeRecommendationRefreshTask?.taskId).toBe('task-refresh-recommendations');
     expect(result.current.board.items.length).toBeGreaterThan(0);
     expect(result.current.artifacts.length).toBeGreaterThan(0);

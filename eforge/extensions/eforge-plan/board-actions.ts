@@ -6,6 +6,7 @@ import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { toJsonSafeObject } from './json-safe.js';
 // --- eforge:region recommendations ---
 import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
+import { readDerivedRecommendationStatus } from './recommendation-status.js';
 // --- eforge:endregion recommendations ---
 import {
   BoardActionInputSchema,
@@ -17,7 +18,7 @@ import {
 export const listBoard = defineExtensionAction({
   id: 'list-board',
   title: 'List eforge-plan board',
-  description: 'Read backlog epics, items, kanban lanes, blocked reasons, and trace summaries.',
+  description: 'Read backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and trace summaries.',
   inputSchema: BoardActionInputSchema,
   outputSchema: ListBoardOutputSchema,
   sideEffects: ['local-read'],
@@ -31,7 +32,7 @@ export const listBoard = defineExtensionAction({
 export const renderBoardMarkdown = defineExtensionAction({
   id: 'render-board-markdown',
   title: 'Render eforge-plan board',
-  description: 'Render the derived kanban board as Markdown for hosts and Console.',
+  description: 'Render the derived kanban board as Markdown for hosts and Console, including recommendation freshness notes when available.',
   inputSchema: BoardActionInputSchema,
   outputSchema: MarkdownOutputSchema,
   sideEffects: ['local-read'],
@@ -44,12 +45,13 @@ export const renderBoardMarkdown = defineExtensionAction({
 
 export async function buildBoard(cwd: string, input: BoardActionInput, recommendationsPath?: string) {
   const resolvedRecommendationsPath = recommendationsPath ?? resolveRecommendationsPathForCwd(cwd);
-  const [epics, items, traces, recommendations] = await Promise.all([
+  const [epics, items, traces, recommendations, recommendationStatus] = await Promise.all([
     listBacklogEpics(cwd),
     listBacklogItems(cwd),
     listTraceSidecars(cwd),
     // --- eforge:region recommendations ---
     readRecommendationsFromPath(resolvedRecommendationsPath),
+    readDerivedRecommendationStatus(cwd, resolvedRecommendationsPath),
     // --- eforge:endregion recommendations ---
   ]);
   const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
@@ -70,6 +72,7 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
     traceSummaries,
     // --- eforge:region recommendations ---
     recommendationSummary: summarizeRecommendations(recommendations),
+    recommendationStatus,
     // --- eforge:endregion recommendations ---
   };
 }
@@ -81,6 +84,13 @@ export function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>
 export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
   const lines = ['# eforge-plan board', ''];
   // --- eforge:region recommendations ---
+  if (board.recommendationStatus?.state === 'fresh') lines.push('> Recommendations are fresh for the current backlog fingerprint.', '');
+  if (board.recommendationStatus?.state === 'stale') {
+    lines.push(`> Recommendations are stale${board.recommendationStatus.staleSince ? ` since ${board.recommendationStatus.staleSince}` : ''}; refresh recommendations before planning from them.`, '');
+    const summaries = board.recommendationStatus.reasons.map((reason) => reason.summary ?? reason.message).filter((value): value is string => value !== undefined && value.length > 0);
+    for (const summary of summaries) lines.push(`> - ${summary}`);
+    if (summaries.length > 0) lines.push('');
+  }
   if (board.recommendationSummary) {
     lines.push('## Recommended Next Work', '');
     if (board.recommendationSummary.recommendedNextItemIds.length === 0) {

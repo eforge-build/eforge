@@ -79,17 +79,24 @@ export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Reco
       await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
     }
   }
+  const effectiveCorrelation = decision.correlation.kind === 'none' && bootstrapped
+    ? bootstrapped.itemIds.length === 1
+      ? { kind: 'single' as const, itemId: bootstrapped.itemIds[0]!, reason: 'bootstrapped from queued eforge-plan PRD' }
+      : { kind: 'multi' as const, itemIds: bootstrapped.itemIds, reason: 'bootstrapped from queued eforge-plan PRD source items' }
+    : decision.correlation;
   if (itemIds.length > 0) {
-    await markRecommendationsStaleForLifecycleUpdate(cwd, stringValue(valueAt(event, 'type')) ?? 'unknown', itemIds, lifecycleReasonRefs(event));
+    const eventType = stringValue(valueAt(event, 'type')) ?? 'unknown';
+    await markRecommendationsStaleForLifecycleUpdate(cwd, {
+      eventType,
+      itemIds,
+      correlationKind: bootstrapped ? 'bootstrapped' : effectiveCorrelation.kind === 'multi' ? 'multi' : 'single',
+      timestamp: timestampOf(event),
+      summary: lifecycleReasonSummary(eventType, itemIds, bootstrapped ? 'bootstrapped' : effectiveCorrelation.kind === 'multi' ? 'multi' : 'single', lifecycleReasonRefs(event)),
+      refs: lifecycleReasonRefs(event),
+    });
   }
   return decision.correlation.kind === 'none' && bootstrapped
-    ? {
-      ...decision,
-      correlation: bootstrapped.itemIds.length === 1
-        ? { kind: 'single', itemId: bootstrapped.itemIds[0]!, reason: 'bootstrapped from queued eforge-plan PRD' }
-        : { kind: 'multi', itemIds: bootstrapped.itemIds, reason: 'bootstrapped from queued eforge-plan PRD source items' },
-      trace: traceMutation,
-    }
+    ? { ...decision, correlation: effectiveCorrelation, trace: traceMutation }
     : decision;
 }
 
@@ -206,6 +213,11 @@ function lifecycleReasonRefs(event: EforgeEvent | Record<string, unknown>): stri
   return ['source', 'filePath', 'path', 'prdId', 'id', 'sessionId', 'runId', 'featureBranch', 'commitSha']
     .map((field) => stringValue(valueAt(event, field)))
     .filter((value): value is string => value !== undefined);
+}
+
+function lifecycleReasonSummary(eventType: string, itemIds: readonly string[], correlationKind: 'single' | 'multi' | 'bootstrapped', refs: readonly string[]): string {
+  const refSummary = refs.length > 0 ? `; refs: ${refs.slice(0, 5).join(', ')}` : '';
+  return `Recommendations are stale after ${correlationKind} lifecycle update ${eventType} for ${itemIds.join(', ')}${refSummary}.`.slice(0, 500);
 }
 
 async function bootstrapItemFromQueuedPrd(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<{ itemIds: string[]; epicIdsByItemId: Map<string, string | undefined> } | undefined> {

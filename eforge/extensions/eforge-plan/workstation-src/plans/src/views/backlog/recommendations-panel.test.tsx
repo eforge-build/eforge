@@ -55,14 +55,19 @@ describe('RecommendationsPanel freshness states', () => {
     expect(screen.queryByRole('button', { name: /Refresh recommendations/i })).toBeNull();
   });
 
-  it('renders stale recommendations with reason codes, messages, and a refresh control', () => {
+  it('renders stale recommendations with structured reason metadata and a refresh control', () => {
     const onRefreshRecommendations = vi.fn(async () => undefined);
     renderPanel({ status: mockRecommendationStatusStale, onRefreshRecommendations });
 
     expect(screen.getByText('stale')).toBeTruthy();
     expect(screen.getByText('source-fingerprint-drift')).toBeTruthy();
     expect(screen.getByText(/Recommendation source fingerprint drifted/i)).toBeTruthy();
-    expect(screen.getByText('backlog-mutation:update-item')).toBeTruthy();
+    expect(screen.getByText('lifecycle:session:end')).toBeTruthy();
+    expect(screen.getByText(/Recommendations are stale after single lifecycle update session:end/i)).toBeTruthy();
+    expect(screen.getByText(/event\s+session:end/i)).toBeTruthy();
+    expect(screen.getByText('single')).toBeTruthy();
+    expect(screen.getByText('2026-06-07T00:05:00.000Z')).toBeTruthy();
+    expect(screen.getAllByText('Add import preview').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations/i }));
 
     expect(onRefreshRecommendations).toHaveBeenCalledTimes(1);

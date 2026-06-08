@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
+
+export const RECOMMENDATION_STALE_REASON_LIMIT = 20;
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseWithSchema } from '@eforge-build/client';
@@ -32,78 +34,95 @@ export function resolveRecommendationStatusPathForCwd(cwd: string): string {
 
 export async function readDerivedRecommendationStatus(cwd: string, currentPath = resolveCurrentPath(cwd)): Promise<RecommendationDerivedStatus> {
   const statusPath = resolveRecommendationStatusPathForCwd(cwd);
-  if (!existsSync(currentPath)) return { state: 'missing', currentPath, statusPath, staleReasons: [] };
-  const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
   let sidecar: RecommendationStatusSidecar | null;
   try {
     sidecar = await readRecommendationStatusSidecar(statusPath);
   } catch (err) {
+    const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
     return staleStatus(currentPath, statusPath, sourceFingerprint, undefined, [invalidStatusSidecarReason(err)]);
   }
-  if (sidecar === null) {
-    return staleStatus(currentPath, statusPath, sourceFingerprint, undefined, [missingStatusSidecarReason()]);
+  if (!existsSync(currentPath) && sidecar === null) return missingStatus(currentPath, statusPath);
+
+  const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
+  if (sidecar === null) return staleStatus(currentPath, statusPath, sourceFingerprint, undefined, [missingStatusSidecarReason()]);
+
+  const semanticInvalidReason = invalidFreshnessSidecarReason(sidecar);
+  if (semanticInvalidReason !== null) {
+    return staleStatus(currentPath, statusPath, sourceFingerprint, sidecar.lastAppliedSourceFingerprint, [semanticInvalidReason]);
   }
-  const staleReasons = sidecar.staleReasons.filter((reason) => reason.code !== 'source-fingerprint-drift');
-  if (sidecar.lastAppliedSourceFingerprint !== sourceFingerprint) {
+
+  const persistedReasons = sidecarReasons(sidecar).filter((reason) => reason.code !== 'source-fingerprint-drift');
+  const staleReasons = [...persistedReasons];
+  if (sidecar.lastAppliedSourceFingerprint !== undefined && sidecar.lastAppliedSourceFingerprint !== sourceFingerprint) {
     staleReasons.push(sourceDriftReason(sourceFingerprint, sidecar.lastAppliedSourceFingerprint));
   }
-  return {
-    state: staleReasons.length > 0 ? 'stale' : 'fresh',
+  return statusFromParts({
+    state: staleReasons.length > 0 || !existsSync(currentPath) ? 'stale' : 'fresh',
     currentPath,
     statusPath,
     sourceFingerprint,
     lastAppliedSourceFingerprint: sidecar.lastAppliedSourceFingerprint,
-    staleReasons,
-  };
+    freshAt: sidecar.freshAt ?? sidecar.lastAppliedAt,
+    staleSince: staleReasons.length > 0 || !existsSync(currentPath) ? sidecar.staleSince ?? sidecar.lastAppliedAt : undefined,
+    lastRefreshedBy: sidecar.lastRefreshedBy,
+    reasons: staleReasons,
+  });
 }
 
 export async function recordRecommendationPutApplied(cwd: string): Promise<RecommendationDerivedStatus> {
-  const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
-  await writeRecommendationStatusSidecar(resolveRecommendationStatusPathForCwd(cwd), {
-    schemaVersion: 1,
-    lastAppliedAt: new Date().toISOString(),
-    lastAppliedSourceFingerprint: sourceFingerprint,
-    sourceFingerprint,
-    staleReasons: [],
-  });
-  return readDerivedRecommendationStatus(cwd);
+  return recordPlannerRecommendationAppliedForSourceFingerprint(cwd, await computeRecommendationSourceFingerprint(cwd), 'put-recommendations');
 }
 
-export async function recordPlannerRecommendationApplied(cwd: string): Promise<RecommendationDerivedStatus> {
-  return recordPlannerRecommendationAppliedForSourceFingerprint(cwd, await computeRecommendationSourceFingerprint(cwd));
+export async function recordPlannerRecommendationApplied(cwd: string, lastRefreshedBy = 'apply-planner-result'): Promise<RecommendationDerivedStatus> {
+  return recordPlannerRecommendationAppliedForSourceFingerprint(cwd, await computeRecommendationSourceFingerprint(cwd), lastRefreshedBy);
 }
 
-export async function recordPlannerRecommendationAppliedForSourceFingerprint(cwd: string, appliedSourceFingerprint: string): Promise<RecommendationDerivedStatus> {
+export async function recordPlannerRecommendationAppliedForSourceFingerprint(cwd: string, appliedSourceFingerprint: string, lastRefreshedBy = 'apply-planner-result'): Promise<RecommendationDerivedStatus> {
   const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
+  const now = new Date().toISOString();
+  const reasons = appliedSourceFingerprint === sourceFingerprint ? [] : [sourceDriftReason(sourceFingerprint, appliedSourceFingerprint)];
   await writeRecommendationStatusSidecar(resolveRecommendationStatusPathForCwd(cwd), {
     schemaVersion: 1,
-    lastAppliedAt: new Date().toISOString(),
+    lastAppliedAt: now,
+    freshAt: now,
+    ...(reasons.length > 0 && { staleSince: now }),
+    lastRefreshedBy,
     lastAppliedSourceFingerprint: appliedSourceFingerprint,
     sourceFingerprint,
-    staleReasons: appliedSourceFingerprint === sourceFingerprint ? [] : [sourceDriftReason(sourceFingerprint, appliedSourceFingerprint)],
+    reasons,
+    staleReasons: reasons,
   });
   return readDerivedRecommendationStatus(cwd);
 }
 
 export async function markRecommendationsStale(cwd: string, reason: RecommendationStaleReason): Promise<RecommendationDerivedStatus | null> {
   const currentPath = resolveCurrentPath(cwd);
-  if (!existsSync(currentPath)) return null;
   const statusPath = resolveRecommendationStatusPathForCwd(cwd);
   const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
   const previous = await readRecommendationStatusSidecarIfValid(statusPath);
-  const lastAppliedAt = previous?.lastAppliedAt ?? new Date().toISOString();
+  const now = new Date().toISOString();
+  const lastAppliedAt = previous?.lastAppliedAt ?? previous?.freshAt ?? now;
   const lastAppliedSourceFingerprint = previous?.lastAppliedSourceFingerprint ?? sourceFingerprint;
+  const reasons = appendStaleReason(sidecarReasons(previous), reason);
   await writeRecommendationStatusSidecar(statusPath, {
     schemaVersion: 1,
     lastAppliedAt,
+    freshAt: previous?.freshAt ?? previous?.lastAppliedAt,
+    staleSince: previous?.staleSince ?? now,
+    lastRefreshedBy: previous?.lastRefreshedBy,
     lastAppliedSourceFingerprint,
     sourceFingerprint,
-    staleReasons: appendStaleReason(previous?.staleReasons ?? [], reason),
+    reasons,
+    staleReasons: reasons,
   });
-  return readDerivedRecommendationStatus(cwd);
+  return readDerivedRecommendationStatus(cwd, currentPath);
 }
 
 export async function markRecommendationsStaleForBacklogMutation(cwd: string, actionId: string, refs: readonly string[]): Promise<RecommendationDerivedStatus | null> {
+  const currentPath = resolveCurrentPath(cwd);
+  const statusPath = resolveRecommendationStatusPathForCwd(cwd);
+  if (!existsSync(currentPath) && !existsSync(statusPath)) return null;
+
   const suffix = refs.length > 0 ? ` for ${refs.join(', ')}` : '';
   return markRecommendationsStale(cwd, {
     code: `backlog-mutation:${actionId}`,
@@ -111,12 +130,16 @@ export async function markRecommendationsStaleForBacklogMutation(cwd: string, ac
   });
 }
 
-export async function markRecommendationsStaleForLifecycleUpdate(cwd: string, eventType: string, itemIds: readonly string[], refs: readonly string[]): Promise<RecommendationDerivedStatus | null> {
-  const itemSuffix = itemIds.length > 0 ? ` for ${itemIds.join(', ')}` : '';
-  const refSuffix = refs.length > 0 ? ` (${refs.join(', ')})` : '';
+export async function markRecommendationsStaleForLifecycleUpdate(cwd: string, input: { eventType: string; itemIds: readonly string[]; correlationKind: 'single' | 'multi' | 'bootstrapped'; timestamp: string; summary: string; refs?: readonly string[] }): Promise<RecommendationDerivedStatus | null> {
   return markRecommendationsStale(cwd, {
-    code: `lifecycle:${eventType}`,
-    message: `Recommendations are stale after correlated lifecycle update ${eventType}${itemSuffix}${refSuffix}.`,
+    eventType: input.eventType,
+    itemIds: [...input.itemIds],
+    correlationKind: input.correlationKind,
+    timestamp: input.timestamp,
+    summary: input.summary,
+    code: `lifecycle:${input.eventType}`,
+    message: input.summary,
+    ...(input.refs !== undefined && { refs: [...input.refs] }),
   });
 }
 
@@ -183,14 +206,27 @@ async function writeRecommendationStatusSidecar(statusPath: string, sidecar: Rec
 }
 
 function staleStatus(currentPath: string, statusPath: string, sourceFingerprint: string, lastAppliedSourceFingerprint: string | undefined, staleReasons: RecommendationStaleReason[]): RecommendationDerivedStatus {
-  return {
+  return statusFromParts({
     state: 'stale',
     currentPath,
     statusPath,
     sourceFingerprint,
-    ...(lastAppliedSourceFingerprint !== undefined && { lastAppliedSourceFingerprint }),
-    staleReasons,
-  };
+    lastAppliedSourceFingerprint,
+    staleSince: new Date().toISOString(),
+    reasons: staleReasons,
+  });
+}
+
+function missingStatus(currentPath: string, statusPath: string): RecommendationDerivedStatus {
+  return statusFromParts({ state: 'missing', currentPath, statusPath, reasons: [] });
+}
+
+function statusFromParts(input: Omit<RecommendationDerivedStatus, 'staleReasons'> & { reasons: RecommendationStaleReason[] }): RecommendationDerivedStatus {
+  return Object.fromEntries(Object.entries({
+    ...input,
+    reasons: input.reasons,
+    staleReasons: input.reasons,
+  }).filter(([, value]) => value !== undefined)) as RecommendationDerivedStatus;
 }
 
 function missingStatusSidecarReason(): RecommendationStaleReason {
@@ -210,17 +246,36 @@ function invalidStatusSidecarReason(err: unknown): RecommendationStaleReason {
   return { code: 'invalid-status-sidecar', message: `Recommendation status metadata sidecar is invalid: ${detail}` };
 }
 
+function invalidFreshnessSidecarReason(sidecar: RecommendationStatusSidecar): RecommendationStaleReason | null {
+  if (sidecar.lastAppliedAt !== undefined && sidecar.lastAppliedSourceFingerprint !== undefined) return null;
+  return {
+    code: 'invalid-status-sidecar',
+    message: 'Recommendation status metadata sidecar is invalid: freshness metadata requires lastAppliedAt and lastAppliedSourceFingerprint.',
+  };
+}
+
 function sourceDriftReason(sourceFingerprint: string, lastAppliedSourceFingerprint: string): RecommendationStaleReason {
+  const message = 'Recommendation source fingerprint drifted since the model was last applied.';
   return {
     code: 'source-fingerprint-drift',
-    message: 'Recommendation source fingerprint drifted since the model was last applied.',
+    message,
+    summary: message,
     sourceFingerprint,
     lastAppliedSourceFingerprint,
   };
 }
 
+function sidecarReasons(sidecar: RecommendationStatusSidecar | null | undefined): RecommendationStaleReason[] {
+  return sidecar?.reasons ?? sidecar?.staleReasons ?? [];
+}
+
 function appendStaleReason(existing: RecommendationStaleReason[], reason: RecommendationStaleReason): RecommendationStaleReason[] {
-  return [...existing.filter((candidate) => candidate.code !== reason.code || candidate.message !== reason.message), reason];
+  const key = stableReasonKey(reason);
+  return [...existing.filter((candidate) => stableReasonKey(candidate) !== key), reason].slice(-RECOMMENDATION_STALE_REASON_LIMIT);
+}
+
+function stableReasonKey(reason: RecommendationStaleReason): string {
+  return canonicalJson(reason);
 }
 
 function resolveCurrentPath(cwd: string): string {
