@@ -41,7 +41,7 @@ The payload MUST include:
      - `planDrafts` for eforge plan-file draft content.
      - `playbookDraft` for a reusable playbook draft.
      - `sessionPlanPatch` for updates to an existing session plan.
-     - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`.
+     - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`. `planningType` must be one of `bugfix`, `feature`, `refactor`, `architecture`, `docs`, `maintenance`, `unknown`; `planningDepth` must be one of `quick`, `focused`, `deep`.
    - **A needs-input result** when you cannot produce a ready session-plan creation draft. Set `decision: "needs-input"`, include a non-empty `clarificationQuestions` array of structured questions, and a `rationale` explaining what is blocking a ready draft. Do not emit a session-plan file output in this case.
 
 Submit exactly once. Do not finish with prose. The submission tool is the only accepted output channel.

@@ -295,7 +295,6 @@ describe('eforge-plan extension registration', () => {
         'handoff-session-plan',
         'get-recommendations',
         'put-recommendations',
-        'promote-selection',
         'prepare-planner-context',
         'apply-planner-result',
         'start-planning-agent-task',
@@ -308,6 +307,9 @@ describe('eforge-plan extension registration', () => {
       ]),
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
     });
+    // promote-selection remains registered as an action, integration command, and
+    // deep link, but the AI-first workstation no longer allows it in the iframe surface.
+    expect(workstation!.allowedActions).not.toContain('promote-selection');
     expect('srcDoc' in workstation!).toBe(false);
 
     expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);

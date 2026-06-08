@@ -37,6 +37,9 @@ const MAX_CONTEXT_STRING = 4000;
 const MAX_SOURCE_TEXT = 60000;
 const MAX_REDRAFT_SUMMARY_ITEMS = 10;
 const MAX_REDRAFT_SUMMARY_STRING = 1000;
+const MAX_SELECTION_IDS = 50;
+const MAX_SELECTION_ID_LENGTH = 200;
+const SOURCE_TEXT_HARD_CAP_SUFFIX = '…[truncated]';
 
 type RequestedOutputSections = NonNullable<StartPlanningAgentTaskInput['requestedOutputSections']>;
 
@@ -74,7 +77,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
         ...(requestedOutputSections !== undefined && { requestedOutputSections }),
       },
     });
-    await recordPlanningTaskWorkflowEntry(ctx.cwd, buildEntry({
+    await recordEntryOrCancelTask(ctx, response.task.taskId, buildEntry({
       taskId: response.task.taskId,
       originalRequest: input.userGoal ?? '',
       derivedRequest: derivedGoal,
@@ -220,7 +223,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
       ...(requested !== undefined && { requestedOutputSections: requested }),
     },
   });
-  const entry = await recordPlanningTaskWorkflowEntry(ctx.cwd, buildEntry({
+  const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildEntry({
     taskId: response.task.taskId,
     parentTaskId: parent.taskId,
     originalRequest: parent.originalRequest,
@@ -233,6 +236,27 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     includeRoadmap: parent.includeRoadmap,
   }));
   return toJsonSafeObject({ task: response.task, entry });
+}
+
+// Record the durable workflow index entry only after the daemon task has started.
+// If recording fails, the task would otherwise keep running without an index
+// entry, so reload/list/retry/redraft could never discover it. Cancel the
+// just-started task before rethrowing so it cannot continue unindexed.
+async function recordEntryOrCancelTask(
+  ctx: ExtensionActionContext,
+  taskId: string,
+  entry: PlanningTaskWorkflowEntry,
+): Promise<PlanningTaskWorkflowEntry> {
+  try {
+    return await recordPlanningTaskWorkflowEntry(ctx.cwd, entry);
+  } catch (recordError) {
+    try {
+      await ctx.agentTasks.cancel(taskId, 'eforge-plan failed to record the durable workflow index entry; cancelling to avoid an unindexed task.');
+    } catch {
+      // Surface the original recording failure even if cancellation also fails.
+    }
+    throw recordError;
+  }
 }
 
 interface BuildEntryParams {
@@ -376,7 +400,11 @@ function boundedSourceText(userGoal: string, context: Record<string, unknown>, r
   if (sourceText.length > MAX_SOURCE_TEXT) {
     metadata.sourceTextTruncated = true;
     const summarizedRedraft = summarizeRedraft(boundedRedraft, metadata);
-    sourceText = JSON.stringify({ userGoal, context: { schemaVersion: bounded.schemaVersion, selection: bounded.selection }, ...(summarizedRedraft !== undefined && { redraft: summarizedRedraft }), truncation: metadata }, null, 2);
+    const boundedSelection = boundSelection(bounded.selection, metadata);
+    sourceText = JSON.stringify({ userGoal, context: { schemaVersion: bounded.schemaVersion, selection: boundedSelection }, ...(summarizedRedraft !== undefined && { redraft: summarizedRedraft }), truncation: metadata }, null, 2);
+    if (sourceText.length > MAX_SOURCE_TEXT) {
+      sourceText = `${sourceText.slice(0, MAX_SOURCE_TEXT - SOURCE_TEXT_HARD_CAP_SUFFIX.length)}${SOURCE_TEXT_HARD_CAP_SUFFIX}`;
+    }
   }
   return sourceText;
 }
@@ -403,6 +431,28 @@ function boundRedraftArray(values: unknown[], metadata: Record<string, unknown>,
 
 function boundRedraftString(value: string): string {
   return value.length > MAX_REDRAFT_SUMMARY_STRING ? `${value.slice(0, MAX_REDRAFT_SUMMARY_STRING)}…[truncated]` : value;
+}
+
+// Final-pass selection bound: the fallback context keeps only schemaVersion and
+// selection, but selection itself can carry a large itemIds array or long IDs.
+// Cap the number of IDs and truncate each so a wide backlog selection cannot
+// produce an oversized prompt.
+function boundSelection(selection: unknown, metadata: Record<string, unknown>): unknown {
+  if (selection === null || typeof selection !== 'object') return selection;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(selection as Record<string, unknown>)) {
+    if (Array.isArray(value)) {
+      if (value.length > MAX_SELECTION_IDS) metadata[`omittedSelection_${key}`] = value.length - MAX_SELECTION_IDS;
+      result[key] = value.slice(0, MAX_SELECTION_IDS).map((entry) => (typeof entry === 'string' ? boundSelectionId(entry) : entry));
+    } else {
+      result[key] = typeof value === 'string' ? boundSelectionId(value) : value;
+    }
+  }
+  return result;
+}
+
+function boundSelectionId(value: string): string {
+  return value.length > MAX_SELECTION_ID_LENGTH ? `${value.slice(0, MAX_SELECTION_ID_LENGTH)}…[truncated]` : value;
 }
 
 function truncateValue(value: unknown, metadata: Record<string, unknown>): unknown {

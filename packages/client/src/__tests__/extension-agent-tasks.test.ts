@@ -116,7 +116,7 @@ describe('extension agent task contracts', () => {
         session: 'demo-session',
         topic: 'Demo',
         planningType: 'feature',
-        planningDepth: 'standard',
+        planningDepth: 'focused',
         sections: [{ dimension: 'scope', content: 'Generated scope.' }],
       },
     };

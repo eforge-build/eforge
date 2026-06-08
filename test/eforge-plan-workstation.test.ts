@@ -32,8 +32,19 @@ describe('eforge-plan Console workstation dogfood registration', () => {
         'check-session-plan-readiness',
         'set-session-plan-ready',
         'handoff-session-plan',
+        'start-planning-agent-task',
+        'get-planning-agent-task',
+        'cancel-planning-agent-task',
+        'list-planning-agent-tasks',
+        'retry-planning-agent-task',
+        'redraft-planning-agent-task',
+        'apply-planning-agent-task-result',
       ]),
     });
+    // The AI-first workstation never starts deterministic promotion; promote-selection
+    // stays registered for integration commands and deep links, but is not allowed in
+    // the workstation iframe action surface.
+    expect(workstations[0]!.allowedActions).not.toContain('promote-selection');
     expect('srcDoc' in workstations[0]!).toBe(false);
   });
 });

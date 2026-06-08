@@ -146,7 +146,6 @@ export default defineEforgeExtension((eforge) => {
     allowedActions: [
       'list-board',
       'render-board-markdown',
-      'promote-selection',
       'get-recommendations',
       'put-recommendations',
       'prepare-planner-context',

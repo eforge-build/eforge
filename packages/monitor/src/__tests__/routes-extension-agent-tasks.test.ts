@@ -87,7 +87,7 @@ describe('extension agent task routes and service', () => {
         session: 'demo-session',
         topic: 'Build plans',
         planningType: 'feature',
-        planningDepth: 'standard',
+        planningDepth: 'focused',
         sections: [{ dimension: 'scope', content: 'Generated scope.' }],
       },
     };

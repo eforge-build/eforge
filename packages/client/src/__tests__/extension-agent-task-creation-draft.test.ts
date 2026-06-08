@@ -17,7 +17,7 @@ const readyCreationDraft = {
     session: 'demo-session',
     topic: 'Ship the workstation',
     planningType: 'feature',
-    planningDepth: 'standard',
+    planningDepth: 'focused',
     sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
   },
 };
@@ -60,7 +60,7 @@ describe('eforge-plan session-plan creation drafts and decisions', () => {
     expect(draft.session).toBe('demo-session');
     expect(draft.topic).toBe('Ship the workstation');
     expect(draft.planningType).toBe('feature');
-    expect(draft.planningDepth).toBe('standard');
+    expect(draft.planningDepth).toBe('focused');
     expect(draft.sections).toHaveLength(1);
     expect(hasEforgePlanPlanningDraftOutputSection(result)).toBe(true);
     expect(safeParseExtensionAgentTaskRecord(completedRecord(readyCreationDraft)).success).toBe(true);

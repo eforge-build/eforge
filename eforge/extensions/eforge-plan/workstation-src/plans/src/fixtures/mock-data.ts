@@ -1,4 +1,4 @@
-import type { Artifact, Board, BoardItem, Detail, PlanData, PlanDetail, PlanningAgentTaskRecord, Readiness, RecommendationModel } from '@/types';
+import type { AppliedSessionPlanCreationDraft, Artifact, Board, BoardItem, Detail, JsonObject, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -168,5 +168,163 @@ export function mockMutationResult(session: string, patch: Partial<PlanData> = {
     path: detail.path ?? `.eforge/session-plans/${session}.md`,
     plan: { ...plan, status: 'ready', ...patch },
     readiness: { ready: true, missingDimensions: [], coveredDimensions: plan.required_dimensions ?? [], skippedDimensions: ['assumptions-and-validation'], acDiagnostics: [] },
+  };
+}
+
+// --- Durable planning task workflow fixtures ---
+//
+// These fixtures keep the mock bridge stateful enough to exercise the AI-first
+// workstation flow during local UI development: a running task with section
+// progress, a failed task that can be retried, a needs-input clarification task
+// that can be redrafted, and a ready creation-draft task whose apply refreshes
+// the Plans artifact list.
+
+const TASK_KIND = 'eforge-plan.planning-draft';
+export const MOCK_CREATION_DRAFT_SESSION = '2026-06-07-ai-promoted-plan';
+
+function workflowEntry(input: Partial<PlanningTaskWorkflowEntry> & Pick<PlanningTaskWorkflowEntry, 'taskId'>): PlanningTaskWorkflowEntry {
+  return {
+    originalRequest: '',
+    derivedRequest: 'Draft a session plan for the selected backlog work.',
+    selection: { itemIds: ['add-import-preview'] },
+    requestedOutputSections: ['sessionPlanCreationDraft'],
+    createdAt: '2026-06-07T00:00:00.000Z',
+    ...input,
+  };
+}
+
+const mockRunningTask: PlanningAgentTaskRecord = {
+  taskId: 'task-running-creation', kind: TASK_KIND, status: 'running',
+  createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:00:02.000Z', startedAt: '2026-06-07T00:00:01.000Z',
+  metadata: {
+    progressMessage: 'Drafting session-plan sections…',
+    sectionProgress: { currentSection: 'acceptance-criteria', coveredSections: ['scope'], remainingSections: ['assumptions-and-validation'] },
+  },
+};
+
+const mockFailedTask: PlanningAgentTaskRecord = {
+  taskId: 'task-failed-creation', kind: TASK_KIND, status: 'failed',
+  createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:00:05.000Z', startedAt: '2026-06-07T00:00:01.000Z', completedAt: '2026-06-07T00:00:05.000Z',
+  errorCode: 'planning-agent-error', errorMessage: 'The planning agent run failed before drafting a session plan.',
+};
+
+const mockNeedsInputTask: PlanningAgentTaskRecord = {
+  taskId: 'task-needs-input', kind: TASK_KIND, status: 'completed',
+  createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:00:04.000Z', startedAt: '2026-06-07T00:00:01.000Z', completedAt: '2026-06-07T00:00:04.000Z',
+  metadata: { summary: 'Needs input before drafting.' },
+  result: {
+    summary: 'A few questions before drafting the session plan.',
+    assumptionsOpenQuestions: [],
+    decision: 'needs-input',
+    rationale: 'The selected items leave the scope of import preview ambiguous.',
+    clarificationQuestions: [
+      { question: 'Should import preview be CLI-only or also workstation-visible?', why: 'Determines UI scope and acceptance criteria.', options: ['CLI-only', 'CLI + workstation'] },
+      { question: 'Is a dry-run preview required before any writes?' },
+    ],
+  },
+};
+
+const mockReadyCreationDraftTask: PlanningAgentTaskRecord = {
+  taskId: 'task-ready-creation', kind: TASK_KIND, status: 'completed',
+  createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:00:06.000Z', startedAt: '2026-06-07T00:00:01.000Z', completedAt: '2026-06-07T00:00:06.000Z',
+  metadata: { summary: 'Drafted a ready session plan.', outputSectionCount: 2 },
+  result: {
+    summary: 'Drafted a ready session plan for the selected backlog work.',
+    assumptionsOpenQuestions: ['Confirm rollout order with the planning epic owner.'],
+    nextSteps: ['Review the drafted sections.', 'Create the session plan when ready.'],
+    decision: 'ready',
+    sessionPlanCreationDraft: {
+      session: MOCK_CREATION_DRAFT_SESSION,
+      topic: 'Add import preview',
+      planningType: 'feature',
+      planningDepth: 'focused',
+      sections: [
+        { dimension: 'scope', content: 'Add a bounded import preview flow that shows generated changes before writing.' },
+        { dimension: 'acceptance-criteria', content: '- Preview renders without writing files.\n- Apply requires explicit user action.' },
+      ],
+    },
+  },
+};
+
+export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
+  { entry: workflowEntry({ taskId: mockRunningTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.' }), available: true, status: 'running', task: mockRunningTask },
+  { entry: workflowEntry({ taskId: mockNeedsInputTask.taskId, derivedRequest: 'Draft a session plan for an ambiguous selection.' }), available: true, status: 'completed', task: mockNeedsInputTask },
+  { entry: workflowEntry({ taskId: mockReadyCreationDraftTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.', session: MOCK_CREATION_DRAFT_SESSION }), available: true, status: 'completed', task: mockReadyCreationDraftTask },
+  { entry: workflowEntry({ taskId: mockFailedTask.taskId, derivedRequest: 'Draft a session plan that failed.' }), available: true, status: 'failed', task: mockFailedTask },
+];
+
+const dynamicPlanningTasks: PlanningAgentTaskListItem[] = [];
+const appliedCreationDraftArtifacts: Artifact[] = [];
+let dynamicTaskCounter = 0;
+
+function selectionFromMockInput(input: JsonObject): PlanningTaskWorkflowSelection {
+  return {
+    ...(Array.isArray(input.itemIds) && { itemIds: input.itemIds as string[] }),
+    ...(typeof input.epicId === 'string' && { epicId: input.epicId }),
+    ...(typeof input.recommendationRef === 'string' && { recommendationRef: input.recommendationRef }),
+  };
+}
+
+function describeSelection(selection: PlanningTaskWorkflowSelection): string {
+  if (selection.recommendationRef) return `Draft a session plan for recommendation ${selection.recommendationRef}.`;
+  if (selection.epicId) return `Draft a session plan for epic ${selection.epicId}.`;
+  if (selection.itemIds && selection.itemIds.length > 0) return `Draft a session plan for ${selection.itemIds.join(', ')}.`;
+  return 'Draft a session plan for the open backlog.';
+}
+
+function pushDynamicTask(params: { selection?: PlanningTaskWorkflowSelection; derivedRequest: string; parentTaskId?: string; idPrefix: string }): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
+  dynamicTaskCounter += 1;
+  const taskId = `${params.idPrefix}-${dynamicTaskCounter}`;
+  const now = '2026-06-07T00:10:00.000Z';
+  const task: PlanningAgentTaskRecord = {
+    taskId, kind: TASK_KIND, status: 'running', createdAt: now, updatedAt: now, startedAt: now,
+    metadata: { progressMessage: 'Preparing planner context…', sectionProgress: { currentSection: 'scope', coveredSections: [], remainingSections: ['acceptance-criteria'] } },
+  };
+  const entry = workflowEntry({
+    taskId,
+    derivedRequest: params.derivedRequest,
+    ...(params.parentTaskId && { parentTaskId: params.parentTaskId }),
+    ...(params.selection && { selection: params.selection }),
+  });
+  dynamicPlanningTasks.unshift({ entry, available: true, status: 'running', task });
+  return { task, entry };
+}
+
+export function listMockPlanningTasks(): PlanningAgentTaskListItem[] {
+  return [...dynamicPlanningTasks, ...mockPlanningTaskList];
+}
+
+export function startMockPlanningTaskFromInput(input: JsonObject): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
+  const selection = selectionFromMockInput(input);
+  return pushDynamicTask({ selection, derivedRequest: describeSelection(selection), idPrefix: 'task-started' });
+}
+
+export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
+  return pushDynamicTask({ parentTaskId, derivedRequest: `${mode === 'retry' ? 'Retry' : 'Redraft'} of ${parentTaskId}`, idPrefix: `task-${mode}` });
+}
+
+export function cancelMockPlanningTask(taskId: string, reason?: string): PlanningAgentTaskRecord {
+  const cancelled: PlanningAgentTaskRecord = {
+    taskId, kind: TASK_KIND, status: 'cancelled',
+    createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:10:00.000Z', startedAt: '2026-06-07T00:00:01.000Z', cancelledAt: '2026-06-07T00:10:00.000Z',
+    errorMessage: reason ?? 'cancelled',
+  };
+  const existing = dynamicPlanningTasks.find((item) => item.entry.taskId === taskId);
+  if (existing) { existing.task = cancelled; existing.status = 'cancelled'; }
+  return cancelled;
+}
+
+export function getMockArtifacts(): Artifact[] {
+  return [...mockArtifacts, ...appliedCreationDraftArtifacts];
+}
+
+export function applyMockCreationDraft(session: string): AppliedSessionPlanCreationDraft {
+  if (!appliedCreationDraftArtifacts.some((entry) => entry.session === session)) {
+    appliedCreationDraftArtifacts.push({ key: `plan:${session}`, kind: 'plan', session, title: 'AI-promoted session plan', status: 'planning', ready: false });
+  }
+  return {
+    session,
+    relativePath: `.eforge/session-plans/${session}.md`,
+    readiness: { ready: false, missingDimensions: [], coveredDimensions: ['scope', 'acceptance-criteria'], skippedDimensions: ['assumptions-and-validation'] },
   };
 }

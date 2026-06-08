@@ -1,6 +1,8 @@
 import { Type } from '@sinclair/typebox';
 import {
+  EforgePlanPlanningDepthSchema,
   EforgePlanPlanningDraftResultSchema,
+  EforgePlanPlanningTypeSchema,
   getSchemaYaml,
   parseEforgePlanPlanningDraftResult,
   type EforgePlanPlanningDraftInput,
@@ -101,8 +103,8 @@ const planningDraftSubmissionToolSchema = Type.Object({
   sessionPlanCreationDraft: Type.Optional(Type.Object({
     session: Type.String(),
     topic: Type.String(),
-    planningType: Type.String(),
-    planningDepth: Type.String(),
+    planningType: EforgePlanPlanningTypeSchema,
+    planningDepth: EforgePlanPlanningDepthSchema,
     sections: Type.Array(Type.Object({
       dimension: Type.String(),
       content: Type.String(),

@@ -72,11 +72,30 @@ export const EforgePlanPlanningSessionPlanPatchSchema = Type.Object({
 }, { additionalProperties: false });
 
 // --- eforge:region session-plan-creation-draft ---
+// Constrain to the same literals the eforge-plan apply path accepts
+// (`PLANNING_TYPES`/`PLANNING_DEPTHS`) so the daemon never persists a "ready" task
+// whose planningType/planningDepth the workstation previews but cannot apply.
+export const EforgePlanPlanningTypeSchema = Type.Union([
+  Type.Literal('bugfix'),
+  Type.Literal('feature'),
+  Type.Literal('refactor'),
+  Type.Literal('architecture'),
+  Type.Literal('docs'),
+  Type.Literal('maintenance'),
+  Type.Literal('unknown'),
+]);
+
+export const EforgePlanPlanningDepthSchema = Type.Union([
+  Type.Literal('quick'),
+  Type.Literal('focused'),
+  Type.Literal('deep'),
+]);
+
 export const EforgePlanPlanningSessionPlanCreationDraftSchema = Type.Object({
   session: Type.String({ minLength: 1, pattern: '\\S' }),
   topic: Type.String({ minLength: 1, pattern: '\\S' }),
-  planningType: Type.String(),
-  planningDepth: Type.String(),
+  planningType: EforgePlanPlanningTypeSchema,
+  planningDepth: EforgePlanPlanningDepthSchema,
   sections: Type.Array(Type.Object({
     dimension: Type.String(),
     content: Type.String(),
