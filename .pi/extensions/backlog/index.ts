@@ -22,7 +22,6 @@ import {
 	itemById,
 	listItems,
 	readItem,
-	sectionContent,
 	serializeItem,
 	summarize,
 	today,
@@ -34,7 +33,8 @@ import {
 	type BacklogStatus,
 	type BacklogSummary,
 } from "./store";
-import { RECOMMENDATIONS_RELATIVE_PATH, buildRecommendationInstructions, recommendationsPath, writeRecommendations } from "./recommendations";
+import { RECOMMENDATIONS_RELATIVE_PATH, recommendationsPath, writeRecommendations } from "./recommendations";
+import { buildAnalyzeAllPrompt, buildAnalyzePrompt, buildPromotePrompt, messagesContainAnalyzeAllPrompt } from "./prompts";
 
 // --- eforge:region command-runtime ---
 async function handleBrowserAction(pi: ExtensionAPI, ctx: ExtensionContext, action: BacklogBrowserAction | undefined): Promise<void> {
@@ -307,43 +307,12 @@ function sendAgentPrompt(pi: ExtensionAPI, ctx: ExtensionContext, prompt: string
 	else pi.sendUserMessage(prompt, { deliverAs: "followUp" });
 }
 
-function buildPromotePrompt(item: BacklogItem): string {
-	const claim = sectionContent(item.body, "Claim");
-	return `/eforge:plan ${item.title}\n\nBacklog source: ${item.id}\n\nClaim:\n${claim || "TBD"}\n\nUse the backlog item at .backlog/items/${item.id}.md as context. Validate assumptions before marking the plan ready.`;
-}
-
-const ANALYZE_ALL_SCOPE = "Analyze every open backlog item.";
-
-function buildAnalyzeInstructions(scope: string): string {
-	return `${scope}\n\nAnalyze backlog staleness semantically, not by date alone. The stale_after field is only a review reminder.\n\nFor each item you analyze:\n- call backlog_show before changing it;\n- use last_checked, updated, or created as the start point for git/history inspection;\n- inspect recent git history, docs, and relevant code when cheap;\n- decide whether the item is still valid, shipped, superseded, genuinely stale, blocked, or needs claim/evidence/tag/dependency updates;\n- use backlog_update with evidence for any status, claim, tag, dependency, lastChecked, or staleAfter changes;\n- if still valid, set lastChecked to ${today()} and choose a future staleAfter/review date;\n- do not enqueue builds.\n\nStart with backlog_list includeClosed=false unless a specific item ID is provided.`;
-}
-
-function buildAnalyzePrompt(id: string): string {
-	return buildAnalyzeInstructions(`Analyze backlog item ${id}.`);
-}
-
-export function buildAnalyzeAllPrompt(): string {
-	return `${buildAnalyzeInstructions(ANALYZE_ALL_SCOPE)}\n\n${buildRecommendationInstructions()}\n\nAfter the analysis turn completes, the backlog extension will automatically run the equivalent of /backlog html to refresh and open the local HTML view.`;
-}
-
 function buildCuratorPrompt(): string {
 	return `Review the lightweight backlog in .backlog/items without starting an eforge build.\n\nGoals:\n- list open, blocked, and analysis-due items;\n- inspect recent git history and relevant docs/code for evidence when cheap;\n- use backlog_update to mark shipped/stale/superseded items or maintain dependsOn relationships when evidence is clear;\n- suggest which items should be promoted to /eforge:plan, local backlog epics, roadmap updates, or discarded;\n- do not enqueue builds.\n\nStart by calling backlog_list with includeClosed=false.`;
 }
 
 function createDetails(item: BacklogItem | BacklogItem[] | BacklogSummary | BacklogSummary[]): Record<string, unknown> {
 	return { backlog: item };
-}
-
-function messagesContainAnalyzeAllPrompt(messages: unknown): boolean {
-	return textFromUnknown(messages).includes(ANALYZE_ALL_SCOPE);
-}
-
-function textFromUnknown(value: unknown): string {
-	if (typeof value === "string") return value;
-	if (Array.isArray(value)) return value.map(textFromUnknown).join("\n");
-	if (!value || typeof value !== "object") return "";
-	const record = value as Record<string, unknown>;
-	return [record.text, record.content, record.message].map(textFromUnknown).filter(Boolean).join("\n");
 }
 
 async function refreshHtmlAfterAnalyzeAll(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
@@ -448,6 +417,7 @@ export default function backlogExtension(pi: ExtensionAPI): void {
 			"Use dependsOn, addDependsOn, or removeDependsOn to maintain backlog dependency relationships.",
 			"Set epic only to an existing local backlog epic ID; pass an empty string to clear it.",
 			"When changing backlog item status, add evidence explaining why the status changed.",
+			"When only freshness metadata changes, set lastChecked/staleAfter without addEvidence to avoid noisy recheck logs.",
 		],
 		parameters: UpdateParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

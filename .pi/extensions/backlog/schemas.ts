@@ -67,7 +67,7 @@ export const UpdateParams = Type.Object({
 	status: Type.Optional(StringEnum(STATUS_VALUES)),
 	priority: Type.Optional(StringEnum(PRIORITY_VALUES)),
 	claim: Type.Optional(Type.String()),
-	addEvidence: Type.Optional(Type.String()),
+	addEvidence: Type.Optional(Type.String({ description: "Concise durable evidence only; omit for freshness-only rechecks." })),
 	addRecheck: Type.Optional(Type.String()),
 	tags: Type.Optional(Type.Array(Type.String())),
 	dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Replace dependency list with these backlog item IDs" })),

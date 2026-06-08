@@ -19,7 +19,7 @@ Item frontmatter supports dependency tracking with `depends_on`, an array of bac
 
 Item frontmatter also supports one primary local epic link with `epic: <epic-id>`. Epic IDs point to records in `.backlog/epics/`; commands and agent tools validate the epic exists before writing links. Existing orphaned links are tolerated when reading and shown as missing in generated views.
 
-`stale_after` is treated as an analysis/review reminder, not as an automatic stale verdict. Use `/backlog analyze` or `/backlog analyze-all` for agent-assisted staleness analysis.
+`stale_after` is treated as an analysis/review reminder, not as an automatic stale verdict. Use `/backlog analyze` or `/backlog analyze-all` for agent-assisted staleness analysis. Freshness-only checks should update `last_checked` / `stale_after` without appending Evidence; add Evidence only for durable signal such as status changes, changed dependencies/tags/claims, or meaningful implementation discoveries.
 
 Item human-readable sections:
 
