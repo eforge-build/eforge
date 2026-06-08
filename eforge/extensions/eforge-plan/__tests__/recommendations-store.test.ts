@@ -7,6 +7,7 @@ import { dispatchExtensionAction } from '../../../../packages/engine/src/extensi
 import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
 import { createEforgeProjectPaths } from '../../../../packages/extension-sdk/src/index.js';
 import eforgePlanExtension from '../index.js';
+import { writeBacklogItem } from '../markdown-store.js';
 import {
   createEmptyRecommendationModel,
   readRecommendations,
@@ -23,6 +24,12 @@ function registry() {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
   eforgePlanExtension(api as never);
   return { ...state, extensions: [], candidates: [] };
+}
+
+async function seedReferencedBacklog(cwd: string) {
+  await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n' });
+  await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', body: '# Item Two\n' });
+  await writeBacklogItem(cwd, { id: 'item-three', status: 'candidate', body: '# Item Three\n' });
 }
 
 function recommendationModel() {
@@ -47,6 +54,7 @@ describe('eforge-plan recommendation storage', () => {
 
   it('writes and reads valid recommendation models', async () => {
     await withTempProject(async (cwd) => {
+      await seedReferencedBacklog(cwd);
       const written = await writeRecommendations(cwd, recommendationModel());
       expect(written.recommendedNextSequence.map((entry) => entry.itemId)).toEqual(['item-one']);
       const path = resolveRecommendationsPath(createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' }));
@@ -65,6 +73,7 @@ describe('eforge-plan recommendation storage', () => {
 
   it('rejects malformed payloads before creating current.json', async () => {
     await withTempProject(async (cwd) => {
+      await seedReferencedBacklog(cwd);
       await expect(writeRecommendations(cwd, { schemaVersion: 2 })).rejects.toThrow(/Expected 1|schemaVersion/);
       await expect(writeRecommendations(cwd, { ...recommendationModel(), extra: true })).rejects.toThrow(/additional|Unexpected property|extra/i);
       await expect(writeRecommendations(cwd, {
@@ -87,6 +96,7 @@ describe('eforge-plan recommendation storage', () => {
   it('put-recommendations writes current.json under private extension storage', async () => {
     await withTempProject(async (cwd) => {
       await mkdir(join(cwd, '.backlog'), { recursive: true });
+      await seedReferencedBacklog(cwd);
       const result = await dispatchExtensionAction(registry(), {
         actionId: 'eforge-plan:put-recommendations',
         input: recommendationModel(),
@@ -121,6 +131,7 @@ describe('eforge-plan recommendation storage', () => {
 
   it('get-recommendations returns the stored model and projected summary', async () => {
     await withTempProject(async (cwd) => {
+      await seedReferencedBacklog(cwd);
       const model = recommendationModel();
       await writeRecommendations(cwd, model);
       const result = await dispatchExtensionAction(registry(), {

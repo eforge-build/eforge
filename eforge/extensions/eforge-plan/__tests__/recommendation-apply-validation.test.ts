@@ -51,7 +51,7 @@ function fullyReferencedModel(): BacklogRecommendationModel {
   };
 }
 
-async function expectRejectedBeforeCurrentJsonChanges(cwd: string, model: BacklogRecommendationModel, pattern: RegExp) {
+async function expectRejectedBeforeCurrentJsonChanges(cwd: string, model: BacklogRecommendationModel) {
   await writeRecommendations(cwd, baselineModel());
   const before = await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8');
 
@@ -63,8 +63,8 @@ async function expectRejectedBeforeCurrentJsonChanges(cwd: string, model: Backlo
     timeoutMs: 1000,
   });
 
-  expect(result.kind).toBe('handler-error');
-  expect(JSON.stringify(result)).toMatch(pattern);
+  expect(result.kind).toBe('invalid-input');
+  expect(JSON.stringify(result)).toMatch(/missing|Expected an existing (item|epic) id/);
   expect(await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8')).toBe(before);
 }
 
@@ -89,14 +89,14 @@ describe('recommendation apply reference validation', () => {
   });
 
   it('rejects every unknown recommendation reference before current.json changes', async () => {
-    const cases: Array<{ name: string; mutate: (model: BacklogRecommendationModel) => void; pattern: RegExp }> = [
-      { name: 'activeWork', mutate: (model) => { model.activeWork = [{ itemId: 'missing-active' }]; }, pattern: /activeWork|missing-active/i },
-      { name: 'readyCandidates', mutate: (model) => { model.readyCandidates = [{ itemId: 'missing-ready' }]; }, pattern: /readyCandidates|missing-ready/i },
-      { name: 'recommendedNextSequence', mutate: (model) => { model.recommendedNextSequence = [{ itemId: 'missing-next' }]; }, pattern: /recommendedNextSequence|missing-next/i },
-      { name: 'safeParallelizableGroups.itemIds', mutate: (model) => { model.safeParallelizableGroups[0]!.itemIds = ['missing-group-item']; }, pattern: /safeParallelizableGroups|missing-group-item/i },
-      { name: 'safeParallelizableGroups.epicIds', mutate: (model) => { model.safeParallelizableGroups[0]!.epicIds = ['missing-epic']; }, pattern: /safeParallelizableGroups|missing-epic/i },
-      { name: 'blockedChains.itemIds', mutate: (model) => { model.blockedChains[0]!.itemIds = ['missing-blocked-item']; }, pattern: /blockedChains|missing-blocked-item/i },
-      { name: 'blockedChains.blockedBy', mutate: (model) => { model.blockedChains[0]!.blockedBy = ['missing-blocker']; }, pattern: /blockedChains|missing-blocker/i },
+    const cases: Array<{ name: string; mutate: (model: BacklogRecommendationModel) => void }> = [
+      { name: 'activeWork', mutate: (model) => { model.activeWork = [{ itemId: 'missing-active' }]; } },
+      { name: 'readyCandidates', mutate: (model) => { model.readyCandidates = [{ itemId: 'missing-ready' }]; } },
+      { name: 'recommendedNextSequence', mutate: (model) => { model.recommendedNextSequence = [{ itemId: 'missing-next' }]; } },
+      { name: 'safeParallelizableGroups.itemIds', mutate: (model) => { model.safeParallelizableGroups[0]!.itemIds = ['missing-group-item']; } },
+      { name: 'safeParallelizableGroups.epicIds', mutate: (model) => { model.safeParallelizableGroups[0]!.epicIds = ['missing-epic']; } },
+      { name: 'blockedChains.itemIds', mutate: (model) => { model.blockedChains[0]!.itemIds = ['missing-blocked-item']; } },
+      { name: 'blockedChains.blockedBy', mutate: (model) => { model.blockedChains[0]!.blockedBy = ['missing-blocker']; } },
     ];
 
     for (const entry of cases) {
@@ -104,7 +104,7 @@ describe('recommendation apply reference validation', () => {
         await seedBacklog(cwd);
         const model = fullyReferencedModel();
         entry.mutate(model);
-        await expectRejectedBeforeCurrentJsonChanges(cwd, model, entry.pattern);
+        await expectRejectedBeforeCurrentJsonChanges(cwd, model);
       });
     }
   });
@@ -122,7 +122,7 @@ describe('recommendation apply reference validation', () => {
         timeoutMs: 1000,
       });
 
-      expect(result.kind).toMatch(/invalid-input|handler-error/);
+      expect(result.kind).toBe('invalid-input');
       expect(JSON.stringify(result)).toMatch(/group-one|itemIds|at least one/i);
       expect(await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8')).toBe(before);
     });

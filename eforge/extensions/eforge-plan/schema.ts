@@ -109,6 +109,15 @@ export const RecommendationSummarySchema = Type.Object({
   blockedChainCount: Type.Number(),
   rationaleAndAssumptions: Type.Array(Type.String()),
 }, { additionalProperties: false });
+export const RecommendationStaleReasonSchema = Type.Object({
+  code: Type.String(), message: Type.String(), sourceFingerprint: Type.Optional(Type.String()), lastAppliedSourceFingerprint: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export const RecommendationStatusSidecarSchema = Type.Object({
+  schemaVersion: Type.Literal(1), lastAppliedAt: Type.String(), lastAppliedSourceFingerprint: Type.String(), sourceFingerprint: Type.Optional(Type.String()), staleReasons: Type.Array(RecommendationStaleReasonSchema),
+}, { additionalProperties: false });
+export const RecommendationDerivedStatusSchema = Type.Object({
+  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]), currentPath: Type.String(), statusPath: Type.String(), sourceFingerprint: Type.Optional(Type.String()), lastAppliedSourceFingerprint: Type.Optional(Type.String()), staleReasons: Type.Array(RecommendationStaleReasonSchema),
+}, { additionalProperties: false });
 export const GetRecommendationsInputSchema = Type.Object({});
 export const GetRecommendationsOutputSchema = Type.Object({
   recommendations: Type.Union([BacklogRecommendationModelSchema, Type.Null()]),
@@ -117,9 +126,8 @@ export const GetRecommendationsOutputSchema = Type.Object({
 });
 export const PutRecommendationsInputSchema = BacklogRecommendationModelSchema;
 export const PutRecommendationsOutputSchema = Type.Object({
-  recommendations: BacklogRecommendationModelSchema,
-  recommendationSummary: RecommendationSummarySchema,
-  path: Type.String(),
+  recommendations: BacklogRecommendationModelSchema, recommendationSummary: RecommendationSummarySchema,
+  path: Type.String(), status: RecommendationDerivedStatusSchema,
 });
 // --- eforge:endregion recommendations ---
 // --- eforge:region promotion-selection ---
@@ -231,6 +239,7 @@ export const PreparePlannerContextOutputSchema = Type.Object({
   recommendationRationale: Type.Array(Type.String()),
   dependencies: Type.Array(PlannerDependencyContextSchema),
   roadmapEvidence: PlannerRoadmapEvidenceSchema,
+  traceSummaries: Type.Array(Type.Unknown()),
 }, { additionalProperties: false });
 export const PlannerHandoffDraftSchema = Type.Object({
   selection: PromotionSelectionInputSchema,
@@ -550,7 +559,8 @@ export type RecommendationGroup = Static<typeof RecommendationGroupSchema>;
 export type RecommendationBlockedChain = Static<typeof RecommendationBlockedChainSchema>;
 export type BacklogRecommendationModel = Static<typeof BacklogRecommendationModelSchema>;
 export type RecommendationSummary = Static<typeof RecommendationSummarySchema>;
-export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
+export type RecommendationStaleReason = Static<typeof RecommendationStaleReasonSchema>; export type RecommendationStatusSidecar = Static<typeof RecommendationStatusSidecarSchema>;
+export type RecommendationDerivedStatus = Static<typeof RecommendationDerivedStatusSchema>; export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
 export type GetRecommendationsOutput = Static<typeof GetRecommendationsOutputSchema>;
 export type PutRecommendationsInput = Static<typeof PutRecommendationsInputSchema>;
 export type PutRecommendationsOutput = Static<typeof PutRecommendationsOutputSchema>;

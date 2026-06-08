@@ -21,6 +21,7 @@ describe('run detail route modules', () => {
   it('uses run summary and state projections', async () => {
     harness = await startControlRouteHarness();
     harness.db.insertRun({ id: 'run-1', sessionId: 'session-1', planSet: 'set', command: 'build', status: 'running', startedAt: ts, cwd: harness.cwd });
+    harness.db.updateRunStatus('run-1', 'completed', ts);
     harness.db.insertEvent({ runId: 'run-1', type: 'phase:start', data: JSON.stringify({ type: 'phase:start', timestamp: ts, phase: 'build' }), timestamp: ts });
     expect(await (await harness.get(buildPath(API_ROUTES.runSummary, { id: 'run-1' }))).json()).toEqual(buildRunSummary(harness.db, 'session-1'));
     expect(await (await harness.get(buildPath(API_ROUTES.runState, { id: 'run-1' }))).json()).toEqual(buildRunState(harness.db, 'session-1'));

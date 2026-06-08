@@ -128,6 +128,7 @@ export type {
 } from './contributions.js';
 export type { EforgeConsoleBridge } from './browser.js';
 export {
+  ExtensionActionInputValidationError,
   defineConsoleContribution,
   defineConsoleWorkstation,
   defineExtensionAction,

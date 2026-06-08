@@ -123,6 +123,7 @@ describe('eforge-plan extension registration', () => {
     await withTempProject(async (cwd) => {
       await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n\nEpic evidence.\n' });
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nShip item one.\n' });
+      await writeBacklogItem(cwd, { id: 'item-blocked', status: 'candidate', body: '# Item Blocked\n\n## Claim\n\nBlocked work.\n' });
       await mkdir(join(cwd, '.backlog', 'items'), { recursive: true });
       await writeFile(join(cwd, '.backlog', 'items', 'item-proto.md'), '---\nid: item-proto\nstatus: candidate\n__proto__:\n  injected: true\n---\n# Item Proto\n');
       await writeTraceSidecar(cwd, createTraceSidecar('item-one'));

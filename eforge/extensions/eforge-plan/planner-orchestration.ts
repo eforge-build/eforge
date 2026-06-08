@@ -23,6 +23,7 @@ import {
   writeRecommendations,
 } from './recommendations-store.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
+import { readPlannerTraceSummaries, recordPlannerRecommendationApplied } from './recommendation-status.js';
 import {
   PLANNING_DEPTHS,
   PLANNING_PROFILES,
@@ -59,6 +60,9 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
     recommendationRationale: recommendations.rationaleAndAssumptions,
     dependencies: dependencyContext(selected.items),
     roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] },
+    // --- eforge:region plan-01-freshness-foundation ---
+    traceSummaries: await readPlannerTraceSummaries(cwd),
+    // --- eforge:endregion plan-01-freshness-foundation ---
   };
 }
 
@@ -69,10 +73,12 @@ export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultI
   const result: Record<string, unknown> = { schemaVersion: 1 };
   if (input.recommendations !== undefined) {
     const recommendations = await writeRecommendations(cwd, input.recommendations);
+    const status = await recordPlannerRecommendationApplied(cwd);
     result.recommendations = {
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
       path: resolveRecommendationsPathForCwd(cwd),
+      status,
     };
   }
   if (input.handoffDraft !== undefined) {
