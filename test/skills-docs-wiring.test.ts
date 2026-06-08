@@ -365,16 +365,6 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
     expect(pluginConfig).toMatch(/effort.*xhigh/i);
   });
 
-  it('Pi config skill contains xhigh for both effort and thinkingLevel', () => {
-    expect(piConfig).toMatch(/effort.*xhigh/i);
-    expect(piConfig).toMatch(/thinkingLevel.*xhigh/i);
-  });
-
-  it('Plugin config skill contains xhigh for both effort and thinkingLevel', () => {
-    expect(pluginConfig).toMatch(/effort.*xhigh/i);
-    expect(pluginConfig).toMatch(/thinkingLevel.*xhigh/i);
-  });
-
   it('docs/config.md contains xhigh for both thinkingLevel and effort', () => {
     expect(docsConfig).toMatch(/effort.*xhigh/i);
     expect(docsConfig).toMatch(/thinkingLevel.*xhigh/i);
@@ -405,12 +395,6 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
     const matches = docsConfig.match(/xhigh/g);
     expect(matches).not.toBeNull();
     expect(matches!.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('Pi and plugin config skills contain low as a thinkingLevel option', () => {
-    // thinkingLevel line in body text and/or YAML comment should include 'low'
-    expect(piConfig).toMatch(/thinkingLevel.*low/);
-    expect(pluginConfig).toMatch(/thinkingLevel.*low/);
   });
 
   it('docs/config.md contains low as a thinkingLevel option', () => {

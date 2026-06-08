@@ -17,7 +17,6 @@ const expectedDocSlugs = [
   'stacking',
   'troubleshooting',
 ];
-const newGuideSlugs = ['profiles', 'playbooks', 'integrations', 'stacking', 'troubleshooting'];
 const docsContentDir = join(process.cwd(), 'web/content/docs');
 const publicDocsDir = join(process.cwd(), 'web/public/docs');
 const referenceContentDir = join(process.cwd(), 'web/content/reference');
@@ -64,14 +63,6 @@ function markdownHeadingLevels(markdown: string): number[] {
 }
 
 describe('loadDocPage', () => {
-  it('returns non-empty HTML for known doc slugs', async () => {
-    for (const slug of expectedDocSlugs) {
-      const page = await loadDocPage(slug);
-      expect(page.html, `Expected HTML for slug "${slug}"`).toBeTruthy();
-      expect(page.html.length, `Expected non-empty HTML for slug "${slug}"`).toBeGreaterThan(0);
-    }
-  });
-
   it('throws a typed error for unknown doc slugs', async () => {
     await expect(loadDocPage('nonexistent-page-xyz')).rejects.toThrow('Page not found: nonexistent-page-xyz');
   });
@@ -110,17 +101,6 @@ describe('loadDocPage', () => {
     }
   });
 
-  it('keeps new guide pages discoverable and structured', async () => {
-    for (const slug of newGuideSlugs) {
-      const page = await loadDocPage(slug);
-      const raw = readGuide(slug);
-      expect(page.frontmatter.title, `Expected title frontmatter for ${slug}`).toEqual(expect.any(String));
-      expect(page.frontmatter.description, `Expected description frontmatter for ${slug}`).toEqual(expect.any(String));
-      expect(stripFencedCodeBlocks(raw), `Expected at least one level-two heading in ${slug}`).toMatch(/^##\s+/m);
-      expect(readPublicGuide(slug), `Expected generated public docs mirror for ${slug} to match its source`).toBe(raw);
-    }
-  });
-
   it('keeps every public guide structurally valid and mirrored by slug', async () => {
     for (const slug of expectedDocSlugs) {
       const source = readGuide(slug);
@@ -128,6 +108,8 @@ describe('loadDocPage', () => {
       const page = await loadDocPage(slug);
       const markdownOutsideCode = stripFencedCodeBlocks(source);
 
+      expect(page.html, `Expected HTML for slug "${slug}"`).toBeTruthy();
+      expect(page.html.length, `Expected non-empty HTML for slug "${slug}"`).toBeGreaterThan(0);
       expect(page.frontmatter.title, `Expected title frontmatter for ${slug}`).toEqual(expect.any(String));
       expect(page.frontmatter.description, `Expected description frontmatter for ${slug}`).toEqual(expect.any(String));
       const headingLevels = markdownHeadingLevels(source);

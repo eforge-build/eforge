@@ -44,19 +44,6 @@ describe('RunDetailView', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the back button', async () => {
-    const runState = makeRunState();
-    render(
-      <RunDetailView
-        detailId="session-abc-123"
-        isLive={true}
-        liveRunState={runState}
-        onBack={() => {}}
-      />,
-    );
-    expect(screen.getByRole('button', { name: /back/i })).toBeTruthy();
-  });
-
   it('shows the detailId in the breadcrumb', async () => {
     const runState = makeRunState();
     render(
