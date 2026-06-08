@@ -105,6 +105,10 @@ export const PlanningTaskWorkflowEntrySchema = Type.Object({
   planningType: Type.Optional(Type.String()),
   planningDepth: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
+  // --- eforge:region plan-02-refresh-invalidation ---
+  purpose: Type.Optional(Type.Literal('recommendation-refresh')),
+  sourceFingerprint: Type.Optional(Type.String()),
+  // --- eforge:endregion plan-02-refresh-invalidation ---
   createdAt: Type.String(),
 }, { additionalProperties: false });
 

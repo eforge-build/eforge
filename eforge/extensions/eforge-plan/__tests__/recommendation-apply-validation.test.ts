@@ -142,18 +142,18 @@ describe('recommendation apply reference validation', () => {
     });
   });
 
-  it('direct planner result applies clear stale status when sources match and record drift after source changes', async () => {
+  it('direct planner result apply records the current source fingerprint', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
       const freshApply = await applyPlannerResult(cwd, { recommendations: fullyReferencedModel() });
       expect(freshApply.recommendations).toMatchObject({ status: { state: 'fresh' } });
 
-      await writeBacklogItem(cwd, { id: 'item-three', status: 'candidate', body: '# Item Three\n\n## Claim\n\nSource drift.\n' });
-      const driftApply = await applyPlannerResult(cwd, { recommendations: fullyReferencedModel() });
-      expect(driftApply.recommendations).toMatchObject({ status: { state: 'stale' } });
-      expect(JSON.stringify(driftApply.recommendations)).toMatch(/drift|fingerprint|source/i);
+      await writeBacklogItem(cwd, { id: 'item-three', status: 'candidate', body: '# Item Three\n\n## Claim\n\nSource changed.\n' });
+      const secondApply = await applyPlannerResult(cwd, { recommendations: fullyReferencedModel() });
+      expect(secondApply.recommendations).toMatchObject({ status: { state: 'fresh' } });
       const status = JSON.parse(await readFile(join(cwd, '.eforge', 'storage', 'extensions', 'eforge-plan', 'recommendations', 'status.json'), 'utf-8'));
-      expect(JSON.stringify(status)).toMatch(/drift|fingerprint|source/i);
+      expect(status.staleReasons).toEqual([]);
+      expect(status.lastAppliedSourceFingerprint).toBe(status.sourceFingerprint);
     });
   });
 });

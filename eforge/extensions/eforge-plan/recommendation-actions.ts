@@ -7,9 +7,11 @@ import {
 } from './schema.js';
 import { GetRecommendationsWithStatusOutputSchema } from './recommendation-status-schemas.js';
 import {
+  computeRecommendationSourceFingerprint,
   readDerivedRecommendationStatus,
   recordRecommendationPutApplied,
 } from './recommendation-status.js';
+import { findActiveRecommendationRefreshTask, refreshRecommendationsAction } from './recommendation-refresh.js';
 import {
   readRecommendationsFromPath,
   resolveRecommendationsPath,
@@ -28,11 +30,17 @@ export const getRecommendations = defineExtensionAction({
     const path = resolveRecommendationsPath(ctx.paths);
     const recommendations = await readRecommendationsFromPath(path);
     const status = await readDerivedRecommendationStatus(ctx.cwd, path);
+    // --- eforge:region plan-02-refresh-invalidation ---
+    const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx);
+    // --- eforge:endregion plan-02-refresh-invalidation ---
     return toJsonSafeObject({
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
       path,
       status,
+      // --- eforge:region plan-02-refresh-invalidation ---
+      ...(activeRefresh !== undefined && { activeRefreshTask: activeRefresh.task }),
+      // --- eforge:endregion plan-02-refresh-invalidation ---
     });
   },
 });
@@ -57,4 +65,15 @@ export const putRecommendations = defineExtensionAction({
   },
 });
 
-export const recommendationActions = [getRecommendations, putRecommendations] as const;
+// --- eforge:region plan-02-refresh-invalidation ---
+async function readActiveRefreshTaskIfAvailable(ctx: Parameters<typeof getRecommendations.handler>[1]) {
+  try {
+    const sourceFingerprint = await computeRecommendationSourceFingerprint(ctx.cwd);
+    return await findActiveRecommendationRefreshTask(ctx, sourceFingerprint);
+  } catch {
+    return undefined;
+  }
+}
+// --- eforge:endregion plan-02-refresh-invalidation ---
+
+export const recommendationActions = [getRecommendations, putRecommendations, refreshRecommendationsAction] as const;

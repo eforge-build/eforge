@@ -13,6 +13,7 @@ import {
   type TraceSidecar,
 } from './trace-store.js';
 import type { BacklogItem, BacklogStatus } from './backlog-domain.js';
+import { markRecommendationsStaleForLifecycleUpdate } from './recommendation-status.js';
 
 export interface LifecycleCorrelation {
   kind: 'none' | 'single' | 'multi' | 'ambiguous';
@@ -78,6 +79,11 @@ export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Reco
       await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
     }
   }
+  // --- eforge:region plan-02-refresh-invalidation ---
+  if (itemIds.length > 0) {
+    await markRecommendationsStaleForLifecycleUpdate(cwd, stringValue(valueAt(event, 'type')) ?? 'unknown', itemIds, lifecycleReasonRefs(event));
+  }
+  // --- eforge:endregion plan-02-refresh-invalidation ---
   return decision.correlation.kind === 'none' && bootstrapped
     ? {
       ...decision,
@@ -197,6 +203,14 @@ function directInputItemId(event: EforgeEvent | Record<string, unknown>): string
   if (!source?.startsWith('eforge://input/eforge-plan/')) return undefined;
   return decodeURIComponent(source.slice('eforge://input/eforge-plan/'.length));
 }
+
+// --- eforge:region plan-02-refresh-invalidation ---
+function lifecycleReasonRefs(event: EforgeEvent | Record<string, unknown>): string[] {
+  return ['source', 'filePath', 'path', 'prdId', 'id', 'sessionId', 'runId', 'featureBranch', 'commitSha']
+    .map((field) => stringValue(valueAt(event, field)))
+    .filter((value): value is string => value !== undefined);
+}
+// --- eforge:endregion plan-02-refresh-invalidation ---
 
 async function bootstrapItemFromQueuedPrd(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<{ itemIds: string[]; epicIdsByItemId: Map<string, string | undefined> } | undefined> {
   if (valueAt(event, 'type') !== 'enqueue:complete') return undefined;

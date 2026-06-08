@@ -174,13 +174,14 @@ describe('recommendation invalidation', () => {
         for (const itemId of traces) {
           const trace = createTraceSidecar(itemId);
           trace.queuePrds.push({ prdId: 'shared-prd', status: 'queued' });
+          if (traces.length > 1) trace.lastEvent = { id: 'shared-event' };
           await writeTraceSidecar(cwd, trace);
         }
         const statusPath = resolveRecommendationStatusPathForCwd(cwd);
         const before = await readFile(statusPath, 'utf-8');
         const event = traces.length === 1
           ? { type: 'landing:complete', action: 'merge', featureBranch: 'unmatched', commitSha: 'none', timestamp: '2026-01-01T00:00:00.000Z' }
-          : { type: 'queue:prd:complete', prdId: 'shared-prd', status: 'completed', timestamp: '2026-01-01T00:00:00.000Z' };
+          : { type: 'enqueue:complete', id: 'shared-event', timestamp: '2026-01-01T00:00:00.000Z' };
 
         await invokeRegisteredHook(cwd, event);
 
