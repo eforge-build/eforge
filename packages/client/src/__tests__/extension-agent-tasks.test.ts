@@ -117,10 +117,15 @@ describe('extension agent task contracts', () => {
         topic: 'Demo',
         planningType: 'feature',
         planningDepth: 'focused',
+        profile: 'excursion',
+        agentProfile: 'some-profile',
         sections: [{ dimension: 'scope', content: 'Generated scope.' }],
       },
     };
-    expect(parseEforgePlanPlanningDraftResult(readyResult).summary).toContain('session plan');
+    const parsedReady = parseEforgePlanPlanningDraftResult(readyResult);
+    expect(parsedReady.summary).toContain('session plan');
+    expect((parsedReady as typeof readyResult).sessionPlanCreationDraft.profile).toBe('excursion');
+    expect((parsedReady as typeof readyResult).sessionPlanCreationDraft.agentProfile).toBe('some-profile');
     expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: readyResult })).success).toBe(true);
 
     const needsInputResult = {

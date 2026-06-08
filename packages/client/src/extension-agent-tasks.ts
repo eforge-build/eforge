@@ -96,6 +96,8 @@ export const EforgePlanPlanningSessionPlanCreationDraftSchema = Type.Object({
   topic: Type.String({ minLength: 1, pattern: '\\S' }),
   planningType: EforgePlanPlanningTypeSchema,
   planningDepth: EforgePlanPlanningDepthSchema,
+  profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
+  agentProfile: Type.Optional(Type.String()),
   sections: Type.Array(Type.Object({
     dimension: Type.String(),
     content: Type.String(),

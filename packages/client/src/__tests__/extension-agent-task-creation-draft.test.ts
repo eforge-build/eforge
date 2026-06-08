@@ -18,6 +18,8 @@ const readyCreationDraft = {
     topic: 'Ship the workstation',
     planningType: 'feature',
     planningDepth: 'focused',
+    profile: 'excursion',
+    agentProfile: 'some-profile',
     sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
   },
 };
@@ -61,6 +63,8 @@ describe('eforge-plan session-plan creation drafts and decisions', () => {
     expect(draft.topic).toBe('Ship the workstation');
     expect(draft.planningType).toBe('feature');
     expect(draft.planningDepth).toBe('focused');
+    expect(draft.profile).toBe('excursion');
+    expect(draft.agentProfile).toBe('some-profile');
     expect(draft.sections).toHaveLength(1);
     expect(hasEforgePlanPlanningDraftOutputSection(result)).toBe(true);
     expect(safeParseExtensionAgentTaskRecord(completedRecord(readyCreationDraft)).success).toBe(true);

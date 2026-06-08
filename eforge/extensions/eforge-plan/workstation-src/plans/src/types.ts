@@ -73,6 +73,8 @@ export interface PlanningTaskSessionPlanCreationDraft {
   topic: string;
   planningType: string;
   planningDepth: string;
+  profile?: string;
+  agentProfile?: string;
   sections: PlanningTaskSessionPlanSection[];
   skippedDimensions?: PlanningTaskSkippedDimension[];
 }

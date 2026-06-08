@@ -25,6 +25,7 @@ import {
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import {
   PLANNING_DEPTHS,
+  PLANNING_PROFILES,
   PLANNING_TYPES,
   type ApplyPlannerResultInput,
   type BacklogRecommendationModel,
@@ -142,6 +143,8 @@ interface SessionPlanCreationDraftShape {
   topic: string;
   planningType: string;
   planningDepth: string;
+  profile?: (typeof PLANNING_PROFILES)[number];
+  agentProfile?: string;
   sections: Array<{ dimension: string; content: string }>;
   skippedDimensions?: Array<{ dimension: string; reason: string }>;
 }
@@ -193,6 +196,8 @@ function isSessionPlanCreationDraft(value: unknown): value is SessionPlanCreatio
   if (!isRecord(value)) return false;
   if (typeof value.session !== 'string' || typeof value.topic !== 'string') return false;
   if (typeof value.planningType !== 'string' || typeof value.planningDepth !== 'string') return false;
+  if (value.profile !== undefined && !(PLANNING_PROFILES as readonly string[]).includes(value.profile as string)) return false;
+  if (value.agentProfile !== undefined && typeof value.agentProfile !== 'string') return false;
   if (!Array.isArray(value.sections) || value.sections.length === 0) return false;
   return value.sections.every((entry) => isRecord(entry) && typeof entry.dimension === 'string' && typeof entry.content === 'string');
 }
