@@ -119,6 +119,10 @@ function resolveThinkingLevel(options: AgentRunOptions, piConfig?: PiConfig): Th
  * applies to both Pi built-in/bridged `AgentTool`s and `ToolDefinition`s
  * without commingling them into a single array.
  */
+function shouldRegisterEforgeCustomTools(options: Pick<AgentRunOptions, 'tools' | 'customTools'>): boolean {
+  return (options.customTools?.length ?? 0) > 0;
+}
+
 function filterTools<T extends { name: string }>(
   tools: T[],
   allowedTools?: string[],
@@ -333,6 +337,7 @@ export const piHarnessInternalsForTest = {
   extractLastAssistantMessageText,
   extractMessageUpdateText,
   buildResourceLoaderOverrides,
+  shouldRegisterEforgeCustomTools,
   isPiToolInfrastructureError,
   isPiToolExecutionInfrastructureError,
 };
@@ -632,11 +637,13 @@ export class PiHarness implements AgentHarness {
       // only uses `params`, the rest are accepted and ignored.
       // The inputSchema is now a TypeBox TObject — pass it directly as parameters
       // without any Zod/JSON-Schema round-trip.
-      // Read-only agents never receive custom tools — they are blind sensors with
-      // no submission or mutation capability.
+      // Engine-provided custom tools are explicit per-run contracts, not ambient
+      // project tools. Preserve them even for read-only agents so single-shot
+      // read-only tasks can still use non-mutating output/progress tools.
       const eforgeCustomTools: ToolDefinition[] = [];
-      if (!isReadOnly && options.customTools && options.customTools.length > 0) {
-        for (const ct of options.customTools) {
+      const runCustomTools = options.customTools ?? [];
+      if (shouldRegisterEforgeCustomTools(options)) {
+        for (const ct of runCustomTools) {
           const parameters = ct.inputSchema;
           const execute: ToolDefinition['execute'] = async (
             _toolCallId,

@@ -132,6 +132,15 @@ export const RetryPlanningAgentTaskInputSchema = Type.Object({
   userGoal: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_PLANNING_AGENT_USER_GOAL_LENGTH, pattern: '\\S' })),
 }, { additionalProperties: false });
 
+export const RemovePlanningAgentTaskInputSchema = Type.Object({
+  taskId: ExtensionAgentTaskIdSchema,
+}, { additionalProperties: false });
+
+export const RemovePlanningAgentTaskOutputSchema = Type.Object({
+  taskId: ExtensionAgentTaskIdSchema,
+  removed: Type.Boolean(),
+}, { additionalProperties: false });
+
 export const RedraftPlanningAgentTaskInputSchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,
   answers: Type.Optional(Type.Array(Type.String(), { minItems: 1 })),
@@ -159,5 +168,6 @@ export type ListPlanningAgentTasksInput = Static<typeof ListPlanningAgentTasksIn
 export type PlanningAgentTaskListItem = Static<typeof PlanningAgentTaskListItemSchema>;
 export type ListPlanningAgentTasksOutput = Static<typeof ListPlanningAgentTasksOutputSchema>;
 export type RetryPlanningAgentTaskInput = Static<typeof RetryPlanningAgentTaskInputSchema>;
+export type RemovePlanningAgentTaskInput = Static<typeof RemovePlanningAgentTaskInputSchema>;
 export type RedraftPlanningAgentTaskInput = Static<typeof RedraftPlanningAgentTaskInputSchema>;
 export type PlanningAgentTaskWorkflowStartOutput = Static<typeof PlanningAgentTaskWorkflowStartOutputSchema>;

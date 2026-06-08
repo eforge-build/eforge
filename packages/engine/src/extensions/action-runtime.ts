@@ -5,7 +5,7 @@ import { safeParseWithSchema, type ExtensionActionRequestedBy, type ExtensionJso
 import type { TSchema } from '@sinclair/typebox';
 
 import { validateJsonSafeValue, jsonSafeClone } from './contribution-validation.js';
-import type { ActionRegistration, ExtensionAgentTasksApiShape, NativeExtensionRegistry } from './types.js';
+import type { ActionRegistration, ExtensionAgentTasksApiShape, ExtensionBuildQueueApiShape, NativeExtensionRegistry } from './types.js';
 
 export interface DispatchExtensionActionOptions {
   actionId: string;
@@ -18,6 +18,9 @@ export interface DispatchExtensionActionOptions {
   // --- eforge:region extension-agent-task-context ---
   agentTasks?: (extension: { extensionName: string; extensionPath: string }) => ExtensionAgentTasksApiShape;
   // --- eforge:endregion extension-agent-task-context ---
+  // --- eforge:region extension-build-queue-context ---
+  buildQueue?: (extension: { extensionName: string; extensionPath: string }) => ExtensionBuildQueueApiShape;
+  // --- eforge:endregion extension-build-queue-context ---
 }
 
 export type DispatchExtensionActionResult =
@@ -110,6 +113,9 @@ function buildActionContext(action: ActionRegistration, options: DispatchExtensi
     // --- eforge:region extension-agent-task-context ---
     agentTasks: options.agentTasks?.({ extensionName: action.extensionName, extensionPath: action.extensionPath }) ?? unavailableAgentTasks(),
     // --- eforge:endregion extension-agent-task-context ---
+    // --- eforge:region extension-build-queue-context ---
+    buildQueue: options.buildQueue?.({ extensionName: action.extensionName, extensionPath: action.extensionPath }) ?? unavailableBuildQueue(),
+    // --- eforge:endregion extension-build-queue-context ---
   };
 }
 
@@ -125,6 +131,16 @@ function unavailableAgentTasks(): ExtensionAgentTasksApiShape {
   };
 }
 // --- eforge:endregion extension-agent-task-context ---
+
+// --- eforge:region extension-build-queue-context ---
+function unavailableBuildQueue(): ExtensionBuildQueueApiShape {
+  return {
+    enqueue: async (): Promise<never> => {
+      throw new Error('Extension build queue is unavailable in this runtime');
+    },
+  };
+}
+// --- eforge:endregion extension-build-queue-context ---
 
 function buildLogger(action: ActionRegistration) {
   const prefix = `[eforge extension ${action.extensionName} action ${action.id}]`;

@@ -27,6 +27,7 @@ function testContext(cwd: string, start: ExtensionActionContext['agentTasks']['s
     logger,
     paths: createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' }),
     agentTasks: { start, get: async () => { throw new Error('unused'); }, cancel: async () => { throw new Error('unused'); } },
+    buildQueue: { enqueue: async () => { throw new Error('unused'); } },
   };
 }
 

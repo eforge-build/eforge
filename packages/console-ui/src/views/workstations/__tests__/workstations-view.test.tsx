@@ -79,6 +79,17 @@ function manifest(consoleWorkstations: ExtensionContributionManifestResponse['co
   };
 }
 
+function openSwitcher() {
+  const trigger = screen.getByRole('combobox');
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+}
+
+function chooseWorkstation(name: RegExp) {
+  openSwitcher();
+  fireEvent.click(screen.getByRole('option', { name }));
+}
+
 describe('WorkstationsView', () => {
   beforeEach(() => {
     fetchExtensionContributionManifest.mockReset();
@@ -93,7 +104,7 @@ describe('WorkstationsView', () => {
     await waitFor(() => expect(screen.getByText(/No Console workstations are registered/i)).toBeDefined());
   });
 
-  it('lists workstation titles and extension names when entries exist', async () => {
+  it('lists workstation titles in the switcher and shows the selected extension badge', async () => {
     fetchExtensionContributionManifest.mockResolvedValueOnce(manifest([
       srcDocWorkstation({ id: 'demo:board', title: 'Board', extensionName: 'demo' }),
       frameBundleWorkstation({ id: 'tools:panel', title: 'Panel', extensionName: 'tools' }),
@@ -101,10 +112,13 @@ describe('WorkstationsView', () => {
 
     render(<WorkstationsView />);
 
-    await waitFor(() => expect(screen.getAllByText('Board').length).toBeGreaterThan(0));
-    expect(screen.getByText('Panel')).toBeDefined();
-    expect(screen.getAllByText('demo').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('tools').length).toBeGreaterThan(0);
+    // First sorted workstation (Board) is selected by default; its extension badge shows.
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeDefined());
+    expect(screen.getByText('demo')).toBeDefined();
+
+    openSwitcher();
+    expect(screen.getByRole('option', { name: 'Board' })).toBeDefined();
+    expect(screen.getByRole('option', { name: 'Panel' })).toBeDefined();
   });
 
   it('selecting a srcDoc workstation renders a sandboxed iframe derived from the manifest srcDoc', async () => {
@@ -116,8 +130,8 @@ describe('WorkstationsView', () => {
 
     render(<WorkstationsView onNavigate={onNavigate} />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Panel/i })).toBeDefined());
-    fireEvent.click(screen.getByRole('button', { name: /Panel/i }));
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeDefined());
+    chooseWorkstation(/Panel/i);
 
     const iframe = screen.getByTestId('workstation-iframe') as HTMLIFrameElement;
     expect(iframe.getAttribute('sandbox')).toContain('allow-scripts');
@@ -170,8 +184,8 @@ describe('WorkstationsView', () => {
 
     render(<WorkstationsView onNavigate={onNavigate} />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Bundle Board/i })).toBeDefined());
-    fireEvent.click(screen.getByRole('button', { name: /Bundle Board/i }));
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeDefined());
+    chooseWorkstation(/Bundle Board/i);
 
     const iframe = screen.getByTestId('workstation-iframe') as HTMLIFrameElement;
     expect(iframe.getAttribute('src')).toContain('/api/extensions/workstations/bundle%3Aboard/frame#bridgeToken=');

@@ -76,7 +76,7 @@ function createMockBridge(): EforgeBridge {
         case 'set-session-plan-section': return mockMutationResult(String(input.session ?? '')) as TOutput;
         case 'select-session-plan-dimensions': return { ...mockMutationResult(String(input.session ?? '')), required_dimensions: ['scope', 'acceptance-criteria'], optional_dimensions: [] } as TOutput;
         case 'update-session-plan-metadata': return mockMutationResult(String(input.session ?? ''), { profile: (input.profile as PlanData['profile']) ?? null, agent_profile: (input.agentProfile as string) ?? null, open_questions: (input.openQuestions as string[]) ?? [] }) as TOutput;
-        case 'handoff-session-plan': return { message: 'Ready for handoff.', command: `/eforge:build .eforge/session-plans/${String(input.session ?? 'mock')}.md` } as TOutput;
+        case 'handoff-session-plan': return { kind: 'enqueued', message: `Enqueued .eforge/session-plans/${String(input.session ?? 'mock')}.md for build.`, queueSessionId: 'mock-build-session', pid: 1234, autoBuild: true } as TOutput;
         default: return { message: `${actionId} accepted by mock bridge.` } as TOutput;
       }
     },

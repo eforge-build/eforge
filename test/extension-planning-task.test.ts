@@ -76,6 +76,28 @@ describe('eforge-plan planning draft task runner', () => {
     }))).rejects.toThrow('submit_eforge_plan_planning_result');
   });
 
+  it('keeps a submitted planning result when a transient transport error arrives after submission', async () => {
+    const harness = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_eforge_plan_planning_result',
+        toolUseId: 'tool-1',
+        input: validSubmission,
+        output: '',
+      }],
+      lateError: new Error('Backend error: WebSocket error'),
+    }]);
+
+    const { events, result } = await collect(runEforgePlanPlanningDraftTask({
+      harness,
+      cwd: '/tmp',
+      input: { topic: 'Demo task' },
+      taskId: 'task-transport',
+    }));
+
+    expect(result.summary).toBe(validSubmission.summary);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'agent:warning', code: 'late-infrastructure-error-after-planning-submit', agentId: 'task-transport' }));
+  });
+
   it('rejects submissions without an applicable output section', async () => {
     const harness = new StubHarness([{
       toolCalls: [{

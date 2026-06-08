@@ -8,6 +8,8 @@ import type {
   ExtensionAgentTaskStartRequest,
   ExtensionAgentTaskStartResponse,
   ExtensionJsonValue,
+  EnqueueRequest,
+  EnqueueResponse,
 } from '@eforge-build/client';
 
 /**
@@ -78,6 +80,12 @@ export interface ExtensionAgentTasksApiShape {
 }
 // --- eforge:endregion extension-agent-task-context ---
 
+// --- eforge:region extension-build-queue-context ---
+export interface ExtensionBuildQueueApiShape {
+  enqueue(request: EnqueueRequest): Promise<EnqueueResponse>;
+}
+// --- eforge:endregion extension-build-queue-context ---
+
 export interface ExtensionActionContextShape {
   invocationId: string;
   actionId: string;
@@ -94,6 +102,9 @@ export interface ExtensionActionContextShape {
   // --- eforge:region extension-agent-task-context ---
   agentTasks: ExtensionAgentTasksApiShape;
   // --- eforge:endregion extension-agent-task-context ---
+  // --- eforge:region extension-build-queue-context ---
+  buildQueue: ExtensionBuildQueueApiShape;
+  // --- eforge:endregion extension-build-queue-context ---
 }
 export interface ExtensionActionSpec {
   id: string;

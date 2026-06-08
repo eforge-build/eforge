@@ -9,7 +9,8 @@ import {
   type EforgePlanPlanningDraftResult,
 } from '@eforge-build/client';
 import type { AgentHarness, CustomTool, SdkPassthroughConfig } from '../harness.js';
-import { pickSdkOptions } from '../harness.js';
+import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
+import { isRetryableInfrastructureSubtype } from '../retry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { loadPrompt } from '../prompts.js';
@@ -194,22 +195,40 @@ export async function* runEforgePlanPlanningDraftTask(
     stage: options.stage,
   });
 
-  for await (const event of options.harness.run(
-    {
-      prompt,
-      cwd: options.cwd,
-      maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
-      tools: 'read-only',
-      customTools: [submitTool, progressTool],
-      abortSignal: options.abortController?.signal,
-      ...sdkOptions,
-    },
-    'planner',
-    options.taskId,
-  )) {
-    if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
-      yield event;
+  try {
+    for await (const event of options.harness.run(
+      {
+        prompt,
+        cwd: options.cwd,
+        maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
+        tools: 'read-only',
+        customTools: [submitTool, progressTool],
+        abortSignal: options.abortController?.signal,
+        ...sdkOptions,
+      },
+      'planner',
+      options.taskId,
+    )) {
+      if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
+        yield event;
+      }
     }
+  } catch (err) {
+    const terminalSubtype = classifyAgentTerminalSubtype(err);
+    const message = err instanceof Error ? err.message : String(err);
+    if (submitted !== undefined && terminalSubtype !== undefined && isRetryableInfrastructureSubtype(terminalSubtype)) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        agentId: options.taskId ?? 'extension-planning-task',
+        agent: 'planner',
+        code: 'late-infrastructure-error-after-planning-submit',
+        message: `Retryable infrastructure error after planning result submission was downgraded: ${message}`,
+        ...(options.taskId !== undefined && { planId: options.taskId }),
+      } as EforgeEvent;
+      return submitted;
+    }
+    throw err;
   }
 
   if (submitted === undefined) {

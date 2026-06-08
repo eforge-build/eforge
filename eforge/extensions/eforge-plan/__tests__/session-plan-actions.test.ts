@@ -20,13 +20,14 @@ function registry(): NativeExtensionRegistry {
   return { ...(state as NativeExtensionRecorderState), extensions: [], candidates: [] };
 }
 
-async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>) {
+async function dispatch(cwd: string, actionId: string, input: Record<string, unknown>, options: { enqueue?: (source: string) => Promise<{ sessionId: string; pid: number; autoBuild: boolean }> } = {}) {
   const result = await dispatchExtensionAction(registry(), {
     actionId: `eforge-plan:${actionId}`,
     input,
     requestedBy: { host: 'pi' },
     cwd,
     timeoutMs: 1000,
+    ...(options.enqueue && { buildQueue: () => ({ enqueue: (request) => options.enqueue!(request.source) }) }),
   });
   expect(result).toMatchObject({ kind: 'success' });
   if (result.kind !== 'success') throw new Error(result.message);
@@ -162,20 +163,39 @@ describe('eforge-plan session-plan extension actions', () => {
     });
   });
 
-  it('sets ready status and returns source-path handoff for ready fixtures without submitting', async () => {
+  it('sets ready status and enqueues ready fixtures through the build queue', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'ready-plan', readyBody());
+      const enqueuedSources: string[] = [];
 
       const ready = await dispatch(cwd, 'set-session-plan-ready', { session: 'ready-plan' });
-      const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' });
+      const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' }, {
+        enqueue: async (source) => {
+          enqueuedSources.push(source);
+          return { sessionId: 'build-session-1', pid: 1234, autoBuild: true };
+        },
+      });
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'ready-plan.md'), 'utf-8');
 
       expect(ready).toMatchObject({ kind: 'ready', status: 'ready' });
-      expect(handoff).toMatchObject({ kind: 'source-path', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md') });
+      expect(handoff).toMatchObject({ kind: 'enqueued', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md', absolutePath: resolve(cwd, '.eforge', 'session-plans', 'ready-plan.md'), queueSessionId: 'build-session-1', pid: 1234, autoBuild: true });
+      expect(enqueuedSources).toEqual(['.eforge/session-plans/ready-plan.md']);
       expect(collectUndefinedPaths(handoff)).toEqual([]);
-      expect(handoff.command).toContain('.eforge/session-plans/ready-plan.md');
       expect(raw).toContain('status: ready');
       expect(raw).not.toContain('status: submitted');
+    });
+  });
+
+  it('returns an enqueue-failed handoff when the build queue is unavailable', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'ready-plan', readyBody(), 'ready');
+
+      const handoff = await dispatch(cwd, 'handoff-session-plan', { session: 'ready-plan' });
+
+      expect(handoff).toMatchObject({ kind: 'enqueue-failed', session: 'ready-plan', sourcePath: '.eforge/session-plans/ready-plan.md' });
+      expect(String(handoff.message)).toContain('enqueue failed');
+      expect(String(handoff.command)).toContain('.eforge/session-plans/ready-plan.md');
+      expect(collectUndefinedPaths(handoff)).toEqual([]);
     });
   });
 });

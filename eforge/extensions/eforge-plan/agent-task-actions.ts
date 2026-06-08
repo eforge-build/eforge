@@ -10,6 +10,7 @@ import {
   listPlanningTaskWorkflowEntries,
   readPlanningTaskWorkflowIndex,
   recordPlanningTaskWorkflowEntry,
+  removePlanningTaskWorkflowEntry,
 } from './planning-task-workflow-store.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
@@ -24,6 +25,8 @@ import {
   PlanningAgentTaskStartOutputSchema,
   PlanningAgentTaskWorkflowStartOutputSchema,
   RedraftPlanningAgentTaskInputSchema,
+  RemovePlanningAgentTaskInputSchema,
+  RemovePlanningAgentTaskOutputSchema,
   RetryPlanningAgentTaskInputSchema,
   StartPlanningAgentTaskInputSchema,
   type PlanningTaskWorkflowEntry,
@@ -134,6 +137,30 @@ export const listPlanningAgentTasksAction = defineExtensionAction({
       }
     }));
     return toJsonSafeObject({ tasks });
+  },
+});
+
+export const removePlanningAgentTaskAction = defineExtensionAction({
+  id: 'remove-planning-agent-task',
+  title: 'Remove eforge-plan planning task from workflow list',
+  description: 'Remove a completed, failed, cancelled, or stale planning task from the eforge-plan workflow index. Running tasks must be cancelled first.',
+  inputSchema: RemovePlanningAgentTaskInputSchema,
+  outputSchema: RemovePlanningAgentTaskOutputSchema,
+  sideEffects: ['local-write'],
+  async handler(input, ctx) {
+    try {
+      const response = await ctx.agentTasks.get(input.taskId);
+      const status = response.task.status;
+      if (status === 'queued' || status === 'running') {
+        throw new Error(`Task ${input.taskId} is ${status}; cancel it before removing it from the workflow list.`);
+      }
+    } catch (err) {
+      if (!isMissingTaskError(err)) throw err;
+      // Stale index entries whose daemon record has already disappeared are safe
+      // to remove because there is no live task left to manage.
+    }
+    const removed = await removePlanningTaskWorkflowEntry(ctx.cwd, input.taskId);
+    return toJsonSafeObject({ taskId: input.taskId, removed });
   },
 });
 
@@ -375,6 +402,10 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function isMissingTaskError(err: unknown): boolean {
+  return /unknown task id|no such task|not found/i.test(errorMessage(err));
+}
+
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new Error('Planning agent task start was aborted before enqueueing the daemon task.');
 }
@@ -480,6 +511,7 @@ export const planningAgentTaskActions = [
   getPlanningAgentTaskAction,
   cancelPlanningAgentTaskAction,
   listPlanningAgentTasksAction,
+  removePlanningAgentTaskAction,
   retryPlanningAgentTaskAction,
   redraftPlanningAgentTaskAction,
   applyPlanningAgentTaskResultAction,
