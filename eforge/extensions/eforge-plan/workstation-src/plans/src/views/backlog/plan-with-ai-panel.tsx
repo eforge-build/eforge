@@ -9,10 +9,10 @@ interface PlanWithAiPanelProps {
 
 /**
  * Durable monitor/results panel for daemon-owned planning tasks. There is no
- * free-form prompt/goal input: tasks are started from backlog selections and
- * recommendations elsewhere in the Backlog tab. This panel lists the durable
- * task index, polls running tasks, and surfaces progress, retry, redraft, and
- * apply controls.
+ * free-form prompt/goal input: tasks are started from backlog selections,
+ * recommendations, and recommendation refresh controls elsewhere in the Backlog
+ * tab. This panel lists the durable task index, polls running tasks, and
+ * surfaces progress, retry, redraft, and apply controls.
  */
 export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
   const { items, loading, busy, reload, cancel, retry, redraft, remove, apply } = workflows;

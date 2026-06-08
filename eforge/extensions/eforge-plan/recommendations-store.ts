@@ -8,6 +8,7 @@ import {
   type BacklogRecommendationModel,
   type RecommendationSummary,
 } from './schema.js';
+import { validateRecommendationReferences } from './recommendation-status.js';
 
 export const RECOMMENDATIONS_SCHEMA_VERSION = 1;
 
@@ -48,12 +49,18 @@ export async function writeRecommendationsToPath(filePath: string, value: unknow
 }
 
 export async function writeRecommendations(cwd: string, value: unknown): Promise<BacklogRecommendationModel> {
-  return writeRecommendationsToPath(resolveRecommendationsPathForCwd(cwd), value);
+  const model = parseRecommendationModel(value);
+  await validateRecommendationReferences(cwd, model);
+  return writeRecommendationsToPath(resolveRecommendationsPathForCwd(cwd), model);
+}
+
+export function parseRecommendationModel(value: unknown): BacklogRecommendationModel {
+  assertRecommendationGroupsHaveItems(value);
+  return parseWithSchema(BacklogRecommendationModelSchema, value);
 }
 
 export function validateRecommendationModel(value: unknown): BacklogRecommendationModel {
-  assertRecommendationGroupsHaveItems(value);
-  return parseWithSchema(BacklogRecommendationModelSchema, value);
+  return parseRecommendationModel(value);
 }
 
 function assertRecommendationGroupsHaveItems(value: unknown): void {

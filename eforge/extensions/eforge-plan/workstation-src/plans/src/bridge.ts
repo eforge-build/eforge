@@ -3,12 +3,14 @@ import {
   applyMockCreationDraft,
   cancelMockPlanningTask,
   getMockArtifacts,
+  getMockRecommendationsResponse,
   listMockPlanningTasks,
   mockBoard,
   mockDetail,
   mockMutationResult,
   mockPlanningTask,
   mockRecommendations,
+  refreshMockRecommendations,
   relinkMockPlanningTask,
   startMockPlanningTaskFromInput,
 } from '@/fixtures/mock-data';
@@ -49,7 +51,8 @@ function createMockBridge(): EforgeBridge {
       switch (actionId) {
         case 'list-planning-artifacts': return { artifacts: getMockArtifacts(), board: mockBoard } as TOutput;
         case 'list-board': return mockBoard as TOutput;
-        case 'get-recommendations': return { recommendations: mockRecommendations, path: 'mock://recommendations/current.json' } as TOutput;
+        case 'get-recommendations': return getMockRecommendationsResponse() as TOutput;
+        case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
         case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
         case 'promote-selection': return { session: '2026-06-07-promoted-selection', sessionPlanPath: '.eforge/session-plans/2026-06-07-promoted-selection.md' } as TOutput;

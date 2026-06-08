@@ -7,11 +7,14 @@ import {
 import { toJsonSafeObject } from './json-safe.js';
 import {
   findPlanningTaskWorkflowEntry,
+  isRecommendationRefreshWorkflowEntry,
   listPlanningTaskWorkflowEntries,
   readPlanningTaskWorkflowIndex,
   recordPlanningTaskWorkflowEntry,
   removePlanningTaskWorkflowEntry,
 } from './planning-task-workflow-store.js';
+import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
+import { boundedSourceText } from './planner-source-bounds.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
   ApplyPlanningAgentTaskResultOutputSchema,
@@ -34,15 +37,6 @@ import {
   type StartPlanningAgentTaskInput,
 } from './planning-agent-task-schemas.js';
 
-const MAX_CONTEXT_ITEMS = 25;
-const MAX_CONTEXT_EPICS = 10;
-const MAX_CONTEXT_STRING = 4000;
-const MAX_SOURCE_TEXT = 60000;
-const MAX_REDRAFT_SUMMARY_ITEMS = 10;
-const MAX_REDRAFT_SUMMARY_STRING = 1000;
-const MAX_SELECTION_IDS = 50;
-const MAX_SELECTION_ID_LENGTH = 200;
-const SOURCE_TEXT_HARD_CAP_SUFFIX = '…[truncated]';
 
 type RequestedOutputSections = NonNullable<StartPlanningAgentTaskInput['requestedOutputSections']>;
 
@@ -174,15 +168,17 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
   async handler(input, ctx) {
     throwIfAborted(ctx.signal);
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'retry');
-    const context = await preparePlannerContext(ctx.cwd, plannerSelection(parent));
+    const refreshSource = isRecommendationRefreshWorkflowEntry(parent) ? await buildRecommendationRefreshSource(ctx.cwd) : undefined;
+    const context = refreshSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
-    const derivedGoal = explicitOrPreservedGoal(input.userGoal, parent, context);
-    const sourceText = boundedSourceText(derivedGoal, context);
+    const derivedGoal = refreshSource === undefined ? explicitOrPreservedGoal(input.userGoal, parent, context!) : parent.derivedRequest;
+    const sourceText = refreshSource?.sourceText ?? boundedSourceText(derivedGoal, context!);
     throwIfAborted(ctx.signal);
     return await startLinkedTask(ctx, {
       parent,
       derivedGoal,
       sourceText,
+      sourceFingerprint: refreshSource?.sourceFingerprint,
       requestedOutputSections: parent.requestedOutputSections,
     });
   },
@@ -200,16 +196,18 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'redraft');
     const previous = await ctx.agentTasks.get(input.taskId);
     assertRedraftableParent(previous.task, input.taskId);
-    const context = await preparePlannerContext(ctx.cwd, plannerSelection(parent));
-    throwIfAborted(ctx.signal);
-    const derivedGoal = explicitOrPreservedGoal(undefined, parent, context);
     const redraft = buildRedraftContext(parent, previous.task, input);
-    const sourceText = boundedSourceText(derivedGoal, context, redraft);
+    const refreshSource = isRecommendationRefreshWorkflowEntry(parent) ? await buildRecommendationRefreshSource(ctx.cwd, redraft) : undefined;
+    const context = refreshSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
+    throwIfAborted(ctx.signal);
+    const derivedGoal = refreshSource === undefined ? explicitOrPreservedGoal(undefined, parent, context!) : parent.derivedRequest;
+    const sourceText = refreshSource?.sourceText ?? boundedSourceText(derivedGoal, context!, redraft);
     throwIfAborted(ctx.signal);
     return await startLinkedTask(ctx, {
       parent,
       derivedGoal,
       sourceText,
+      sourceFingerprint: refreshSource?.sourceFingerprint,
       requestedOutputSections: parent.requestedOutputSections,
     });
   },
@@ -233,6 +231,7 @@ interface StartLinkedTaskParams {
   parent: PlanningTaskWorkflowEntry;
   derivedGoal: string;
   sourceText: string;
+  sourceFingerprint?: string;
   requestedOutputSections: RequestedOutputSections;
 }
 
@@ -261,6 +260,8 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     planningType: parent.planningType,
     planningDepth: parent.planningDepth,
     includeRoadmap: parent.includeRoadmap,
+    purpose: isRecommendationRefreshWorkflowEntry(parent) ? parent.purpose : undefined,
+    sourceFingerprint: params.sourceFingerprint ?? parent.sourceFingerprint,
   }));
   return toJsonSafeObject({ task: response.task, entry });
 }
@@ -297,6 +298,8 @@ interface BuildEntryParams {
   planningType?: string;
   planningDepth?: string;
   includeRoadmap?: boolean;
+  purpose?: PlanningTaskWorkflowEntry['purpose'];
+  sourceFingerprint?: string;
 }
 
 function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
@@ -311,6 +314,8 @@ function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
     ...(params.planningType !== undefined && { planningType: params.planningType }),
     ...(params.planningDepth !== undefined && { planningDepth: params.planningDepth }),
     ...(params.includeRoadmap !== undefined && { includeRoadmap: params.includeRoadmap }),
+    ...(params.purpose !== undefined && { purpose: params.purpose }),
+    ...(params.sourceFingerprint !== undefined && { sourceFingerprint: params.sourceFingerprint }),
     createdAt: new Date().toISOString(),
   };
 }
@@ -413,87 +418,6 @@ function throwIfAborted(signal: AbortSignal): void {
 function boundedUserGoal(userGoal: string): string {
   const suffix = '…[truncated]';
   return userGoal.length > MAX_PLANNING_AGENT_USER_GOAL_LENGTH ? `${userGoal.slice(0, MAX_PLANNING_AGENT_USER_GOAL_LENGTH - suffix.length)}${suffix}` : userGoal;
-}
-
-function boundedSourceText(userGoal: string, context: Record<string, unknown>, redraft?: Record<string, unknown>): string {
-  const metadata: Record<string, unknown> = {};
-  const bounded = truncateValue({ ...context }, metadata) as Record<string, unknown>;
-  if (Array.isArray(bounded.items) && bounded.items.length > MAX_CONTEXT_ITEMS) {
-    metadata.omittedItems = bounded.items.length - MAX_CONTEXT_ITEMS;
-    bounded.items = bounded.items.slice(0, MAX_CONTEXT_ITEMS);
-  }
-  if (Array.isArray(bounded.epics) && bounded.epics.length > MAX_CONTEXT_EPICS) {
-    metadata.omittedEpics = bounded.epics.length - MAX_CONTEXT_EPICS;
-    bounded.epics = bounded.epics.slice(0, MAX_CONTEXT_EPICS);
-  }
-  const boundedRedraft = redraft !== undefined ? (truncateValue({ ...redraft }, metadata) as Record<string, unknown>) : undefined;
-  let sourceText = JSON.stringify({ userGoal, context: bounded, ...(boundedRedraft !== undefined && { redraft: boundedRedraft }), truncation: metadata }, null, 2);
-  if (sourceText.length > MAX_SOURCE_TEXT) {
-    metadata.sourceTextTruncated = true;
-    const summarizedRedraft = summarizeRedraft(boundedRedraft, metadata);
-    const boundedSelection = boundSelection(bounded.selection, metadata);
-    sourceText = JSON.stringify({ userGoal, context: { schemaVersion: bounded.schemaVersion, selection: boundedSelection }, ...(summarizedRedraft !== undefined && { redraft: summarizedRedraft }), truncation: metadata }, null, 2);
-    if (sourceText.length > MAX_SOURCE_TEXT) {
-      sourceText = `${sourceText.slice(0, MAX_SOURCE_TEXT - SOURCE_TEXT_HARD_CAP_SUFFIX.length)}${SOURCE_TEXT_HARD_CAP_SUFFIX}`;
-    }
-  }
-  return sourceText;
-}
-
-// Final-pass redraft bound: when the full source text still exceeds the cap, keep
-// only the original request, a bounded questions summary, and a bounded subset of
-// answers or steering so unbounded redraft answer arrays cannot blow the budget.
-function summarizeRedraft(redraft: Record<string, unknown> | undefined, metadata: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (redraft === undefined) return undefined;
-  metadata.redraftSummarized = true;
-  const summary: Record<string, unknown> = {};
-  if (typeof redraft.parentTaskId === 'string') summary.parentTaskId = redraft.parentTaskId;
-  if (typeof redraft.originalRequest === 'string') summary.originalRequest = boundRedraftString(redraft.originalRequest);
-  if (typeof redraft.steering === 'string') summary.steering = boundRedraftString(redraft.steering);
-  if (Array.isArray(redraft.previousQuestions)) summary.previousQuestions = boundRedraftArray(redraft.previousQuestions, metadata, 'omittedRedraftQuestions');
-  if (Array.isArray(redraft.userAnswers)) summary.userAnswers = boundRedraftArray(redraft.userAnswers, metadata, 'omittedRedraftAnswers');
-  return summary;
-}
-
-function boundRedraftArray(values: unknown[], metadata: Record<string, unknown>, omittedKey: string): unknown[] {
-  if (values.length > MAX_REDRAFT_SUMMARY_ITEMS) metadata[omittedKey] = values.length - MAX_REDRAFT_SUMMARY_ITEMS;
-  return values.slice(0, MAX_REDRAFT_SUMMARY_ITEMS).map((value) => (typeof value === 'string' ? boundRedraftString(value) : value));
-}
-
-function boundRedraftString(value: string): string {
-  return value.length > MAX_REDRAFT_SUMMARY_STRING ? `${value.slice(0, MAX_REDRAFT_SUMMARY_STRING)}…[truncated]` : value;
-}
-
-// Final-pass selection bound: the fallback context keeps only schemaVersion and
-// selection, but selection itself can carry a large itemIds array or long IDs.
-// Cap the number of IDs and truncate each so a wide backlog selection cannot
-// produce an oversized prompt.
-function boundSelection(selection: unknown, metadata: Record<string, unknown>): unknown {
-  if (selection === null || typeof selection !== 'object') return selection;
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(selection as Record<string, unknown>)) {
-    if (Array.isArray(value)) {
-      if (value.length > MAX_SELECTION_IDS) metadata[`omittedSelection_${key}`] = value.length - MAX_SELECTION_IDS;
-      result[key] = value.slice(0, MAX_SELECTION_IDS).map((entry) => (typeof entry === 'string' ? boundSelectionId(entry) : entry));
-    } else {
-      result[key] = typeof value === 'string' ? boundSelectionId(value) : value;
-    }
-  }
-  return result;
-}
-
-function boundSelectionId(value: string): string {
-  return value.length > MAX_SELECTION_ID_LENGTH ? `${value.slice(0, MAX_SELECTION_ID_LENGTH)}…[truncated]` : value;
-}
-
-function truncateValue(value: unknown, metadata: Record<string, unknown>): unknown {
-  if (typeof value === 'string' && value.length > MAX_CONTEXT_STRING) {
-    metadata.truncatedStrings = Number(metadata.truncatedStrings ?? 0) + 1;
-    return `${value.slice(0, MAX_CONTEXT_STRING)}…[truncated]`;
-  }
-  if (Array.isArray(value)) return value.map((entry) => truncateValue(entry, metadata));
-  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, truncateValue(entry, metadata)]));
-  return value;
 }
 
 function assertApplySelection(input: { applyRecommendations?: boolean; applyHandoffDrafts?: unknown[]; applySessionPlanDrafts?: unknown[]; applySessionPlanCreationDraft?: unknown }): void {

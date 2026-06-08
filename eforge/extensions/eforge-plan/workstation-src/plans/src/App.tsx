@@ -65,7 +65,13 @@ function Shell() {
         {data.error && <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive-foreground">{data.error}</p>}
         {activeTab === 'plans'
           ? <PlansView artifacts={data.artifacts} onRefresh={data.refresh} />
-          : <BacklogView board={data.board} recommendations={data.recommendations} onRefresh={data.refresh} />}
+          : <BacklogView
+              board={data.board}
+              recommendations={data.recommendations}
+              recommendationStatus={data.recommendationStatus}
+              activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+              onRefresh={data.refresh}
+            />}
       </main>
     </div>
   );

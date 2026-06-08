@@ -22,6 +22,7 @@ import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection
 import { toJsonSafeObject } from './json-safe.js';
 import { sessionPlanActions } from './session-plan-actions.js';
 import { recommendationActions } from './recommendation-actions.js';
+import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
 import { plannerActions } from './planner-actions.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
@@ -49,6 +50,7 @@ const captureItem = defineExtensionAction({
     const now = new Date().toISOString();
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria ?? 'Missing acceptance criteria: add concrete, verifiable done conditions before build handoff.', ''].join('\n');
     const item = await writeBacklogItem(ctx.cwd, { id, status: 'candidate', priority: input.priority, tags: input.tags ?? [], depends_on: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
+    await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
     return toJsonSafeObject({ itemId: item.id, status: item.status, path: `.backlog/items/${item.id}.md` });
   },
 });
@@ -62,6 +64,7 @@ const upsertEpic = defineExtensionAction({
     const existing = await readBacklogEpic(ctx.cwd, id);
     const body = input.body ?? (existing ? undefined : `# ${input.title}\n\n`);
     const epic = await writeBacklogEpic(ctx.cwd, { id, status: normalizedStatus(input.status, 'candidate'), priority: input.priority, tags: input.tags ?? [], updated: now, body });
+    await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'upsert-epic', [epic.id]);
     return toJsonSafeObject({ epicId: epic.id, status: epic.status, path: `.backlog/epics/${epic.id}.md` });
   },
 });
@@ -79,6 +82,7 @@ const updateItem = defineExtensionAction({
     if (input.evidenceNotes !== undefined) updates.evidence_notes = input.evidenceNotes;
     if (input.recheckNotes !== undefined) updates.recheck_notes = input.recheckNotes;
     const item = await updateBacklogItemFrontmatter(ctx.cwd, input.id, updates);
+    await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
     return toJsonSafeObject({ itemId: item.id, status: item.status });
   },
 });
@@ -86,14 +90,18 @@ const updateItem = defineExtensionAction({
 const promoteItem = defineExtensionAction({
   id: 'promote-item', title: 'Promote backlog item', description: 'Write a session plan and trace evidence for a backlog item.',
   inputSchema: PromoteInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
-  async handler(input, ctx) { return toJsonSafeObject(await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null })); },
+  async handler(input, ctx) {
+    const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null });
+    await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-item', [result.itemId]);
+    return toJsonSafeObject(result);
+  },
 });
 
 const promoteSelection = defineExtensionAction({
   id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan for selected backlog items, an epic, or a recommendation ref.',
   inputSchema: PromoteSelectionInput, outputSchema: PromoteSelectionOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
-    return toJsonSafeObject(await promoteBacklogSelection({
+    const result = await promoteBacklogSelection({
       cwd: ctx.cwd,
       itemIds: input.itemIds,
       epicId: input.epicId,
@@ -102,7 +110,9 @@ const promoteSelection = defineExtensionAction({
       status: input.status,
       ...(input.profile !== undefined && { profile: input.profile }),
       title: input.title,
-    }));
+    });
+    await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-selection', result.itemIds);
+    return toJsonSafeObject(result);
   },
 });
 
@@ -129,6 +139,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
+      { rendererId: 'action-button', title: 'Refresh recommendations', content: 'Start or reuse a daemon-owned recommendation refresh task.', action: { actionId: 'refresh-recommendations' } },
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
       { rendererId: 'action-form', title: 'Start planning agent task', content: 'Prepare bounded context and start a daemon-owned planning draft task.', action: { actionId: 'start-planning-agent-task', inputDefaults: { includeRoadmap: true } } },
@@ -149,6 +160,7 @@ export default defineEforgeExtension((eforge) => {
       'render-board-markdown',
       'get-recommendations',
       'put-recommendations',
+      'refresh-recommendations',
       'prepare-planner-context',
       'apply-planner-result',
       'start-planning-agent-task',

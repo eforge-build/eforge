@@ -13,6 +13,7 @@ import {
   type TraceSidecar,
 } from './trace-store.js';
 import type { BacklogItem, BacklogStatus } from './backlog-domain.js';
+import { markRecommendationsStaleForLifecycleUpdate } from './recommendation-status.js';
 
 export interface LifecycleCorrelation {
   kind: 'none' | 'single' | 'multi' | 'ambiguous';
@@ -77,6 +78,9 @@ export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Reco
     if (decision.status === 'shipped') {
       await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
     }
+  }
+  if (itemIds.length > 0) {
+    await markRecommendationsStaleForLifecycleUpdate(cwd, stringValue(valueAt(event, 'type')) ?? 'unknown', itemIds, lifecycleReasonRefs(event));
   }
   return decision.correlation.kind === 'none' && bootstrapped
     ? {
@@ -196,6 +200,12 @@ function directInputItemId(event: EforgeEvent | Record<string, unknown>): string
   const source = stringValue(valueAt(event, 'source'));
   if (!source?.startsWith('eforge://input/eforge-plan/')) return undefined;
   return decodeURIComponent(source.slice('eforge://input/eforge-plan/'.length));
+}
+
+function lifecycleReasonRefs(event: EforgeEvent | Record<string, unknown>): string[] {
+  return ['source', 'filePath', 'path', 'prdId', 'id', 'sessionId', 'runId', 'featureBranch', 'commitSha']
+    .map((field) => stringValue(valueAt(event, field)))
+    .filter((value): value is string => value !== undefined);
 }
 
 async function bootstrapItemFromQueuedPrd(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<{ itemIds: string[]; epicIdsByItemId: Map<string, string | undefined> } | undefined> {

@@ -7,6 +7,7 @@ import { createSessionPlanningWorkflowAdapter } from '../../../../packages/input
 import { applyCompletedPlanningAgentTaskResult, applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
 import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
+import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-planner-'));
@@ -34,9 +35,16 @@ async function seed(cwd: string) {
 }
 
 describe('planner orchestration', () => {
-  it('builds context packets with recommendations, dependencies, epics, and roadmap evidence', async () => {
+  it('builds context packets with recommendations, dependencies, epics, roadmap evidence, and trace summaries', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
+      await writeTraceSidecar(cwd, {
+        ...createTraceSidecar('item-one', 'epic-one'),
+        promotedSessionPlans: [{ session: 'session-one', status: 'active', path: '.eforge/session-plans/session-one.md' }],
+        buildRuns: [{ runId: 'run-one', sessionId: 'session-one', status: 'running' }],
+        buildRunIds: ['run-one'],
+        buildSessionIds: ['session-one'],
+      });
       const packet = await preparePlannerContext(cwd, {});
 
       expect(packet.schemaVersion).toBe(1);
@@ -47,15 +55,25 @@ describe('planner orchestration', () => {
       expect(packet.dependencies.find((entry) => entry.itemId === 'item-one')).toMatchObject({ blockers: ['Needs dependency.'], dependsOn: ['item-zero'] });
       expect(packet.roadmapEvidence).toMatchObject({ path: 'docs/roadmap.md', exists: true });
       expect(packet.roadmapEvidence.headings).toContain('Roadmap');
+      expect(packet.traceSummaries).toEqual([expect.objectContaining({
+        itemId: 'item-one',
+        epicId: 'epic-one',
+        hasActiveTrace: true,
+        activeReasons: expect.arrayContaining(['active session-plan trace session-one', 'active build run trace run-one']),
+      })]);
+      expect(JSON.stringify(packet.traceSummaries).length).toBeLessThan(2000);
     });
   });
 
-  it('returns only selected item IDs for item selectors', async () => {
+  it('returns only selected item IDs and relevant trace summaries for item selectors', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
+      await writeTraceSidecar(cwd, { ...createTraceSidecar('item-one', 'epic-one'), buildRunIds: ['run-one'], buildRuns: [{ runId: 'run-one', sessionId: 'session-one', status: 'running' }] });
+      await writeTraceSidecar(cwd, { ...createTraceSidecar('item-two'), buildRunIds: ['run-two'], buildRuns: [{ runId: 'run-two', sessionId: 'session-two', status: 'running' }] });
       const packet = await preparePlannerContext(cwd, { itemIds: ['item-two'] });
       expect(packet.selection.itemIds).toEqual(['item-two']);
       expect(packet.items.map((item) => item.id)).toEqual(['item-two']);
+      expect(packet.traceSummaries.map((summary) => summary.itemId)).toEqual(['item-two']);
     });
   });
 

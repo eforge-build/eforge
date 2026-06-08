@@ -63,6 +63,21 @@ export interface ExtensionActionContext {
 export type ExtensionActionOutput<TOutput extends TSchema | undefined = undefined> =
   TOutput extends TSchema ? Static<TOutput> : unknown;
 
+export interface ExtensionActionInputValidationErrorDetail {
+  path: string;
+  message: string;
+}
+
+export class ExtensionActionInputValidationError extends Error {
+  details: ExtensionActionInputValidationErrorDetail[];
+
+  constructor(message: string, details: ExtensionActionInputValidationErrorDetail[]) {
+    super(message);
+    this.name = 'ExtensionActionInputValidationError';
+    this.details = details;
+  }
+}
+
 export interface ExtensionAction<
   TInput extends TObject = TObject,
   TOutput extends TSchema | undefined = undefined,
