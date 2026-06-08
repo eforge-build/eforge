@@ -26,6 +26,7 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
   const state = status?.state ?? (recommendations ? 'fresh' : 'missing');
   const label = (id: string) => titles.get(id) ?? shortId(id);
   const canRefresh = state === 'missing' || state === 'stale';
+  const staleReasons = status?.reasons?.length ? status.reasons : status?.staleReasons ?? [];
 
   return (
     <section className="rounded-lg border border-[color:var(--lane-ready)]/30 bg-[color:var(--lane-ready)]/5 p-3">
@@ -35,6 +36,8 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
             <Sparkles className="h-4 w-4 text-primary" /> Recommendations <StatusBadge state={state} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">{statusCopy(state)}</p>
+          {status?.freshAt && <p className="mt-0.5 text-[0.68rem] text-muted-foreground">Fresh at {status.freshAt}{status.lastRefreshedBy ? ` via ${status.lastRefreshedBy}` : ''}</p>}
+          {status?.staleSince && <p className="mt-0.5 text-[0.68rem] text-muted-foreground">Stale since {status.staleSince}</p>}
         </div>
         {canRefresh && (
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => void onRefreshRecommendations()}>
@@ -45,14 +48,24 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
       {activeRefreshTask && <ActiveRefreshTask task={activeRefreshTask} />}
 
-      {state === 'stale' && status?.staleReasons && status.staleReasons.length > 0 && (
+      {state === 'stale' && staleReasons.length > 0 && (
         <div className="mb-2 rounded-md border border-[color:var(--prio-medium)]/30 bg-[color:var(--prio-medium)]/10 p-2">
           <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Stale reasons</span>
           <ul className="mt-1 grid gap-1 text-xs text-muted-foreground">
-            {status.staleReasons.map((reason) => (
-              <li key={`${reason.code}:${reason.message}`}>
-                <code className="mr-1 rounded border border-border bg-card px-1 py-0.5 text-[0.68rem] text-foreground">{reason.code}</code>
-                {reason.message}
+            {staleReasons.map((reason, index) => (
+              <li key={`${reason.code ?? reason.eventType ?? 'reason'}:${reason.timestamp ?? index}`}>
+                <div>
+                  {(reason.code ?? reason.eventType) && <code className="mr-1 rounded border border-border bg-card px-1 py-0.5 text-[0.68rem] text-foreground">{reason.code ?? reason.eventType}</code>}
+                  {reason.summary ?? reason.message ?? 'Recommendation freshness changed.'}
+                </div>
+                {(reason.eventType || reason.correlationKind || reason.itemIds?.length || reason.timestamp) && (
+                  <div className="mt-0.5 flex flex-wrap gap-1 text-[0.68rem]">
+                    {reason.eventType && <Chip>event {reason.eventType}</Chip>}
+                    {reason.correlationKind && <Chip>{reason.correlationKind}</Chip>}
+                    {reason.timestamp && <Chip>{reason.timestamp}</Chip>}
+                    {reason.itemIds?.map((id) => <Chip key={id}>{label(id)}</Chip>)}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

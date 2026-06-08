@@ -63,8 +63,14 @@ export interface RecommendationModel {
 
 export type RecommendationStatusState = 'missing' | 'fresh' | 'stale';
 export interface RecommendationStaleReason {
-  code: string;
-  message: string;
+  eventType?: string;
+  itemIds?: string[];
+  correlationKind?: 'single' | 'multi' | 'bootstrapped';
+  timestamp?: string;
+  summary?: string;
+  code?: string;
+  message?: string;
+  refs?: string[];
   sourceFingerprint?: string;
   lastAppliedSourceFingerprint?: string;
 }
@@ -72,8 +78,12 @@ export interface RecommendationStatus {
   state: RecommendationStatusState;
   currentPath: string;
   statusPath: string;
+  freshAt?: string;
+  staleSince?: string;
+  lastRefreshedBy?: string;
   sourceFingerprint?: string;
   lastAppliedSourceFingerprint?: string;
+  reasons: RecommendationStaleReason[];
   staleReasons: RecommendationStaleReason[];
 }
 

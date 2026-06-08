@@ -8,7 +8,7 @@ import { createExtensionRecorder } from '../../../../packages/engine/src/extensi
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
-import { buildRecommendationSourceProjection, computeRecommendationSourceFingerprint } from '../recommendation-status.js';
+import { RECOMMENDATION_STALE_REASON_LIMIT, buildRecommendationSourceProjection, computeRecommendationSourceFingerprint, markRecommendationsStaleForLifecycleUpdate } from '../recommendation-status.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -71,6 +71,7 @@ describe('recommendation freshness status', () => {
 
       expect(output.recommendations).toBeNull();
       expect(status.state).toBe('missing');
+      expect(status.reasons).toEqual([]);
       expect(String(output.path)).toBe(resolveRecommendationsPathForCwd(cwd));
       expect(String(output.path)).toContain(`${sep}.eforge${sep}storage${sep}extensions${sep}eforge-plan${sep}recommendations${sep}current.json`);
       expect(String(status.statusPath)).toBe(statusPath(cwd));
@@ -114,9 +115,77 @@ describe('recommendation freshness status', () => {
       const output = await getRecommendations(cwd);
       const status = expectStatus(output.status);
       expect(status.state).toBe('fresh');
+      expect(status.lastRefreshedBy).toBe('put-recommendations');
+      expect(status.freshAt).toEqual(expect.any(String));
+      expect(JSON.stringify(status.reasons ?? [])).toBe('[]');
       expect(JSON.stringify(status.staleReasons ?? [])).toBe('[]');
       expect(String(status.sourceFingerprint)).toMatch(/^[a-f0-9]{64}$/);
       expect(existsSync(join(cwd, '.backlog', 'recommendations.json'))).toBe(false);
+    });
+  });
+
+  it('exposes stale lifecycle freshness even when no current recommendation model exists', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      await markRecommendationsStaleForLifecycleUpdate(cwd, {
+        eventType: 'session:end',
+        itemIds: ['item-one'],
+        correlationKind: 'single',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        summary: 'Recommendations are stale after single lifecycle update session:end for item-one.',
+        refs: ['run-one', 'session-one'],
+      });
+
+      const output = await getRecommendations(cwd);
+      const status = expectStatus(output.status);
+      expect(output.recommendations).toBeNull();
+      expect(status.state).toBe('stale');
+      expect(status.staleSince).toEqual(expect.any(String));
+      expect(status.reasons).toEqual([
+        expect.objectContaining({
+          eventType: 'session:end',
+          itemIds: ['item-one'],
+          correlationKind: 'single',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          summary: 'Recommendations are stale after single lifecycle update session:end for item-one.',
+          refs: ['run-one', 'session-one'],
+        }),
+      ]);
+      expect(status.staleReasons).toEqual(status.reasons);
+      expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(false);
+      expect(existsSync(join(cwd, '.backlog', 'recommendations.json'))).toBe(false);
+    });
+  });
+
+  it('deduplicates repeated stale reasons and trims persisted history to the latest bounded window', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      for (let index = 0; index < RECOMMENDATION_STALE_REASON_LIMIT + 5; index += 1) {
+        await markRecommendationsStaleForLifecycleUpdate(cwd, {
+          eventType: `session:end:${index}`,
+          itemIds: ['item-one'],
+          correlationKind: 'single',
+          timestamp: `2026-01-01T00:00:${String(index).padStart(2, '0')}.000Z`,
+          summary: `Lifecycle update ${index}`,
+        });
+      }
+      await markRecommendationsStaleForLifecycleUpdate(cwd, {
+        eventType: 'session:end:24',
+        itemIds: ['item-one'],
+        correlationKind: 'single',
+        timestamp: '2026-01-01T00:00:24.000Z',
+        summary: 'Lifecycle update 24',
+      });
+
+      const storedStatus = JSON.parse(await readFile(statusPath(cwd), 'utf-8')) as { reasons?: Array<{ eventType?: string }> };
+      expect(storedStatus.reasons).toHaveLength(RECOMMENDATION_STALE_REASON_LIMIT);
+      expect(storedStatus.reasons?.[0]?.eventType).toBe('session:end:5');
+      expect(storedStatus.reasons?.at(-1)?.eventType).toBe('session:end:24');
+      expect(storedStatus.reasons?.filter((reason) => reason.eventType === 'session:end:24')).toHaveLength(1);
+
+      const status = expectStatus((await getRecommendations(cwd)).status);
+      expect(status.reasons).toHaveLength(RECOMMENDATION_STALE_REASON_LIMIT);
     });
   });
 

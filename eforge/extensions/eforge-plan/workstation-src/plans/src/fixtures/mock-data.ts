@@ -87,6 +87,7 @@ export const mockRecommendationStatusMissing: RecommendationStatus = {
   state: 'missing',
   currentPath: 'mock://recommendations/current.json',
   statusPath: 'mock://recommendations/status.json',
+  reasons: [],
   staleReasons: [],
 };
 
@@ -94,8 +95,11 @@ export const mockRecommendationStatusFresh: RecommendationStatus = {
   state: 'fresh',
   currentPath: 'mock://recommendations/current.json',
   statusPath: 'mock://recommendations/status.json',
+  freshAt: '2026-06-07T00:00:00.000Z',
+  lastRefreshedBy: 'put-recommendations',
   sourceFingerprint: 'fresh-source-fingerprint',
   lastAppliedSourceFingerprint: 'fresh-source-fingerprint',
+  reasons: [],
   staleReasons: [],
 };
 
@@ -103,11 +107,17 @@ export const mockRecommendationStatusStale: RecommendationStatus = {
   state: 'stale',
   currentPath: 'mock://recommendations/current.json',
   statusPath: 'mock://recommendations/status.json',
+  staleSince: '2026-06-07T00:05:00.000Z',
+  lastRefreshedBy: 'apply-planning-agent-task-result',
   sourceFingerprint: 'current-source-fingerprint',
   lastAppliedSourceFingerprint: 'old-source-fingerprint',
+  reasons: [
+    { code: 'source-fingerprint-drift', message: 'Recommendation source fingerprint drifted since the model was last applied.', summary: 'Recommendation source fingerprint drifted since the model was last applied.', sourceFingerprint: 'current-source-fingerprint', lastAppliedSourceFingerprint: 'old-source-fingerprint' },
+    { eventType: 'session:end', itemIds: ['add-import-preview'], correlationKind: 'single', timestamp: '2026-06-07T00:05:00.000Z', summary: 'Recommendations are stale after single lifecycle update session:end for add-import-preview.', code: 'lifecycle:session:end', message: 'Recommendations are stale after single lifecycle update session:end for add-import-preview.', refs: ['session-one'] },
+  ],
   staleReasons: [
-    { code: 'source-fingerprint-drift', message: 'Recommendation source fingerprint drifted since the model was last applied.', sourceFingerprint: 'current-source-fingerprint', lastAppliedSourceFingerprint: 'old-source-fingerprint' },
-    { code: 'backlog-mutation:update-item', message: 'Recommendations are stale after eforge-plan backlog mutation update-item for add-import-preview.' },
+    { code: 'source-fingerprint-drift', message: 'Recommendation source fingerprint drifted since the model was last applied.', summary: 'Recommendation source fingerprint drifted since the model was last applied.', sourceFingerprint: 'current-source-fingerprint', lastAppliedSourceFingerprint: 'old-source-fingerprint' },
+    { eventType: 'session:end', itemIds: ['add-import-preview'], correlationKind: 'single', timestamp: '2026-06-07T00:05:00.000Z', summary: 'Recommendations are stale after single lifecycle update session:end for add-import-preview.', code: 'lifecycle:session:end', message: 'Recommendations are stale after single lifecycle update session:end for add-import-preview.', refs: ['session-one'] },
   ],
 };
 

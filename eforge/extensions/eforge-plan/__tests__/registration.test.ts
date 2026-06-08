@@ -115,10 +115,10 @@ describe('eforge-plan extension registration', () => {
       }
     }
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
-    expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'recommendationSummary', 'traceSummaries']);
+    expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationSummary', 'recommendations', 'status']);
-    expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|staleReasons|missing|fresh|stale|activeRefreshTask/);
+    expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);
     const refreshOutput = actions.find((action) => action.id === 'refresh-recommendations')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(refreshOutput)).toMatch(/task|entry|sourceFingerprint|recommendation-refresh/);
   });
@@ -184,6 +184,7 @@ describe('eforge-plan extension registration', () => {
         blockedChainCount: 1,
         rationaleAndAssumptions: ['Prefer thin vertical slices.'],
       });
+      expect(expectRecord(output.recommendationStatus).state).toBe('fresh');
       expect(collectUndefinedPaths(output)).toEqual([]);
 
       const item = expectRecord((output.items as unknown[]).find((entry) => expectRecord(entry).id === 'item-one'));
@@ -209,6 +210,7 @@ describe('eforge-plan extension registration', () => {
       if (markdownResult.kind !== 'success') throw new Error(markdownResult.message);
       const markdown = expectRecord(markdownResult.output).markdown;
       if (typeof markdown !== 'string') throw new Error('Expected markdown output');
+      expect(markdown).toContain('Recommendations are fresh for the current backlog fingerprint.');
       const recommendedSection = markdownSection(markdown, '## Recommended Next Work');
       expect(recommendedSection).toContain('- **item-one**');
     });

@@ -1,11 +1,10 @@
-import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
 import { ExtensionAgentTaskRecordSchema } from '../../../packages/client/src/extension-agent-tasks.js';
+import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
 import {
-  BacklogRecommendationModelSchema,
+  GetRecommendationsOutputSchema,
   RecommendationDerivedStatusSchema,
   RecommendationStaleReasonSchema,
   RecommendationStatusSidecarSchema,
-  RecommendationSummarySchema,
 } from './schema.js';
 import { PlanningTaskWorkflowEntrySchema } from './planning-agent-task-schemas.js';
 
@@ -15,13 +14,7 @@ export {
   RecommendationStatusSidecarSchema,
 };
 
-export const GetRecommendationsWithStatusOutputSchema = Type.Object({
-  recommendations: Type.Union([BacklogRecommendationModelSchema, Type.Null()]),
-  recommendationSummary: Type.Optional(RecommendationSummarySchema),
-  path: Type.String(),
-  status: RecommendationDerivedStatusSchema,
-  activeRefreshTask: Type.Optional(ExtensionAgentTaskRecordSchema),
-}, { additionalProperties: false });
+export const GetRecommendationsWithStatusOutputSchema = GetRecommendationsOutputSchema;
 
 export const RefreshRecommendationsInputSchema = Type.Object({}, { additionalProperties: false });
 

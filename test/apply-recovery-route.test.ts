@@ -754,5 +754,5 @@ process.exit(0);
     } finally {
       process.env.PATH = oldPath;
     }
-  });
+  }, 10_000);
 });

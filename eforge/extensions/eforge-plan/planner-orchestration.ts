@@ -65,7 +65,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
   };
 }
 
-export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultInput, options: { recommendationSourceFingerprint?: string } = {}) {
+export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultInput, options: { recommendationSourceFingerprint?: string; lastRefreshedBy?: string } = {}) {
   if (input.recommendations === undefined && input.handoffDraft === undefined) {
     throw new Error('Planner result must include recommendations, handoffDraft, or both.');
   }
@@ -73,8 +73,8 @@ export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultI
   if (input.recommendations !== undefined) {
     const recommendations = await writeRecommendations(cwd, input.recommendations);
     const status = options.recommendationSourceFingerprint !== undefined
-      ? await recordPlannerRecommendationAppliedForSourceFingerprint(cwd, options.recommendationSourceFingerprint)
-      : await recordPlannerRecommendationApplied(cwd);
+      ? await recordPlannerRecommendationAppliedForSourceFingerprint(cwd, options.recommendationSourceFingerprint, options.lastRefreshedBy ?? 'apply-planner-result')
+      : await recordPlannerRecommendationApplied(cwd, options.lastRefreshedBy ?? 'apply-planner-result');
     result.recommendations = {
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
@@ -126,7 +126,7 @@ export async function applyCompletedPlanningAgentTaskResult(
 
   if (input.applyRecommendations) {
     const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
-    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint });
+    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint, lastRefreshedBy: 'apply-planning-agent-task-result' });
     output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
     output.applied.recommendations = true;
   }

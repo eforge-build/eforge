@@ -44,7 +44,7 @@ export const getRecommendations = defineExtensionAction({
 export const putRecommendations = defineExtensionAction({
   id: 'put-recommendations',
   title: 'Put eforge-plan recommendations',
-  description: 'Validate and write the project-local private recommendation model for eforge-plan, then refresh the status sidecar.',
+  description: 'Validate and write the project-local private recommendation model for eforge-plan, then mark the status sidecar fresh for put-recommendations.',
   inputSchema: PutRecommendationsInputSchema,
   outputSchema: PutRecommendationsOutputSchema,
   sideEffects: ['local-write'],

@@ -166,6 +166,42 @@ describe('recommendation invalidation', () => {
     }
   });
 
+  it('records structured lifecycle reason fields after correlated trace mutation', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await putBaseline(cwd);
+      const trace = createTraceSidecar('item-one', 'epic-one');
+      trace.buildRunIds = ['run-one'];
+      trace.buildRuns.push({ runId: 'run-one', sessionId: 'build-session-one', status: 'running' });
+      trace.buildSessionIds = ['build-session-one'];
+      await writeTraceSidecar(cwd, trace);
+      const beforeTrace = JSON.stringify(await readTraceSidecar(cwd, 'item-one'));
+
+      await invokeRegisteredHook(cwd, {
+        type: 'session:end',
+        runId: 'run-one',
+        sessionId: 'build-session-one',
+        timestamp: '2026-01-01T00:00:00.000Z',
+      });
+
+      expect(JSON.stringify(await readTraceSidecar(cwd, 'item-one'))).not.toBe(beforeTrace);
+      const output = await getRecommendations(cwd);
+      const status = output.status as { state?: unknown; reasons?: Array<Record<string, unknown>>; staleReasons?: Array<Record<string, unknown>> };
+      const reason = status.reasons?.find((entry) => entry.eventType === 'session:end');
+      expect(status.state).toBe('stale');
+      expect(reason).toMatchObject({
+        eventType: 'session:end',
+        itemIds: ['item-one'],
+        correlationKind: 'single',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        code: 'lifecycle:session:end',
+      });
+      expect(String(reason?.summary)).toContain('single lifecycle update session:end for item-one');
+      expect(reason?.refs).toEqual(expect.arrayContaining(['run-one', 'build-session-one']));
+      expect(status.staleReasons).toEqual(status.reasons);
+    });
+  });
+
   it('leaves freshness metadata byte-for-byte unchanged for uncorrelated or ambiguous lifecycle events', async () => {
     for (const traces of [['item-one'], ['item-one', 'item-two']] as const) {
       await withTempProject(async (cwd) => {
