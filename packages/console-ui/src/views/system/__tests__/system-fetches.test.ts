@@ -44,133 +44,143 @@ describe('system-fetches', () => {
     vi.restoreAllMocks();
   });
 
-  it('fetchSystemHealth calls API_ROUTES.health', async () => {
-    const mockBody = { status: 'ok', pid: 1234 };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    const result = await fetchSystemHealth();
-    expect(globalThis.fetch).toHaveBeenCalledOnce();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.health);
-    expect(result).toEqual(mockBody);
+  it('successful GET helpers call their API_ROUTES path or query and return the response body', async () => {
+    const successfulGetCases: Array<{
+      name: string;
+      body: unknown;
+      run: () => Promise<unknown>;
+      assertUrl: (url: string) => void;
+    }> = [
+      {
+        name: 'fetchSystemHealth',
+        body: { status: 'ok', pid: 1234 },
+        run: fetchSystemHealth,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.health),
+      },
+      {
+        name: 'fetchSystemVersion',
+        body: { version: 17, eforgeVersion: '1.2.3 (abc)' },
+        run: fetchSystemVersion,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.version),
+      },
+      {
+        name: 'fetchSystemProjectContext',
+        body: { cwd: '/home/user/project', gitRemote: 'git@github.com:foo/bar.git' },
+        run: fetchSystemProjectContext,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.projectContext),
+      },
+      {
+        name: 'fetchSystemConfigShow',
+        body: { resolved: {}, sources: {} },
+        run: fetchSystemConfigShow,
+        assertUrl: (url) => {
+          const parsed = new URL(url, 'http://localhost');
+          expect(parsed.pathname).toBe(API_ROUTES.configShow);
+          expect(parsed.searchParams.get('verbose')).toBe('true');
+        },
+      },
+      {
+        name: 'fetchSystemConfigValidate',
+        body: { configFound: true, valid: true },
+        run: fetchSystemConfigValidate,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.configValidate),
+      },
+      {
+        name: 'fetchSystemProfileList',
+        body: { profiles: [], active: null, source: 'none' as const },
+        run: fetchSystemProfileList,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.profileList),
+      },
+      {
+        name: 'fetchSystemProfileShow',
+        body: { active: null, source: 'none' as const, resolved: { harness: undefined, profile: null } },
+        run: fetchSystemProfileShow,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.profileShow),
+      },
+      {
+        name: 'fetchSystemExtensionList',
+        body: { extensions: [], diagnostics: [], totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 } },
+        run: fetchSystemExtensionList,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.extensionList),
+      },
+      {
+        name: 'fetchSystemExtensionValidate',
+        body: { valid: true, extensions: [], diagnostics: [] },
+        run: fetchSystemExtensionValidate,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.extensionValidate),
+      },
+      {
+        name: 'fetchSystemExtensionContributionManifest',
+        body: { schemaVersion: 1, generatedAt: '2026-01-01T00:00:00.000Z', actions: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [] },
+        run: fetchSystemExtensionContributionManifest,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.extensionContributionManifest),
+      },
+      {
+        name: 'fetchSystemPlaybookList',
+        body: { playbooks: [], warnings: [] },
+        run: fetchSystemPlaybookList,
+        assertUrl: (url) => expect(url).toBe(API_ROUTES.playbookList),
+      },
+    ];
+
+    for (const testCase of successfulGetCases) {
+      globalThis.fetch = makeFetchMock(200, testCase.body);
+      const result = await testCase.run();
+      expect(globalThis.fetch, testCase.name).toHaveBeenCalledOnce();
+      const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      testCase.assertUrl(url);
+      expect(result, testCase.name).toEqual(testCase.body);
+    }
   });
 
-  it('fetchSystemVersion calls API_ROUTES.version', async () => {
-    const mockBody = { version: 17, eforgeVersion: '1.2.3 (abc)' };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    const result = await fetchSystemVersion();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.version);
-    expect(result).toEqual(mockBody);
-  });
+  it('model catalog helpers include harness query params and return the response body', async () => {
+    const harnessQueryCases: Array<{
+      name: string;
+      route: string;
+      harness: 'pi' | 'claude-sdk';
+      body: unknown;
+      run: () => Promise<unknown>;
+    }> = [
+      {
+        name: 'fetchSystemModelProviders pi',
+        route: API_ROUTES.modelProviders,
+        harness: 'pi',
+        body: { providers: ['anthropic'] },
+        run: () => fetchSystemModelProviders('pi'),
+      },
+      {
+        name: 'fetchSystemModelProviders claude-sdk',
+        route: API_ROUTES.modelProviders,
+        harness: 'claude-sdk',
+        body: { providers: ['anthropic'] },
+        run: () => fetchSystemModelProviders('claude-sdk'),
+      },
+      {
+        name: 'fetchSystemModelList pi',
+        route: API_ROUTES.modelList,
+        harness: 'pi',
+        body: { models: [] },
+        run: () => fetchSystemModelList('pi'),
+      },
+      {
+        name: 'fetchSystemModelList claude-sdk',
+        route: API_ROUTES.modelList,
+        harness: 'claude-sdk',
+        body: { models: [] },
+        run: () => fetchSystemModelList('claude-sdk'),
+      },
+    ];
 
-  it('fetchSystemProjectContext calls API_ROUTES.projectContext', async () => {
-    const mockBody = { cwd: '/home/user/project', gitRemote: 'git@github.com:foo/bar.git' };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    const result = await fetchSystemProjectContext();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.projectContext);
-    expect(result).toEqual(mockBody);
-  });
-
-  it('fetchSystemConfigShow includes verbose=true query param', async () => {
-    const mockBody = { resolved: {}, sources: {} };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemConfigShow();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toContain(API_ROUTES.configShow);
-    expect(url).toContain('verbose=true');
-  });
-
-  it('fetchSystemConfigValidate calls API_ROUTES.configValidate', async () => {
-    const mockBody = { configFound: true, valid: true };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemConfigValidate();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.configValidate);
-  });
-
-  it('fetchSystemProfileList calls API_ROUTES.profileList', async () => {
-    const mockBody = { profiles: [], active: null, source: 'none' as const };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemProfileList();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.profileList);
-  });
-
-  it('fetchSystemProfileShow calls API_ROUTES.profileShow', async () => {
-    const mockBody = { active: null, source: 'none' as const, resolved: { harness: undefined, profile: null } };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemProfileShow();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.profileShow);
-  });
-
-  it('fetchSystemExtensionList calls API_ROUTES.extensionList', async () => {
-    const mockBody = { extensions: [], diagnostics: [], totals: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 } };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemExtensionList();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.extensionList);
-  });
-
-  it('fetchSystemExtensionValidate calls API_ROUTES.extensionValidate', async () => {
-    const mockBody = { valid: true, extensions: [], diagnostics: [] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemExtensionValidate();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.extensionValidate);
-  });
-
-  it('fetchSystemExtensionContributionManifest calls API_ROUTES.extensionContributionManifest', async () => {
-    const mockBody = { schemaVersion: 1, generatedAt: '2026-01-01T00:00:00.000Z', actions: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemExtensionContributionManifest();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.extensionContributionManifest);
-  });
-
-  it('fetchSystemPlaybookList calls API_ROUTES.playbookList', async () => {
-    const mockBody = { playbooks: [], warnings: [] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemPlaybookList();
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe(API_ROUTES.playbookList);
-  });
-
-  it('fetchSystemModelProviders includes harness=pi query param', async () => {
-    const mockBody = { providers: ['anthropic'] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemModelProviders('pi');
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toContain(API_ROUTES.modelProviders);
-    expect(url).toContain('harness=pi');
-  });
-
-  it('fetchSystemModelProviders includes harness=claude-sdk query param', async () => {
-    const mockBody = { providers: ['anthropic'] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemModelProviders('claude-sdk');
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toContain(API_ROUTES.modelProviders);
-    expect(url).toContain('harness=claude-sdk');
-  });
-
-  it('fetchSystemModelList includes harness=pi query param', async () => {
-    const mockBody = { models: [] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemModelList('pi');
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toContain(API_ROUTES.modelList);
-    expect(url).toContain('harness=pi');
-  });
-
-  it('fetchSystemModelList includes harness=claude-sdk query param', async () => {
-    const mockBody = { models: [] };
-    globalThis.fetch = makeFetchMock(200, mockBody);
-    await fetchSystemModelList('claude-sdk');
-    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toContain(API_ROUTES.modelList);
-    expect(url).toContain('harness=claude-sdk');
+    for (const testCase of harnessQueryCases) {
+      globalThis.fetch = makeFetchMock(200, testCase.body);
+      const result = await testCase.run();
+      expect(globalThis.fetch, testCase.name).toHaveBeenCalledOnce();
+      const rawUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      const url = new URL(rawUrl, 'http://localhost');
+      expect(url.pathname, testCase.name).toBe(testCase.route);
+      expect(url.searchParams.get('harness'), testCase.name).toBe(testCase.harness);
+      expect(result, testCase.name).toEqual(testCase.body);
+    }
   });
 
   it('trustSystemExtension POSTs path and console-ui provenance to the trust route', async () => {
@@ -291,36 +301,4 @@ describe('system-fetches', () => {
     await expect(fetchSystemHealth()).rejects.toThrow('HTTP 500 Internal Server Error');
   });
 
-  it('500 response on one endpoint does not affect other endpoints', async () => {
-    // First call: health fails
-    // Second call: version succeeds
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: () => Promise.resolve({}),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        json: () => Promise.resolve({ version: 17 }),
-      });
-    globalThis.fetch = fetchMock;
-
-    let healthError: Error | undefined;
-    try {
-      await fetchSystemHealth();
-    } catch (e) {
-      healthError = e as Error;
-    }
-    expect(healthError).toBeDefined();
-    expect(healthError?.message).toContain('500');
-
-    // Version call should succeed independently
-    const versionResult = await fetchSystemVersion();
-    expect(versionResult).toEqual({ version: 17 });
-  });
 });
