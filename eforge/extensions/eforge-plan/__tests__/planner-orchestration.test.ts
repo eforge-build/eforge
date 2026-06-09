@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter } from '../../../../packages/input/src/index.js';
 import { applyCompletedPlanningAgentTaskResult, applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
-import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { parseMarkdownRecord, readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
-import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
+import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from '../trace-store.js';
+import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
+import type { PlanningTaskWorkflowSelection } from '../planning-agent-task-schemas.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-planner-'));
@@ -175,7 +177,7 @@ describe('planner orchestration', () => {
     });
   });
 
-  function creationDraftTask(session: string, extra: Record<string, unknown> = {}) {
+  function creationDraftTask(session: string, extra: Record<string, unknown> = {}, draftExtra: Record<string, unknown> = {}) {
     return {
       taskId: 'task-creation',
       kind: 'eforge-plan.planning-draft',
@@ -190,6 +192,7 @@ describe('planner orchestration', () => {
           topic: 'Created topic',
           planningType: 'feature',
           planningDepth: 'focused',
+          ...draftExtra,
           sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
         },
       },
@@ -226,6 +229,93 @@ describe('planner orchestration', () => {
       expect((await readBacklogItem(cwd, 'item-two'))?.status).toBe('candidate');
     });
   });
+
+  // --- eforge:region plan-01-trusted-creation-linkage ---
+  async function recordCreationWorkflow(cwd: string, selection: PlanningTaskWorkflowSelection, taskId = 'task-creation') {
+    await recordPlanningTaskWorkflowEntry(cwd, {
+      taskId,
+      originalRequest: 'Plan selected backlog work.',
+      derivedRequest: 'Draft a session plan for selected backlog work.',
+      selection,
+      requestedOutputSections: ['sessionPlanCreationDraft'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+  }
+
+  async function readSessionPlanFrontmatter(cwd: string, session: string): Promise<Record<string, unknown>> {
+    const raw = await readFile(join(cwd, '.eforge', 'session-plans', `${session}.md`), 'utf-8');
+    return parseMarkdownRecord(raw).frontmatter;
+  }
+
+  it('links AI creation drafts to item workflow selections, writes trace sidecars, ignores spoofed model ids, and leaves item statuses unchanged', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await recordCreationWorkflow(cwd, { itemIds: ['item-one'] });
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('linked-item-session', {
+        sourceRefs: { sourceItemIds: ['item-two'], sourceEpicIds: ['spoof-epic'], sourceRecommendationRef: 'spoof-rec' },
+        traceItemIds: ['item-two'],
+      }, {
+        sourceItemIds: ['item-two'],
+        source_item_ids: ['item-two'],
+        traceItemIds: ['item-two'],
+      }), { taskId: 'task-creation', applySessionPlanCreationDraft: {} });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({
+        session: 'linked-item-session',
+        relativePath: '.eforge/session-plans/linked-item-session.md',
+        sourceRefs: { sourceItemIds: ['item-one'], sourceEpicIds: ['epic-one'] },
+        traceItemIds: ['item-one'],
+      });
+      const frontmatter = await readSessionPlanFrontmatter(cwd, 'linked-item-session');
+      expect(frontmatter.eforge_plan).toMatchObject({ source_item_ids: ['item-one'], source_epic_ids: ['epic-one'], source_item_id: 'item-one', source_epic_id: 'epic-one' });
+      expect(frontmatter.eforge_plan).not.toMatchObject({ source_item_ids: ['item-two'] });
+      expect(frontmatter.eforge_plan).not.toHaveProperty('source_recommendation_ref');
+      const trace = await readTraceSidecar(cwd, 'item-one');
+      expect(trace?.promotedSessionPlans[0]).toMatchObject({ session: 'linked-item-session', status: 'planning', promotedAt: expect.any(String) });
+      expect(await readTraceSidecar(cwd, 'item-two')).toBeNull();
+      expect((await readBacklogItem(cwd, 'item-one'))?.status).toBe('planned');
+      expect((await readBacklogItem(cwd, 'item-two'))?.status).toBe('candidate');
+    });
+  });
+
+  it('links AI creation drafts to recommendation workflow selections and traces all resolved source items', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await writeRecommendations(cwd, {
+        ...createEmptyRecommendationModel(),
+        safeParallelizableGroups: [{ ref: 'group-one', title: 'Group One', itemIds: ['item-one', 'item-two'], epicIds: ['epic-one'], rationale: 'Plan together.' }],
+      });
+      await recordCreationWorkflow(cwd, { recommendationRef: 'group-one' });
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('linked-recommendation-session'), { taskId: 'task-creation', applySessionPlanCreationDraft: {} });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({
+        sourceRefs: { sourceItemIds: ['item-one', 'item-two'], sourceEpicIds: ['epic-one'], sourceRecommendationRef: 'group-one' },
+        traceItemIds: ['item-one', 'item-two'],
+      });
+      const frontmatter = await readSessionPlanFrontmatter(cwd, 'linked-recommendation-session');
+      expect(frontmatter.eforge_plan).toMatchObject({ source_item_ids: ['item-one', 'item-two'], source_epic_ids: ['epic-one'], source_recommendation_ref: 'group-one' });
+      expect(frontmatter.eforge_plan).not.toHaveProperty('source_item_id');
+      expect((await readTraceSidecar(cwd, 'item-one'))?.promotedSessionPlans[0]?.session).toBe('linked-recommendation-session');
+      expect((await readTraceSidecar(cwd, 'item-two'))?.promotedSessionPlans[0]?.session).toBe('linked-recommendation-session');
+    });
+  });
+
+  it('links AI creation drafts to epic workflow selections and traces the open epic items', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await recordCreationWorkflow(cwd, { epicId: 'epic-one' });
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('linked-epic-session'), { taskId: 'task-creation', applySessionPlanCreationDraft: {} });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({
+        sourceRefs: { sourceItemIds: ['item-one'], sourceEpicIds: ['epic-one'] },
+        traceItemIds: ['item-one'],
+      });
+      const frontmatter = await readSessionPlanFrontmatter(cwd, 'linked-epic-session');
+      expect(frontmatter.eforge_plan).toMatchObject({ source_item_ids: ['item-one'], source_epic_ids: ['epic-one'], source_item_id: 'item-one', source_epic_id: 'epic-one' });
+      expect((await readTraceSidecar(cwd, 'item-one'))?.promotedSessionPlans[0]).toMatchObject({ session: 'linked-epic-session', status: 'planning' });
+    });
+  });
+  // --- eforge:endregion plan-01-trusted-creation-linkage ---
 
   it('rejects a creation draft whose target session already exists before writing recommendations', async () => {
     await withTempProject(async (cwd) => {

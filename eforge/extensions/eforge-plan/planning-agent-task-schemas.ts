@@ -66,10 +66,23 @@ export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
   applySessionPlanCreationDraft: Type.Optional(ApplyPlanningAgentTaskCreationDraftSelectionSchema),
 }, { additionalProperties: false });
 
+// --- eforge:region plan-01-trusted-creation-linkage ---
+export const AppliedSessionPlanCreationDraftSourceRefsSchema = Type.Object({
+  sourceItemIds: Type.Array(Type.String()),
+  sourceEpicIds: Type.Array(Type.String()),
+  sourceRecommendationRef: Type.Optional(Type.String()),
+  promotedAt: Type.String(),
+}, { additionalProperties: false });
+// --- eforge:endregion plan-01-trusted-creation-linkage ---
+
 export const AppliedSessionPlanCreationDraftSchema = Type.Object({
   session: Type.String(),
   relativePath: Type.String(),
   readiness: SessionPlanReadinessDetailSchema,
+  // --- eforge:region plan-01-trusted-creation-linkage ---
+  sourceRefs: Type.Optional(AppliedSessionPlanCreationDraftSourceRefsSchema),
+  traceItemIds: Type.Optional(Type.Array(Type.String())),
+  // --- eforge:endregion plan-01-trusted-creation-linkage ---
 }, JsonObjectAdditionalProperties);
 
 export const PlanningAgentTaskStartOutputSchema = ExtensionAgentTaskStartResponseSchema;
@@ -162,6 +175,7 @@ export type ApplyPlanningAgentTaskSessionPlanDraft = Static<typeof ApplyPlanning
 export type ApplyPlanningAgentTaskCreationDraftSelection = Static<typeof ApplyPlanningAgentTaskCreationDraftSelectionSchema>;
 export type ApplyPlanningAgentTaskResultInput = Static<typeof ApplyPlanningAgentTaskResultInputSchema>;
 export type ApplyPlanningAgentTaskResultOutput = Static<typeof ApplyPlanningAgentTaskResultOutputSchema>;
+export type AppliedSessionPlanCreationDraftSourceRefs = Static<typeof AppliedSessionPlanCreationDraftSourceRefsSchema>;
 export type AppliedSessionPlanCreationDraft = Static<typeof AppliedSessionPlanCreationDraftSchema>;
 export type PlanningTaskWorkflowSelection = Static<typeof PlanningTaskWorkflowSelectionSchema>;
 export type PlanningTaskWorkflowEntry = Static<typeof PlanningTaskWorkflowEntrySchema>;
