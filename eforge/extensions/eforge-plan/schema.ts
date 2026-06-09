@@ -362,6 +362,81 @@ export const TraceSidecarSchema = Type.Object({
   landingResults: Type.Array(TraceLandingResultSchema),
   lastEvent: Type.Optional(TraceLastEventMetadataSchema),
 });
+export const LifecycleStateSchema = Type.Union([
+  Type.Literal('none'),
+  Type.Literal('planned'),
+  Type.Literal('active'),
+  Type.Literal('queue'),
+  Type.Literal('build'),
+  Type.Literal('pr-open'),
+  Type.Literal('merged'),
+  Type.Literal('shipped'),
+  Type.Literal('failed'),
+  Type.Literal('partial'),
+]);
+export const LifecycleLinkRowSchema = Type.Object({
+  kind: Type.String(),
+  stage: Type.String(),
+  status: Type.String(),
+  label: Type.String(),
+  session: Type.Optional(Type.String()),
+  prdId: Type.Optional(Type.String()),
+  runId: Type.Optional(Type.String()),
+  sessionId: Type.Optional(Type.String()),
+  featureBranch: Type.Optional(Type.String()),
+  commitSha: Type.Optional(Type.String()),
+  prUrl: Type.Optional(Type.String()),
+  path: Type.Optional(Type.String()),
+  timestamp: Type.Optional(Type.String()),
+  affectedItemIds: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export const PlanSourceRefsSchema = Type.Object({
+  sourceItemIds: Type.Array(Type.String()),
+  sourceEpicIds: Type.Array(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+  promotedAt: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+export const ItemLifecycleProjectionSchema = Type.Object({
+  itemId: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  epic: Type.Optional(Type.String()),
+  lifecycleState: LifecycleStateSchema,
+  linkRows: Type.Array(LifecycleLinkRowSchema),
+  failureEvidence: Type.Array(LifecycleLinkRowSchema),
+}, { additionalProperties: false });
+export const SessionPlanLifecycleProjectionSchema = Type.Object({
+  sourceRefs: PlanSourceRefsSchema,
+  lifecycleState: LifecycleStateSchema,
+  itemRows: Type.Array(ItemLifecycleProjectionSchema),
+  linkRows: Type.Array(LifecycleLinkRowSchema),
+  failureEvidence: Type.Array(LifecycleLinkRowSchema),
+}, { additionalProperties: false });
+export const EpicProgressProjectionSchema = Type.Object({
+  epicId: Type.String(),
+  title: Type.String(),
+  status: BacklogStatusSchema,
+  lifecycleState: LifecycleStateSchema,
+  countsByBacklogStatus: Type.Record(Type.String(), Type.Number()),
+  countsByLifecycleState: Type.Record(Type.String(), Type.Number()),
+  itemRows: Type.Array(ItemLifecycleProjectionSchema),
+}, { additionalProperties: false });
+export const TraceSummarySchema = Type.Object({
+  itemId: Type.String(),
+  epicId: Type.Optional(Type.String()),
+  hasActiveSessionPlan: Type.Boolean(),
+  hasActiveQueuePrd: Type.Boolean(),
+  hasActiveBuildRun: Type.Boolean(),
+  hasActiveBuildSession: Type.Boolean(),
+  hasActiveTrace: Type.Boolean(),
+  activeReasons: Type.Array(Type.String()),
+  lastEvent: Type.Optional(TraceLastEventMetadataSchema),
+  lifecycleState: LifecycleStateSchema,
+  linkRows: Type.Array(LifecycleLinkRowSchema),
+  prRefs: Type.Array(LifecycleLinkRowSchema),
+  landingRefs: Type.Array(LifecycleLinkRowSchema),
+  failureEvidence: Type.Array(LifecycleLinkRowSchema),
+}, { additionalProperties: false });
 export const KanbanDependencyRefSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -403,6 +478,9 @@ export const KanbanCardSchema = Type.Object({
   recRank: Type.Optional(Type.Number()),
   recLanes: Type.Array(Type.String()),
   recUnblock: Type.Optional(Type.String()),
+  lifecycleState: LifecycleStateSchema,
+  linkRows: Type.Array(LifecycleLinkRowSchema),
+  failureEvidence: Type.Array(LifecycleLinkRowSchema),
 });
 export const KanbanLaneOutputSchema = Type.Object({
   lane: KanbanLaneSchema,
@@ -416,9 +494,11 @@ export const KanbanBoardOutputSchema = Type.Object({
 export const ListBoardOutputSchema = Type.Object({
   epics: Type.Array(Type.Unknown()),
   items: Type.Array(Type.Unknown()),
-  lanes: Type.Array(Type.Unknown()),
+  lanes: Type.Array(KanbanLaneOutputSchema),
   blockedReasons: Type.Array(Type.Object({ itemId: Type.String(), reasons: Type.Array(Type.String()) })),
-  traceSummaries: Type.Array(Type.Unknown()),
+  traceSummaries: Type.Array(TraceSummarySchema),
+  lifecycleLinks: Type.Array(LifecycleLinkRowSchema),
+  epicProgress: Type.Array(EpicProgressProjectionSchema),
   // --- eforge:region recommendations ---
   recommendationSummary: Type.Optional(RecommendationSummarySchema),
   recommendationStatus: RecommendationDerivedStatusSchema,
@@ -436,6 +516,13 @@ export type TraceBuildSession = Static<typeof TraceBuildSessionSchema>;
 export type TraceLandingResult = Static<typeof TraceLandingResultSchema>;
 export type TraceLastEventMetadata = Static<typeof TraceLastEventMetadataSchema>;
 export type TraceSidecar = Static<typeof TraceSidecarSchema>;
+export type LifecycleState = Static<typeof LifecycleStateSchema>;
+export type LifecycleLinkRow = Static<typeof LifecycleLinkRowSchema>;
+export type PlanSourceRefs = Static<typeof PlanSourceRefsSchema>;
+export type ItemLifecycleProjection = Static<typeof ItemLifecycleProjectionSchema>;
+export type SessionPlanLifecycleProjection = Static<typeof SessionPlanLifecycleProjectionSchema>;
+export type EpicProgressProjection = Static<typeof EpicProgressProjectionSchema>;
+export type TraceSummaryProjection = Static<typeof TraceSummarySchema>;
 export type KanbanBoardOutput = Static<typeof KanbanBoardOutputSchema>;
 export type ListBoardOutput = Static<typeof ListBoardOutputSchema>;
 // --- eforge:region recommendations ---

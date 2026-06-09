@@ -10,6 +10,8 @@ import {
   type KanbanLane,
   type TraceSummary,
 } from './backlog-domain.js';
+import { projectItemLifecycle } from './lifecycle-projection.js';
+import type { LifecycleLinkRow, LifecycleState } from './backlog-domain.js';
 import { emptyRecommendationIndex, type RecommendationIndex } from './recommendation-index.js';
 
 const LANE_TITLES: Record<KanbanLane, string> = {
@@ -67,6 +69,9 @@ export interface KanbanCard {
   recRank?: number;
   recLanes: string[];
   recUnblock?: string;
+  lifecycleState: LifecycleState;
+  linkRows: LifecycleLinkRow[];
+  failureEvidence: LifecycleLinkRow[];
 }
 
 export interface KanbanLaneProjection {
@@ -156,6 +161,7 @@ function projectCard(
   const blockingIds = new Set(item.depends_on.filter((id) => isBlockingDependency(id, itemsById)));
   const dependencies = item.depends_on.map((id) => dependencyRef(id, itemsById, blockingIds.has(id)));
   const recRank = recommendationIndex.rankById.get(item.id);
+  const lifecycle = projectItemLifecycle(item, trace);
   return {
     id: item.id,
     title: item.title,
@@ -185,6 +191,9 @@ function projectCard(
     ...(recRank !== undefined ? { recRank } : {}),
     recLanes: recommendationIndex.lanesById.get(item.id) ?? [],
     ...(recommendationIndex.unblockById.has(item.id) ? { recUnblock: recommendationIndex.unblockById.get(item.id) } : {}),
+    lifecycleState: lifecycle.lifecycleState,
+    linkRows: lifecycle.linkRows,
+    failureEvidence: lifecycle.failureEvidence,
   };
 }
 

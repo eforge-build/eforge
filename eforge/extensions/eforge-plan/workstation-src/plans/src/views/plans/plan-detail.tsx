@@ -9,6 +9,7 @@ import type { PlanData, PlanDetail, Readiness } from '@/types';
 import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { titleCase } from './dimensions';
+import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
 
 const bridge = getBridge();
 
@@ -97,6 +98,7 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
           {plan.planning_depth && <Badge variant="outline">{plan.planning_depth}</Badge>}
         </div>
 
+        <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
         <ReadinessChecklist plan={plan} readiness={readiness} onSetSection={setSection} onSelectDimensions={selectDimensions} />
         <MetadataEditor plan={plan} onSave={saveMetadata} />
 

@@ -4,6 +4,7 @@ import { buildRecommendationIndex } from './recommendation-index.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { toJsonSafeObject } from './json-safe.js';
+import { aggregateLifecycleLinks, projectEpicProgress } from './lifecycle-projection.js';
 // --- eforge:region recommendations ---
 import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
 import { readDerivedRecommendationStatus } from './recommendation-status.js';
@@ -70,6 +71,8 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
       .filter((item) => item.unresolvedDependsOn.length > 0)
       .map((item) => ({ itemId: item.id, reasons: item.reasons })),
     traceSummaries,
+    lifecycleLinks: aggregateLifecycleLinks(traceSummaries),
+    epicProgress: projectEpicProgress({ epics, items, traceSummaries }),
     // --- eforge:region recommendations ---
     recommendationSummary: summarizeRecommendations(recommendations),
     recommendationStatus,

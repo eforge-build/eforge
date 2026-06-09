@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { BoardItem, DependencyRef } from '@/types';
 import { shortId } from './board-model';
+import { LifecyclePanel } from './lifecycle-panel';
 
 const PRIORITY_COLOR: Record<string, string> = { high: 'var(--prio-high)', medium: 'var(--prio-medium)', low: 'var(--prio-low)' };
 
@@ -40,6 +41,7 @@ export function ItemCard({ item, selected, onToggle }: ItemCardProps) {
       {item.tags.length > 0 && <Tags>{item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</Tags>}
 
       <DependencyRows dependencies={item.dependencies} dependents={item.dependents} />
+      <LifecyclePanel item={item} />
       {item.recUnblock && (
         <p className="mt-2 flex items-baseline gap-2 text-xs text-[color:var(--prio-medium)]">
           <span className="rounded border border-[color:var(--prio-medium)]/40 px-1 text-[0.6rem] uppercase tracking-wide text-muted-foreground">Unblock</span>

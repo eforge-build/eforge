@@ -14,6 +14,7 @@ import {
   PromotionSelectionInputSchema,
   PromotionSelectionOutputSchema,
   PutRecommendationsOutputSchema,
+  PlanSourceRefsSchema,
   PLANNING_DEPTHS,
   PLANNING_TYPES,
 } from './schema.js';
@@ -66,10 +67,14 @@ export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
   applySessionPlanCreationDraft: Type.Optional(ApplyPlanningAgentTaskCreationDraftSelectionSchema),
 }, { additionalProperties: false });
 
+export const AppliedSessionPlanCreationDraftSourceRefsSchema = PlanSourceRefsSchema;
+
 export const AppliedSessionPlanCreationDraftSchema = Type.Object({
   session: Type.String(),
   relativePath: Type.String(),
   readiness: SessionPlanReadinessDetailSchema,
+  sourceRefs: Type.Optional(AppliedSessionPlanCreationDraftSourceRefsSchema),
+  traceItemIds: Type.Optional(Type.Array(Type.String())),
 }, JsonObjectAdditionalProperties);
 
 export const PlanningAgentTaskStartOutputSchema = ExtensionAgentTaskStartResponseSchema;
@@ -162,6 +167,7 @@ export type ApplyPlanningAgentTaskSessionPlanDraft = Static<typeof ApplyPlanning
 export type ApplyPlanningAgentTaskCreationDraftSelection = Static<typeof ApplyPlanningAgentTaskCreationDraftSelectionSchema>;
 export type ApplyPlanningAgentTaskResultInput = Static<typeof ApplyPlanningAgentTaskResultInputSchema>;
 export type ApplyPlanningAgentTaskResultOutput = Static<typeof ApplyPlanningAgentTaskResultOutputSchema>;
+export type AppliedSessionPlanCreationDraftSourceRefs = Static<typeof AppliedSessionPlanCreationDraftSourceRefsSchema>;
 export type AppliedSessionPlanCreationDraft = Static<typeof AppliedSessionPlanCreationDraftSchema>;
 export type PlanningTaskWorkflowSelection = Static<typeof PlanningTaskWorkflowSelectionSchema>;
 export type PlanningTaskWorkflowEntry = Static<typeof PlanningTaskWorkflowEntrySchema>;

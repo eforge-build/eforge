@@ -22,8 +22,9 @@ import {
   summarizeRecommendations,
   writeRecommendations,
 } from './recommendations-store.js';
-import { updateSessionPlanMetadata } from './session-plan-metadata.js';
+import { updateSessionPlanMetadata, updateSessionPlanSourceMetadata, type SessionPlanSourceMetadata } from './session-plan-metadata.js';
 import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, recordPlannerRecommendationApplied, recordPlannerRecommendationAppliedForSourceFingerprint } from './recommendation-status.js';
+import { upsertPromotedSessionPlan } from './trace-store.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isRecommendationRefreshWorkflowEntry } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
@@ -122,6 +123,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   const handoffDrafts = input.applyHandoffDrafts?.map((selection) => mergeHandoffSelection(resolveHandoffDraft(rawResult, selection.index), selection));
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
   const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
+  const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
   await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft);
 
   if (input.applyRecommendations) {
@@ -144,7 +146,7 @@ export async function applyCompletedPlanningAgentTaskResult(
     output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
   }
   if (creationDraft !== undefined) {
-    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft);
+    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage);
   }
   return output;
 }
@@ -178,7 +180,7 @@ function resolveSessionPlanCreationDraft(result: Record<string, unknown>, select
   return { draft, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
 }
 
-async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft): Promise<AppliedSessionPlanCreationDraft> {
+async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft, linkage: CreationDraftSourceLinkage | undefined): Promise<AppliedSessionPlanCreationDraft> {
   const planning = createSessionPlanningWorkflowAdapter();
   const { draft, session, selection } = resolved;
   const planningType = draft.planningType as PlanningType;
@@ -198,9 +200,23 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
     ...(selection.agentProfile !== undefined && { agentProfile: selection.agentProfile }),
     ...(resolved.openQuestions !== undefined && { openQuestions: resolved.openQuestions }),
   });
+  const sourceRefs = linkage !== undefined ? await applyCreationDraftSourceLinkage(cwd, session, linkage) : undefined;
   const readiness = await planning.flat.readiness({ cwd, session });
   const relativePath = relative(cwd, planning.flat.resolvePath({ cwd, session })).replace(/\\/g, '/');
-  return { session, relativePath, readiness } as AppliedSessionPlanCreationDraft;
+  return {
+    session,
+    relativePath,
+    readiness,
+    ...(sourceRefs !== undefined && linkage !== undefined && {
+      sourceRefs: {
+        sourceItemIds: sourceRefs.sourceItemIds,
+        sourceEpicIds: sourceRefs.sourceEpicIds,
+        ...(sourceRefs.sourceRecommendationRef !== undefined && { recommendationRef: sourceRefs.sourceRecommendationRef }),
+        promotedAt: sourceRefs.promotedAt,
+      },
+      traceItemIds: linkage.sourceItemIds,
+    }),
+  } as AppliedSessionPlanCreationDraft;
 }
 
 function isSessionPlanCreationDraft(value: unknown): value is SessionPlanCreationDraftShape {
@@ -250,6 +266,63 @@ function resolveSelectedSessionPlanSections(
     if (missing.length > 0) throw new Error(`Planning task result is missing selected session-plan sections for ${selection.session}: ${missing.join(', ')}.`);
     return { session: selection.session, sections };
   });
+}
+
+interface CreationDraftSourceLinkage {
+  sourceItemIds: string[];
+  sourceEpicIds: string[];
+  sourceRecommendationRef?: string;
+  items: BacklogItem[];
+}
+
+async function resolveCreationDraftSourceLinkage(cwd: string, taskId: string): Promise<CreationDraftSourceLinkage | undefined> {
+  const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
+  if (entry === undefined) return undefined;
+  const selection = workflowSelectionInput(entry.selection);
+  if (selection === undefined) return undefined;
+  const resolved = await resolvePromotionSelection({ cwd, ...selection });
+  return {
+    sourceItemIds: resolved.itemIds,
+    sourceEpicIds: resolved.epicIds,
+    ...(resolved.recommendationRef !== undefined && { sourceRecommendationRef: resolved.recommendationRef }),
+    items: resolved.items,
+  };
+}
+
+async function applyCreationDraftSourceLinkage(cwd: string, session: string, linkage: CreationDraftSourceLinkage): Promise<SessionPlanSourceMetadata> {
+  const planning = createSessionPlanningWorkflowAdapter();
+  const promotedAt = new Date().toISOString();
+  const metadata = await updateSessionPlanSourceMetadata({
+    cwd,
+    session,
+    sourceItemIds: linkage.sourceItemIds,
+    sourceEpicIds: linkage.sourceEpicIds,
+    ...(linkage.sourceRecommendationRef !== undefined && { sourceRecommendationRef: linkage.sourceRecommendationRef }),
+    promotedAt,
+  });
+  const loaded = await planning.flat.load({ cwd, session });
+  const path = planning.flat.resolvePath({ cwd, session });
+  const status = loaded.plan.status ?? metadata.status ?? 'planning';
+  for (const item of linkage.items) {
+    await upsertPromotedSessionPlan(cwd, item.id, { session, path, status, promotedAt }, item.epic);
+  }
+  return {
+    sourceItemIds: linkage.sourceItemIds,
+    sourceEpicIds: linkage.sourceEpicIds,
+    ...(linkage.sourceRecommendationRef !== undefined && { sourceRecommendationRef: linkage.sourceRecommendationRef }),
+    promotedAt,
+  };
+}
+
+function workflowSelectionInput(selection: { itemIds?: string[]; epicId?: string; recommendationRef?: string }): { itemIds?: string[]; epicId?: string; recommendationRef?: string } | undefined {
+  if (selection.itemIds !== undefined || selection.epicId !== undefined || selection.recommendationRef !== undefined) {
+    return {
+      ...(selection.itemIds !== undefined && { itemIds: selection.itemIds }),
+      ...(selection.epicId !== undefined && { epicId: selection.epicId }),
+      ...(selection.recommendationRef !== undefined && { recommendationRef: selection.recommendationRef }),
+    };
+  }
+  return undefined;
 }
 
 async function validatePlanningAgentTaskApplyTargets(

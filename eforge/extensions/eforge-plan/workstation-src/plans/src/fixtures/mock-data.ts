@@ -1,4 +1,4 @@
-import type { AppliedSessionPlanCreationDraft, Artifact, Board, BoardItem, Detail, GetRecommendationsResponse, JsonObject, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse } from '@/types';
+import type { AppliedSessionPlanCreationDraft, Artifact, Board, BoardItem, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -19,27 +19,55 @@ function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'stat
   };
 }
 
+function lifecycleRows(params: { itemIds: string[]; session: string; state: 'active' | 'pr-open' | 'merged' | 'failed' | 'partial'; prUrl?: string; commitSha?: string }): LifecycleLinkRow[] {
+  const base = { affectedItemIds: params.itemIds };
+  const rows: LifecycleLinkRow[] = [
+    { kind: 'session-plan', stage: 'planned', status: params.state === 'active' ? 'active' : 'ready', session: params.session, promotedAt: '2026-06-07T00:00:00.000Z', ...base },
+    { kind: 'queue-prd', stage: params.state === 'active' ? 'queued' : 'completed', status: params.state === 'failed' ? 'failed' : 'completed', prdId: `${params.session}-prd`, queuedAt: '2026-06-07T00:01:00.000Z', ...base },
+    { kind: 'build-run', stage: params.state === 'failed' ? 'failed' : 'running', status: params.state === 'failed' ? 'failed' : 'running', runId: `${params.session}-run`, sessionId: `${params.session}-build`, startedAt: '2026-06-07T00:02:00.000Z', ...base },
+  ];
+  if (params.state === 'pr-open' || params.state === 'merged' || params.state === 'partial') rows.push({ kind: 'pr', stage: 'pr-open', status: 'pr-open', prUrl: params.prUrl ?? `https://example.test/pr/${params.session}`, featureBranch: `feature/${params.session}`, timestamp: '2026-06-07T00:03:00.000Z', ...base });
+  if (params.state === 'merged' || params.state === 'partial') rows.push({ kind: 'landing', stage: 'merged', status: 'landed', featureBranch: `feature/${params.session}`, commitSha: params.commitSha ?? 'abc123', landedAt: '2026-06-07T00:04:00.000Z', ...base });
+  if (params.state === 'failed') rows.push({ kind: 'last-event', stage: 'failed', status: 'failed', runId: `${params.session}-run`, timestamp: '2026-06-07T00:04:00.000Z', ...base });
+  return rows;
+}
+
+const multiItemPartialRows = lifecycleRows({ itemIds: ['add-import-preview', 'recommend-next-work'], session: '2026-06-07-planning-foundations', state: 'partial', commitSha: 'def456' });
+
+const mockEpicProgress: EpicProgress = {
+  epicId: 'planning', title: 'Planning workstation', lifecycleState: 'partial', totalItemCount: 3, shippedItemCount: 1, activeItemCount: 1, failedItemCount: 0,
+  itemRows: [
+    { itemId: 'add-import-preview', title: 'Add import preview', lifecycleState: 'shipped', shipped: true, evidence: 'Merged at def456.' },
+    { itemId: 'recommend-next-work', title: 'Maintain next-work recommendations', lifecycleState: 'active', shipped: false, evidence: 'Build still running.' },
+    { itemId: 'plan-workstation', title: 'Move planning into workstation', lifecycleState: 'active', shipped: false, evidence: 'Session plan active.' },
+  ],
+};
+
 const items: BoardItem[] = [
   card({
     id: 'add-import-preview', title: 'Add import preview', status: 'planned', lane: 'ready', priority: 'high',
     tags: ['ux', 'cli'], ready: true, recRank: 2, epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     notes: { claim: 'Users want a dry-run preview before importing.', evidence: '', recheck: '', promotionPaths: '' },
+    lifecycleState: 'partial', lifecycleLinks: multiItemPartialRows, epicProgress: mockEpicProgress,
   }),
   card({
     id: 'recommend-next-work', title: 'Maintain next-work recommendations', status: 'planned', lane: 'ready', priority: 'medium',
     ready: true, recRank: 1, recLanes: ['Planning foundations'], epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     dependents: [{ id: 'add-import-preview', title: 'Add import preview', status: 'planned', missing: false, blocking: false }],
+    lifecycleState: 'pr-open', lifecycleLinks: lifecycleRows({ itemIds: ['recommend-next-work'], session: '2026-06-07-recommendations', state: 'pr-open', prUrl: 'https://example.test/pr/recommendations' }),
   }),
   card({
     id: 'plan-workstation', title: 'Move planning into workstation', status: 'active', lane: 'in-progress', priority: 'high',
     activeTraceReasons: ['active build run trace run-12'], reasons: ['active build run trace run-12'],
     epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
+    lifecycleState: 'active', lifecycleLinks: lifecycleRows({ itemIds: ['plan-workstation'], session: '2026-06-07-plan-workstation', state: 'active' }), epicProgress: mockEpicProgress,
   }),
   card({
     id: 'auto-mode', title: 'Explore auto-mode draining', status: 'planned', lane: 'blocked', priority: 'low',
     blocked: true, unresolvedDependsOn: ['traceability'], recUnblock: 'Land traceability first, then re-scope.',
     dependencies: [{ id: 'traceability', title: 'Trace sidecars', status: 'planned', missing: false, blocking: true }],
     epic: 'extensions', epicRef: { id: 'extensions', title: 'Extension platform', status: 'planned', missing: false },
+    lifecycleState: 'failed', lifecycleLinks: lifecycleRows({ itemIds: ['auto-mode'], session: '2026-06-07-auto-mode', state: 'failed' }),
   }),
   card({
     id: 'traceability', title: 'Trace sidecars', status: 'planned', lane: 'ready', priority: 'medium', ready: true,
@@ -47,6 +75,7 @@ const items: BoardItem[] = [
   }),
   card({
     id: 'legacy-cleanup', title: 'Remove legacy board renderer', status: 'shipped', lane: 'done', priority: 'low', closed: true,
+    lifecycleState: 'merged', lifecycleLinks: lifecycleRows({ itemIds: ['legacy-cleanup'], session: '2026-06-07-legacy-cleanup', state: 'merged', prUrl: 'https://example.test/pr/legacy-cleanup', commitSha: 'fedcba' }),
   }),
   card({
     id: 'stale-idea', title: 'Revisit cron triggers', status: 'planned', lane: 'inbox', priority: 'low', reviewDue: true,
@@ -64,6 +93,8 @@ export const mockBoard: Board = {
     { id: 'planning', title: 'Planning workstation', status: 'active' },
     { id: 'extensions', title: 'Extension platform', status: 'planned' },
   ],
+  lifecycleLinks: items.flatMap((item) => item.lifecycleLinks ?? []),
+  epicProgress: [mockEpicProgress],
 };
 
 export const mockRecommendations: RecommendationModel = {
@@ -178,8 +209,22 @@ export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = {
 };
 
 export const mockArtifacts: Artifact[] = [
-  { key: 'plan:2026-06-07-import-preview', kind: 'plan', session: '2026-06-07-import-preview', title: 'Add import preview', status: 'planning', ready: false },
-  { key: 'plan:2026-06-07-recommendations', kind: 'plan', session: '2026-06-07-recommendations', title: 'Recommendation engine', status: 'ready', ready: true },
+  {
+    key: 'plan:2026-06-07-import-preview', kind: 'plan', session: '2026-06-07-import-preview', title: 'Add import preview', status: 'planning', ready: false,
+    sourceRefs: { itemIds: ['add-import-preview'], epicIds: ['planning'] }, lifecycleState: 'partial', lifecycleLinks: multiItemPartialRows,
+  },
+  {
+    key: 'plan:2026-06-07-recommendations', kind: 'plan', session: '2026-06-07-recommendations', title: 'Recommendation engine', status: 'ready', ready: true,
+    sourceRefs: { itemIds: ['recommend-next-work'], epicIds: ['planning'] }, lifecycleState: 'pr-open', lifecycleLinks: lifecycleRows({ itemIds: ['recommend-next-work'], session: '2026-06-07-recommendations', state: 'pr-open', prUrl: 'https://example.test/pr/recommendations' }), prRefs: [{ url: 'https://example.test/pr/recommendations', status: 'pr-open', branch: 'feature/2026-06-07-recommendations' }],
+  },
+  {
+    key: 'plan:2026-06-07-legacy-cleanup', kind: 'plan', session: '2026-06-07-legacy-cleanup', title: 'Remove legacy board renderer', status: 'shipped', ready: true,
+    sourceRefs: { itemIds: ['legacy-cleanup'] }, lifecycleState: 'merged', lifecycleLinks: lifecycleRows({ itemIds: ['legacy-cleanup'], session: '2026-06-07-legacy-cleanup', state: 'merged', prUrl: 'https://example.test/pr/legacy-cleanup', commitSha: 'fedcba' }), landingRefs: [{ status: 'landed', branch: 'feature/2026-06-07-legacy-cleanup', commitSha: 'fedcba', landedAt: '2026-06-07T00:04:00.000Z' }],
+  },
+  {
+    key: 'plan:2026-06-07-auto-mode', kind: 'plan', session: '2026-06-07-auto-mode', title: 'Explore auto-mode draining', status: 'failed', ready: false,
+    sourceRefs: { itemIds: ['auto-mode'], epicIds: ['extensions'] }, lifecycleState: 'failed', lifecycleLinks: lifecycleRows({ itemIds: ['auto-mode'], session: '2026-06-07-auto-mode', state: 'failed' }),
+  },
   { key: 'plan-set:planning-foundations', kind: 'plan-set', planSetId: 'planning-foundations', title: 'Planning foundations', status: 'draft', childCount: 3 },
 ];
 
@@ -202,6 +247,13 @@ export function mockDetail(key: string): Detail {
   }
   const artifact = mockArtifacts.find((entry) => entry.key === key) ?? mockArtifacts[0];
   const ready = Boolean(artifact.ready);
+  const lifecycleLinks = artifact.lifecycleLinks ?? [];
+  const itemRows = artifact.lifecycleState === 'partial'
+    ? [
+      { itemId: 'add-import-preview', title: 'Add import preview', lifecycleState: 'shipped', shipped: true, evidence: 'Merged at def456.' },
+      { itemId: 'recommend-next-work', title: 'Maintain next-work recommendations', lifecycleState: 'active', shipped: false, evidence: 'PR remains open.' },
+    ]
+    : lifecycleLinks.flatMap((row) => (row.affectedItemIds ?? []).map((itemId) => ({ itemId, lifecycleState: artifact.lifecycleState, shipped: artifact.lifecycleState === 'merged', evidence: row.commitSha ?? row.prUrl ?? row.status })));
   return {
     path: `.eforge/session-plans/${artifact.session}.md`,
     readiness: {
@@ -218,6 +270,7 @@ export function mockDetail(key: string): Detail {
       optional_dimensions: [],
       skipped_dimensions: [{ name: 'assumptions-and-validation', reason: 'No external dependencies.' }],
       open_questions: ['What edge cases matter?'],
+      sourceRefs: artifact.sourceRefs ?? { itemIds: [], epicIds: [] }, lifecycleLinks, lifecycleState: artifact.lifecycleState, itemRows, epicProgress: artifact.session === '2026-06-07-import-preview' ? [mockEpicProgress] : [], prRefs: artifact.prRefs, landingRefs: artifact.landingRefs,
       sections: { scope: 'A friendly fixture for rapid UI iteration.', 'acceptance criteria': '- It renders.\n- It promotes.' },
       body: '# Mock plan\n\n## Scope\n\nA friendly fixture for rapid UI iteration.',
     },

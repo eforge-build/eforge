@@ -6,6 +6,7 @@ import type {
   SessionPlanSetLoadResult,
   SessionPlanSetValidationResult,
 } from '../../../packages/input/src/index.js';
+import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 
 export type PlanningArtifactKey = `plan:${string}` | `plan-set:${string}`;
 
@@ -21,8 +22,9 @@ export function projectPlanningArtifacts(input: {
   plans: readonly SessionPlanningListEntry[];
   planSets: readonly SessionPlanSetListEntry[];
   board?: unknown;
+  lifecycleBySession?: ReadonlyMap<string, SessionPlanLifecycleProjection>;
 }) {
-  const plans = input.plans.map(projectPlanListEntry);
+  const plans = input.plans.map((entry) => projectPlanListEntry(entry, input.lifecycleBySession?.get(entry.session)));
   const planSets = input.planSets.map(projectPlanSetListEntry);
   return {
     artifacts: [...plans, ...planSets],
@@ -32,7 +34,7 @@ export function projectPlanningArtifacts(input: {
   };
 }
 
-export function projectPlanListEntry(entry: SessionPlanningListEntry) {
+export function projectPlanListEntry(entry: SessionPlanningListEntry, lifecycle?: SessionPlanLifecycleProjection) {
   return {
     kind: 'plan' as const,
     key: sessionPlanKey(entry.session),
@@ -44,6 +46,13 @@ export function projectPlanListEntry(entry: SessionPlanningListEntry) {
     ready: entry.ready,
     missingDimensions: entry.missingDimensions,
     ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}),
+    ...(lifecycle !== undefined ? {
+      sourceRefs: lifecycle.sourceRefs,
+      lifecycleState: lifecycle.lifecycleState,
+      itemRows: lifecycle.itemRows,
+      linkRows: lifecycle.linkRows,
+      failureEvidence: lifecycle.failureEvidence,
+    } : {}),
   };
 }
 
@@ -62,11 +71,12 @@ export function projectPlanSetListEntry(entry: SessionPlanSetListEntry) {
   };
 }
 
-export function projectSessionPlanDetail(input: { plan: SessionPlan; readiness: SessionPlanReadinessDetail; path: string }) {
+export function projectSessionPlanDetail(input: { plan: SessionPlan; readiness: SessionPlanReadinessDetail; path: string; lifecycle?: SessionPlanLifecycleProjection }) {
   return {
     plan: projectSessionPlan(input.plan),
     readiness: input.readiness,
     path: input.path,
+    ...(input.lifecycle !== undefined ? { sourceRefs: input.lifecycle.sourceRefs, lifecycle: input.lifecycle } : {}),
   };
 }
 

@@ -4,6 +4,10 @@ import { defineExtensionAction } from '../../../packages/extension-sdk/src/index
 import { createSessionPlanningWorkflowAdapter } from '../../../packages/input/src/index.js';
 import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
+import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
+import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
+import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import {
   projectPlanningArtifacts,
@@ -53,7 +57,8 @@ export const listPlanningArtifacts = defineExtensionAction({
     ]);
     try {
       const board = await buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive });
-      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board) }));
+      const lifecycleBySession = await buildLifecycleBySession(ctx.cwd, plans.map((plan) => plan.session));
+      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board), lifecycleBySession }));
     } catch {
       return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets }));
     }
@@ -68,7 +73,9 @@ export const showSessionPlan = defineExtensionAction({
   outputSchema: ShowSessionPlanOutputSchema,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
-    return toJsonSafeObject(projectSessionPlanDetail(await adapter().flat.load({ cwd: ctx.cwd, session: input.session })));
+    const loaded = await adapter().flat.load({ cwd: ctx.cwd, session: input.session });
+    const lifecycle = await buildLifecycleForPlan(ctx.cwd, loaded.plan);
+    return toJsonSafeObject(projectSessionPlanDetail({ ...loaded, lifecycle }));
   },
 });
 
@@ -270,6 +277,25 @@ export const sessionPlanActions = [
   updateSessionPlanMetadataAction,
   handoffSessionPlan,
 ] as const;
+
+async function buildLifecycleBySession(cwd: string, sessions: readonly string[]): Promise<Map<string, SessionPlanLifecycleProjection>> {
+  const planning = adapter();
+  const entries = await Promise.all(sessions.map(async (session) => {
+    try {
+      const loaded = await planning.flat.load({ cwd, session });
+      return [session, await buildLifecycleForPlan(cwd, loaded.plan)] as const;
+    } catch {
+      return undefined;
+    }
+  }));
+  return new Map(entries.filter((entry): entry is readonly [string, SessionPlanLifecycleProjection] => entry !== undefined));
+}
+
+async function buildLifecycleForPlan(cwd: string, plan: Parameters<typeof projectSessionPlanSourceRefs>[0]): Promise<SessionPlanLifecycleProjection> {
+  const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
+  const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
+  return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries });
+}
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;

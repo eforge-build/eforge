@@ -7,6 +7,83 @@ export interface EforgeBridge {
   invokeAction<TOutput = unknown>(actionId: string, input?: JsonObject): Promise<TOutput>;
 }
 
+export interface LifecycleLinkRow {
+  kind: 'session-plan' | 'queue-prd' | 'build-run' | 'build-session' | 'pr' | 'landing' | 'last-event' | string;
+  stage?: string;
+  status?: string;
+  label?: string;
+  session?: string;
+  sessionId?: string;
+  prdId?: string;
+  runId?: string;
+  buildSessionId?: string;
+  prUrl?: string;
+  featureBranch?: string;
+  branch?: string;
+  commitSha?: string;
+  timestamp?: string;
+  promotedAt?: string;
+  queuedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  landedAt?: string;
+  affectedItemIds?: string[];
+  affectedEpicIds?: string[];
+  itemRows?: LifecycleItemProgressRow[];
+}
+
+export interface LifecycleItemProgressRow {
+  itemId: string;
+  title?: string;
+  status?: string;
+  lifecycleState?: string;
+  shipped?: boolean;
+  evidence?: string;
+  rows?: LifecycleLinkRow[];
+}
+
+export interface EpicProgress {
+  epicId: string;
+  title?: string;
+  lifecycleState?: string;
+  totalItemCount?: number;
+  shippedItemCount?: number;
+  activeItemCount?: number;
+  failedItemCount?: number;
+  itemRows?: LifecycleItemProgressRow[];
+}
+
+export interface PlanSourceRefs {
+  itemIds?: string[];
+  epicIds?: string[];
+  sourceItemIds?: string[];
+  sourceEpicIds?: string[];
+  recommendationRef?: string;
+  promotedAt?: string;
+}
+
+export interface PlanLifecycleProjection {
+  sourceRefs: PlanSourceRefs;
+  lifecycleState: string;
+  itemRows: LifecycleItemProgressRow[];
+  linkRows: LifecycleLinkRow[];
+  failureEvidence?: LifecycleLinkRow[];
+}
+
+export interface PullRequestRef {
+  url?: string;
+  status?: string;
+  branch?: string;
+}
+
+export interface LandingRef {
+  status?: string;
+  branch?: string;
+  commitSha?: string;
+  landedAt?: string;
+}
+
+
 export interface Artifact {
   key: string;
   kind: 'plan' | 'plan-set';
@@ -16,6 +93,13 @@ export interface Artifact {
   session?: string;
   planSetId?: string;
   childCount?: number;
+  sourceRefs?: PlanSourceRefs;
+  lifecycleLinks?: LifecycleLinkRow[];
+  linkRows?: LifecycleLinkRow[];
+  failureEvidence?: LifecycleLinkRow[];
+  lifecycleState?: string;
+  prRefs?: PullRequestRef[];
+  landingRefs?: LandingRef[];
 }
 
 export interface DependencyRef { id: string; title: string; status?: string; missing: boolean; blocking: boolean; }
@@ -43,10 +127,15 @@ export interface BoardItem {
   recRank?: number;
   recLanes: string[];
   recUnblock?: string;
+  lifecycleLinks?: LifecycleLinkRow[];
+  linkRows?: LifecycleLinkRow[];
+  failureEvidence?: LifecycleLinkRow[];
+  lifecycleState?: string;
+  epicProgress?: EpicProgress;
 }
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; }
 export interface Epic { id: string; title?: string; status?: string; }
-export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; }
+export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; lifecycleLinks?: LifecycleLinkRow[]; epicProgress?: EpicProgress[]; }
 
 export interface RecommendationEntry { ref?: string; itemId: string; rationale?: string; title?: string; }
 export interface RecommendationGroup { ref: string; title?: string; itemIds: string[]; epicIds?: string[]; rationale?: string; recommendedProfile?: string; }
@@ -213,6 +302,15 @@ export interface PlanData {
   optional_dimensions?: string[];
   skipped_dimensions?: SkippedDimension[];
   open_questions?: string[];
+  sourceRefs?: PlanSourceRefs;
+  lifecycleLinks?: LifecycleLinkRow[];
+  linkRows?: LifecycleLinkRow[];
+  failureEvidence?: LifecycleLinkRow[];
+  lifecycleState?: string;
+  itemRows?: LifecycleItemProgressRow[];
+  epicProgress?: EpicProgress[];
+  prRefs?: PullRequestRef[];
+  landingRefs?: LandingRef[];
   body?: string;
   sections?: Record<string, string>;
 }
@@ -225,7 +323,7 @@ export interface Readiness {
   skippedDimensions?: string[];
   acDiagnostics?: AcDiagnostic[];
 }
-export interface PlanDetail { path?: string; plan?: PlanData; readiness?: Readiness; }
+export interface PlanDetail { path?: string; plan?: PlanData; readiness?: Readiness; sourceRefs?: PlanSourceRefs; lifecycle?: PlanLifecycleProjection; }
 
 export interface PlanSetChild {
   id: string;

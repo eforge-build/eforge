@@ -151,7 +151,7 @@ function traceMutationForEvent(event: EforgeEvent | Record<string, unknown>): Tr
     return landingMutation(stringValue(valueAt(event, 'featureBranch')), stringValue(valueAt(event, 'commitSha')), landingStatus(event), timestamp, stringValue(valueAt(event, 'prUrl')));
   }
   if (type === 'landing:auto-merge:complete') {
-    return landingMutation(stringValue(valueAt(event, 'featureBranch')), undefined, 'auto-merged', timestamp, stringValue(valueAt(event, 'prUrl')));
+    return landingMutation(stringValue(valueAt(event, 'featureBranch')), stringValue(valueAt(event, 'commitSha')), 'auto-merged', timestamp, stringValue(valueAt(event, 'prUrl')));
   }
   return undefined;
 }

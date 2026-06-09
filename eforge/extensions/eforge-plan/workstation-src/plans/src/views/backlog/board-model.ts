@@ -43,10 +43,16 @@ export function matchesFilter(item: BoardItem, filter: StatusFilter): boolean {
 
 export function matchesQuery(item: BoardItem, query: string): boolean {
   if (!query) return true;
+  const lifecycleSearchText = (item.lifecycleLinks ?? []).map((row) => [
+    row.kind, row.stage, row.status, row.label, row.session, row.sessionId, row.prdId, row.runId,
+    row.buildSessionId, row.prUrl, row.featureBranch, row.branch, row.commitSha,
+    row.affectedItemIds?.join(' '), row.affectedEpicIds?.join(' '),
+  ].filter(Boolean).join(' ')).join('\n');
   const haystack = [
     item.id, item.title, item.status, item.priority, item.tags.join(' '),
     item.dependencies.map((dep) => dep.id).join(' '), item.epic ?? '', item.epicRef?.title ?? '',
     item.notes.claim, item.notes.evidence, item.notes.recheck,
+    lifecycleSearchText,
   ].join('\n').toLowerCase();
   return haystack.includes(query);
 }
