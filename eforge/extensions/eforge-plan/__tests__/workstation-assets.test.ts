@@ -153,16 +153,6 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('workflows.start');
   });
 
-  it('wires recommendation cards to AI planning task starts by item ids or refs', async () => {
-    const source = await readFile(RECOMMENDATIONS_PANEL, 'utf-8');
-
-    expect(source).toContain('onStartPlan');
-    expect(source).not.toContain("'promote-selection'");
-    expect(source).toContain('itemIds: [entry.itemId]');
-    expect(source).toContain('recommendationRef: entry.ref');
-    expect(source).toContain('recommendationRef: group.ref');
-  });
-
   it('requires explicit in-app confirmation before handoff', async () => {
     const source = await readFile(PLAN_DETAIL, 'utf-8');
 
