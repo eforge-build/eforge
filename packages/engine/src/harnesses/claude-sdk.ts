@@ -24,7 +24,7 @@ import { mergeMutationDisallowedTools } from './tool-safety.js';
 /**
  * Recursively converts a TypeBox TSchema to a Zod type.
  * Handles the subset of TypeBox kinds that eforge actually uses in submission tools:
- * TObject, TString, TNumber, TInteger, TBoolean, TArray, TLiteral, TUnion, TOptional, TRecord.
+ * TObject, TString, TNumber, TInteger, TBoolean, TNull, TArray, TLiteral, TUnion, TOptional, TRecord.
  * Unknown kinds throw with a clear error message.
  */
 function typeboxToZod(schema: TSchema): z.ZodTypeAny {
@@ -49,6 +49,8 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     zodType = n;
   } else if (TypeGuard.IsBoolean(schema)) {
     zodType = z.boolean();
+  } else if (TypeGuard.IsNull(schema)) {
+    zodType = z.null();
   } else if (TypeGuard.IsArray(schema)) {
     let a = z.array(typeboxToZod(schema.items as TSchema));
     if (typeof schema.minItems === 'number') a = a.min(schema.minItems);
@@ -101,7 +103,7 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
 /**
  * Converts a TypeBox TObject to a Zod raw shape suitable for passing to the
  * Claude Agent SDK's `tool()` helper. Handles TObject, TString, TNumber,
- * TInteger, TBoolean, TArray, TLiteral, TUnion, TOptional, and TRecord kinds.
+ * TInteger, TBoolean, TNull, TArray, TLiteral, TUnion, TOptional, and TRecord kinds.
  * Unknown kinds throw with a descriptive error message.
  */
 export function typeboxObjectToZodRawShape(schema: TObject): ZodRawShape {

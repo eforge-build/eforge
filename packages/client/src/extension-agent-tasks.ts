@@ -34,6 +34,9 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
   // --- eforge:region session-plan-creation-draft ---
   Type.Literal('sessionPlanCreationDraft'),
   // --- eforge:endregion session-plan-creation-draft ---
+  // --- eforge:region backlog-curation-draft ---
+  Type.Literal('backlogCurationDraft'),
+  // --- eforge:endregion backlog-curation-draft ---
 ]);
 
 export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
@@ -169,6 +172,129 @@ export const EforgePlanPlanningRecommendationsSchema = Type.Object({
   rationaleAndAssumptions: Type.Array(Type.String()),
 }, { additionalProperties: false });
 
+
+// --- eforge:region backlog-curation-draft ---
+const EforgePlanPlanningNonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
+
+export const EforgePlanPlanningBacklogCurationRecordKindSchema = Type.Union([
+  Type.Literal('item'),
+  Type.Literal('epic'),
+]);
+
+const eforgePlanPlanningBacklogCurationPreconditionFields = {
+  id: EforgePlanPlanningNonEmptyStringSchema,
+  bodySha256: EforgePlanPlanningNonEmptyStringSchema,
+  sourceFingerprint: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  updated: Type.Optional(Type.String()),
+  recordSha256: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationItemPreconditionSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationPreconditionFields,
+  kind: Type.Literal('item'),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationEpicPreconditionSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationPreconditionFields,
+  kind: Type.Literal('epic'),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationPreconditionSchema = Type.Union([
+  EforgePlanPlanningBacklogCurationItemPreconditionSchema,
+  EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
+]);
+
+export const EforgePlanPlanningBacklogCurationMetadataPatchSchema = Type.Object({
+  status: Type.Optional(Type.String()),
+  priority: Type.Optional(Type.String()),
+  tags: Type.Optional(Type.Array(Type.String())),
+  depends_on: Type.Optional(Type.Array(EforgePlanPlanningNonEmptyStringSchema)),
+  epic: Type.Optional(Type.Union([EforgePlanPlanningNonEmptyStringSchema, Type.Null()])),
+  last_checked: Type.Optional(Type.String()),
+  stale_after: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationSectionOperationSchema = Type.Object({
+  heading: EforgePlanPlanningNonEmptyStringSchema,
+  action: Type.Union([Type.Literal('replace'), Type.Literal('append')]),
+  content: Type.String(),
+}, { additionalProperties: false });
+
+const eforgePlanPlanningBacklogCurationRecordPatchFields = {
+  id: EforgePlanPlanningNonEmptyStringSchema,
+  metadata: Type.Optional(EforgePlanPlanningBacklogCurationMetadataPatchSchema),
+  sectionOperations: Type.Optional(Type.Array(EforgePlanPlanningBacklogCurationSectionOperationSchema)),
+  rationale: Type.Optional(Type.String()),
+  evidence: Type.Optional(Type.Array(Type.String())),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationItemRecordPatchSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecordPatchFields,
+  kind: Type.Literal('item'),
+  precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationEpicRecordPatchSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecordPatchFields,
+  kind: Type.Literal('epic'),
+  precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationRecordPatchSchema = Type.Union([
+  EforgePlanPlanningBacklogCurationItemRecordPatchSchema,
+  EforgePlanPlanningBacklogCurationEpicRecordPatchSchema,
+]);
+
+const eforgePlanPlanningBacklogCurationRecheckFields = {
+  id: EforgePlanPlanningNonEmptyStringSchema,
+  last_checked: Type.String(),
+  stale_after: Type.String(),
+  rationale: Type.Optional(Type.String()),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationItemRecheckSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecheckFields,
+  kind: Type.Literal('item'),
+  precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationEpicRecheckSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecheckFields,
+  kind: Type.Literal('epic'),
+  precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationRecheckSchema = Type.Union([
+  EforgePlanPlanningBacklogCurationItemRecheckSchema,
+  EforgePlanPlanningBacklogCurationEpicRecheckSchema,
+]);
+
+export const EforgePlanPlanningBacklogCurationSkippedSchema = Type.Object({
+  id: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
+  reason: EforgePlanPlanningNonEmptyStringSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationNeedsInputSchema = Type.Object({
+  id: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
+  question: EforgePlanPlanningNonEmptyStringSchema,
+  reason: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationDraftSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  sourceFingerprint: EforgePlanPlanningNonEmptyStringSchema,
+  generatedAt: Type.Optional(Type.String()),
+  summary: Type.Array(Type.String()),
+  itemChanges: Type.Array(EforgePlanPlanningBacklogCurationItemRecordPatchSchema),
+  epicChanges: Type.Array(EforgePlanPlanningBacklogCurationEpicRecordPatchSchema),
+  noOpRechecks: Type.Array(EforgePlanPlanningBacklogCurationRecheckSchema),
+  skipped: Type.Array(EforgePlanPlanningBacklogCurationSkippedSchema),
+  needsInput: Type.Array(EforgePlanPlanningBacklogCurationNeedsInputSchema),
+}, { additionalProperties: false });
+// --- eforge:endregion backlog-curation-draft ---
+
 export const EforgePlanPlanningHandoffDraftSchema = Type.Object({
   selection: Type.Object({}, { additionalProperties: true }),
   session: Type.Optional(Type.String()),
@@ -189,6 +315,9 @@ const eforgePlanPlanningDraftResultCommonFields = {
 // cannot double-count a needs-input decision plus stray output sections.
 const eforgePlanPlanningDraftResultOutputFields = {
   recommendations: Type.Optional(EforgePlanPlanningRecommendationsSchema),
+  // --- eforge:region backlog-curation-draft ---
+  backlogCurationDraft: Type.Optional(EforgePlanPlanningBacklogCurationDraftSchema),
+  // --- eforge:endregion backlog-curation-draft ---
   handoffDraft: Type.Optional(EforgePlanPlanningHandoffDraftSchema),
   handoffDrafts: Type.Optional(Type.Array(EforgePlanPlanningHandoffDraftSchema, { minItems: 1 })),
 } as const;
@@ -201,6 +330,15 @@ const eforgePlanPlanningDraftResultBaseFields = {
 export const EforgePlanPlanningDraftResultBaseSchema = Type.Object(eforgePlanPlanningDraftResultBaseFields, { additionalProperties: false });
 
 export const EforgePlanPlanningDraftResultSchema = Type.Union([
+  // --- eforge:region backlog-curation-draft ---
+  Type.Object({
+    ...eforgePlanPlanningDraftResultBaseFields,
+    backlogCurationDraft: EforgePlanPlanningBacklogCurationDraftSchema,
+    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+  }, { additionalProperties: false }),
+  // --- eforge:endregion backlog-curation-draft ---
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     recommendations: EforgePlanPlanningRecommendationsSchema,
@@ -351,6 +489,15 @@ export type EforgePlanPlanningClarificationQuestion = Static<typeof EforgePlanPl
 export type EforgePlanPlanningDecision = Static<typeof EforgePlanPlanningDecisionSchema>;
 export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanningSectionProgressSchema>;
 export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
+export type EforgePlanPlanningBacklogCurationRecordKind = Static<typeof EforgePlanPlanningBacklogCurationRecordKindSchema>;
+export type EforgePlanPlanningBacklogCurationPrecondition = Static<typeof EforgePlanPlanningBacklogCurationPreconditionSchema>;
+export type EforgePlanPlanningBacklogCurationMetadataPatch = Static<typeof EforgePlanPlanningBacklogCurationMetadataPatchSchema>;
+export type EforgePlanPlanningBacklogCurationSectionOperation = Static<typeof EforgePlanPlanningBacklogCurationSectionOperationSchema>;
+export type EforgePlanPlanningBacklogCurationRecordPatch = Static<typeof EforgePlanPlanningBacklogCurationRecordPatchSchema>;
+export type EforgePlanPlanningBacklogCurationRecheck = Static<typeof EforgePlanPlanningBacklogCurationRecheckSchema>;
+export type EforgePlanPlanningBacklogCurationSkipped = Static<typeof EforgePlanPlanningBacklogCurationSkippedSchema>;
+export type EforgePlanPlanningBacklogCurationNeedsInput = Static<typeof EforgePlanPlanningBacklogCurationNeedsInputSchema>;
+export type EforgePlanPlanningBacklogCurationDraft = Static<typeof EforgePlanPlanningBacklogCurationDraftSchema>;
 export type EforgePlanPlanningHandoffDraft = Static<typeof EforgePlanPlanningHandoffDraftSchema>;
 export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraftResultSchema>;
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
@@ -365,6 +512,7 @@ export type ExtensionAgentTaskCancelResponse = Static<typeof ExtensionAgentTaskC
 export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlanningDraftResult): boolean {
   const candidate = value as Record<string, unknown>;
   if (candidate.decision === 'ready' && candidate.sessionPlanCreationDraft !== undefined) return true;
+  if (candidate.backlogCurationDraft !== undefined) return true;
   if (candidate.decision === 'needs-input' && Array.isArray(candidate.clarificationQuestions) && candidate.clarificationQuestions.length > 0) return true;
   return candidate.recommendations !== undefined
     || candidate.handoffDraft !== undefined

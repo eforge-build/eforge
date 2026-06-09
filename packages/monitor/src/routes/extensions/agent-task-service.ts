@@ -316,7 +316,8 @@ function countOutputSections(result: EforgePlanPlanningDraftResult): number {
   const taskResult = result as Record<string, unknown>;
   const creationDraft = taskResult.decision === 'ready' && taskResult.sessionPlanCreationDraft ? 1 : 0;
   const needsInput = taskResult.decision === 'needs-input' && Array.isArray(taskResult.clarificationQuestions) && taskResult.clarificationQuestions.length > 0 ? 1 : 0;
-  return (taskResult.recommendations ? 1 : 0) + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.playbookDraft ? 1 : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft + needsInput;
+  const backlogCurationDraft = taskResult.backlogCurationDraft ? 1 : 0;
+  return (taskResult.recommendations ? 1 : 0) + backlogCurationDraft + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.playbookDraft ? 1 : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft + needsInput;
 }
 
 function sanitizeErrorMessage(message: string): string {

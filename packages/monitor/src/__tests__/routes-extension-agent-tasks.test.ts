@@ -21,6 +21,24 @@ const submittedResult = {
   planDrafts: [{ title: 'Plan A', body: 'Implement A' }],
 };
 
+const backlogCurationDraft = {
+  schemaVersion: 1,
+  sourceFingerprint: 'source-fingerprint-1',
+  summary: ['Curated stale backlog records.'],
+  itemChanges: [{
+    id: 'item-1',
+    kind: 'item',
+    precondition: { id: 'item-1', kind: 'item', bodySha256: 'body-sha', sourceFingerprint: 'source-fingerprint-1' },
+    metadata: { last_checked: '2026-01-01', stale_after: '2026-02-01' },
+    sectionOperations: [{ heading: 'Evidence', action: 'append', content: 'Durable evidence from source text.' }],
+    evidence: ['Source text says the item remains active.'],
+  }],
+  epicChanges: [],
+  noOpRechecks: [],
+  skipped: [],
+  needsInput: [],
+};
+
 describe('extension agent task routes and service', () => {
   it('starts, persists, reads, completes, and emits sanitized lifecycle events', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-'));
@@ -99,6 +117,53 @@ describe('extension agent task routes and service', () => {
       const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
       expect(completed.result).toEqual(creationResult);
       expect(completed.metadata.outputSectionCount).toBe(1);
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('completes a curation-only task with one output section', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-curation-'));
+    const curationResult = {
+      summary: 'Drafted backlog curation.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft,
+    };
+    const harness = new SubmitHarness(curationResult);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft'] } })).json() as { task: { taskId: string } };
+      const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
+      expect(completed.result).toEqual(curationResult);
+      expect(completed.metadata.outputSectionCount).toBe(1);
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a task whose curation draft submission is malformed without persisting a result', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-curation-malformed-'));
+    const malformedResult = {
+      summary: 'Malformed backlog curation.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft: {
+        ...backlogCurationDraft,
+        itemChanges: [{ ...backlogCurationDraft.itemChanges[0], precondition: { id: 'item-1', kind: 'item' } }],
+      },
+    };
+    const harness = new SubmitHarness(malformedResult);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft'] } })).json() as { task: { taskId: string } };
+      const failed = await waitForTask(server.url, startBody.task.taskId, 'failed');
+      expect(failed.status).toBe('failed');
+      expect(failed.result).toBeUndefined();
     } finally {
       await server.stop();
       db.close();
