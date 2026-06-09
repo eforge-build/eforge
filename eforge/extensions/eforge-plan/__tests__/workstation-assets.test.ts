@@ -1,7 +1,17 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 const ASSET = 'eforge/extensions/eforge-plan/workstation-assets/plans/index.js';
+
+// The built bundle is gitignored (generated from workstation-src), so build it
+// when absent - e.g. a fresh clone running `pnpm test` without `pnpm build`.
+// CI and the daemon-restart dev loop build it beforehand via root `pnpm build`.
+beforeAll(() => {
+  if (existsSync(ASSET)) return;
+  execFileSync('pnpm', ['--filter', '@eforge-build/eforge-plan-workstation', 'build'], { stdio: 'inherit' });
+}, 120_000);
 const SRC = 'eforge/extensions/eforge-plan/workstation-src/plans/src';
 const BACKLOG_VIEW = `${SRC}/views/backlog-view.tsx`;
 const RECOMMENDATIONS_PANEL = `${SRC}/views/backlog/recommendations-panel.tsx`;
