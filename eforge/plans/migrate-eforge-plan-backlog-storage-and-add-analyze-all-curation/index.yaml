@@ -4,7 +4,8 @@ description: Move eforge-plan backlog item/epic storage to private extension
   analyze-all curation workflow that previews validated backlog updates before
   applying them and refreshing recommendations.
 created: 2026-06-09
-status: draft
+status: compiled
+compiled: "2026-06-09"
 mode: expedition
 validate:
   - pnpm build:eforge-plan-workstation
