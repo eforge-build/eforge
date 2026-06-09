@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Bot, Loader2 } from 'lucide-react';
+import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { PlanningTaskCard } from './planning-task-card';
 import type { PlanningTaskWorkflowsApi } from './use-planning-task-workflows';
 
@@ -12,24 +13,40 @@ interface PlanWithAiPanelProps {
  * free-form prompt/goal input: tasks are started from backlog selections,
  * recommendations, and recommendation refresh controls elsewhere in the Backlog
  * tab. This panel lists the durable task index, polls running tasks, and
- * surfaces progress, retry, redraft, and apply controls.
+ * surfaces progress, retry, redraft, and apply controls. It collapses to a
+ * one-line summary so the board stays the primary surface; counts in the
+ * header flag anything that needs attention.
  */
 export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
   const { items, loading, busy, reload, cancel, retry, redraft, remove, apply } = workflows;
-  const activeCount = items.filter((item) => {
-    const status = item.task?.status ?? item.status;
-    return status === 'queued' || status === 'running';
-  }).length;
+  const statusOf = (item: (typeof items)[number]) => item.task?.status ?? item.status;
+  const activeCount = items.filter((item) => statusOf(item) === 'queued' || statusOf(item) === 'running').length;
+  const failedCount = items.filter((item) => statusOf(item) === 'failed').length;
+  const readyCount = items.filter((item) => statusOf(item) === 'completed' && item.task?.result && item.available).length;
+
+  const summary = (
+    <>
+      {activeCount > 0 && (
+        <span className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">
+          <Loader2 className="h-3 w-3 animate-spin" /> {activeCount} running
+        </span>
+      )}
+      {readyCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">{readyCount} ready to review</span>}
+      {failedCount > 0 && <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[0.68rem] text-destructive-foreground">{failedCount} failed</span>}
+      {items.length === 0 && !loading && <span className="text-[0.68rem] text-muted-foreground">no tasks</span>}
+    </>
+  );
 
   return (
-    <section className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-text-bright"><Sparkles className="h-4 w-4 text-primary" /> Plan with AI</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Daemon-owned planning tasks started from backlog selections and recommendations. Monitor progress, retry failures, answer clarifications, and apply ready drafts here. Generated output stays read-only until you confirm.</p>
-        </div>
-        <button type="button" className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50" disabled={busy || loading} onClick={() => void reload()}>Refresh tasks</button>
-      </div>
+    <CollapsiblePanel
+      storageKey="eforge-plan:panel:plan-with-ai"
+      className="border-primary/30 bg-primary/5"
+      icon={<Bot className="h-4 w-4 text-primary" />}
+      title="Plan with AI"
+      summary={summary}
+      actions={<button type="button" className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50" disabled={busy || loading} onClick={() => void reload()}>Refresh tasks</button>}
+    >
+      <p className="text-xs text-muted-foreground">Planning tasks start from backlog selections and recommendations. Generated drafts stay read-only until you apply them.</p>
 
       {loading && items.length === 0 && (
         <p className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading planning tasks…</p>
@@ -40,7 +57,6 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
 
       {items.length > 0 && (
         <div className="mt-3 grid gap-2">
-          {activeCount > 0 && <span className="text-xs text-muted-foreground">{activeCount} running</span>}
           {items.map((item) => (
             <PlanningTaskCard
               key={item.entry.taskId}
@@ -55,6 +71,6 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
           ))}
         </div>
       )}
-    </section>
+    </CollapsiblePanel>
   );
 }

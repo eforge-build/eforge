@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Loader2, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/toast';
+import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord } from '@/types';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
 import type { RedraftInput } from './use-planning-task-workflows';
@@ -12,7 +14,7 @@ interface PlanningTaskCardProps {
   onRemove: (taskId: string) => Promise<void>;
   onRetry: (taskId: string) => Promise<void>;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
-  onApply: (taskId: string, input: JsonObject) => Promise<void>;
+  onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -37,9 +39,10 @@ export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRe
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded border px-1.5 py-0.5 text-xs ${STATUS_TONE[status] ?? STATUS_TONE.queued}`}>{status}</span>
-            <span className="font-mono text-xs text-muted-foreground">{entry.taskId}</span>
-            {entry.parentTaskId && <span className="text-[0.65rem] text-muted-foreground">↳ from {entry.parentTaskId}</span>}
+            <TaskIdBadge taskId={entry.taskId} />
+            {entry.parentTaskId && <span className="text-[0.65rem] text-muted-foreground" title={entry.parentTaskId}>↳ from {shortTaskId(entry.parentTaskId)}</span>}
             {entry.purpose === 'recommendation-refresh' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-text-bright">Recommendation refresh</span>}
+            {entry.createdAt && <span className="text-[0.65rem] text-muted-foreground" title={entry.createdAt}>started {formatRelativeTime(entry.createdAt)}</span>}
           </div>
           <p className="mt-1 truncate text-foreground" title={label}>{label}</p>
         </div>
@@ -75,6 +78,25 @@ export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRe
         <PlanningTaskResultPreview item={item} busy={busy} onRedraft={onRedraft} onApply={onApply} />
       )}
     </article>
+  );
+}
+
+// Task ids are UUID-sized; show the short form and copy the full id on click
+// so it never has to be read or transcribed from the screen.
+function TaskIdBadge({ taskId }: { taskId: string }) {
+  const toast = useToast();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(taskId);
+      toast.push('Task id copied', 'success');
+    } catch {
+      toast.push('Could not copy task id', 'error');
+    }
+  };
+  return (
+    <button type="button" title={`${taskId}\n\nClick to copy the full task id.`} onClick={() => void copy()} className="font-mono text-xs text-muted-foreground hover:text-foreground">
+      {shortTaskId(taskId)}
+    </button>
   );
 }
 

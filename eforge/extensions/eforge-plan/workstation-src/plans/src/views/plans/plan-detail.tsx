@@ -4,6 +4,7 @@ import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
+import { SafeMarkdown } from '@/components/safe-markdown';
 import { useToast } from '@/components/toast';
 import type { PlanData, PlanDetail, Readiness } from '@/types';
 import { ReadinessChecklist } from './readiness-checklist';
@@ -108,7 +109,7 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
             {sectionEntries.map(([key, content]) => (
               <section key={key} className="rounded-md border bg-background/50 p-3">
                 <h5 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titleCase(key)}</h5>
-                <pre className="whitespace-pre-wrap break-words text-xs text-foreground">{content}</pre>
+                <SafeMarkdown markdown={content} />
               </section>
             ))}
           </div>
