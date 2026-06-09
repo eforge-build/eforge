@@ -243,7 +243,7 @@ The supported linkage chain is backlog item or epic selection → generated `.ef
 
 Lifecycle status mutation is conservative:
 
-- PR-open, failed, skipped, and cancelled evidence updates trace evidence and UI lifecycle rows but does not close backlog items or mark them `shipped`; ambiguous correlations are left unmutated and do not update trace or UI lifecycle rows unless resolved as a supported multi-source correlation.
+- PR-open, failed, skipped, cancelled, and ambiguous evidence updates trace evidence and UI lifecycle rows but does not close backlog items or mark them `shipped`; ambiguous correlations are left unmutated and do not update trace or UI lifecycle rows unless resolved as a supported multi-source correlation.
 - `landing:complete` with a `prUrl` and no merge confirmation records PR evidence and leaves the item active.
 - `landing:complete` with confirmed local merge evidence may mark only correlated item ids `shipped`.
 - `landing:auto-merge:complete` may mark only correlated item ids `shipped`.
