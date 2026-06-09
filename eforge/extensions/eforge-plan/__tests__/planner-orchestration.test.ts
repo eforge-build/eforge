@@ -252,7 +252,7 @@ describe('planner orchestration', () => {
       await seed(cwd);
       await recordCreationWorkflow(cwd, { itemIds: ['item-one'] });
       const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('linked-item-session', {
-        sourceRefs: { sourceItemIds: ['item-two'], sourceEpicIds: ['spoof-epic'], sourceRecommendationRef: 'spoof-rec' },
+        sourceRefs: { sourceItemIds: ['item-two'], sourceEpicIds: ['spoof-epic'], recommendationRef: 'spoof-rec' },
         traceItemIds: ['item-two'],
       }, {
         sourceItemIds: ['item-two'],
@@ -289,7 +289,7 @@ describe('planner orchestration', () => {
       const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('linked-recommendation-session'), { taskId: 'task-creation', applySessionPlanCreationDraft: {} });
 
       expect(result.sessionPlanCreationDraft).toMatchObject({
-        sourceRefs: { sourceItemIds: ['item-one', 'item-two'], sourceEpicIds: ['epic-one'], sourceRecommendationRef: 'group-one' },
+        sourceRefs: { sourceItemIds: ['item-one', 'item-two'], sourceEpicIds: ['epic-one'], recommendationRef: 'group-one' },
         traceItemIds: ['item-one', 'item-two'],
       });
       const frontmatter = await readSessionPlanFrontmatter(cwd, 'linked-recommendation-session');

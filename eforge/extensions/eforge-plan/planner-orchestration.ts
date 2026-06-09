@@ -207,7 +207,15 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
     session,
     relativePath,
     readiness,
-    ...(sourceRefs !== undefined && linkage !== undefined && { sourceRefs, traceItemIds: linkage.sourceItemIds }),
+    ...(sourceRefs !== undefined && linkage !== undefined && {
+      sourceRefs: {
+        sourceItemIds: sourceRefs.sourceItemIds,
+        sourceEpicIds: sourceRefs.sourceEpicIds,
+        ...(sourceRefs.sourceRecommendationRef !== undefined && { recommendationRef: sourceRefs.sourceRecommendationRef }),
+        promotedAt: sourceRefs.promotedAt,
+      },
+      traceItemIds: linkage.sourceItemIds,
+    }),
   } as AppliedSessionPlanCreationDraft;
 }
 

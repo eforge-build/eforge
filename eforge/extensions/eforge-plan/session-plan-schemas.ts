@@ -1,5 +1,13 @@
 import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
-import { JsonValueSchema, PlanningProfileSchema } from './schema.js';
+import {
+  ItemLifecycleProjectionSchema,
+  JsonValueSchema,
+  LifecycleLinkRowSchema,
+  LifecycleStateSchema,
+  PlanSourceRefsSchema,
+  PlanningProfileSchema,
+  SessionPlanLifecycleProjectionSchema,
+} from './schema.js';
 
 // --- eforge:region session-plan-schemas ---
 export const PlanningTypeSchema = Type.Union([
@@ -34,10 +42,21 @@ export const SessionPlanDetailOutputSchema = Type.Object({
   plan: SessionPlanProjectionSchema,
   readiness: SessionPlanReadinessDetailSchema,
   path: Type.String(),
+  // --- eforge:region plan-02-lifecycle-projections ---
+  sourceRefs: Type.Optional(PlanSourceRefsSchema),
+  lifecycle: Type.Optional(SessionPlanLifecycleProjectionSchema),
+  // --- eforge:endregion plan-02-lifecycle-projections ---
 }, JsonObjectAdditionalProperties);
 export const PlanningArtifactSchema = Type.Object({
   kind: Type.Union([Type.Literal('plan'), Type.Literal('plan-set')]),
   key: Type.String(),
+  // --- eforge:region plan-02-lifecycle-projections ---
+  sourceRefs: Type.Optional(PlanSourceRefsSchema),
+  lifecycleState: Type.Optional(LifecycleStateSchema),
+  itemRows: Type.Optional(Type.Array(ItemLifecycleProjectionSchema)),
+  linkRows: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
+  failureEvidence: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
+  // --- eforge:endregion plan-02-lifecycle-projections ---
 }, JsonObjectAdditionalProperties);
 export const ListPlanningArtifactsInputSchema = Type.Object({
   includeSubmitted: Type.Optional(Type.Boolean()),

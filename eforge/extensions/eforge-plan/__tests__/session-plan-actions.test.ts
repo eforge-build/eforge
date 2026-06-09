@@ -6,7 +6,8 @@ import { dispatchExtensionAction } from '../../../../packages/engine/src/extensi
 import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
 import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../../../../packages/engine/src/extensions/types.js';
 import eforgePlanExtension from '../index.js';
-import { writeBacklogItem } from '../markdown-store.js';
+import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-session-actions-'));
@@ -97,6 +98,37 @@ describe('eforge-plan session-plan extension actions', () => {
       expect(output.path).toBe(resolve(cwd, '.eforge', 'session-plans', 'flat-detail.md'));
       expect(output.readiness).toMatchObject({ ready: true });
       expect(output.plan).toMatchObject({ session: 'flat-detail', topic: 'flat-detail', status: 'planning', body: expect.stringContaining('Flat Detail'), sections: expect.any(Object) });
+    });
+  });
+
+  it('shows linked source refs and partial lifecycle evidence for session plans', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogEpic(cwd, { id: 'epic-one', status: 'active', body: '# Epic One\n' });
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'shipped', epic: 'epic-one', body: '# Item One\n' });
+      await writeBacklogItem(cwd, { id: 'item-two', status: 'planned', epic: 'epic-one', body: '# Item Two\n' });
+      const trace = createTraceSidecar('item-one', 'epic-one');
+      trace.promotedSessionPlans.push({ session: 'linked-plan', path: '.eforge/session-plans/linked-plan.md', status: 'submitted', promotedAt: '2026-01-01T00:00:00.000Z' });
+      trace.landingResults.push({ featureBranch: 'feature/one', commitSha: 'abc123', status: 'landed', landedAt: '2026-01-01T00:01:00.000Z' });
+      await writeTraceSidecar(cwd, trace);
+      await mkdir(join(cwd, '.eforge', 'session-plans'), { recursive: true });
+      await writeFile(join(cwd, '.eforge', 'session-plans', 'linked-plan.md'), `---\nsession: linked-plan\ntopic: linked-plan\nstatus: planning\nplanning_type: feature\nplanning_depth: quick\nrequired_dimensions:\n  - problem-statement\n  - scope\n  - acceptance-criteria\n  - assumptions-and-validation\noptional_dimensions: []\nskipped_dimensions: []\nopen_questions: []\nprofile: null\neforge_plan:\n  source_item_ids:\n    - item-one\n    - item-two\n  source_epic_ids:\n    - epic-one\n  source_recommendation_ref: group-one\n  promoted_at: 2026-01-01T00:00:00.000Z\n---\n${readyBody('Linked Plan')}`, 'utf-8');
+
+      const output = await dispatch(cwd, 'show-session-plan', { session: 'linked-plan' });
+
+      expect(collectUndefinedPaths(output)).toEqual([]);
+      expect(output.sourceRefs).toEqual({
+        sourceItemIds: ['item-one', 'item-two'],
+        sourceEpicIds: ['epic-one'],
+        recommendationRef: 'group-one',
+        promotedAt: '2026-01-01T00:00:00.000Z',
+      });
+      const lifecycle = output.lifecycle as Record<string, unknown>;
+      expect(lifecycle.lifecycleState).toBe('partial');
+      expect((lifecycle.itemRows as Array<Record<string, unknown>>).map((row) => [row.itemId, row.lifecycleState])).toEqual([
+        ['item-one', 'shipped'],
+        ['item-two', 'planned'],
+      ]);
+      expect(lifecycle.linkRows).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'session-plan', session: 'linked-plan', affectedItemIds: ['item-one'] })]));
     });
   });
 

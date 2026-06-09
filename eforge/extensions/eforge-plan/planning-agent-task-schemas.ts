@@ -14,6 +14,7 @@ import {
   PromotionSelectionInputSchema,
   PromotionSelectionOutputSchema,
   PutRecommendationsOutputSchema,
+  PlanSourceRefsSchema,
   PLANNING_DEPTHS,
   PLANNING_TYPES,
 } from './schema.js';
@@ -67,12 +68,7 @@ export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
 }, { additionalProperties: false });
 
 // --- eforge:region plan-01-trusted-creation-linkage ---
-export const AppliedSessionPlanCreationDraftSourceRefsSchema = Type.Object({
-  sourceItemIds: Type.Array(Type.String()),
-  sourceEpicIds: Type.Array(Type.String()),
-  sourceRecommendationRef: Type.Optional(Type.String()),
-  promotedAt: Type.String(),
-}, { additionalProperties: false });
+export const AppliedSessionPlanCreationDraftSourceRefsSchema = PlanSourceRefsSchema;
 // --- eforge:endregion plan-01-trusted-creation-linkage ---
 
 export const AppliedSessionPlanCreationDraftSchema = Type.Object({

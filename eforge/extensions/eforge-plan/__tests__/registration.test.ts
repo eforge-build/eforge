@@ -115,7 +115,7 @@ describe('eforge-plan extension registration', () => {
       }
     }
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
-    expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epics', 'items', 'lanes', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
+    expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationSummary', 'recommendations', 'status']);
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);
@@ -167,7 +167,7 @@ describe('eforge-plan extension registration', () => {
       expect(listResult).toMatchObject({ kind: 'success' });
       if (listResult.kind !== 'success') throw new Error(listResult.message);
       const output = expectRecord(listResult.output);
-      for (const key of ['epics', 'items', 'lanes', 'blockedReasons', 'traceSummaries']) {
+      for (const key of ['epics', 'items', 'lanes', 'blockedReasons', 'traceSummaries', 'lifecycleLinks', 'epicProgress']) {
         expect(output[key]).toEqual(expect.any(Array));
       }
       expect(output.recommendationSummary).toEqual({
@@ -213,6 +213,45 @@ describe('eforge-plan extension registration', () => {
       expect(markdown).toContain('Recommendations are fresh for the current backlog fingerprint.');
       const recommendedSection = markdownSection(markdown, '## Recommended Next Work');
       expect(recommendedSection).toContain('- **item-one**');
+    });
+  });
+
+  it('dispatches lifecycle links and epic progress from list-board output', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogEpic(cwd, { id: 'epic-one', status: 'active', body: '# Epic One\n' });
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'shipped', epic: 'epic-one', body: '# Item One\n\n## Claim\n\nMerged item.\n' });
+      await writeBacklogItem(cwd, { id: 'item-two', status: 'planned', epic: 'epic-one', body: '# Item Two\n\n## Claim\n\nRemaining item.\n' });
+      const trace = createTraceSidecar('item-one', 'epic-one');
+      trace.promotedSessionPlans.push({ session: 'session-one', path: '.eforge/session-plans/session-one.md', status: 'submitted', promotedAt: '2026-01-01T00:00:00.000Z' });
+      trace.queuePrds.push({ prdId: 'prd-one', path: '.eforge/prds/prd-one.md', status: 'completed', queuedAt: '2026-01-01T00:01:00.000Z' });
+      trace.buildRuns.push({ runId: 'run-one', sessionId: 'build-session-one', status: 'completed', startedAt: '2026-01-01T00:02:00.000Z', completedAt: '2026-01-01T00:03:00.000Z' });
+      trace.buildSessions.push({ runId: 'run-one', sessionId: 'build-session-one', status: 'completed', startedAt: '2026-01-01T00:02:00.000Z', completedAt: '2026-01-01T00:03:00.000Z' });
+      trace.landingResults.push({ featureBranch: 'feature/one', prUrl: 'https://example.test/pr/1', status: 'pr-open', landedAt: '2026-01-01T00:04:00.000Z' });
+      trace.landingResults.push({ featureBranch: 'feature/one', commitSha: 'abc123', status: 'landed', landedAt: '2026-01-01T00:04:30.000Z' });
+      trace.lastEvent = { type: 'session:end', timestamp: '2026-01-01T00:05:00.000Z', sessionId: 'build-session-one', runId: 'run-one' };
+      await writeTraceSidecar(cwd, trace);
+
+      const result = await dispatchExtensionAction(registryFromRecorderState(load()), {
+        actionId: 'eforge-plan:list-board',
+        input: { includeArchive: false },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+      });
+
+      expect(result).toMatchObject({ kind: 'success' });
+      if (result.kind !== 'success') throw new Error(result.message);
+      const output = expectRecord(result.output);
+      expect(collectUndefinedPaths(output)).toEqual([]);
+      const lifecycleLinks = output.lifecycleLinks as Array<Record<string, unknown>>;
+      expect(lifecycleLinks.map((row) => row.kind)).toEqual(['session-plan', 'queue-prd', 'build-run', 'build-session', 'pr', 'landing', 'last-event']);
+      expect(lifecycleLinks.every((row) => Array.isArray(row.affectedItemIds) && row.affectedItemIds.includes('item-one'))).toBe(true);
+      expect(lifecycleLinks.find((row) => row.kind === 'pr')).toMatchObject({ prUrl: 'https://example.test/pr/1', stage: 'pr-open', status: 'pr-open' });
+      const epicProgress = expectRecord((output.epicProgress as unknown[]).find((entry) => expectRecord(entry).epicId === 'epic-one'));
+      expect(epicProgress.lifecycleState).toBe('partial');
+      expect(epicProgress.countsByBacklogStatus).toEqual({ planned: 1, shipped: 1 });
+      expect(epicProgress.countsByLifecycleState).toEqual({ planned: 1, shipped: 1 });
+      expect((epicProgress.itemRows as Array<Record<string, unknown>>).map((row) => row.itemId)).toEqual(['item-one', 'item-two']);
     });
   });
 

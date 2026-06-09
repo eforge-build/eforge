@@ -28,6 +28,62 @@ export interface BacklogEpic extends BacklogFrontmatterBase {
   body: string;
 }
 
+// --- eforge:region plan-02-lifecycle-projections ---
+export type LifecycleState = 'none' | 'planned' | 'active' | 'queue' | 'build' | 'pr-open' | 'merged' | 'shipped' | 'failed' | 'partial';
+
+export interface LifecycleLinkRow {
+  kind: string;
+  stage: string;
+  status: string;
+  label: string;
+  session?: string;
+  prdId?: string;
+  runId?: string;
+  sessionId?: string;
+  featureBranch?: string;
+  commitSha?: string;
+  prUrl?: string;
+  path?: string;
+  timestamp?: string;
+  affectedItemIds: string[];
+}
+
+export interface PlanSourceRefs {
+  sourceItemIds: string[];
+  sourceEpicIds: string[];
+  recommendationRef?: string;
+  promotedAt?: string;
+}
+
+export interface ItemLifecycleProjection {
+  itemId: string;
+  title: string;
+  status: BacklogStatus;
+  epic?: string;
+  lifecycleState: LifecycleState;
+  linkRows: LifecycleLinkRow[];
+  failureEvidence: LifecycleLinkRow[];
+}
+
+export interface SessionPlanLifecycleProjection {
+  sourceRefs: PlanSourceRefs;
+  lifecycleState: LifecycleState;
+  itemRows: ItemLifecycleProjection[];
+  linkRows: LifecycleLinkRow[];
+  failureEvidence: LifecycleLinkRow[];
+}
+
+export interface EpicProgressProjection {
+  epicId: string;
+  title: string;
+  status: BacklogStatus;
+  lifecycleState: LifecycleState;
+  countsByBacklogStatus: Record<string, number>;
+  countsByLifecycleState: Record<string, number>;
+  itemRows: ItemLifecycleProjection[];
+}
+// --- eforge:endregion plan-02-lifecycle-projections ---
+
 export interface TraceSummary {
   itemId: string;
   epicId?: string;
@@ -44,6 +100,13 @@ export interface TraceSummary {
     runId?: string;
     cursor?: number;
   };
+  // --- eforge:region plan-02-lifecycle-projections ---
+  lifecycleState: LifecycleState;
+  linkRows: LifecycleLinkRow[];
+  prRefs: LifecycleLinkRow[];
+  landingRefs: LifecycleLinkRow[];
+  failureEvidence: LifecycleLinkRow[];
+  // --- eforge:endregion plan-02-lifecycle-projections ---
 }
 
 export function isBacklogStatus(value: unknown): value is BacklogStatus {

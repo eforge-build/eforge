@@ -13,9 +13,15 @@ import {
   isOpenStatus,
   type BacklogEpic,
   type BacklogItem,
+  // --- eforge:region plan-02-lifecycle-projections ---
+  type LifecycleLinkRow,
+  // --- eforge:endregion plan-02-lifecycle-projections ---
 } from './backlog-domain.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+// --- eforge:region plan-02-lifecycle-projections ---
+import { compactLifecycleRowsForFingerprint } from './lifecycle-projection.js';
+// --- eforge:endregion plan-02-lifecycle-projections ---
 import type { BacklogRecommendationModel } from './schema.js';
 import {
   RecommendationStatusSidecarSchema,
@@ -314,7 +320,7 @@ async function readRoadmapFingerprintEvidence(cwd: string): Promise<Record<strin
   return { path, exists: true, headings, excerpts };
 }
 
-function compactTraceSummaries(summaries: Array<{ itemId: string; epicId?: string; hasActiveSessionPlan: boolean; hasActiveQueuePrd: boolean; hasActiveBuildRun: boolean; hasActiveBuildSession: boolean; hasActiveTrace: boolean; activeReasons: string[]; lastEvent?: Record<string, unknown> }>): Array<Record<string, unknown>> {
+function compactTraceSummaries(summaries: Array<{ itemId: string; epicId?: string; hasActiveSessionPlan: boolean; hasActiveQueuePrd: boolean; hasActiveBuildRun: boolean; hasActiveBuildSession: boolean; hasActiveTrace: boolean; activeReasons: string[]; lastEvent?: Record<string, unknown>; lifecycleState?: string; linkRows?: LifecycleLinkRow[] }>): Array<Record<string, unknown>> {
   return summaries.sort(byItemId).map((summary) => ({
     itemId: summary.itemId,
     ...(summary.epicId !== undefined && { epicId: summary.epicId }),
@@ -325,6 +331,10 @@ function compactTraceSummaries(summaries: Array<{ itemId: string; epicId?: strin
     hasActiveTrace: summary.hasActiveTrace,
     activeReasons: summary.activeReasons,
     ...(summary.lastEvent !== undefined && { lastEvent: pickLastEvent(summary.lastEvent) }),
+    // --- eforge:region plan-02-lifecycle-projections ---
+    ...(summary.lifecycleState !== undefined ? { lifecycleState: summary.lifecycleState } : {}),
+    ...((summary.linkRows ?? []).length > 0 ? { lifecycleLinks: compactLifecycleRowsForFingerprint(summary.linkRows ?? []) } : {}),
+    // --- eforge:endregion plan-02-lifecycle-projections ---
   }));
 }
 

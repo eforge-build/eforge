@@ -175,5 +175,10 @@ function trace(itemId: string, activeReasons: string[]): TraceSummary {
     hasActiveBuildSession: activeReasons.some((reason) => reason.includes('build session')),
     hasActiveTrace: activeReasons.length > 0,
     activeReasons,
+    lifecycleState: activeReasons.length > 0 ? 'active' : 'none',
+    linkRows: [],
+    prRefs: [],
+    landingRefs: [],
+    failureEvidence: [],
   };
 }
