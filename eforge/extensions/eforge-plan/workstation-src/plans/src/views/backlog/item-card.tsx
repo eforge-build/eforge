@@ -41,9 +41,7 @@ export function ItemCard({ item, selected, onToggle }: ItemCardProps) {
       {item.tags.length > 0 && <Tags>{item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</Tags>}
 
       <DependencyRows dependencies={item.dependencies} dependents={item.dependents} />
-      {/* --- eforge:region plan-03-workstation-docs-lifecycle-ui --- */}
       <LifecyclePanel item={item} />
-      {/* --- eforge:endregion plan-03-workstation-docs-lifecycle-ui --- */}
       {item.recUnblock && (
         <p className="mt-2 flex items-baseline gap-2 text-xs text-[color:var(--prio-medium)]">
           <span className="rounded border border-[color:var(--prio-medium)]/40 px-1 text-[0.6rem] uppercase tracking-wide text-muted-foreground">Unblock</span>

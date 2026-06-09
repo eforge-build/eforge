@@ -151,9 +151,7 @@ function traceMutationForEvent(event: EforgeEvent | Record<string, unknown>): Tr
     return landingMutation(stringValue(valueAt(event, 'featureBranch')), stringValue(valueAt(event, 'commitSha')), landingStatus(event), timestamp, stringValue(valueAt(event, 'prUrl')));
   }
   if (type === 'landing:auto-merge:complete') {
-    // --- eforge:region plan-02-lifecycle-projections ---
     return landingMutation(stringValue(valueAt(event, 'featureBranch')), stringValue(valueAt(event, 'commitSha')), 'auto-merged', timestamp, stringValue(valueAt(event, 'prUrl')));
-    // --- eforge:endregion plan-02-lifecycle-projections ---
   }
   return undefined;
 }

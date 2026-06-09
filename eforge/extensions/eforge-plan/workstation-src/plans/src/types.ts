@@ -7,7 +7,6 @@ export interface EforgeBridge {
   invokeAction<TOutput = unknown>(actionId: string, input?: JsonObject): Promise<TOutput>;
 }
 
-// --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
 export interface LifecycleLinkRow {
   kind: 'session-plan' | 'queue-prd' | 'build-run' | 'build-session' | 'pr' | 'landing' | 'last-event' | string;
   stage?: string;
@@ -84,7 +83,6 @@ export interface LandingRef {
   landedAt?: string;
 }
 
-// --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
 
 export interface Artifact {
   key: string;

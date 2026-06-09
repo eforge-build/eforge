@@ -1,6 +1,5 @@
 import { loadSessionPlan, writeSessionPlan, type PlanningProfile, type SessionPlan } from '../../../packages/input/src/index.js';
 
-// --- eforge:region plan-01-trusted-creation-linkage ---
 export interface SessionPlanSourceMetadata {
   sourceItemIds: string[];
   sourceEpicIds: string[];
@@ -12,7 +11,6 @@ export interface SessionPlanSourceMetadataUpdate extends SessionPlanSourceMetada
   cwd: string;
   session: string;
 }
-// --- eforge:endregion plan-01-trusted-creation-linkage ---
 
 export interface SessionPlanMetadataUpdate {
   cwd: string;
@@ -43,7 +41,6 @@ export async function updateSessionPlanMetadata(input: SessionPlanMetadataUpdate
   return updated;
 }
 
-// --- eforge:region plan-01-trusted-creation-linkage ---
 export async function readSessionPlanSourceMetadata(input: { cwd: string; session: string }): Promise<SessionPlanSourceMetadata | null> {
   return getSessionPlanSourceMetadata(await loadSessionPlan({ cwd: input.cwd, session: input.session }));
 }
@@ -103,4 +100,3 @@ function stringArray(value: unknown): string[] {
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
-// --- eforge:endregion plan-01-trusted-creation-linkage ---

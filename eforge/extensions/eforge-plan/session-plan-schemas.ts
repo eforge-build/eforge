@@ -42,21 +42,17 @@ export const SessionPlanDetailOutputSchema = Type.Object({
   plan: SessionPlanProjectionSchema,
   readiness: SessionPlanReadinessDetailSchema,
   path: Type.String(),
-  // --- eforge:region plan-02-lifecycle-projections ---
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycle: Type.Optional(SessionPlanLifecycleProjectionSchema),
-  // --- eforge:endregion plan-02-lifecycle-projections ---
 }, JsonObjectAdditionalProperties);
 export const PlanningArtifactSchema = Type.Object({
   kind: Type.Union([Type.Literal('plan'), Type.Literal('plan-set')]),
   key: Type.String(),
-  // --- eforge:region plan-02-lifecycle-projections ---
   sourceRefs: Type.Optional(PlanSourceRefsSchema),
   lifecycleState: Type.Optional(LifecycleStateSchema),
   itemRows: Type.Optional(Type.Array(ItemLifecycleProjectionSchema)),
   linkRows: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
   failureEvidence: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
-  // --- eforge:endregion plan-02-lifecycle-projections ---
 }, JsonObjectAdditionalProperties);
 export const ListPlanningArtifactsInputSchema = Type.Object({
   includeSubmitted: Type.Optional(Type.Boolean()),

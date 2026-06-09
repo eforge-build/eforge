@@ -6,9 +6,7 @@ import type {
   SessionPlanSetLoadResult,
   SessionPlanSetValidationResult,
 } from '../../../packages/input/src/index.js';
-// --- eforge:region plan-02-lifecycle-projections ---
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
-// --- eforge:endregion plan-02-lifecycle-projections ---
 
 export type PlanningArtifactKey = `plan:${string}` | `plan-set:${string}`;
 
@@ -24,9 +22,7 @@ export function projectPlanningArtifacts(input: {
   plans: readonly SessionPlanningListEntry[];
   planSets: readonly SessionPlanSetListEntry[];
   board?: unknown;
-  // --- eforge:region plan-02-lifecycle-projections ---
   lifecycleBySession?: ReadonlyMap<string, SessionPlanLifecycleProjection>;
-  // --- eforge:endregion plan-02-lifecycle-projections ---
 }) {
   const plans = input.plans.map((entry) => projectPlanListEntry(entry, input.lifecycleBySession?.get(entry.session)));
   const planSets = input.planSets.map(projectPlanSetListEntry);
@@ -50,7 +46,6 @@ export function projectPlanListEntry(entry: SessionPlanningListEntry, lifecycle?
     ready: entry.ready,
     missingDimensions: entry.missingDimensions,
     ...(entry.eforge_session !== undefined ? { eforge_session: entry.eforge_session } : {}),
-    // --- eforge:region plan-02-lifecycle-projections ---
     ...(lifecycle !== undefined ? {
       sourceRefs: lifecycle.sourceRefs,
       lifecycleState: lifecycle.lifecycleState,
@@ -58,7 +53,6 @@ export function projectPlanListEntry(entry: SessionPlanningListEntry, lifecycle?
       linkRows: lifecycle.linkRows,
       failureEvidence: lifecycle.failureEvidence,
     } : {}),
-    // --- eforge:endregion plan-02-lifecycle-projections ---
   };
 }
 
@@ -82,9 +76,7 @@ export function projectSessionPlanDetail(input: { plan: SessionPlan; readiness: 
     plan: projectSessionPlan(input.plan),
     readiness: input.readiness,
     path: input.path,
-    // --- eforge:region plan-02-lifecycle-projections ---
     ...(input.lifecycle !== undefined ? { sourceRefs: input.lifecycle.sourceRefs, lifecycle: input.lifecycle } : {}),
-    // --- eforge:endregion plan-02-lifecycle-projections ---
   };
 }
 

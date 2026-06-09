@@ -362,7 +362,6 @@ export const TraceSidecarSchema = Type.Object({
   landingResults: Type.Array(TraceLandingResultSchema),
   lastEvent: Type.Optional(TraceLastEventMetadataSchema),
 });
-// --- eforge:region plan-02-lifecycle-projections ---
 export const LifecycleStateSchema = Type.Union([
   Type.Literal('none'),
   Type.Literal('planned'),
@@ -438,7 +437,6 @@ export const TraceSummarySchema = Type.Object({
   landingRefs: Type.Array(LifecycleLinkRowSchema),
   failureEvidence: Type.Array(LifecycleLinkRowSchema),
 }, { additionalProperties: false });
-// --- eforge:endregion plan-02-lifecycle-projections ---
 export const KanbanDependencyRefSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -480,11 +478,9 @@ export const KanbanCardSchema = Type.Object({
   recRank: Type.Optional(Type.Number()),
   recLanes: Type.Array(Type.String()),
   recUnblock: Type.Optional(Type.String()),
-  // --- eforge:region plan-02-lifecycle-projections ---
   lifecycleState: LifecycleStateSchema,
   linkRows: Type.Array(LifecycleLinkRowSchema),
   failureEvidence: Type.Array(LifecycleLinkRowSchema),
-  // --- eforge:endregion plan-02-lifecycle-projections ---
 });
 export const KanbanLaneOutputSchema = Type.Object({
   lane: KanbanLaneSchema,
@@ -501,10 +497,8 @@ export const ListBoardOutputSchema = Type.Object({
   lanes: Type.Array(KanbanLaneOutputSchema),
   blockedReasons: Type.Array(Type.Object({ itemId: Type.String(), reasons: Type.Array(Type.String()) })),
   traceSummaries: Type.Array(TraceSummarySchema),
-  // --- eforge:region plan-02-lifecycle-projections ---
   lifecycleLinks: Type.Array(LifecycleLinkRowSchema),
   epicProgress: Type.Array(EpicProgressProjectionSchema),
-  // --- eforge:endregion plan-02-lifecycle-projections ---
   // --- eforge:region recommendations ---
   recommendationSummary: Type.Optional(RecommendationSummarySchema),
   recommendationStatus: RecommendationDerivedStatusSchema,
@@ -522,7 +516,6 @@ export type TraceBuildSession = Static<typeof TraceBuildSessionSchema>;
 export type TraceLandingResult = Static<typeof TraceLandingResultSchema>;
 export type TraceLastEventMetadata = Static<typeof TraceLastEventMetadataSchema>;
 export type TraceSidecar = Static<typeof TraceSidecarSchema>;
-// --- eforge:region plan-02-lifecycle-projections ---
 export type LifecycleState = Static<typeof LifecycleStateSchema>;
 export type LifecycleLinkRow = Static<typeof LifecycleLinkRowSchema>;
 export type PlanSourceRefs = Static<typeof PlanSourceRefsSchema>;
@@ -530,7 +523,6 @@ export type ItemLifecycleProjection = Static<typeof ItemLifecycleProjectionSchem
 export type SessionPlanLifecycleProjection = Static<typeof SessionPlanLifecycleProjectionSchema>;
 export type EpicProgressProjection = Static<typeof EpicProgressProjectionSchema>;
 export type TraceSummaryProjection = Static<typeof TraceSummarySchema>;
-// --- eforge:endregion plan-02-lifecycle-projections ---
 export type KanbanBoardOutput = Static<typeof KanbanBoardOutputSchema>;
 export type ListBoardOutput = Static<typeof ListBoardOutputSchema>;
 // --- eforge:region recommendations ---

@@ -230,7 +230,6 @@ describe('planner orchestration', () => {
     });
   });
 
-  // --- eforge:region plan-01-trusted-creation-linkage ---
   async function recordCreationWorkflow(cwd: string, selection: PlanningTaskWorkflowSelection, taskId = 'task-creation') {
     await recordPlanningTaskWorkflowEntry(cwd, {
       taskId,
@@ -315,7 +314,6 @@ describe('planner orchestration', () => {
       expect((await readTraceSidecar(cwd, 'item-one'))?.promotedSessionPlans[0]).toMatchObject({ session: 'linked-epic-session', status: 'planning' });
     });
   });
-  // --- eforge:endregion plan-01-trusted-creation-linkage ---
 
   it('rejects a creation draft whose target session already exists before writing recommendations', async () => {
     await withTempProject(async (cwd) => {

@@ -28,7 +28,6 @@ export interface BacklogEpic extends BacklogFrontmatterBase {
   body: string;
 }
 
-// --- eforge:region plan-02-lifecycle-projections ---
 export type LifecycleState = 'none' | 'planned' | 'active' | 'queue' | 'build' | 'pr-open' | 'merged' | 'shipped' | 'failed' | 'partial';
 
 export interface LifecycleLinkRow {
@@ -82,7 +81,6 @@ export interface EpicProgressProjection {
   countsByLifecycleState: Record<string, number>;
   itemRows: ItemLifecycleProjection[];
 }
-// --- eforge:endregion plan-02-lifecycle-projections ---
 
 export interface TraceSummary {
   itemId: string;
@@ -100,13 +98,11 @@ export interface TraceSummary {
     runId?: string;
     cursor?: number;
   };
-  // --- eforge:region plan-02-lifecycle-projections ---
   lifecycleState: LifecycleState;
   linkRows: LifecycleLinkRow[];
   prRefs: LifecycleLinkRow[];
   landingRefs: LifecycleLinkRow[];
   failureEvidence: LifecycleLinkRow[];
-  // --- eforge:endregion plan-02-lifecycle-projections ---
 }
 
 export function isBacklogStatus(value: unknown): value is BacklogStatus {

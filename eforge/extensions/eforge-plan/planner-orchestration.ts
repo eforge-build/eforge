@@ -268,7 +268,6 @@ function resolveSelectedSessionPlanSections(
   });
 }
 
-// --- eforge:region plan-01-trusted-creation-linkage ---
 interface CreationDraftSourceLinkage {
   sourceItemIds: string[];
   sourceEpicIds: string[];
@@ -325,7 +324,6 @@ function workflowSelectionInput(selection: { itemIds?: string[]; epicId?: string
   }
   return undefined;
 }
-// --- eforge:endregion plan-01-trusted-creation-linkage ---
 
 async function validatePlanningAgentTaskApplyTargets(
   cwd: string,

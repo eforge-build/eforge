@@ -4,12 +4,10 @@ import { defineExtensionAction } from '../../../packages/extension-sdk/src/index
 import { createSessionPlanningWorkflowAdapter } from '../../../packages/input/src/index.js';
 import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
-// --- eforge:region plan-02-lifecycle-projections ---
 import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
-// --- eforge:endregion plan-02-lifecycle-projections ---
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import {
   projectPlanningArtifacts,
@@ -59,10 +57,8 @@ export const listPlanningArtifacts = defineExtensionAction({
     ]);
     try {
       const board = await buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive });
-      // --- eforge:region plan-02-lifecycle-projections ---
       const lifecycleBySession = await buildLifecycleBySession(ctx.cwd, plans.map((plan) => plan.session));
       return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board), lifecycleBySession }));
-      // --- eforge:endregion plan-02-lifecycle-projections ---
     } catch {
       return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets }));
     }
@@ -78,10 +74,8 @@ export const showSessionPlan = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const loaded = await adapter().flat.load({ cwd: ctx.cwd, session: input.session });
-    // --- eforge:region plan-02-lifecycle-projections ---
     const lifecycle = await buildLifecycleForPlan(ctx.cwd, loaded.plan);
     return toJsonSafeObject(projectSessionPlanDetail({ ...loaded, lifecycle }));
-    // --- eforge:endregion plan-02-lifecycle-projections ---
   },
 });
 
@@ -284,7 +278,6 @@ export const sessionPlanActions = [
   handoffSessionPlan,
 ] as const;
 
-// --- eforge:region plan-02-lifecycle-projections ---
 async function buildLifecycleBySession(cwd: string, sessions: readonly string[]): Promise<Map<string, SessionPlanLifecycleProjection>> {
   const planning = adapter();
   const entries = await Promise.all(sessions.map(async (session) => {
@@ -303,7 +296,6 @@ async function buildLifecycleForPlan(cwd: string, plan: Parameters<typeof projec
   const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
   return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries });
 }
-// --- eforge:endregion plan-02-lifecycle-projections ---
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;

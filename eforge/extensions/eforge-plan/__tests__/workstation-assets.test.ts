@@ -12,12 +12,10 @@ const TASK_CARD = `${SRC}/views/backlog/planning-task-card.tsx`;
 const MOCK_DATA = `${SRC}/fixtures/mock-data.ts`;
 const BRIDGE = `${SRC}/bridge.ts`;
 const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
-// --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
 const BOARD_MODEL = `${SRC}/views/backlog/board-model.ts`;
 const LIFECYCLE_PANEL = `${SRC}/views/backlog/lifecycle-panel.tsx`;
 const LIFECYCLE_EVIDENCE_PANEL = `${SRC}/views/plans/lifecycle-evidence-panel.tsx`;
 const README = 'eforge/extensions/eforge-plan/README.md';
-// --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
 const PLAN_SET_DETAIL = `${SRC}/views/plans/plan-set-detail.tsx`;
 
 const TASK_WORKFLOW_ACTIONS = [
@@ -46,20 +44,16 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('invokeAction');
     expect(source).toContain('Plan with AI');
     expect(source).toContain('Promote to a build plan');
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     expect(source).toContain('Lifecycle evidence');
     expect(source).toContain('Source refs');
     expect(source).toContain('Partial progress');
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
     expect(source).not.toContain('Promote as one plan');
     for (const actionId of TASK_WORKFLOW_ACTIONS) {
       expect(source).toContain(actionId);
     }
     expect(source).not.toMatch(/fetch\s*\(/);
     expect(source).not.toMatch(/XMLHttpRequest/);
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   });
 
   it('invokes durable planning task workflow actions through the shared bridge hook', async () => {
@@ -113,14 +107,12 @@ describe('eforge-plan planning workstation assets', () => {
   it('keeps a stateful mock fixture set for running, failed, needs-input, and ready creation drafts', async () => {
     const source = await readFile(MOCK_DATA, 'utf-8');
 
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     expect(source).toContain("lifecycleState: 'partial'");
     expect(source).toContain("lifecycleState: 'pr-open'");
     expect(source).toContain("lifecycleState: 'merged'");
     expect(source).toContain("lifecycleState: 'failed'");
     expect(source).toContain('multiItemPartialRows');
     expect(source).toContain('mockEpicProgress');
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
     expect(source).toContain("status: 'running'");
     expect(source).toContain('sectionProgress');
     expect(source).toContain('currentSection');
@@ -181,7 +173,6 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('confirmingHandoff');
   });
 
-  // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
   it('renders lifecycle source and evidence panels from extension action projections only', async () => {
     const [backlogPanel, evidencePanel, detail, bridge, asset, boardModel] = await Promise.all([
       readFile(LIFECYCLE_PANEL, 'utf-8'),
@@ -224,7 +215,6 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('partial');
     expect(source).toContain('Freshness is restored only through explicit recommendation apply or refresh paths');
   });
-  // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
 
   it('turns readiness diagnostics into actionable section and dimension mutations', async () => {
     const source = await readFile(PLAN_DETAIL, 'utf-8');

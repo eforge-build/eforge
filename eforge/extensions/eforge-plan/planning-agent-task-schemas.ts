@@ -67,18 +67,14 @@ export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
   applySessionPlanCreationDraft: Type.Optional(ApplyPlanningAgentTaskCreationDraftSelectionSchema),
 }, { additionalProperties: false });
 
-// --- eforge:region plan-01-trusted-creation-linkage ---
 export const AppliedSessionPlanCreationDraftSourceRefsSchema = PlanSourceRefsSchema;
-// --- eforge:endregion plan-01-trusted-creation-linkage ---
 
 export const AppliedSessionPlanCreationDraftSchema = Type.Object({
   session: Type.String(),
   relativePath: Type.String(),
   readiness: SessionPlanReadinessDetailSchema,
-  // --- eforge:region plan-01-trusted-creation-linkage ---
   sourceRefs: Type.Optional(AppliedSessionPlanCreationDraftSourceRefsSchema),
   traceItemIds: Type.Optional(Type.Array(Type.String())),
-  // --- eforge:endregion plan-01-trusted-creation-linkage ---
 }, JsonObjectAdditionalProperties);
 
 export const PlanningAgentTaskStartOutputSchema = ExtensionAgentTaskStartResponseSchema;

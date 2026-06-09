@@ -4,9 +4,7 @@ import { dirname, isAbsolute, relative, sep } from 'node:path';
 import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
 import { assertSafeBacklogId } from './markdown-store.js';
 import type { TraceSummary } from './backlog-domain.js';
-// --- eforge:region plan-02-lifecycle-projections ---
 import { projectTraceLifecycle } from './lifecycle-projection.js';
-// --- eforge:endregion plan-02-lifecycle-projections ---
 import type {
   TraceBuildRun,
   TraceBuildSession,
@@ -184,9 +182,7 @@ export function summarizeTrace(trace: TraceSidecar | null | undefined): TraceSum
     ...trace.buildRuns.filter(isActiveEntry).map((entry) => `active build run trace ${entry.runId}`),
     ...trace.buildSessions.filter(isActiveEntry).map((entry) => `active build session trace ${entry.sessionId}`),
   ];
-  // --- eforge:region plan-02-lifecycle-projections ---
   const lifecycle = projectTraceLifecycle(trace);
-  // --- eforge:endregion plan-02-lifecycle-projections ---
   return {
     itemId: trace.itemId,
     epicId: trace.epicId,
@@ -197,9 +193,7 @@ export function summarizeTrace(trace: TraceSidecar | null | undefined): TraceSum
     hasActiveTrace: activeReasons.length > 0,
     activeReasons,
     lastEvent: trace.lastEvent,
-    // --- eforge:region plan-02-lifecycle-projections ---
     ...lifecycle,
-    // --- eforge:endregion plan-02-lifecycle-projections ---
   };
 }
 

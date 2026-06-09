@@ -40,10 +40,8 @@ export function useWorkstationData(): WorkstationDataState {
       // The engine returns raw backlog items in `items`; the enriched kanban
       // cards live inside `lanes[].items`. Flatten the lanes for card rendering.
       const lanes = boardResult.value.lanes ?? [];
-      // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
       const normalizedLanes = lanes.map((lane) => ({ ...lane, items: (lane.items ?? []).map(normalizeBoardItemLifecycle) }));
       setBoard({ lanes: normalizedLanes, items: normalizedLanes.flatMap((lane) => lane.items ?? []), epics: boardResult.value.epics ?? [], lifecycleLinks: boardResult.value.lifecycleLinks ?? [], epicProgress: boardResult.value.epicProgress ?? [] });
-      // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
     } else failures.push(reason('board', boardResult.reason));
     if (artifactsResult.status === 'fulfilled') setArtifacts(artifactsResult.value.artifacts ?? []);
     else failures.push(reason('plans', artifactsResult.reason));

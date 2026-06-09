@@ -19,7 +19,6 @@ function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'stat
   };
 }
 
-// --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
 function lifecycleRows(params: { itemIds: string[]; session: string; state: 'active' | 'pr-open' | 'merged' | 'failed' | 'partial'; prUrl?: string; commitSha?: string }): LifecycleLinkRow[] {
   const base = { affectedItemIds: params.itemIds };
   const rows: LifecycleLinkRow[] = [
@@ -43,41 +42,32 @@ const mockEpicProgress: EpicProgress = {
     { itemId: 'plan-workstation', title: 'Move planning into workstation', lifecycleState: 'active', shipped: false, evidence: 'Session plan active.' },
   ],
 };
-// --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
 
 const items: BoardItem[] = [
   card({
     id: 'add-import-preview', title: 'Add import preview', status: 'planned', lane: 'ready', priority: 'high',
     tags: ['ux', 'cli'], ready: true, recRank: 2, epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     notes: { claim: 'Users want a dry-run preview before importing.', evidence: '', recheck: '', promotionPaths: '' },
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     lifecycleState: 'partial', lifecycleLinks: multiItemPartialRows, epicProgress: mockEpicProgress,
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   }),
   card({
     id: 'recommend-next-work', title: 'Maintain next-work recommendations', status: 'planned', lane: 'ready', priority: 'medium',
     ready: true, recRank: 1, recLanes: ['Planning foundations'], epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
     dependents: [{ id: 'add-import-preview', title: 'Add import preview', status: 'planned', missing: false, blocking: false }],
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     lifecycleState: 'pr-open', lifecycleLinks: lifecycleRows({ itemIds: ['recommend-next-work'], session: '2026-06-07-recommendations', state: 'pr-open', prUrl: 'https://example.test/pr/recommendations' }),
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   }),
   card({
     id: 'plan-workstation', title: 'Move planning into workstation', status: 'active', lane: 'in-progress', priority: 'high',
     activeTraceReasons: ['active build run trace run-12'], reasons: ['active build run trace run-12'],
     epic: 'planning', epicRef: { id: 'planning', title: 'Planning workstation', status: 'active', missing: false },
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     lifecycleState: 'active', lifecycleLinks: lifecycleRows({ itemIds: ['plan-workstation'], session: '2026-06-07-plan-workstation', state: 'active' }), epicProgress: mockEpicProgress,
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   }),
   card({
     id: 'auto-mode', title: 'Explore auto-mode draining', status: 'planned', lane: 'blocked', priority: 'low',
     blocked: true, unresolvedDependsOn: ['traceability'], recUnblock: 'Land traceability first, then re-scope.',
     dependencies: [{ id: 'traceability', title: 'Trace sidecars', status: 'planned', missing: false, blocking: true }],
     epic: 'extensions', epicRef: { id: 'extensions', title: 'Extension platform', status: 'planned', missing: false },
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     lifecycleState: 'failed', lifecycleLinks: lifecycleRows({ itemIds: ['auto-mode'], session: '2026-06-07-auto-mode', state: 'failed' }),
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   }),
   card({
     id: 'traceability', title: 'Trace sidecars', status: 'planned', lane: 'ready', priority: 'medium', ready: true,
@@ -85,9 +75,7 @@ const items: BoardItem[] = [
   }),
   card({
     id: 'legacy-cleanup', title: 'Remove legacy board renderer', status: 'shipped', lane: 'done', priority: 'low', closed: true,
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     lifecycleState: 'merged', lifecycleLinks: lifecycleRows({ itemIds: ['legacy-cleanup'], session: '2026-06-07-legacy-cleanup', state: 'merged', prUrl: 'https://example.test/pr/legacy-cleanup', commitSha: 'fedcba' }),
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   }),
   card({
     id: 'stale-idea', title: 'Revisit cron triggers', status: 'planned', lane: 'inbox', priority: 'low', reviewDue: true,
@@ -105,10 +93,8 @@ export const mockBoard: Board = {
     { id: 'planning', title: 'Planning workstation', status: 'active' },
     { id: 'extensions', title: 'Extension platform', status: 'planned' },
   ],
-  // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
   lifecycleLinks: items.flatMap((item) => item.lifecycleLinks ?? []),
   epicProgress: [mockEpicProgress],
-  // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
 };
 
 export const mockRecommendations: RecommendationModel = {
@@ -225,27 +211,19 @@ export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = {
 export const mockArtifacts: Artifact[] = [
   {
     key: 'plan:2026-06-07-import-preview', kind: 'plan', session: '2026-06-07-import-preview', title: 'Add import preview', status: 'planning', ready: false,
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     sourceRefs: { itemIds: ['add-import-preview'], epicIds: ['planning'] }, lifecycleState: 'partial', lifecycleLinks: multiItemPartialRows,
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   },
   {
     key: 'plan:2026-06-07-recommendations', kind: 'plan', session: '2026-06-07-recommendations', title: 'Recommendation engine', status: 'ready', ready: true,
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     sourceRefs: { itemIds: ['recommend-next-work'], epicIds: ['planning'] }, lifecycleState: 'pr-open', lifecycleLinks: lifecycleRows({ itemIds: ['recommend-next-work'], session: '2026-06-07-recommendations', state: 'pr-open', prUrl: 'https://example.test/pr/recommendations' }), prRefs: [{ url: 'https://example.test/pr/recommendations', status: 'pr-open', branch: 'feature/2026-06-07-recommendations' }],
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   },
   {
     key: 'plan:2026-06-07-legacy-cleanup', kind: 'plan', session: '2026-06-07-legacy-cleanup', title: 'Remove legacy board renderer', status: 'shipped', ready: true,
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     sourceRefs: { itemIds: ['legacy-cleanup'] }, lifecycleState: 'merged', lifecycleLinks: lifecycleRows({ itemIds: ['legacy-cleanup'], session: '2026-06-07-legacy-cleanup', state: 'merged', prUrl: 'https://example.test/pr/legacy-cleanup', commitSha: 'fedcba' }), landingRefs: [{ status: 'landed', branch: 'feature/2026-06-07-legacy-cleanup', commitSha: 'fedcba', landedAt: '2026-06-07T00:04:00.000Z' }],
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   },
   {
     key: 'plan:2026-06-07-auto-mode', kind: 'plan', session: '2026-06-07-auto-mode', title: 'Explore auto-mode draining', status: 'failed', ready: false,
-    // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
     sourceRefs: { itemIds: ['auto-mode'], epicIds: ['extensions'] }, lifecycleState: 'failed', lifecycleLinks: lifecycleRows({ itemIds: ['auto-mode'], session: '2026-06-07-auto-mode', state: 'failed' }),
-    // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   },
   { key: 'plan-set:planning-foundations', kind: 'plan-set', planSetId: 'planning-foundations', title: 'Planning foundations', status: 'draft', childCount: 3 },
 ];
@@ -269,7 +247,6 @@ export function mockDetail(key: string): Detail {
   }
   const artifact = mockArtifacts.find((entry) => entry.key === key) ?? mockArtifacts[0];
   const ready = Boolean(artifact.ready);
-  // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
   const lifecycleLinks = artifact.lifecycleLinks ?? [];
   const itemRows = artifact.lifecycleState === 'partial'
     ? [
@@ -277,7 +254,6 @@ export function mockDetail(key: string): Detail {
       { itemId: 'recommend-next-work', title: 'Maintain next-work recommendations', lifecycleState: 'active', shipped: false, evidence: 'PR remains open.' },
     ]
     : lifecycleLinks.flatMap((row) => (row.affectedItemIds ?? []).map((itemId) => ({ itemId, lifecycleState: artifact.lifecycleState, shipped: artifact.lifecycleState === 'merged', evidence: row.commitSha ?? row.prUrl ?? row.status })));
-  // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
   return {
     path: `.eforge/session-plans/${artifact.session}.md`,
     readiness: {
@@ -294,9 +270,7 @@ export function mockDetail(key: string): Detail {
       optional_dimensions: [],
       skipped_dimensions: [{ name: 'assumptions-and-validation', reason: 'No external dependencies.' }],
       open_questions: ['What edge cases matter?'],
-      // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
       sourceRefs: artifact.sourceRefs ?? { itemIds: [], epicIds: [] }, lifecycleLinks, lifecycleState: artifact.lifecycleState, itemRows, epicProgress: artifact.session === '2026-06-07-import-preview' ? [mockEpicProgress] : [], prRefs: artifact.prRefs, landingRefs: artifact.landingRefs,
-      // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
       sections: { scope: 'A friendly fixture for rapid UI iteration.', 'acceptance criteria': '- It renders.\n- It promotes.' },
       body: '# Mock plan\n\n## Scope\n\nA friendly fixture for rapid UI iteration.',
     },
