@@ -29,7 +29,7 @@ export interface PlanningTaskWorkflowsApi {
   redraft: (taskId: string, input: RedraftInput) => Promise<void>;
   cancel: (taskId: string) => Promise<void>;
   remove: (taskId: string) => Promise<void>;
-  apply: (taskId: string, input: JsonObject) => Promise<void>;
+  apply: (taskId: string, input: JsonObject) => Promise<ApplyPlanningTaskResponse | null>;
 }
 
 function isRunning(item: PlanningAgentTaskListItem): boolean {
@@ -189,15 +189,17 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [reload, reportError, toast]);
 
-  const apply = React.useCallback(async (taskId: string, input: JsonObject) => {
+  const apply = React.useCallback(async (taskId: string, input: JsonObject): Promise<ApplyPlanningTaskResponse | null> => {
     setBusy(true);
     try {
       const response = await bridge.invokeAction<ApplyPlanningTaskResponse>('apply-planning-agent-task-result', { taskId, ...input });
       toast.push(`Applied generated output from ${response.taskId}.`, 'success');
       await onRefresh();
       await reload();
+      return response;
     } catch (caught) {
       reportError(caught);
+      return null;
     } finally {
       setBusy(false);
     }

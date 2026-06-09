@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
+import { SafeMarkdown } from '@/components/safe-markdown';
 import { Textarea } from '@/components/ui/textarea';
 import type {
   JsonObject,
@@ -13,7 +14,7 @@ interface PlanningTaskResultPreviewProps {
   item: PlanningAgentTaskListItem;
   busy: boolean;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
-  onApply: (taskId: string, input: JsonObject) => Promise<void>;
+  onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
 }
 
 export function PlanningTaskResultPreview({ item, busy, onRedraft, onApply }: PlanningTaskResultPreviewProps) {
@@ -97,7 +98,7 @@ interface ReadyResultPreviewProps {
   result: PlanningTaskResult;
   sessionHint?: string;
   busy: boolean;
-  onApply: (taskId: string, input: JsonObject) => Promise<void>;
+  onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
 }
 
 function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: ReadyResultPreviewProps) {
@@ -122,14 +123,22 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: Read
       )}
 
       {creationDraft && (
-        <div className="grid gap-2 rounded-md border border-primary/30 bg-primary/5 p-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ready session-plan draft · {creationDraft.session}</span>
-          <span className="text-xs text-muted-foreground">{creationDraft.topic} · {creationDraft.planningType}/{creationDraft.planningDepth}</span>
-          {creationDraft.sections.map((section) => <PreviewBlock key={section.dimension} title={section.dimension} body={section.content} />)}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant={confirming === 'creation' ? 'destructive' : 'secondary'} disabled={busy} onClick={() => apply('creation', { applySessionPlanCreationDraft: {} })}>{confirming === 'creation' ? 'Confirm create session plan' : 'Create session plan'}</Button>
-            {confirming === 'creation' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
+        <div className="grid gap-1.5 border-t border-border pt-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Session-plan draft</span>
+              <p className="text-foreground">{creationDraft.topic}</p>
+              <p className="text-[0.68rem] text-muted-foreground">{creationDraft.session} · {creationDraft.planningType}/{creationDraft.planningDepth}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant={confirming === 'creation' ? 'destructive' : 'default'} disabled={busy} onClick={() => apply('creation', { applySessionPlanCreationDraft: {} })}>{confirming === 'creation' ? 'Confirm create session plan' : 'Create session plan'}</Button>
+              {confirming === 'creation' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
+            </div>
           </div>
+          <div className="grid gap-1">
+            {creationDraft.sections.map((section) => <PreviewSection key={section.dimension} title={section.dimension} body={section.content} />)}
+          </div>
+          <p className="text-[0.68rem] text-muted-foreground">Creating the plan opens it in the Plans tab, where you can keep iterating.</p>
         </div>
       )}
 
@@ -150,12 +159,16 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: Read
       )}
 
       {patchSections.length > 0 && (
-        <div className="grid gap-2 rounded-md border border-border bg-background/50 p-2">
-          <span className="text-muted-foreground">Session-plan patch sections: {patchSections.map((section) => section.dimension).join(', ')}</span>
-          {patchSections.map((section) => <PreviewBlock key={section.dimension} title={section.dimension} body={section.content} />)}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant={confirming === 'patch' ? 'destructive' : 'secondary'} disabled={busy || sessionForPatch.length === 0} onClick={() => apply('patch', { applySessionPlanDrafts: [{ session: sessionForPatch, sections: patchSections.map((section) => section.dimension) }] })}>{confirming === 'patch' ? 'Confirm apply session-plan content' : 'Apply session-plan content'}</Button>
-            {confirming === 'patch' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
+        <div className="grid gap-1.5 border-t border-border pt-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Session-plan patch{sessionForPatch ? ` · ${sessionForPatch}` : ''}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant={confirming === 'patch' ? 'destructive' : 'default'} disabled={busy || sessionForPatch.length === 0} onClick={() => apply('patch', { applySessionPlanDrafts: [{ session: sessionForPatch, sections: patchSections.map((section) => section.dimension) }] })}>{confirming === 'patch' ? 'Confirm apply session-plan content' : 'Apply session-plan content'}</Button>
+              {confirming === 'patch' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
+            </div>
+          </div>
+          <div className="grid gap-1">
+            {patchSections.map((section) => <PreviewSection key={section.dimension} title={section.dimension} body={section.content} />)}
           </div>
           {sessionForPatch.length === 0 && <span className="text-xs text-muted-foreground">No target session is associated with this task; patch apply is unavailable.</span>}
         </div>
@@ -168,11 +181,19 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: Read
   );
 }
 
-function PreviewBlock({ title, body }: { title: string; body: string }) {
+// Collapsed-by-default section row. A left rule instead of a box keeps the
+// draft scannable as a list of section names without nesting more borders;
+// expand only the sections worth verifying before apply.
+function PreviewSection({ title, body }: { title: string; body: string }) {
+  const lineCount = body.split('\n').length;
   return (
-    <section className="rounded border border-border bg-card p-2">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-foreground">{body}</pre>
-    </section>
+    <details className="border-l-2 border-border pl-2 open:border-primary/50">
+      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+        {title} <span className="ml-1 font-normal normal-case tracking-normal text-muted-foreground/70">{lineCount} line{lineCount === 1 ? '' : 's'}</span>
+      </summary>
+      <div className="mt-1 max-h-96 overflow-auto">
+        <SafeMarkdown markdown={body} />
+      </div>
+    </details>
   );
 }

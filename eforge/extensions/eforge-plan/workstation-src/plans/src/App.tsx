@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { GitBranch, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { ClipboardList, GitBranch, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ToastProvider } from '@/components/toast';
@@ -11,7 +11,7 @@ import { PlansView } from '@/views/plans-view';
 type TabId = 'backlog' | 'plans';
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'backlog', label: 'Backlog', icon: GitBranch },
-  { id: 'plans', label: 'Plans', icon: Sparkles },
+  { id: 'plans', label: 'Plans', icon: ClipboardList },
 ];
 
 export function App() {

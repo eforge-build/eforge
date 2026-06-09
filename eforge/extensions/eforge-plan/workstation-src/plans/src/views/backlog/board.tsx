@@ -26,10 +26,6 @@ interface BoardProps {
   onToggle: (item: BoardItem) => void;
 }
 
-const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: 'all', label: 'All' }, { id: 'ready', label: 'Ready' }, { id: 'blocked', label: 'Blocked' },
-  { id: 'review', label: 'Review due' }, { id: 'closed', label: 'Closed' },
-];
 const GROUPS: { id: GroupMode; label: string }[] = [
   { id: 'lane', label: 'Lane' }, { id: 'epic', label: 'Epic' }, { id: 'recommended', label: 'Recommended' },
 ];
@@ -45,16 +41,20 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
   const chips = React.useMemo(() => allEpicChips(allItems, board.epics ?? []), [allItems, board.epics]);
   const counts = React.useMemo(() => stats(allItems), [allItems]);
 
+  // Count pills double as the status filter - one control instead of a stats
+  // row plus a separate filter row. Zero-count pills are hidden unless active.
+  const filterPills: { id: StatusFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'All', count: allItems.length },
+    { id: 'open', label: 'Open', count: counts.open },
+    { id: 'ready', label: 'Ready', count: counts.ready },
+    { id: 'blocked', label: 'Blocked', count: counts.blocked },
+    { id: 'review', label: 'Review due', count: counts.review },
+    { id: 'closed', label: 'Closed', count: counts.closed },
+  ];
+  const visiblePills = filterPills.filter((pill) => pill.count > 0 || pill.id === filter || pill.id === 'all');
+
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {([['Open', counts.open], ['Ready', counts.ready], ['Blocked', counts.blocked], ['Review due', counts.review], ['Closed', counts.closed]] as const).map(([label, value]) => (
-          <span key={label} className="inline-flex items-baseline gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground">
-            <strong className="text-sm text-text-bright">{value}</strong>{label}
-          </span>
-        ))}
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-2">
         <input
           type="search"
@@ -64,7 +64,18 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
           className="min-w-64 flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <ButtonGroup options={STATUS_FILTERS} active={filter} onSelect={(value) => onFilter(value)} />
+          <div className="flex flex-wrap items-center gap-1">
+            {visiblePills.map((pill) => (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => onFilter(pill.id)}
+                className={`inline-flex items-baseline gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${filter === pill.id ? 'border-primary bg-primary/10 text-text-bright' : 'border-border bg-card text-muted-foreground hover:border-muted-foreground/50'}`}
+              >
+                <strong className={`text-sm ${filter === pill.id ? 'text-text-bright' : 'text-foreground'}`}>{pill.count}</strong>{pill.label}
+              </button>
+            ))}
+          </div>
           <span className="text-[0.7rem] text-muted-foreground">Group</span>
           <ButtonGroup options={GROUPS} active={group} onSelect={(value) => onGroup(value)} />
         </div>

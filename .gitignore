@@ -18,3 +18,6 @@ web/.next/
 web/tsconfig.tsbuildinfo
 .vercel
 .playwright-mcp
+# Built workstation bundles are generated from workstation-src (root `pnpm build`
+# or `pnpm build:eforge-plan-workstation`); never commit them.
+eforge/extensions/eforge-plan/workstation-assets/

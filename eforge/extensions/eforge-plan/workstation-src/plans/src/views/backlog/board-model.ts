@@ -1,7 +1,7 @@
 import type { Board, BoardItem, Epic } from '@/types';
 
 export type GroupMode = 'lane' | 'epic' | 'recommended';
-export type StatusFilter = 'all' | 'ready' | 'blocked' | 'review' | 'closed';
+export type StatusFilter = 'all' | 'open' | 'ready' | 'blocked' | 'review' | 'closed';
 export type RecColumn = 'next' | 'blocked' | 'other' | 'closed';
 
 export interface BoardColumn {
@@ -34,8 +34,11 @@ const REC_COLUMNS: { id: RecColumn; title: string; tone: string }[] = [
 ];
 
 export function matchesFilter(item: BoardItem, filter: StatusFilter): boolean {
+  if (filter === 'open') return !item.closed;
   if (filter === 'ready') return item.ready;
-  if (filter === 'blocked') return item.blocked;
+  // Closed items keep their blocked flag, but the filter (and its count pill,
+  // which tallies open items only) means actionable blocked work.
+  if (filter === 'blocked') return item.blocked && !item.closed;
   if (filter === 'review') return item.reviewDue;
   if (filter === 'closed') return item.closed;
   return true;
