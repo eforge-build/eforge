@@ -9,6 +9,7 @@ import type { PlanData, PlanDetail, Readiness } from '@/types';
 import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { titleCase } from './dimensions';
+import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
 
 const bridge = getBridge();
 
@@ -97,6 +98,9 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
           {plan.planning_depth && <Badge variant="outline">{plan.planning_depth}</Badge>}
         </div>
 
+        {/* --- eforge:region plan-03-workstation-docs-lifecycle-ui --- */}
+        <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
+        {/* --- eforge:endregion plan-03-workstation-docs-lifecycle-ui --- */}
         <ReadinessChecklist plan={plan} readiness={readiness} onSetSection={setSection} onSelectDimensions={selectDimensions} />
         <MetadataEditor plan={plan} onSave={saveMetadata} />
 

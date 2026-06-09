@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
-import type { Artifact, Board, GetRecommendationsResponse, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
+import type { Artifact, Board, BoardItem, GetRecommendationsResponse, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [] };
@@ -40,7 +40,10 @@ export function useWorkstationData(): WorkstationDataState {
       // The engine returns raw backlog items in `items`; the enriched kanban
       // cards live inside `lanes[].items`. Flatten the lanes for card rendering.
       const lanes = boardResult.value.lanes ?? [];
-      setBoard({ lanes, items: lanes.flatMap((lane) => lane.items ?? []), epics: boardResult.value.epics ?? [] });
+      // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
+      const normalizedLanes = lanes.map((lane) => ({ ...lane, items: (lane.items ?? []).map(normalizeBoardItemLifecycle) }));
+      setBoard({ lanes: normalizedLanes, items: normalizedLanes.flatMap((lane) => lane.items ?? []), epics: boardResult.value.epics ?? [], lifecycleLinks: boardResult.value.lifecycleLinks ?? [], epicProgress: boardResult.value.epicProgress ?? [] });
+      // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
     } else failures.push(reason('board', boardResult.reason));
     if (artifactsResult.status === 'fulfilled') setArtifacts(artifactsResult.value.artifacts ?? []);
     else failures.push(reason('plans', artifactsResult.reason));
@@ -56,6 +59,10 @@ export function useWorkstationData(): WorkstationDataState {
   React.useEffect(() => { void refresh(); }, [refresh]);
 
   return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, bridgeVersion: bridge.version };
+}
+
+function normalizeBoardItemLifecycle(item: BoardItem): BoardItem {
+  return item.lifecycleLinks === undefined && item.linkRows !== undefined ? { ...item, lifecycleLinks: item.linkRows } : item;
 }
 
 function reason(label: string, caught: unknown): string {

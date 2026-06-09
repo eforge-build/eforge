@@ -24,6 +24,11 @@ describe('eforge-plan Console workstation dogfood registration', () => {
       id: 'planning-workstation',
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
       allowedActions: expect.arrayContaining([
+        // --- eforge:region plan-03-workstation-docs-lifecycle-ui ---
+        'list-board',
+        'get-recommendations',
+        'refresh-recommendations',
+        // --- eforge:endregion plan-03-workstation-docs-lifecycle-ui ---
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',
