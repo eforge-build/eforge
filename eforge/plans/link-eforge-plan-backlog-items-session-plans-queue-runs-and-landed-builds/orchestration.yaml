@@ -1,0 +1,125 @@
+name: link-eforge-plan-backlog-items-session-plans-queue-runs-and-landed-builds
+description: Link eforge-plan backlog items, AI-created session plans, queue/run
+  traces, PR/landing evidence, and epic/partial lifecycle projections.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build:eforge-plan-workstation
+  - pnpm test -- eforge-plan
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-trusted-creation-linkage
+    name: Trusted AI Creation-Draft Source Linkage
+    depends_on: []
+    branch: link-eforge-plan-backlog-items-session-plans-queue-runs-and-landed-builds/plan-01-trusted-creation-linkage
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Creation-draft apply must coordinate workflow-index trust,
+          session-plan frontmatter, and trace writes without accepting
+          model-authored source ids.
+      reviewer:
+        effort: medium
+        rationale: Review focus is trust-boundary enforcement and atomicity of apply
+          validation.
+  - id: plan-02-lifecycle-projections
+    name: Lifecycle Projections and Conservative Evidence Semantics
+    depends_on:
+      - plan-01-trusted-creation-linkage
+    branch: link-eforge-plan-backlog-items-session-plans-queue-runs-and-landed-builds/plan-02-lifecycle-projections
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan introduces shared projection types consumed by board,
+          session-plan, recommendation freshness, and lifecycle tests.
+      reviewer:
+        effort: high
+        rationale: Review must check JSON-safe action output shapes, partial-state
+          semantics, and conservative status mutation.
+  - id: plan-03-workstation-docs-lifecycle-ui
+    name: Workstation Lifecycle UI and Documentation
+    depends_on:
+      - plan-02-lifecycle-projections
+    branch: link-eforge-plan-backlog-items-session-plans-queue-runs-and-landed-builds/plan-03-workstation-docs-lifecycle-ui
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: UI changes are bounded to the eforge-plan workstation and consume
+          backend projections from plan-02.
+      doc-author:
+        effort: medium
+        rationale: The README needs first-party lifecycle-linkage semantics and storage
+          documentation.
+      reviewer:
+        effort: medium
+        rationale: Review focus is UI data handling, generated asset sync, and docs
+          accuracy.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - validate
+    - test-cycle
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a large but cohesive eforge-plan feature spanning extension
+    storage/projections, lifecycle handling, workstation UI, tests, and README
+    updates. A single planner should be able to decompose it into ordered plans,
+    so excursion is preferable to expedition. Plan review is included because
+    the scope has many acceptance criteria and state-linkage risks.
+    Documentation and test stages are included because the PRD explicitly
+    requires README updates, frontend type changes, fixtures, and
+    lifecycle/planner tests. The validate stage is included after
+    implementation/doc/test authoring and before review so the registered
+    maintainability gate runs. Parallel code and API review focuses on
+    implementation correctness plus JSON/action/schema contract stability
+    without adding unrelated security review overhead.
+diff_base_ref: 8bd0b2d8581916ffa8d09e1e364042f9a327c51c
