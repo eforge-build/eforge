@@ -26,7 +26,9 @@ function renderPanel(input: Partial<React.ComponentProps<typeof RecommendationsP
       recommendations={mockRecommendations}
       status={mockRecommendationStatusFresh}
       titles={titles}
-      onStartPlan={vi.fn(async () => undefined)}
+      selected={new Set<string>()}
+      onPickItem={vi.fn()}
+      onPickItems={vi.fn()}
       onRefreshRecommendations={vi.fn(async () => undefined)}
       {...input}
     />,
@@ -82,13 +84,24 @@ describe('RecommendationsPanel freshness states', () => {
     expect(screen.getByText(/Refreshing recommendations/i)).toBeTruthy();
   });
 
-  it('treats safe parallelizable groups as planning guidance, not queue actions', () => {
-    const onStartPlan = vi.fn(async () => undefined);
-    renderPanel({ onStartPlan });
+  it('adds a recommended next item to the selection instead of starting a plan', () => {
+    const onPickItem = vi.fn();
+    renderPanel({ onPickItem });
+
+    fireEvent.click(screen.getByRole('button', { name: /Maintain next-work recommendations/i }));
+
+    expect(onPickItem).toHaveBeenCalledWith('recommend-next-work');
+    expect(screen.queryByRole('button', { name: /enqueue/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /queue/i })).toBeNull();
+  });
+
+  it('adds every item in a parallelizable group to the selection, not a queue action', () => {
+    const onPickItems = vi.fn();
+    renderPanel({ onPickItems });
 
     fireEvent.click(screen.getByRole('button', { name: 'Planning foundations' }));
 
-    expect(onStartPlan).toHaveBeenCalledWith({ recommendationRef: 'planning-foundations' }, 'Planning foundations');
+    expect(onPickItems).toHaveBeenCalledWith(['add-import-preview', 'recommend-next-work']);
     expect(screen.queryByRole('button', { name: /enqueue/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /queue/i })).toBeNull();
   });
