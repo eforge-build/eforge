@@ -103,15 +103,15 @@ export default function WhyPage() {
 
         <h2>Built for API economics</h2>
         <p>
-          eforge is an engine, not a single chat surface. It can run from Pi, Claude Code, or the CLI, but its direction
-          is deliberately Pi-centric: a local, provider-flexible agent environment where cost, context, planning, and
-          execution are visible parts of the engineering system.
+          eforge is an engine, not a single chat surface. It runs from Pi, Claude Code, or the CLI. Pi is the primary
+          surface: a local, provider-flexible agent environment where cost, context, planning, and execution are
+          visible parts of the engineering system.
         </p>
         <p>
           As agent execution moves toward explicit API-priced inference, token efficiency, provider choice, and local
           orchestration matter more. You should be able to choose the runtime, understand the tradeoffs, and route work
           through the system that gives you the best result for the cost. That is why eforge has profiles, why the engine
-          is separate from any one host, and why Pi is becoming the primary surface.
+          is separate from any one host, and why Pi is the primary surface.
         </p>
         <p>
           Bring your own credentials. Use the providers and models that fit the work. Keep the loop durable as the model
@@ -141,9 +141,9 @@ export default function WhyPage() {
         <div style={{ ...cardStyle, marginBottom: 'var(--spacing-lg)' }}>
           <h3 style={{ marginTop: 0 }}>Recommended: Pi extension</h3>
           <p style={{ color: 'var(--color-text-muted)' }}>
-            Start with the Pi extension if you want the direction eforge is heading: provider-flexible, local,
-            inspectable agent orchestration. Use the Claude Code plugin if Claude Code is already your daily
-            environment. Use the CLI if you want the engine directly.
+            Start with the Pi extension: provider choice, direct API pricing, and local orchestration you can inspect.
+            Use the Claude Code plugin if Claude Code is already your daily environment. Use the CLI if you want the
+            engine directly.
           </p>
           <p style={{ marginBottom: 0 }}>
             <a href="/docs/getting-started">Read the setup guide</a> ·{' '}

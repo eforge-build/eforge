@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'eforge - extensible build engine',
-  description: 'eforge is an extensible build-engine kernel for delegated planning, implementation, review, and validation.',
+  description:
+    'eforge runs delegated engineering work in the background - planning, implementation, review, and validation - and hands you reviewable commits.',
 };
 
 export default function HomePage() {
@@ -25,13 +26,24 @@ export default function HomePage() {
         </h1>
         <p
           style={{
-            fontSize: '1.35rem',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            maxWidth: '40ch',
+            margin: '0 auto var(--spacing-md)',
+          }}
+        >
+          Agentic coding made implementation faster. eforge makes it asynchronous.
+        </p>
+        <p
+          style={{
+            fontSize: '1.15rem',
             color: 'var(--color-text-muted)',
-            maxWidth: '50ch',
+            maxWidth: '58ch',
             margin: '0 auto var(--spacing-xl)',
           }}
         >
-          Plan through any surface. Hand off to the build-engine kernel. Extend the workflow around it.
+          Define the change, hand it off, and come back to reviewable commits. eforge runs planning, implementation,
+          review, and validation in the background - you return at artifact boundaries, not token boundaries.
         </p>
         <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'center', flexWrap: 'wrap' }}>
           <a
@@ -115,11 +127,11 @@ export default function HomePage() {
       {/* Product positioning */}
       <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
-          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>An extensible forge for planned work</h2>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>You keep the judgment. eforge runs the loop.</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            eforge keeps the kernel small: normalized build-source intake, dependency-aware worktree orchestration, conservative gates,
-            typed recovery, and evented observability. Prompts, PRDs, playbooks, session plans, wrapper apps, and extensions shape the
-            workflow around it.
+            You plan the change: goal, context, constraints, and acceptance criteria. eforge plans and runs the build:
+            decomposition, isolated execution, blind review, retries, merge flow, and validation. Chat transcripts are
+            context; commits are the output.
           </p>
         </div>
         <div
@@ -181,8 +193,9 @@ export default function HomePage() {
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
           <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Built for repeatable, extensible handoffs</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            Standardize how work is delegated, which agent runtimes run it, which extension surfaces shape it, and what cost/performance
-            tradeoffs you want.
+            The build-engine kernel stays small - intake, worktree orchestration, conservative gates, typed recovery, evented
+            observability. Prompts, PRDs, playbooks, session plans, profiles, wrapper apps, and extensions standardize how work
+            is delegated, which agent runtimes run it, and what cost tradeoffs you accept.
           </p>
         </div>
         <div
@@ -235,8 +248,8 @@ export default function HomePage() {
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
           <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Choose your surface</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            eforge is one build-engine kernel with multiple host and extension surfaces. Start with Pi for the direction eforge is heading; use Claude Code
-            or the CLI when those fit your workflow better.
+            eforge is one build engine with multiple host surfaces. Start with Pi for provider choice and direct API
+            pricing; use Claude Code or the CLI when those fit your workflow better.
           </p>
         </div>
         <div
@@ -271,7 +284,8 @@ export default function HomePage() {
               </span>
             </div>
             <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-              Use eforge as a Pi extension for provider-flexible, local, inspectable agent orchestration with Pi&apos;s native UX.
+              Run eforge through Pi&apos;s native UX: choose your providers, pay API prices directly, and inspect every build
+              decision locally.
             </p>
             <pre
               style={{
@@ -325,9 +339,10 @@ export default function HomePage() {
               background: 'var(--color-bg-secondary)',
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Standalone CLI</h3>
+            <h3 style={{ marginTop: 0 }}>CLI</h3>
             <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-              Use eforge as a standalone CLI tool for scripting, automation, and direct engine usage.
+              Drive the engine directly for scripting and automation. After a one-time <code>/eforge:init</code> in Pi or
+              Claude Code, the CLI runs builds on its own.
             </p>
             <pre
               style={{

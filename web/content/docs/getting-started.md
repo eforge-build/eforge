@@ -5,7 +5,7 @@ description: Install eforge and run your first delegated build.
 
 # Getting Started
 
-eforge is an extensible build-engine kernel for turning normalized build source into reviewed, validated code changes. You describe what you want to build through a prompt, PRD, playbook, or session plan; eforge plans, implements, reviews, and validates the work through a multi-stage pipeline across isolated worktrees.
+eforge turns described work into reviewed, validated code changes. You describe what you want to build through a prompt, PRD, playbook, or session plan; eforge plans, implements, reviews, and validates the work through a multi-stage pipeline across isolated worktrees.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ eforge is an extensible build-engine kernel for turning normalized build source 
 
 ### Pi package (recommended)
 
-Start with Pi, the recommended eforge execution harness for new users, if you want provider-flexible, local, inspectable agent orchestration.
+Pi is the recommended harness for new users: you choose the providers, pay API prices directly, and keep orchestration local and inspectable.
 
 ```bash
 pi install npm:@eforge-build/pi-eforge
@@ -46,7 +46,7 @@ The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults a
 
 After initialization, run `/eforge:workflow` to choose the workflow preset for this repository. It writes the landing action, pull-request auto-merge policy, and stacking setup to `eforge/config.yaml`, including optional automatic stack sync for git-spice stacks.
 
-### Standalone CLI
+### CLI
 
 ```bash
 npx @eforge-build/eforge build "Add rate limiting to the API"
@@ -54,7 +54,7 @@ npx @eforge-build/eforge build "Add rate limiting to the API"
 
 Or install globally: `npm install -g @eforge-build/eforge`
 
-For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile.
+The CLI has no init command yet: run `/eforge:init` once in Pi or Claude Code to create `eforge/config.yaml` and an agent runtime profile. After that one-time setup, the CLI drives builds without either host - suited to scripting and automation.
 
 ## Your First Build
 
@@ -95,8 +95,8 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 ## What Happens Next
 
 1. **Formatting** - eforge normalizes your input into a structured PRD.
-2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria into a hidden queue artifact and rejects malformed, ungrounded, duplicate, low-confidence, bare-command, grouping-label, vague, manual-only, or visual-only criteria before writing the queue file.
-3. **Planning** - A planner agent assesses complexity and selects a workflow profile (Errand, Excursion, or Expedition), then writes a detailed plan or set of plans.
+2. **Acceptance criteria inventory** - enqueue canonicalizes acceptance criteria and rejects vague, unverifiable, or duplicate criteria before the build is queued. [Concepts](./concepts#the-queue-and-daemon) covers the full validation rules.
+3. **Planning** - A planner agent assesses complexity and selects a workflow profile ([Errand, Excursion, or Expedition](./concepts#workflow-profiles)), then writes a detailed plan or set of plans.
 4. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 5. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 6. **Merge** - Completed plans merge back to your branch in topological order.
