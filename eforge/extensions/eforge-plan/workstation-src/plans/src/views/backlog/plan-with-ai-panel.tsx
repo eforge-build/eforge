@@ -35,7 +35,7 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
         <p className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading planning tasks…</p>
       )}
       {!loading && items.length === 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">No planning tasks yet. Select ready backlog items and choose <span className="text-foreground">Promote to a build plan</span>, or start one from a recommendation.</p>
+        <p className="mt-3 text-xs text-muted-foreground">No planning tasks yet. Select ready backlog items (click a recommendation to add it to your selection) and choose <span className="text-foreground">Promote to a build plan</span>.</p>
       )}
 
       {items.length > 0 && (

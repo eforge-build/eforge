@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from '@/router';
-import type { Board as BoardData, BoardItem, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
+import type { Board as BoardData, BoardItem, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 import { Board } from './backlog/board';
 import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
@@ -36,13 +36,42 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
     });
   }, [router]);
 
-  const toggle = (item: BoardItem) => {
+  const toggleSelection = React.useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
+  }, []);
+
+  const toggle = React.useCallback((item: BoardItem) => toggleSelection(item.id), [toggleSelection]);
+
+  // Scroll a backlog card into view in the kanban board. No-op when the item is
+  // filtered out of the current view.
+  const focusItem = React.useCallback((id: string) => {
+    if (typeof document === 'undefined') return;
+    document.getElementById(`board-item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
+  // Clicking a recommendation toggles it into the current selection (like a
+  // kanban card) and scrolls it into view - it does not start a plan. Planning
+  // starts from the selection via "Promote to a build plan".
+  const pickRecommendationItem = React.useCallback((id: string) => {
+    toggleSelection(id);
+    focusItem(id);
+  }, [toggleSelection, focusItem]);
+
+  // Clicking a recommendation group adds all of its items to the selection and
+  // focuses the first one.
+  const pickRecommendationItems = React.useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    focusItem(ids[0]);
+  }, [focusItem]);
 
   const titles = React.useMemo(() => new Map((board.items ?? []).map((item) => [item.id, item.title])), [board.items]);
   const readyById = React.useMemo(() => new Map((board.items ?? []).map((item) => [item.id, item.ready])), [board.items]);
@@ -50,9 +79,6 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
   // AI promotion only uses the ready subset of the selection; blocked/closed/non-ready
   // items are excluded and the action is disabled when no ready items remain.
   const selectedReadyIds = React.useMemo(() => Array.from(selected).filter((id) => readyById.get(id) === true), [selected, readyById]);
-  const startPlan = React.useCallback(async (input: JsonObject) => {
-    await workflows.start(input);
-  }, [workflows]);
 
   const refreshRecommendations = React.useCallback(async () => {
     await workflows.refreshRecommendations();
@@ -72,7 +98,9 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
         status={recommendationStatus}
         activeRefreshTask={activeRecommendationRefreshTask}
         titles={titles}
-        onStartPlan={startPlan}
+        selected={selected}
+        onPickItem={pickRecommendationItem}
+        onPickItems={pickRecommendationItems}
         onRefreshRecommendations={refreshRecommendations}
         busy={workflows.busy}
       />

@@ -16,6 +16,7 @@ export function ItemCard({ item, selected, onToggle }: ItemCardProps) {
   const hasNotes = Boolean(item.notes.claim || item.notes.evidence || item.notes.recheck || item.notes.promotionPaths);
   return (
     <div
+      id={`board-item-${item.id}`}
       role="button"
       tabIndex={0}
       onClick={() => onToggle(item)}

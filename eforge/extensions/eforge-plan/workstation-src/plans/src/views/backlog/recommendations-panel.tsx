@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { AgentTaskStatus, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus, RecommendationStatusState } from '@/types';
+import type { AgentTaskStatus, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus, RecommendationStatusState } from '@/types';
 import { shortId } from './board-model';
 
 interface RecommendationsPanelProps {
@@ -9,14 +9,18 @@ interface RecommendationsPanelProps {
   status: RecommendationStatus | null;
   activeRefreshTask?: PlanningAgentTaskRecord | null;
   titles: Map<string, string>;
-  // Starts an AI session-plan generation task for the given backlog item ids or
-  // recommendation ref. There is no deterministic promotion path here.
-  onStartPlan: (input: JsonObject, label: string) => Promise<void>;
+  // Ids currently selected in the backlog; recommendation chips reflect this.
+  selected: Set<string>;
+  // Adds a single recommended item to the backlog selection and scrolls it into
+  // view. Clicking does not start a plan - planning starts from the selection.
+  onPickItem: (itemId: string) => void;
+  // Adds every item in a recommended group to the backlog selection.
+  onPickItems: (itemIds: string[]) => void;
   onRefreshRecommendations: () => Promise<void>;
   busy?: boolean;
 }
 
-export function RecommendationsPanel({ recommendations, status, activeRefreshTask, titles, onStartPlan, onRefreshRecommendations, busy }: RecommendationsPanelProps) {
+export function RecommendationsPanel({ recommendations, status, activeRefreshTask, titles, selected, onPickItem, onPickItems, onRefreshRecommendations, busy }: RecommendationsPanelProps) {
   if (!recommendations && !status) return null;
   const next = recommendations?.recommendedNextSequence ?? [];
   const groups = recommendations?.safeParallelizableGroups ?? [];
@@ -85,10 +89,9 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
             {next.map((entry, index) => (
               <button
                 key={entry.ref ?? entry.itemId}
-                title={entry.rationale}
-                disabled={busy}
-                onClick={() => void onStartPlan(entry.ref ? { recommendationRef: entry.ref } : { itemIds: [entry.itemId] }, label(entry.itemId))}
-                className="inline-flex max-w-80 items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-left transition-colors hover:border-primary disabled:opacity-50"
+                title={entry.rationale ? `${entry.rationale}\n\nClick to select this item in the backlog.` : 'Click to select this item in the backlog.'}
+                onClick={() => onPickItem(entry.itemId)}
+                className={`inline-flex max-w-80 items-center gap-2 rounded-md border bg-card px-2 py-1 text-left transition-colors hover:border-primary ${selected.has(entry.itemId) ? 'border-primary ring-1 ring-primary' : 'border-border'}`}
               >
                 <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--lane-ready)]/20 text-xs font-bold text-[color:var(--lane-ready)]">{index + 1}</span>
                 <span className="truncate text-xs text-foreground">{label(entry.itemId)}</span>
@@ -108,7 +111,7 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
               <ul className="mt-1 grid gap-2">
                 {groups.map((group) => (
                   <li key={group.ref}>
-                    <button disabled={busy} onClick={() => void onStartPlan({ recommendationRef: group.ref }, group.title ?? group.ref)} className="text-left text-xs font-semibold text-text-bright hover:underline disabled:opacity-50">{group.title ?? group.ref}</button>
+                    <button title="Click to select every item in this group" onClick={() => onPickItems(group.itemIds)} className="text-left text-xs font-semibold text-text-bright hover:underline">{group.title ?? group.ref}</button>
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {group.itemIds.map((id) => <Chip key={id}>{label(id)}</Chip>)}
                     </div>
