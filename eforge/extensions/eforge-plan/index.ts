@@ -11,8 +11,11 @@ import {
 import { extractMarkdownSections } from './backlog-domain.js';
 import { listBoard, renderBoardMarkdown } from './board-actions.js';
 import {
+  importLegacyBacklog as importLegacyBacklogRecords,
   readBacklogEpic,
   readBacklogItem,
+  resolveBacklogEpicRelativePath,
+  resolveBacklogItemRelativePath,
   updateBacklogItemFrontmatter,
   writeBacklogEpic,
   writeBacklogItem,
@@ -24,7 +27,7 @@ import { sessionPlanActions } from './session-plan-actions.js';
 import { recommendationActions } from './recommendation-actions.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
 import { plannerActions } from './planner-actions.js';
-import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
+import { ActionObjectOutputSchema, BacklogIdInputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
 const CaptureInput = Type.Object({
@@ -38,12 +41,13 @@ const UpdateInput = Type.Object({
   evidenceNotes: Type.Optional(Type.String()), recheckNotes: Type.Optional(Type.String()), dependsOn: Type.Optional(Type.Array(Type.String())), epic: Type.Optional(Type.String()),
 });
 const PromoteInput = Type.Object({ itemId: Type.String(), status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('planned')])), session: Type.Optional(Type.String()), profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])) });
+const ImportLegacyInput = Type.Object({ kind: Type.Optional(Type.Union([Type.Literal('items'), Type.Literal('epics'), Type.Literal('all')])), ids: Type.Optional(Type.Array(BacklogIdInputSchema)) });
 const PromoteSelectionInput = PromotionSelectionInputSchema;
 const PromoteSelectionOutput = PromotionSelectionOutputSchema;
 const ActionObjectOutput = ActionObjectOutputSchema;
 
 const captureItem = defineExtensionAction({
-  id: 'capture-item', title: 'Capture backlog item', description: 'Create a project-local .backlog item.',
+  id: 'capture-item', title: 'Capture backlog item', description: 'Create a visible eforge-plan backlog item and write it to private project-local storage.',
   inputSchema: CaptureInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const id = await resolveNewItemId(ctx.cwd, input.id, input.title);
@@ -51,12 +55,12 @@ const captureItem = defineExtensionAction({
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria ?? 'Missing acceptance criteria: add concrete, verifiable done conditions before build handoff.', ''].join('\n');
     const item = await writeBacklogItem(ctx.cwd, { id, status: 'candidate', priority: input.priority, tags: input.tags ?? [], depends_on: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
-    return toJsonSafeObject({ itemId: item.id, status: item.status, path: `.backlog/items/${item.id}.md` });
+    return toJsonSafeObject({ itemId: item.id, status: item.status, path: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
   },
 });
 
 const upsertEpic = defineExtensionAction({
-  id: 'upsert-epic', title: 'Upsert backlog epic', description: 'Create or update a project-local .backlog epic without item membership lists.',
+  id: 'upsert-epic', title: 'Upsert backlog epic', description: 'Create or update a visible eforge-plan backlog epic in private project-local storage without item membership lists.',
   inputSchema: EpicInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const id = input.id ?? slugify(input.title);
@@ -65,12 +69,12 @@ const upsertEpic = defineExtensionAction({
     const body = input.body ?? (existing ? undefined : `# ${input.title}\n\n`);
     const epic = await writeBacklogEpic(ctx.cwd, { id, status: normalizedStatus(input.status, 'candidate'), priority: input.priority, tags: input.tags ?? [], updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'upsert-epic', [epic.id]);
-    return toJsonSafeObject({ epicId: epic.id, status: epic.status, path: `.backlog/epics/${epic.id}.md` });
+    return toJsonSafeObject({ epicId: epic.id, status: epic.status, path: resolveBacklogEpicRelativePath(ctx.cwd, epic.id) });
   },
 });
 
 const updateItem = defineExtensionAction({
-  id: 'update-item', title: 'Update backlog item', description: 'Update item metadata while preserving Markdown body content.',
+  id: 'update-item', title: 'Update backlog item', description: 'Update visible eforge-plan item metadata while preserving Markdown body content; writes are private storage only.',
   inputSchema: UpdateInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const updates: Record<string, unknown> = { updated: new Date().toISOString() };
@@ -88,7 +92,7 @@ const updateItem = defineExtensionAction({
 });
 
 const promoteItem = defineExtensionAction({
-  id: 'promote-item', title: 'Promote backlog item', description: 'Write a session plan and trace evidence for a backlog item.',
+  id: 'promote-item', title: 'Promote backlog item', description: 'Write a session plan, private backlog metadata updates, and trace evidence for a visible eforge-plan backlog item.',
   inputSchema: PromoteInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null });
@@ -98,7 +102,7 @@ const promoteItem = defineExtensionAction({
 });
 
 const promoteSelection = defineExtensionAction({
-  id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan for selected backlog items, an epic, or a recommendation ref.',
+  id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan for selected visible eforge-plan backlog items, an epic, or a recommendation ref; backlog writes are private storage only.',
   inputSchema: PromoteSelectionInput, outputSchema: PromoteSelectionOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogSelection({
@@ -116,23 +120,34 @@ const promoteSelection = defineExtensionAction({
   },
 });
 
+// --- eforge:region plan-02-storage-foundation ---
+const importLegacyBacklog = defineExtensionAction({
+  id: 'import-legacy-backlog', title: 'Import legacy backlog records', description: 'Copy selected legacy .backlog records into private eforge-plan backlog storage without deleting legacy files.',
+  inputSchema: ImportLegacyInput, outputSchema: ActionObjectOutput, sideEffects: ['local-read', 'local-write'],
+  async handler(input, ctx) {
+    return toJsonSafeObject(await importLegacyBacklogRecords(ctx.cwd, input));
+  },
+});
+// --- eforge:endregion plan-02-storage-foundation ---
+
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
   eforge.registerAction(listBoard);
   eforge.registerAction(captureItem);
   eforge.registerAction(upsertEpic);
   eforge.registerAction(updateItem);
+  eforge.registerAction(importLegacyBacklog);
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
   for (const action of recommendationActions) eforge.registerAction(action);
   for (const action of plannerActions) eforge.registerAction(action);
   for (const action of sessionPlanActions) eforge.registerAction(action);
-  eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile .backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
+  eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local backlog curation.',
     blocks: [
-      { rendererId: 'markdown', title: 'Board summary', content: 'Use **Render board** to display the current derived kanban board from `.backlog`.' },
+      { rendererId: 'markdown', title: 'Board summary', content: 'Use **Render board** to display the current derived kanban board from visible eforge-plan backlog records.' },
       { rendererId: 'status-badge', title: 'Lifecycle linkage', content: 'Trace sidecars enabled', status: 'active' },
       { rendererId: 'action-button', title: 'List board data', content: 'Return current board JSON.', action: { actionId: 'list-board' } },
       { rendererId: 'action-button', title: 'Render board', content: 'Show current board Markdown', action: { actionId: 'render-board-markdown' } },
@@ -149,6 +164,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Apply planning agent task result', content: 'Apply only selected generated recommendations, handoff drafts, or session-plan sections.', action: { actionId: 'apply-planning-agent-task-result' } },
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
+      { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
     ],
   }));
   eforge.registerConsoleWorkstation(defineConsoleWorkstation({

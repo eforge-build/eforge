@@ -9,6 +9,7 @@ export const PLANNING_DEPTHS = ['quick', 'focused', 'deep'] as const;
 export const PLANNING_PROFILES = ['errand', 'excursion', 'expedition'] as const;
 export type BacklogStatus = (typeof BACKLOG_STATUSES)[number];
 export type KanbanLane = (typeof KANBAN_LANES)[number];
+export const BacklogIdInputSchema = Type.String({ minLength: 1, pattern: '^(?!\\.\\.?$)(?!.*[\\\\/\\u0000]).+$' });
 export const BacklogStatusSchema = Type.Union([
   Type.Literal('candidate'),
   Type.Literal('planned'),
