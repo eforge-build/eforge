@@ -200,9 +200,10 @@ describe('extension agent task contracts', () => {
   });
 
   it('bumps the daemon API version for the backlog curation draft contract', () => {
-    expect(DAEMON_API_VERSION).toBe(63);
+    expect(DAEMON_API_VERSION).toBe(64);
     const source = readFileSync(new URL('../api-version-const.ts', import.meta.url), 'utf8');
     expect(source).toContain('backlogCurationDraft');
+    expect(source).toContain('non-empty rationale');
     expect(source).toContain('requested output section');
     expect(source).toContain('result field');
     expect(source).toContain('first-party workstation');

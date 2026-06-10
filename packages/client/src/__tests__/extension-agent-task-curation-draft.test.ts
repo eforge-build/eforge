@@ -34,6 +34,7 @@ const validBacklogCurationDraft = {
     kind: 'epic',
     precondition: { id: 'epic-1', kind: 'epic', bodySha256: EPIC_BODY_SHA, recordSha256: RECORD_SHA },
     metadata: { priority: 'high' },
+    rationale: 'The epic needs priority alignment with active items.',
   }],
   noOpRechecks: [{
     id: 'item-2',
@@ -87,12 +88,30 @@ describe('eforge-plan backlog curation draft contract', () => {
     })).toBe(false);
   });
 
-  it('rejects blank curation metadata references', () => {
+  it('accepts source-provided curation precondition metadata', () => {
     expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
       ...validBacklogCurationDraft,
       itemChanges: [{
         ...validBacklogCurationDraft.itemChanges[0],
-        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, depends_on: [''] },
+        precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, origin: 'private', relativePath: '.eforge/storage/extensions/eforge-plan/backlog/items/item-1.md' },
+      }],
+    })).toBe(true);
+  });
+
+  it('rejects unsafe curation ids, references, and statuses', () => {
+    for (const id of ['nested/item', 'nested\\item', '.', '..', 'bad\0id']) {
+      expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, { ...validBacklogCurationDraft, itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], id }] })).toBe(false);
+      expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, { ...validBacklogCurationDraft, itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, id } }] })).toBe(false);
+      expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, { ...validBacklogCurationDraft, noOpRechecks: [{ ...validBacklogCurationDraft.noOpRechecks[0], id }] })).toBe(false);
+      expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, { ...validBacklogCurationDraft, skipped: [{ id, kind: 'item', reason: 'skip' }] })).toBe(false);
+      expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, { ...validBacklogCurationDraft, needsInput: [{ id, kind: 'item', question: 'Question?' }] })).toBe(false);
+    }
+
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      itemChanges: [{
+        ...validBacklogCurationDraft.itemChanges[0],
+        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, depends_on: ['nested/item'] },
       }],
     })).toBe(false);
 
@@ -100,7 +119,15 @@ describe('eforge-plan backlog curation draft contract', () => {
       ...validBacklogCurationDraft,
       itemChanges: [{
         ...validBacklogCurationDraft.itemChanges[0],
-        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, epic: '   ' },
+        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, epic: '../epic' },
+      }],
+    })).toBe(false);
+
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      itemChanges: [{
+        ...validBacklogCurationDraft.itemChanges[0],
+        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, status: 'blocked' },
       }],
     })).toBe(false);
   });
@@ -110,6 +137,15 @@ describe('eforge-plan backlog curation draft contract', () => {
     expect(Value.Check(EforgePlanPlanningBacklogCurationRecordPatchSchema, {
       ...validBacklogCurationDraft.itemChanges[0],
       precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, kind: 'epic' },
+    })).toBe(false);
+  });
+
+  it('requires non-empty rationale for material curation patches', () => {
+    const { rationale: _missingItemRationale, ...itemWithoutRationale } = validBacklogCurationDraft.itemChanges[0];
+    expect(Value.Check(EforgePlanPlanningBacklogCurationRecordPatchSchema, itemWithoutRationale)).toBe(false);
+    expect(Value.Check(EforgePlanPlanningBacklogCurationRecordPatchSchema, {
+      ...validBacklogCurationDraft.epicChanges[0],
+      rationale: '   ',
     })).toBe(false);
   });
 

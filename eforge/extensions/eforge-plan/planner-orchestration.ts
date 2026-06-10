@@ -114,7 +114,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   const workflowEntry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), task.taskId);
   if (input.applyBacklogCurationDraft !== undefined) {
     const backlogCuration = await applyBacklogCurationDraftFromTask(cwd, task, input, workflowEntry);
-    return { schemaVersion: 1, taskId: task.taskId, applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0, backlogCuration: backlogCuration.itemChanges + backlogCuration.epicChanges + backlogCuration.noOpRechecks }, backlogCuration };
+    return { schemaVersion: 1, taskId: task.taskId, applied: { recommendations: backlogCuration.recommendations !== undefined, handoffDrafts: 0, sessionPlanSections: 0, backlogCuration: backlogCuration.itemChanges + backlogCuration.epicChanges + backlogCuration.noOpRechecks }, backlogCuration };
   }
   assertCompletedPlanningDraftTask(task);
   const rawResult = task.result as Record<string, unknown> | undefined;

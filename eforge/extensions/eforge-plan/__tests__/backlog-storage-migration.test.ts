@@ -12,6 +12,8 @@ import {
   listBacklogEpics,
   listBacklogItemSnapshots,
   listBacklogItems,
+  loadBacklogEpics,
+  loadBacklogItems,
   readBacklogEpic,
   readBacklogEpicSnapshot,
   readBacklogItem,
@@ -81,6 +83,18 @@ describe('eforge-plan backlog storage migration', () => {
     });
   });
 
+  it('keeps loadBacklog aliases wired to merged private plus legacy listings', async () => {
+    await withTempProject(async (cwd) => {
+      await writeLegacy(cwd, 'items', 'legacy-alias', 'candidate', 'Legacy Alias Item');
+      await writeLegacy(cwd, 'epics', 'legacy-alias-epic', 'candidate', 'Legacy Alias Epic');
+      await writeBacklogItem(cwd, { id: 'private-alias', status: 'planned', body: '# Private Alias Item\n' });
+      await writeBacklogEpic(cwd, { id: 'private-alias-epic', status: 'planned', body: '# Private Alias Epic\n' });
+
+      expect((await loadBacklogItems(cwd)).map((item) => item.id)).toEqual(['legacy-alias', 'private-alias']);
+      expect((await loadBacklogEpics(cwd)).map((epic) => epic.id)).toEqual(['legacy-alias-epic', 'private-alias-epic']);
+    });
+  });
+
   it('ignores malformed legacy duplicates shadowed by private records', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'shadowed', status: 'active', body: '# Private Shadowed\n' });
@@ -105,6 +119,20 @@ describe('eforge-plan backlog storage migration', () => {
     });
   });
 
+  it('rejects malformed private item and epic frontmatter ids during read and list', async () => {
+    await withTempProject(async (cwd) => {
+      await mkdir(join(cwd, '.eforge', 'storage', 'extensions', 'eforge-plan', 'backlog', 'items'), { recursive: true });
+      await mkdir(join(cwd, '.eforge', 'storage', 'extensions', 'eforge-plan', 'backlog', 'epics'), { recursive: true });
+      await writeFile(resolveBacklogItemPath(cwd, 'private-bad'), '---\nid: other-item\nstatus: candidate\n---\n# Bad Item\n');
+      await writeFile(resolveBacklogEpicPath(cwd, 'private-bad-epic'), '---\nid: nested/epic\nstatus: candidate\n---\n# Bad Epic\n');
+
+      await expect(readBacklogItem(cwd, 'private-bad')).rejects.toThrow(/id mismatch/);
+      await expect(listBacklogItems(cwd)).rejects.toThrow(/id mismatch/);
+      await expect(readBacklogEpic(cwd, 'private-bad-epic')).rejects.toThrow(/Unsafe/);
+      await expect(listBacklogEpics(cwd)).rejects.toThrow(/Unsafe/);
+    });
+  });
+
   it('writes and updates private files only while preserving legacy bytes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'new-item', status: 'candidate', body: '# New Item\n' });
@@ -122,6 +150,23 @@ describe('eforge-plan backlog storage migration', () => {
       expect(await readFile(resolveLegacyBacklogEpicPath(cwd, 'legacy-epic-update'), 'utf-8')).toBe(epicRaw);
       expect(await readBacklogItem(cwd, 'legacy-update')).toMatchObject({ status: 'active', title: 'Legacy Update', body: expect.stringContaining('Legacy body') });
       expect(await readBacklogEpic(cwd, 'legacy-epic-update')).toMatchObject({ status: 'active', title: 'Legacy Epic Update', body: expect.stringContaining('Legacy body') });
+    });
+  });
+
+  it('write helpers copy legacy-only visible records into private storage and preserve legacy bytes', async () => {
+    await withTempProject(async (cwd) => {
+      const itemRaw = await writeLegacy(cwd, 'items', 'legacy-write', 'candidate', 'Legacy Write Item');
+      const epicRaw = await writeLegacy(cwd, 'epics', 'legacy-epic-write', 'candidate', 'Legacy Write Epic');
+
+      await writeBacklogItem(cwd, { id: 'legacy-write', status: 'planned', priority: 'high' });
+      await writeBacklogEpic(cwd, { id: 'legacy-epic-write', status: 'planned', priority: 'high' });
+
+      expect(await readFile(resolveLegacyBacklogItemPath(cwd, 'legacy-write'), 'utf-8')).toBe(itemRaw);
+      expect(await readFile(resolveLegacyBacklogEpicPath(cwd, 'legacy-epic-write'), 'utf-8')).toBe(epicRaw);
+      expect(await readFile(resolveBacklogItemPath(cwd, 'legacy-write'), 'utf-8')).toContain('Legacy body for legacy-write.');
+      expect(await readFile(resolveBacklogEpicPath(cwd, 'legacy-epic-write'), 'utf-8')).toContain('Legacy body for legacy-epic-write.');
+      expect(await readBacklogItem(cwd, 'legacy-write')).toMatchObject({ status: 'planned', priority: 'high', title: 'Legacy Write Item' });
+      expect(await readBacklogEpic(cwd, 'legacy-epic-write')).toMatchObject({ status: 'planned', priority: 'high', title: 'Legacy Write Epic' });
     });
   });
 
@@ -159,6 +204,16 @@ describe('eforge-plan backlog storage migration', () => {
   it('rejects ambiguous selected ids for all-kind legacy imports', async () => {
     await withTempProject(async (cwd) => {
       await expect(importLegacyBacklog(cwd, { kind: 'all', ids: ['one'] })).rejects.toThrow(/ids may only be used/);
+    });
+  });
+
+  it('throws for missing selected legacy records before importing any private copies', async () => {
+    await withTempProject(async (cwd) => {
+      await writeLegacy(cwd, 'items', 'copy-before-missing');
+
+      await expect(importLegacyBacklog(cwd, { kind: 'items', ids: ['copy-before-missing', 'missing-selected'] })).rejects.toThrow(/ENOENT|no such file|not found/i);
+      expect(existsSync(resolveBacklogItemPath(cwd, 'copy-before-missing'))).toBe(false);
+      expect(existsSync(resolveLegacyBacklogItemPath(cwd, 'copy-before-missing'))).toBe(true);
     });
   });
 

@@ -29,6 +29,7 @@ describe('typeboxObjectToZodRawShape', () => {
         kind: 'epic',
         precondition: { id: 'epic-1', kind: 'epic', bodySha256: 'a'.repeat(64) },
         metadata: { priority: 'high' },
+        rationale: 'The epic needs priority alignment with active items.',
       }],
       noOpRechecks: [],
       skipped: [],

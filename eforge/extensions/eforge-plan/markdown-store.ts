@@ -1,5 +1,5 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { constants, existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
@@ -440,7 +440,7 @@ async function readRequiredVisibleParsed<T extends BacklogItem | BacklogEpic>(
 }
 
 interface BacklogImportKindPlan {
-  copy: Array<{ id: string; sourcePath: string; privatePath: string }>;
+  copy: Array<{ id: string; privatePath: string; rawContent: Buffer }>;
   skipped: BacklogImportKindResult['skipped'];
 }
 
@@ -459,7 +459,8 @@ async function planLegacyKindImport<T extends BacklogItem | BacklogEpic>(
   parser: (raw: string) => T,
   ids?: string[],
 ): Promise<BacklogImportKindPlan> {
-  const privateIds = new Set(await listOriginRecordIds(cwd, kind, 'private'));
+  const privateSnapshots = await listOriginSnapshots(cwd, kind, 'private', parser);
+  const privateIds = new Set(privateSnapshots.map((snapshot) => snapshot.id));
   const legacyIds = ids === undefined ? await listOriginRecordIds(cwd, kind, 'legacy') : [...new Set(ids)].sort();
   const skipped = legacyIds.filter((id) => {
     assertSafeBacklogId(id);
@@ -468,11 +469,14 @@ async function planLegacyKindImport<T extends BacklogItem | BacklogEpic>(
   const candidateIds = legacyIds.filter((id) => !privateIds.has(id));
   const candidates = await Promise.all(candidateIds.map(async (id) => {
     assertSafeBacklogId(id);
-    return readSnapshot(cwd, kind, 'legacy', id, recordPath(cwd, kind, 'legacy', id), parser);
+    const sourcePath = recordPath(cwd, kind, 'legacy', id);
+    const rawContent = await readFile(sourcePath);
+    const snapshot = createSnapshotFromRawContent(cwd, kind, 'legacy', id, sourcePath, parser, rawContent);
+    return { snapshot, rawContent };
   }));
   const copy: BacklogImportKindPlan['copy'] = [];
-  for (const candidate of candidates.sort((left, right) => left.id.localeCompare(right.id))) {
-    copy.push({ id: candidate.id, sourcePath: candidate.path, privatePath: recordPath(cwd, kind, 'private', candidate.id) });
+  for (const candidate of candidates.sort((left, right) => left.snapshot.id.localeCompare(right.snapshot.id))) {
+    copy.push({ id: candidate.snapshot.id, privatePath: recordPath(cwd, kind, 'private', candidate.snapshot.id), rawContent: candidate.rawContent });
   }
   return { copy, skipped };
 }
@@ -483,7 +487,7 @@ async function copyLegacyImportPlan(cwd: string, plan: BacklogImportKindPlan): P
   for (const candidate of plan.copy) {
     await mkdir(dirname(candidate.privatePath), { recursive: true });
     try {
-      await copyFile(candidate.sourcePath, candidate.privatePath, constants.COPYFILE_EXCL);
+      await writeFile(candidate.privatePath, candidate.rawContent, { flag: 'wx' });
       copied.push({ id: candidate.id, path: toProjectRelativePath(cwd, candidate.privatePath) });
     } catch (error) {
       if (isFileExistsError(error)) {

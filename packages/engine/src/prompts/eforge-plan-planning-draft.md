@@ -51,6 +51,7 @@ When the requested output sections include `backlogCurationDraft`:
 
 - Preserve the provided `sourceFingerprint` exactly in the draft.
 - Emit structured `itemChanges`, `epicChanges`, `noOpRechecks`, `skipped`, and `needsInput` arrays. Use empty arrays when a category has no entries.
+- Every material entry in `itemChanges` and `epicChanges` must include a non-empty `rationale` explaining why the patch is safe and necessary.
 - For materially unchanged records, use `noOpRechecks` rather than body or metadata patches, except for `last_checked` and `stale_after` metadata refreshes.
 - Use `skipped` for records that should not be changed for a specific reason, and `needsInput` for per-record questions that block a safe curation proposal.
 - Do not claim that backlog records were written or updated. This task only drafts structured output; the extension applies validated patches later.

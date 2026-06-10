@@ -175,12 +175,23 @@ export const EforgePlanPlanningRecommendationsSchema = Type.Object({
 
 // --- eforge:region backlog-curation-draft ---
 const EforgePlanPlanningNonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
+const EforgePlanPlanningBacklogSafeIdSchema = Type.String({ minLength: 1, pattern: '^(?!\\.\\.?$)(?!.*[\\\\/\\u0000]).+$' });
+const EforgePlanPlanningBacklogStatusSchema = Type.Union([
+  Type.Literal('candidate'),
+  Type.Literal('planned'),
+  Type.Literal('active'),
+  Type.Literal('shipped'),
+  Type.Literal('stale'),
+  Type.Literal('superseded'),
+]);
 export const EforgePlanPlanningSha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
 
 export const EforgePlanPlanningBacklogCurationRecordKindSchema = Type.Union([Type.Literal('item'), Type.Literal('epic')]);
 
 const eforgePlanPlanningBacklogCurationPreconditionFields = {
-  id: EforgePlanPlanningNonEmptyStringSchema,
+  id: EforgePlanPlanningBacklogSafeIdSchema,
+  origin: Type.Optional(Type.Union([Type.Literal('private'), Type.Literal('legacy')])),
+  relativePath: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
   bodySha256: EforgePlanPlanningSha256HexSchema,
   sourceFingerprint: Type.Optional(EforgePlanPlanningSha256HexSchema),
   updated: Type.Optional(Type.String()),
@@ -203,11 +214,11 @@ export const EforgePlanPlanningBacklogCurationEpicPreconditionSchema = Type.Obje
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningBacklogCurationMetadataPatchSchema = Type.Object({
-  status: Type.Optional(Type.String()),
+  status: Type.Optional(EforgePlanPlanningBacklogStatusSchema),
   priority: Type.Optional(Type.String()),
   tags: Type.Optional(Type.Array(Type.String())),
-  depends_on: Type.Optional(Type.Array(EforgePlanPlanningNonEmptyStringSchema)),
-  epic: Type.Optional(Type.Union([EforgePlanPlanningNonEmptyStringSchema, Type.Null()])),
+  depends_on: Type.Optional(Type.Array(EforgePlanPlanningBacklogSafeIdSchema)),
+  epic: Type.Optional(Type.Union([EforgePlanPlanningBacklogSafeIdSchema, Type.Null()])),
   last_checked: Type.Optional(Type.String()),
   stale_after: Type.Optional(Type.String()),
 }, { additionalProperties: false });
@@ -219,10 +230,10 @@ export const EforgePlanPlanningBacklogCurationSectionOperationSchema = Type.Obje
 }, { additionalProperties: false });
 
 const eforgePlanPlanningBacklogCurationRecordPatchFields = {
-  id: EforgePlanPlanningNonEmptyStringSchema,
+  id: EforgePlanPlanningBacklogSafeIdSchema,
   metadata: Type.Optional(EforgePlanPlanningBacklogCurationMetadataPatchSchema),
   sectionOperations: Type.Optional(Type.Array(EforgePlanPlanningBacklogCurationSectionOperationSchema)),
-  rationale: Type.Optional(Type.String()),
+  rationale: Type.String({ minLength: 1, pattern: '\\S' }),
   evidence: Type.Optional(Type.Array(Type.String())),
 } as const;
 
@@ -244,7 +255,7 @@ export const EforgePlanPlanningBacklogCurationRecordPatchSchema = Type.Union([
 ]);
 
 const eforgePlanPlanningBacklogCurationRecheckFields = {
-  id: EforgePlanPlanningNonEmptyStringSchema,
+  id: EforgePlanPlanningBacklogSafeIdSchema,
   last_checked: Type.String(),
   stale_after: Type.String(),
   rationale: Type.Optional(Type.String()),
@@ -268,13 +279,13 @@ export const EforgePlanPlanningBacklogCurationRecheckSchema = Type.Union([
 ]);
 
 export const EforgePlanPlanningBacklogCurationSkippedSchema = Type.Object({
-  id: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  id: Type.Optional(EforgePlanPlanningBacklogSafeIdSchema),
   kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
   reason: EforgePlanPlanningNonEmptyStringSchema,
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningBacklogCurationNeedsInputSchema = Type.Object({
-  id: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  id: Type.Optional(EforgePlanPlanningBacklogSafeIdSchema),
   kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
   question: EforgePlanPlanningNonEmptyStringSchema,
   reason: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),

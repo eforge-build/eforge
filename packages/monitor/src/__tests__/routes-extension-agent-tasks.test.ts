@@ -33,6 +33,7 @@ const backlogCurationDraft = {
     precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA, sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111' },
     metadata: { last_checked: '2026-01-01', stale_after: '2026-02-01' },
     sectionOperations: [{ heading: 'Evidence', action: 'append', content: 'Durable evidence from source text.' }],
+    rationale: 'The item has fresh implementation evidence.',
     evidence: ['Source text says the item remains active.'],
   }],
   epicChanges: [],

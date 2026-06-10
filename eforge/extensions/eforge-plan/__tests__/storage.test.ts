@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import eforgePlanExtension from '../index.js';
 import {
   assertSafeBacklogId,
+  importLegacyBacklogItems,
   listBacklogEpics,
   listBacklogItems,
   readBacklogEpic,
@@ -153,6 +154,19 @@ describe('eforge-plan markdown storage', () => {
       expect(() => resolveLegacyBacklogItemPath('/tmp/project', unsafe)).toThrow(/Unsafe|empty|not/);
       expect(() => resolveLegacyBacklogEpicPath('/tmp/project', unsafe)).toThrow(/Unsafe|empty|not/);
     }
+  });
+
+  it('validates private duplicates before skipping legacy import records', async () => {
+    await withTempProject(async (cwd) => {
+      const privatePath = resolveBacklogItemPath(cwd, 'item-1');
+      const legacyPath = resolveLegacyBacklogItemPath(cwd, 'item-1');
+      await mkdir(join(privatePath, '..'), { recursive: true });
+      await mkdir(join(legacyPath, '..'), { recursive: true });
+      await writeFile(privatePath, '---\nid: item-1\nstatus: blocked\n---\n# Item One\n');
+      await writeFile(legacyPath, '---\nid: item-1\nstatus: candidate\n---\n# Item One\n');
+
+      await expect(importLegacyBacklogItems(cwd)).rejects.toThrow(/Invalid backlog status|blocked/);
+    });
   });
 
   it('treats missing storage directories as empty collections', async () => {

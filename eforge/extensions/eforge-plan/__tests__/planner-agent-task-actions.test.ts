@@ -13,6 +13,7 @@ import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown
 import { createEmptyRecommendationModel, readRecommendations, writeRecommendations } from '../recommendations-store.js';
 import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { ApplyPlanningAgentTaskResultInputSchema } from '../planning-agent-task-schemas.js';
+import { buildBacklogCurationSource } from '../backlog-curation-source.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-agent-task-'));
@@ -358,6 +359,57 @@ describe('planning agent task actions', () => {
 
       expect(result.kind).toBe('handler-error');
       expect(await readRecommendations(cwd)).toBeNull();
+    });
+  });
+
+  it('reports recommendations applied when confirmed backlog curation writes generated recommendations', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
+      const source = await buildBacklogCurationSource(cwd);
+      const precondition = ((source.source as { preconditions: { items: Array<Record<string, unknown>> } }).preconditions.items[0]);
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-curation',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: '',
+        derivedRequest: 'Analyze and curate all open eforge-plan backlog records.',
+        selection: {},
+        requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
+        includeRoadmap: true,
+        purpose: 'backlog-curation',
+        sourceFingerprint: source.sourceFingerprint,
+      });
+      const task = curationCompletedTask('task-curation');
+      task.result = {
+        summary: 'Drafted backlog curation and recommendations.',
+        assumptionsOpenQuestions: [],
+        backlogCurationDraft: {
+          schemaVersion: 1,
+          sourceFingerprint: source.sourceFingerprint,
+          summary: [],
+          itemChanges: [],
+          epicChanges: [],
+          noOpRechecks: [{ id: 'item-one', kind: 'item', precondition: { ...precondition, sourceFingerprint: source.sourceFingerprint }, last_checked: '2026-01-01', stale_after: '2026-02-01' }],
+          skipped: [],
+          needsInput: [],
+        },
+        recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-one', rationale: 'Ready after curation.' }] },
+      };
+
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'task-curation', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { return { task }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result).toMatchObject({ kind: 'success', output: { applied: { recommendations: true, backlogCuration: 1 } } });
+      expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [{ itemId: 'item-one' }] });
     });
   });
 
