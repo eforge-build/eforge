@@ -5,7 +5,11 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   importLegacyBacklog,
+  listBacklogEpics,
   listBacklogItems,
+  loadBacklogEpics,
+  loadBacklogItems,
+  readBacklogEpic,
   readBacklogItem,
   resolveBacklogEpicPath,
   resolveBacklogItemPath,
@@ -77,6 +81,39 @@ describe('eforge-plan private backlog storage edge cases', () => {
     });
   });
 
+  it('validates legacy epics before copying legacy items for all-kind imports', async () => {
+    await withTempProject(async (cwd) => {
+      await writeLegacyRecord(resolveLegacyBacklogItemPath(cwd, 'copy-first'), '---\nid: copy-first\nstatus: candidate\n---\n# Copy First\n');
+      await writeLegacyRecord(resolveLegacyBacklogEpicPath(cwd, 'bad-epic'), '---\nid: nested/bad\nstatus: candidate\n---\n# Bad Epic\n');
+
+      await expect(importLegacyBacklog(cwd, { kind: 'all' })).rejects.toThrow(/Unsafe/);
+
+      expect(existsSync(resolveBacklogItemPath(cwd, 'copy-first'))).toBe(false);
+      expect(existsSync(resolveBacklogEpicPath(cwd, 'bad-epic'))).toBe(false);
+    });
+  });
+
+  it('skips malformed legacy duplicates without parsing when private records exist', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'dup-item', status: 'active', body: '# Private Duplicate\n' });
+      await writeLegacyRecord(resolveLegacyBacklogItemPath(cwd, 'dup-item'), '---\nid: nested/bad\nstatus: candidate\n---\n# Bad Duplicate\n');
+
+      expect((await listBacklogItems(cwd)).map((item) => item.id)).toEqual(['dup-item']);
+      const result = await importLegacyBacklog(cwd, { kind: 'items', ids: ['dup-item'] });
+      expect(result.items).toEqual({ copied: [], skipped: [{ id: 'dup-item', reason: 'private-exists' }] });
+    });
+  });
+
+  it('deduplicates selected legacy ids before importing', async () => {
+    await withTempProject(async (cwd) => {
+      await writeLegacyRecord(resolveLegacyBacklogItemPath(cwd, 'selected-item'), '---\nid: selected-item\nstatus: candidate\n---\n# Selected Item\n');
+
+      const result = await importLegacyBacklog(cwd, { kind: 'items', ids: ['selected-item', 'selected-item'] });
+
+      expect(result.items).toEqual({ copied: [{ id: 'selected-item', path: '.eforge/storage/extensions/eforge-plan/backlog/items/selected-item.md' }], skipped: [] });
+    });
+  });
+
   it('keeps private duplicate records authoritative after a legacy import skips them', async () => {
     await withTempProject(async (cwd) => {
       await writeLegacyRecord(resolveLegacyBacklogItemPath(cwd, 'dup-item'), '---\nid: dup-item\nstatus: candidate\n---\n# Legacy Duplicate\n');
@@ -90,6 +127,37 @@ describe('eforge-plan private backlog storage edge cases', () => {
       expect(await readFile(resolveBacklogItemPath(cwd, 'dup-item'), 'utf-8')).toBe(privateBefore);
       expect(await readBacklogItem(cwd, 'dup-item')).toMatchObject({ status: 'active', title: 'Private Duplicate' });
       expect((await listBacklogItems(cwd)).map((item) => item.id)).toEqual(['dup-item']);
+    });
+  });
+
+  it('keeps load aliases wired to merged private and legacy item and epic listings', async () => {
+    await withTempProject(async (cwd) => {
+      await writeLegacyRecord(resolveLegacyBacklogItemPath(cwd, 'legacy-item'), '---\nid: legacy-item\nstatus: candidate\n---\n# Legacy Item\n');
+      await writeLegacyRecord(resolveLegacyBacklogEpicPath(cwd, 'legacy-epic'), '---\nid: legacy-epic\nstatus: candidate\n---\n# Legacy Epic\n');
+      await writeBacklogItem(cwd, { id: 'private-item', status: 'active', body: '# Private Item\n' });
+      await writeBacklogEpic(cwd, { id: 'private-epic', status: 'planned', body: '# Private Epic\n' });
+
+      expect((await loadBacklogItems(cwd)).map((item) => `${item.id}:${item.title}`)).toEqual(['legacy-item:Legacy Item', 'private-item:Private Item']);
+      expect((await loadBacklogEpics(cwd)).map((epic) => `${epic.id}:${epic.title}`)).toEqual(['legacy-epic:Legacy Epic', 'private-epic:Private Epic']);
+      expect(await loadBacklogItems(cwd)).toEqual(await listBacklogItems(cwd));
+      expect(await loadBacklogEpics(cwd)).toEqual(await listBacklogEpics(cwd));
+    });
+  });
+
+  it('imports only selected legacy epics and preserves unrelated legacy epics in place', async () => {
+    await withTempProject(async (cwd) => {
+      await writeLegacyRecord(resolveLegacyBacklogEpicPath(cwd, 'selected-epic'), '---\nid: selected-epic\nstatus: candidate\n---\n# Selected Epic\n');
+      await writeLegacyRecord(resolveLegacyBacklogEpicPath(cwd, 'unselected-epic'), '---\nid: unselected-epic\nstatus: candidate\n---\n# Unselected Epic\n');
+
+      const result = await importLegacyBacklog(cwd, { kind: 'epics', ids: ['selected-epic'] });
+
+      expect(result.items).toEqual({ copied: [], skipped: [] });
+      expect(result.epics).toEqual({ copied: [{ id: 'selected-epic', path: '.eforge/storage/extensions/eforge-plan/backlog/epics/selected-epic.md' }], skipped: [] });
+      expect(existsSync(resolveBacklogEpicPath(cwd, 'selected-epic'))).toBe(true);
+      expect(existsSync(resolveBacklogEpicPath(cwd, 'unselected-epic'))).toBe(false);
+      expect(existsSync(resolveLegacyBacklogEpicPath(cwd, 'selected-epic'))).toBe(true);
+      expect(existsSync(resolveLegacyBacklogEpicPath(cwd, 'unselected-epic'))).toBe(true);
+      expect(await readBacklogEpic(cwd, 'unselected-epic')).toMatchObject({ id: 'unselected-epic', title: 'Unselected Epic' });
     });
   });
 });

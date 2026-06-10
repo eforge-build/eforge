@@ -18,6 +18,8 @@ const validSubmission = {
   planDrafts: [{ title: 'Implement planning task runner', body: '# Plan\n\nImplement the runner.' }],
 };
 
+const BODY_SHA = 'a'.repeat(64);
+
 const validBacklogCurationDraft = {
   schemaVersion: 1,
   sourceFingerprint: 'source-fingerprint-1',
@@ -25,7 +27,7 @@ const validBacklogCurationDraft = {
   itemChanges: [{
     id: 'item-1',
     kind: 'item',
-    precondition: { id: 'item-1', kind: 'item', bodySha256: 'body-sha', sourceFingerprint: 'source-fingerprint-1' },
+    precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA, sourceFingerprint: 'source-fingerprint-1' },
     metadata: { status: 'active', last_checked: '2026-01-01', stale_after: '2026-02-01' },
     sectionOperations: [{ heading: 'Evidence', action: 'append', content: 'Durable evidence from source text.' }],
     evidence: ['Source text says the implementation is still active.'],
@@ -169,6 +171,33 @@ describe('eforge-plan planning draft task runner', () => {
     expect(harness.prompts[0]).toContain('backlogCurationDraft');
     expect(harness.prompts[0]).toContain('sourceFingerprint');
     expect(harness.prompts[0]).toContain('durable evidence');
+  });
+
+  it('rejects backlog curation drafts with unsafe ids, bad statuses, or mismatched preconditions', async () => {
+    for (const patch of [
+      { id: 'item/1', kind: 'item', precondition: { id: 'item/1', kind: 'item', bodySha256: BODY_SHA }, metadata: { status: 'active' } },
+      { id: 'item-1', kind: 'item', precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA }, metadata: { status: 'blocked' } },
+      { id: 'item-1', kind: 'item', precondition: { id: 'other-item', kind: 'item', bodySha256: BODY_SHA }, metadata: { status: 'active' } },
+    ]) {
+      const harness = new StubHarness([{
+        toolCalls: [{
+          tool: 'submit_eforge_plan_planning_result',
+          toolUseId: 'tool-1',
+          input: {
+            summary: 'Malformed curation draft.',
+            assumptionsOpenQuestions: [],
+            backlogCurationDraft: { ...validBacklogCurationDraft, itemChanges: [patch] },
+          },
+          output: '',
+        }],
+      }]);
+
+      await expect(collect(runEforgePlanPlanningDraftTask({
+        harness,
+        cwd: '/tmp',
+        input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft'] },
+      }))).rejects.toThrow('submit_eforge_plan_planning_result');
+    }
   });
 
   it('rejects malformed backlog curation draft submissions without completing', async () => {

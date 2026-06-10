@@ -1,5 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
-import { formatSchemaError, parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
+import { formatSchemaError, parseWithSchema, safeParseWithSchema, type SafeParseResult, type SchemaError } from './schema-utils.js';
 
 export const EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT = 'eforge-plan.planning-draft' as const;
 
@@ -175,108 +175,73 @@ export const EforgePlanPlanningRecommendationsSchema = Type.Object({
 
 // --- eforge:region backlog-curation-draft ---
 const EforgePlanPlanningNonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
+const EforgePlanPlanningSha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
+export const EforgePlanPlanningBacklogSafeIdSchema = Type.String({ minLength: 1, pattern: '^(?!\\.\\.?$)(?!.*[\\\\/\\u0000]).+$' });
+export const EforgePlanPlanningBacklogStatusSchema = Type.Union([Type.Literal('candidate'), Type.Literal('planned'), Type.Literal('active'), Type.Literal('shipped'), Type.Literal('stale'), Type.Literal('superseded')]);
 
-export const EforgePlanPlanningBacklogCurationRecordKindSchema = Type.Union([
-  Type.Literal('item'),
-  Type.Literal('epic'),
-]);
+export const EforgePlanPlanningBacklogCurationRecordKindSchema = Type.Union([Type.Literal('item'), Type.Literal('epic')]);
 
 const eforgePlanPlanningBacklogCurationPreconditionFields = {
-  id: EforgePlanPlanningNonEmptyStringSchema,
-  bodySha256: EforgePlanPlanningNonEmptyStringSchema,
+  id: EforgePlanPlanningBacklogSafeIdSchema,
+  bodySha256: EforgePlanPlanningSha256HexSchema,
   sourceFingerprint: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
   updated: Type.Optional(Type.String()),
-  recordSha256: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  recordSha256: Type.Optional(EforgePlanPlanningSha256HexSchema),
 } as const;
 
-export const EforgePlanPlanningBacklogCurationItemPreconditionSchema = Type.Object({
-  ...eforgePlanPlanningBacklogCurationPreconditionFields,
-  kind: Type.Literal('item'),
-}, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationItemPreconditionSchema = Type.Object({ ...eforgePlanPlanningBacklogCurationPreconditionFields, kind: Type.Literal('item') }, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationEpicPreconditionSchema = Type.Object({ ...eforgePlanPlanningBacklogCurationPreconditionFields, kind: Type.Literal('epic') }, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationPreconditionSchema = Type.Union([EforgePlanPlanningBacklogCurationItemPreconditionSchema, EforgePlanPlanningBacklogCurationEpicPreconditionSchema]);
 
-export const EforgePlanPlanningBacklogCurationEpicPreconditionSchema = Type.Object({
-  ...eforgePlanPlanningBacklogCurationPreconditionFields,
-  kind: Type.Literal('epic'),
-}, { additionalProperties: false });
-
-export const EforgePlanPlanningBacklogCurationPreconditionSchema = Type.Union([
-  EforgePlanPlanningBacklogCurationItemPreconditionSchema,
-  EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
-]);
-
-export const EforgePlanPlanningBacklogCurationMetadataPatchSchema = Type.Object({
-  status: Type.Optional(Type.String()),
+const eforgePlanPlanningBacklogCurationCommonMetadataPatchFields = {
+  status: Type.Optional(EforgePlanPlanningBacklogStatusSchema),
   priority: Type.Optional(Type.String()),
   tags: Type.Optional(Type.Array(Type.String())),
-  depends_on: Type.Optional(Type.Array(EforgePlanPlanningNonEmptyStringSchema)),
-  epic: Type.Optional(Type.Union([EforgePlanPlanningNonEmptyStringSchema, Type.Null()])),
   last_checked: Type.Optional(Type.String()),
   stale_after: Type.Optional(Type.String()),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationItemMetadataPatchSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationCommonMetadataPatchFields,
+  depends_on: Type.Optional(Type.Array(EforgePlanPlanningBacklogSafeIdSchema)),
+  epic: Type.Optional(Type.Union([EforgePlanPlanningBacklogSafeIdSchema, Type.Null()])),
 }, { additionalProperties: false });
 
-export const EforgePlanPlanningBacklogCurationSectionOperationSchema = Type.Object({
-  heading: EforgePlanPlanningNonEmptyStringSchema,
-  action: Type.Union([Type.Literal('replace'), Type.Literal('append')]),
-  content: Type.String(),
-}, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationEpicMetadataPatchSchema = Type.Object(eforgePlanPlanningBacklogCurationCommonMetadataPatchFields, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationMetadataPatchSchema = EforgePlanPlanningBacklogCurationItemMetadataPatchSchema;
+
+export const EforgePlanPlanningBacklogCurationSectionOperationSchema = Type.Object({ heading: EforgePlanPlanningNonEmptyStringSchema, action: Type.Union([Type.Literal('replace'), Type.Literal('append')]), content: Type.String() }, { additionalProperties: false });
 
 const eforgePlanPlanningBacklogCurationRecordPatchFields = {
-  id: EforgePlanPlanningNonEmptyStringSchema,
-  metadata: Type.Optional(EforgePlanPlanningBacklogCurationMetadataPatchSchema),
+  id: EforgePlanPlanningBacklogSafeIdSchema,
   sectionOperations: Type.Optional(Type.Array(EforgePlanPlanningBacklogCurationSectionOperationSchema)),
   rationale: Type.Optional(Type.String()),
   evidence: Type.Optional(Type.Array(Type.String())),
 } as const;
 
-export const EforgePlanPlanningBacklogCurationItemRecordPatchSchema = Type.Object({
-  ...eforgePlanPlanningBacklogCurationRecordPatchFields,
-  kind: Type.Literal('item'),
-  precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema,
-}, { additionalProperties: false });
-
-export const EforgePlanPlanningBacklogCurationEpicRecordPatchSchema = Type.Object({
-  ...eforgePlanPlanningBacklogCurationRecordPatchFields,
-  kind: Type.Literal('epic'),
-  precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
-}, { additionalProperties: false });
-
-export const EforgePlanPlanningBacklogCurationRecordPatchSchema = Type.Union([
-  EforgePlanPlanningBacklogCurationItemRecordPatchSchema,
-  EforgePlanPlanningBacklogCurationEpicRecordPatchSchema,
-]);
+export const EforgePlanPlanningBacklogCurationItemRecordPatchSchema = Type.Object({ ...eforgePlanPlanningBacklogCurationRecordPatchFields, kind: Type.Literal('item'), metadata: Type.Optional(EforgePlanPlanningBacklogCurationItemMetadataPatchSchema), precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema }, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationEpicRecordPatchSchema = Type.Object({ ...eforgePlanPlanningBacklogCurationRecordPatchFields, kind: Type.Literal('epic'), metadata: Type.Optional(EforgePlanPlanningBacklogCurationEpicMetadataPatchSchema), precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema }, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationRecordPatchSchema = Type.Union([EforgePlanPlanningBacklogCurationItemRecordPatchSchema, EforgePlanPlanningBacklogCurationEpicRecordPatchSchema]);
 
 const eforgePlanPlanningBacklogCurationRecheckFields = {
-  id: EforgePlanPlanningNonEmptyStringSchema,
+  id: EforgePlanPlanningBacklogSafeIdSchema,
   last_checked: Type.String(),
   stale_after: Type.String(),
   rationale: Type.Optional(Type.String()),
 } as const;
 
-export const EforgePlanPlanningBacklogCurationItemRecheckSchema = Type.Object({
-  ...eforgePlanPlanningBacklogCurationRecheckFields,
-  kind: Type.Literal('item'),
-  precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema,
-}, { additionalProperties: false });
-
-export const EforgePlanPlanningBacklogCurationEpicRecheckSchema = Type.Object({
-  ...eforgePlanPlanningBacklogCurationRecheckFields,
-  kind: Type.Literal('epic'),
-  precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
-}, { additionalProperties: false });
-
-export const EforgePlanPlanningBacklogCurationRecheckSchema = Type.Union([
-  EforgePlanPlanningBacklogCurationItemRecheckSchema,
-  EforgePlanPlanningBacklogCurationEpicRecheckSchema,
-]);
+export const EforgePlanPlanningBacklogCurationItemRecheckSchema = Type.Object({ ...eforgePlanPlanningBacklogCurationRecheckFields, kind: Type.Literal('item'), precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema }, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationEpicRecheckSchema = Type.Object({ ...eforgePlanPlanningBacklogCurationRecheckFields, kind: Type.Literal('epic'), precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema }, { additionalProperties: false });
+export const EforgePlanPlanningBacklogCurationRecheckSchema = Type.Union([EforgePlanPlanningBacklogCurationItemRecheckSchema, EforgePlanPlanningBacklogCurationEpicRecheckSchema]);
 
 export const EforgePlanPlanningBacklogCurationSkippedSchema = Type.Object({
-  id: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  id: Type.Optional(EforgePlanPlanningBacklogSafeIdSchema),
   kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
   reason: EforgePlanPlanningNonEmptyStringSchema,
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningBacklogCurationNeedsInputSchema = Type.Object({
-  id: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  id: Type.Optional(EforgePlanPlanningBacklogSafeIdSchema),
   kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
   question: EforgePlanPlanningNonEmptyStringSchema,
   reason: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
@@ -489,8 +454,12 @@ export type EforgePlanPlanningClarificationQuestion = Static<typeof EforgePlanPl
 export type EforgePlanPlanningDecision = Static<typeof EforgePlanPlanningDecisionSchema>;
 export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanningSectionProgressSchema>;
 export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
+export type EforgePlanPlanningBacklogSafeId = Static<typeof EforgePlanPlanningBacklogSafeIdSchema>;
+export type EforgePlanPlanningBacklogStatus = Static<typeof EforgePlanPlanningBacklogStatusSchema>;
 export type EforgePlanPlanningBacklogCurationRecordKind = Static<typeof EforgePlanPlanningBacklogCurationRecordKindSchema>;
 export type EforgePlanPlanningBacklogCurationPrecondition = Static<typeof EforgePlanPlanningBacklogCurationPreconditionSchema>;
+export type EforgePlanPlanningBacklogCurationItemMetadataPatch = Static<typeof EforgePlanPlanningBacklogCurationItemMetadataPatchSchema>;
+export type EforgePlanPlanningBacklogCurationEpicMetadataPatch = Static<typeof EforgePlanPlanningBacklogCurationEpicMetadataPatchSchema>;
 export type EforgePlanPlanningBacklogCurationMetadataPatch = Static<typeof EforgePlanPlanningBacklogCurationMetadataPatchSchema>;
 export type EforgePlanPlanningBacklogCurationSectionOperation = Static<typeof EforgePlanPlanningBacklogCurationSectionOperationSchema>;
 export type EforgePlanPlanningBacklogCurationRecordPatch = Static<typeof EforgePlanPlanningBacklogCurationRecordPatchSchema>;
@@ -522,12 +491,30 @@ export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlannin
     || candidate.sessionPlanPatch !== undefined;
 }
 
+function validateBacklogCurationDraftSemantics(value: EforgePlanPlanningDraftResult): SchemaError | null {
+  const draft = (value as { backlogCurationDraft?: EforgePlanPlanningBacklogCurationDraft }).backlogCurationDraft;
+  if (!draft) return null;
+  const errors: Array<{ path: string; message: string }> = [];
+  const check = (record: EforgePlanPlanningBacklogCurationRecordPatch | EforgePlanPlanningBacklogCurationRecheck, path: string) => {
+    if (record.id !== record.precondition.id) errors.push({ path: `${path}/precondition/id`, message: 'must match record id' });
+  };
+  draft.itemChanges.forEach((patch, index) => check(patch, `/backlogCurationDraft/itemChanges/${index}`));
+  draft.epicChanges.forEach((patch, index) => check(patch, `/backlogCurationDraft/epicChanges/${index}`));
+  draft.noOpRechecks.forEach((recheck, index) => check(recheck, `/backlogCurationDraft/noOpRechecks/${index}`));
+  return errors.length === 0 ? null : { message: errors.map((error) => `${error.path}: ${error.message}`).join('\n'), errors };
+}
+
 export function safeParseEforgePlanPlanningDraftResult(value: unknown): SafeParseResult<EforgePlanPlanningDraftResult> {
-  return safeParseWithSchema(EforgePlanPlanningDraftResultSchema, value);
+  const result = safeParseWithSchema(EforgePlanPlanningDraftResultSchema, value);
+  if (!result.success) return result;
+  const semanticError = validateBacklogCurationDraftSemantics(result.data);
+  return semanticError ? { success: false, error: semanticError } : result;
 }
 
 export function parseEforgePlanPlanningDraftResult(value: unknown): EforgePlanPlanningDraftResult {
-  return parseWithSchema(EforgePlanPlanningDraftResultSchema, value);
+  const result = safeParseEforgePlanPlanningDraftResult(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function assertExtensionAgentTaskId(taskId: string): void {
@@ -538,11 +525,17 @@ export function assertExtensionAgentTaskId(taskId: string): void {
 }
 
 export function safeParseExtensionAgentTaskRecord(value: unknown): SafeParseResult<ExtensionAgentTaskRecord> {
-  return safeParseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  if (!result.success) return result;
+  if (result.data.status !== 'completed') return result;
+  const semanticError = validateBacklogCurationDraftSemantics(result.data.result);
+  return semanticError ? { success: false, error: semanticError } : result;
 }
 
 export function parseExtensionAgentTaskRecord(value: unknown): ExtensionAgentTaskRecord {
-  return parseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  const result = safeParseExtensionAgentTaskRecord(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function safeParseExtensionAgentTaskStartRequest(value: unknown): SafeParseResult<ExtensionAgentTaskStartRequest> {

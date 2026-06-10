@@ -60,7 +60,9 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     const objectSchema = schema as TObject;
     const objectZod = z.object(typeboxObjectToZodRawShape(objectSchema));
     const additionalProperties = objectSchema.additionalProperties as boolean | TSchema | undefined;
-    if (additionalProperties === true) {
+    if (additionalProperties === false) {
+      zodType = objectZod.strict();
+    } else if (additionalProperties === true || additionalProperties === undefined) {
       zodType = objectZod.passthrough();
     } else if (typeof additionalProperties === 'object') {
       zodType = objectZod.catchall(typeboxToZod(additionalProperties));

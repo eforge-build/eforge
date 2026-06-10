@@ -8,6 +8,11 @@ import {
   safeParseExtensionAgentTaskStartRequest,
 } from '../index.js';
 
+const BODY_SHA = 'a'.repeat(64);
+const EPIC_BODY_SHA = 'b'.repeat(64);
+const RECORD_SHA = 'c'.repeat(64);
+const UNCHANGED_BODY_SHA = 'd'.repeat(64);
+
 const validBacklogCurationDraft = {
   schemaVersion: 1,
   sourceFingerprint: 'source-fingerprint-1',
@@ -16,7 +21,7 @@ const validBacklogCurationDraft = {
   itemChanges: [{
     id: 'item-1',
     kind: 'item',
-    precondition: { id: 'item-1', kind: 'item', bodySha256: 'body-sha', sourceFingerprint: 'source-fingerprint-1' },
+    precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA, sourceFingerprint: 'source-fingerprint-1' },
     metadata: { status: 'active', priority: 'high', tags: ['curated'], depends_on: ['item-0'], epic: 'epic-1', last_checked: '2026-01-01', stale_after: '2026-02-01' },
     sectionOperations: [{ heading: 'Evidence', action: 'append', content: 'Durable evidence from source text.' }],
     rationale: 'The item has fresh implementation evidence.',
@@ -25,13 +30,13 @@ const validBacklogCurationDraft = {
   epicChanges: [{
     id: 'epic-1',
     kind: 'epic',
-    precondition: { id: 'epic-1', kind: 'epic', bodySha256: 'epic-body-sha', recordSha256: 'record-sha' },
-    metadata: { epic: null },
+    precondition: { id: 'epic-1', kind: 'epic', bodySha256: EPIC_BODY_SHA, recordSha256: RECORD_SHA },
+    metadata: { priority: 'high' },
   }],
   noOpRechecks: [{
     id: 'item-2',
     kind: 'item',
-    precondition: { id: 'item-2', kind: 'item', bodySha256: 'unchanged-body-sha' },
+    precondition: { id: 'item-2', kind: 'item', bodySha256: UNCHANGED_BODY_SHA },
     last_checked: '2026-01-01',
     stale_after: '2026-02-01',
     rationale: 'No material change found.',
@@ -122,6 +127,15 @@ describe('eforge-plan backlog curation draft contract', () => {
       backlogCurationDraft: {
         ...validBacklogCurationDraft,
         epicChanges: [{ ...validBacklogCurationDraft.itemChanges[0] }],
+      },
+    }).success).toBe(false);
+
+    expect(safeParseEforgePlanPlanningDraftResult({
+      summary: 'Epic metadata must not accept item-only fields.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft: {
+        ...validBacklogCurationDraft,
+        epicChanges: [{ ...validBacklogCurationDraft.epicChanges[0], metadata: { epic: null } }],
       },
     }).success).toBe(false);
 

@@ -10,7 +10,7 @@ async function* iter<T>(items: T[]): AsyncGenerator<T> {
 }
 
 describe('typeboxObjectToZodRawShape', () => {
-  it('converts the planning submit backlog curation draft schema with nullable epic metadata', () => {
+  it('converts the planning submit backlog curation draft schema with epic metadata', () => {
     const kind = Symbol.for('TypeBox.Kind');
     const shape = typeboxObjectToZodRawShape({
       type: 'object',
@@ -27,13 +27,35 @@ describe('typeboxObjectToZodRawShape', () => {
       epicChanges: [{
         id: 'epic-1',
         kind: 'epic',
-        precondition: { id: 'epic-1', kind: 'epic', bodySha256: 'epic-body-sha' },
-        metadata: { epic: null },
+        precondition: { id: 'epic-1', kind: 'epic', bodySha256: 'a'.repeat(64) },
+        metadata: { priority: 'high' },
       }],
       noOpRechecks: [],
       skipped: [],
       needsInput: [],
     })).not.toThrow();
+  });
+
+  it('rejects extra fields for closed TypeBox objects', () => {
+    const kind = Symbol.for('TypeBox.Kind');
+    const shape = typeboxObjectToZodRawShape({
+      type: 'object',
+      properties: { backlogCurationDraft: EforgePlanPlanningBacklogCurationDraftSchema },
+      required: ['backlogCurationDraft'],
+      [kind]: 'Object',
+    } as never);
+
+    expect(() => shape.backlogCurationDraft.parse({
+      schemaVersion: 1,
+      sourceFingerprint: 'source-fingerprint-1',
+      summary: [],
+      itemChanges: [],
+      epicChanges: [],
+      noOpRechecks: [],
+      skipped: [],
+      needsInput: [],
+      extra: 'reject-me',
+    })).toThrow();
   });
 
   it('preserves open-object recommendation fields', () => {
