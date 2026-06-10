@@ -19,6 +19,7 @@ import {
   PLANNING_TYPES,
 } from './schema.js';
 import { SessionPlanReadinessDetailSchema } from './session-plan-schemas.js';
+import { BacklogCurationApplyDetailsSchema } from './backlog-curation-schemas.js';
 
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
 
@@ -28,6 +29,14 @@ const PlanningDepthLiteralSchemas = PLANNING_DEPTHS.map((value) => Type.Literal(
 // Requested output sections now allow the session-plan creation draft variant so
 // AI promotion of selected backlog work can default to a full plan draft.
 export const PlanningAgentRequestedOutputSectionSchema = EforgePlanPlanningRequestedOutputSectionSchema;
+export const StartPlanningAgentRequestedOutputSectionSchema = Type.Union([
+  Type.Literal('recommendations'),
+  Type.Literal('handoffDrafts'),
+  Type.Literal('planDrafts'),
+  Type.Literal('playbookDraft'),
+  Type.Literal('sessionPlanPatch'),
+  Type.Literal('sessionPlanCreationDraft'),
+]);
 export const MAX_PLANNING_AGENT_USER_GOAL_LENGTH = 4000;
 
 export const StartPlanningAgentTaskInputSchema = Type.Object({
@@ -39,7 +48,7 @@ export const StartPlanningAgentTaskInputSchema = Type.Object({
   session: Type.Optional(Type.String()),
   planningType: Type.Optional(Type.Union(PlanningTypeLiteralSchemas)),
   planningDepth: Type.Optional(Type.Union(PlanningDepthLiteralSchemas)),
-  requestedOutputSections: Type.Optional(Type.Array(PlanningAgentRequestedOutputSectionSchema, { minItems: 1 })),
+  requestedOutputSections: Type.Optional(Type.Array(StartPlanningAgentRequestedOutputSectionSchema, { minItems: 1 })),
 }, { additionalProperties: false, not: { anyOf: [{ required: ['itemIds', 'epicId'] }, { required: ['itemIds', 'recommendationRef'] }, { required: ['epicId', 'recommendationRef'] }] } });
 
 export const GetPlanningAgentTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema }, { additionalProperties: false });
@@ -59,12 +68,18 @@ export const ApplyPlanningAgentTaskCreationDraftSelectionSchema = Type.Object({
   openQuestions: Type.Optional(Type.Array(Type.String())),
 }, { additionalProperties: false });
 
+export const ApplyPlanningAgentTaskBacklogCurationSelectionSchema = Type.Object({
+  previewAcknowledged: Type.Literal(true),
+  confirmApply: Type.Literal(true),
+}, { additionalProperties: false });
+
 export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,
   applyRecommendations: Type.Optional(Type.Boolean()),
   applyHandoffDrafts: Type.Optional(Type.Array(ApplyPlanningAgentTaskHandoffSelectionSchema, { minItems: 1 })),
   applySessionPlanDrafts: Type.Optional(Type.Array(ApplyPlanningAgentTaskSessionPlanDraftSchema, { minItems: 1 })),
   applySessionPlanCreationDraft: Type.Optional(ApplyPlanningAgentTaskCreationDraftSelectionSchema),
+  applyBacklogCurationDraft: Type.Optional(ApplyPlanningAgentTaskBacklogCurationSelectionSchema),
 }, { additionalProperties: false });
 
 export const AppliedSessionPlanCreationDraftSourceRefsSchema = PlanSourceRefsSchema;
@@ -84,11 +99,12 @@ export const PlanningAgentTaskCancelOutputSchema = ExtensionAgentTaskCancelRespo
 export const ApplyPlanningAgentTaskResultOutputSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   taskId: ExtensionAgentTaskIdSchema,
-  applied: Type.Object({ recommendations: Type.Boolean(), handoffDrafts: Type.Number(), sessionPlanSections: Type.Number() }, { additionalProperties: false }),
+  applied: Type.Object({ recommendations: Type.Boolean(), handoffDrafts: Type.Number(), sessionPlanSections: Type.Number(), backlogCuration: Type.Optional(Type.Number()) }, { additionalProperties: false }),
   recommendations: Type.Optional(PutRecommendationsOutputSchema),
   handoffs: Type.Optional(Type.Array(PromotionSelectionOutputSchema)),
   sessionPlanDrafts: Type.Optional(Type.Array(Type.Object({ session: Type.String(), sections: Type.Array(Type.String()) }, JsonObjectAdditionalProperties))),
   sessionPlanCreationDraft: Type.Optional(AppliedSessionPlanCreationDraftSchema),
+  backlogCuration: Type.Optional(BacklogCurationApplyDetailsSchema),
 }, JsonObjectAdditionalProperties);
 
 // --- Durable planning task workflow index projections ---
@@ -110,8 +126,9 @@ export const PlanningTaskWorkflowEntrySchema = Type.Object({
   planningType: Type.Optional(Type.String()),
   planningDepth: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
-  purpose: Type.Optional(Type.Literal('recommendation-refresh')),
+  purpose: Type.Optional(Type.Union([Type.Literal('recommendation-refresh'), Type.Literal('backlog-curation')])),
   sourceFingerprint: Type.Optional(Type.String()),
+  appliedAt: Type.Optional(Type.String()),
   createdAt: Type.String(),
 }, { additionalProperties: false });
 
@@ -165,6 +182,7 @@ export type CancelPlanningAgentTaskInput = Static<typeof CancelPlanningAgentTask
 export type ApplyPlanningAgentTaskHandoffSelection = Static<typeof ApplyPlanningAgentTaskHandoffSelectionSchema>;
 export type ApplyPlanningAgentTaskSessionPlanDraft = Static<typeof ApplyPlanningAgentTaskSessionPlanDraftSchema>;
 export type ApplyPlanningAgentTaskCreationDraftSelection = Static<typeof ApplyPlanningAgentTaskCreationDraftSelectionSchema>;
+export type ApplyPlanningAgentTaskBacklogCurationSelection = Static<typeof ApplyPlanningAgentTaskBacklogCurationSelectionSchema>;
 export type ApplyPlanningAgentTaskResultInput = Static<typeof ApplyPlanningAgentTaskResultInputSchema>;
 export type ApplyPlanningAgentTaskResultOutput = Static<typeof ApplyPlanningAgentTaskResultOutputSchema>;
 export type AppliedSessionPlanCreationDraftSourceRefs = Static<typeof AppliedSessionPlanCreationDraftSourceRefsSchema>;

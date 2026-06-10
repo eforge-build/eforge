@@ -21,7 +21,7 @@ describe('typeboxObjectToZodRawShape', () => {
 
     expect(() => shape.backlogCurationDraft.parse({
       schemaVersion: 1,
-      sourceFingerprint: 'source-fingerprint-1',
+      sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       summary: ['Curated stale backlog records.'],
       itemChanges: [],
       epicChanges: [{
@@ -47,7 +47,7 @@ describe('typeboxObjectToZodRawShape', () => {
 
     expect(() => shape.backlogCurationDraft.parse({
       schemaVersion: 1,
-      sourceFingerprint: 'source-fingerprint-1',
+      sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       summary: [],
       itemChanges: [],
       epicChanges: [],

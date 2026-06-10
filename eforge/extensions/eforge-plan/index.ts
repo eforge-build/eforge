@@ -27,6 +27,7 @@ import { sessionPlanActions } from './session-plan-actions.js';
 import { recommendationActions } from './recommendation-actions.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
 import { plannerActions } from './planner-actions.js';
+import { backlogCurationActions } from './backlog-curation-actions.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
@@ -156,6 +157,9 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(renderBoardMarkdown);
   for (const action of recommendationActions) eforge.registerAction(action);
   for (const action of plannerActions) eforge.registerAction(action);
+  // --- eforge:region plan-03-curation-workflow ---
+  for (const action of backlogCurationActions) eforge.registerAction(action);
+  // --- eforge:endregion plan-03-curation-workflow ---
   for (const action of sessionPlanActions) eforge.registerAction(action);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
@@ -169,6 +173,9 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
       { rendererId: 'action-button', title: 'Refresh recommendations', content: 'Start or reuse a daemon-owned recommendation refresh task.', action: { actionId: 'refresh-recommendations' } },
+      // --- eforge:region plan-03-curation-workflow ---
+      { rendererId: 'action-button', title: 'Analyze all backlog', content: 'Start or reuse a daemon-owned backlog curation task.', action: { actionId: 'analyze-all-backlog' } },
+      // --- eforge:endregion plan-03-curation-workflow ---
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
       { rendererId: 'action-form', title: 'Start planning agent task', content: 'Prepare bounded context and start a daemon-owned planning draft task.', action: { actionId: 'start-planning-agent-task', inputDefaults: { includeRoadmap: true } } },
@@ -191,6 +198,9 @@ export default defineEforgeExtension((eforge) => {
       'get-recommendations',
       'put-recommendations',
       'refresh-recommendations',
+      // --- eforge:region plan-03-curation-workflow ---
+      'analyze-all-backlog',
+      // --- eforge:endregion plan-03-curation-workflow ---
       'prepare-planner-context',
       'apply-planner-result',
       'start-planning-agent-task',

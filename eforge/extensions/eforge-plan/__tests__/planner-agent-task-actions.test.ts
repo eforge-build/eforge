@@ -52,6 +52,24 @@ function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): Exten
   });
 }
 
+function curationCompletedTask(taskId = 'task-curation'): ExtensionAgentTaskRecord {
+  return parseExtensionAgentTaskRecord({
+    taskId,
+    kind: 'eforge-plan.planning-draft',
+    status: 'completed',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    completedAt: '2026-01-01T00:00:01.000Z',
+    result: {
+      summary: 'Drafted backlog curation.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111', summary: [], itemChanges: [], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] },
+      recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-one', rationale: 'Ready after curation.' }] },
+    },
+  });
+}
+
 function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId,
@@ -251,6 +269,58 @@ describe('planning agent task actions', () => {
         });
         expect(result.kind).toBe('handler-error');
       }
+    });
+  });
+
+  it('rejects backlog curation apply selection when the workflow entry is not a backlog-curation workflow', async () => {
+    await withTempProject(async (cwd) => {
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'task-curation', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { return { task: curationCompletedTask() }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result.kind).toBe('invalid-input');
+      expect(await readRecommendations(cwd)).toBeNull();
+    });
+  });
+
+  it('rejects standalone recommendation apply for a backlog-curation workflow entry', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-curation',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: '',
+        derivedRequest: 'Analyze and curate all open eforge-plan backlog records.',
+        selection: {},
+        requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
+        includeRoadmap: true,
+        purpose: 'backlog-curation',
+        sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
+      });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'task-curation', applyRecommendations: true },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { return { task: curationCompletedTask() }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result.kind).toBe('handler-error');
+      expect(await readRecommendations(cwd)).toBeNull();
     });
   });
 
@@ -508,6 +578,77 @@ describe('planning agent task actions', () => {
         }),
       });
       expect(result.kind).toBe('success');
+    });
+  });
+
+  it('retries a backlog-curation workflow with current curation source and preserved purpose', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-curation-original',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: '',
+        derivedRequest: 'Analyze and curate all open eforge-plan backlog records.',
+        selection: {},
+        requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
+        includeRoadmap: true,
+        purpose: 'backlog-curation',
+        sourceFingerprint: 'old-fingerprint',
+      });
+      let started: { input: Record<string, unknown> } | undefined;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:retry-planning-agent-task',
+        input: { taskId: 'task-curation-original' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) { started = request as { input: Record<string, unknown> }; return { task: runningTask('task-curation-retry') }; },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
+      expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true });
+      const source = JSON.parse(String(started?.input.sourceText));
+      expect(source).toMatchObject({ purpose: 'backlog-curation', openItems: [expect.objectContaining({ id: 'item-one' })] });
+    });
+  });
+
+  it('redrafts a completed backlog curation task with prior draft context and steering', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-curation',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        originalRequest: '',
+        derivedRequest: 'Analyze and curate all open eforge-plan backlog records.',
+        selection: {},
+        requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
+        includeRoadmap: true,
+        purpose: 'backlog-curation',
+        sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
+      });
+      let started: { input: Record<string, unknown> } | undefined;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:redraft-planning-agent-task',
+        input: { taskId: 'task-curation', steering: 'Prefer conservative status changes.' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) { started = request as { input: Record<string, unknown> }; return { task: runningTask('task-curation-redraft') }; },
+          async get() { return { task: curationCompletedTask('task-curation') }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
+      const sourceText = String(started?.input.sourceText);
+      expect(sourceText).toContain('Prefer conservative status changes.');
+      expect(sourceText).toContain('previousBacklogCurationDraft');
+      expect(JSON.parse(sourceText)).toMatchObject({ purpose: 'backlog-curation', redraft: { parentTaskId: 'task-curation' } });
     });
   });
 

@@ -17,13 +17,13 @@ const UNCHANGED_BODY_SHA = 'd'.repeat(64);
 
 const validBacklogCurationDraft = {
   schemaVersion: 1,
-  sourceFingerprint: 'source-fingerprint-1',
+  sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
   generatedAt: '2026-01-01T00:00:00.000Z',
   summary: ['Curated stale backlog records.'],
   itemChanges: [{
     id: 'item-1',
     kind: 'item',
-    precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA, sourceFingerprint: 'source-fingerprint-1' },
+    precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA, sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111' },
     metadata: { status: 'active', priority: 'high', tags: ['curated'], depends_on: ['item-0'], epic: 'epic-1', last_checked: '2026-01-01', stale_after: '2026-02-01' },
     sectionOperations: [{ heading: 'Evidence', action: 'append', content: 'Durable evidence from source text.' }],
     rationale: 'The item has fresh implementation evidence.',
