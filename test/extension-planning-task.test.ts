@@ -200,6 +200,41 @@ describe('eforge-plan planning draft task runner', () => {
     }
   });
 
+  it('returns a submission rejection tool result for malformed backlog curation drafts', async () => {
+    const malformedSubmission = {
+      summary: 'Malformed curation draft.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft: {
+        ...validBacklogCurationDraft,
+        itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], precondition: { id: 'item-1', kind: 'item' } }],
+      },
+    };
+    const harness = new StubHarness([{
+      toolCalls: [{ tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: malformedSubmission, output: '' }],
+      text: 'The malformed submission was rejected.',
+    }]);
+    const events: EforgeEvent[] = [];
+    const run = runEforgePlanPlanningDraftTask({
+      harness,
+      cwd: '/tmp',
+      input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft'] },
+    });
+
+    await expect((async () => {
+      while (true) {
+        const next = await run.next();
+        if (next.done) return next.value;
+        events.push(next.value);
+      }
+    })()).rejects.toThrow('submit_eforge_plan_planning_result');
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'agent:tool_result',
+      tool: 'submit_eforge_plan_planning_result',
+      output: expect.stringContaining('Submission rejected:'),
+    }));
+  });
+
   it('rejects malformed backlog curation draft submissions without completing', async () => {
     const malformedSubmission = {
       summary: 'Malformed curation draft.',

@@ -92,6 +92,40 @@ describe('mapSDKMessages tool events', () => {
     });
   });
 
+  it('suppresses duplicate tool_result when user result and summary both name the same tool use', async () => {
+    const messages = asyncIterableFrom([
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 'tu_dupe', name: 'Read', input: { path: 'a.ts' } }] },
+      } as unknown,
+      {
+        type: 'user',
+        parent_tool_use_id: 'tu_dupe',
+        tool_use_result: 'read contents',
+        message: { content: [] },
+      } as unknown,
+      {
+        type: 'tool_use_summary',
+        summary: 'read summary',
+        preceding_tool_use_ids: ['tu_dupe'],
+        uuid: 'uuid-dupe',
+        session_id: '',
+      } as unknown,
+      {
+        type: 'result',
+        subtype: 'success',
+        result: 'done',
+        modelUsage: {},
+      } as unknown,
+    ]);
+
+    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner', 'test-agent-id'));
+    const toolResults = events.filter((e) => e.type === 'agent:tool_result');
+
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0]).toMatchObject({ tool: 'Read', toolUseId: 'tu_dupe', output: 'read contents' });
+  });
+
   it('emits tool_result for each tool in a batch summary', async () => {
     const messages = asyncIterableFrom([
       {

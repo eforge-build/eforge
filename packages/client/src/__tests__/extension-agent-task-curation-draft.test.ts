@@ -142,6 +142,25 @@ describe('eforge-plan backlog curation draft contract', () => {
     }).success).toBe(true);
   });
 
+  it('rejects completed task records with malformed curation output before persistence', () => {
+    expect(safeParseExtensionAgentTaskRecord({
+      taskId: 'task-curation-malformed',
+      kind: 'eforge-plan.planning-draft',
+      status: 'completed',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:01.000Z',
+      completedAt: '2026-01-01T00:00:01.000Z',
+      result: {
+        summary: 'Drafted malformed backlog curation.',
+        assumptionsOpenQuestions: [],
+        backlogCurationDraft: {
+          ...validBacklogCurationDraft,
+          itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], precondition: { id: 'item-1', kind: 'item' } }],
+        },
+      },
+    }).success).toBe(false);
+  });
+
   it('rejects malformed curation draft payloads fail-closed', () => {
     expect(safeParseEforgePlanPlanningDraftResult({
       summary: 'Invalid extra property.',

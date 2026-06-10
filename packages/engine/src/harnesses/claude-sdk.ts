@@ -385,6 +385,7 @@ export async function* mapSDKMessages(
 ): AsyncGenerator<EforgeEvent> {
   // Track toolUseId → toolName for resolving tool results
   const toolNameMap = new Map<string, string>();
+  const emittedToolResultIds = new Set<string>();
 
   for await (const msg of messages) {
     switch (msg.type) {
@@ -432,6 +433,8 @@ export async function* mapSDKMessages(
           break;
         }
 
+        if (emittedToolResultIds.has(userMsg.parent_tool_use_id)) break;
+        emittedToolResultIds.add(userMsg.parent_tool_use_id);
         const toolName = toolNameMap.get(userMsg.parent_tool_use_id) ?? 'unknown';
         yield {
           timestamp: new Date().toISOString(),
@@ -450,6 +453,8 @@ export async function* mapSDKMessages(
         const summaryMsg = msg as SDKToolUseSummaryMessage;
         // Emit a tool_result for each preceding tool_use_id with the combined summary
         for (const toolUseId of summaryMsg.preceding_tool_use_ids) {
+          if (emittedToolResultIds.has(toolUseId)) continue;
+          emittedToolResultIds.add(toolUseId);
           const toolName = toolNameMap.get(toolUseId) ?? 'unknown';
           yield {
             timestamp: new Date().toISOString(),

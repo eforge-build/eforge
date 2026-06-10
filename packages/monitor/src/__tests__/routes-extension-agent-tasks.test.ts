@@ -148,6 +148,29 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('counts curation and recommendations as separate completed output sections', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-curation-recommendations-'));
+    const curationWithRecommendations = {
+      summary: 'Drafted backlog curation with recommendations.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft,
+      recommendations: { schemaVersion: 1, activeWork: [], readyCandidates: [{ itemId: 'item-1' }], recommendedNextSequence: [], safeParallelizableGroups: [], blockedChains: [], rationaleAndAssumptions: [] },
+    };
+    const harness = new SubmitHarness(curationWithRecommendations);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const server = await startServer(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const startBody = await (await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'Curate backlog', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } })).json() as { task: { taskId: string } };
+      const completed = await waitForTask(server.url, startBody.task.taskId, 'completed');
+      expect(completed.result).toEqual(curationWithRecommendations);
+      expect(completed.metadata.outputSectionCount).toBe(2);
+    } finally {
+      await server.stop();
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('fails a task whose curation draft submission is malformed without persisting a result', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-curation-malformed-'));
     const malformedResult = {

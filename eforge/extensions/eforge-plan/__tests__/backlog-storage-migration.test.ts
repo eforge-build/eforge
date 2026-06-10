@@ -81,6 +81,19 @@ describe('eforge-plan backlog storage migration', () => {
     });
   });
 
+  it('ignores malformed legacy duplicates shadowed by private records', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'shadowed', status: 'active', body: '# Private Shadowed\n' });
+      await mkdir(join(cwd, '.backlog', 'items'), { recursive: true });
+      await writeFile(join(cwd, '.backlog', 'items', 'shadowed.md'), '---\nid: other\nstatus: candidate\n---\n# Bad Shadow\n');
+
+      expect(await listBacklogItems(cwd)).toMatchObject([{ id: 'shadowed', status: 'active' }]);
+      await expect(importLegacyBacklog(cwd, { kind: 'items', ids: ['shadowed'] })).resolves.toMatchObject({
+        items: { copied: [], skipped: [{ id: 'shadowed', reason: 'private-exists' }] },
+      });
+    });
+  });
+
   it('rejects malformed filename/frontmatter ids during read and list', async () => {
     await withTempProject(async (cwd) => {
       await mkdir(join(cwd, '.backlog', 'items'), { recursive: true });

@@ -132,7 +132,6 @@ const promoteSelection = defineExtensionAction({
   },
 });
 
-// --- eforge:region plan-02-storage-foundation ---
 const importLegacyBacklogAction = defineExtensionAction({
   id: 'import-legacy-backlog',
   title: 'Import legacy backlog',
@@ -144,7 +143,6 @@ const importLegacyBacklogAction = defineExtensionAction({
     return toJsonSafeObject(await importLegacyBacklog(ctx.cwd, input));
   },
 });
-// --- eforge:endregion plan-02-storage-foundation ---
 
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
