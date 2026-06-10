@@ -266,7 +266,6 @@ export async function updateBacklogEpicFrontmatter(
   return parseEpic(await readFile(filePath, 'utf-8'));
 }
 
-// --- eforge:region plan-03-curation-workflow ---
 export async function replaceBacklogItemRecord(cwd: string, id: string, frontmatter: Record<string, unknown>, body: string): Promise<BacklogItem> {
   assertSafeBacklogId(id);
   const normalized = normalizeBacklogItem({ ...frontmatter, id }, body);
@@ -286,7 +285,6 @@ export async function replaceBacklogEpicRecord(cwd: string, id: string, frontmat
   await writeFile(filePath, serializeMarkdownRecord({ ...frontmatter, id }, body, EPIC_FRONTMATTER_ORDER));
   return parseEpic(await readFile(filePath, 'utf-8'));
 }
-// --- eforge:endregion plan-03-curation-workflow ---
 
 export async function importLegacyBacklogItems(cwd: string, ids?: string[]): Promise<BacklogImportKindResult> {
   return importLegacyKind(cwd, 'item', parseItem, ids);
