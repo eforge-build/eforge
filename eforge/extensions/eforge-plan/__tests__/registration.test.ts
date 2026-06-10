@@ -13,7 +13,7 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
+const WRITE_ACTIONS = new Set(['apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
 const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations']);
 const DAEMON_STATE_ACTIONS = new Set(['start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
@@ -77,6 +77,7 @@ describe('eforge-plan extension registration', () => {
       'get-planning-agent-task',
       'get-recommendations',
       'handoff-session-plan',
+      'import-legacy-backlog',
       'list-board',
       'list-planning-agent-tasks',
       'list-planning-artifacts',
@@ -107,7 +108,7 @@ describe('eforge-plan extension registration', () => {
       else expect(action.sideEffects).not.toContain('build-queue');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
       if (DAEMON_STATE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('daemon-state');
-      if (action.id === 'refresh-recommendations') expect(action.sideEffects).toContain('local-read');
+      if (action.id === 'refresh-recommendations' || action.id === 'import-legacy-backlog') expect(action.sideEffects).toContain('local-read');
       if (READ_ACTIONS.has(action.id)) {
         expect(action.sideEffects).toContain('local-read');
         expect(action.sideEffects).not.toContain('local-write');
@@ -328,7 +329,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'refresh-recommendations', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item']) {
+    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'refresh-recommendations', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 

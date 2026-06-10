@@ -41,6 +41,7 @@ Registered action IDs can be invoked by hosts that expose extension actions:
 - `get-recommendations` reads the private recommendation model and returns derived freshness status (`missing`, `fresh`, or `stale`), structured stale reason metadata, the private storage paths, and any active recommendation refresh task.
 - `put-recommendations` validates item/epic references and writes the private recommendation model, then records a fresh status sidecar for the current backlog fingerprint with `lastRefreshedBy: "put-recommendations"`.
 - `refresh-recommendations` example input: `{}`; starts or reuses a daemon-owned recommendation-only planning task for the current open backlog fingerprint.
+- `import-legacy-backlog` example input: `{ "kind": "all" }`; copies validated legacy `.backlog` item and epic records into private eforge-plan backlog storage, skips IDs that already exist privately, and leaves legacy files in place.
 - `promote-selection` example input: `{ "itemIds": ["add-import-preview"], "status": "active" }`; also accepts `{ "recommendationRef": "next-one" }` or `{ "epicId": "planning" }` selectors.
 - `prepare-planner-context` example input: `{ "itemIds": ["add-import-preview"], "includeRoadmap": true }`; returns JSON-safe selected/open backlog items, epics, recommendations, dependency/blocker context, roadmap evidence, and relevant trace summaries.
 - `apply-planner-result` example input: `{ "recommendations": { "schemaVersion": 1, "activeWork": [], "readyCandidates": [{ "itemId": "add-import-preview" }], "recommendedNextSequence": [{ "itemId": "add-import-preview", "rationale": "Ready and high priority." }], "safeParallelizableGroups": [], "blockedChains": [], "rationaleAndAssumptions": ["Import preview is unblocked."] } }` or `{ "handoffDraft": { "selection": { "itemIds": ["add-import-preview"], "status": "active" } } }`; applies only structured recommendation models and promotion selections.
@@ -64,17 +65,18 @@ For example, enqueue `eforge://input/eforge-plan/add-import-preview` to compile 
 
 `eforge-plan` uses project-local storage only:
 
-- `.backlog/items/<id>.md` stores backlog items.
-- `.backlog/epics/<id>.md` stores epics.
+- `.eforge/storage/extensions/eforge-plan/backlog/items/<id>.md` stores canonical backlog items.
+- `.eforge/storage/extensions/eforge-plan/backlog/epics/<id>.md` stores canonical epics.
+- `.backlog/items/<id>.md` and `.backlog/epics/<id>.md` are legacy read-through and explicit import inputs.
 - `.eforge/session-plans/<session>.md` stores promoted session-plan artifacts.
 - `.eforge/storage/extensions/eforge-plan/traces/<itemId>.json` stores lifecycle trace sidecars as extension-owned private metadata.
 - `.eforge/storage/extensions/eforge-plan/recommendations/current.json` stores the project-local private recommendation model used by recommendation and planner actions.
 - `.eforge/storage/extensions/eforge-plan/recommendations/status.json` stores the private derived recommendation status sidecar. It records freshness timestamps, the source fingerprint used when recommendations were last applied, the mutation path that last refreshed recommendations, and a bounded history of structured stale reasons.
 - `.eforge/storage/extensions/eforge-plan/planning-tasks/index.json` stores the extension-owned durable planning workflow index used by the "Plan with AI" monitor for AI planning task discovery, polling, retry, redraft context, and recommendation refresh task discovery across reloads.
 
-The extension never reads or writes legacy `.backlog/recommendations.json`; recommendation state lives only in private extension storage. Trace sidecars, recommendation files, and planning task workflow records are private extension storage; session plans are public build inputs under `.eforge/session-plans/`.
+The extension never reads or writes legacy `.backlog/recommendations.json`; recommendation state lives only in private extension storage. Backlog records, trace sidecars, recommendation files, and planning task workflow records are private extension storage; session plans are public build inputs under `.eforge/session-plans/`.
 
-Backlog item and epic files are Markdown documents with frontmatter. The item body remains the durable human-authored planning record; update actions preserve body content while changing supported frontmatter fields, including `evidence_notes` and `recheck_notes`.
+Backlog item and epic files are Markdown documents with frontmatter. Legacy `.backlog` item and epic files remain readable compatibility input when no private record has the same ID, and private records take precedence. Writes from capture, update, upsert, and promotion helpers target private backlog storage. The item body remains the durable human-authored planning record; update actions preserve body content while changing supported frontmatter fields, including `evidence_notes` and `recheck_notes`.
 
 Recommendation freshness is derived from `current.json`, `status.json`, and a fingerprint of open backlog items, epics, dependency/blocker context, roadmap evidence, and trace summaries for current open backlog items:
 
@@ -113,11 +115,12 @@ The extension registers backlog, board, recommendation, planner-orchestration, a
 | --- | --- | --- |
 | `list-board` | Return epics, items, lanes, blocked reasons, recommendation status (including missing/fresh/stale), optional recommendation summary, trace summaries, and lifecycle projections as JSON-safe data. Kanban cards include canonical `linkRows`, `failureEvidence`, and `lifecycleState`; the board also exposes aggregate `lifecycleLinks` and `epicProgress`. | `local-read` |
 | `render-board-markdown` | Return `{ markdown }` for host or Console display, including visible recommendation freshness notes when recommendations are fresh or stale. | `local-read` |
-| `capture-item` | Create `.backlog/items/<id>.md` from title, claim, evidence, tags, priority, epic, and dependencies. | `local-write` |
-| `upsert-epic` | Create or update `.backlog/epics/<id>.md` without duplicating item membership lists. | `local-write` |
-| `update-item` | Update status, priority, tags, evidence/recheck notes, dependencies, and epic link while preserving body content. | `local-write` |
-| `promote-item` | Write a session plan, update trace evidence, and set item status to `active` or `planned`. | `local-write` |
-| `promote-selection` | Promote selected item IDs, a recommendation ref, or an epic into one session plan using the same build-source synthesis path. | `local-write` |
+| `capture-item` | Create a visible backlog item in private eforge-plan storage from title, claim, evidence, tags, priority, epic, and dependencies. | `local-write` |
+| `upsert-epic` | Create or update a visible backlog epic in private eforge-plan storage without duplicating item membership lists. | `local-write` |
+| `update-item` | Update visible item status, priority, tags, evidence/recheck notes, dependencies, and epic link in private storage while preserving body content. | `local-write` |
+| `import-legacy-backlog` | Copy validated legacy `.backlog` item and/or epic records into private eforge-plan backlog storage, skipping IDs that already exist privately and leaving legacy files in place. | `local-read`, `local-write` |
+| `promote-item` | Write a session plan, update trace evidence, and set item status to `active` or `planned` through private backlog metadata updates. | `local-write` |
+| `promote-selection` | Promote selected visible item IDs, a recommendation ref, or an epic into one session plan using the same build-source synthesis path and private backlog metadata updates. | `local-write` |
 | `get-recommendations` | Read `.eforge/storage/extensions/eforge-plan/recommendations/current.json`, derive enriched freshness from `.eforge/storage/extensions/eforge-plan/recommendations/status.json`, and return summary/status data plus any active refresh task. | `local-read` |
 | `put-recommendations` | Validate recommendation item/epic references and write `.eforge/storage/extensions/eforge-plan/recommendations/current.json`, then update the status sidecar for the current source fingerprint with `lastRefreshedBy: "put-recommendations"`. | `local-write` |
 | `refresh-recommendations` | Start or reuse a daemon-owned recommendation-only planning task for the current source fingerprint. It records a durable workflow entry with purpose `recommendation-refresh` and does not apply generated output automatically. | `local-read`, `local-write`, `daemon-state` |
@@ -147,8 +150,8 @@ The extension registers backlog, board, recommendation, planner-orchestration, a
 
 ```mermaid
 flowchart TD
-  Item[.backlog/items/item.md] --> Synthesize[Shared synthesis helper]
-  Epic[.backlog/epics/epic.md] --> Synthesize
+  Item[Visible backlog item] --> Synthesize[Shared synthesis helper]
+  Epic[Visible backlog epic] --> Synthesize
   Deps[Dependency context] --> Synthesize
   Synthesize --> Plan[.eforge/session-plans/session.md]
   Synthesize --> Trace[.eforge/storage/extensions/eforge-plan/traces/item.json]
@@ -169,7 +172,7 @@ eforge://input/eforge-plan/<itemId>
 
 The adapter compiles the backlog item into ordinary build-source Markdown using the same synthesis helper as promotion. The output includes the item claim, evidence, assumptions or missing-assumption guidance, and acceptance criteria or missing-criteria guidance.
 
-The adapter requires the input transform context to resolve `.backlog` from `ctx.cwd`. If invoked without context, it returns instructional Markdown explaining that `eforge-plan` requires an input-source context rather than reading from `process.cwd()`.
+The adapter requires the input transform context to resolve visible eforge-plan backlog records from `ctx.cwd`. If invoked without context, it returns instructional Markdown explaining that `eforge-plan` requires an input-source context rather than reading from `process.cwd()`.
 
 ## Console and host surfaces
 
@@ -182,7 +185,7 @@ The Console System contribution is declarative and uses only the closed renderer
 - `action-button`
 - `action-form`
 
-The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, reading recommendations, promoting an item or selection, preparing planner context, applying structured planner results, capturing an item, and updating an item. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
+The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, reading recommendations, promoting an item or selection, preparing planner context, applying structured planner results, capturing an item, updating an item, and importing legacy backlog records. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
 
 Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
 

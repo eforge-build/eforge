@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
@@ -11,6 +12,8 @@ import {
   readBacklogItem,
   resolveBacklogEpicPath,
   resolveBacklogItemPath,
+  resolveLegacyBacklogEpicPath,
+  resolveLegacyBacklogItemPath,
   updateBacklogItemFrontmatter,
   writeBacklogEpic,
   writeBacklogItem,
@@ -78,7 +81,11 @@ describe('eforge-plan markdown storage', () => {
         epic: 'epic-1',
         title: 'Item One',
       });
-      const raw = await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8');
+      const itemPath = resolveBacklogItemPath(cwd, 'item-1');
+      expect(itemPath).toContain(`${sep}.eforge${sep}storage${sep}extensions${sep}eforge-plan${sep}backlog${sep}items${sep}item-1.md`);
+      expect(itemPath).not.toContain(`${sep}.backlog${sep}items${sep}`);
+      expect(existsSync(resolveLegacyBacklogItemPath(cwd, 'item-1'))).toBe(false);
+      const raw = await readFile(itemPath, 'utf-8');
       expect(raw.indexOf('id: item-1')).toBeLessThan(raw.indexOf('status: planned'));
       expect(raw.indexOf('status: planned')).toBeLessThan(raw.indexOf('priority: high'));
       expect(await listBacklogItems(cwd)).toHaveLength(1);
@@ -112,6 +119,10 @@ describe('eforge-plan markdown storage', () => {
         tags: ['foundation'],
         title: 'Epic One',
       });
+      const epicPath = resolveBacklogEpicPath(cwd, 'epic-1');
+      expect(epicPath).toContain(`${sep}.eforge${sep}storage${sep}extensions${sep}eforge-plan${sep}backlog${sep}epics${sep}epic-1.md`);
+      expect(epicPath).not.toContain(`${sep}.backlog${sep}epics${sep}`);
+      expect(existsSync(resolveLegacyBacklogEpicPath(cwd, 'epic-1'))).toBe(false);
       expect(await listBacklogEpics(cwd)).toHaveLength(1);
     });
   });
@@ -139,6 +150,8 @@ describe('eforge-plan markdown storage', () => {
       expect(() => assertSafeBacklogId(unsafe)).toThrow(/Unsafe|empty|not/);
       expect(() => resolveBacklogItemPath('/tmp/project', unsafe)).toThrow(/Unsafe|empty|not/);
       expect(() => resolveBacklogEpicPath('/tmp/project', unsafe)).toThrow(/Unsafe|empty|not/);
+      expect(() => resolveLegacyBacklogItemPath('/tmp/project', unsafe)).toThrow(/Unsafe|empty|not/);
+      expect(() => resolveLegacyBacklogEpicPath('/tmp/project', unsafe)).toThrow(/Unsafe|empty|not/);
     }
   });
 

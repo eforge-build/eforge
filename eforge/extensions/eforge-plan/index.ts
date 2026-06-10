@@ -11,6 +11,7 @@ import {
 import { extractMarkdownSections } from './backlog-domain.js';
 import { listBoard, renderBoardMarkdown } from './board-actions.js';
 import {
+  importLegacyBacklog,
   readBacklogEpic,
   readBacklogItem,
   resolveBacklogEpicRelativePath,
@@ -43,9 +44,22 @@ const PromoteInput = Type.Object({ itemId: Type.String(), status: Type.Optional(
 const PromoteSelectionInput = PromotionSelectionInputSchema;
 const PromoteSelectionOutput = PromotionSelectionOutputSchema;
 const ActionObjectOutput = ActionObjectOutputSchema;
+const ImportLegacyInput = Type.Object({
+  kind: Type.Optional(Type.Union([Type.Literal('items'), Type.Literal('epics'), Type.Literal('all')])),
+  ids: Type.Optional(Type.Array(Type.String(), { uniqueItems: true })),
+});
+const ImportLegacyKindOutput = Type.Object({
+  copied: Type.Array(Type.Object({ id: Type.String(), path: Type.String() }, { additionalProperties: false })),
+  skipped: Type.Array(Type.Object({ id: Type.String(), reason: Type.Literal('private-exists') }, { additionalProperties: false })),
+}, { additionalProperties: false });
+const ImportLegacyOutput = Type.Object({
+  schemaVersion: Type.Literal(1),
+  items: ImportLegacyKindOutput,
+  epics: ImportLegacyKindOutput,
+}, { additionalProperties: false });
 
 const captureItem = defineExtensionAction({
-  id: 'capture-item', title: 'Capture backlog item', description: 'Create a visible eforge-plan backlog item.',
+  id: 'capture-item', title: 'Capture backlog item', description: 'Create a visible eforge-plan backlog item and write it to private eforge-plan storage.',
   inputSchema: CaptureInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const id = await resolveNewItemId(ctx.cwd, input.id, input.title);
@@ -58,7 +72,7 @@ const captureItem = defineExtensionAction({
 });
 
 const upsertEpic = defineExtensionAction({
-  id: 'upsert-epic', title: 'Upsert backlog epic', description: 'Create or update a visible eforge-plan backlog epic without item membership lists.',
+  id: 'upsert-epic', title: 'Upsert backlog epic', description: 'Create or update a visible eforge-plan backlog epic in private storage without item membership lists.',
   inputSchema: EpicInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const id = input.id ?? slugify(input.title);
@@ -72,7 +86,7 @@ const upsertEpic = defineExtensionAction({
 });
 
 const updateItem = defineExtensionAction({
-  id: 'update-item', title: 'Update backlog item', description: 'Update visible eforge-plan item metadata while preserving Markdown body content.',
+  id: 'update-item', title: 'Update backlog item', description: 'Update visible eforge-plan item metadata in private storage while preserving Markdown body content.',
   inputSchema: UpdateInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const updates: Record<string, unknown> = { updated: new Date().toISOString() };
@@ -90,7 +104,7 @@ const updateItem = defineExtensionAction({
 });
 
 const promoteItem = defineExtensionAction({
-  id: 'promote-item', title: 'Promote backlog item', description: 'Write a session plan, backlog metadata updates, and trace evidence for a visible eforge-plan backlog item.',
+  id: 'promote-item', title: 'Promote backlog item', description: 'Write a session plan, private backlog metadata updates, and trace evidence for a visible eforge-plan backlog item.',
   inputSchema: PromoteInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null });
@@ -100,7 +114,7 @@ const promoteItem = defineExtensionAction({
 });
 
 const promoteSelection = defineExtensionAction({
-  id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan for selected visible eforge-plan backlog items, an epic, or a recommendation ref.',
+  id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan and private storage updates for selected visible eforge-plan backlog items, an epic, or a recommendation ref.',
   inputSchema: PromoteSelectionInput, outputSchema: PromoteSelectionOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogSelection({
@@ -118,21 +132,36 @@ const promoteSelection = defineExtensionAction({
   },
 });
 
+// --- eforge:region plan-02-storage-foundation ---
+const importLegacyBacklogAction = defineExtensionAction({
+  id: 'import-legacy-backlog',
+  title: 'Import legacy backlog',
+  description: 'Copy validated legacy .backlog records into private eforge-plan backlog storage without deleting legacy files.',
+  inputSchema: ImportLegacyInput,
+  outputSchema: ImportLegacyOutput,
+  sideEffects: ['local-read', 'local-write'],
+  async handler(input, ctx) {
+    return toJsonSafeObject(await importLegacyBacklog(ctx.cwd, input));
+  },
+});
+// --- eforge:endregion plan-02-storage-foundation ---
+
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
   eforge.registerAction(listBoard);
   eforge.registerAction(captureItem);
   eforge.registerAction(upsertEpic);
   eforge.registerAction(updateItem);
+  eforge.registerAction(importLegacyBacklogAction);
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
   for (const action of recommendationActions) eforge.registerAction(action);
   for (const action of plannerActions) eforge.registerAction(action);
   for (const action of sessionPlanActions) eforge.registerAction(action);
-  eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
+  eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
-    id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local backlog curation.',
+    id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',
     blocks: [
       { rendererId: 'markdown', title: 'Board summary', content: 'Use **Render board** to display the current derived kanban board from visible eforge-plan backlog records.' },
       { rendererId: 'status-badge', title: 'Lifecycle linkage', content: 'Trace sidecars enabled', status: 'active' },
@@ -151,6 +180,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Apply planning agent task result', content: 'Apply only selected generated recommendations, handoff drafts, or session-plan sections.', action: { actionId: 'apply-planning-agent-task-result' } },
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
+      { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy selected legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
     ],
   }));
   eforge.registerConsoleWorkstation(defineConsoleWorkstation({
