@@ -18,6 +18,7 @@ const RECOMMENDATIONS_PANEL = `${SRC}/views/backlog/recommendations-panel.tsx`;
 const PLAN_WITH_AI_PANEL = `${SRC}/views/backlog/plan-with-ai-panel.tsx`;
 const TASK_WORKFLOWS_HOOK = `${SRC}/views/backlog/use-planning-task-workflows.ts`;
 const TASK_RESULT_PREVIEW = `${SRC}/views/backlog/planning-task-result-preview.tsx`;
+const BACKLOG_CURATION_PREVIEW = `${SRC}/views/backlog/backlog-curation-preview.tsx`;
 const TASK_CARD = `${SRC}/views/backlog/planning-task-card.tsx`;
 const MOCK_DATA = `${SRC}/fixtures/mock-data.ts`;
 const BRIDGE = `${SRC}/bridge.ts`;
@@ -36,6 +37,7 @@ const TASK_WORKFLOW_ACTIONS = [
   'retry-planning-agent-task',
   'redraft-planning-agent-task',
   'apply-planning-agent-task-result',
+  'analyze-all-backlog',
 ] as const;
 
 describe('eforge-plan planning workstation assets', () => {
@@ -53,6 +55,12 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('window.eforge');
     expect(source).toContain('invokeAction');
     expect(source).toContain('Plan with AI');
+    expect(source).toContain('Analyze all backlog');
+    expect(source).toContain('Backlog curation');
+    expect(source).toContain('backlogCurationDraft');
+    expect(source).toContain('applyBacklogCurationDraft');
+    expect(source).toContain('previewAcknowledged');
+    expect(source).toContain('confirmApply');
     expect(source).toContain('Promote to a build plan');
     expect(source).toContain('Lifecycle evidence');
     expect(source).toContain('Source refs');
@@ -96,6 +104,9 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('applyMockCreationDraft');
     expect(source).toContain('const applied = {');
     expect(source).toContain('recommendations: Boolean(input.applyRecommendations)');
+    expect(source).toContain("case 'analyze-all-backlog'");
+    expect(source).toContain('applyMockBacklogCurationDraft');
+    expect(source).toContain('if (input.applyBacklogCurationDraft !== undefined)');
   });
 
   it('wires recommendation refresh through the bridge without queue actions', async () => {
@@ -138,12 +149,18 @@ describe('eforge-plan planning workstation assets', () => {
 
   it('requires explicit in-app confirmation before applying generated planning output', async () => {
     const source = await readFile(TASK_RESULT_PREVIEW, 'utf-8');
+    const curationSource = await readFile(BACKLOG_CURATION_PREVIEW, 'utf-8');
 
     expect(source).not.toMatch(/window\.confirm\s*\(/);
+    expect(curationSource).not.toMatch(/window\.confirm\s*\(/);
     expect(source).toContain('if (confirming !== key)');
     expect(source).toContain('Confirm create session plan');
     expect(source).toContain('Confirm apply recommendations');
     expect(source).toContain('Confirm apply session-plan content');
+    expect(curationSource).toContain('Confirm apply curation');
+    expect(curationSource).toContain('applyBacklogCurationDraft');
+    expect(curationSource).toContain('previewAcknowledged');
+    expect(curationSource).toContain('confirmApply');
   });
 
   it('labels recommendation refresh workflow entries in the task monitor', async () => {
@@ -151,6 +168,8 @@ describe('eforge-plan planning workstation assets', () => {
 
     expect(source).toContain("entry.purpose === 'recommendation-refresh'");
     expect(source).toContain('Recommendation refresh');
+    expect(source).toContain("entry.purpose === 'backlog-curation'");
+    expect(source).toContain('Backlog curation');
   });
 
   it('promotes selected ready backlog items through a single AI planning task', async () => {

@@ -1,4 +1,4 @@
-import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
+import { defineExtensionAction, ExtensionActionInputValidationError, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
 import {
   applyCompletedPlanningAgentTaskResult,
@@ -439,7 +439,7 @@ function boundedUserGoal(userGoal: string): string {
 function assertApplySelection(input: { applyRecommendations?: boolean; applyHandoffDrafts?: unknown[]; applySessionPlanDrafts?: unknown[]; applySessionPlanCreationDraft?: unknown; applyBacklogCurationDraft?: unknown }): void {
   if (input.applyBacklogCurationDraft !== undefined) {
     if (input.applyRecommendations === true || (input.applyHandoffDrafts?.length ?? 0) > 0 || (input.applySessionPlanDrafts?.length ?? 0) > 0 || input.applySessionPlanCreationDraft !== undefined) {
-      throw new Error('applyBacklogCurationDraft cannot be combined with unrelated planning task apply selections.');
+      throw new ExtensionActionInputValidationError('applyBacklogCurationDraft cannot be combined with unrelated planning task apply selections.', [{ path: 'applyBacklogCurationDraft', message: 'Backlog curation draft applies must not include recommendations, handoff drafts, session-plan sections, or session-plan creation draft selections.' }]);
     }
     return;
   }
@@ -449,7 +449,7 @@ function assertApplySelection(input: { applyRecommendations?: boolean; applyHand
     || (input.applySessionPlanDrafts?.length ?? 0) > 0
     || input.applySessionPlanCreationDraft !== undefined
   ) return;
-  throw new Error('Applying a planning agent task result requires selecting recommendations, handoff drafts, session-plan sections, a session-plan creation draft, or a backlog curation draft.');
+  throw new ExtensionActionInputValidationError('Applying a planning agent task result requires an apply selection.', [{ path: '', message: 'Select recommendations, handoff drafts, session-plan sections, a session-plan creation draft, or a backlog curation draft.' }]);
 }
 
 export const planningAgentTaskActions = [

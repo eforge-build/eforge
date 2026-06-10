@@ -35,6 +35,7 @@ type Patch = ItemPatch | EpicPatch;
 type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 
+// --- eforge:region apply-entrypoint ---
 export async function applyBacklogCurationDraftFromTask(
   cwd: string,
   task: PlanningAgentTaskRecordLike,
@@ -67,9 +68,11 @@ export async function applyBacklogCurationDraftFromTask(
   draft.epicChanges.forEach((patch, index) => applyEpicPatch(patch, requireProspective(prospectiveEpics, patch.id, `backlogCurationDraft.epicChanges[${index}]`), `backlogCurationDraft.epicChanges[${index}]`));
   draft.noOpRechecks.forEach((recheck, index) => applyRecheck(recheck, recheck.kind === 'item' ? requireProspective(prospectiveItems, recheck.id, `backlogCurationDraft.noOpRechecks[${index}]`) : requireProspective(prospectiveEpics, recheck.id, `backlogCurationDraft.noOpRechecks[${index}]`)));
 
+  const visibleItemIds = new Set(itemSnapshots.map((snapshot) => snapshot.id));
+  const visibleEpicIds = new Set(epicSnapshots.map((snapshot) => snapshot.id));
   const prospectiveItemIds = new Set(prospectiveItems.keys());
   const prospectiveEpicIds = new Set(prospectiveEpics.keys());
-  validateProspectiveReferences(prospectiveItems, prospectiveEpics, prospectiveItemIds, prospectiveEpicIds);
+  validateProspectiveReferences(prospectiveItems, prospectiveEpics, visibleItemIds, visibleEpicIds);
 
   const generatedRecommendations = rawResult?.recommendations === undefined ? undefined : parseGeneratedRecommendations(rawResult.recommendations);
   if (generatedRecommendations !== undefined) validateRecommendationReferencesAgainstIds(generatedRecommendations, prospectiveItemIds, prospectiveEpicIds);
@@ -110,13 +113,18 @@ export async function applyBacklogCurationDraftFromTask(
     ...(recommendationStatus !== undefined && { recommendationStatus }),
   };
 }
+// --- eforge:endregion apply-entrypoint ---
 
+// --- eforge:region markdown-section-helpers ---
 export function applySectionOperations(body: string, operations: readonly { heading: string; action: 'replace' | 'append'; content: string }[]): string {
   let next = body;
   for (const operation of operations) next = applySectionOperation(next, operation);
   return next;
 }
 
+// --- eforge:endregion markdown-section-helpers ---
+
+// --- eforge:region validation-helpers ---
 function parseDraft(value: unknown) {
   const result = safeParseWithSchema(EforgePlanPlanningBacklogCurationDraftSchema, value);
   if (result.success) return result.data;
@@ -160,9 +168,9 @@ function validatePatchBasics(patch: Patch, path: string): void {
   if ((patch.rationale ?? '').trim().length === 0) throw validationError(`${path}.rationale`, 'Material curation patches require non-empty rationale.');
   for (const [index, operation] of (patch.sectionOperations ?? []).entries()) {
     if (!isValidSectionHeading(operation.heading)) throw validationError(`${path}.sectionOperations[${index}].heading`, 'Section headings must be non-empty single-line headings.');
-    if (operation.heading.trim() === 'Evidence' && operation.action === 'replace') throw validationError(`${path}.sectionOperations[${index}].action`, 'Evidence section operations must be append-only to preserve durable historical evidence.');
+    if (isEvidenceHeading(operation.heading) && operation.action === 'replace') throw validationError(`${path}.sectionOperations[${index}].action`, 'Evidence section operations must be append-only to preserve durable historical evidence.');
   }
-  const changesEvidence = (patch.sectionOperations ?? []).some((operation) => operation.heading.trim() === 'Evidence');
+  const changesEvidence = (patch.sectionOperations ?? []).some((operation) => isEvidenceHeading(operation.heading));
   const status = patch.metadata?.status;
   if (status !== undefined && !isBacklogStatus(status)) throw validationError(`${path}.metadata.status`, `Unknown backlog status "${status}".`);
   if ((status !== undefined && isBacklogStatus(status) && isClosedStatus(status)) || changesEvidence) {
@@ -191,6 +199,9 @@ function validatePrecondition(precondition: { kind: string; id: string; bodySha2
   if (precondition.sourceFingerprint !== undefined && precondition.sourceFingerprint !== sourceFingerprint) throw validationError(`${path}.sourceFingerprint`, 'Curation draft source precondition is stale.');
 }
 
+// --- eforge:endregion validation-helpers ---
+
+// --- eforge:region patch-application-helpers ---
 function applyItemPatch(patch: ItemPatch, target: ProspectiveItem, path: string): void {
   const before = canonicalRecord(target, 'item');
   applyMetadataPatch(patch, target.frontmatter, 'item');
@@ -238,8 +249,12 @@ function applyRecheck(recheck: Recheck, target: ProspectiveItem | ProspectiveEpi
   target.changed = true;
 }
 
+// --- eforge:endregion patch-application-helpers ---
+
+// --- eforge:region validation-helpers ---
 function validateProspectiveReferences(items: Map<string, ProspectiveItem>, epics: Map<string, ProspectiveEpic>, itemIds: Set<string>, epicIds: Set<string>): void {
   for (const [id, entry] of items) {
+    if (!entry.changed) continue;
     const normalized = normalizeBacklogItem(entry.frontmatter, entry.body);
     const path = entry.patchPath ?? `backlogCurationDraft.itemChanges.${id}`;
     normalized.depends_on.forEach((dependencyId, index) => {
@@ -247,7 +262,9 @@ function validateProspectiveReferences(items: Map<string, ProspectiveItem>, epic
     });
     if (normalized.epic !== undefined && !epicIds.has(normalized.epic)) throw validationError(`${path}.metadata.epic`, `Unknown epic id "${normalized.epic}".`);
   }
-  for (const [, entry] of epics) normalizeBacklogEpic(entry.frontmatter, entry.body);
+  for (const [, entry] of epics) {
+    if (entry.changed) normalizeBacklogEpic(entry.frontmatter, entry.body);
+  }
 }
 
 function requireProspective<T>(map: Map<string, T>, id: string, path: string): T {
@@ -261,6 +278,12 @@ function isValidSectionHeading(value: string): boolean {
   return trimmed.length > 0 && !/[\r\n]/.test(trimmed) && !trimmed.startsWith('#');
 }
 
+function isEvidenceHeading(value: string): boolean {
+  return value.trim().toLowerCase() === 'evidence';
+}
+// --- eforge:endregion validation-helpers ---
+
+// --- eforge:region markdown-section-helpers ---
 function applySectionOperation(body: string, operation: { heading: string; action: 'replace' | 'append'; content: string }): string {
   const heading = operation.heading.trim();
   const lines = splitLinesPreservingEndings(body);
@@ -303,3 +326,4 @@ function fieldPath(root: string, pointer: string): string {
 function validationError(path: string, message: string): ExtensionActionInputValidationError {
   return new ExtensionActionInputValidationError(message, [{ path, message }]);
 }
+// --- eforge:endregion markdown-section-helpers ---

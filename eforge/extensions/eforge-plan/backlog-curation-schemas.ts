@@ -1,5 +1,11 @@
 import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
-import { EforgePlanPlanningRequestedOutputSectionSchema, ExtensionAgentTaskIdSchema, ExtensionAgentTaskRecordSchema } from '../../../packages/client/src/extension-agent-tasks.js';
+import {
+  EforgePlanPlanningBacklogCurationNeedsInputSchema,
+  EforgePlanPlanningBacklogCurationSkippedSchema,
+  EforgePlanPlanningRequestedOutputSectionSchema,
+  ExtensionAgentTaskIdSchema,
+  ExtensionAgentTaskRecordSchema,
+} from '../../../packages/client/src/extension-agent-tasks.js';
 import { RecommendationDerivedStatusSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({}, { additionalProperties: false });
@@ -35,15 +41,15 @@ export const AnalyzeAllBacklogOutputSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const BacklogCurationApplyDetailsSchema = Type.Object({
-  itemChanges: Type.Number(),
-  epicChanges: Type.Number(),
-  noOpRechecks: Type.Number(),
+  itemChanges: Type.Integer({ minimum: 0 }),
+  epicChanges: Type.Integer({ minimum: 0 }),
+  noOpRechecks: Type.Integer({ minimum: 0 }),
   changedItemIds: Type.Array(Type.String()),
   changedEpicIds: Type.Array(Type.String()),
   recheckedItemIds: Type.Array(Type.String()),
   recheckedEpicIds: Type.Array(Type.String()),
-  skipped: Type.Array(Type.Object({}, { additionalProperties: true })),
-  needsInput: Type.Array(Type.Object({}, { additionalProperties: true })),
+  skipped: Type.Array(EforgePlanPlanningBacklogCurationSkippedSchema),
+  needsInput: Type.Array(EforgePlanPlanningBacklogCurationNeedsInputSchema),
   recommendations: Type.Optional(Type.Object({
     recommendations: BacklogRecommendationModelSchema,
     recommendationSummary: RecommendationSummarySchema,

@@ -244,7 +244,7 @@ describe('planning agent task actions', () => {
           timeoutMs: 1000,
           agentTasks: () => ({ async start() { throw new Error('unexpected start'); }, async get() { throw new Error('unexpected get'); }, async cancel() { throw new Error('unexpected cancel'); } }),
         });
-        expect(result).toMatchObject({ kind: 'handler-error' });
+        expect(result).toMatchObject({ kind: 'invalid-input' });
       }
     });
   });

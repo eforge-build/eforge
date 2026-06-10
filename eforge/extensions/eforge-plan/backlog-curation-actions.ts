@@ -99,7 +99,11 @@ function runAnalyzeStartExclusive<T>(cwd: string, sourceFingerprint: string, tas
   const key = `${cwd}\0${sourceFingerprint}`;
   const prior = analyzeStartChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
-  analyzeStartChains.set(key, result.then(() => undefined, () => undefined));
+  let chain: Promise<unknown>;
+  chain = result.then(() => undefined, () => undefined).finally(() => {
+    if (analyzeStartChains.get(key) === chain) analyzeStartChains.delete(key);
+  });
+  analyzeStartChains.set(key, chain);
   return result;
 }
 

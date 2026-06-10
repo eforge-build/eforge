@@ -150,7 +150,8 @@ function boundString(value: string, limit: number, onTruncate: () => void): stri
 function buildSourceText(source: Record<string, unknown>): string {
   let text = JSON.stringify(source, null, 2);
   if (text.length <= SOURCE_TEXT_TARGET) return text;
-  const compact = { ...source, openItems: (source.openItems as Array<Record<string, unknown>>).map(stripSections), openEpics: (source.openEpics as Array<Record<string, unknown>>).map(stripSections), traceSummaries: [] };
+  const redraft = boundRedraftContext(source.redraft);
+  const compact = { ...source, ...(redraft !== undefined && { redraft }), openItems: (source.openItems as Array<Record<string, unknown>>).map(stripSections), openEpics: (source.openEpics as Array<Record<string, unknown>>).map(stripSections), traceSummaries: [] };
   text = JSON.stringify(compact, null, 2);
   if (text.length <= SOURCE_TEXT_TARGET) return text;
   const minimal = {
@@ -164,9 +165,42 @@ function buildSourceText(source: Record<string, unknown>): string {
     dependencies: source.dependencies,
     blockers: source.blockers,
     recommendations: stripRecommendationSummary(source.recommendations),
+    ...(redraft !== undefined && { redraft }),
     truncation: { ...(source.truncation as Record<string, unknown>), fallback: 'minimal' },
   };
   return JSON.stringify(minimal, null, 2);
+}
+
+function boundRedraftContext(value: unknown): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return { value };
+  const redraft = value as Record<string, unknown>;
+  const previousDraft = redraft.previousBacklogCurationDraft && typeof redraft.previousBacklogCurationDraft === 'object'
+    ? redraft.previousBacklogCurationDraft as Record<string, unknown>
+    : undefined;
+  return {
+    ...(redraft.parentTaskId !== undefined && { parentTaskId: redraft.parentTaskId }),
+    ...(redraft.steering !== undefined && { steering: boundString(String(redraft.steering), 4000, () => {}) }),
+    ...(Array.isArray(redraft.userAnswers) && { userAnswers: redraft.userAnswers.map((answer) => boundString(String(answer), 2000, () => {})) }),
+    ...(typeof redraft.previousSummary === 'string' && { previousSummary: boundString(redraft.previousSummary, 2000, () => {}) }),
+    ...(Array.isArray(redraft.previousAssumptionsOpenQuestions) && { previousAssumptionsOpenQuestions: redraft.previousAssumptionsOpenQuestions.slice(0, 20) }),
+    ...(Array.isArray(redraft.previousClarificationQuestions) && { previousClarificationQuestions: redraft.previousClarificationQuestions.slice(0, 20) }),
+    ...(previousDraft !== undefined && { previousBacklogCurationDraft: summarizePreviousDraft(previousDraft) }),
+  };
+}
+
+function summarizePreviousDraft(draft: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schemaVersion: draft.schemaVersion,
+    sourceFingerprint: draft.sourceFingerprint,
+    generatedAt: draft.generatedAt,
+    summary: Array.isArray(draft.summary) ? draft.summary.slice(0, 20) : undefined,
+    itemChangeCount: Array.isArray(draft.itemChanges) ? draft.itemChanges.length : undefined,
+    epicChangeCount: Array.isArray(draft.epicChanges) ? draft.epicChanges.length : undefined,
+    noOpRecheckCount: Array.isArray(draft.noOpRechecks) ? draft.noOpRechecks.length : undefined,
+    skippedCount: Array.isArray(draft.skipped) ? draft.skipped.length : undefined,
+    needsInputCount: Array.isArray(draft.needsInput) ? draft.needsInput.length : undefined,
+  };
 }
 
 function stripSections(record: Record<string, unknown>): Record<string, unknown> {

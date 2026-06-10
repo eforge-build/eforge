@@ -110,6 +110,18 @@ describe('backlog curation apply', () => {
     });
   });
 
+  it('rejects lower-case Evidence section replacement before writing', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n\n## evidence\n\n- Prior durable evidence\n' });
+      const source = await buildBacklogCurationSource(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const entry = { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] as const, includeRoadmap: true, purpose: 'backlog-curation' as const, sourceFingerprint: source.sourceFingerprint, createdAt: 'now' };
+      const before = await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8');
+      await expect(applyBacklogCurationDraftFromTask(cwd, { taskId: 'task-1', kind: 'eforge-plan.planning-draft', status: 'completed', result: { backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: source.sourceFingerprint, summary: [], itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256 }, sectionOperations: [{ heading: 'evidence', action: 'replace', content: '- Replacement evidence' }], rationale: 'rationale', evidence: ['New durable evidence'] }], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] } } }, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/Evidence.*append-only/i);
+      expect(await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8')).toBe(before);
+    });
+  });
+
   it('rejects stale preconditions, unknown dependencies, and unknown recommendation references before writing', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
@@ -131,6 +143,27 @@ describe('backlog curation apply', () => {
         expect(await readRecommendations(cwd)).toBeNull();
         expect(existsSync(recommendationPath)).toBe(false);
       }
+    });
+  });
+
+  it('does not block safe patches on unrelated or visible closed references', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogEpic(cwd, { id: 'closed-epic', status: 'shipped', body: '# Closed Epic\n' });
+      await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', depends_on: ['closed-dep'], epic: 'closed-epic', body: '# Item\n\n## Claim\n\nOld\n' });
+      await writeBacklogItem(cwd, { id: 'item-2', status: 'candidate', depends_on: ['missing-preexisting'], body: '# Item Two\n\n## Claim\n\nUntouched\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Claim', action: 'replace', content: 'New claim.' }], rationale: 'Update claim while preserving existing closed links.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      const result = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(result.changedItemIds).toEqual(['item-1']);
+      expect(await readBacklogItem(cwd, 'item-1')).toMatchObject({ depends_on: ['closed-dep'], epic: 'closed-epic', body: expect.stringContaining('New claim.') });
     });
   });
 

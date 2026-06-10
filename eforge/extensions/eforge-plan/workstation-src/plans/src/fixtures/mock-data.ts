@@ -1,4 +1,4 @@
-import type { AppliedSessionPlanCreationDraft, Artifact, Board, BoardItem, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -295,10 +295,10 @@ export function mockMutationResult(session: string, patch: Partial<PlanData> = {
 // --- Durable planning task workflow fixtures ---
 //
 // These fixtures keep the mock bridge stateful enough to exercise the AI-first
-// workstation flow during local UI development: a running task with section
+// workstation flow during local UI development: running tasks with section
 // progress, a failed task that can be retried, a needs-input clarification task
-// that can be redrafted, and a ready creation-draft task whose apply refreshes
-// the Plans artifact list.
+// that can be redrafted, a ready creation-draft task whose apply refreshes
+// the Plans artifact list, and a backlog curation task with preview/apply state.
 
 const TASK_KIND = 'eforge-plan.planning-draft';
 export const MOCK_CREATION_DRAFT_SESSION = '2026-06-07-ai-promoted-plan';
@@ -345,6 +345,39 @@ const mockNeedsInputTask: PlanningAgentTaskRecord = {
   },
 };
 
+export const mockBacklogCurationDraft: BacklogCurationDraft = {
+  schemaVersion: 1,
+  sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000',
+  generatedAt: '2026-06-07T00:30:00.000Z',
+  summary: ['Found stale backlog metadata and generated a read-only curation draft.', 'Apply will patch backlog records and refresh recommendation outputs together.'],
+  itemChanges: [{
+    kind: 'item', id: 'auto-mode',
+    precondition: { kind: 'item', id: 'auto-mode', bodySha256: 'auto-mode-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
+    metadata: { status: 'planned', priority: 'medium', depends_on: ['traceability'], last_checked: '2026-06-07', stale_after: '2026-07-07' },
+    sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Confirmed auto-mode remains blocked by traceability evidence.' }],
+    rationale: 'auto-mode has durable dependency evidence and should carry fresh recheck metadata.',
+    evidence: ['Trace sidecars still blocks auto-mode.'],
+  }],
+  epicChanges: [{
+    kind: 'epic', id: 'planning',
+    precondition: { kind: 'epic', id: 'planning', bodySha256: 'planning-epic-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
+    metadata: { last_checked: '2026-06-07', stale_after: '2026-07-07' },
+    sectionOperations: [{ heading: 'Recheck', action: 'append', content: '- Planning workstation curation completed with partial progress evidence.' }],
+    rationale: 'Planning epic has new partial-progress evidence from active tasks.',
+    evidence: ['Import preview merged while recommendations remain active.'],
+  }],
+  noOpRechecks: [{ kind: 'item', id: 'traceability', precondition: { kind: 'item', id: 'traceability', bodySha256: 'traceability-body' }, last_checked: '2026-06-07', stale_after: '2026-07-07', rationale: 'Traceability remains accurate and ready.' }],
+  skipped: [{ kind: 'item', id: 'legacy-cleanup', reason: 'Legacy shipped record is ambiguous and should not be rewritten by curation.' }],
+  needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'The claim lacks durable evidence.' }],
+};
+
+export const mockBacklogCurationTask: PlanningAgentTaskRecord = {
+  taskId: 'task-backlog-curation-ready', kind: TASK_KIND, status: 'completed',
+  createdAt: '2026-06-07T00:30:00.000Z', updatedAt: '2026-06-07T00:30:06.000Z', startedAt: '2026-06-07T00:30:01.000Z', completedAt: '2026-06-07T00:30:06.000Z',
+  metadata: { summary: 'Backlog curation draft ready.', outputSectionCount: 2 },
+  result: { summary: 'Backlog curation draft ready.', assumptionsOpenQuestions: [], nextSteps: ['Review curation preview.', 'Apply curation only after confirmation.'], decision: 'ready', backlogCurationDraft: mockBacklogCurationDraft, recommendations: mockRecommendations },
+};
+
 const mockReadyCreationDraftTask: PlanningAgentTaskRecord = {
   taskId: 'task-ready-creation', kind: TASK_KIND, status: 'completed',
   createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:00:06.000Z', startedAt: '2026-06-07T00:00:01.000Z', completedAt: '2026-06-07T00:00:06.000Z',
@@ -371,6 +404,7 @@ export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
   { entry: workflowEntry({ taskId: mockRunningTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.' }), available: true, status: 'running', task: mockRunningTask },
   { entry: workflowEntry({ taskId: mockNeedsInputTask.taskId, derivedRequest: 'Draft a session plan for an ambiguous selection.' }), available: true, status: 'completed', task: mockNeedsInputTask },
   { entry: workflowEntry({ taskId: mockReadyCreationDraftTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.', session: MOCK_CREATION_DRAFT_SESSION }), available: true, status: 'completed', task: mockReadyCreationDraftTask },
+  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask },
   { entry: workflowEntry({ taskId: mockFailedTask.taskId, derivedRequest: 'Draft a session plan that failed.' }), available: true, status: 'failed', task: mockFailedTask },
 ];
 
@@ -400,7 +434,7 @@ function pushDynamicTask(params: { selection?: PlanningTaskWorkflowSelection; de
   const now = '2026-06-07T00:10:00.000Z';
   const task: PlanningAgentTaskRecord = {
     taskId, kind: TASK_KIND, status: 'running', createdAt: now, updatedAt: now, startedAt: now,
-    metadata: { progressMessage: params.entryPatch?.purpose === 'recommendation-refresh' ? 'Refreshing recommendations…' : 'Preparing planner context…', sectionProgress: { currentSection: params.entryPatch?.purpose === 'recommendation-refresh' ? 'recommendations' : 'scope', coveredSections: [], remainingSections: params.entryPatch?.purpose === 'recommendation-refresh' ? [] : ['acceptance-criteria'] } },
+    metadata: { progressMessage: params.entryPatch?.purpose === 'recommendation-refresh' ? 'Refreshing recommendations…' : params.entryPatch?.purpose === 'backlog-curation' ? 'Analyzing backlog curation…' : 'Preparing planner context…', sectionProgress: { currentSection: params.entryPatch?.purpose === 'recommendation-refresh' ? 'recommendations' : params.entryPatch?.purpose === 'backlog-curation' ? 'backlogCurationDraft' : 'scope', coveredSections: [], remainingSections: params.entryPatch?.purpose === 'recommendation-refresh' ? [] : ['acceptance-criteria'] } },
   };
   const entry = workflowEntry({
     taskId,
@@ -429,6 +463,18 @@ export function getMockRecommendationsResponse(): GetRecommendationsResponse {
   };
 }
 
+export function analyzeMockBacklog(): AnalyzeAllBacklogResponse {
+  const reusable = listMockPlanningTasks().find((item) => item.entry.purpose === 'backlog-curation' && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
+  if (reusable?.task) return { task: reusable.task, entry: reusable.entry, sourceFingerprint: reusable.entry.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint, reused: true };
+  const response = pushDynamicTask({
+    selection: {},
+    derivedRequest: 'Analyze all backlog records for curation.',
+    idPrefix: 'task-backlog-curation',
+    entryPatch: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint },
+  });
+  return { ...response, sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint };
+}
+
 export function refreshMockRecommendations(): RefreshRecommendationsResponse {
   if (activeRecommendationRefreshTask && (activeRecommendationRefreshTask.status === 'queued' || activeRecommendationRefreshTask.status === 'running')) {
     const entry = listMockPlanningTasks().find((item) => item.entry.taskId === activeRecommendationRefreshTask?.taskId)?.entry
@@ -446,7 +492,14 @@ export function refreshMockRecommendations(): RefreshRecommendationsResponse {
 }
 
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
-  return pushDynamicTask({ parentTaskId, derivedRequest: `${mode === 'retry' ? 'Retry' : 'Redraft'} of ${parentTaskId}`, idPrefix: `task-${mode}` });
+  const parent = listMockPlanningTasks().find((item) => item.entry.taskId === parentTaskId)?.entry;
+  const isCuration = parent?.purpose === 'backlog-curation';
+  return pushDynamicTask({
+    parentTaskId,
+    derivedRequest: `${mode === 'retry' ? 'Retry' : 'Redraft'} of ${parentTaskId}`,
+    idPrefix: `task-${mode}`,
+    entryPatch: isCuration ? { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: parent.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint } : undefined,
+  });
 }
 
 export function cancelMockPlanningTask(taskId: string, reason?: string): PlanningAgentTaskRecord {
@@ -462,6 +515,24 @@ export function cancelMockPlanningTask(taskId: string, reason?: string): Plannin
 
 export function getMockArtifacts(): Artifact[] {
   return [...mockArtifacts, ...appliedCreationDraftArtifacts];
+}
+
+export function applyMockBacklogCurationDraft(taskId: string) {
+  const item = listMockPlanningTasks().find((entry) => entry.entry.taskId === taskId);
+  if (item) item.entry.appliedAt = '2026-06-07T00:40:00.000Z';
+  const details = {
+    itemChanges: mockBacklogCurationDraft.itemChanges.length,
+    epicChanges: mockBacklogCurationDraft.epicChanges.length,
+    noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length,
+    changedItemIds: mockBacklogCurationDraft.itemChanges.map((entry) => entry.id),
+    changedEpicIds: mockBacklogCurationDraft.epicChanges.map((entry) => entry.id),
+    recheckedItemIds: mockBacklogCurationDraft.noOpRechecks.filter((entry) => entry.kind === 'item').map((entry) => entry.id),
+    recheckedEpicIds: mockBacklogCurationDraft.noOpRechecks.filter((entry) => entry.kind === 'epic').map((entry) => entry.id),
+    skipped: mockBacklogCurationDraft.skipped,
+    needsInput: mockBacklogCurationDraft.needsInput,
+    recommendations: { recommendations: mockRecommendations, path: 'mock://recommendations/current.json' },
+  };
+  return { schemaVersion: 1, taskId, applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0, backlogCuration: details.itemChanges + details.epicChanges + details.noOpRechecks }, backlogCuration: details };
 }
 
 export function applyMockCreationDraft(session: string): AppliedSessionPlanCreationDraft {

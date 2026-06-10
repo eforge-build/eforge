@@ -45,9 +45,16 @@ const PromoteInput = Type.Object({ itemId: Type.String(), status: Type.Optional(
 const PromoteSelectionInput = PromotionSelectionInputSchema;
 const PromoteSelectionOutput = PromotionSelectionOutputSchema;
 const ActionObjectOutput = ActionObjectOutputSchema;
+const BacklogIdInput = Type.String({ minLength: 1, pattern: '^(?!\\.\\.?$)[^/\\\\\\0]+$' });
 const ImportLegacyInput = Type.Object({
   kind: Type.Optional(Type.Union([Type.Literal('items'), Type.Literal('epics'), Type.Literal('all')])),
-  ids: Type.Optional(Type.Array(Type.String(), { uniqueItems: true })),
+  ids: Type.Optional(Type.Array(BacklogIdInput, { uniqueItems: true })),
+}, {
+  additionalProperties: false,
+  anyOf: [
+    { not: { required: ['ids'] } },
+    { required: ['ids', 'kind'], properties: { kind: { enum: ['items', 'epics'] } } },
+  ],
 });
 const ImportLegacyKindOutput = Type.Object({
   copied: Type.Array(Type.Object({ id: Type.String(), path: Type.String() }, { additionalProperties: false })),

@@ -42,7 +42,9 @@ export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRe
             <TaskIdBadge taskId={entry.taskId} />
             {entry.parentTaskId && <span className="text-[0.65rem] text-muted-foreground" title={entry.parentTaskId}>↳ from {shortTaskId(entry.parentTaskId)}</span>}
             {entry.purpose === 'recommendation-refresh' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-text-bright">Recommendation refresh</span>}
+            {entry.purpose === 'backlog-curation' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[0.65rem] text-text-bright">Backlog curation</span>}
             {entry.createdAt && <span className="text-[0.65rem] text-muted-foreground" title={entry.createdAt}>started {formatRelativeTime(entry.createdAt)}</span>}
+            {entry.appliedAt && <span className="text-[0.65rem] text-muted-foreground" title={entry.appliedAt}>applied {formatRelativeTime(entry.appliedAt)}</span>}
           </div>
           <p className="mt-1 truncate text-foreground" title={label}>{label}</p>
         </div>
