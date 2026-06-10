@@ -1,13 +1,25 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep, win32 } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
 import {
   normalizeBacklogEpic,
   normalizeBacklogItem,
   type BacklogEpic,
   type BacklogItem,
 } from './backlog-domain.js';
+import {
+  assertSafeBacklogId,
+  canonicalJson,
+  dropUndefined,
+  orderFrontmatter,
+  resolveContainedPath,
+  safeId,
+  sha256,
+  toProjectRelativePath,
+  toRecord,
+} from './markdown-store-support.js';
 
 const ITEM_FRONTMATTER_ORDER = [
   'id',
@@ -37,9 +49,26 @@ const EPIC_FRONTMATTER_ORDER = [
   'eforge_plan',
 ];
 
+export type BacklogStorageOrigin = 'private' | 'legacy';
+export type BacklogRecordKind = 'item' | 'epic';
+
 export interface ParsedMarkdownRecord {
   frontmatter: Record<string, unknown>;
   body: string;
+}
+
+export interface BacklogRecordSnapshot<T> {
+  kind: BacklogRecordKind;
+  origin: BacklogStorageOrigin;
+  id: string;
+  path: string;
+  relativePath: string;
+  record: T;
+  frontmatter: Record<string, unknown>;
+  body: string;
+  updated?: string;
+  bodySha256: string;
+  recordSha256: string;
 }
 
 export interface BacklogItemWrite {
@@ -74,31 +103,48 @@ export interface BacklogEpicWrite {
   [key: string]: unknown;
 }
 
-export function assertSafeBacklogId(id: string): void {
-  if (id.length === 0) {
-    throw new Error('Backlog id must not be empty');
-  }
-  if (id === '.' || id === '..') {
-    throw new Error(`Unsafe backlog id "${id}": traversal segments are not allowed`);
-  }
-  if (id.includes('\0')) {
-    throw new Error('Unsafe backlog id: null bytes are not allowed');
-  }
-  if (id.includes('/') || id.includes('\\')) {
-    throw new Error(`Unsafe backlog id "${id}": path separators are not allowed`);
-  }
-  if (isAbsolute(id) || win32.isAbsolute(id)) {
-    throw new Error(`Unsafe backlog id "${id}": absolute paths are not allowed`);
-  }
+export interface BacklogImportResult {
+  schemaVersion: 1;
+  items: BacklogImportKindResult;
+  epics: BacklogImportKindResult;
 }
 
+export interface BacklogImportKindResult {
+  copied: Array<{ id: string; path: string }>;
+  skipped: Array<{ id: string; reason: 'private-exists' }>;
+}
+
+// --- eforge:region backlog-storage-paths ---
+
+export { assertSafeBacklogId } from './markdown-store-support.js';
+
 export function resolveBacklogItemPath(cwd: string, id: string): string {
-  return resolveContainedPath(resolve(cwd, '.backlog', 'items'), `${safeId(id)}.md`);
+  return privateRecordPath(cwd, 'item', id);
 }
 
 export function resolveBacklogEpicPath(cwd: string, id: string): string {
+  return privateRecordPath(cwd, 'epic', id);
+}
+
+export function resolveLegacyBacklogItemPath(cwd: string, id: string): string {
+  return resolveContainedPath(resolve(cwd, '.backlog', 'items'), `${safeId(id)}.md`);
+}
+
+export function resolveLegacyBacklogEpicPath(cwd: string, id: string): string {
   return resolveContainedPath(resolve(cwd, '.backlog', 'epics'), `${safeId(id)}.md`);
 }
+
+export function resolveBacklogItemRelativePath(cwd: string, id: string): string {
+  return toProjectRelativePath(cwd, resolveBacklogItemPath(cwd, id));
+}
+
+export function resolveBacklogEpicRelativePath(cwd: string, id: string): string {
+  return toProjectRelativePath(cwd, resolveBacklogEpicPath(cwd, id));
+}
+
+// --- eforge:endregion backlog-storage-paths ---
+
+// --- eforge:region markdown-parse-serialize ---
 
 export function parseMarkdownRecord(raw: string): ParsedMarkdownRecord {
   if (!raw.startsWith('---')) {
@@ -125,50 +171,68 @@ export function serializeMarkdownRecord(
   return `---\n${yaml}\n---\n${body}`;
 }
 
+// --- eforge:endregion markdown-parse-serialize ---
+
+// --- eforge:region backlog-storage-read-list ---
+
 export async function readBacklogItem(cwd: string, id: string): Promise<BacklogItem | null> {
-  const filePath = resolveBacklogItemPath(cwd, id);
-  if (!existsSync(filePath)) {
-    return null;
-  }
-  return parseItem(await readFile(filePath, 'utf-8'));
+  return (await readBacklogItemSnapshot(cwd, id))?.record ?? null;
 }
 
 export async function readBacklogEpic(cwd: string, id: string): Promise<BacklogEpic | null> {
-  const filePath = resolveBacklogEpicPath(cwd, id);
-  if (!existsSync(filePath)) {
-    return null;
-  }
-  return parseEpic(await readFile(filePath, 'utf-8'));
+  return (await readBacklogEpicSnapshot(cwd, id))?.record ?? null;
+}
+
+export async function readBacklogItemSnapshot(cwd: string, id: string): Promise<BacklogRecordSnapshot<BacklogItem> | null> {
+  return readVisibleSnapshot(cwd, 'item', id, parseItem);
+}
+
+export async function readBacklogEpicSnapshot(cwd: string, id: string): Promise<BacklogRecordSnapshot<BacklogEpic> | null> {
+  return readVisibleSnapshot(cwd, 'epic', id, parseEpic);
 }
 
 export async function listBacklogItems(cwd: string): Promise<BacklogItem[]> {
-  return listMarkdownRecords(resolve(cwd, '.backlog', 'items'), parseItem);
+  return (await listBacklogItemSnapshots(cwd)).map((snapshot) => snapshot.record);
 }
 
 export async function listBacklogEpics(cwd: string): Promise<BacklogEpic[]> {
-  return listMarkdownRecords(resolve(cwd, '.backlog', 'epics'), parseEpic);
+  return (await listBacklogEpicSnapshots(cwd)).map((snapshot) => snapshot.record);
+}
+
+export async function listBacklogItemSnapshots(cwd: string): Promise<Array<BacklogRecordSnapshot<BacklogItem>>> {
+  return listVisibleSnapshots(cwd, 'item', parseItem);
+}
+
+export async function listBacklogEpicSnapshots(cwd: string): Promise<Array<BacklogRecordSnapshot<BacklogEpic>>> {
+  return listVisibleSnapshots(cwd, 'epic', parseEpic);
 }
 
 export const loadBacklogItems = listBacklogItems;
 export const loadBacklogEpics = listBacklogEpics;
 
+// --- eforge:endregion backlog-storage-read-list ---
+
+// --- eforge:region backlog-storage-write-import ---
+
 export async function writeBacklogItem(cwd: string, item: BacklogItemWrite): Promise<BacklogItem> {
-  const filePath = resolveBacklogItemPath(cwd, item.id);
-  const existing = existsSync(filePath) ? parseMarkdownRecord(await readFile(filePath, 'utf-8')) : undefined;
+  const existing = await readExistingParsedForWrite(cwd, 'item', item.id);
   const body = item.body ?? existing?.body ?? `# ${item.id}\n`;
   const frontmatter = { ...(existing?.frontmatter ?? {}), ...frontmatterFromWrite(item) };
-  normalizeBacklogItem(frontmatter, body);
+  const normalized = normalizeBacklogItem(frontmatter, body);
+  assertRecordIdMatches(item.id, normalized.id, resolveBacklogItemPath(cwd, item.id));
+  const filePath = resolveBacklogItemPath(cwd, item.id);
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, serializeMarkdownRecord(frontmatter, body, ITEM_FRONTMATTER_ORDER));
   return parseItem(await readFile(filePath, 'utf-8'));
 }
 
 export async function writeBacklogEpic(cwd: string, epic: BacklogEpicWrite): Promise<BacklogEpic> {
-  const filePath = resolveBacklogEpicPath(cwd, epic.id);
-  const existing = existsSync(filePath) ? parseMarkdownRecord(await readFile(filePath, 'utf-8')) : undefined;
+  const existing = await readExistingParsedForWrite(cwd, 'epic', epic.id);
   const body = epic.body ?? existing?.body ?? `# ${epic.id}\n`;
   const frontmatter = { ...(existing?.frontmatter ?? {}), ...frontmatterFromWrite(epic) };
-  normalizeBacklogEpic(frontmatter, body);
+  const normalized = normalizeBacklogEpic(frontmatter, body);
+  assertRecordIdMatches(epic.id, normalized.id, resolveBacklogEpicPath(cwd, epic.id));
+  const filePath = resolveBacklogEpicPath(cwd, epic.id);
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, serializeMarkdownRecord(frontmatter, body, EPIC_FRONTMATTER_ORDER));
   return parseEpic(await readFile(filePath, 'utf-8'));
@@ -179,11 +243,13 @@ export async function updateBacklogItemFrontmatter(
   id: string,
   updates: Record<string, unknown>,
 ): Promise<BacklogItem> {
-  const current = await readRequiredRecord(resolveBacklogItemPath(cwd, id));
+  const current = await readRequiredVisibleParsed(cwd, 'item', id, parseItem);
   const frontmatter = { ...current.frontmatter, ...updates, id };
   normalizeBacklogItem(frontmatter, current.body);
-  await writeFile(resolveBacklogItemPath(cwd, id), serializeMarkdownRecord(frontmatter, current.body, ITEM_FRONTMATTER_ORDER));
-  return parseItem(await readFile(resolveBacklogItemPath(cwd, id), 'utf-8'));
+  const filePath = resolveBacklogItemPath(cwd, id);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, serializeMarkdownRecord(frontmatter, current.body, ITEM_FRONTMATTER_ORDER));
+  return parseItem(await readFile(filePath, 'utf-8'));
 }
 
 export async function updateBacklogEpicFrontmatter(
@@ -191,12 +257,61 @@ export async function updateBacklogEpicFrontmatter(
   id: string,
   updates: Record<string, unknown>,
 ): Promise<BacklogEpic> {
-  const current = await readRequiredRecord(resolveBacklogEpicPath(cwd, id));
+  const current = await readRequiredVisibleParsed(cwd, 'epic', id, parseEpic);
   const frontmatter = { ...current.frontmatter, ...updates, id };
   normalizeBacklogEpic(frontmatter, current.body);
-  await writeFile(resolveBacklogEpicPath(cwd, id), serializeMarkdownRecord(frontmatter, current.body, EPIC_FRONTMATTER_ORDER));
-  return parseEpic(await readFile(resolveBacklogEpicPath(cwd, id), 'utf-8'));
+  const filePath = resolveBacklogEpicPath(cwd, id);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, serializeMarkdownRecord(frontmatter, current.body, EPIC_FRONTMATTER_ORDER));
+  return parseEpic(await readFile(filePath, 'utf-8'));
 }
+
+export async function replaceBacklogItemRecord(cwd: string, id: string, frontmatter: Record<string, unknown>, body: string): Promise<BacklogItem> {
+  assertSafeBacklogId(id);
+  const normalized = normalizeBacklogItem({ ...frontmatter, id }, body);
+  assertRecordIdMatches(id, normalized.id, resolveBacklogItemPath(cwd, id));
+  const filePath = resolveBacklogItemPath(cwd, id);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, serializeMarkdownRecord({ ...frontmatter, id }, body, ITEM_FRONTMATTER_ORDER));
+  return parseItem(await readFile(filePath, 'utf-8'));
+}
+
+export async function replaceBacklogEpicRecord(cwd: string, id: string, frontmatter: Record<string, unknown>, body: string): Promise<BacklogEpic> {
+  assertSafeBacklogId(id);
+  const normalized = normalizeBacklogEpic({ ...frontmatter, id }, body);
+  assertRecordIdMatches(id, normalized.id, resolveBacklogEpicPath(cwd, id));
+  const filePath = resolveBacklogEpicPath(cwd, id);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, serializeMarkdownRecord({ ...frontmatter, id }, body, EPIC_FRONTMATTER_ORDER));
+  return parseEpic(await readFile(filePath, 'utf-8'));
+}
+
+export async function importLegacyBacklogItems(cwd: string, ids?: string[]): Promise<BacklogImportKindResult> {
+  return importLegacyKind(cwd, 'item', parseItem, ids);
+}
+
+export async function importLegacyBacklogEpics(cwd: string, ids?: string[]): Promise<BacklogImportKindResult> {
+  return importLegacyKind(cwd, 'epic', parseEpic, ids);
+}
+
+export async function importLegacyBacklog(
+  cwd: string,
+  input: { kind?: 'items' | 'epics' | 'all'; ids?: string[] },
+): Promise<BacklogImportResult> {
+  const kind = input.kind ?? 'all';
+  if (kind === 'all' && input.ids !== undefined) {
+    throw new Error('Legacy backlog import ids may only be used with kind "items" or "epics".');
+  }
+  const itemsPlan = kind === 'epics' ? emptyImportKindPlan() : await planLegacyKindImport(cwd, 'item', parseItem, input.ids);
+  const epicsPlan = kind === 'items' ? emptyImportKindPlan() : await planLegacyKindImport(cwd, 'epic', parseEpic, input.ids);
+  return {
+    schemaVersion: 1,
+    items: await copyLegacyImportPlan(cwd, itemsPlan),
+    epics: await copyLegacyImportPlan(cwd, epicsPlan),
+  };
+}
+
+// --- eforge:endregion backlog-storage-write-import ---
 
 function parseItem(raw: string): BacklogItem {
   const parsed = parseMarkdownRecord(raw);
@@ -208,19 +323,224 @@ function parseEpic(raw: string): BacklogEpic {
   return normalizeBacklogEpic(parsed.frontmatter, parsed.body);
 }
 
-async function listMarkdownRecords<T>(dir: string, parser: (raw: string) => T): Promise<T[]> {
-  if (!existsSync(dir)) {
-    return [];
-  }
-  const names = (await readdir(dir)).filter((name) => name.endsWith('.md')).sort();
-  return Promise.all(names.map(async (name) => parser(await readFile(resolveContainedPath(dir, name), 'utf-8'))));
+async function readVisibleSnapshot<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  id: string,
+  parser: (raw: string) => T,
+): Promise<BacklogRecordSnapshot<T> | null> {
+  assertSafeBacklogId(id);
+  const privatePath = recordPath(cwd, kind, 'private', id);
+  if (existsSync(privatePath)) return readSnapshot(cwd, kind, 'private', id, privatePath, parser);
+  const legacyPath = recordPath(cwd, kind, 'legacy', id);
+  return existsSync(legacyPath) ? readSnapshot(cwd, kind, 'legacy', id, legacyPath, parser) : null;
 }
 
-async function readRequiredRecord(filePath: string): Promise<ParsedMarkdownRecord> {
-  if (!existsSync(filePath)) {
-    throw new Error(`Backlog record not found: ${filePath}`);
+async function listVisibleSnapshots<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  parser: (raw: string) => T,
+): Promise<Array<BacklogRecordSnapshot<T>>> {
+  const privateSnapshots = await listOriginSnapshots(cwd, kind, 'private', parser);
+  const privateIds = new Set(privateSnapshots.map((snapshot) => snapshot.id));
+  const legacySnapshots = await listOriginSnapshots(cwd, kind, 'legacy', parser, privateIds);
+  return [...privateSnapshots, ...legacySnapshots].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+async function listOriginSnapshots<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  origin: BacklogStorageOrigin,
+  parser: (raw: string) => T,
+  skipIds = new Set<string>(),
+): Promise<Array<BacklogRecordSnapshot<T>>> {
+  const ids = (await listOriginRecordIds(cwd, kind, origin)).filter((id) => !skipIds.has(id));
+  return Promise.all(ids.map(async (id) => readSnapshot(cwd, kind, origin, id, recordPath(cwd, kind, origin, id), parser)));
+}
+
+async function listOriginRecordIds(cwd: string, kind: BacklogRecordKind, origin: BacklogStorageOrigin): Promise<string[]> {
+  const root = recordRoot(cwd, kind, origin);
+  if (!existsSync(root)) return [];
+  return (await readdir(root)).filter((name) => name.endsWith('.md')).map((name) => {
+    const id = name.slice(0, -'.md'.length);
+    assertSafeBacklogId(id);
+    return id;
+  }).sort();
+}
+
+async function readSnapshot<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  origin: BacklogStorageOrigin,
+  expectedId: string,
+  filePath: string,
+  parser: (raw: string) => T,
+): Promise<BacklogRecordSnapshot<T>> {
+  const rawContent = await readFile(filePath);
+  return createSnapshotFromRawContent(cwd, kind, origin, expectedId, filePath, parser, rawContent);
+}
+
+function createSnapshotFromRawContent<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  origin: BacklogStorageOrigin,
+  expectedId: string,
+  filePath: string,
+  parser: (raw: string) => T,
+  rawContent: Buffer,
+): BacklogRecordSnapshot<T> {
+  const raw = rawContent.toString('utf-8');
+  const parsed = parseMarkdownRecord(raw);
+  const record = parser(raw);
+  assertRecordIdMatches(expectedId, record.id, filePath);
+  return createSnapshot(cwd, kind, origin, filePath, record, parsed);
+}
+
+function createSnapshot<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  origin: BacklogStorageOrigin,
+  filePath: string,
+  record: T,
+  parsed: ParsedMarkdownRecord,
+): BacklogRecordSnapshot<T> {
+  return {
+    kind,
+    origin,
+    id: record.id,
+    path: filePath,
+    relativePath: toProjectRelativePath(cwd, filePath),
+    record,
+    frontmatter: parsed.frontmatter,
+    body: parsed.body,
+    updated: typeof record.updated === 'string' ? record.updated : undefined,
+    bodySha256: sha256(parsed.body),
+    recordSha256: sha256(canonicalJson({ frontmatter: parsed.frontmatter, body: parsed.body })),
+  };
+}
+
+async function readExistingParsedForWrite(cwd: string, kind: BacklogRecordKind, id: string): Promise<ParsedMarkdownRecord | undefined> {
+  const snapshot = await readVisibleSnapshot(cwd, kind, id, kind === 'item' ? parseItem : parseEpic);
+  return snapshot ? { frontmatter: snapshot.frontmatter, body: snapshot.body } : undefined;
+}
+
+async function readRequiredVisibleParsed<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  id: string,
+  parser: (raw: string) => T,
+): Promise<ParsedMarkdownRecord> {
+  const snapshot = await readVisibleSnapshot(cwd, kind, id, parser);
+  if (!snapshot) {
+    throw new Error(`Backlog record not found: ${recordPath(cwd, kind, 'private', id)}`);
   }
-  return parseMarkdownRecord(await readFile(filePath, 'utf-8'));
+  return { frontmatter: snapshot.frontmatter, body: snapshot.body };
+}
+
+interface BacklogImportKindPlan {
+  copy: Array<{ id: string; privatePath: string; rawContent: Buffer }>;
+  skipped: BacklogImportKindResult['skipped'];
+}
+
+async function importLegacyKind<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  parser: (raw: string) => T,
+  ids?: string[],
+): Promise<BacklogImportKindResult> {
+  return copyLegacyImportPlan(cwd, await planLegacyKindImport(cwd, kind, parser, ids));
+}
+
+async function planLegacyKindImport<T extends BacklogItem | BacklogEpic>(
+  cwd: string,
+  kind: BacklogRecordKind,
+  parser: (raw: string) => T,
+  ids?: string[],
+): Promise<BacklogImportKindPlan> {
+  const privateSnapshots = await listOriginSnapshots(cwd, kind, 'private', parser);
+  const privateIds = new Set(privateSnapshots.map((snapshot) => snapshot.id));
+  const legacyIds = ids === undefined ? await listOriginRecordIds(cwd, kind, 'legacy') : [...new Set(ids)].sort();
+  const skipped = legacyIds.filter((id) => {
+    assertSafeBacklogId(id);
+    return privateIds.has(id);
+  }).map((id) => ({ id, reason: 'private-exists' as const }));
+  const candidateIds = legacyIds.filter((id) => !privateIds.has(id));
+  const candidates = await Promise.all(candidateIds.map(async (id) => {
+    assertSafeBacklogId(id);
+    const sourcePath = recordPath(cwd, kind, 'legacy', id);
+    const rawContent = await readFile(sourcePath);
+    const snapshot = createSnapshotFromRawContent(cwd, kind, 'legacy', id, sourcePath, parser, rawContent);
+    return { snapshot, rawContent };
+  }));
+  const copy: BacklogImportKindPlan['copy'] = [];
+  for (const candidate of candidates.sort((left, right) => left.snapshot.id.localeCompare(right.snapshot.id))) {
+    copy.push({ id: candidate.snapshot.id, privatePath: recordPath(cwd, kind, 'private', candidate.snapshot.id), rawContent: candidate.rawContent });
+  }
+  return { copy, skipped };
+}
+
+async function copyLegacyImportPlan(cwd: string, plan: BacklogImportKindPlan): Promise<BacklogImportKindResult> {
+  const copied: BacklogImportKindResult['copied'] = [];
+  const skipped = [...plan.skipped];
+  for (const candidate of plan.copy) {
+    await mkdir(dirname(candidate.privatePath), { recursive: true });
+    try {
+      await writeFile(candidate.privatePath, candidate.rawContent, { flag: 'wx' });
+      copied.push({ id: candidate.id, path: toProjectRelativePath(cwd, candidate.privatePath) });
+    } catch (error) {
+      if (isFileExistsError(error)) {
+        skipped.push({ id: candidate.id, reason: 'private-exists' });
+        continue;
+      }
+      throw error;
+    }
+  }
+  return { copied, skipped };
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST';
+}
+
+function emptyImportKindPlan(): BacklogImportKindPlan {
+  return { copy: [], skipped: [] };
+}
+
+function recordRoot(cwd: string, kind: BacklogRecordKind, origin: BacklogStorageOrigin): string {
+  if (origin === 'legacy') return resolve(cwd, '.backlog', kind === 'item' ? 'items' : 'epics');
+  const paths = createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' });
+  return paths.extensionStoragePath('project-local', ['backlog', kind === 'item' ? 'items' : 'epics']);
+}
+
+function recordPath(cwd: string, kind: BacklogRecordKind, origin: BacklogStorageOrigin, id: string): string {
+  return recordPathForName(cwd, kind, origin, `${safeId(id)}.md`);
+}
+
+function recordPathForName(cwd: string, kind: BacklogRecordKind, origin: BacklogStorageOrigin, name: string): string {
+  if (origin === 'legacy') return resolveContainedPath(recordRoot(cwd, kind, origin), name);
+  const paths = createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' });
+  const root = recordRoot(cwd, kind, origin);
+  const filePath = paths.extensionStoragePath('project-local', ['backlog', kind === 'item' ? 'items' : 'epics', name]);
+  assertContained(root, filePath);
+  return filePath;
+}
+
+function privateRecordPath(cwd: string, kind: BacklogRecordKind, id: string): string {
+  return recordPath(cwd, kind, 'private', id);
+}
+
+function assertContained(root: string, filePath: string): void {
+  const rel = relative(root, filePath);
+  if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
+    throw new Error(`Resolved backlog path "${filePath}" escapes ${root}${sep}`);
+  }
+}
+
+function assertRecordIdMatches(expectedId: string, actualId: string, filePath: string): void {
+  assertSafeBacklogId(actualId);
+  if (actualId !== expectedId) {
+    throw new Error(`Backlog record id mismatch in ${filePath}: frontmatter id "${actualId}" does not match filename id "${expectedId}"`);
+  }
 }
 
 function frontmatterFromWrite(record: BacklogItemWrite | BacklogEpicWrite): Record<string, unknown> {
@@ -228,39 +548,3 @@ function frontmatterFromWrite(record: BacklogItemWrite | BacklogEpicWrite): Reco
   return dropUndefined(frontmatter);
 }
 
-function orderFrontmatter(frontmatter: Record<string, unknown>, knownOrder: readonly string[]): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const key of knownOrder) {
-    if (frontmatter[key] !== undefined) {
-      result[key] = frontmatter[key];
-    }
-  }
-  for (const key of Object.keys(frontmatter).filter((key) => !knownOrder.includes(key)).sort()) {
-    if (frontmatter[key] !== undefined) {
-      result[key] = frontmatter[key];
-    }
-  }
-  return result;
-}
-
-function safeId(id: string): string {
-  assertSafeBacklogId(id);
-  return id;
-}
-
-function resolveContainedPath(root: string, leaf: string): string {
-  const resolved = resolve(root, leaf);
-  const rel = relative(root, resolved);
-  if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
-    throw new Error(`Resolved backlog path "${resolved}" escapes ${root}${sep}`);
-  }
-  return resolved;
-}
-
-function toRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function dropUndefined(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
-}

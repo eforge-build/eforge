@@ -24,7 +24,7 @@ import { mergeMutationDisallowedTools } from './tool-safety.js';
 /**
  * Recursively converts a TypeBox TSchema to a Zod type.
  * Handles the subset of TypeBox kinds that eforge actually uses in submission tools:
- * TObject, TString, TNumber, TInteger, TBoolean, TArray, TLiteral, TUnion, TOptional, TRecord.
+ * TObject, TString, TNumber, TInteger, TBoolean, TNull, TArray, TLiteral, TUnion, TOptional, TRecord.
  * Unknown kinds throw with a clear error message.
  */
 function typeboxToZod(schema: TSchema): z.ZodTypeAny {
@@ -49,6 +49,8 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     zodType = n;
   } else if (TypeGuard.IsBoolean(schema)) {
     zodType = z.boolean();
+  } else if (TypeGuard.IsNull(schema)) {
+    zodType = z.null();
   } else if (TypeGuard.IsArray(schema)) {
     let a = z.array(typeboxToZod(schema.items as TSchema));
     if (typeof schema.minItems === 'number') a = a.min(schema.minItems);
@@ -58,7 +60,9 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
     const objectSchema = schema as TObject;
     const objectZod = z.object(typeboxObjectToZodRawShape(objectSchema));
     const additionalProperties = objectSchema.additionalProperties as boolean | TSchema | undefined;
-    if (additionalProperties === true) {
+    if (additionalProperties === false) {
+      zodType = objectZod.strict();
+    } else if (additionalProperties === true || additionalProperties === undefined) {
       zodType = objectZod.passthrough();
     } else if (typeof additionalProperties === 'object') {
       zodType = objectZod.catchall(typeboxToZod(additionalProperties));
@@ -101,7 +105,7 @@ function typeboxToZod(schema: TSchema): z.ZodTypeAny {
 /**
  * Converts a TypeBox TObject to a Zod raw shape suitable for passing to the
  * Claude Agent SDK's `tool()` helper. Handles TObject, TString, TNumber,
- * TInteger, TBoolean, TArray, TLiteral, TUnion, TOptional, and TRecord kinds.
+ * TInteger, TBoolean, TNull, TArray, TLiteral, TUnion, TOptional, and TRecord kinds.
  * Unknown kinds throw with a descriptive error message.
  */
 export function typeboxObjectToZodRawShape(schema: TObject): ZodRawShape {
@@ -381,6 +385,7 @@ export async function* mapSDKMessages(
 ): AsyncGenerator<EforgeEvent> {
   // Track toolUseId → toolName for resolving tool results
   const toolNameMap = new Map<string, string>();
+  const emittedToolResultIds = new Set<string>();
 
   for await (const msg of messages) {
     switch (msg.type) {
@@ -428,6 +433,8 @@ export async function* mapSDKMessages(
           break;
         }
 
+        if (emittedToolResultIds.has(userMsg.parent_tool_use_id)) break;
+        emittedToolResultIds.add(userMsg.parent_tool_use_id);
         const toolName = toolNameMap.get(userMsg.parent_tool_use_id) ?? 'unknown';
         yield {
           timestamp: new Date().toISOString(),
@@ -446,6 +453,8 @@ export async function* mapSDKMessages(
         const summaryMsg = msg as SDKToolUseSummaryMessage;
         // Emit a tool_result for each preceding tool_use_id with the combined summary
         for (const toolUseId of summaryMsg.preceding_tool_use_ids) {
+          if (emittedToolResultIds.has(toolUseId)) continue;
+          emittedToolResultIds.add(toolUseId);
           const toolName = toolNameMap.get(toolUseId) ?? 'unknown';
           yield {
             timestamp: new Date().toISOString(),

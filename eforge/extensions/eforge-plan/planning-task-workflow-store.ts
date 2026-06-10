@@ -7,6 +7,7 @@ import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type P
 const EXTENSION_NAME = 'eforge-plan';
 const INDEX_SEGMENTS = ['planning-tasks', 'index.json'] as const;
 export const RECOMMENDATION_REFRESH_WORKFLOW_PURPOSE = 'recommendation-refresh' as const;
+export const BACKLOG_CURATION_WORKFLOW_PURPOSE = 'backlog-curation' as const;
 
 // Per-index-path serialization: chain read-modify-write operations so concurrent
 // starts/retries in the same daemon process never race the shared index file.
@@ -18,7 +19,11 @@ let tempWriteSequence = 0;
 function runExclusive<T>(key: string, task: () => Promise<T>): Promise<T> {
   const prior = indexWriteChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
-  indexWriteChains.set(key, result.then(() => undefined, () => undefined));
+  let chain: Promise<unknown>;
+  chain = result.then(() => undefined, () => undefined).finally(() => {
+    if (indexWriteChains.get(key) === chain) indexWriteChains.delete(key);
+  });
+  indexWriteChains.set(key, chain);
   return result;
 }
 
@@ -34,16 +39,22 @@ function emptyIndex(): PlanningTaskWorkflowIndex {
   return { schemaVersion: 1, entries: [] };
 }
 
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
 /**
  * Read the durable workflow index. Missing or malformed storage yields an empty
- * index so callers never crash on first run or partial writes.
+ * index so callers never crash on first run or partial writes; other read
+ * failures are surfaced to avoid hiding durable tasks.
  */
 export async function readPlanningTaskWorkflowIndex(cwd: string): Promise<PlanningTaskWorkflowIndex> {
   let raw: string;
   try {
     raw = await readFile(resolvePlanningTaskWorkflowIndexPath(cwd), 'utf-8');
-  } catch {
-    return emptyIndex();
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') return emptyIndex();
+    throw error;
   }
   let parsed: unknown;
   try {
@@ -83,6 +94,18 @@ export async function removePlanningTaskWorkflowEntry(cwd: string, taskId: strin
   });
 }
 
+export async function markPlanningTaskWorkflowEntryApplied(cwd: string, taskId: string, appliedAt: string): Promise<PlanningTaskWorkflowEntry> {
+  const path = resolvePlanningTaskWorkflowIndexPath(cwd);
+  return runExclusive(path, async () => {
+    const index = await readPlanningTaskWorkflowIndex(cwd);
+    const entry = index.entries.find((candidate) => candidate.taskId === taskId);
+    if (entry === undefined) throw new Error(`No planning task workflow entry found for ${taskId}; cannot mark applied.`);
+    const updated = { ...entry, appliedAt };
+    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries: index.entries.map((candidate) => candidate.taskId === taskId ? updated : candidate) });
+    return updated;
+  });
+}
+
 export function findPlanningTaskWorkflowEntry(index: PlanningTaskWorkflowIndex, taskId: string): PlanningTaskWorkflowEntry | undefined {
   return index.entries.find((entry) => entry.taskId === taskId);
 }
@@ -104,6 +127,21 @@ export function listRecommendationRefreshWorkflowEntries(index: PlanningTaskWork
 
 export function findRecommendationRefreshWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string): PlanningTaskWorkflowEntry | undefined {
   return listRecommendationRefreshWorkflowEntries(index, sourceFingerprint)[0];
+}
+
+export function isBacklogCurationWorkflowEntry(entry: PlanningTaskWorkflowEntry): boolean {
+  return entry.purpose === BACKLOG_CURATION_WORKFLOW_PURPOSE;
+}
+
+export function listBacklogCurationWorkflowEntries(index: PlanningTaskWorkflowIndex, sourceFingerprint?: string): PlanningTaskWorkflowEntry[] {
+  return listPlanningTaskWorkflowEntries(index).filter((entry) => (
+    isBacklogCurationWorkflowEntry(entry)
+    && (sourceFingerprint === undefined || entry.sourceFingerprint === sourceFingerprint)
+  ));
+}
+
+export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string): PlanningTaskWorkflowEntry | undefined {
+  return listBacklogCurationWorkflowEntries(index, sourceFingerprint)[0];
 }
 
 async function writePlanningTaskWorkflowIndex(cwd: string, index: PlanningTaskWorkflowIndex): Promise<void> {

@@ -8,6 +8,7 @@ import type {
   PlanningTaskClarificationQuestion,
   PlanningTaskResult,
 } from '@/types';
+import { BacklogCurationPreview } from './backlog-curation-preview';
 import type { RedraftInput } from './use-planning-task-workflows';
 
 interface PlanningTaskResultPreviewProps {
@@ -35,7 +36,44 @@ export function PlanningTaskResultPreview({ item, busy, onRedraft, onApply }: Pl
     );
   }
 
+  if (item.entry.purpose === 'backlog-curation') {
+    if (result.backlogCurationDraft) return <BacklogCurationPreview taskId={taskId} entry={item.entry} draft={result.backlogCurationDraft} recommendations={result.recommendations} busy={busy} onApply={onApply} onRedraft={onRedraft} />;
+    return <CurationUnavailablePreview taskId={taskId} result={result} busy={busy} onRedraft={onRedraft} canRedraft />;
+  }
+
+  if (result.backlogCurationDraft) return <CurationUnavailablePreview taskId={taskId} result={result} busy={busy} onRedraft={onRedraft} />;
+
   return <ReadyResultPreview taskId={taskId} result={result} sessionHint={item.entry.session} busy={busy} onApply={onApply} />;
+}
+
+interface CurationUnavailablePreviewProps {
+  taskId: string;
+  result: PlanningTaskResult;
+  busy: boolean;
+  onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
+  canRedraft?: boolean;
+}
+
+function CurationUnavailablePreview({ taskId, result, busy, onRedraft, canRedraft = false }: CurationUnavailablePreviewProps) {
+  const [steering, setSteering] = React.useState('');
+  const trimmedSteering = steering.trim();
+
+  return (
+    <div className="mt-3 grid gap-2 border-t border-border pt-3 text-sm">
+      <p className="text-foreground">{result.summary}</p>
+      {result.nextSteps && result.nextSteps.length > 0 && (
+        <ul className="list-disc pl-4 text-xs text-muted-foreground">{result.nextSteps.map((step) => <li key={step}>{step}</li>)}</ul>
+      )}
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Backlog curation draft unavailable</span>
+      <p className="text-xs text-muted-foreground">This result cannot be applied as backlog curation because it did not include an applicable curation draft.</p>
+      {canRedraft && (
+        <div className="grid gap-2 border-t border-border pt-2">
+          <Textarea className="min-h-16" value={steering} onChange={(event) => setSteering(event.target.value)} placeholder="Optional steering for a curation redraft" />
+          <div><Button size="sm" variant="secondary" disabled={busy || trimmedSteering.length === 0} onClick={() => void onRedraft(taskId, { steering: trimmedSteering })}>Redraft curation</Button></div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface NeedsInputPreviewProps {

@@ -175,8 +175,10 @@ export async function readPlannerTraceSummaries(cwd: string, itemIds?: readonly 
 
 export async function validateRecommendationReferences(cwd: string, model: BacklogRecommendationModel): Promise<void> {
   const [items, epics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
-  const itemIds = new Set(items.map((item) => item.id));
-  const epicIds = new Set(epics.map((epic) => epic.id));
+  validateRecommendationReferencesAgainstIds(model, new Set(items.map((item) => item.id)), new Set(epics.map((epic) => epic.id)));
+}
+
+export function validateRecommendationReferencesAgainstIds(model: BacklogRecommendationModel, itemIds: ReadonlySet<string>, epicIds: ReadonlySet<string>): void {
   for (const [field, refs] of [
     ['activeWork', model.activeWork],
     ['readyCandidates', model.readyCandidates],
@@ -336,7 +338,7 @@ function pickLastEvent(value: Record<string, unknown>): Record<string, unknown> 
   return Object.fromEntries(['type', 'timestamp', 'sessionId', 'runId', 'cursor'].flatMap((key) => (value[key] === undefined ? [] : [[key, value[key]]])));
 }
 
-function assertKnownRef(field: string, id: string, knownIds: Set<string>, kind: 'item' | 'epic'): void {
+function assertKnownRef(field: string, id: string, knownIds: ReadonlySet<string>, kind: 'item' | 'epic'): void {
   if (!knownIds.has(id)) throw recommendationReferenceValidationError(field, id, kind, `Recommendation ${field} references unknown ${kind} id "${id}".`);
 }
 

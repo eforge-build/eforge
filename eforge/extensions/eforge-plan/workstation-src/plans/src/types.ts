@@ -1,6 +1,7 @@
-import type { ExtensionJsonObject } from '@eforge-build/client/browser';
+import type { EforgePlanPlanningBacklogCurationDraft, ExtensionJsonObject } from '@eforge-build/client/browser';
 
 export type JsonObject = ExtensionJsonObject;
+export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 
 export interface EforgeBridge {
   version?: number;
@@ -210,6 +211,7 @@ export interface PlanningTaskResult {
   playbookDraft?: PlanningTaskPlaybookDraft;
   sessionPlanPatch?: PlanningTaskSessionPlanPatch;
   sessionPlanCreationDraft?: PlanningTaskSessionPlanCreationDraft;
+  backlogCurationDraft?: BacklogCurationDraft;
 }
 export interface PlanningAgentTaskMetadata {
   label?: string;
@@ -249,8 +251,9 @@ export interface PlanningTaskWorkflowEntry {
   planningType?: string;
   planningDepth?: string;
   includeRoadmap?: boolean;
-  purpose?: 'recommendation-refresh';
+  purpose?: 'recommendation-refresh' | 'backlog-curation';
   sourceFingerprint?: string;
+  appliedAt?: string;
   createdAt: string;
 }
 export interface PlanningAgentTaskListItem {
@@ -275,13 +278,32 @@ export interface RefreshRecommendationsResponse {
   sourceFingerprint: string;
   reused?: boolean;
 }
+export interface AnalyzeAllBacklogResponse {
+  task: PlanningAgentTaskRecord;
+  entry: PlanningTaskWorkflowEntry;
+  sourceFingerprint: string;
+  reused?: boolean;
+}
 
 export interface AppliedSessionPlanCreationDraft { session: string; relativePath: string; readiness: Readiness; }
 export interface ApplyPlanningTaskResponse {
   schemaVersion: 1;
   taskId: string;
-  applied: { recommendations: boolean; handoffDrafts: number; sessionPlanSections: number };
+  applied: { recommendations: boolean; handoffDrafts: number; sessionPlanSections: number; backlogCuration?: number };
   recommendations?: { path?: string; recommendationSummary?: unknown; recommendations?: RecommendationModel };
+  backlogCuration?: {
+    itemChanges?: number;
+    epicChanges?: number;
+    noOpRechecks?: number;
+    changedItemIds?: string[];
+    changedEpicIds?: string[];
+    recheckedItemIds?: string[];
+    recheckedEpicIds?: string[];
+    skipped?: BacklogCurationDraft['skipped'];
+    needsInput?: BacklogCurationDraft['needsInput'];
+    recommendations?: unknown;
+    recommendationStatus?: unknown;
+  };
   handoffs?: unknown[];
   sessionPlanDrafts?: Array<{ session: string; sections: string[] }>;
   sessionPlanCreationDraft?: AppliedSessionPlanCreationDraft;

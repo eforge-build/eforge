@@ -34,6 +34,9 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
   // --- eforge:region session-plan-creation-draft ---
   Type.Literal('sessionPlanCreationDraft'),
   // --- eforge:endregion session-plan-creation-draft ---
+  // --- eforge:region backlog-curation-draft ---
+  Type.Literal('backlogCurationDraft'),
+  // --- eforge:endregion backlog-curation-draft ---
 ]);
 
 export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
@@ -73,9 +76,6 @@ export const EforgePlanPlanningSessionPlanPatchSchema = Type.Object({
 }, { additionalProperties: false });
 
 // --- eforge:region session-plan-creation-draft ---
-// Constrain to the same literals the eforge-plan apply path accepts
-// (`PLANNING_TYPES`/`PLANNING_DEPTHS`) so the daemon never persists a "ready" task
-// whose planningType/planningDepth the workstation previews but cannot apply.
 export const EforgePlanPlanningTypeSchema = Type.Union([
   Type.Literal('bugfix'),
   Type.Literal('feature'),
@@ -120,9 +120,6 @@ export const EforgePlanPlanningDecisionSchema = Type.Union([
   Type.Literal('needs-input'),
 ]);
 
-// Bounds mirror the daemon section-progress sanitizer
-// (`sanitizeEventMessage` caps strings at 500 chars; `MAX_SECTION_PROGRESS_ITEMS`
-// caps lists at 50 entries) so client/event validation rejects oversized payloads.
 export const SECTION_PROGRESS_MAX_STRING_LENGTH = 500 as const;
 export const SECTION_PROGRESS_MAX_ITEMS = 50 as const;
 const EforgePlanPlanningSectionNameSchema = Type.String({ maxLength: SECTION_PROGRESS_MAX_STRING_LENGTH });
@@ -169,6 +166,138 @@ export const EforgePlanPlanningRecommendationsSchema = Type.Object({
   rationaleAndAssumptions: Type.Array(Type.String()),
 }, { additionalProperties: false });
 
+
+// --- eforge:region backlog-curation-draft ---
+const EforgePlanPlanningNonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
+const EforgePlanPlanningBacklogSafeIdSchema = Type.String({ minLength: 1, pattern: '^(?!\\.\\.?$)(?!.*[\\\\/\\u0000]).+$' });
+const EforgePlanPlanningBacklogStatusSchema = Type.Union([
+  Type.Literal('candidate'),
+  Type.Literal('planned'),
+  Type.Literal('active'),
+  Type.Literal('shipped'),
+  Type.Literal('stale'),
+  Type.Literal('superseded'),
+]);
+export const EforgePlanPlanningSha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
+
+export const EforgePlanPlanningBacklogCurationRecordKindSchema = Type.Union([Type.Literal('item'), Type.Literal('epic')]);
+
+const eforgePlanPlanningBacklogCurationPreconditionFields = {
+  id: EforgePlanPlanningBacklogSafeIdSchema,
+  origin: Type.Optional(Type.Union([Type.Literal('private'), Type.Literal('legacy')])),
+  relativePath: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  bodySha256: EforgePlanPlanningSha256HexSchema,
+  sourceFingerprint: Type.Optional(EforgePlanPlanningSha256HexSchema),
+  updated: Type.Optional(Type.String()),
+  recordSha256: Type.Optional(EforgePlanPlanningSha256HexSchema),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationPreconditionSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationPreconditionFields,
+  kind: EforgePlanPlanningBacklogCurationRecordKindSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationItemPreconditionSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationPreconditionFields,
+  kind: Type.Literal('item'),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationEpicPreconditionSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationPreconditionFields,
+  kind: Type.Literal('epic'),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationMetadataPatchSchema = Type.Object({
+  status: Type.Optional(EforgePlanPlanningBacklogStatusSchema),
+  priority: Type.Optional(Type.String()),
+  tags: Type.Optional(Type.Array(Type.String())),
+  depends_on: Type.Optional(Type.Array(EforgePlanPlanningBacklogSafeIdSchema)),
+  epic: Type.Optional(Type.Union([EforgePlanPlanningBacklogSafeIdSchema, Type.Null()])),
+  last_checked: Type.Optional(Type.String()),
+  stale_after: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationSectionOperationSchema = Type.Object({
+  heading: EforgePlanPlanningNonEmptyStringSchema,
+  action: Type.Union([Type.Literal('replace'), Type.Literal('append')]),
+  content: Type.String(),
+}, { additionalProperties: false });
+
+const eforgePlanPlanningBacklogCurationRecordPatchFields = {
+  id: EforgePlanPlanningBacklogSafeIdSchema,
+  metadata: Type.Optional(EforgePlanPlanningBacklogCurationMetadataPatchSchema),
+  sectionOperations: Type.Optional(Type.Array(EforgePlanPlanningBacklogCurationSectionOperationSchema)),
+  rationale: Type.String({ minLength: 1, pattern: '\\S' }),
+  evidence: Type.Optional(Type.Array(Type.String())),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationItemRecordPatchSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecordPatchFields,
+  kind: Type.Literal('item'),
+  precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationEpicRecordPatchSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecordPatchFields,
+  kind: Type.Literal('epic'),
+  precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationRecordPatchSchema = Type.Union([
+  EforgePlanPlanningBacklogCurationItemRecordPatchSchema,
+  EforgePlanPlanningBacklogCurationEpicRecordPatchSchema,
+]);
+
+const eforgePlanPlanningBacklogCurationRecheckFields = {
+  id: EforgePlanPlanningBacklogSafeIdSchema,
+  last_checked: Type.String(),
+  stale_after: Type.String(),
+  rationale: Type.Optional(Type.String()),
+} as const;
+
+export const EforgePlanPlanningBacklogCurationItemRecheckSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecheckFields,
+  kind: Type.Literal('item'),
+  precondition: EforgePlanPlanningBacklogCurationItemPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationEpicRecheckSchema = Type.Object({
+  ...eforgePlanPlanningBacklogCurationRecheckFields,
+  kind: Type.Literal('epic'),
+  precondition: EforgePlanPlanningBacklogCurationEpicPreconditionSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationRecheckSchema = Type.Union([
+  EforgePlanPlanningBacklogCurationItemRecheckSchema,
+  EforgePlanPlanningBacklogCurationEpicRecheckSchema,
+]);
+
+export const EforgePlanPlanningBacklogCurationSkippedSchema = Type.Object({
+  id: Type.Optional(EforgePlanPlanningBacklogSafeIdSchema),
+  kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
+  reason: EforgePlanPlanningNonEmptyStringSchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationNeedsInputSchema = Type.Object({
+  id: Type.Optional(EforgePlanPlanningBacklogSafeIdSchema),
+  kind: Type.Optional(EforgePlanPlanningBacklogCurationRecordKindSchema),
+  question: EforgePlanPlanningNonEmptyStringSchema,
+  reason: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningBacklogCurationDraftSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  sourceFingerprint: EforgePlanPlanningSha256HexSchema,
+  generatedAt: Type.Optional(Type.String()),
+  summary: Type.Array(Type.String()),
+  itemChanges: Type.Array(EforgePlanPlanningBacklogCurationItemRecordPatchSchema),
+  epicChanges: Type.Array(EforgePlanPlanningBacklogCurationEpicRecordPatchSchema),
+  noOpRechecks: Type.Array(EforgePlanPlanningBacklogCurationRecheckSchema),
+  skipped: Type.Array(EforgePlanPlanningBacklogCurationSkippedSchema),
+  needsInput: Type.Array(EforgePlanPlanningBacklogCurationNeedsInputSchema),
+}, { additionalProperties: false });
+// --- eforge:endregion backlog-curation-draft ---
+
 export const EforgePlanPlanningHandoffDraftSchema = Type.Object({
   selection: Type.Object({}, { additionalProperties: true }),
   session: Type.Optional(Type.String()),
@@ -176,19 +305,17 @@ export const EforgePlanPlanningHandoffDraftSchema = Type.Object({
   profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
 }, { additionalProperties: false });
 
-// Common, non-output-bearing fields shared by every result variant, including
-// needs-input. These never count as output sections.
 const eforgePlanPlanningDraftResultCommonFields = {
   summary: Type.String(),
   assumptionsOpenQuestions: Type.Array(Type.String()),
   nextSteps: Type.Optional(Type.Array(Type.String())),
 } as const;
 
-// Optional output-bearing fields. These must NOT appear on the needs-input
-// variant so the ready-vs-needs-input split stays clean and output counting
-// cannot double-count a needs-input decision plus stray output sections.
 const eforgePlanPlanningDraftResultOutputFields = {
   recommendations: Type.Optional(EforgePlanPlanningRecommendationsSchema),
+  // --- eforge:region backlog-curation-draft ---
+  backlogCurationDraft: Type.Optional(EforgePlanPlanningBacklogCurationDraftSchema),
+  // --- eforge:endregion backlog-curation-draft ---
   handoffDraft: Type.Optional(EforgePlanPlanningHandoffDraftSchema),
   handoffDrafts: Type.Optional(Type.Array(EforgePlanPlanningHandoffDraftSchema, { minItems: 1 })),
 } as const;
@@ -201,6 +328,15 @@ const eforgePlanPlanningDraftResultBaseFields = {
 export const EforgePlanPlanningDraftResultBaseSchema = Type.Object(eforgePlanPlanningDraftResultBaseFields, { additionalProperties: false });
 
 export const EforgePlanPlanningDraftResultSchema = Type.Union([
+  // --- eforge:region backlog-curation-draft ---
+  Type.Object({
+    ...eforgePlanPlanningDraftResultBaseFields,
+    backlogCurationDraft: EforgePlanPlanningBacklogCurationDraftSchema,
+    planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+    playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+    sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+  }, { additionalProperties: false }),
+  // --- eforge:endregion backlog-curation-draft ---
   Type.Object({
     ...eforgePlanPlanningDraftResultBaseFields,
     recommendations: EforgePlanPlanningRecommendationsSchema,
@@ -351,6 +487,15 @@ export type EforgePlanPlanningClarificationQuestion = Static<typeof EforgePlanPl
 export type EforgePlanPlanningDecision = Static<typeof EforgePlanPlanningDecisionSchema>;
 export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanningSectionProgressSchema>;
 export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
+export type EforgePlanPlanningBacklogCurationRecordKind = Static<typeof EforgePlanPlanningBacklogCurationRecordKindSchema>;
+export type EforgePlanPlanningBacklogCurationPrecondition = Static<typeof EforgePlanPlanningBacklogCurationPreconditionSchema>;
+export type EforgePlanPlanningBacklogCurationMetadataPatch = Static<typeof EforgePlanPlanningBacklogCurationMetadataPatchSchema>;
+export type EforgePlanPlanningBacklogCurationSectionOperation = Static<typeof EforgePlanPlanningBacklogCurationSectionOperationSchema>;
+export type EforgePlanPlanningBacklogCurationRecordPatch = Static<typeof EforgePlanPlanningBacklogCurationRecordPatchSchema>;
+export type EforgePlanPlanningBacklogCurationRecheck = Static<typeof EforgePlanPlanningBacklogCurationRecheckSchema>;
+export type EforgePlanPlanningBacklogCurationSkipped = Static<typeof EforgePlanPlanningBacklogCurationSkippedSchema>;
+export type EforgePlanPlanningBacklogCurationNeedsInput = Static<typeof EforgePlanPlanningBacklogCurationNeedsInputSchema>;
+export type EforgePlanPlanningBacklogCurationDraft = Static<typeof EforgePlanPlanningBacklogCurationDraftSchema>;
 export type EforgePlanPlanningHandoffDraft = Static<typeof EforgePlanPlanningHandoffDraftSchema>;
 export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraftResultSchema>;
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
@@ -365,7 +510,7 @@ export type ExtensionAgentTaskCancelResponse = Static<typeof ExtensionAgentTaskC
 export function hasEforgePlanPlanningDraftOutputSection(value: EforgePlanPlanningDraftResult): boolean {
   const candidate = value as Record<string, unknown>;
   if (candidate.decision === 'ready' && candidate.sessionPlanCreationDraft !== undefined) return true;
-  if (candidate.decision === 'needs-input' && Array.isArray(candidate.clarificationQuestions) && candidate.clarificationQuestions.length > 0) return true;
+  if (candidate.backlogCurationDraft !== undefined) return true;
   return candidate.recommendations !== undefined
     || candidate.handoffDraft !== undefined
     || (Array.isArray(candidate.handoffDrafts) && candidate.handoffDrafts.length > 0)
@@ -379,7 +524,9 @@ export function safeParseEforgePlanPlanningDraftResult(value: unknown): SafePars
 }
 
 export function parseEforgePlanPlanningDraftResult(value: unknown): EforgePlanPlanningDraftResult {
-  return parseWithSchema(EforgePlanPlanningDraftResultSchema, value);
+  const result = safeParseEforgePlanPlanningDraftResult(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function assertExtensionAgentTaskId(taskId: string): void {
@@ -394,7 +541,9 @@ export function safeParseExtensionAgentTaskRecord(value: unknown): SafeParseResu
 }
 
 export function parseExtensionAgentTaskRecord(value: unknown): ExtensionAgentTaskRecord {
-  return parseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  const result = safeParseExtensionAgentTaskRecord(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function safeParseExtensionAgentTaskStartRequest(value: unknown): SafeParseResult<ExtensionAgentTaskStartRequest> {

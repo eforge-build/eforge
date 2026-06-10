@@ -37,11 +37,24 @@ The payload MUST include:
 3. Exactly one of the following result shapes:
    - **A ready result** when you can produce the requested output. Include at least one applicable output section:
      - `recommendations` for generated backlog recommendation model updates.
+     - `backlogCurationDraft` for structured backlog curation patches the extension may validate and apply later.
      - `handoffDraft` or `handoffDrafts` for draft promotion selections the user may apply.
      - `planDrafts` for eforge plan-file draft content.
      - `playbookDraft` for a reusable playbook draft.
      - `sessionPlanPatch` for updates to an existing session plan.
      - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`. `planningType` must be one of `bugfix`, `feature`, `refactor`, `architecture`, `docs`, `maintenance`, `unknown`; `planningDepth` must be one of `quick`, `focused`, `deep`. Optionally include `profile` (one of `errand`, `excursion`, `expedition`) and `agentProfile` (a string) when the appropriate planning profile or agent profile is known.
    - **A needs-input result** when you cannot produce a ready session-plan creation draft. Set `decision: "needs-input"`, include a non-empty `clarificationQuestions` array of structured questions, and a `rationale` explaining what is blocking a ready draft. Do not emit a session-plan file output in this case.
+
+## Backlog curation guidance
+
+When the requested output sections include `backlogCurationDraft`:
+
+- Preserve the provided `sourceFingerprint` exactly in the draft.
+- Emit structured `itemChanges`, `epicChanges`, `noOpRechecks`, `skipped`, and `needsInput` arrays. Use empty arrays when a category has no entries.
+- Every material entry in `itemChanges` and `epicChanges` must include a non-empty `rationale` explaining why the patch is safe and necessary.
+- For materially unchanged records, use `noOpRechecks` rather than body or metadata patches, except for `last_checked` and `stale_after` metadata refreshes.
+- Use `skipped` for records that should not be changed for a specific reason, and `needsInput` for per-record questions that block a safe curation proposal.
+- Do not claim that backlog records were written or updated. This task only drafts structured output; the extension applies validated patches later.
+- Do not mark work shipped, superseded, or stale without durable evidence text in the relevant patch.
 
 Submit exactly once. Do not finish with prose. The submission tool is the only accepted output channel.

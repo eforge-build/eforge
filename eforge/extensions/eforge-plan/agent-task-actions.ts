@@ -1,4 +1,4 @@
-import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
+import { defineExtensionAction, ExtensionActionInputValidationError, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
 import {
   applyCompletedPlanningAgentTaskResult,
@@ -7,6 +7,7 @@ import {
 import { toJsonSafeObject } from './json-safe.js';
 import {
   findPlanningTaskWorkflowEntry,
+  isBacklogCurationWorkflowEntry,
   isRecommendationRefreshWorkflowEntry,
   listPlanningTaskWorkflowEntries,
   readPlanningTaskWorkflowIndex,
@@ -14,6 +15,7 @@ import {
   removePlanningTaskWorkflowEntry,
 } from './planning-task-workflow-store.js';
 import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
+import { buildBacklogCurationSource, buildBacklogCurationRedraftContext } from './backlog-curation-source.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
@@ -38,7 +40,7 @@ import {
 } from './planning-agent-task-schemas.js';
 
 
-type RequestedOutputSections = NonNullable<StartPlanningAgentTaskInput['requestedOutputSections']>;
+type RequestedOutputSections = PlanningTaskWorkflowEntry['requestedOutputSections'];
 
 export const startPlanningAgentTaskAction = defineExtensionAction({
   id: 'start-planning-agent-task',
@@ -168,17 +170,21 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
   async handler(input, ctx) {
     throwIfAborted(ctx.signal);
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'retry');
-    const refreshSource = isRecommendationRefreshWorkflowEntry(parent) ? await buildRecommendationRefreshSource(ctx.cwd) : undefined;
-    const context = refreshSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
+    const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
+      ? await buildRecommendationRefreshSource(ctx.cwd)
+      : isBacklogCurationWorkflowEntry(parent)
+        ? await buildBacklogCurationSource(ctx.cwd)
+        : undefined;
+    const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
-    const derivedGoal = refreshSource === undefined ? explicitOrPreservedGoal(input.userGoal, parent, context!) : parent.derivedRequest;
-    const sourceText = refreshSource?.sourceText ?? boundedSourceText(derivedGoal, context!);
+    const derivedGoal = workflowSource === undefined ? explicitOrPreservedGoal(input.userGoal, parent, context!) : parent.derivedRequest;
+    const sourceText = workflowSource?.sourceText ?? boundedSourceText(derivedGoal, context!);
     throwIfAborted(ctx.signal);
     return await startLinkedTask(ctx, {
       parent,
       derivedGoal,
       sourceText,
-      sourceFingerprint: refreshSource?.sourceFingerprint,
+      sourceFingerprint: workflowSource?.sourceFingerprint,
       requestedOutputSections: parent.requestedOutputSections,
     });
   },
@@ -195,19 +201,25 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     throwIfAborted(ctx.signal);
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'redraft');
     const previous = await ctx.agentTasks.get(input.taskId);
-    assertRedraftableParent(previous.task, input.taskId);
-    const redraft = buildRedraftContext(parent, previous.task, input);
-    const refreshSource = isRecommendationRefreshWorkflowEntry(parent) ? await buildRecommendationRefreshSource(ctx.cwd, redraft) : undefined;
-    const context = refreshSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
+    assertRedraftableParent(previous.task, input.taskId, isBacklogCurationWorkflowEntry(parent));
+    const redraft = isBacklogCurationWorkflowEntry(parent)
+      ? buildBacklogCurationRedraftContext(parent.taskId, completedTaskResult(previous.task), input)
+      : buildRedraftContext(parent, previous.task, input);
+    const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
+      ? await buildRecommendationRefreshSource(ctx.cwd, redraft)
+      : isBacklogCurationWorkflowEntry(parent)
+        ? await buildBacklogCurationSource(ctx.cwd, redraft)
+        : undefined;
+    const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
-    const derivedGoal = refreshSource === undefined ? explicitOrPreservedGoal(undefined, parent, context!) : parent.derivedRequest;
-    const sourceText = refreshSource?.sourceText ?? boundedSourceText(derivedGoal, context!, redraft);
+    const derivedGoal = workflowSource === undefined ? explicitOrPreservedGoal(undefined, parent, context!) : parent.derivedRequest;
+    const sourceText = workflowSource?.sourceText ?? boundedSourceText(derivedGoal, context!, redraft);
     throwIfAborted(ctx.signal);
     return await startLinkedTask(ctx, {
       parent,
       derivedGoal,
       sourceText,
-      sourceFingerprint: refreshSource?.sourceFingerprint,
+      sourceFingerprint: workflowSource?.sourceFingerprint,
       requestedOutputSections: parent.requestedOutputSections,
     });
   },
@@ -246,6 +258,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
       ...(parent.session !== undefined && { session: parent.session }),
       ...(parent.planningType !== undefined && { planningType: parent.planningType }),
       ...(parent.planningDepth !== undefined && { planningDepth: parent.planningDepth }),
+      ...(parent.includeRoadmap !== undefined && { includeRoadmap: parent.includeRoadmap }),
       ...(requested !== undefined && { requestedOutputSections: requested }),
     },
   });
@@ -260,7 +273,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     planningType: parent.planningType,
     planningDepth: parent.planningDepth,
     includeRoadmap: parent.includeRoadmap,
-    purpose: isRecommendationRefreshWorkflowEntry(parent) ? parent.purpose : undefined,
+    purpose: isRecommendationRefreshWorkflowEntry(parent) || isBacklogCurationWorkflowEntry(parent) ? parent.purpose : undefined,
     sourceFingerprint: params.sourceFingerprint ?? parent.sourceFingerprint,
   }));
   return toJsonSafeObject({ task: response.task, entry });
@@ -378,13 +391,16 @@ function buildRedraftContext(parent: PlanningTaskWorkflowEntry, task: unknown, i
   };
 }
 
-// Redraft is the clarification-answer flow: it only makes sense when the parent
-// task completed by requesting clarification (decision: needs-input with at least
-// one question). Running/failed/missing records and completed-ready results are
-// rejected so a redraft never fabricates a clarification round that never happened.
-function assertRedraftableParent(task: unknown, taskId: string): void {
+// Redraft is normally the clarification-answer flow: it only makes sense when
+// the parent task completed by requesting clarification (decision: needs-input
+// with at least one question). Backlog curation tasks also allow redrafting a
+// completed draft so users can steer the next curation pass. Running, failed,
+// and missing records are rejected so a redraft never fabricates unavailable
+// prior context.
+function assertRedraftableParent(task: unknown, taskId: string, allowCurationDraft = false): void {
   const result = completedTaskResult(task);
   const hasQuestions = Array.isArray(result?.clarificationQuestions) && result.clarificationQuestions.length > 0;
+  if (allowCurationDraft && (result?.backlogCurationDraft !== undefined || (result?.decision === 'needs-input' && hasQuestions))) return;
   if (result?.decision !== 'needs-input' || !hasQuestions) {
     throw new Error(`Planning task ${taskId} is not a completed needs-input clarification result; only tasks that requested clarification can be redrafted.`);
   }
@@ -420,14 +436,20 @@ function boundedUserGoal(userGoal: string): string {
   return userGoal.length > MAX_PLANNING_AGENT_USER_GOAL_LENGTH ? `${userGoal.slice(0, MAX_PLANNING_AGENT_USER_GOAL_LENGTH - suffix.length)}${suffix}` : userGoal;
 }
 
-function assertApplySelection(input: { applyRecommendations?: boolean; applyHandoffDrafts?: unknown[]; applySessionPlanDrafts?: unknown[]; applySessionPlanCreationDraft?: unknown }): void {
+function assertApplySelection(input: { applyRecommendations?: boolean; applyHandoffDrafts?: unknown[]; applySessionPlanDrafts?: unknown[]; applySessionPlanCreationDraft?: unknown; applyBacklogCurationDraft?: unknown }): void {
+  if (input.applyBacklogCurationDraft !== undefined) {
+    if (input.applyRecommendations === true || (input.applyHandoffDrafts?.length ?? 0) > 0 || (input.applySessionPlanDrafts?.length ?? 0) > 0 || input.applySessionPlanCreationDraft !== undefined) {
+      throw new ExtensionActionInputValidationError('applyBacklogCurationDraft cannot be combined with unrelated planning task apply selections.', [{ path: 'applyBacklogCurationDraft', message: 'Backlog curation draft applies must not include recommendations, handoff drafts, session-plan sections, or session-plan creation draft selections.' }]);
+    }
+    return;
+  }
   if (
     input.applyRecommendations === true
     || (input.applyHandoffDrafts?.length ?? 0) > 0
     || (input.applySessionPlanDrafts?.length ?? 0) > 0
     || input.applySessionPlanCreationDraft !== undefined
   ) return;
-  throw new Error('Applying a planning agent task result requires selecting recommendations, handoff drafts, session-plan sections, or a session-plan creation draft.');
+  throw new ExtensionActionInputValidationError('Applying a planning agent task result requires an apply selection.', [{ path: '', message: 'Select recommendations, handoff drafts, session-plan sections, a session-plan creation draft, or a backlog curation draft.' }]);
 }
 
 export const planningAgentTaskActions = [

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { useToast } from '@/components/toast';
 import type {
+  AnalyzeAllBacklogResponse,
   ApplyPlanningTaskResponse,
   JsonObject,
   ListPlanningAgentTasksResponse,
@@ -25,6 +26,7 @@ export interface PlanningTaskWorkflowsApi {
   reload: () => Promise<void>;
   start: (input: JsonObject) => Promise<PlanningAgentTaskRecord | null>;
   refreshRecommendations: () => Promise<PlanningAgentTaskRecord | null>;
+  analyzeAllBacklog: () => Promise<PlanningAgentTaskRecord | null>;
   retry: (taskId: string) => Promise<void>;
   redraft: (taskId: string, input: RedraftInput) => Promise<void>;
   cancel: (taskId: string) => Promise<void>;
@@ -131,6 +133,21 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [onRefresh, reload, reportError, toast]);
 
+  const analyzeAllBacklog = React.useCallback(async (): Promise<PlanningAgentTaskRecord | null> => {
+    setBusy(true);
+    try {
+      const response = await bridge.invokeAction<AnalyzeAllBacklogResponse>('analyze-all-backlog', {});
+      toast.push(`${response.reused ? 'Reusing' : 'Started'} backlog curation task ${response.task.taskId}.`, 'success');
+      await reload();
+      return response.task;
+    } catch (caught) {
+      reportError(caught);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, [reload, reportError, toast]);
+
   const retry = React.useCallback(async (taskId: string) => {
     setBusy(true);
     try {
@@ -205,5 +222,5 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [onRefresh, reload, reportError, toast]);
 
-  return { items, loading, busy, reload, start, refreshRecommendations, retry, redraft, cancel, remove, apply };
+  return { items, loading, busy, reload, start, refreshRecommendations, analyzeAllBacklog, retry, redraft, cancel, remove, apply };
 }

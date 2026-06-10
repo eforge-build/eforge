@@ -1,5 +1,7 @@
 import {
   MOCK_CREATION_DRAFT_SESSION,
+  analyzeMockBacklog,
+  applyMockBacklogCurationDraft,
   applyMockCreationDraft,
   cancelMockPlanningTask,
   getMockArtifacts,
@@ -53,6 +55,7 @@ function createMockBridge(): EforgeBridge {
         case 'list-board': return mockBoard as TOutput;
         case 'get-recommendations': return getMockRecommendationsResponse() as TOutput;
         case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
+        case 'analyze-all-backlog': return analyzeMockBacklog() as TOutput;
         case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
         case 'promote-selection': return { session: '2026-06-07-promoted-selection', sessionPlanPath: '.eforge/session-plans/2026-06-07-promoted-selection.md' } as TOutput;
@@ -64,6 +67,7 @@ function createMockBridge(): EforgeBridge {
         case 'redraft-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'redraft') as TOutput;
         case 'cancel-planning-agent-task': return { task: cancelMockPlanningTask(String(input.taskId ?? mockPlanningTask.taskId), typeof input.reason === 'string' ? input.reason : undefined) } as TOutput;
         case 'apply-planning-agent-task-result': {
+          if (input.applyBacklogCurationDraft !== undefined) return applyMockBacklogCurationDraft(String(input.taskId ?? mockPlanningTask.taskId)) as TOutput;
           const creationDraftInput = input.applySessionPlanCreationDraft as JsonObject | undefined;
           const applied = {
             recommendations: Boolean(input.applyRecommendations),

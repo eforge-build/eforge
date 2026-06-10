@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { EforgePlanPlanningBacklogCurationDraftSchema } from '@eforge-build/client';
 import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME, typeboxObjectToZodRawShape } from '@eforge-build/engine/harnesses/claude-sdk';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from '@eforge-build/engine/harnesses/eforge-resource-filter';
 import { MUTATION_TOOL_DENYLIST_CLAUDE, MUTATION_TOOL_DENYLIST_PI } from '@eforge-build/engine/harnesses/tool-safety';
@@ -9,6 +10,55 @@ async function* iter<T>(items: T[]): AsyncGenerator<T> {
 }
 
 describe('typeboxObjectToZodRawShape', () => {
+  it('converts the planning submit backlog curation draft schema with epic metadata', () => {
+    const kind = Symbol.for('TypeBox.Kind');
+    const shape = typeboxObjectToZodRawShape({
+      type: 'object',
+      properties: { backlogCurationDraft: EforgePlanPlanningBacklogCurationDraftSchema },
+      required: ['backlogCurationDraft'],
+      [kind]: 'Object',
+    } as never);
+
+    expect(() => shape.backlogCurationDraft.parse({
+      schemaVersion: 1,
+      sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
+      summary: ['Curated stale backlog records.'],
+      itemChanges: [],
+      epicChanges: [{
+        id: 'epic-1',
+        kind: 'epic',
+        precondition: { id: 'epic-1', kind: 'epic', bodySha256: 'a'.repeat(64) },
+        metadata: { priority: 'high' },
+        rationale: 'The epic needs priority alignment with active items.',
+      }],
+      noOpRechecks: [],
+      skipped: [],
+      needsInput: [],
+    })).not.toThrow();
+  });
+
+  it('rejects extra fields for closed TypeBox objects', () => {
+    const kind = Symbol.for('TypeBox.Kind');
+    const shape = typeboxObjectToZodRawShape({
+      type: 'object',
+      properties: { backlogCurationDraft: EforgePlanPlanningBacklogCurationDraftSchema },
+      required: ['backlogCurationDraft'],
+      [kind]: 'Object',
+    } as never);
+
+    expect(() => shape.backlogCurationDraft.parse({
+      schemaVersion: 1,
+      sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
+      summary: [],
+      itemChanges: [],
+      epicChanges: [],
+      noOpRechecks: [],
+      skipped: [],
+      needsInput: [],
+      extra: 'reject-me',
+    })).toThrow();
+  });
+
   it('preserves open-object recommendation fields', () => {
     const kind = Symbol.for('TypeBox.Kind');
     const stringSchema = { type: 'string', [kind]: 'String' };

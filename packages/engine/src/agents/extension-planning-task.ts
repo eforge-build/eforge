@@ -1,5 +1,6 @@
 import { Type } from '@sinclair/typebox';
 import {
+  EforgePlanPlanningBacklogCurationDraftSchema,
   EforgePlanPlanningDepthSchema,
   EforgePlanPlanningDraftResultSchema,
   EforgePlanPlanningTypeSchema,
@@ -80,6 +81,9 @@ const planningDraftSubmissionToolSchema = Type.Object({
   assumptionsOpenQuestions: Type.Array(Type.String()),
   nextSteps: Type.Optional(Type.Array(Type.String())),
   recommendations: Type.Optional(Type.Object({}, { additionalProperties: true })),
+  // --- eforge:region backlog-curation-draft ---
+  backlogCurationDraft: Type.Optional(EforgePlanPlanningBacklogCurationDraftSchema),
+  // --- eforge:endregion backlog-curation-draft ---
   handoffDraft: Type.Optional(Type.Object({}, { additionalProperties: true })),
   handoffDrafts: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: true }), { minItems: 1 })),
   planDrafts: Type.Optional(Type.Array(Type.Object({
