@@ -2,9 +2,11 @@ import { Value } from '@sinclair/typebox/value';
 import { describe, expect, it } from 'vitest';
 import {
   EforgePlanPlanningBacklogCurationDraftSchema,
+  EforgePlanPlanningBacklogCurationRecordPatchSchema,
   hasEforgePlanPlanningDraftOutputSection,
   parseEforgePlanPlanningDraftResult,
   safeParseEforgePlanPlanningDraftResult,
+  safeParseExtensionAgentTaskRecord,
   safeParseExtensionAgentTaskStartRequest,
 } from '../index.js';
 
@@ -67,6 +69,32 @@ describe('eforge-plan backlog curation draft contract', () => {
     })).toBe(false);
   });
 
+  it('rejects blank curation metadata references', () => {
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      itemChanges: [{
+        ...validBacklogCurationDraft.itemChanges[0],
+        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, depends_on: [''] },
+      }],
+    })).toBe(false);
+
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      itemChanges: [{
+        ...validBacklogCurationDraft.itemChanges[0],
+        metadata: { ...validBacklogCurationDraft.itemChanges[0].metadata, epic: '   ' },
+      }],
+    })).toBe(false);
+  });
+
+  it('rejects standalone curation patches with mismatched kind and precondition kind', () => {
+    expect(Value.Check(EforgePlanPlanningBacklogCurationRecordPatchSchema, validBacklogCurationDraft.itemChanges[0])).toBe(true);
+    expect(Value.Check(EforgePlanPlanningBacklogCurationRecordPatchSchema, {
+      ...validBacklogCurationDraft.itemChanges[0],
+      precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, kind: 'epic' },
+    })).toBe(false);
+  });
+
   it('accepts backlogCurationDraft as a requested output section with recommendations', () => {
     expect(safeParseExtensionAgentTaskStartRequest({
       kind: 'eforge-plan.planning-draft',
@@ -96,6 +124,24 @@ describe('eforge-plan backlog curation draft contract', () => {
     }).success).toBe(true);
   });
 
+  it('validates completed task records carrying curation plus recommendations output', () => {
+    expect(safeParseExtensionAgentTaskRecord({
+      taskId: 'task-curation',
+      kind: 'eforge-plan.planning-draft',
+      status: 'completed',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:01.000Z',
+      completedAt: '2026-01-01T00:00:01.000Z',
+      metadata: { outputSectionCount: 2 },
+      result: {
+        summary: 'Drafted backlog curation and recommendations.',
+        assumptionsOpenQuestions: [],
+        backlogCurationDraft: validBacklogCurationDraft,
+        recommendations,
+      },
+    }).success).toBe(true);
+  });
+
   it('rejects malformed curation draft payloads fail-closed', () => {
     expect(safeParseEforgePlanPlanningDraftResult({
       summary: 'Invalid extra property.',
@@ -113,46 +159,34 @@ describe('eforge-plan backlog curation draft contract', () => {
     }).success).toBe(false);
 
     expect(safeParseEforgePlanPlanningDraftResult({
-      summary: 'Epic patches must not appear in itemChanges.',
+      summary: 'Missing precondition hash.',
       assumptionsOpenQuestions: [],
       backlogCurationDraft: {
         ...validBacklogCurationDraft,
-        itemChanges: [{ ...validBacklogCurationDraft.epicChanges[0] }],
+        itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], precondition: { id: 'item-1', kind: 'item' } }],
       },
     }).success).toBe(false);
 
     expect(safeParseEforgePlanPlanningDraftResult({
-      summary: 'Item patches must not appear in epicChanges.',
+      summary: 'Mismatched item change kind.',
       assumptionsOpenQuestions: [],
       backlogCurationDraft: {
         ...validBacklogCurationDraft,
-        epicChanges: [{ ...validBacklogCurationDraft.itemChanges[0] }],
+        itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], kind: 'epic', precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, kind: 'epic' } }],
       },
     }).success).toBe(false);
 
     expect(safeParseEforgePlanPlanningDraftResult({
-      summary: 'Epic metadata must not accept item-only fields.',
+      summary: 'Mismatched epic change kind.',
       assumptionsOpenQuestions: [],
       backlogCurationDraft: {
         ...validBacklogCurationDraft,
-        epicChanges: [{ ...validBacklogCurationDraft.epicChanges[0], metadata: { epic: null } }],
+        epicChanges: [{ ...validBacklogCurationDraft.epicChanges[0], kind: 'item', precondition: { ...validBacklogCurationDraft.epicChanges[0].precondition, kind: 'item' } }],
       },
     }).success).toBe(false);
 
     expect(safeParseEforgePlanPlanningDraftResult({
-      summary: 'Patch and precondition kinds must match.',
-      assumptionsOpenQuestions: [],
-      backlogCurationDraft: {
-        ...validBacklogCurationDraft,
-        itemChanges: [{
-          ...validBacklogCurationDraft.itemChanges[0],
-          precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, kind: 'epic' },
-        }],
-      },
-    }).success).toBe(false);
-
-    expect(safeParseEforgePlanPlanningDraftResult({
-      summary: 'Recheck and precondition kinds must match.',
+      summary: 'Mismatched no-op recheck kind.',
       assumptionsOpenQuestions: [],
       backlogCurationDraft: {
         ...validBacklogCurationDraft,
@@ -160,15 +194,6 @@ describe('eforge-plan backlog curation draft contract', () => {
           ...validBacklogCurationDraft.noOpRechecks[0],
           precondition: { ...validBacklogCurationDraft.noOpRechecks[0].precondition, kind: 'epic' },
         }],
-      },
-    }).success).toBe(false);
-
-    expect(safeParseEforgePlanPlanningDraftResult({
-      summary: 'Missing precondition hash.',
-      assumptionsOpenQuestions: [],
-      backlogCurationDraft: {
-        ...validBacklogCurationDraft,
-        itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], precondition: { id: 'item-1', kind: 'item' } }],
       },
     }).success).toBe(false);
 
@@ -226,13 +251,17 @@ describe('eforge-plan backlog curation draft contract', () => {
   });
 
   it('keeps the top-level needs-input result variant output-free', () => {
-    expect(safeParseEforgePlanPlanningDraftResult({
+    const needsInputResult = {
       summary: 'Need clarification before drafting.',
       assumptionsOpenQuestions: [],
-      decision: 'needs-input',
+      decision: 'needs-input' as const,
       clarificationQuestions: [{ question: 'Which curation scope should be used?' }],
       rationale: 'The requested scope is ambiguous.',
+    };
+    expect(safeParseEforgePlanPlanningDraftResult({
+      ...needsInputResult,
       backlogCurationDraft: validBacklogCurationDraft,
     }).success).toBe(false);
+    expect(hasEforgePlanPlanningDraftOutputSection(needsInputResult)).toBe(false);
   });
 });

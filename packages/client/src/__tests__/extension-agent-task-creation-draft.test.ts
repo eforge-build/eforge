@@ -76,7 +76,7 @@ describe('eforge-plan session-plan creation drafts and decisions', () => {
     expect(needsInput.decision).toBe('needs-input');
     expect(needsInput.clarificationQuestions).toHaveLength(1);
     expect(needsInput.rationale.length).toBeGreaterThan(0);
-    expect(hasEforgePlanPlanningDraftOutputSection(result)).toBe(true);
+    expect(hasEforgePlanPlanningDraftOutputSection(result)).toBe(false);
     expect(parseExtensionAgentTaskRecord(completedRecord(needsInputResult)).status).toBe('completed');
     expect(safeParseExtensionAgentTaskRecord(completedRecord(needsInputResult)).success).toBe(true);
   });

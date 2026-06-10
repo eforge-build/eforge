@@ -173,11 +173,11 @@ describe('eforge-plan planning draft task runner', () => {
     expect(harness.prompts[0]).toContain('durable evidence');
   });
 
-  it('rejects backlog curation drafts with unsafe ids, bad statuses, or mismatched preconditions', async () => {
+  it('rejects structurally malformed backlog curation draft submissions', async () => {
     for (const patch of [
-      { id: 'item/1', kind: 'item', precondition: { id: 'item/1', kind: 'item', bodySha256: BODY_SHA }, metadata: { status: 'active' } },
-      { id: 'item-1', kind: 'item', precondition: { id: 'item-1', kind: 'item', bodySha256: BODY_SHA }, metadata: { status: 'blocked' } },
-      { id: 'item-1', kind: 'item', precondition: { id: 'other-item', kind: 'item', bodySha256: BODY_SHA }, metadata: { status: 'active' } },
+      { ...validBacklogCurationDraft.itemChanges[0], kind: 'task' },
+      { ...validBacklogCurationDraft.itemChanges[0], precondition: { id: 'item-1', kind: 'item' } },
+      { ...validBacklogCurationDraft.itemChanges[0], unexpected: true },
     ]) {
       const harness = new StubHarness([{
         toolCalls: [{
