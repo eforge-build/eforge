@@ -6,11 +6,13 @@ import { createSessionPlanningWorkflowAdapter } from '../../../../packages/input
 import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
 import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
 import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../../../../packages/engine/src/extensions/types.js';
+import { safeParseWithSchema } from '../../../../packages/client/src/index.js';
 import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '../../../../packages/client/src/extension-agent-tasks.js';
 import eforgePlanExtension from '../index.js';
 import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, writeRecommendations } from '../recommendations-store.js';
 import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
+import { ApplyPlanningAgentTaskResultInputSchema } from '../planning-agent-task-schemas.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-agent-task-'));
@@ -233,6 +235,20 @@ describe('planning agent task actions', () => {
     });
   });
 
+  it('encodes apply-selection requirements in the action input schema', () => {
+    const schema = ApplyPlanningAgentTaskResultInputSchema as unknown as { anyOf?: unknown[]; not?: { anyOf?: unknown[] } };
+    expect(schema.anyOf).toEqual(expect.arrayContaining([
+      expect.objectContaining({ required: ['applyBacklogCurationDraft'] }),
+      expect.objectContaining({ required: ['applyHandoffDrafts'] }),
+    ]));
+    expect(schema.not?.anyOf).toEqual(expect.arrayContaining([
+      expect.objectContaining({ required: ['applyBacklogCurationDraft', 'applySessionPlanCreationDraft'] }),
+      expect.objectContaining({ required: ['applyBacklogCurationDraft', 'applyHandoffDrafts'] }),
+    ]));
+    expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyRecommendations: true }).success).toBe(true);
+    expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }).success).toBe(true);
+  });
+
   it('rejects apply requests without a selected generated output section', async () => {
     await withTempProject(async (cwd) => {
       for (const input of [{ taskId: 'task-complete' }, { taskId: 'task-complete', applyRecommendations: false }]) {
@@ -269,6 +285,27 @@ describe('planning agent task actions', () => {
         });
         expect(result.kind).toBe('handler-error');
       }
+    });
+  });
+
+  it('returns invalid input instead of handler error for invalid backlog curation task state', async () => {
+    await withTempProject(async (cwd) => {
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-curation', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111', createdAt: 'now' });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:apply-planning-agent-task-result',
+        input: { taskId: 'task-curation', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { return { task: runningTask('task-curation') }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result).toMatchObject({ kind: 'invalid-input' });
+      expect(JSON.stringify(result)).toContain('only completed tasks can be applied');
     });
   });
 

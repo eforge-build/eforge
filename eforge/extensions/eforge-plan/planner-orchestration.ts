@@ -111,14 +111,14 @@ export async function applyCompletedPlanningAgentTaskResult(
   task: PlanningAgentTaskRecordLike,
   input: ApplyPlanningAgentTaskResultInput,
 ): Promise<ApplyPlanningAgentTaskResultOutput> {
-  assertCompletedPlanningDraftTask(task);
-  const rawResult = task.result as Record<string, unknown> | undefined;
-  if (rawResult === undefined || Object.keys(rawResult).length === 0) throw new Error(`Planning task ${task.taskId} completed without a result.`);
   const workflowEntry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), task.taskId);
   if (input.applyBacklogCurationDraft !== undefined) {
     const backlogCuration = await applyBacklogCurationDraftFromTask(cwd, task, input, workflowEntry);
     return { schemaVersion: 1, taskId: task.taskId, applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0, backlogCuration: backlogCuration.itemChanges + backlogCuration.epicChanges + backlogCuration.noOpRechecks }, backlogCuration };
   }
+  assertCompletedPlanningDraftTask(task);
+  const rawResult = task.result as Record<string, unknown> | undefined;
+  if (rawResult === undefined || Object.keys(rawResult).length === 0) throw new Error(`Planning task ${task.taskId} completed without a result.`);
   if (rawResult.backlogCurationDraft !== undefined) {
     throw new Error('Planning task results that include a backlog curation draft must be applied with applyBacklogCurationDraft; standalone recommendations, handoff, session-plan patch, and creation-draft apply selections are not allowed.');
   }

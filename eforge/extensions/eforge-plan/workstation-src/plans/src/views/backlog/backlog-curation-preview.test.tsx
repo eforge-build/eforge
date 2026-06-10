@@ -42,9 +42,26 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('Skipped cases')).toBeTruthy();
     expect(screen.getByText('Needs-input cases')).toBeTruthy();
     expect(screen.getByText('Generated recommendations (read-only)')).toBeTruthy();
+    expect(screen.getByText('0 active work items · 0 ready candidates · 2 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeTruthy();
     expect(screen.getAllByText(/auto-mode/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/planning/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/traceability/).length).toBeGreaterThan(0);
+  });
+
+  it('counts generated recommendations from all recommendation categories', () => {
+    renderPreview({
+      recommendations: {
+        schemaVersion: 1,
+        activeWork: [{ itemId: 'active-item', rationale: 'Already active.' }],
+        readyCandidates: [{ itemId: 'ready-item', rationale: 'Ready now.' }],
+        recommendedNextSequence: [],
+        safeParallelizableGroups: [],
+        blockedChains: [],
+      },
+    });
+
+    expect(screen.getByText('2 generated recommendations')).toBeTruthy();
+    expect(screen.getByText('1 active work items · 1 ready candidates · 0 next-sequence items · 0 safe-parallel groups · 0 blocked chains')).toBeTruthy();
   });
 
   it('requires two explicit apply actions', () => {

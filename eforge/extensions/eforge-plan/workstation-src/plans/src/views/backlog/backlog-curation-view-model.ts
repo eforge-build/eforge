@@ -53,11 +53,13 @@ export function abbreviateFingerprint(value: string | undefined): string {
   return value.length <= 16 ? value : `${value.slice(0, 8)}…${value.slice(-8)}`;
 }
 
-export function recommendationSummaryCounts(recommendations?: RecommendationModel): { nextSequence: number; safeParallelGroups: number; blockedChains: number; total: number } {
+export function recommendationSummaryCounts(recommendations?: RecommendationModel): { activeWork: number; readyCandidates: number; nextSequence: number; safeParallelGroups: number; blockedChains: number; total: number } {
+  const activeWork = recommendations?.activeWork?.length ?? 0;
+  const readyCandidates = recommendations?.readyCandidates?.length ?? 0;
   const nextSequence = recommendations?.recommendedNextSequence.length ?? 0;
   const safeParallelGroups = recommendations?.safeParallelizableGroups.length ?? 0;
   const blockedChains = recommendations?.blockedChains?.length ?? 0;
-  return { nextSequence, safeParallelGroups, blockedChains, total: nextSequence + safeParallelGroups + blockedChains };
+  return { activeWork, readyCandidates, nextSequence, safeParallelGroups, blockedChains, total: activeWork + readyCandidates + nextSequence + safeParallelGroups + blockedChains };
 }
 
 function formatValue(value: unknown): string {

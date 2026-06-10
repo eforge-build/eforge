@@ -29,9 +29,12 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const openItemSnapshots = itemSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status)).sort(bySnapshotId);
   const openEpicSnapshots = epicSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status)).sort(bySnapshotId);
   const recommendationHash = recommendations === null ? null : sha256(canonicalJson(recommendations));
+  const truncation = { sectionStrings: 0, roadmapExcerpts: 0, traceDetails: 0 };
+  const roadmapEvidence = await readRoadmapEvidence(cwd, truncation);
   const fingerprintProjection = {
     schemaVersion: 1,
     recommendationSourceProjection: recommendationProjection,
+    roadmapEvidence,
     preconditions: {
       items: openItemSnapshots.map(projectPrecondition),
       epics: openEpicSnapshots.map(projectPrecondition),
@@ -39,12 +42,10 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
-  const truncation = { sectionStrings: 0, roadmapExcerpts: 0, traceDetails: 0 };
   const openItems = openItemSnapshots.map((snapshot) => projectItem(snapshot, sourceFingerprint, truncation));
   const openEpics = openEpicSnapshots.map((snapshot) => projectEpic(snapshot, sourceFingerprint, truncation));
   const itemIds = openItems.map((item) => item.id as string);
   const traceSummaries = boundTraceSummaries(await readPlannerTraceSummaries(cwd, itemIds), truncation);
-  const roadmapEvidence = await readRoadmapEvidence(cwd, truncation);
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',

@@ -205,6 +205,26 @@ describe('backlog curation apply', () => {
     });
   });
 
+  it('rejects generated recommendations that reference records closed by the curation patch before writing', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const before = await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8');
+      const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-1', rationale: 'Ready after curation.' }] };
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed with durable evidence.', evidence: ['Shipped in prior work.'] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, recommendations);
+
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/item-1/);
+
+      expect(await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8')).toBe(before);
+      expect(await readRecommendations(cwd)).toBeNull();
+    });
+  });
+
   it('writes generated recommendations and records freshness after successful curation writes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });

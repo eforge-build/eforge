@@ -142,7 +142,7 @@ function GeneratedRecommendations({ recommendations }: { recommendations: Recomm
   return (
     <PreviewBlock title="Generated recommendations (read-only)">
       <div className="grid gap-1.5 text-xs text-muted-foreground">
-        <p>{counts.nextSequence} next-sequence items · {counts.safeParallelGroups} safe-parallel groups · {counts.blockedChains} blocked chains</p>
+        <p>{counts.activeWork} active work items · {counts.readyCandidates} ready candidates · {counts.nextSequence} next-sequence items · {counts.safeParallelGroups} safe-parallel groups · {counts.blockedChains} blocked chains</p>
         {recommendations.rationaleAndAssumptions && recommendations.rationaleAndAssumptions.length > 0 && <ul className="list-disc pl-4">{recommendations.rationaleAndAssumptions.map((entry) => <li key={entry}>{entry}</li>)}</ul>}
       </div>
     </PreviewBlock>

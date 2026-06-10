@@ -82,6 +82,24 @@ export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
   applyBacklogCurationDraft: Type.Optional(ApplyPlanningAgentTaskBacklogCurationSelectionSchema),
 }, { additionalProperties: false });
 
+Object.assign(ApplyPlanningAgentTaskResultInputSchema, {
+  anyOf: [
+    { properties: { applyRecommendations: { const: true } }, required: ['applyRecommendations'] },
+    { required: ['applyHandoffDrafts'] },
+    { required: ['applySessionPlanDrafts'] },
+    { required: ['applySessionPlanCreationDraft'] },
+    { required: ['applyBacklogCurationDraft'] },
+  ],
+  not: {
+    anyOf: [
+      { properties: { applyRecommendations: { const: true } }, required: ['applyBacklogCurationDraft', 'applyRecommendations'] },
+      { required: ['applyBacklogCurationDraft', 'applyHandoffDrafts'] },
+      { required: ['applyBacklogCurationDraft', 'applySessionPlanDrafts'] },
+      { required: ['applyBacklogCurationDraft', 'applySessionPlanCreationDraft'] },
+    ],
+  },
+});
+
 export const AppliedSessionPlanCreationDraftSourceRefsSchema = PlanSourceRefsSchema;
 
 export const AppliedSessionPlanCreationDraftSchema = Type.Object({

@@ -69,6 +69,24 @@ describe('eforge-plan backlog curation draft contract', () => {
     })).toBe(false);
   });
 
+  it('rejects non-hex or wrong-length curation fingerprints and hashes', () => {
+    for (const sourceFingerprint of ['not-a-sha', 'a'.repeat(63), 'g'.repeat(64)]) {
+      expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, { ...validBacklogCurationDraft, sourceFingerprint })).toBe(false);
+    }
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      itemChanges: [{ ...validBacklogCurationDraft.itemChanges[0], precondition: { ...validBacklogCurationDraft.itemChanges[0].precondition, bodySha256: 'z'.repeat(64) } }],
+    })).toBe(false);
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      epicChanges: [{ ...validBacklogCurationDraft.epicChanges[0], precondition: { ...validBacklogCurationDraft.epicChanges[0].precondition, recordSha256: 'c'.repeat(63) } }],
+    })).toBe(false);
+    expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
+      ...validBacklogCurationDraft,
+      noOpRechecks: [{ ...validBacklogCurationDraft.noOpRechecks[0], precondition: { ...validBacklogCurationDraft.noOpRechecks[0].precondition, sourceFingerprint: 'A'.repeat(64) } }],
+    })).toBe(false);
+  });
+
   it('rejects blank curation metadata references', () => {
     expect(Value.Check(EforgePlanPlanningBacklogCurationDraftSchema, {
       ...validBacklogCurationDraft,

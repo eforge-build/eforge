@@ -70,12 +70,14 @@ export async function applyBacklogCurationDraftFromTask(
 
   const visibleItemIds = new Set(itemSnapshots.map((snapshot) => snapshot.id));
   const visibleEpicIds = new Set(epicSnapshots.map((snapshot) => snapshot.id));
-  const prospectiveItemIds = new Set(prospectiveItems.keys());
-  const prospectiveEpicIds = new Set(prospectiveEpics.keys());
   validateProspectiveReferences(prospectiveItems, prospectiveEpics, visibleItemIds, visibleEpicIds);
 
   const generatedRecommendations = rawResult?.recommendations === undefined ? undefined : parseGeneratedRecommendations(rawResult.recommendations);
-  if (generatedRecommendations !== undefined) validateRecommendationReferencesAgainstIds(generatedRecommendations, prospectiveItemIds, prospectiveEpicIds);
+  if (generatedRecommendations !== undefined) {
+    const postApplyOpenItemIds = derivePostApplyOpenItemIds(prospectiveItems);
+    const postApplyOpenEpicIds = derivePostApplyOpenEpicIds(prospectiveEpics);
+    validateRecommendationReferencesAgainstIds(generatedRecommendations, postApplyOpenItemIds, postApplyOpenEpicIds);
+  }
 
   const changedItems = [...prospectiveItems.values()].filter((entry) => entry.changed);
   const changedEpics = [...prospectiveEpics.values()].filter((entry) => entry.changed);
@@ -141,9 +143,9 @@ function parseGeneratedRecommendations(value: unknown): BacklogRecommendationMod
 }
 
 function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): void {
-  if (task.kind !== 'eforge-plan.planning-draft') throw new Error(`Task ${task.taskId} is not an eforge-plan planning-draft task.`);
-  if (task.status !== 'completed') throw new Error(`Planning task ${task.taskId} is ${task.status}; only completed tasks can be applied.`);
-  if (!('result' in task)) throw new Error(`Planning task ${task.taskId} completed without a result.`);
+  if (task.kind !== 'eforge-plan.planning-draft') throw validationError('task.kind', `Task ${task.taskId} is not an eforge-plan planning-draft task.`);
+  if (task.status !== 'completed') throw validationError('task.status', `Planning task ${task.taskId} is ${task.status}; only completed tasks can be applied.`);
+  if (!('result' in task)) throw validationError('task.result', `Planning task ${task.taskId} completed without a result.`);
 }
 
 function validateTargetsAndPreconditions(draft: Draft, items: Map<string, BacklogRecordSnapshot<BacklogItem>>, epics: Map<string, BacklogRecordSnapshot<BacklogEpic>>, sourceFingerprint: string): void {
@@ -265,6 +267,14 @@ function validateProspectiveReferences(items: Map<string, ProspectiveItem>, epic
   for (const [, entry] of epics) {
     if (entry.changed) normalizeBacklogEpic(entry.frontmatter, entry.body);
   }
+}
+
+function derivePostApplyOpenItemIds(items: Map<string, ProspectiveItem>): Set<string> {
+  return new Set([...items].filter(([, entry]) => isOpenStatus(normalizeBacklogItem({ ...entry.frontmatter }, entry.body).status)).map(([id]) => id));
+}
+
+function derivePostApplyOpenEpicIds(epics: Map<string, ProspectiveEpic>): Set<string> {
+  return new Set([...epics].filter(([, entry]) => isOpenStatus(normalizeBacklogEpic({ ...entry.frontmatter }, entry.body).status)).map(([id]) => id));
 }
 
 function requireProspective<T>(map: Map<string, T>, id: string, path: string): T {

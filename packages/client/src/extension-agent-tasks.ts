@@ -175,15 +175,16 @@ export const EforgePlanPlanningRecommendationsSchema = Type.Object({
 
 // --- eforge:region backlog-curation-draft ---
 const EforgePlanPlanningNonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
+export const EforgePlanPlanningSha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
 
 export const EforgePlanPlanningBacklogCurationRecordKindSchema = Type.Union([Type.Literal('item'), Type.Literal('epic')]);
 
 const eforgePlanPlanningBacklogCurationPreconditionFields = {
   id: EforgePlanPlanningNonEmptyStringSchema,
-  bodySha256: EforgePlanPlanningNonEmptyStringSchema,
-  sourceFingerprint: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  bodySha256: EforgePlanPlanningSha256HexSchema,
+  sourceFingerprint: Type.Optional(EforgePlanPlanningSha256HexSchema),
   updated: Type.Optional(Type.String()),
-  recordSha256: Type.Optional(EforgePlanPlanningNonEmptyStringSchema),
+  recordSha256: Type.Optional(EforgePlanPlanningSha256HexSchema),
 } as const;
 
 export const EforgePlanPlanningBacklogCurationPreconditionSchema = Type.Object({
@@ -281,7 +282,7 @@ export const EforgePlanPlanningBacklogCurationNeedsInputSchema = Type.Object({
 
 export const EforgePlanPlanningBacklogCurationDraftSchema = Type.Object({
   schemaVersion: Type.Literal(1),
-  sourceFingerprint: EforgePlanPlanningNonEmptyStringSchema,
+  sourceFingerprint: EforgePlanPlanningSha256HexSchema,
   generatedAt: Type.Optional(Type.String()),
   summary: Type.Array(Type.String()),
   itemChanges: Type.Array(EforgePlanPlanningBacklogCurationItemRecordPatchSchema),

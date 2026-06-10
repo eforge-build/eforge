@@ -19,7 +19,11 @@ let tempWriteSequence = 0;
 function runExclusive<T>(key: string, task: () => Promise<T>): Promise<T> {
   const prior = indexWriteChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
-  indexWriteChains.set(key, result.then(() => undefined, () => undefined));
+  let chain: Promise<unknown>;
+  chain = result.then(() => undefined, () => undefined).finally(() => {
+    if (indexWriteChains.get(key) === chain) indexWriteChains.delete(key);
+  });
+  indexWriteChains.set(key, chain);
   return result;
 }
 
@@ -35,16 +39,22 @@ function emptyIndex(): PlanningTaskWorkflowIndex {
   return { schemaVersion: 1, entries: [] };
 }
 
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
 /**
  * Read the durable workflow index. Missing or malformed storage yields an empty
- * index so callers never crash on first run or partial writes.
+ * index so callers never crash on first run or partial writes; other read
+ * failures are surfaced to avoid hiding durable tasks.
  */
 export async function readPlanningTaskWorkflowIndex(cwd: string): Promise<PlanningTaskWorkflowIndex> {
   let raw: string;
   try {
     raw = await readFile(resolvePlanningTaskWorkflowIndexPath(cwd), 'utf-8');
-  } catch {
-    return emptyIndex();
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') return emptyIndex();
+    throw error;
   }
   let parsed: unknown;
   try {
