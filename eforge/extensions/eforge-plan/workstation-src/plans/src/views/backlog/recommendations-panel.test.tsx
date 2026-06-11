@@ -31,22 +31,18 @@ function renderPanel(input: Partial<React.ComponentProps<typeof RecommendationsP
       onPickItem={vi.fn()}
       onPickItems={vi.fn()}
       onPlanItems={vi.fn(async () => undefined)}
-      onRefreshRecommendations={vi.fn(async () => undefined)}
       {...input}
     />,
   );
 }
 
 describe('RecommendationsPanel freshness states', () => {
-  it('renders the missing recommendation state and shows a refresh control', () => {
-    const onRefreshRecommendations = vi.fn(async () => undefined);
-    renderPanel({ recommendations: null, status: mockRecommendationStatusMissing, onRefreshRecommendations });
+  it('renders the missing recommendation state without a recommendation-only refresh control', () => {
+    renderPanel({ recommendations: null, status: mockRecommendationStatusMissing });
 
     expect(screen.getByText('missing')).toBeTruthy();
-    expect(screen.getByText(/No current recommendations are stored/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations/i }));
-
-    expect(onRefreshRecommendations).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/run Analyze all backlog/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Refresh recommendations/i })).toBeNull();
   });
 
   it('renders fresh recommendations without stale reasons', () => {
@@ -59,12 +55,11 @@ describe('RecommendationsPanel freshness states', () => {
     expect(screen.queryByRole('button', { name: /Refresh recommendations/i })).toBeNull();
   });
 
-  it('renders stale recommendations with humanized reason metadata and a refresh control', () => {
-    const onRefreshRecommendations = vi.fn(async () => undefined);
-    renderPanel({ status: mockRecommendationStatusStale, onRefreshRecommendations });
+  it('renders stale recommendations with humanized reason metadata and analyze-all guidance', () => {
+    renderPanel({ status: mockRecommendationStatusStale });
 
     expect(screen.getByText('stale')).toBeTruthy();
-    expect(screen.getByText(/backlog has changed since these recommendations were generated/i)).toBeTruthy();
+    expect(screen.getByText(/run Analyze all backlog before planning/i)).toBeTruthy();
     // Machine codes stay visible but demoted to chips; the lead text is plain language.
     expect(screen.getByText('source-fingerprint-drift')).toBeTruthy();
     expect(screen.getByText(/The backlog changed since recommendations were last applied/i)).toBeTruthy();
@@ -76,9 +71,7 @@ describe('RecommendationsPanel freshness states', () => {
     expect(screen.getAllByTitle('2026-06-07T00:05:00.000Z').length).toBeGreaterThan(0);
     expect(screen.queryByText('2026-06-07T00:05:00.000Z')).toBeNull();
     expect(screen.getAllByText('Add import preview').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations/i }));
-
-    expect(onRefreshRecommendations).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /Refresh recommendations/i })).toBeNull();
   });
 
   it('shows compact refresh progress instead of a duplicate task block while a refresh runs', () => {

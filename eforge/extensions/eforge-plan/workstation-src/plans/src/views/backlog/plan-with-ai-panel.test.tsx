@@ -40,7 +40,6 @@ function workflows(overrides: Partial<PlanningTaskWorkflowsApi> = {}): PlanningT
     busy: false,
     reload: vi.fn(async () => undefined),
     start: vi.fn(async () => null),
-    refreshRecommendations: vi.fn(async () => null),
     analyzeAllBacklog: vi.fn(async () => null),
     retry: vi.fn(async () => undefined),
     redraft: vi.fn(async () => undefined),

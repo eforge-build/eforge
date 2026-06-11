@@ -12,7 +12,6 @@ import {
   mockMutationResult,
   mockPlanningTask,
   mockRecommendations,
-  refreshMockRecommendations,
   relinkMockPlanningTask,
   startMockPlanningTaskFromInput,
 } from '@/fixtures/mock-data';
@@ -54,7 +53,6 @@ function createMockBridge(): EforgeBridge {
         case 'list-planning-artifacts': return { artifacts: getMockArtifacts(), board: mockBoard } as TOutput;
         case 'list-board': return mockBoard as TOutput;
         case 'get-recommendations': return getMockRecommendationsResponse() as TOutput;
-        case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
         case 'analyze-all-backlog': return analyzeMockBacklog() as TOutput;
         case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;

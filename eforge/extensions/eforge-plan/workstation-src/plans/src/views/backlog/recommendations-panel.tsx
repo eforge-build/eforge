@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Lightbulb, Loader2, RefreshCw } from 'lucide-react';
+import { Lightbulb, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
@@ -22,11 +22,10 @@ interface RecommendationsPanelProps {
   onPickItems: (itemIds: string[]) => void;
   // Starts a planning task directly from a lane's ready items (one-click path).
   onPlanItems: (itemIds: string[], recommendationRef?: string) => Promise<void>;
-  onRefreshRecommendations: () => Promise<void>;
   busy?: boolean;
 }
 
-export function RecommendationsPanel({ recommendations, status, activeRefreshTask, titles, selected, readyIds, onPickItem, onPickItems, onPlanItems, onRefreshRecommendations, busy }: RecommendationsPanelProps) {
+export function RecommendationsPanel({ recommendations, status, activeRefreshTask, titles, selected, readyIds, onPickItem, onPickItems, onPlanItems, busy }: RecommendationsPanelProps) {
   if (!recommendations && !status) return null;
   const next = recommendations?.recommendedNextSequence ?? [];
   const groups = recommendations?.safeParallelizableGroups ?? [];
@@ -38,7 +37,6 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
   // The refresh task also appears in the Plan with AI task list; here we only
   // surface compact progress so the two panels never disagree.
   const refreshing = activeRefreshTask?.status === 'queued' || activeRefreshTask?.status === 'running';
-  const canRefresh = (state === 'missing' || state === 'stale') && !refreshing;
   const staleReasons = status?.reasons?.length ? status.reasons : status?.staleReasons ?? [];
 
   const summary = (
@@ -61,11 +59,6 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
       icon={<Lightbulb className="h-4 w-4 text-[color:var(--lane-ready)]" />}
       title="Recommendations"
       summary={summary}
-      actions={canRefresh && (
-        <Button size="sm" variant="secondary" disabled={busy} onClick={() => void onRefreshRecommendations()}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh recommendations
-        </Button>
-      )}
     >
       <div className="mb-2">
         <p className="text-xs text-muted-foreground">{statusCopy(state, refreshing)}</p>
@@ -252,8 +245,8 @@ function StatusBadge({ state }: { state: RecommendationStatusState }) {
 
 function statusCopy(state: RecommendationStatusState, refreshing: boolean): string {
   if (refreshing) return 'A refresh is running now - recommendations will update when it finishes.';
-  if (state === 'missing') return 'No current recommendations are stored; start a refresh task to generate them.';
-  if (state === 'stale') return 'The backlog has changed since these recommendations were generated; refresh before planning from them.';
+  if (state === 'missing') return 'No current recommendations are stored; run Analyze all backlog from Plan with AI to curate records and generate recommendations.';
+  if (state === 'stale') return 'The backlog has changed since these recommendations were generated; run Analyze all backlog before planning from them.';
   return 'Recommendations are up to date with the current backlog.';
 }
 
