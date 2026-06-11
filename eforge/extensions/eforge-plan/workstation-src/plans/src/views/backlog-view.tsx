@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useRouter } from '@/router';
 import type { Board as BoardData, BoardItem, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 import { Board } from './backlog/board';
+import { ItemDrawer } from './backlog/item-drawer';
 import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
 import { PlanWithAiPanel } from './backlog/plan-with-ai-panel';
@@ -22,7 +23,12 @@ interface BacklogViewProps {
 export function BacklogView({ board, recommendations, recommendationStatus, activeRecommendationRefreshTask, onRefresh }: BacklogViewProps) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [detailItemId, setDetailItemId] = React.useState<string | null>(null);
   const workflows = usePlanningTaskWorkflows(onRefresh);
+  const detailItem = React.useMemo(
+    () => (detailItemId ? (board.items ?? []).find((item) => item.id === detailItemId) ?? null : null),
+    [board.items, detailItemId],
+  );
 
   // When applying a result creates a session plan, jump straight to it in the
   // Plans tab so iteration continues there instead of in the task preview.
@@ -139,7 +145,16 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
         onEpicFilter={(value) => setParam('epic', value, '')}
         selected={selected}
         onToggle={toggle}
+        onOpenDetail={(item) => setDetailItemId(item.id)}
       />
+      {detailItem && (
+        <ItemDrawer
+          item={detailItem}
+          epics={board.epics ?? []}
+          onClose={() => setDetailItemId(null)}
+          onRefresh={onRefresh}
+        />
+      )}
       {selectedIds.length > 0 && (
         <div className="sticky bottom-4 z-20 mx-auto flex items-center gap-3 rounded-full border border-border bg-card px-4 py-2 shadow-lg">
           <span className="text-sm text-muted-foreground">{selectedIds.length} selected{selectedReadyIds.length !== selectedIds.length ? ` · ${selectedReadyIds.length} ready` : ''}</span>

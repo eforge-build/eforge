@@ -12,6 +12,32 @@ const CHIP_TONE: Record<string, string> = {
   Partial: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
 };
 
+// Most significant chip first: failures and review-needing states outrank
+// progress states. The compact card shows only the winner; the drawer shows all.
+const CHIP_SEVERITY = ['Failed', 'Partial', 'PR open', 'Merged', 'Run', 'Queue', 'PR', 'Plan'] as const;
+
+// On cards only attention states keep color (failures, open PRs, running
+// builds); steady states render muted so the column does the talking.
+const SUMMARY_TONE: Record<string, string> = {
+  Failed: CHIP_TONE.Failed,
+  Partial: CHIP_TONE.Partial,
+  'PR open': CHIP_TONE['PR open'],
+  Run: CHIP_TONE.Run,
+};
+
+/**
+ * Single most significant lifecycle chip for the compact card, or null when
+ * the item has no lifecycle evidence. 'Plan' is suppressed here: nearly every
+ * item has a plan link, so on cards it is noise - the drawer still shows it.
+ */
+export function summaryLifecycleChip(item: BoardItem): { label: string; className: string } | null {
+  if ((item.lifecycleLinks ?? []).length === 0 && !item.lifecycleState) return null;
+  const chips = new Set(lifecycleChips(item));
+  const label = CHIP_SEVERITY.find((candidate) => chips.has(candidate)) ?? [...chips][0];
+  if (!label || label === 'Plan') return null;
+  return { label, className: SUMMARY_TONE[label] ?? 'border-border text-muted-foreground' };
+}
+
 export function LifecyclePanel({ item }: { item: BoardItem }) {
   const rows = item.lifecycleLinks ?? [];
   if (rows.length === 0 && !item.lifecycleState) return null;
