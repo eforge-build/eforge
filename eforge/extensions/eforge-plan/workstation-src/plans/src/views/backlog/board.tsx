@@ -1,6 +1,7 @@
 import * as React from 'react';
+import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { Board as BoardData, BoardItem } from '@/types';
-import { ItemCard } from './item-card';
+import { ItemCard, type CardRelation } from './item-card';
 import {
   allEpicChips,
   buildColumns,
@@ -8,6 +9,7 @@ import {
   findDependencyCycles,
   shortId,
   stats,
+  type BoardColumn,
   type GroupMode,
   type StatusFilter,
 } from './board-model';
@@ -24,14 +26,30 @@ interface BoardProps {
   onEpicFilter: (value: string) => void;
   selected: Set<string>;
   onToggle: (item: BoardItem) => void;
+  onOpenDetail: (item: BoardItem) => void;
 }
 
 const GROUPS: { id: GroupMode; label: string }[] = [
   { id: 'lane', label: 'Lane' }, { id: 'epic', label: 'Epic' }, { id: 'recommended', label: 'Recommended' },
 ];
 
-export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle }: BoardProps) {
+// Closed-work columns start out as narrow rails so open work owns the canvas.
+const COLLAPSED_BY_DEFAULT = new Set(['done', 'archive', 'closed']);
+const EXPANDED_STORAGE_KEY = 'eforge-plan:board:expanded-closed';
+
+function readExpandedColumns(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(EXPANDED_STORAGE_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail }: BoardProps) {
   const allItems = board.items ?? [];
+  const [hoverId, setHoverId] = React.useState<string | null>(null);
+  const [expandedClosed, setExpandedClosed] = React.useState<Set<string>>(() => readExpandedColumns());
   const filtered = React.useMemo(() => {
     const base = filterItems(allItems, query, filter);
     return epicFilter ? base.filter((item) => (item.epic ?? '') === epicFilter) : base;
@@ -40,6 +58,30 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
   const cycles = React.useMemo(() => findDependencyCycles(allItems), [allItems]);
   const chips = React.useMemo(() => allEpicChips(allItems, board.epics ?? []), [allItems, board.epics]);
   const counts = React.useMemo(() => stats(allItems), [allItems]);
+
+  // Hovering a card outlines its dependency neighborhood across all columns:
+  // amber for what it waits on, blue for what it unblocks.
+  const hovered = React.useMemo(() => (hoverId ? allItems.find((item) => item.id === hoverId) : undefined), [allItems, hoverId]);
+  const dependencyIds = React.useMemo(() => new Set((hovered?.dependencies ?? []).map((ref) => ref.id)), [hovered]);
+  const dependentIds = React.useMemo(() => new Set((hovered?.dependents ?? []).map((ref) => ref.id)), [hovered]);
+  const relationFor = (item: BoardItem): CardRelation => {
+    if (dependencyIds.has(item.id)) return 'dependency';
+    if (dependentIds.has(item.id)) return 'dependent';
+    return null;
+  };
+
+  const toggleClosedColumn = (key: string) => {
+    setExpandedClosed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try {
+        window.localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // Persistence is best-effort; embedded webviews may deny storage.
+      }
+      return next;
+    });
+  };
 
   // Count pills double as the status filter - one control instead of a stats
   // row plus a separate filter row. Zero-count pills are hidden unless active.
@@ -105,24 +147,85 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
       {columns.length === 0
         ? <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">No items match this view.</p>
         : (
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {columns.map((column) => (
-              <div key={column.key} className="flex w-80 shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-background/40" style={{ borderTop: `2px solid ${column.tone}` }}>
-                <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-                  <span className="h-2 w-2 rounded-full" style={{ background: column.tone }} />
-                  <span className="text-sm font-semibold text-text-bright">{column.title}</span>
-                  <span className="ml-auto rounded-full border border-border px-2 text-xs text-muted-foreground">{column.items.length}</span>
+          <div className="flex items-start gap-3 overflow-x-auto pb-2">
+            {columns.map((column) => {
+              const collapsible = group !== 'epic' && COLLAPSED_BY_DEFAULT.has(column.key);
+              if (collapsible && !expandedClosed.has(column.key)) {
+                return <CollapsedColumn key={column.key} column={column} onExpand={() => toggleClosedColumn(column.key)} />;
+              }
+              return (
+                <div key={column.key} className="flex w-80 shrink-0 flex-col overflow-hidden rounded-lg border border-border/60 bg-background/40">
+                  <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+                    <span className="h-2 w-2 rounded-full" style={{ background: column.tone }} />
+                    <span className="text-sm font-semibold text-text-bright">{column.title}</span>
+                    <span className="ml-auto rounded-full border border-border px-2 text-xs text-muted-foreground">{column.items.length}</span>
+                    {collapsible && (
+                      <button
+                        type="button"
+                        aria-label={`Collapse ${column.title}`}
+                        title={`Collapse ${column.title}`}
+                        className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+                        onClick={() => toggleClosedColumn(column.key)}
+                      >
+                        <ChevronsRight className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 p-2">
+                    {column.items.length === 0
+                      ? <p className="py-4 text-center text-xs text-muted-foreground">Nothing here</p>
+                      : column.items.map((item) => (
+                          <ItemCard
+                            key={item.id}
+                            item={item}
+                            selected={selected.has(item.id)}
+                            relation={relationFor(item)}
+                            onToggle={onToggle}
+                            onOpenDetail={onOpenDetail}
+                            onHoverChange={setHoverId}
+                          />
+                        ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2 p-2">
-                  {column.items.length === 0
-                    ? <p className="py-4 text-center text-xs text-muted-foreground">Nothing here</p>
-                    : column.items.map((item) => <ItemCard key={item.id} item={item} selected={selected.has(item.id)} onToggle={onToggle} />)}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
+
+      {hovered && (dependencyIds.size > 0 || dependentIds.size > 0) && (
+        <div className="pointer-events-none fixed bottom-4 left-4 z-20 flex items-center gap-3 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-lg">
+          <span className="max-w-56 truncate font-medium text-foreground">{shortId(hovered.id)}</span>
+          {dependencyIds.size > 0 && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[color:var(--prio-medium)]" /> waits on {dependencyIds.size}
+            </span>
+          )}
+          {dependentIds.size > 0 && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[color:var(--lane-ready)]" /> unblocks {dependentIds.size}
+            </span>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Narrow rail standing in for a closed-work column. Keeps the count visible
+// without spending canvas on finished cards.
+function CollapsedColumn({ column, onExpand }: { column: BoardColumn; onExpand: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      title={`Expand ${column.title} (${column.items.length})`}
+      className="flex min-h-48 w-10 shrink-0 flex-col items-center gap-2 rounded-lg border border-border/60 bg-background/40 py-2 text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+    >
+      <ChevronsLeft className="h-3.5 w-3.5" />
+      <span className="h-2 w-2 rounded-full" style={{ background: column.tone }} />
+      <span className="text-xs font-semibold [text-orientation:mixed] [writing-mode:vertical-rl]">{column.title}</span>
+      <span className="rounded-full border border-border px-1.5 text-[0.65rem]">{column.items.length}</span>
+    </button>
   );
 }
 

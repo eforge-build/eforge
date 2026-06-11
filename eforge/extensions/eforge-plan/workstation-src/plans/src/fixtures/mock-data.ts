@@ -502,6 +502,27 @@ export function getMockArtifacts(): Artifact[] {
   return [...mockArtifacts, ...appliedCreationDraftArtifacts];
 }
 
+// Mutates the shared card objects in place: the precomputed lane arrays hold
+// the same references, so the next list-board read reflects the edit. Lane
+// membership itself stays fixed in the mock - only the live extension derives lanes.
+export function updateMockItem(input: JsonObject): { itemId: string; status: string } {
+  const id = String(input.id ?? '');
+  const item = items.find((entry) => entry.id === id);
+  if (!item) throw new Error(`Backlog item "${id}" not found.`);
+  if (typeof input.status === 'string') {
+    item.status = input.status;
+    item.closed = input.status === 'shipped' || input.status === 'superseded';
+  }
+  if (typeof input.priority === 'string') item.priority = input.priority;
+  if (input.epic !== undefined) {
+    const epicId = typeof input.epic === 'string' && input.epic.length > 0 ? input.epic : undefined;
+    item.epic = epicId;
+    const known = epicId ? mockBoard.epics?.find((epic) => epic.id === epicId) : undefined;
+    item.epicRef = epicId ? { id: epicId, title: known?.title ?? epicId, status: known?.status, missing: !known } : undefined;
+  }
+  return { itemId: id, status: item.status };
+}
+
 export function applyMockBacklogCurationDraft(taskId: string) {
   const item = listMockPlanningTasks().find((entry) => entry.entry.taskId === taskId);
   if (item) item.entry.appliedAt = '2026-06-07T00:40:00.000Z';

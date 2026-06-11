@@ -236,7 +236,8 @@ function PlanningLaneCard({ group, label, selected, readyIds, busy, onPickItem, 
 const BADGE_TONE: Record<RecommendationStatusState, string> = {
   missing: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
   fresh: 'border-[color:var(--lane-ready)]/40 text-[color:var(--lane-ready)] bg-[color:var(--lane-ready)]/10',
-  stale: 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)] bg-[color:var(--lane-blocked)]/10',
+  // Amber, not red: stale means "refresh before planning", not an error.
+  stale: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
 };
 
 function StatusBadge({ state }: { state: RecommendationStatusState }) {

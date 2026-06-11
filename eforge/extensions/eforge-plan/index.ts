@@ -102,7 +102,9 @@ const updateItem = defineExtensionAction({
     if (input.priority !== undefined) updates.priority = input.priority;
     if (input.tags !== undefined) updates.tags = input.tags;
     if (input.dependsOn !== undefined) updates.depends_on = input.dependsOn;
-    if (input.epic !== undefined) updates.epic = input.epic;
+    // Empty string clears the epic link: the undefined value is dropped from
+    // frontmatter during serialization rather than written as `epic: ''`.
+    if (input.epic !== undefined) updates.epic = input.epic.length > 0 ? input.epic : undefined;
     if (input.evidenceNotes !== undefined) updates.evidence_notes = input.evidenceNotes;
     if (input.recheckNotes !== undefined) updates.recheck_notes = input.recheckNotes;
     const item = await updateBacklogItemFrontmatter(ctx.cwd, input.id, updates);
@@ -196,6 +198,7 @@ export default defineEforgeExtension((eforge) => {
     description: 'Extension-owned planning workstation for backlog board data, flat session plans, and session plan sets.',
     allowedActions: [
       'list-board',
+      'update-item',
       'render-board-markdown',
       'get-recommendations',
       'put-recommendations',

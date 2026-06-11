@@ -346,6 +346,7 @@ describe('eforge-plan extension registration', () => {
     expect(workstation).toMatchObject({
       id: 'planning-workstation',
       allowedActions: expect.arrayContaining([
+        'update-item',
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',
