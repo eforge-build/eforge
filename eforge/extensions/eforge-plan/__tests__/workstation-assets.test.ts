@@ -109,20 +109,20 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('if (input.applyBacklogCurationDraft !== undefined)');
   });
 
-  it('wires recommendation refresh through the bridge without queue actions', async () => {
-    const [hook, panel, bridge, asset] = await Promise.all([
+  it('keeps recommendation-only refresh out of the workstation primary UI', async () => {
+    const [hook, panel, bridge, backlogView] = await Promise.all([
       readFile(TASK_WORKFLOWS_HOOK, 'utf-8'),
       readFile(RECOMMENDATIONS_PANEL, 'utf-8'),
       readFile(BRIDGE, 'utf-8'),
-      readFile(ASSET, 'utf-8'),
+      readFile(BACKLOG_VIEW, 'utf-8'),
     ]);
 
-    expect(hook).toContain("invokeAction<RefreshRecommendationsResponse>('refresh-recommendations', {})");
-    expect(panel).toContain('onRefreshRecommendations');
-    const refreshBridgeCase = bridge.match(/case 'refresh-recommendations':[^\n]+/)?.[0] ?? '';
-    expect(refreshBridgeCase).toContain("case 'refresh-recommendations'");
-    expect(asset).toContain('refresh-recommendations');
-    expect(`${hook}\n${panel}\n${refreshBridgeCase}`).not.toMatch(/enqueue|build-queue/);
+    expect(hook).not.toContain("'refresh-recommendations'");
+    expect(panel).not.toContain('onRefreshRecommendations');
+    expect(panel).not.toContain('Refresh recommendations');
+    expect(bridge).not.toContain("case 'refresh-recommendations'");
+    expect(backlogView).not.toContain('refreshRecommendations');
+    expect(`${hook}\n${panel}\n${bridge}\n${backlogView}`).not.toMatch(/build-queue/);
   });
 
   it('keeps a stateful mock fixture set for running, failed, needs-input, and ready creation drafts', async () => {

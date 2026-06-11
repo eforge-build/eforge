@@ -26,7 +26,7 @@ describe('eforge-plan Console workstation dogfood registration', () => {
       allowedActions: expect.arrayContaining([
         'list-board',
         'get-recommendations',
-        'refresh-recommendations',
+        'analyze-all-backlog',
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',
@@ -48,6 +48,7 @@ describe('eforge-plan Console workstation dogfood registration', () => {
     // stays registered for integration commands and deep links, but is not allowed in
     // the workstation iframe action surface.
     expect(workstations[0]!.allowedActions).not.toContain('promote-selection');
+    expect(workstations[0]!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstations[0]!).toBe(false);
   });
 });

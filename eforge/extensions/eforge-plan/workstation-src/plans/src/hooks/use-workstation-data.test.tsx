@@ -1,7 +1,6 @@
-import * as React from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getMockArtifacts, mockBoard, mockGetRecommendationsStaleResponse, refreshMockRecommendations } from '@/fixtures/mock-data';
+import { getMockArtifacts, mockBoard, mockGetRecommendationsStaleResponse } from '@/fixtures/mock-data';
 import type { EforgeBridge } from '@/types';
 
 function setBridge(bridge: EforgeBridge) {
@@ -41,32 +40,4 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(result.current.bridgeVersion).toBe(7);
   });
 
-  it('refreshes recommendations through the bridge and reloads planning tasks', async () => {
-    const actionCalls: string[] = [];
-    const onRefresh = vi.fn(async () => undefined);
-    const bridge: EforgeBridge = {
-      version: 7,
-      async invokeAction<TOutput>(actionId: string): Promise<TOutput> {
-        actionCalls.push(actionId);
-        if (actionId === 'list-planning-agent-tasks') return { tasks: [] } as TOutput;
-        if (actionId === 'refresh-recommendations') return refreshMockRecommendations() as TOutput;
-        throw new Error(`unexpected action ${actionId}`);
-      },
-    };
-    setBridge(bridge);
-
-    const [{ usePlanningTaskWorkflows }, { ToastProvider }] = await Promise.all([
-      import('@/views/backlog/use-planning-task-workflows'),
-      import('@/components/toast'),
-    ]);
-    const wrapper = ({ children }: { children: React.ReactNode }) => <ToastProvider>{children}</ToastProvider>;
-    const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
-
-    await waitFor(() => expect(actionCalls.filter((entry) => entry === 'list-planning-agent-tasks')).toHaveLength(1));
-    await act(async () => { await result.current.refreshRecommendations(); });
-
-    expect(actionCalls.filter((entry) => entry === 'refresh-recommendations')).toHaveLength(1);
-    expect(actionCalls.filter((entry) => entry === 'list-planning-agent-tasks')).toHaveLength(2);
-    expect(onRefresh).toHaveBeenCalledTimes(1);
-  });
 });

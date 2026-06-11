@@ -1,4 +1,4 @@
-import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -475,21 +475,6 @@ export function analyzeMockBacklog(): AnalyzeAllBacklogResponse {
   return { ...response, sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint };
 }
 
-export function refreshMockRecommendations(): RefreshRecommendationsResponse {
-  if (activeRecommendationRefreshTask && (activeRecommendationRefreshTask.status === 'queued' || activeRecommendationRefreshTask.status === 'running')) {
-    const entry = listMockPlanningTasks().find((item) => item.entry.taskId === activeRecommendationRefreshTask?.taskId)?.entry
-      ?? workflowEntry({ taskId: activeRecommendationRefreshTask.taskId, derivedRequest: 'Refresh eforge-plan recommendations for the current open backlog.', requestedOutputSections: ['recommendations'], purpose: 'recommendation-refresh', sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint });
-    return { task: activeRecommendationRefreshTask, entry, sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint ?? 'fresh-source-fingerprint', reused: true };
-  }
-  const response = pushDynamicTask({
-    selection: {},
-    derivedRequest: 'Refresh eforge-plan recommendations for the current open backlog.',
-    idPrefix: 'task-refresh-recommendations',
-    entryPatch: { requestedOutputSections: ['recommendations'], purpose: 'recommendation-refresh', sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint },
-  });
-  activeRecommendationRefreshTask = response.task;
-  return { ...response, sourceFingerprint: mockRecommendationStatusFresh.sourceFingerprint ?? 'fresh-source-fingerprint' };
-}
 
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
   const parent = listMockPlanningTasks().find((item) => item.entry.taskId === parentTaskId)?.entry;

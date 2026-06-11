@@ -96,10 +96,6 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
   // items are excluded and the action is disabled when no ready items remain.
   const selectedReadyIds = React.useMemo(() => Array.from(selected).filter((id) => readyById.get(id) === true), [selected, readyById]);
 
-  const refreshRecommendations = React.useCallback(async () => {
-    await workflows.refreshRecommendations();
-  }, [workflows]);
-
   // One-click lane planning: start a planning task directly from a
   // recommendation group's ready items, carrying the group ref so the planner
   // knows the lane it came from. Non-ready items are excluded, matching the
@@ -129,7 +125,6 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
         onPickItem={pickRecommendationItem}
         onPickItems={pickRecommendationItems}
         onPlanItems={planRecommendationLane}
-        onRefreshRecommendations={refreshRecommendations}
         busy={workflows.busy}
       />
       <Board

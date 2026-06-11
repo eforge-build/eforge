@@ -336,9 +336,10 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'refresh-recommendations', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
+    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
+    expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === 'refresh-recommendations')).toBe(false);
 
     expect(state.consoleWorkstations).toHaveLength(1);
     const workstation = state.consoleWorkstations[0]?.value;
@@ -358,7 +359,7 @@ describe('eforge-plan extension registration', () => {
         'prepare-planner-context',
         'apply-planner-result',
         'start-planning-agent-task',
-        'refresh-recommendations',
+        'analyze-all-backlog',
         'get-planning-agent-task',
         'cancel-planning-agent-task',
         'list-planning-agent-tasks',
@@ -371,6 +372,7 @@ describe('eforge-plan extension registration', () => {
     // promote-selection remains registered as an action, integration command, and
     // deep link, but the AI-first workstation no longer allows it in the iframe surface.
     expect(workstation!.allowedActions).not.toContain('promote-selection');
+    expect(workstation!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstation!).toBe(false);
 
     expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);

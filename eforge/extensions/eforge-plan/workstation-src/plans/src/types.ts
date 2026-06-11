@@ -272,12 +272,6 @@ export interface GetRecommendationsResponse {
   status: RecommendationStatus;
   activeRefreshTask?: PlanningAgentTaskRecord;
 }
-export interface RefreshRecommendationsResponse {
-  task: PlanningAgentTaskRecord;
-  entry: PlanningTaskWorkflowEntry;
-  sourceFingerprint: string;
-  reused?: boolean;
-}
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
   entry: PlanningTaskWorkflowEntry;
