@@ -1,0 +1,85 @@
+name: add-interactive-ai-plan-revision-sessions-for-existing-session-plans
+description: Add bounded eforge-plan-owned interactive AI revision sessions for
+  existing flat session plans, with single-shot read-only daemon tasks,
+  answer-only or patch-bearing turns, explicit preview/apply, stale fingerprint
+  blocking, Plans tab UI, and boundary documentation.
+created: 2026-06-12
+compiled: 2026-06-12
+mode: expedition
+base_branch: eforge/make-eforge-plan-backlog-curation-resilient-to-closed-dependency-references
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+  - pnpm build:eforge-plan-workstation
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-client-engine-task-contract
+    name: Add the shared planRevisionTurn task result contract, engine submit/prompt
+      handling, monitor metadata counting, and client/engine contract tests.
+    depends_on: []
+    branch: add-interactive-ai-plan-revision-sessions-for-existing-session-plans/client-engine-task-contract
+    build: &a1
+      - - implement
+        - doc-author
+      - test-write
+      - test-cycle
+      - doc-sync
+      - validate
+      - review-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-plan-revision-extension-backend
+    name: Implement eforge-plan-owned revision-session storage, action
+      schemas/actions, fingerprinted context/apply orchestration, registration,
+      and backend tests.
+    depends_on:
+      - plan-01-client-engine-task-contract
+    branch: add-interactive-ai-plan-revision-sessions-for-existing-session-plans/plan-revision-extension-backend
+    build: *a1
+    review: *a2
+  - id: plan-03-plan-revision-workstation
+    name: Add the Plans tab Revise with AI panel, thread hook/rendering, patch
+      preview/apply UX, stale/clarification states, frontend fixtures, bridge
+      support, UI tests, and workstation build verification.
+    depends_on:
+      - plan-02-plan-revision-extension-backend
+    branch: add-interactive-ai-plan-revision-sessions-for-existing-session-plans/plan-revision-workstation
+    build: *a1
+    review: *a2
+  - id: plan-04-docs-reference-boundary
+    name: Update eforge-plan and shared extension docs/reference artifacts, preserve
+      generic chat boundary language, and perform Pi/Claude integration-surface
+      parity check.
+    depends_on:
+      - plan-01-client-engine-task-contract
+      - plan-02-plan-revision-extension-backend
+      - plan-03-plan-revision-workstation
+    branch: add-interactive-ai-plan-revision-sessions-for-existing-session-plans/docs-reference-boundary
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is expedition-scale: it spans shared client task contracts,
+    engine agent/prompt behavior, extension-owned storage/actions/orchestration,
+    workstation UI/assets, docs, and broad tests. Architecture and module
+    planning help coordinate the shared schema foundation and dependent
+    verticals. The build runs docs and tests because the PRD requires
+    user-facing documentation, fixtures, schema tests, engine tests, extension
+    action tests, and UI tests. The loaded maintainability validation provider
+    is included before review. Parallel code/API review with strict evaluation
+    is appropriate because the change introduces persisted wire shapes,
+    mutation/apply semantics, and stale-plan overwrite safeguards."

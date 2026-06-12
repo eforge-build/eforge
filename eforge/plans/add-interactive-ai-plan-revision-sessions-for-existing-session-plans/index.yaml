@@ -4,7 +4,8 @@ description: Add bounded eforge-plan-owned interactive AI revision sessions for
   answer-only or patch-bearing turns, explicit preview/apply, stale fingerprint
   blocking, Plans tab UI, and boundary documentation.
 created: 2026-06-12
-status: draft
+status: compiled
+compiled: "2026-06-12"
 mode: expedition
 validate:
   - pnpm type-check
