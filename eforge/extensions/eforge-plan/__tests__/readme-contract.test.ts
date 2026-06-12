@@ -115,6 +115,10 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/Validation, reference, and curation precondition failures leave the existing `current\.json` and status sidecar unchanged/);
     expect(readme).toMatch(/post-apply\/post-curation backlog fingerprint/);
     expect(readme).toContain('apply-backlog-curation-draft');
+    expect(readme).toContain('applyCurationOnly');
+    expect(readme).toMatch(/invalid generated recommendation references/i);
+    expect(readme).toMatch(/Invalid generated recommendations block normal curation apply/);
+    expect(readme).toMatch(/apply curation only while discarding generated recommendations/);
   });
 
   it('keeps action table side effects aligned with planning boundaries', async () => {
@@ -167,7 +171,9 @@ describe('eforge-plan README planner contract', () => {
     expect(boundary).toMatch(/requests `backlogCurationDraft` plus `recommendations`/);
     expect(boundary).toMatch(/Plan with AI monitor labels curation tasks and supports retry, redraft, cancel, remove, and apply/);
     expect(boundary).toMatch(/task result is read-only until the user previews it/);
-    expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, skipped cases, needs-input cases, and generated recommendations/);
+    expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, skipped cases, needs-input cases, generated recommendations, and preview-time invalid generated recommendation references/);
+    expect(boundary).toMatch(/Invalid generated recommendations block normal curation apply/);
+    expect(boundary).toMatch(/apply curation only while discarding generated recommendations with `applyCurationOnly`/);
     expect(boundary).toMatch(/does not enqueue a build, mark backlog items shipped without durable evidence, or submit session plans/);
     expect(boundary).toMatch(/scheduling, stale-triggered execution, unattended mutation/);
     expect(boundary).toMatch(/autonomous backlog draining|auto-mode backlog draining/);

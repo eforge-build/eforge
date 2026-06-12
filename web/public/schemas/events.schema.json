@@ -655,7 +655,37 @@
             "validationErrors": {
               "type": "array",
               "items": {
-                "additionalProperties": false,
+                "additionalProperties": {
+                  "$id": "TypeBoxRecursive0",
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "TypeBoxRecursive0"
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "$ref": "TypeBoxRecursive0"
+                        }
+                      }
+                    }
+                  ]
+                },
                 "type": "object",
                 "required": [
                   "path",
@@ -4422,7 +4452,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "TypeBoxRecursive0",
+                        "$id": "TypeBoxRecursive1",
                         "anyOf": [
                           {
                             "type": "null"
@@ -4440,14 +4470,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "TypeBoxRecursive0"
+                              "$ref": "TypeBoxRecursive1"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "TypeBoxRecursive0"
+                                "$ref": "TypeBoxRecursive1"
                               }
                             }
                           }
@@ -4673,7 +4703,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "TypeBoxRecursive0",
+                        "$id": "TypeBoxRecursive1",
                         "anyOf": [
                           {
                             "type": "null"
@@ -4691,14 +4721,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "TypeBoxRecursive0"
+                              "$ref": "TypeBoxRecursive1"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "TypeBoxRecursive0"
+                                "$ref": "TypeBoxRecursive1"
                               }
                             }
                           }
@@ -4924,7 +4954,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "TypeBoxRecursive0",
+                        "$id": "TypeBoxRecursive1",
                         "anyOf": [
                           {
                             "type": "null"
@@ -4942,14 +4972,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "TypeBoxRecursive0"
+                              "$ref": "TypeBoxRecursive1"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "TypeBoxRecursive0"
+                                "$ref": "TypeBoxRecursive1"
                               }
                             }
                           }
@@ -5326,7 +5356,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "TypeBoxRecursive0",
+                        "$id": "TypeBoxRecursive1",
                         "anyOf": [
                           {
                             "type": "null"
@@ -5344,14 +5374,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "TypeBoxRecursive0"
+                              "$ref": "TypeBoxRecursive1"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "TypeBoxRecursive0"
+                                "$ref": "TypeBoxRecursive1"
                               }
                             }
                           }
@@ -5543,7 +5573,7 @@
                     "type": "object",
                     "patternProperties": {
                       "^(.*)$": {
-                        "$id": "TypeBoxRecursive0",
+                        "$id": "TypeBoxRecursive1",
                         "anyOf": [
                           {
                             "type": "null"
@@ -5561,14 +5591,14 @@
                           {
                             "type": "array",
                             "items": {
-                              "$ref": "TypeBoxRecursive0"
+                              "$ref": "TypeBoxRecursive1"
                             }
                           },
                           {
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$ref": "TypeBoxRecursive0"
+                                "$ref": "TypeBoxRecursive1"
                               }
                             }
                           }
@@ -9826,7 +9856,7 @@
                             "type": "object",
                             "patternProperties": {
                               "^(.*)$": {
-                                "$id": "TypeBoxRecursive0",
+                                "$id": "TypeBoxRecursive1",
                                 "anyOf": [
                                   {
                                     "type": "null"
@@ -9844,14 +9874,14 @@
                                   {
                                     "type": "array",
                                     "items": {
-                                      "$ref": "TypeBoxRecursive0"
+                                      "$ref": "TypeBoxRecursive1"
                                     }
                                   },
                                   {
                                     "type": "object",
                                     "patternProperties": {
                                       "^(.*)$": {
-                                        "$ref": "TypeBoxRecursive0"
+                                        "$ref": "TypeBoxRecursive1"
                                       }
                                     }
                                   }

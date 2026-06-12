@@ -117,7 +117,7 @@ function projectEpic(snapshot: BacklogRecordSnapshot<BacklogEpic>, sourceFingerp
   };
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 function buildDependencyDetails(openItems: readonly BacklogItem[], allItems: readonly BacklogItem[]): Array<Record<string, unknown>> {
   return dependencyStateProjection(openItems, allItems).map((projection) => ({
     itemId: projection.itemId,
@@ -150,7 +150,7 @@ function projectDependencyFingerprintDetail(detail: Record<string, unknown>): Re
     },
   };
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 function projectPrecondition(snapshot: BacklogRecordSnapshot<BacklogItem | BacklogEpic>) {
   return {

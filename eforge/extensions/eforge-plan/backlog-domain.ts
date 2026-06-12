@@ -240,7 +240,7 @@ export interface DependencyProjection {
   externalDependsOn: string[];
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 export interface DependencyStateReference {
   id: string;
   title: string;
@@ -258,7 +258,7 @@ export interface DependencyStateProjection {
   closedDependsOn: DependencyStateReference[];
   missingDependsOn: MissingDependencyReference[];
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 export interface RiskProjection {
   itemId: string;
@@ -294,7 +294,7 @@ export function dependencyProjection(items: readonly BacklogItem[]): DependencyP
   }));
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 export function dependencyStateProjection(items: readonly BacklogItem[], allItems: readonly BacklogItem[] = items): DependencyStateProjection[] {
   const byId = new Map(allItems.map((item) => [item.id, item]));
   return items.map((item) => {
@@ -324,7 +324,7 @@ export function dependencyStateProjection(items: readonly BacklogItem[], allItem
 function projectDependencyStateReference(item: BacklogItem): DependencyStateReference {
   return { id: item.id, title: item.title, status: item.status };
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 export function blockerRiskProjection(items: readonly BacklogItem[]): RiskProjection[] {
   return items.map((item) => {

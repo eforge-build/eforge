@@ -176,7 +176,7 @@ export async function readPlannerTraceSummaries(cwd: string, itemIds?: readonly 
   return compactTraceSummaries(summaries);
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 export interface RecommendationReferenceRecord {
   id: string;
   status?: BacklogStatus;
@@ -230,7 +230,7 @@ export function throwRecommendationReferenceValidationError(issues: readonly Rec
   const message = first?.message ?? 'Recommendation references are invalid.';
   throw new ExtensionActionInputValidationError(message, issues.map((issue) => ({ ...issue })) as Array<{ path: string; message: string }>);
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 async function readRecommendationStatusSidecar(statusPath: string): Promise<RecommendationStatusSidecar | null> {
   if (!existsSync(statusPath)) return null;
@@ -372,7 +372,7 @@ function pickLastEvent(value: Record<string, unknown>): Record<string, unknown> 
   return Object.fromEntries(['type', 'timestamp', 'sessionId', 'runId', 'cursor'].flatMap((key) => (value[key] === undefined ? [] : [[key, value[key]]])));
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 function collectKnownOpenRefIssue(path: string, id: string, catalog: ReadonlyMap<string, RecommendationReferenceRecord>, kind: 'item' | 'epic', issues: RecommendationReferenceValidationIssue[]): void {
   const record = catalog.get(id);
   if (record === undefined) {
@@ -403,7 +403,7 @@ function buildRecommendationReferenceIssue(path: string, id: string, kind: 'item
     message: `Recommendation ${path} ${reasonText}. Recommendation target fields may reference only open ${kind} ids.`,
   };
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 function canonicalJson(value: unknown): string {
   return JSON.stringify(canonicalize(value));

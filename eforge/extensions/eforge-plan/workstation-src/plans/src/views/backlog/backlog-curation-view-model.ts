@@ -1,4 +1,4 @@
-import type { BacklogCurationDraft, RecommendationModel } from '@/types';
+import type { BacklogCurationDraft, RecommendationReferenceValidationIssue, RecommendationModel } from '@/types';
 
 export interface CurationCounts {
   itemChanges: number;
@@ -51,6 +51,12 @@ export function sectionOperationLabel(action: string): string {
 export function abbreviateFingerprint(value: string | undefined): string {
   if (!value) return 'unknown';
   return value.length <= 16 ? value : `${value.slice(0, 8)}…${value.slice(-8)}`;
+}
+
+export function validationIssueLabel(issue: RecommendationReferenceValidationIssue): string {
+  const target = issue.kind === 'epic' ? 'Epic' : 'Item';
+  const status = issue.status ? ` · status ${issue.status}` : '';
+  return `${issue.path}: ${target} ${issue.id} (${issue.reason}${status})`;
 }
 
 export function recommendationSummaryCounts(recommendations?: RecommendationModel): { activeWork: number; readyCandidates: number; nextSequence: number; safeParallelGroups: number; blockedChains: number; total: number } {

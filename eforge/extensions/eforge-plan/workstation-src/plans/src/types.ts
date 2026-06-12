@@ -197,6 +197,33 @@ export interface PlanningTaskSessionPlanCreationDraft {
 export interface PlanningTaskClarificationQuestion { question: string; why?: string; options?: string[]; }
 export interface PlanningTaskHandoffDraft { selection: JsonObject; session?: string; title?: string; profile?: string; }
 export interface PlanningTaskSectionProgress { currentSection?: string; coveredSections?: string[]; remainingSections?: string[]; }
+export interface RecommendationReferenceValidationIssue {
+  path: string;
+  id: string;
+  kind: 'item' | 'epic';
+  reason: 'unknown' | 'closed' | 'empty';
+  status?: string;
+  title?: string;
+  message: string;
+}
+export interface RecommendationReferenceValidationResult {
+  valid: boolean;
+  issues: RecommendationReferenceValidationIssue[];
+}
+export interface BacklogCurationPreviewValidationError { path: string; message: string; }
+export interface BacklogCurationPreviewDetails {
+  valid: boolean;
+  itemChanges?: number;
+  epicChanges?: number;
+  noOpRechecks?: number;
+  generatedRecommendationValidation?: RecommendationReferenceValidationResult;
+  errors?: BacklogCurationPreviewValidationError[];
+}
+export interface BacklogCurationRecommendationsSkipped {
+  reason: 'apply-curation-only' | 'invalid-generated-recommendations';
+  generatedRecommendationValidation: RecommendationReferenceValidationResult;
+}
+
 export interface PlanningTaskResult {
   summary: string;
   assumptionsOpenQuestions: string[];
@@ -262,6 +289,7 @@ export interface PlanningAgentTaskListItem {
   status?: AgentTaskStatus;
   task?: PlanningAgentTaskRecord;
   staleReason?: string;
+  backlogCurationPreview?: BacklogCurationPreviewDetails;
 }
 export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; }
 export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry; }
@@ -298,6 +326,8 @@ export interface ApplyPlanningTaskResponse {
     needsInput?: BacklogCurationDraft['needsInput'];
     recommendations?: unknown;
     recommendationStatus?: unknown;
+    generatedRecommendationValidation?: RecommendationReferenceValidationResult;
+    recommendationsSkipped?: BacklogCurationRecommendationsSkipped;
   };
   handoffs?: unknown[];
   sessionPlanDrafts?: Array<{ session: string; sections: string[] }>;

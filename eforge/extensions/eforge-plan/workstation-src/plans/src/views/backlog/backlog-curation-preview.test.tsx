@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { mockBacklogCurationDraft, mockRecommendations } from '@/fixtures/mock-data';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockRecommendations } from '@/fixtures/mock-data';
 import type { PlanningTaskWorkflowEntry } from '@/types';
 import { BacklogCurationPreview } from './backlog-curation-preview';
 
@@ -64,12 +64,48 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('1 active work items · 1 ready candidates · 0 next-sequence items · 0 safe-parallel groups · 0 blocked chains')).toBeTruthy();
   });
 
+  it('renders invalid generated recommendation references and disables normal confirm', () => {
+    renderPreview({ curationPreview: mockBacklogCurationPreview });
+
+    expect(screen.getByText('Invalid generated recommendation references')).toBeTruthy();
+    expect(screen.getByText(/blockedChains\.closed-chain\.blockedBy: Item closed-dep/)).toBeTruthy();
+    expect(screen.getByText(/Generated recommendation references closed item closed-dep/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
+    expect(screen.getByRole('button', { name: 'Confirm apply curation' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Apply curation only / discard generated recommendations' })).toBeTruthy();
+  });
+
+  it('sends curation-only apply input when invalid recommendations are acknowledged for discard', () => {
+    const onApply = vi.fn(async () => undefined);
+    renderPreview({ curationPreview: mockBacklogCurationPreview, onApply });
+
+    fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply curation only / discard generated recommendations' }));
+
+    expect(onApply).toHaveBeenCalledWith('task-backlog-curation-ready', {
+      applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true },
+    });
+  });
+
   it('requires two explicit apply actions', () => {
     const onApply = vi.fn(async () => undefined);
     renderPreview({ onApply });
 
     fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
     expect(onApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm apply curation' }));
+
+    expect(onApply).toHaveBeenCalledWith('task-backlog-curation-ready', {
+      applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true },
+    });
+  });
+
+  it('keeps normal confirmation enabled when validation is valid', () => {
+    const onApply = vi.fn(async () => undefined);
+    renderPreview({ curationPreview: { valid: true, generatedRecommendationValidation: { valid: true, issues: [] } }, onApply });
+
+    fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm apply curation' }));
 
     expect(onApply).toHaveBeenCalledWith('task-backlog-curation-ready', {

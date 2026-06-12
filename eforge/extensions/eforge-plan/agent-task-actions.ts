@@ -348,7 +348,7 @@ function selectionFromInput(input: StartPlanningAgentTaskInput): PlanningTaskWor
   };
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 async function backlogCurationPreviewIfAvailable(cwd: string, entry: PlanningTaskWorkflowEntry, task: unknown): Promise<Record<string, unknown>> {
   if (!isBacklogCurationWorkflowEntry(entry) || !isCompletedTaskRecord(task)) return {};
   return { backlogCurationPreview: await previewBacklogCurationDraftFromTask(cwd, task, entry) };
@@ -361,7 +361,7 @@ function isCompletedTaskRecord(task: unknown): task is { taskId: string; kind: s
     && typeof (task as { kind?: unknown }).kind === 'string'
     && (task as { status?: unknown }).status === 'completed';
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 function plannerSelection(entry: PlanningTaskWorkflowEntry) {
   return {

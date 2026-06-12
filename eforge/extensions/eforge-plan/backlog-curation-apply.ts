@@ -45,12 +45,12 @@ export async function applyBacklogCurationDraftFromTask(
   if (input.applyBacklogCurationDraft?.previewAcknowledged !== true || input.applyBacklogCurationDraft.confirmApply !== true) {
     throw validationError('applyBacklogCurationDraft', 'Applying a backlog curation draft requires previewAcknowledged: true and confirmApply: true.');
   }
-  const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry);
   const applyCurationOnly = input.applyBacklogCurationDraft.applyCurationOnly === true;
+  const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: applyCurationOnly });
   if (prepared.generatedRecommendations !== undefined && !prepared.generatedRecommendationValidation.valid && !applyCurationOnly) {
     throwRecommendationReferenceValidationError(prepared.generatedRecommendationValidation.issues);
   }
-  const skipGeneratedRecommendations = prepared.generatedRecommendations !== undefined && applyCurationOnly;
+  const skipGeneratedRecommendations = prepared.generatedRecommendationsPresent && applyCurationOnly;
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
     ? await computeRecommendationSourceFingerprint(cwd)
     : undefined;
@@ -87,7 +87,7 @@ export async function applyBacklogCurationDraftFromTask(
     needsInput: prepared.draft.needsInput,
     ...(recommendationBlock !== undefined && { recommendations: recommendationBlock }),
     ...(recommendationStatus !== undefined && { recommendationStatus }),
-    ...(prepared.generatedRecommendations !== undefined && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
+    ...(prepared.generatedRecommendationsPresent && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
     ...(skipGeneratedRecommendations && { recommendationsSkipped: { reason: prepared.generatedRecommendationValidation.valid ? 'apply-curation-only' : 'invalid-generated-recommendations', generatedRecommendationValidation: prepared.generatedRecommendationValidation } }),
   };
 }
@@ -133,17 +133,18 @@ function parseGeneratedRecommendations(value: unknown): BacklogRecommendationMod
   }
 }
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 interface PreparedBacklogCurationApply {
   draft: Draft;
   effectiveRechecks: Array<{ recheck: Recheck; target: ProspectiveItem | ProspectiveEpic }>;
   changedItems: ProspectiveItem[];
   changedEpics: ProspectiveEpic[];
   generatedRecommendations?: BacklogRecommendationModel;
+  generatedRecommendationsPresent: boolean;
   generatedRecommendationValidation: RecommendationReferenceValidationResult;
 }
 
-async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined): Promise<PreparedBacklogCurationApply> {
+async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined, options: { skipGeneratedRecommendationErrors?: boolean } = {}): Promise<PreparedBacklogCurationApply> {
   assertCompletedPlanningDraftTask(task);
   if (entry === undefined || !isBacklogCurationWorkflowEntry(entry) || entry.sourceFingerprint === undefined) {
     throw validationError('workflowEntry.purpose', 'Applying a backlog curation draft requires a backlog-curation workflow entry.');
@@ -174,10 +175,13 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const visibleEpicIds = new Set(epicSnapshots.map((snapshot) => snapshot.id));
   validateProspectiveReferences(prospectiveItems, prospectiveEpics, visibleItemIds, visibleEpicIds);
 
-  const generatedRecommendations = rawResult?.recommendations === undefined ? undefined : parseGeneratedRecommendations(rawResult.recommendations);
+  const postApplyItems = buildPostApplyItemRecords(itemSnapshots, prospectiveItems);
+  const postApplyEpics = buildPostApplyEpicRecords(epicSnapshots, prospectiveEpics);
+  const generatedRecommendationsPresent = rawResult?.recommendations !== undefined;
+  const generatedRecommendations = generatedRecommendationsPresent && !options.skipGeneratedRecommendationErrors ? parseGeneratedRecommendations(rawResult.recommendations) : undefined;
   const generatedRecommendationValidation = generatedRecommendations === undefined
-    ? { valid: true, issues: [] }
-    : collectRecommendationReferenceValidationIssues(generatedRecommendations, buildPostApplyItemRecords(itemSnapshots, prospectiveItems), buildPostApplyEpicRecords(epicSnapshots, prospectiveEpics));
+    ? generatedRecommendationValidationForSkipped(rawResult?.recommendations, generatedRecommendationsPresent, postApplyItems, postApplyEpics)
+    : collectRecommendationReferenceValidationIssues(generatedRecommendations, postApplyItems, postApplyEpics);
 
   return {
     draft,
@@ -185,8 +189,19 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
     changedItems: [...prospectiveItems.values()].filter((prospective) => prospective.changed),
     changedEpics: [...prospectiveEpics.values()].filter((prospective) => prospective.changed),
     ...(generatedRecommendations !== undefined && { generatedRecommendations }),
+    generatedRecommendationsPresent,
     generatedRecommendationValidation,
   };
+}
+
+function generatedRecommendationValidationForSkipped(value: unknown, present: boolean, items: RecommendationReferenceRecord[], epics: RecommendationReferenceRecord[]): RecommendationReferenceValidationResult {
+  if (!present) return { valid: true, issues: [] };
+  try {
+    return collectRecommendationReferenceValidationIssues(parseRecommendationModel(value) as BacklogRecommendationModel, items, epics);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid generated recommendations.';
+    return { valid: false, issues: [{ path: 'result.recommendations', id: '', kind: 'item', reason: 'unknown', message }] };
+  }
 }
 
 function buildPostApplyItemRecords(itemSnapshots: readonly BacklogRecordSnapshot<BacklogItem>[], prospectiveItems: Map<string, ProspectiveItem>): RecommendationReferenceRecord[] {
@@ -209,7 +224,7 @@ function previewErrorsFromError(err: unknown): Array<{ path: string; message: st
   if (err instanceof ExtensionActionInputValidationError) return err.details.map((detail) => ({ path: detail.path, message: detail.message }));
   return [{ path: '', message: err instanceof Error ? err.message : String(err) }];
 }
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): void {
   if (task.kind !== 'eforge-plan.planning-draft') throw validationError('task.kind', `Task ${task.taskId} is not an eforge-plan planning-draft task.`);

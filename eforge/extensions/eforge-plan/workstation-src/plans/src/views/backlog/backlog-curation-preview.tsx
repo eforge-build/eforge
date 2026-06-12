@@ -3,26 +3,29 @@ import { Button } from '@/components/ui/button';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { Textarea } from '@/components/ui/textarea';
 import { formatRelativeTime } from '@/lib/format-time';
-import type { BacklogCurationDraft, JsonObject, PlanningTaskWorkflowEntry, RecommendationModel } from '@/types';
+import type { BacklogCurationDraft, BacklogCurationPreviewDetails, JsonObject, PlanningTaskWorkflowEntry, RecommendationModel, RecommendationReferenceValidationResult } from '@/types';
 import type { RedraftInput } from './use-planning-task-workflows';
-import { abbreviateFingerprint, curationCounts, idLabel, metadataRows, recommendationSummaryCounts, sectionOperationLabel } from './backlog-curation-view-model';
+import { abbreviateFingerprint, curationCounts, idLabel, metadataRows, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
 
 interface BacklogCurationPreviewProps {
   taskId: string;
   entry: PlanningTaskWorkflowEntry;
   draft: BacklogCurationDraft;
   recommendations?: RecommendationModel;
+  curationPreview?: BacklogCurationPreviewDetails;
   busy: boolean;
   onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
 }
 
-export function BacklogCurationPreview({ taskId, entry, draft, recommendations, busy, onApply, onRedraft }: BacklogCurationPreviewProps) {
+export function BacklogCurationPreview({ taskId, entry, draft, recommendations, curationPreview, busy, onApply, onRedraft }: BacklogCurationPreviewProps) {
   const [reviewed, setReviewed] = React.useState(false);
   const [steering, setSteering] = React.useState('');
   const counts = curationCounts(draft, recommendations);
   const applied = Boolean(entry.appliedAt);
   const canRedraft = steering.trim().length > 0;
+  const recommendationValidation = curationPreview?.generatedRecommendationValidation;
+  const hasInvalidGeneratedRecommendations = recommendationValidation?.valid === false;
 
   return (
     <div className="mt-3 grid gap-3 border-t border-border pt-3 text-sm">
@@ -74,6 +77,14 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           </ul>
         </PreviewBlock>
       )}
+      {recommendationValidation && <RecommendationValidationWarning validation={recommendationValidation} />}
+      {curationPreview?.errors && curationPreview.errors.length > 0 && (
+        <PreviewBlock title="Curation preview validation errors">
+          <ul className="grid gap-1.5 text-xs text-destructive-foreground">
+            {curationPreview.errors.map((error) => <li key={`${error.path}:${error.message}`}><span className="font-mono">{error.path}</span> — {error.message}</li>)}
+          </ul>
+        </PreviewBlock>
+      )}
       {recommendations && <GeneratedRecommendations recommendations={recommendations} />}
 
       <div className="grid gap-2 border-t border-border pt-2">
@@ -90,7 +101,8 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
             <Button size="sm" disabled={busy} onClick={() => setReviewed(true)}>I reviewed this curation preview</Button>
           ) : (
             <>
-              <Button size="sm" variant="destructive" disabled={busy} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } })}>Confirm apply curation</Button>
+              <Button size="sm" variant="destructive" disabled={busy || hasInvalidGeneratedRecommendations} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } })}>Confirm apply curation</Button>
+              {hasInvalidGeneratedRecommendations && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } })}>Apply curation only / discard generated recommendations</Button>}
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setReviewed(false)}>Cancel</Button>
             </>
           )}
@@ -137,6 +149,24 @@ function PatchCard({ patch }: { patch: Patch }) {
       {patch.sectionOperations && patch.sectionOperations.length > 0 && <div className="grid gap-1">{patch.sectionOperations.map((operation) => <details key={`${operation.heading}:${operation.action}`} className="border-l-2 border-border pl-2"><summary className="cursor-pointer text-xs text-muted-foreground">{sectionOperationLabel(operation.action)} · {operation.heading}</summary><SafeMarkdown markdown={operation.content} /></details>)}</div>}
       {patch.evidence && patch.evidence.length > 0 && <ul className="list-disc pl-4 text-xs text-muted-foreground">{patch.evidence.map((entry) => <li key={entry}>{entry}</li>)}</ul>}
     </article>
+  );
+}
+
+function RecommendationValidationWarning({ validation }: { validation: RecommendationReferenceValidationResult }) {
+  if (validation.valid) return null;
+  return (
+    <PreviewBlock title="Invalid generated recommendation references">
+      <div className="grid gap-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs">
+        <p className="text-destructive-foreground">Generated recommendations reference backlog records that are closed, missing, or otherwise invalid. Normal curation apply is disabled until you explicitly discard generated recommendations.</p>
+        <ul className="grid gap-1 text-muted-foreground">
+          {validation.issues.map((issue) => (
+            <li key={`${issue.path}:${issue.kind}:${issue.id}:${issue.reason}`}>
+              <span className="font-mono text-foreground">{validationIssueLabel(issue)}</span>{issue.title ? ` — ${issue.title}` : ''}<span className="block text-destructive-foreground">{issue.message}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </PreviewBlock>
   );
 }
 

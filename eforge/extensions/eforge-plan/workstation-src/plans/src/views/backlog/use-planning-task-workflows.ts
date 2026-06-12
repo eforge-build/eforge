@@ -37,11 +37,16 @@ function isRunning(item: PlanningAgentTaskListItem): boolean {
   return status === 'queued' || status === 'running';
 }
 
+function isTerminalStatus(status: PlanningAgentTaskRecord['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
 /**
  * Shared workflow hook for the durable planning task monitor. Task discovery is
  * extension-owned: the hook always lists tasks through `list-planning-agent-tasks`
- * on mount and after every mutation, caches the current render in React state, and
- * polls running tasks through `get-planning-agent-task`.
+ * on mount, after every mutation, and after polling observes a terminal task
+ * status, caches the current render in React state, and polls running tasks
+ * through `get-planning-agent-task`.
  */
 export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): PlanningTaskWorkflowsApi {
   const toast = useToast();
@@ -87,6 +92,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
           setItems((prev) => prev.map((existing) => existing.entry.taskId === item.entry.taskId
             ? { ...existing, task: response.task, status: response.task.status, available: true }
             : existing));
+          if (isTerminalStatus(response.task.status)) void reload();
         }).catch((caught) => {
           if (cancelled) return;
           const message = caught instanceof Error ? caught.message : String(caught);
@@ -98,7 +104,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     };
     const timer = window.setInterval(poll, POLL_MS);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [hasRunning, reportError]);
+  }, [hasRunning, reload, reportError]);
 
   const start = React.useCallback(async (input: JsonObject): Promise<PlanningAgentTaskRecord | null> => {
     setBusy(true);

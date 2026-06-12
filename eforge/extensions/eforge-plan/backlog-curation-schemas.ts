@@ -40,7 +40,7 @@ export const AnalyzeAllBacklogOutputSchema = Type.Object({
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
-// --- eforge:region plan-01-backend-validation-and-apply ---
+// --- eforge:region recommendation-validation ---
 export const RecommendationReferenceValidationIssueSchema = Type.Object({
   path: Type.String(),
   id: Type.String(),
@@ -74,7 +74,7 @@ export const BacklogCurationRecommendationsSkippedSchema = Type.Object({
   reason: Type.Union([Type.Literal('apply-curation-only'), Type.Literal('invalid-generated-recommendations')]),
   generatedRecommendationValidation: RecommendationReferenceValidationResultSchema,
 }, { additionalProperties: false });
-// --- eforge:endregion plan-01-backend-validation-and-apply ---
+// --- eforge:endregion recommendation-validation ---
 
 export const BacklogCurationApplyDetailsSchema = Type.Object({
   itemChanges: Type.Integer({ minimum: 0 }),
@@ -94,10 +94,10 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
     status: RecommendationDerivedStatusSchema,
   }, { additionalProperties: false })),
   recommendationStatus: Type.Optional(RecommendationDerivedStatusSchema),
-  // --- eforge:region plan-01-backend-validation-and-apply ---
+  // --- eforge:region recommendation-validation ---
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
   recommendationsSkipped: Type.Optional(BacklogCurationRecommendationsSkippedSchema),
-  // --- eforge:endregion plan-01-backend-validation-and-apply ---
+  // --- eforge:endregion recommendation-validation ---
 }, { additionalProperties: false });
 
 export type AnalyzeAllBacklogInput = Static<typeof AnalyzeAllBacklogInputSchema>;
