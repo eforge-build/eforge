@@ -1,7 +1,8 @@
-import type { EforgePlanPlanningBacklogCurationDraft, ExtensionJsonObject } from '@eforge-build/client/browser';
+import type { EforgePlanPlanningBacklogCurationDraft, EforgePlanPlanningPlanRevisionTurn, ExtensionJsonObject } from '@eforge-build/client/browser';
 
 export type JsonObject = ExtensionJsonObject;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
+export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
 
 export interface EforgeBridge {
   version?: number;
@@ -239,7 +240,48 @@ export interface PlanningTaskResult {
   sessionPlanPatch?: PlanningTaskSessionPlanPatch;
   sessionPlanCreationDraft?: PlanningTaskSessionPlanCreationDraft;
   backlogCurationDraft?: BacklogCurationDraft;
+  planRevisionTurn?: PlanRevisionTurnResult;
 }
+
+// --- eforge:region plan-03-plan-revision-workstation ---
+export interface PlanRevisionSectionHash { dimension: string; sha256: string; }
+export interface PlanRevisionTurnProjection {
+  turnId: string;
+  taskId: string;
+  parentTaskId?: string;
+  retryOfTaskId?: string;
+  redraftOfTaskId?: string;
+  userMessage: string;
+  basePlanFingerprint: string;
+  baseSectionHashes: PlanRevisionSectionHash[];
+  createdAt: string;
+  appliedAt?: string;
+  appliedSections?: string[];
+  task?: PlanningAgentTaskRecord;
+  available?: boolean;
+  staleReason?: string;
+  status?: AgentTaskStatus;
+}
+export interface PlanRevisionSessionProjection {
+  threadId: string;
+  targetSession: string;
+  createdAt: string;
+  updatedAt: string;
+  dismissedAt?: string;
+  summary?: string;
+  path?: string;
+  plan?: PlanData;
+  readiness?: Readiness;
+  sourceRefs?: PlanSourceRefs;
+  lifecycle?: PlanLifecycleProjection;
+  turns: PlanRevisionTurnProjection[];
+}
+export type PlanRevisionApplyOutput =
+  | { kind: 'applied'; session: string; turnId: string; taskId: string; appliedSections: string[]; plan?: PlanData; readiness?: Readiness; path?: string; message: string }
+  | { kind: 'stale'; session: string; turnId: string; taskId: string; basePlanFingerprint: string; currentPlanFingerprint: string; message: string }
+  | { kind: 'not-applicable'; session: string; turnId?: string; taskId?: string; message: string };
+export interface PlanRevisionRedraftAnswer { questionId?: string; prompt?: string; answer: string; }
+// --- eforge:endregion plan-03-plan-revision-workstation ---
 export interface PlanningAgentTaskMetadata {
   label?: string;
   summary?: string;

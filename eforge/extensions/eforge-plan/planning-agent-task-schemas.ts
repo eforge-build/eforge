@@ -38,6 +38,14 @@ export const StartPlanningAgentRequestedOutputSectionSchema = Type.Union([
   Type.Literal('sessionPlanCreationDraft'),
 ]);
 export const MAX_PLANNING_AGENT_USER_GOAL_LENGTH = 4000;
+const MAX_PLAN_REVISION_LIST_LIMIT = 100;
+const DEFAULT_PLAN_REVISION_LIST_LIMIT = 50;
+const MAX_PLAN_REVISION_ANSWER_COUNT = 20;
+const MAX_PLAN_REVISION_SECTION_COUNT = 20;
+const MAX_PLAN_REVISION_ANSWER_LENGTH = 4000;
+const MAX_PLAN_REVISION_PROMPT_LENGTH = 2000;
+const MAX_PLAN_REVISION_REASON_LENGTH = 1000;
+const MAX_PLAN_REVISION_SECTION_LENGTH = 120;
 
 export const StartPlanningAgentTaskInputSchema = Type.Object({
   userGoal: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_PLANNING_AGENT_USER_GOAL_LENGTH, pattern: '\\S' })),
@@ -240,19 +248,19 @@ export const PlanRevisionTurnProjectionSchema = Type.Object({
 }, JsonObjectAdditionalProperties);
 export const PlanRevisionSessionProjectionSchema = Type.Object({ threadId: Type.String(), targetSession: Type.String(), turns: Type.Array(PlanRevisionTurnProjectionSchema), createdAt: Type.String(), updatedAt: Type.String(), plan: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)), readiness: Type.Optional(SessionPlanReadinessDetailSchema), path: Type.Optional(Type.String()), sourceRefs: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)), lifecycle: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)) }, JsonObjectAdditionalProperties);
 export const StartPlanRevisionSessionInputSchema = Type.Object({ session: NonEmptyStringSchema }, { additionalProperties: false });
-export const ListPlanRevisionSessionsInputSchema = Type.Object({ includePlan: Type.Optional(Type.Boolean()), includeDismissed: Type.Optional(Type.Boolean()) }, { additionalProperties: false });
+export const ListPlanRevisionSessionsInputSchema = Type.Object({ includePlan: Type.Optional(Type.Boolean()), includeDismissed: Type.Optional(Type.Boolean()), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_PLAN_REVISION_LIST_LIMIT, default: DEFAULT_PLAN_REVISION_LIST_LIMIT })), offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })) }, { additionalProperties: false });
 export const GetPlanRevisionSessionInputSchema = Type.Object({ session: Type.Optional(NonEmptyStringSchema), threadId: Type.Optional(NonEmptyStringSchema), includePlan: Type.Optional(Type.Boolean()) }, { additionalProperties: false, oneOf: [{ required: ['session'] }, { required: ['threadId'] }] });
 export const StartPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, message: Type.String({ minLength: 1, maxLength: MAX_PLANNING_AGENT_USER_GOAL_LENGTH, pattern: '\\S' }) }, { additionalProperties: false });
-export const RetryPlanRevisionTurnAnswerSchema = Type.Object({ questionId: Type.Optional(Type.String()), prompt: Type.Optional(Type.String()), answer: NonEmptyStringSchema }, { additionalProperties: false });
-export const RetryPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), answers: Type.Optional(Type.Array(RetryPlanRevisionTurnAnswerSchema, { minItems: 1 })), steering: Type.Optional(Type.String({ minLength: 1, pattern: '\\S' })) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
-export const CancelPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), reason: Type.Optional(Type.String()) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
-export const ApplyPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), sections: Type.Array(NonEmptyStringSchema, { minItems: 1, uniqueItems: true }), previewAcknowledged: Type.Literal(true), confirmApply: Type.Literal(true) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
+export const RetryPlanRevisionTurnAnswerSchema = Type.Object({ questionId: Type.Optional(Type.String({ maxLength: MAX_PLAN_REVISION_PROMPT_LENGTH })), prompt: Type.Optional(Type.String({ maxLength: MAX_PLAN_REVISION_PROMPT_LENGTH })), answer: Type.String({ minLength: 1, maxLength: MAX_PLAN_REVISION_ANSWER_LENGTH, pattern: '\\S' }) }, { additionalProperties: false });
+export const RetryPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), answers: Type.Optional(Type.Array(RetryPlanRevisionTurnAnswerSchema, { minItems: 1, maxItems: MAX_PLAN_REVISION_ANSWER_COUNT })), steering: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_PLAN_REVISION_ANSWER_LENGTH, pattern: '\\S' })) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
+export const CancelPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), reason: Type.Optional(Type.String({ maxLength: MAX_PLAN_REVISION_REASON_LENGTH })) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
+export const ApplyPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), sections: Type.Array(Type.String({ minLength: 1, maxLength: MAX_PLAN_REVISION_SECTION_LENGTH, pattern: '\\S' }), { minItems: 1, maxItems: MAX_PLAN_REVISION_SECTION_COUNT, uniqueItems: true }), previewAcknowledged: Type.Literal(true), confirmApply: Type.Literal(true) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
 export const PlanRevisionSessionOutputSchema = PlanRevisionSessionProjectionSchema;
-export const PlanRevisionSessionsListOutputSchema = Type.Object({ sessions: Type.Array(PlanRevisionSessionProjectionSchema) }, JsonObjectAdditionalProperties);
+export const PlanRevisionSessionsListOutputSchema = Type.Object({ sessions: Type.Array(PlanRevisionSessionProjectionSchema), total: Type.Integer({ minimum: 0 }), limit: Type.Integer({ minimum: 1, maximum: MAX_PLAN_REVISION_LIST_LIMIT }), offset: Type.Integer({ minimum: 0 }) }, JsonObjectAdditionalProperties);
 export const PlanRevisionTurnStartOutputSchema = Type.Object({ session: PlanRevisionSessionProjectionSchema, task: ExtensionAgentTaskRecordSchema, turn: PlanRevisionTurnEntrySchema }, JsonObjectAdditionalProperties);
 export const ApplyPlanRevisionTurnOutputSchema = Type.Union([
-  Type.Object({ kind: Type.Literal('applied'), session: Type.String(), taskId: ExtensionAgentTaskIdSchema, appliedSections: Type.Array(Type.String()), readiness: SessionPlanReadinessDetailSchema, plan: Type.Object({}, JsonObjectAdditionalProperties), path: Type.String() }, JsonObjectAdditionalProperties),
-  Type.Object({ kind: Type.Literal('stale'), session: Type.String(), taskId: ExtensionAgentTaskIdSchema, basePlanFingerprint: Sha256HexSchema, currentPlanFingerprint: Sha256HexSchema, message: Type.String() }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal('applied'), session: Type.String(), turnId: NonEmptyStringSchema, taskId: ExtensionAgentTaskIdSchema, appliedSections: Type.Array(Type.String()), readiness: SessionPlanReadinessDetailSchema, plan: Type.Object({}, JsonObjectAdditionalProperties), path: Type.String(), message: Type.String() }, JsonObjectAdditionalProperties),
+  Type.Object({ kind: Type.Literal('stale'), session: Type.String(), turnId: NonEmptyStringSchema, taskId: ExtensionAgentTaskIdSchema, basePlanFingerprint: Sha256HexSchema, currentPlanFingerprint: Sha256HexSchema, message: Type.String() }, { additionalProperties: false }),
   Type.Object({ kind: Type.Literal('not-applicable'), session: Type.String(), taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), message: Type.String() }, { additionalProperties: false, anyOf: [{ required: ['taskId'] }, { required: ['turnId'] }] }),
 ]);
 // --- eforge:endregion plan-02-plan-revision-extension-backend ---

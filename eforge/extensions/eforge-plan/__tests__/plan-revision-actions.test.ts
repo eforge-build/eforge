@@ -154,6 +154,40 @@ describe('plan revision actions', () => {
     });
   });
 
+  it('allows new revision turns when an old daemon task lookup reports unknown task id', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'unknown-task');
+      const tasks = new Map<string, ExtensionAgentTaskRecord>();
+      const first = await dispatch(cwd, 'start-plan-revision-turn', { session: 'unknown-task', message: 'First.' }, tasks, []);
+      const firstTurn = first.turn as { taskId: string };
+      tasks.delete(firstTurn.taskId);
+      const starts: unknown[] = [];
+      const result = await dispatchExtensionAction(registry(), {
+        actionId: 'eforge-plan:start-plan-revision-turn',
+        input: { session: 'unknown-task', message: 'Second.' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) {
+            starts.push(request);
+            const task = queuedTask('task-next');
+            tasks.set(task.taskId, task);
+            return { task };
+          },
+          async get(taskId) {
+            const task = tasks.get(taskId);
+            if (task === undefined) throw new Error(`Unknown task id: ${taskId}`);
+            return { task };
+          },
+          async cancel() { throw new Error('unexpected'); },
+        }),
+      });
+      expect(result).toMatchObject({ kind: 'success', output: { turn: { taskId: 'task-next', userMessage: 'Second.' } } });
+      expect(starts).toHaveLength(1);
+    });
+  });
+
   it('retries turns and redrafts clarification answers with preserved linkage and bounded context', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'retry-me');
@@ -201,6 +235,12 @@ describe('plan revision actions', () => {
       expect(raw).toContain('Generated scope only.');
       expect(raw).toContain('- `pnpm type-check` exits 0.');
       expect(raw).not.toContain('Generated AC.');
+
+      const incremental = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: turn.taskId, sections: ['acceptance-criteria'], previewAcknowledged: true, confirmApply: true }, tasks, [], buildEnqueues);
+      expect(incremental).toMatchObject({ kind: 'applied', session: 'apply-me', taskId: turn.taskId, appliedSections: ['acceptance-criteria'] });
+      const incrementallyRaw = await readFile(join(cwd, '.eforge', 'session-plans', 'apply-me.md'), 'utf-8');
+      expect(incrementallyRaw).toContain('Generated scope only.');
+      expect(incrementallyRaw).toContain('- Generated AC.');
 
       const second = await dispatch(cwd, 'start-plan-revision-turn', { session: 'apply-me', message: 'Answer.' }, tasks, []);
       const secondTurn = second.turn as { taskId: string; basePlanFingerprint: string };

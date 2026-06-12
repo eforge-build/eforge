@@ -63,8 +63,11 @@ export const listPlanRevisionSessionsAction = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const index = await readPlanRevisionIndex(ctx.cwd);
-    const sessions = await Promise.all(listPlanRevisionSessions(index, { includeDismissed: input.includeDismissed }).map((session) => projectSessionEntry(ctx, session, input.includePlan === true)));
-    return toJsonSafeObject({ sessions });
+    const allSessions = listPlanRevisionSessions(index, { includeDismissed: input.includeDismissed });
+    const offset = input.offset ?? 0;
+    const limit = input.limit ?? 50;
+    const sessions = await Promise.all(allSessions.slice(offset, offset + limit).map((session) => projectSessionEntry(ctx, session, input.includePlan === true)));
+    return toJsonSafeObject({ sessions, total: allSessions.length, limit, offset });
   },
 });
 
@@ -108,6 +111,7 @@ export const retryPlanRevisionTurnAction = defineExtensionAction({
       if (parent === undefined) throw new Error('No linked plan revision turn found.');
       const redraft = input.answers !== undefined || input.steering !== undefined;
       const priorQuestions = redraft ? await assertNeedsInputParent(ctx, parent.taskId) : undefined;
+      if (!redraft) await assertRetriableParent(ctx, parent.taskId);
       return startTurn(ctx, {
         session: input.session,
         userMessage: parent.userMessage,
@@ -161,16 +165,17 @@ export const applyPlanRevisionTurnAction = defineExtensionAction({
     } catch (err) {
       return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, errorMessage(err)));
     }
-    const currentPlanFingerprint = computeFlatPlanFingerprint(loaded.plan);
-    if (currentPlanFingerprint !== storedTurn.basePlanFingerprint) {
-      return toJsonSafeObject({ kind: 'stale', session: input.session, taskId: storedTurn.taskId, basePlanFingerprint: storedTurn.basePlanFingerprint, currentPlanFingerprint, message: 'The session plan changed since this revision turn was generated; no sections were written.' });
-    }
     const selected = validateSelectedRevisionSections(loaded.plan, turnResult, input.sections);
     if (!selected.ok) return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, selected.message));
     const selectedSections = selected.sections.map((section) => section.dimension);
+    const currentPlanFingerprint = computeFlatPlanFingerprint(loaded.plan);
+    const incrementalStatus = validateIncrementalApply(storedTurn, computeFlatSectionHashes(loaded.plan), selectedSections);
+    if (currentPlanFingerprint !== storedTurn.basePlanFingerprint && !incrementalStatus.ok) {
+      return toJsonSafeObject({ kind: 'stale', session: input.session, turnId: storedTurn.turnId, taskId: storedTurn.taskId, basePlanFingerprint: storedTurn.basePlanFingerprint, currentPlanFingerprint, message: incrementalStatus.message });
+    }
     const applied = await applySelectedRevisionSections(ctx.cwd, input.session, turnResult, selectedSections);
     await markPlanRevisionTurnApplied(ctx.cwd, input.session, { taskId: storedTurn.taskId }, new Date().toISOString(), selectedSections);
-    return toJsonSafeObject({ kind: 'applied', taskId: storedTurn.taskId, appliedSections: selectedSections, ...applied });
+    return toJsonSafeObject({ kind: 'applied', turnId: storedTurn.turnId, taskId: storedTurn.taskId, appliedSections: selectedSections, message: 'Applied selected plan revision sections.', ...applied });
   },
 });
 
@@ -229,6 +234,13 @@ async function assertNeedsInputParent(ctx: ExtensionActionContext, taskId: strin
   return questions;
 }
 
+async function assertRetriableParent(ctx: ExtensionActionContext, taskId: string): Promise<void> {
+  const task = (await ctx.agentTasks.get(taskId)).task as ExtensionAgentTaskRecord;
+  if (task.status !== 'failed' && task.status !== 'cancelled') {
+    throw new Error(`Revision task ${taskId} is ${task.status}; only failed or cancelled revision turns can be retried without redraft answers.`);
+  }
+}
+
 async function projectSession(ctx: ExtensionActionContext, sessionId: string, includePlan: boolean) {
   const session = findPlanRevisionSession(await readPlanRevisionIndex(ctx.cwd), { session: sessionId });
   if (session === undefined) throw new Error(`No plan revision session found for ${sessionId}.`);
@@ -266,9 +278,24 @@ function notApplicable(session: string, ref: { taskId?: string; turnId?: string 
   return { kind: 'not-applicable' as const, session, ...(ref.taskId !== undefined ? { taskId: ref.taskId } : { turnId: ref.turnId }), message };
 }
 
+function validateIncrementalApply(storedTurn: PlanRevisionTurnEntry, currentSectionHashes: Array<{ dimension: string; sha256: string }>, selectedSections: string[]): { ok: true } | { ok: false; message: string } {
+  const applied = new Set(storedTurn.appliedSections ?? []);
+  if (applied.size === 0) return { ok: false, message: 'The session plan changed since this revision turn was generated; no sections were written.' };
+  const baseHashes = new Map(storedTurn.baseSectionHashes.map((section) => [section.dimension, section.sha256]));
+  const currentHashes = new Map(currentSectionHashes.map((section) => [section.dimension, section.sha256]));
+  for (const section of selectedSections) {
+    if (applied.has(section)) return { ok: false, message: `Section ${section} was already applied from this revision turn; no sections were written.` };
+    const baseHash = baseHashes.get(section);
+    if (baseHash === undefined || currentHashes.get(section) !== baseHash) return { ok: false, message: `Section ${section} changed since this revision turn was generated; no sections were written.` };
+  }
+  return { ok: true };
+}
+
 function isStaleTaskLookupError(err: unknown): boolean {
   const message = errorMessage(err).toLowerCase();
-  return message.includes('missing') || message.includes('not found') || message.includes('404');
+  const status = typeof err === 'object' && err !== null && 'status' in err ? (err as { status?: unknown }).status : undefined;
+  const code = typeof err === 'object' && err !== null && 'code' in err ? (err as { code?: unknown }).code : undefined;
+  return message.includes('missing') || message.includes('not found') || message.includes('unknown task id') || message.includes('404') || status === 404 || code === 404 || code === '404';
 }
 
 function errorMessage(err: unknown): string {

@@ -83,7 +83,7 @@ export async function markPlanRevisionTurnApplied(cwd: string, targetSession: st
     if (session === undefined) throw new Error(`No plan revision session found for ${targetSession}.`);
     const turn = findPlanRevisionTurn(session, turnRef);
     if (turn === undefined) throw new Error(`No plan revision turn found for ${targetSession}.`);
-    const updatedTurn = { ...turn, appliedAt, appliedSections: uniqueSorted(appliedSections) };
+    const updatedTurn = { ...turn, appliedAt, appliedSections: uniqueSorted([...(turn.appliedSections ?? []), ...appliedSections]) };
     const updated = { ...session, turns: orderTurns(session.turns.map((candidate) => candidate.turnId === turn.turnId ? updatedTurn : candidate)), updatedAt: appliedAt };
     await writePlanRevisionIndex(cwd, { schemaVersion: 1, sessions: index.sessions.map((candidate) => candidate.threadId === session.threadId ? updated : candidate) });
     return updatedTurn;

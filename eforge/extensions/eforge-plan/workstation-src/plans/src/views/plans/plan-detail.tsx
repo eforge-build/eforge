@@ -11,6 +11,9 @@ import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { titleCase } from './dimensions';
 import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
+// --- eforge:region plan-03-plan-revision-workstation ---
+import { PlanRevisionPanel } from './plan-revision-panel';
+// --- eforge:endregion plan-03-plan-revision-workstation ---
 
 const bridge = getBridge();
 
@@ -102,6 +105,10 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
         <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
         <ReadinessChecklist plan={plan} readiness={readiness} onSetSection={setSection} onSelectDimensions={selectDimensions} />
         <MetadataEditor plan={plan} onSave={saveMetadata} />
+
+        {/* --- eforge:region plan-03-plan-revision-workstation --- */}
+        <PlanRevisionPanel plan={plan} readiness={readiness} onApply={onApply} onRefresh={onRefresh} />
+        {/* --- eforge:endregion plan-03-plan-revision-workstation --- */}
 
         {sectionEntries.length > 0 && (
           <div className="grid gap-2">
