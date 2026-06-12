@@ -37,7 +37,7 @@ export function PlanningTaskResultPreview({ item, busy, onRedraft, onApply }: Pl
   }
 
   if (item.entry.purpose === 'backlog-curation') {
-    if (result.backlogCurationDraft) return <BacklogCurationPreview taskId={taskId} entry={item.entry} draft={result.backlogCurationDraft} recommendations={result.recommendations} busy={busy} onApply={onApply} onRedraft={onRedraft} />;
+    if (result.backlogCurationDraft) return <BacklogCurationPreview taskId={taskId} entry={item.entry} draft={result.backlogCurationDraft} recommendations={result.recommendations} curationPreview={item.backlogCurationPreview} busy={busy} onApply={onApply} onRedraft={onRedraft} />;
     return <CurationUnavailablePreview taskId={taskId} result={result} busy={busy} onRedraft={onRedraft} canRedraft />;
   }
 

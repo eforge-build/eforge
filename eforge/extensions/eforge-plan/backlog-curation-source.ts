@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { blockerRiskProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
+import { blockerRiskProjection, dependencyStateProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection, readPlannerTraceSummaries } from './recommendation-status.js';
@@ -31,6 +31,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const recommendationHash = recommendations === null ? null : sha256(canonicalJson(recommendations));
   const truncation = { sectionStrings: 0, roadmapExcerpts: 0, traceDetails: 0 };
   const roadmapEvidence = await readRoadmapEvidence(cwd, truncation);
+  const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
     schemaVersion: 1,
     recommendationSourceProjection: recommendationProjection,
@@ -39,6 +40,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
       items: openItemSnapshots.map(projectPrecondition),
       epics: openEpicSnapshots.map(projectPrecondition),
     },
+    dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
@@ -46,7 +48,6 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const openEpics = openEpicSnapshots.map((snapshot) => projectEpic(snapshot, sourceFingerprint, truncation));
   const itemIds = openItems.map((item) => item.id as string);
   const traceSummaries = boundTraceSummaries(await readPlannerTraceSummaries(cwd, itemIds), truncation);
-  const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',
@@ -116,20 +117,40 @@ function projectEpic(snapshot: BacklogRecordSnapshot<BacklogEpic>, sourceFingerp
   };
 }
 
+// --- eforge:region recommendation-validation ---
 function buildDependencyDetails(openItems: readonly BacklogItem[], allItems: readonly BacklogItem[]): Array<Record<string, unknown>> {
-  const byId = new Map(allItems.map((item) => [item.id, item]));
-  return openItems.map((item) => ({
-    itemId: item.id,
-    dependsOn: item.depends_on.map((dependencyId) => {
-      const dependency = byId.get(dependencyId);
-      return {
-        id: dependencyId,
-        missing: dependency === undefined,
-        ...(dependency !== undefined && { title: dependency.title, status: dependency.status }),
-      };
-    }),
+  return dependencyStateProjection(openItems, allItems).map((projection) => ({
+    itemId: projection.itemId,
+    openDependsOn: projection.openDependsOn,
+    closedDependsOn: projection.closedDependsOn,
+    missingDependsOn: projection.missingDependsOn,
+    cleanupCandidates: buildDependencyCleanupCandidates(projection),
   }));
 }
+
+function buildDependencyCleanupCandidates(projection: ReturnType<typeof dependencyStateProjection>[number]): Record<string, unknown> {
+  const satisfiedDependencyIds = projection.closedDependsOn.map((entry) => entry.id);
+  const missingDependencyIds = projection.missingDependsOn.map((entry) => entry.id);
+  return {
+    satisfiedDependencyIds,
+    missingDependencyIds,
+    conservativeGuidance: 'Closed dependencies are satisfied historical context and missing dependency ids may be stale metadata; only remove depends_on entries when an explicit curation patch has evidence that the edge is obsolete.',
+  };
+}
+
+function projectDependencyFingerprintDetail(detail: Record<string, unknown>): Record<string, unknown> {
+  return {
+    itemId: detail.itemId,
+    openDependsOn: detail.openDependsOn,
+    closedDependsOn: detail.closedDependsOn,
+    missingDependsOn: detail.missingDependsOn,
+    cleanupCandidates: {
+      satisfiedDependencyIds: (detail.cleanupCandidates as Record<string, unknown>).satisfiedDependencyIds,
+      missingDependencyIds: (detail.cleanupCandidates as Record<string, unknown>).missingDependencyIds,
+    },
+  };
+}
+// --- eforge:endregion recommendation-validation ---
 
 function projectPrecondition(snapshot: BacklogRecordSnapshot<BacklogItem | BacklogEpic>) {
   return {

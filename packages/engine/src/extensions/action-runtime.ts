@@ -7,6 +7,8 @@ import type { TSchema } from '@sinclair/typebox';
 import { validateJsonSafeValue, jsonSafeClone } from './contribution-validation.js';
 import type { ActionRegistration, ExtensionAgentTasksApiShape, ExtensionBuildQueueApiShape, NativeExtensionRegistry } from './types.js';
 
+type ExtensionActionValidationError = ValueError & Record<string, ExtensionJsonValue>;
+
 export interface DispatchExtensionActionOptions {
   actionId: string;
   input: Record<string, unknown>;
@@ -26,7 +28,7 @@ export interface DispatchExtensionActionOptions {
 export type DispatchExtensionActionResult =
   | { kind: 'success'; invocationId: string; actionId: string; extensionName: string; extensionPath: string; requestedBy: ExtensionActionRequestedBy; durationMs: number; output: ExtensionJsonValue }
   | { kind: 'unknown-action'; invocationId: string; actionId: string; requestedBy: ExtensionActionRequestedBy; message: string }
-  | { kind: 'invalid-input' | 'handler-error' | 'timeout' | 'invalid-output' | 'output-schema-failed'; invocationId: string; actionId: string; extensionName: string; extensionPath: string; requestedBy: ExtensionActionRequestedBy; durationMs: number; message: string; validationErrors?: Array<{ path: string; message: string }>; timeoutMs?: number };
+  | { kind: 'invalid-input' | 'handler-error' | 'timeout' | 'invalid-output' | 'output-schema-failed'; invocationId: string; actionId: string; extensionName: string; extensionPath: string; requestedBy: ExtensionActionRequestedBy; durationMs: number; message: string; validationErrors?: ExtensionActionValidationError[]; timeoutMs?: number };
 
 export async function dispatchExtensionAction(
   registry: NativeExtensionRegistry,
@@ -179,7 +181,7 @@ function failure(
   invocationId: string,
   started: number,
   message: string,
-  validationErrors?: ValueError[],
+  validationErrors?: Array<ValueError | ExtensionActionValidationError>,
   timeoutMs?: number,
 ): DispatchExtensionActionResult {
   return {
@@ -191,9 +193,19 @@ function failure(
     requestedBy: options.requestedBy,
     durationMs: Date.now() - started,
     message,
-    ...(validationErrors !== undefined && { validationErrors: validationErrors.map((error) => ({ path: error.path, message: error.message })) }),
+    ...(validationErrors !== undefined && { validationErrors: validationErrors.map(serializeValidationError) }),
     ...(timeoutMs !== undefined && { timeoutMs }),
   };
+}
+
+function serializeValidationError(error: ValueError | ExtensionActionValidationError): ExtensionActionValidationError {
+  const serialized: Record<string, ExtensionJsonValue> = { path: error.path, message: error.message };
+  for (const [key, value] of Object.entries(error)) {
+    if (key === 'path' || key === 'message') continue;
+    const jsonSafe = validateJsonSafeValue(value, { requireObjectRoot: false, rejectSymbolKeys: true });
+    if (jsonSafe.ok) serialized[key] = jsonSafeClone(value) as ExtensionJsonValue;
+  }
+  return serialized as ExtensionActionValidationError;
 }
 
 function logHandlerError(action: ActionRegistration, err: unknown): void {
@@ -201,13 +213,13 @@ function logHandlerError(action: ActionRegistration, err: unknown): void {
   process.stderr.write(`[eforge extension ${action.extensionName} action ${action.id}] handler-error: ${name}\n`);
 }
 
-function isExtensionActionInputValidationError(err: unknown): err is Error & { details: ValueError[] } {
+function isExtensionActionInputValidationError(err: unknown): err is Error & { details: ExtensionActionValidationError[] } {
   if (!(err instanceof Error) || err.name !== 'ExtensionActionInputValidationError') return false;
   const details = (err as unknown as { details?: unknown }).details;
   return Array.isArray(details) && details.every((detail) => isValueError(detail));
 }
 
-function isValueError(value: unknown): value is ValueError {
+function isValueError(value: unknown): value is ExtensionActionValidationError {
   return typeof value === 'object'
     && value !== null
     && typeof (value as { path?: unknown }).path === 'string'

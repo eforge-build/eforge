@@ -56,13 +56,20 @@ describe('backlog curation source', () => {
 
   it('includes freshness metadata and dependency status details for planner noise control', async () => {
     await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'open-dep', status: 'planned', body: '# Open dependency\n' });
       await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed dependency\n' });
-      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', last_checked: '2026-01-01', stale_after: '2026-02-01', depends_on: ['closed-dep', 'missing-dep'], recheck_notes: 'Recheck only after product direction changes.', body: '# Item 1\n\n## Claim\n\nClaim\n' });
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', last_checked: '2026-01-01', stale_after: '2026-02-01', depends_on: ['open-dep', 'closed-dep', 'missing-dep'], recheck_notes: 'Recheck only after product direction changes.', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       const source = await buildBacklogCurationSource(cwd);
-      const packet = source.source as { openItems: Array<Record<string, unknown>>; dependencyDetails: Array<{ itemId: string; dependsOn: Array<Record<string, unknown>> }> };
+      const packet = source.source as { openItems: Array<Record<string, unknown>>; dependencyDetails: Array<{ itemId: string; openDependsOn: Array<Record<string, unknown>>; closedDependsOn: Array<Record<string, unknown>>; missingDependsOn: Array<Record<string, unknown>> }> };
+      const details = packet.dependencyDetails.find((entry) => entry.itemId === 'item-1');
 
-      expect(packet.openItems[0]).toMatchObject({ id: 'item-1', last_checked: '2026-01-01', stale_after: '2026-02-01', recheck_notes: 'Recheck only after product direction changes.' });
-      expect(packet.dependencyDetails[0]).toMatchObject({ itemId: 'item-1', dependsOn: [{ id: 'closed-dep', status: 'shipped', missing: false }, { id: 'missing-dep', missing: true }] });
+      expect(packet.openItems.find((item) => item.id === 'item-1')).toMatchObject({ id: 'item-1', last_checked: '2026-01-01', stale_after: '2026-02-01', recheck_notes: 'Recheck only after product direction changes.' });
+      expect(details).toMatchObject({
+        itemId: 'item-1',
+        openDependsOn: [{ id: 'open-dep', title: 'Open dependency', status: 'planned' }],
+        closedDependsOn: [{ id: 'closed-dep', title: 'Closed dependency', status: 'shipped' }],
+        missingDependsOn: [{ id: 'missing-dep' }],
+      });
       expect(packet).not.toHaveProperty('dependencies');
     });
   });

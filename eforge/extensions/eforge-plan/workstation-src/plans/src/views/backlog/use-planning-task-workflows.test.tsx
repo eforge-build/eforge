@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EforgeBridge, PlanningAgentTaskListItem, PlanningAgentTaskRecord } from '@/types';
 
 function setBridge(bridge: EforgeBridge) {
@@ -46,6 +46,10 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     delete (window as Window & { eforge?: EforgeBridge }).eforge;
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('starts or reuses analyze-all through the bridge and reloads without refreshing board data', async () => {
     const onRefresh = vi.fn(async () => undefined);
     const invokeAction = vi.fn(async (actionId: string) => {
@@ -66,6 +70,24 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', {});
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
     expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it('reloads task list when polling observes terminal task status', async () => {
+    const onRefresh = vi.fn(async () => undefined);
+    const completedTask: PlanningAgentTaskRecord = { ...task, status: 'completed', completedAt: 'later', result: { summary: 'Done.', assumptionsOpenQuestions: [] } };
+    const invokeAction = vi.fn(async (actionId: string) => {
+      if (actionId === 'list-planning-agent-tasks') return { tasks: [item] };
+      if (actionId === 'get-planning-agent-task') return { task: completedTask };
+      throw new Error(`unexpected ${actionId}`);
+    });
+    setBridge({ invokeAction: invokeAction as EforgeBridge['invokeAction'] });
+    const { usePlanningTaskWorkflows, wrapper } = await loadHookWithWrapper();
+
+    renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
+
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-planning-agent-task', { taskId: task.taskId }), { timeout: 2500 });
+    await waitFor(() => expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2));
   });
 
   it('refreshes board data after curation apply and reloads tasks', async () => {

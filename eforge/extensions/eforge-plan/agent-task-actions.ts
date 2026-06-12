@@ -16,6 +16,7 @@ import {
 } from './planning-task-workflow-store.js';
 import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
 import { buildBacklogCurationSource, buildBacklogCurationRedraftContext } from './backlog-curation-source.js';
+import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
@@ -127,7 +128,13 @@ export const listPlanningAgentTasksAction = defineExtensionAction({
     const tasks = await Promise.all(entries.map(async (entry) => {
       try {
         const response = await ctx.agentTasks.get(entry.taskId);
-        return { entry, available: true, status: response.task.status, task: response.task };
+        return {
+          entry,
+          available: true,
+          status: response.task.status,
+          task: response.task,
+          ...(await backlogCurationPreviewIfAvailable(ctx.cwd, entry, response.task)),
+        };
       } catch (err) {
         return { entry, available: false, staleReason: errorMessage(err) };
       }
@@ -340,6 +347,21 @@ function selectionFromInput(input: StartPlanningAgentTaskInput): PlanningTaskWor
     ...(input.recommendationRef !== undefined && { recommendationRef: input.recommendationRef }),
   };
 }
+
+// --- eforge:region recommendation-validation ---
+async function backlogCurationPreviewIfAvailable(cwd: string, entry: PlanningTaskWorkflowEntry, task: unknown): Promise<Record<string, unknown>> {
+  if (!isBacklogCurationWorkflowEntry(entry) || !isCompletedTaskRecord(task)) return {};
+  return { backlogCurationPreview: await previewBacklogCurationDraftFromTask(cwd, task, entry) };
+}
+
+function isCompletedTaskRecord(task: unknown): task is { taskId: string; kind: string; status: string; result?: unknown } {
+  return task !== null
+    && typeof task === 'object'
+    && typeof (task as { taskId?: unknown }).taskId === 'string'
+    && typeof (task as { kind?: unknown }).kind === 'string'
+    && (task as { status?: unknown }).status === 'completed';
+}
+// --- eforge:endregion recommendation-validation ---
 
 function plannerSelection(entry: PlanningTaskWorkflowEntry) {
   return {

@@ -240,6 +240,26 @@ export interface DependencyProjection {
   externalDependsOn: string[];
 }
 
+// --- eforge:region recommendation-validation ---
+export interface DependencyStateReference {
+  id: string;
+  title: string;
+  status: BacklogStatus;
+}
+
+export interface MissingDependencyReference {
+  id: string;
+}
+
+export interface DependencyStateProjection {
+  itemId: string;
+  dependsOn: string[];
+  openDependsOn: DependencyStateReference[];
+  closedDependsOn: DependencyStateReference[];
+  missingDependsOn: MissingDependencyReference[];
+}
+// --- eforge:endregion recommendation-validation ---
+
 export interface RiskProjection {
   itemId: string;
   blockers: string[];
@@ -273,6 +293,38 @@ export function dependencyProjection(items: readonly BacklogItem[]): DependencyP
     externalDependsOn: item.depends_on.filter((id) => !selectedIds.has(id)),
   }));
 }
+
+// --- eforge:region recommendation-validation ---
+export function dependencyStateProjection(items: readonly BacklogItem[], allItems: readonly BacklogItem[] = items): DependencyStateProjection[] {
+  const byId = new Map(allItems.map((item) => [item.id, item]));
+  return items.map((item) => {
+    const openDependsOn: DependencyStateReference[] = [];
+    const closedDependsOn: DependencyStateReference[] = [];
+    const missingDependsOn: MissingDependencyReference[] = [];
+    for (const dependencyId of item.depends_on) {
+      const dependency = byId.get(dependencyId);
+      if (dependency === undefined) {
+        missingDependsOn.push({ id: dependencyId });
+      } else if (isOpenStatus(dependency.status)) {
+        openDependsOn.push(projectDependencyStateReference(dependency));
+      } else {
+        closedDependsOn.push(projectDependencyStateReference(dependency));
+      }
+    }
+    return {
+      itemId: item.id,
+      dependsOn: item.depends_on,
+      openDependsOn,
+      closedDependsOn,
+      missingDependsOn,
+    };
+  });
+}
+
+function projectDependencyStateReference(item: BacklogItem): DependencyStateReference {
+  return { id: item.id, title: item.title, status: item.status };
+}
+// --- eforge:endregion recommendation-validation ---
 
 export function blockerRiskProjection(items: readonly BacklogItem[]): RiskProjection[] {
   return items.map((item) => {

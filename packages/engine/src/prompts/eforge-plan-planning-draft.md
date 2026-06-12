@@ -59,4 +59,11 @@ When the requested output sections include `backlogCurationDraft`:
 - Do not claim that backlog records were written or updated. This task only drafts structured output; the extension applies validated patches later.
 - Do not mark work shipped, superseded, or stale without durable evidence text in the relevant patch.
 
+## Recommendation guidance
+
+When emitting `recommendations`:
+
+- Recommendation target fields may reference only open item/epic ids. Treat closed dependencies as satisfied historical context, not active recommendation targets.
+- Specifically, `activeWork`, `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, `safeParallelizableGroups.epicIds`, `blockedChains.itemIds`, and `blockedChains.blockedBy` may reference only open targets.
+
 Submit exactly once. Do not finish with prose. The submission tool is the only accepted output channel.

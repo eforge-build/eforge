@@ -10,13 +10,16 @@ import {
   blockerRiskProjection,
   dependencyProjection,
   extractMarkdownSections,
+  isClosedStatus,
   isOpenStatus,
   type BacklogEpic,
   type BacklogItem,
+  type BacklogStatus,
   type LifecycleLinkRow,
 } from './backlog-domain.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import type { RecommendationReferenceValidationIssue, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
 import { compactLifecycleRowsForFingerprint } from './lifecycle-projection.js';
 import type { BacklogRecommendationModel } from './schema.js';
 import {
@@ -173,30 +176,61 @@ export async function readPlannerTraceSummaries(cwd: string, itemIds?: readonly 
   return compactTraceSummaries(summaries);
 }
 
+// --- eforge:region recommendation-validation ---
+export interface RecommendationReferenceRecord {
+  id: string;
+  status?: BacklogStatus;
+  title?: string;
+}
+
 export async function validateRecommendationReferences(cwd: string, model: BacklogRecommendationModel): Promise<void> {
   const [items, epics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
-  validateRecommendationReferencesAgainstIds(model, new Set(items.map((item) => item.id)), new Set(epics.map((epic) => epic.id)));
+  validateRecommendationReferencesAgainstRecords(model, items, epics);
 }
 
 export function validateRecommendationReferencesAgainstIds(model: BacklogRecommendationModel, itemIds: ReadonlySet<string>, epicIds: ReadonlySet<string>): void {
+  validateRecommendationReferencesAgainstRecords(
+    model,
+    [...itemIds].map((id) => ({ id, status: 'candidate' as const })),
+    [...epicIds].map((id) => ({ id, status: 'candidate' as const })),
+  );
+}
+
+export function validateRecommendationReferencesAgainstRecords(model: BacklogRecommendationModel, items: readonly RecommendationReferenceRecord[], epics: readonly RecommendationReferenceRecord[]): void {
+  const result = collectRecommendationReferenceValidationIssues(model, items, epics);
+  if (!result.valid) throwRecommendationReferenceValidationError(result.issues);
+}
+
+export function collectRecommendationReferenceValidationIssues(model: BacklogRecommendationModel, items: readonly RecommendationReferenceRecord[], epics: readonly RecommendationReferenceRecord[]): RecommendationReferenceValidationResult {
+  const itemCatalog = new Map(items.map((item) => [item.id, item]));
+  const epicCatalog = new Map(epics.map((epic) => [epic.id, epic]));
+  const issues: RecommendationReferenceValidationIssue[] = [];
   for (const [field, refs] of [
     ['activeWork', model.activeWork],
     ['readyCandidates', model.readyCandidates],
     ['recommendedNextSequence', model.recommendedNextSequence],
   ] as const) {
-    for (const ref of refs) assertKnownRef(field, ref.itemId, itemIds, 'item');
+    refs.forEach((ref, index) => collectKnownOpenRefIssue(`${field}[${index}].itemId`, ref.itemId, itemCatalog, 'item', issues));
   }
   for (const group of model.safeParallelizableGroups) {
-    if (group.itemIds.length === 0) throw recommendationReferenceValidationError(`safeParallelizableGroups.${group.ref}.itemIds`, '', 'item', `Recommendation group ${group.ref} must include at least one item id.`);
-    for (const itemId of group.itemIds) assertKnownRef(`safeParallelizableGroups.${group.ref}.itemIds`, itemId, itemIds, 'item');
-    for (const epicId of group.epicIds ?? []) assertKnownRef(`safeParallelizableGroups.${group.ref}.epicIds`, epicId, epicIds, 'epic');
+    if (group.itemIds.length === 0) issues.push(buildRecommendationReferenceIssue(`safeParallelizableGroups.${group.ref}.itemIds`, '', 'item', 'empty', undefined));
+    for (const itemId of group.itemIds) collectKnownOpenRefIssue(`safeParallelizableGroups.${group.ref}.itemIds`, itemId, itemCatalog, 'item', issues);
+    for (const epicId of group.epicIds ?? []) collectKnownOpenRefIssue(`safeParallelizableGroups.${group.ref}.epicIds`, epicId, epicCatalog, 'epic', issues);
   }
   for (const chain of model.blockedChains) {
     const ref = chain.ref ?? '<unreferenced>';
-    for (const itemId of chain.itemIds) assertKnownRef(`blockedChains.${ref}.itemIds`, itemId, itemIds, 'item');
-    for (const blockerId of chain.blockedBy) assertKnownRef(`blockedChains.${ref}.blockedBy`, blockerId, itemIds, 'item');
+    for (const itemId of chain.itemIds) collectKnownOpenRefIssue(`blockedChains.${ref}.itemIds`, itemId, itemCatalog, 'item', issues);
+    for (const blockerId of chain.blockedBy) collectKnownOpenRefIssue(`blockedChains.${ref}.blockedBy`, blockerId, itemCatalog, 'item', issues);
   }
+  return { valid: issues.length === 0, issues };
 }
+
+export function throwRecommendationReferenceValidationError(issues: readonly RecommendationReferenceValidationIssue[]): never {
+  const first = issues[0];
+  const message = first?.message ?? 'Recommendation references are invalid.';
+  throw new ExtensionActionInputValidationError(message, issues.map((issue) => ({ ...issue })) as Array<{ path: string; message: string }>);
+}
+// --- eforge:endregion recommendation-validation ---
 
 async function readRecommendationStatusSidecar(statusPath: string): Promise<RecommendationStatusSidecar | null> {
   if (!existsSync(statusPath)) return null;
@@ -338,16 +372,38 @@ function pickLastEvent(value: Record<string, unknown>): Record<string, unknown> 
   return Object.fromEntries(['type', 'timestamp', 'sessionId', 'runId', 'cursor'].flatMap((key) => (value[key] === undefined ? [] : [[key, value[key]]])));
 }
 
-function assertKnownRef(field: string, id: string, knownIds: ReadonlySet<string>, kind: 'item' | 'epic'): void {
-  if (!knownIds.has(id)) throw recommendationReferenceValidationError(field, id, kind, `Recommendation ${field} references unknown ${kind} id "${id}".`);
+// --- eforge:region recommendation-validation ---
+function collectKnownOpenRefIssue(path: string, id: string, catalog: ReadonlyMap<string, RecommendationReferenceRecord>, kind: 'item' | 'epic', issues: RecommendationReferenceValidationIssue[]): void {
+  const record = catalog.get(id);
+  if (record === undefined) {
+    issues.push(buildRecommendationReferenceIssue(path, id, kind, 'unknown', undefined));
+    return;
+  }
+  if (record.status !== undefined && isClosedStatus(record.status)) {
+    issues.push(buildRecommendationReferenceIssue(path, id, kind, 'closed', record));
+  }
 }
 
-function recommendationReferenceValidationError(field: string, id: string, kind: 'item' | 'epic', message: string): ExtensionActionInputValidationError {
-  return new ExtensionActionInputValidationError(message, [{
-    path: field,
-    message: `${message} Expected an existing ${kind} id${id.length > 0 ? `; missing id: ${id}` : ''}.`,
-  }]);
+function buildRecommendationReferenceIssue(path: string, id: string, kind: 'item' | 'epic', reason: RecommendationReferenceValidationIssue['reason'], record: RecommendationReferenceRecord | undefined): RecommendationReferenceValidationIssue {
+  const status = record?.status;
+  const title = record?.title;
+  const target = id.length > 0 ? `${kind} id "${id}"` : `${kind} id`;
+  const reasonText = reason === 'empty'
+    ? 'must include at least one open item id'
+    : reason === 'closed'
+      ? `references closed ${target}${status !== undefined ? ` with status "${status}"` : ''}`
+      : `references unknown ${target}`;
+  return {
+    path,
+    id,
+    kind,
+    reason,
+    ...(status !== undefined && { status }),
+    ...(title !== undefined && { title }),
+    message: `Recommendation ${path} ${reasonText}. Recommendation target fields may reference only open ${kind} ids.`,
+  };
 }
+// --- eforge:endregion recommendation-validation ---
 
 function canonicalJson(value: unknown): string {
   return JSON.stringify(canonicalize(value));

@@ -371,6 +371,25 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
   needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'The claim lacks durable evidence.' }],
 };
 
+export const mockBacklogCurationPreview = {
+  valid: false,
+  itemChanges: mockBacklogCurationDraft.itemChanges.length,
+  epicChanges: mockBacklogCurationDraft.epicChanges.length,
+  noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length,
+  generatedRecommendationValidation: {
+    valid: false,
+    issues: [{
+      path: 'blockedChains.closed-chain.blockedBy',
+      id: 'closed-dep',
+      kind: 'item' as const,
+      reason: 'closed' as const,
+      status: 'shipped',
+      title: 'Closed dependency',
+      message: 'Generated recommendation references closed item closed-dep.',
+    }],
+  },
+};
+
 export const mockBacklogCurationTask: PlanningAgentTaskRecord = {
   taskId: 'task-backlog-curation-ready', kind: TASK_KIND, status: 'completed',
   createdAt: '2026-06-07T00:30:00.000Z', updatedAt: '2026-06-07T00:30:06.000Z', startedAt: '2026-06-07T00:30:01.000Z', completedAt: '2026-06-07T00:30:06.000Z',
@@ -404,7 +423,7 @@ export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
   { entry: workflowEntry({ taskId: mockRunningTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.' }), available: true, status: 'running', task: mockRunningTask },
   { entry: workflowEntry({ taskId: mockNeedsInputTask.taskId, derivedRequest: 'Draft a session plan for an ambiguous selection.' }), available: true, status: 'completed', task: mockNeedsInputTask },
   { entry: workflowEntry({ taskId: mockReadyCreationDraftTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.', session: MOCK_CREATION_DRAFT_SESSION }), available: true, status: 'completed', task: mockReadyCreationDraftTask },
-  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask },
+  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask, backlogCurationPreview: mockBacklogCurationPreview },
   { entry: workflowEntry({ taskId: mockFailedTask.taskId, derivedRequest: 'Draft a session plan that failed.' }), available: true, status: 'failed', task: mockFailedTask },
 ];
 
@@ -538,6 +557,8 @@ export function applyMockBacklogCurationDraft(taskId: string) {
     skipped: mockBacklogCurationDraft.skipped,
     needsInput: mockBacklogCurationDraft.needsInput,
     recommendations: { recommendations: mockRecommendations, path: 'mock://recommendations/current.json' },
+    generatedRecommendationValidation: mockBacklogCurationPreview.generatedRecommendationValidation,
+    recommendationsSkipped: { reason: 'invalid-generated-recommendations', generatedRecommendationValidation: mockBacklogCurationPreview.generatedRecommendationValidation },
   };
   return { schemaVersion: 1, taskId, applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0, backlogCuration: details.itemChanges + details.epicChanges + details.noOpRechecks }, backlogCuration: details };
 }

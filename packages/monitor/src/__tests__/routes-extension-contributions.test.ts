@@ -23,7 +23,7 @@ async function seedExtension(cwd: string, body: string, timeoutMs = 1000): Promi
 }
 
 const extensionSource = `
-import { Type } from '@eforge-build/extension-sdk';
+import { Type, ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
 
 export default function extension(eforge) {
   const empty = Type.Object({});
@@ -35,6 +35,7 @@ export default function extension(eforge) {
     handler(input) { return { reply: 'out-secret:' + input.message }; }
   });
   eforge.registerAction({ id: 'throws', title: 'Throws', inputSchema: empty, handler() { throw new Error('boom'); } });
+  eforge.registerAction({ id: 'structured-invalid', title: 'Structured invalid', inputSchema: empty, handler() { throw new ExtensionActionInputValidationError('Bad references.', [{ path: 'items[0]', message: 'Closed item.', id: 'item-1', kind: 'item', reason: 'closed', status: 'shipped', title: 'Done' }]); } });
   eforge.registerAction({ id: 'bad-output', title: 'Bad output', inputSchema: empty, handler() { return undefined; } });
   eforge.registerAction({ id: 'schema-output', title: 'Schema output', inputSchema: empty, outputSchema: Type.Object({ ok: Type.Boolean() }), handler() { return { ok: 'no' }; } });
   eforge.registerAction({ id: 'slow', title: 'Slow', inputSchema: empty, async handler() { await new Promise((resolve) => setTimeout(resolve, 50)); return { ok: true }; } });
@@ -105,6 +106,19 @@ describe('extension contribution routes', () => {
       const { res, body } = await invoke(harness, actionId, input);
       expect(res.status).toBe(status);
       expect(body).toMatchObject({ ok: false, error: { code } });
+    } finally { await harness.close(); }
+  });
+
+  it('preserves structured validation errors in action failure responses', async () => {
+    const harness = await startContentRouteHarness();
+    try {
+      await seedExtension(harness.cwd, extensionSource);
+      const { res, body } = await invoke(harness, await actionIdFor(harness, 'structured-invalid'), {});
+      expect(res.status).toBe(400);
+      expect(body).toMatchObject({
+        ok: false,
+        error: { code: 'invalid-input', details: [{ id: 'item-1', kind: 'item', reason: 'closed', status: 'shipped' }] },
+      });
     } finally { await harness.close(); }
   });
 

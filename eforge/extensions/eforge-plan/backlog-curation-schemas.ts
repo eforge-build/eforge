@@ -6,7 +6,7 @@ import {
   ExtensionAgentTaskIdSchema,
   ExtensionAgentTaskRecordSchema,
 } from '../../../packages/client/src/extension-agent-tasks.js';
-import { RecommendationDerivedStatusSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
+import { BacklogStatusSchema, RecommendationDerivedStatusSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({}, { additionalProperties: false });
 
@@ -40,6 +40,42 @@ export const AnalyzeAllBacklogOutputSchema = Type.Object({
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
+// --- eforge:region recommendation-validation ---
+export const RecommendationReferenceValidationIssueSchema = Type.Object({
+  path: Type.String(),
+  id: Type.String(),
+  kind: Type.Union([Type.Literal('item'), Type.Literal('epic')]),
+  reason: Type.Union([Type.Literal('unknown'), Type.Literal('closed'), Type.Literal('empty')]),
+  status: Type.Optional(BacklogStatusSchema),
+  title: Type.Optional(Type.String()),
+  message: Type.String(),
+}, { additionalProperties: false });
+
+export const RecommendationReferenceValidationResultSchema = Type.Object({
+  valid: Type.Boolean(),
+  issues: Type.Array(RecommendationReferenceValidationIssueSchema),
+}, { additionalProperties: false });
+
+export const BacklogCurationPreviewValidationErrorSchema = Type.Object({
+  path: Type.String(),
+  message: Type.String(),
+}, { additionalProperties: false });
+
+export const BacklogCurationPreviewDetailsSchema = Type.Object({
+  valid: Type.Boolean(),
+  itemChanges: Type.Optional(Type.Integer({ minimum: 0 })),
+  epicChanges: Type.Optional(Type.Integer({ minimum: 0 })),
+  noOpRechecks: Type.Optional(Type.Integer({ minimum: 0 })),
+  generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
+  errors: Type.Optional(Type.Array(BacklogCurationPreviewValidationErrorSchema)),
+}, { additionalProperties: false });
+
+export const BacklogCurationRecommendationsSkippedSchema = Type.Object({
+  reason: Type.Union([Type.Literal('apply-curation-only'), Type.Literal('invalid-generated-recommendations')]),
+  generatedRecommendationValidation: RecommendationReferenceValidationResultSchema,
+}, { additionalProperties: false });
+// --- eforge:endregion recommendation-validation ---
+
 export const BacklogCurationApplyDetailsSchema = Type.Object({
   itemChanges: Type.Integer({ minimum: 0 }),
   epicChanges: Type.Integer({ minimum: 0 }),
@@ -58,8 +94,16 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
     status: RecommendationDerivedStatusSchema,
   }, { additionalProperties: false })),
   recommendationStatus: Type.Optional(RecommendationDerivedStatusSchema),
+  // --- eforge:region recommendation-validation ---
+  generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
+  recommendationsSkipped: Type.Optional(BacklogCurationRecommendationsSkippedSchema),
+  // --- eforge:endregion recommendation-validation ---
 }, { additionalProperties: false });
 
 export type AnalyzeAllBacklogInput = Static<typeof AnalyzeAllBacklogInputSchema>;
 export type AnalyzeAllBacklogOutput = Static<typeof AnalyzeAllBacklogOutputSchema>;
+export type RecommendationReferenceValidationIssue = Static<typeof RecommendationReferenceValidationIssueSchema>;
+export type RecommendationReferenceValidationResult = Static<typeof RecommendationReferenceValidationResultSchema>;
+export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;
+export type BacklogCurationRecommendationsSkipped = Static<typeof BacklogCurationRecommendationsSkippedSchema>;
 export type BacklogCurationApplyDetails = Static<typeof BacklogCurationApplyDetailsSchema>;

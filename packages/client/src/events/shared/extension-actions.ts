@@ -1,15 +1,12 @@
 import { Type } from '@sinclair/typebox';
-import { ExtensionActionInvokeErrorCodeSchema, ExtensionActionRequestedBySchema } from '../../extension-contributions.js';
+import { ExtensionActionInvokeErrorCodeSchema, ExtensionActionRequestedBySchema, ExtensionActionValidationErrorSchema as ExtensionActionValidationErrorWireSchema } from '../../extension-contributions.js';
 
 export const StackSyncTriggerSchema = Type.Optional(Type.Union([
   Type.Literal('manual'), Type.Literal('after-build'),
   Type.Literal('scheduled'), Type.Literal('retry-deferred'),
 ]));
 
-export const ExtensionActionValidationErrorSchema = Type.Object({
-  path: Type.String(),
-  message: Type.String(),
-}, { additionalProperties: false });
+export const ExtensionActionValidationErrorSchema = ExtensionActionValidationErrorWireSchema;
 
 export const ExtensionActionFailedErrorCodeSchema = Type.Union([
   Type.Literal('invalid-input'),

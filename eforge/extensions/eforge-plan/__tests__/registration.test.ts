@@ -130,9 +130,11 @@ describe('eforge-plan extension registration', () => {
     const analyzeOutput = actions.find((action) => action.id === 'analyze-all-backlog')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(analyzeOutput)).toMatch(/task|entry|sourceFingerprint|reused/);
     const applyPlanningOutput = actions.find((action) => action.id === 'apply-planning-agent-task-result')?.outputSchema as Record<string, unknown>;
-    expect(JSON.stringify(applyPlanningOutput)).toMatch(/backlogCuration/);
+    expect(JSON.stringify(applyPlanningOutput)).toMatch(/backlogCuration|generatedRecommendationValidation|recommendationsSkipped/);
     const applyPlanningInput = actions.find((action) => action.id === 'apply-planning-agent-task-result')?.inputSchema as Record<string, unknown>;
-    expect(JSON.stringify(applyPlanningInput)).toMatch(/applyBacklogCurationDraft|previewAcknowledged|confirmApply/);
+    expect(JSON.stringify(applyPlanningInput)).toMatch(/applyBacklogCurationDraft|previewAcknowledged|confirmApply|applyCurationOnly/);
+    const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(listPlanningOutput)).toMatch(/backlogCurationPreview|generatedRecommendationValidation/);
   });
 
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {

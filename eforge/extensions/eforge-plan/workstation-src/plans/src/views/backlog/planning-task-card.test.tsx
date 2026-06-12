@@ -2,11 +2,11 @@ import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/toast';
-import { mockBacklogCurationDraft, mockRecommendations } from '@/fixtures/mock-data';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockRecommendations } from '@/fixtures/mock-data';
 import type { PlanningAgentTaskListItem } from '@/types';
 import { PlanningTaskCard } from './planning-task-card';
 
-function curationItem(status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' = 'completed', options: { omitDraft?: boolean } = {}): PlanningAgentTaskListItem {
+function curationItem(status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' = 'completed', options: { omitDraft?: boolean; invalidPreview?: boolean } = {}): PlanningAgentTaskListItem {
   const completed = status === 'completed';
   return {
     entry: {
@@ -21,6 +21,7 @@ function curationItem(status: 'queued' | 'running' | 'completed' | 'failed' | 'c
     },
     available: true,
     status,
+    ...(options.invalidPreview && { backlogCurationPreview: mockBacklogCurationPreview }),
     task: {
       taskId: `task-curation-${status}`,
       kind: 'eforge-plan.planning-draft',
@@ -57,6 +58,13 @@ describe('PlanningTaskCard curation behavior', () => {
     expect(screen.getByText('Backlog curation preview')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Apply recommendations' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
+  });
+
+  it('passes invalid curation preview details through to the preview', () => {
+    renderCard(curationItem('completed', { invalidPreview: true }));
+
+    expect(screen.getByText('Invalid generated recommendation references')).toBeTruthy();
+    expect(screen.getByText(/blockedChains\.closed-chain\.blockedBy: Item closed-dep/)).toBeTruthy();
   });
 
   it('shows a curation-specific unavailable preview without generic apply when a curation draft is missing', () => {

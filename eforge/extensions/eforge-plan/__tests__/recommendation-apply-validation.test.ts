@@ -26,9 +26,11 @@ function registry() {
 async function seedBacklog(cwd: string) {
   await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n' });
   await writeBacklogEpic(cwd, { id: 'epic-two', status: 'planned', body: '# Epic Two\n' });
+  await writeBacklogEpic(cwd, { id: 'closed-epic', status: 'shipped', body: '# Closed Epic\n' });
   await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', epic: 'epic-one', body: '# Item One\n\n## Claim\n\nFirst.\n' });
   await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', epic: 'epic-two', body: '# Item Two\n\n## Claim\n\nSecond.\n' });
   await writeBacklogItem(cwd, { id: 'item-three', status: 'candidate', body: '# Item Three\n\n## Claim\n\nThird.\n' });
+  await writeBacklogItem(cwd, { id: 'closed-item', status: 'shipped', body: '# Closed Item\n\n## Claim\n\nDone.\n' });
 }
 
 function baselineModel(): BacklogRecommendationModel {
@@ -64,7 +66,7 @@ async function expectRejectedBeforeCurrentJsonChanges(cwd: string, model: Backlo
   });
 
   expect(result.kind).toBe('invalid-input');
-  expect(JSON.stringify(result)).toMatch(/missing|Expected an existing (item|epic) id/);
+  expect(JSON.stringify(result)).toMatch(/missing|closed|open|Expected an existing (item|epic) id/);
   expect(await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8')).toBe(before);
 }
 
@@ -107,6 +109,36 @@ describe('recommendation apply reference validation', () => {
         await expectRejectedBeforeCurrentJsonChanges(cwd, model);
       });
     }
+  });
+
+  it('rejects closed item and epic recommendation references before current.json changes', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      const closedItemModel = fullyReferencedModel();
+      closedItemModel.blockedChains[0]!.blockedBy = ['closed-item'];
+      await expectRejectedBeforeCurrentJsonChanges(cwd, closedItemModel);
+    });
+
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      const closedEpicModel = fullyReferencedModel();
+      closedEpicModel.safeParallelizableGroups[0]!.epicIds = ['closed-epic'];
+      await expectRejectedBeforeCurrentJsonChanges(cwd, closedEpicModel);
+    });
+  });
+
+  it('rejects direct planner result closed item references before current.json changes', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await writeRecommendations(cwd, baselineModel());
+      const before = await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8');
+
+      await expect(applyPlannerResult(cwd, {
+        recommendations: { ...fullyReferencedModel(), recommendedNextSequence: [{ itemId: 'closed-item' }] },
+      })).rejects.toThrow(/closed-item|closed/i);
+
+      expect(await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8')).toBe(before);
+    });
   });
 
   it('rejects empty safe parallelizable group itemIds before current.json changes', async () => {
