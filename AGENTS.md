@@ -29,6 +29,10 @@ See [`docs/llm-friendly-code.md`](docs/llm-friendly-code.md) for the full policy
 
 Run `pnpm maintainability:check` to validate file sizes and marker balance before committing.
 
+## Backlog
+
+When the user refers to project backlog items, use the `eforge-plan` extension contributions (`eforge-plan:*` actions such as `search-items`, `get-item`, `get-epic`, `capture-item`, and `update-item`). Do **not** use Schaake OS epics for this project's backlog: Schaake OS has an `epics` feature, but this project tracks backlog work through `eforge-plan` private extension storage.
+
 ## Key principles
 
 - **Engine emits, consumers render.** The engine never writes to stdout - all communication flows through `EforgeEvent`s.

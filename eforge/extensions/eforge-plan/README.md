@@ -30,6 +30,10 @@ Registered action IDs can be invoked by hosts that expose extension actions:
 - `update-item` example input: `{ "id": "add-import-preview", "status": "planned", "priority": "high", "tags": ["ux", "ready"], "evidenceNotes": "Validated with design review.", "recheckNotes": "Recheck after first import flow lands.", "dependsOn": ["import-parser"], "epic": "planning" }`
 - `promote-item` example input: `{ "itemId": "add-import-preview", "status": "active", "session": "2026-06-05-add-import-preview", "profile": "excursion" }`
 - `render-board-markdown` example input: `{ "includeArchive": false }`
+- `list-board-compact` example input: `{ "epic": "planning", "limit": 20, "offset": 0 }`; returns bounded item summaries, lane counts, and epic counts without full board payloads.
+- `get-item` example input: `{ "id": "add-import-preview" }`; returns one item with compact dependency/dependent summaries and Markdown sections. Pass `includeBody: true` only when raw item Markdown is needed.
+- `get-epic` example input: `{ "id": "planning", "limit": 20, "offset": 0 }`; returns one epic with paginated compact item summaries. Pass `includeBody: true` only when raw epic Markdown is needed.
+- `search-items` example input: `{ "query": "import preview", "status": "planned", "limit": 20 }`; searches by id/title/tags/epic with bounded compact output. Pass `searchBody: true` only when Markdown body search is needed.
 - `list-planning-artifacts` example input: `{ "includeSubmitted": false, "includeArchive": false }`; by default submitted flat plans and submitted plan sets are omitted, and `includeSubmitted: true` includes them.
 - `show-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`
 - `show-session-plan-set` example input: `{ "planSetId": "import-workflow" }`
@@ -115,6 +119,10 @@ The extension registers backlog, board, recommendation, planner-orchestration, a
 | Action | Purpose | Side effects |
 | --- | --- | --- |
 | `list-board` | Return epics, items, lanes, blocked reasons, recommendation status (including missing/fresh/stale), optional recommendation summary, trace summaries, and lifecycle projections as JSON-safe data. Kanban cards include canonical `linkRows`, `failureEvidence`, and `lifecycleState`; the board also exposes aggregate `lifecycleLinks` and `epicProgress`. | `local-read` |
+| `list-board-compact` | Return bounded compact item summaries, lane counts, and epic counts for agent contexts that should not receive full board, trace, recommendation, and lifecycle payloads. | `local-read` |
+| `get-item` | Return one backlog item detail with Markdown sections plus compact dependency and dependent summaries. Raw body output is opt-in through `includeBody`. | `local-read` |
+| `get-epic` | Return one backlog epic detail with Markdown sections plus paginated compact item summaries. Raw body output is opt-in through `includeBody`. | `local-read` |
+| `search-items` | Search compact item summaries by text, epic, status, lane, or tags with `limit`/`offset` pagination. Body search is opt-in through `searchBody`. | `local-read` |
 | `render-board-markdown` | Return `{ markdown }` for host or Console display, including visible recommendation freshness notes when recommendations are fresh or stale. | `local-read` |
 | `capture-item` | Create a visible backlog item in private eforge-plan storage from title, claim, evidence, tags, priority, epic, and dependencies. | `local-write` |
 | `upsert-epic` | Create or update a visible backlog epic in private eforge-plan storage without duplicating item membership lists. | `local-write` |

@@ -333,6 +333,29 @@ Action input schemas must be TypeBox object-root schemas (`Type.Object(...)`). H
 
 Action lifecycle diagnostics/events include provenance, duration, status, and error metadata, but omit raw input payloads and raw output payloads. This keeps daemon logs and event streams useful for observability without leaking action arguments or results.
 
+### Designing bounded contribution actions
+
+Contribution actions should be bounded by default because the same action may be invoked from a rich Console UI, a CLI, an MCP/Pi tool call, or a coding-agent context window. Prefer separate contracts for list, detail, and search operations: use compact `search-*` or `list-*` actions for summaries, targeted `get-*` actions for one record, and explicit opt-in flags for raw Markdown bodies, long evidence, trace rows, lifecycle links, recommendations, or other UI-only fields. Keep workstation-rich payloads separate from agent-safe payloads rather than making every host pay for the full UI projection.
+
+The extension SDK exports small helpers for paginated actions: `createContributionPaginationInputFields()`, `createContributionPageOutputSchema(itemSchema)`, `resolveContributionPagination()`, and `paginateContributionItems()`. They standardize `limit`/`offset`, cap excessive limits, and return the common `{ items, total, limit, offset }` shape while leaving domain filters and projection fields to the extension.
+
+```ts
+const Summary = Type.Object({ id: Type.String(), title: Type.String() }, { additionalProperties: false });
+const SearchInput = Type.Object({
+  query: Type.Optional(Type.String()),
+  ...createContributionPaginationInputFields({ maxLimit: 50 }),
+}, { additionalProperties: false });
+
+const searchItems = defineExtensionAction({
+  id: "search-items",
+  title: "Search items",
+  inputSchema: SearchInput,
+  outputSchema: createContributionPageOutputSchema(Summary),
+  sideEffects: ["local-read"],
+  handler: (input) => paginateContributionItems(findMatches(input.query), input, { defaultLimit: 20, maxLimit: 50 }),
+});
+```
+
 ### Daemon-owned agent tasks from actions
 
 Action handlers can start, read, and cancel daemon-owned single-shot agent tasks through `ctx.agentTasks`. The action never imports provider SDKs or `AgentHarness`; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events. Task records are stored under `.eforge/storage/agent-tasks`, and task events include only sanitized metadata rather than raw task input, prompt context, or result payloads.
