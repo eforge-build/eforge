@@ -10,6 +10,7 @@ import type {
   ExtensionActionRequestedByHost,
   EnqueueRequest,
   EnqueueResponse,
+  ExtensionJsonValue,
 } from '@eforge-build/client';
 
 export type { ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
@@ -66,6 +67,7 @@ export type ExtensionActionOutput<TOutput extends TSchema | undefined = undefine
 export interface ExtensionActionInputValidationErrorDetail {
   path: string;
   message: string;
+  [key: string]: ExtensionJsonValue;
 }
 
 export class ExtensionActionInputValidationError extends Error {

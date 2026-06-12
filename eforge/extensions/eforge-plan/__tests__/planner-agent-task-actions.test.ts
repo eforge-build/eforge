@@ -248,6 +248,7 @@ describe('planning agent task actions', () => {
     ]));
     expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyRecommendations: true }).success).toBe(true);
     expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }).success).toBe(true);
+    expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } }).success).toBe(true);
   });
 
   it('rejects apply requests without a selected generated output section', async () => {
@@ -564,6 +565,64 @@ describe('planning agent task actions', () => {
       expect(byId.get('task-cancelled')).toMatchObject({ available: true, status: 'cancelled' });
       expect(byId.get('task-missing')).toMatchObject({ available: false });
       expect(typeof (byId.get('task-missing') as { staleReason?: unknown }).staleReason).toBe('string');
+    });
+  });
+
+  it('lists structured backlog curation preview validation without failing on malformed completed curation tasks', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
+      const source = await buildBacklogCurationSource(cwd);
+      const base = { originalRequest: '', derivedRequest: 'Analyze and curate all open eforge-plan backlog records.', selection: {}, requestedOutputSections: ['backlogCurationDraft' as const, 'recommendations' as const], includeRoadmap: true, purpose: 'backlog-curation' as const, sourceFingerprint: source.sourceFingerprint };
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-curation-valid-preview', createdAt: '2026-01-01T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-curation-malformed-preview', createdAt: '2026-01-02T00:00:00.000Z', ...base });
+      const validPreviewTask = parseExtensionAgentTaskRecord({
+        taskId: 'task-curation-valid-preview',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:01.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:01.000Z',
+        result: {
+          summary: 'Drafted backlog curation.',
+          assumptionsOpenQuestions: [],
+          backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: source.sourceFingerprint, summary: [], itemChanges: [], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] },
+          recommendations: { ...createEmptyRecommendationModel(), blockedChains: [{ ref: 'closed-chain', itemIds: ['item-one'], blockedBy: ['closed-dep'], rationale: 'Historical dependency.' }] },
+        },
+      });
+      const malformedTask = parseExtensionAgentTaskRecord({
+        taskId: 'task-curation-malformed-preview',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:01.000Z',
+        startedAt: '2026-01-02T00:00:00.000Z',
+        completedAt: '2026-01-02T00:00:01.000Z',
+        result: { summary: 'Malformed.', assumptionsOpenQuestions: [], recommendations: createEmptyRecommendationModel() },
+      });
+      const records: Record<string, ExtensionAgentTaskRecord> = { [validPreviewTask.taskId]: validPreviewTask, [malformedTask.taskId]: malformedTask };
+
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:list-planning-agent-tasks',
+        input: {},
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get(taskId: string) { return { task: records[taskId]! }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      const tasks = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      const validPreview = tasks.find((task) => (task.entry as { taskId: string }).taskId === 'task-curation-valid-preview')?.backlogCurationPreview as Record<string, unknown>;
+      const malformedPreview = tasks.find((task) => (task.entry as { taskId: string }).taskId === 'task-curation-malformed-preview')?.backlogCurationPreview as Record<string, unknown>;
+      expect(validPreview).toMatchObject({ valid: false, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } });
+      expect(malformedPreview).toMatchObject({ valid: false, errors: expect.any(Array) });
     });
   });
 

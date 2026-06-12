@@ -127,6 +127,32 @@ describe('extension contribution registry runtime', () => {
     });
   });
 
+  it('preserves structured action validation error details', async () => {
+    const root = makeTempDir();
+    const result = await loadFixture(root, {
+      'validation.js': `import { Type, ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'validate', title: 'Validate', inputSchema: Type.Object({}), handler: () => {
+          throw new ExtensionActionInputValidationError('Bad references.', [{ path: 'items[0]', message: 'Closed item.', id: 'item-1', kind: 'item', reason: 'closed', status: 'shipped', title: 'Done' }]);
+        } });
+      }`,
+    });
+
+    const dispatched = await dispatchExtensionAction(result.registry, {
+      actionId: 'validation:validate',
+      input: {},
+      requestedBy: { host: 'cli' },
+      cwd: root,
+      configDir: resolve(root, 'eforge'),
+      timeoutMs: 1000,
+    });
+
+    expect(dispatched).toMatchObject({
+      kind: 'invalid-input',
+      validationErrors: [{ path: 'items[0]', message: 'Closed item.', id: 'item-1', kind: 'item', reason: 'closed', status: 'shipped' }],
+    });
+  });
+
   it('emits invalid and duplicate diagnostics for unsafe contribution registrations', async () => {
     const result = await loadFixture(makeTempDir(), {
       'first.js': `import { Type } from '@eforge-build/extension-sdk';

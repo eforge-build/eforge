@@ -45,6 +45,25 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).not.toMatch(/\{\{[a-zA-Z0-9_]+\}\}/);
   });
 
+  it('includes open-target guidance in the eforge-plan planning draft prompt', async () => {
+    const prompt = await loadPrompt('eforge-plan-planning-draft', {
+      topic: 'Backlog cleanup',
+      session: 'session-one',
+      planningType: 'maintenance',
+      planningDepth: 'focused',
+      requestedOutputSections: 'backlogCurationDraft,recommendations',
+      sourceText: 'source',
+      existingSessionPlan: 'none',
+      progressTool: 'progress',
+      submitTool: 'submit',
+      resultSchema: 'type: object',
+    });
+
+    expect(prompt).toContain('Recommendation target fields may reference only open item/epic ids.');
+    expect(prompt).toContain('Treat closed dependencies as satisfied historical context, not active recommendation targets.');
+    expect(prompt).toContain('`activeWork`, `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, `safeParallelizableGroups.epicIds`, `blockedChains.itemIds`, and `blockedChains.blockedBy` may reference only open targets.');
+  });
+
   it('treats {{...}} inside substituted values as literal text', async () => {
     // Regression: a plan body that quotes a downstream prompt's placeholders
     // (e.g. {{summary}}, {{prdContent}}) must not trip the unresolved-variable

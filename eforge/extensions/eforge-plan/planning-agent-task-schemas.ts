@@ -19,7 +19,7 @@ import {
   PLANNING_TYPES,
 } from './schema.js';
 import { SessionPlanReadinessDetailSchema } from './session-plan-schemas.js';
-import { BacklogCurationApplyDetailsSchema } from './backlog-curation-schemas.js';
+import { BacklogCurationApplyDetailsSchema, BacklogCurationPreviewDetailsSchema } from './backlog-curation-schemas.js';
 
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
 
@@ -71,6 +71,9 @@ export const ApplyPlanningAgentTaskCreationDraftSelectionSchema = Type.Object({
 export const ApplyPlanningAgentTaskBacklogCurationSelectionSchema = Type.Object({
   previewAcknowledged: Type.Literal(true),
   confirmApply: Type.Literal(true),
+  // --- eforge:region plan-01-backend-validation-and-apply ---
+  applyCurationOnly: Type.Optional(Type.Literal(true)),
+  // --- eforge:endregion plan-01-backend-validation-and-apply ---
 }, { additionalProperties: false });
 
 export const ApplyPlanningAgentTaskResultInputSchema = Type.Object({
@@ -163,6 +166,9 @@ export const PlanningAgentTaskListItemSchema = Type.Object({
   status: Type.Optional(ExtensionAgentTaskStatusSchema),
   task: Type.Optional(ExtensionAgentTaskRecordSchema),
   staleReason: Type.Optional(Type.String()),
+  // --- eforge:region plan-01-backend-validation-and-apply ---
+  backlogCurationPreview: Type.Optional(BacklogCurationPreviewDetailsSchema),
+  // --- eforge:endregion plan-01-backend-validation-and-apply ---
 }, JsonObjectAdditionalProperties);
 
 export const ListPlanningAgentTasksOutputSchema = Type.Object({

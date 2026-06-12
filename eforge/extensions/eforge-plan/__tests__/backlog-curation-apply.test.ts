@@ -246,6 +246,52 @@ describe('backlog curation apply', () => {
     });
   });
 
+  it('rejects generated recommendations that reference shipped blockedBy ids before writing by default', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const before = await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8');
+      const recommendations = { ...createEmptyRecommendationModel(), blockedChains: [{ ref: 'closed-chain', itemIds: ['item-1'], blockedBy: ['closed-dep'], rationale: 'Closed dependency is historical.' }] };
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Claim', action: 'replace', content: 'Curated claim.' }], rationale: 'Refresh claim.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, recommendations);
+
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/closed-dep|blockedChains\.closed-chain\.blockedBy/);
+
+      expect(await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8')).toBe(before);
+      expect(await readRecommendations(cwd)).toBeNull();
+      expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(false);
+    });
+  });
+
+  it('applies curation-only while skipping invalid generated recommendations that reference shipped blockedBy ids', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const recommendations = { ...createEmptyRecommendationModel(), blockedChains: [{ ref: 'closed-chain', itemIds: ['item-1'], blockedBy: ['closed-dep'], rationale: 'Closed dependency is historical.' }] };
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Claim', action: 'replace', content: 'Curated claim.' }], rationale: 'Refresh claim.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, recommendations);
+
+      const result = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } }, entry);
+
+      expect(result.changedItemIds).toEqual(['item-1']);
+      expect(result.recommendations).toBeUndefined();
+      expect(result.recommendationsSkipped).toMatchObject({ generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } });
+      expect(await readBacklogItem(cwd, 'item-1')).toMatchObject({ body: expect.stringContaining('Curated claim.') });
+      expect(await readRecommendations(cwd)).toBeNull();
+      expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(false);
+    });
+  });
+
   it('writes generated recommendations and records freshness after successful curation writes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });

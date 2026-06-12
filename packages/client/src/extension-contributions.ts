@@ -255,6 +255,11 @@ export const ExtensionActionInvokeErrorCodeSchema = Type.Union([
   Type.Literal('output-schema-failed'),
 ]);
 
+export const ExtensionActionValidationErrorSchema = Type.Object({
+  path: Type.String(),
+  message: Type.String(),
+}, { additionalProperties: ExtensionJsonValueSchema });
+
 export const ExtensionActionInvokeSuccessResponseSchema = Type.Object({
   ok: Type.Literal(true),
   invocationId: Type.String(),
@@ -297,6 +302,7 @@ export type ExtensionContributionDiagnostic = Static<typeof ExtensionContributio
 export type ExtensionContributionManifestResponse = Static<typeof ExtensionContributionManifestResponseSchema>;
 export type ExtensionActionInvokeRequest = Static<typeof ExtensionActionInvokeRequestSchema>;
 export type ExtensionActionInvokeErrorCode = Static<typeof ExtensionActionInvokeErrorCodeSchema>;
+export type ExtensionActionValidationError = Static<typeof ExtensionActionValidationErrorSchema>;
 export type ExtensionActionInvokeSuccessResponse = Static<typeof ExtensionActionInvokeSuccessResponseSchema>;
 export type ExtensionActionInvokeFailureResponse = Static<typeof ExtensionActionInvokeFailureResponseSchema>;
 export type ExtensionActionInvokeResponse = Static<typeof ExtensionActionInvokeResponseSchema>;
