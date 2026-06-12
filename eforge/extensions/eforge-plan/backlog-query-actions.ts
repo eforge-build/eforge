@@ -1,4 +1,10 @@
-import { defineExtensionAction, Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import {
+  createContributionPaginationInputFields,
+  defineExtensionAction,
+  paginateContributionItems,
+  Type,
+  type Static,
+} from '../../../packages/extension-sdk/src/index.js';
 import { extractMarkdownSections, isClosedStatus, type BacklogEpic, type BacklogItem, type KanbanLane } from './backlog-domain.js';
 import { projectKanbanBoard, type KanbanCard } from './kanban.js';
 import {
@@ -13,9 +19,6 @@ import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { BacklogStatusSchema, KanbanLaneSchema, LifecycleStateSchema } from './schema.js';
 
 // --- eforge:region compact-query-schemas ---
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
-
 const CompactItemSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -44,10 +47,7 @@ const CompactEpicSchema = Type.Object({
   openItemCount: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
-const PageInputFields = {
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_LIMIT })),
-  offset: Type.Optional(Type.Integer({ minimum: 0 })),
-};
+const PageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
 
 const GetItemInputSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
@@ -314,8 +314,7 @@ function cardForItem(item: BacklogItem, items: readonly BacklogItem[], epics: re
 }
 
 function paginate<T>(entries: readonly T[], input: { limit?: number; offset?: number }): { entries: T[]; limit: number; offset: number } {
-  const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-  const offset = Math.max(input.offset ?? 0, 0);
-  return { entries: entries.slice(offset, offset + limit), limit, offset };
+  const page = paginateContributionItems(entries, input, { defaultLimit: 20, maxLimit: 100 });
+  return { entries: page.items, limit: page.limit, offset: page.offset };
 }
 // --- eforge:endregion compact-query-projection ---

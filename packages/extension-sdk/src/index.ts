@@ -127,6 +127,20 @@ export type {
   IntegrationCommand,
 } from './contributions.js';
 export type { EforgeConsoleBridge } from './browser.js';
+export type {
+  ContributionPage,
+  ContributionPaginationInput,
+  ContributionPaginationOptions,
+  ResolvedContributionPagination,
+} from './bounded-contributions.js';
+export {
+  DEFAULT_CONTRIBUTION_MAX_LIMIT,
+  DEFAULT_CONTRIBUTION_PAGE_LIMIT,
+  createContributionPageOutputSchema,
+  createContributionPaginationInputFields,
+  paginateContributionItems,
+  resolveContributionPagination,
+} from './bounded-contributions.js';
 export {
   ExtensionActionInputValidationError,
   defineConsoleContribution,

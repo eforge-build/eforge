@@ -161,6 +161,42 @@ export default defineEforgeExtension((eforge) => {
 
 Action inputs require object-root TypeBox input schemas, action handlers must return JSON-safe outputs, and optional output schemas are enforced when present. Action handlers run as trusted unsandboxed Node code and reuse `extensions.eventHookTimeoutMs`; lifecycle events include provenance/duration/error metadata but omit raw input payloads and raw output payloads. Agent-task events likewise expose only sanitized metadata, never raw task input or result payloads. Console contributions render inside `/console/system` using closed renderer IDs only; Console workstations render under `/console/workstations` as sandboxed iframe documents with `window.eforge.invokeAction` or bundle iframe code using `@eforge-build/extension-sdk/browser`. Raw HTTP routes are unsupported, and arbitrary Console JavaScript outside workstations, arbitrary asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, parent-Console plugins, or independently loaded frontend plugins are deferred/unsupported. Extension-owned AI planning/chat APIs outside `ctx.agentTasks` are unsupported. The built-in playbook and session-planning adapters are not extension action/contribution surfaces; `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored session-plan extraction, and user-authored playbook extraction remain deferred. See [`examples/extensions/action-contribution.ts`](../../examples/extensions/action-contribution.ts) for a complete safe sample with a command and deep link.
 
+### Bounded action design
+
+Design extension actions as bounded contracts by default. Prefer small `search-*` and `get-*` actions over one broad board/list dump, keep list responses paginated, return compact summaries first, and make raw bodies, long evidence, lifecycle rows, trace payloads, or UI-only fields opt-in. If a workstation needs rich state, keep that rich projection separate from agent-oriented actions so coding agents and CLI hosts can inspect records without spending context on full UI payloads.
+
+The SDK exports helpers for the common list-page shape:
+
+```ts
+import {
+  Type,
+  createContributionPageOutputSchema,
+  createContributionPaginationInputFields,
+  defineExtensionAction,
+  paginateContributionItems,
+} from "@eforge-build/extension-sdk";
+
+const Summary = Type.Object({ id: Type.String(), title: Type.String() }, { additionalProperties: false });
+const SearchInput = Type.Object({
+  query: Type.Optional(Type.String()),
+  ...createContributionPaginationInputFields({ maxLimit: 50 }),
+}, { additionalProperties: false });
+
+const searchItems = defineExtensionAction({
+  id: "search-items",
+  title: "Search items",
+  inputSchema: SearchInput,
+  outputSchema: createContributionPageOutputSchema(Summary),
+  sideEffects: ["local-read"],
+  async handler(input) {
+    const matches = [{ id: "item-1", title: input.query ?? "Untitled" }];
+    return paginateContributionItems(matches, input, { defaultLimit: 20, maxLimit: 50 });
+  },
+});
+```
+
+Use `createContributionPaginationInputFields()` in object-root input schemas, `createContributionPageOutputSchema(itemSchema)` for the standard `{ items, total, limit, offset }` output shape, and `paginateContributionItems()` / `resolveContributionPagination()` in handlers. These helpers are deliberately small: they establish bounded defaults and caps, while each extension still owns domain-specific filters, projections, and detail actions.
+
 
 ### Console workstations
 
