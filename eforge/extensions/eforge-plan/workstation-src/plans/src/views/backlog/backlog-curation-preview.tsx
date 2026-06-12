@@ -46,15 +46,18 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
       <PatchSection title="Epic changes" patches={draft.epicChanges} />
       {draft.noOpRechecks.length > 0 && (
         <PreviewBlock title="No-op rechecks">
-          <div className="grid gap-2">
-            {draft.noOpRechecks.map((entry) => (
-              <div key={`${entry.kind}:${entry.id}`} className="rounded border border-border p-2">
-                <p className="font-medium text-foreground">{idLabel(entry.kind, entry.id)}</p>
-                <p className="text-xs text-muted-foreground">last_checked {entry.last_checked} · stale_after {entry.stale_after}</p>
-                {entry.rationale && <p className="mt-1 text-xs text-muted-foreground">{entry.rationale}</p>}
-              </div>
-            ))}
-          </div>
+          <details className="rounded border border-border p-2">
+            <summary className="cursor-pointer text-xs text-muted-foreground">{draft.noOpRechecks.length} freshness-only rechecks proposed; expand for details</summary>
+            <div className="mt-2 grid gap-2">
+              {draft.noOpRechecks.map((entry) => (
+                <div key={`${entry.kind}:${entry.id}`} className="rounded border border-border p-2">
+                  <p className="font-medium text-foreground">{idLabel(entry.kind, entry.id)}</p>
+                  <p className="text-xs text-muted-foreground">last_checked {entry.last_checked} · stale_after {entry.stale_after}</p>
+                  {entry.rationale && <p className="mt-1 text-xs text-muted-foreground">{entry.rationale}</p>}
+                </div>
+              ))}
+            </div>
+          </details>
         </PreviewBlock>
       )}
       {draft.skipped.length > 0 && (

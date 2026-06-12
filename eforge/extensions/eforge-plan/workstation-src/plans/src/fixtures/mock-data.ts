@@ -530,6 +530,7 @@ export function applyMockBacklogCurationDraft(taskId: string) {
     itemChanges: mockBacklogCurationDraft.itemChanges.length,
     epicChanges: mockBacklogCurationDraft.epicChanges.length,
     noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length,
+    skippedFreshRechecks: 0,
     changedItemIds: mockBacklogCurationDraft.itemChanges.map((entry) => entry.id),
     changedEpicIds: mockBacklogCurationDraft.epicChanges.map((entry) => entry.id),
     recheckedItemIds: mockBacklogCurationDraft.noOpRechecks.filter((entry) => entry.kind === 'item').map((entry) => entry.id),

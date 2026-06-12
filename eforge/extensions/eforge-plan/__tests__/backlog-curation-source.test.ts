@@ -54,6 +54,19 @@ describe('backlog curation source', () => {
     });
   });
 
+  it('includes freshness metadata and dependency status details for planner noise control', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed dependency\n' });
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', last_checked: '2026-01-01', stale_after: '2026-02-01', depends_on: ['closed-dep', 'missing-dep'], recheck_notes: 'Recheck only after product direction changes.', body: '# Item 1\n\n## Claim\n\nClaim\n' });
+      const source = await buildBacklogCurationSource(cwd);
+      const packet = source.source as { openItems: Array<Record<string, unknown>>; dependencyDetails: Array<{ itemId: string; dependsOn: Array<Record<string, unknown>> }> };
+
+      expect(packet.openItems[0]).toMatchObject({ id: 'item-1', last_checked: '2026-01-01', stale_after: '2026-02-01', recheck_notes: 'Recheck only after product direction changes.' });
+      expect(packet.dependencyDetails[0]).toMatchObject({ itemId: 'item-1', dependsOn: [{ id: 'closed-dep', status: 'shipped', missing: false }, { id: 'missing-dep', missing: true }] });
+      expect(packet).not.toHaveProperty('dependencies');
+    });
+  });
+
   it('changes the source fingerprint when item bodies or roadmap evidence changes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
