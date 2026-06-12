@@ -169,9 +169,10 @@ export const applyPlanRevisionTurnAction = defineExtensionAction({
     if (!selected.ok) return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, selected.message));
     const selectedSections = selected.sections.map((section) => section.dimension);
     const currentPlanFingerprint = computeFlatPlanFingerprint(loaded.plan);
-    const incrementalStatus = validateIncrementalApply(storedTurn, computeFlatSectionHashes(loaded.plan), selectedSections);
-    if (currentPlanFingerprint !== storedTurn.basePlanFingerprint && !incrementalStatus.ok) {
-      return toJsonSafeObject({ kind: 'stale', session: input.session, turnId: storedTurn.turnId, taskId: storedTurn.taskId, basePlanFingerprint: storedTurn.basePlanFingerprint, currentPlanFingerprint, message: incrementalStatus.message });
+    const incrementalStatus = validateIncrementalApply(storedTurn, computeFlatSectionHashes(loaded.plan), selectedSections, currentPlanFingerprint !== storedTurn.basePlanFingerprint);
+    if (!incrementalStatus.ok) {
+      if (incrementalStatus.kind === 'stale') return toJsonSafeObject({ kind: 'stale', session: input.session, turnId: storedTurn.turnId, taskId: storedTurn.taskId, basePlanFingerprint: storedTurn.basePlanFingerprint, currentPlanFingerprint, message: incrementalStatus.message });
+      return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, incrementalStatus.message));
     }
     const applied = await applySelectedRevisionSections(ctx.cwd, input.session, turnResult, selectedSections);
     await markPlanRevisionTurnApplied(ctx.cwd, input.session, { taskId: storedTurn.taskId }, new Date().toISOString(), selectedSections);
@@ -278,17 +279,29 @@ function notApplicable(session: string, ref: { taskId?: string; turnId?: string 
   return { kind: 'not-applicable' as const, session, ...(ref.taskId !== undefined ? { taskId: ref.taskId } : { turnId: ref.turnId }), message };
 }
 
-function validateIncrementalApply(storedTurn: PlanRevisionTurnEntry, currentSectionHashes: Array<{ dimension: string; sha256: string }>, selectedSections: string[]): { ok: true } | { ok: false; message: string } {
+function validateIncrementalApply(storedTurn: PlanRevisionTurnEntry, currentSectionHashes: Array<{ dimension: string; sha256: string }>, selectedSections: string[], fullPlanChanged: boolean): { ok: true } | { ok: false; kind: 'stale' | 'not-applicable'; message: string } {
   const applied = new Set(storedTurn.appliedSections ?? []);
-  if (applied.size === 0) return { ok: false, message: 'The session plan changed since this revision turn was generated; no sections were written.' };
   const baseHashes = new Map(storedTurn.baseSectionHashes.map((section) => [section.dimension, section.sha256]));
   const currentHashes = new Map(currentSectionHashes.map((section) => [section.dimension, section.sha256]));
   for (const section of selectedSections) {
-    if (applied.has(section)) return { ok: false, message: `Section ${section} was already applied from this revision turn; no sections were written.` };
+    if (applied.has(section)) return { ok: false, kind: 'not-applicable', message: `Section ${section} was already applied from this revision turn; no sections were written.` };
     const baseHash = baseHashes.get(section);
-    if (baseHash === undefined || currentHashes.get(section) !== baseHash) return { ok: false, message: `Section ${section} changed since this revision turn was generated; no sections were written.` };
+    if (baseHash === undefined || currentHashes.get(section) !== baseHash) return { ok: false, kind: 'stale', message: `Section ${section} changed since this revision turn was generated; no sections were written.` };
   }
+  let driftLimitedToAppliedSections = false;
+  for (const dimension of new Set([...baseHashes.keys(), ...currentHashes.keys()])) {
+    if (baseHashes.get(dimension) === currentHashes.get(dimension)) continue;
+    if (!applied.has(dimension)) return { ok: false, kind: 'stale', message: 'The session plan changed since this revision turn was generated; no sections were written.' };
+    driftLimitedToAppliedSections = true;
+  }
+  if (fullPlanChanged && !driftLimitedToAppliedSections) return { ok: false, kind: 'stale', message: 'The session plan changed since this revision turn was generated; no sections were written.' };
   return { ok: true };
+}
+
+function boundExistingSessionPlan(value: string): string {
+  const maxLength = 60000;
+  const suffix = '…[truncated]';
+  return value.length > maxLength ? `${value.slice(0, maxLength - suffix.length)}${suffix}` : value;
 }
 
 function isStaleTaskLookupError(err: unknown): boolean {

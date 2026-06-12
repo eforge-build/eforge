@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { createSessionPlanningWorkflowAdapter, selectDimensions, type SessionPlan } from '../../../packages/input/src/index.js';
+import { createSessionPlanningWorkflowAdapter, getReadinessDetail, selectDimensions, setSessionPlanSection, writeSessionPlan, type SessionPlan } from '../../../packages/input/src/index.js';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, parseEforgePlanPlanningDraftResult, type EforgePlanPlanningPlanRevisionTurn, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
@@ -97,17 +97,15 @@ export async function applySelectedRevisionSections(cwd: string, session: string
   const normalizedPatch = normalizeProposedRevisionPatchSections(turnResult.proposedPatch?.sections ?? []);
   if (!normalizedPatch.ok) throw new Error(normalizedPatch.message);
   const byDimension = new Map([...normalizedPatch.sectionsByDimension].map(([dimension, section]) => [dimension, section.content]));
-  let plan: SessionPlan | undefined;
+  let plan = (await planning.flat.load({ cwd, session })).plan;
   for (const rawDimension of sections) {
     const dimension = normalizeDimension(rawDimension);
     const content = byDimension.get(dimension);
     if (content === undefined) throw new Error(`Revision turn did not propose a patch for ${rawDimension}.`);
-    const result = await planning.flat.setSection({ cwd, session, dimension, content });
-    plan = result.plan;
+    plan = setSessionPlanSection(plan, dimension, content);
   }
-  const readiness = await planning.flat.readiness({ cwd, session });
-  const loaded = plan ?? (await planning.flat.load({ cwd, session })).plan;
-  return { session, readiness, plan: projectSessionPlan(loaded), path: planning.flat.resolvePath({ cwd, session }) };
+  await writeSessionPlan({ cwd, session, plan });
+  return { session, readiness: getReadinessDetail(plan), plan: projectSessionPlan(plan), path: planning.flat.resolvePath({ cwd, session }) };
 }
 
 function normalizeProposedRevisionPatchSections(patchSections: NonNullable<NonNullable<EforgePlanPlanningPlanRevisionTurn['proposedPatch']>['sections']>): { ok: true; sectionsByDimension: Map<string, { dimension: string; content: string }> } | { ok: false; message: string } {

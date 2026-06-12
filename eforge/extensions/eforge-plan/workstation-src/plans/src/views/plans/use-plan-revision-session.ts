@@ -94,9 +94,10 @@ export function usePlanRevisionSession({ session, onApply, onRefresh }: UsePlanR
 
   const redraft = React.useCallback(async (turn: PlanRevisionTurnProjection, answers: PlanRevisionRedraftAnswer[], steering?: string) => {
     const clean = answers.filter((answer) => answer.answer.trim().length > 0).map((answer) => ({ ...answer, answer: answer.answer.trim() }));
-    if (clean.length === 0) return;
+    const cleanSteering = steering?.trim();
+    if (clean.length === 0 && !cleanSteering) return;
     setBusy(true);
-    try { storeSession((await getBridge().invokeAction<StartTurnOutput>('retry-plan-revision-turn', { session, turnId: turn.turnId, answers: clean, ...(steering?.trim() && { steering: steering.trim() }) })).session); }
+    try { storeSession((await getBridge().invokeAction<StartTurnOutput>('retry-plan-revision-turn', { session, turnId: turn.turnId, ...(clean.length > 0 && { answers: clean }), ...(cleanSteering && { steering: cleanSteering }) })).session); }
     catch (caught) { toast.push(caught instanceof Error ? caught.message : String(caught), 'error'); }
     finally { setBusy(false); }
   }, [session, storeSession, toast]);

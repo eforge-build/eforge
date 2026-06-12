@@ -27,6 +27,7 @@ export function PlanRevisionPatchPreview({ plan, turn, applyResult, busy, onAppl
   const toggle = (dimension: string) => {
     const normalized = normalizeDimension(dimension);
     if (!selectable.has(normalized)) return;
+    setConfirming(false);
     setSelected((prev) => prev.includes(normalized) ? prev.filter((entry) => entry !== normalized) : [...prev, normalized]);
   };
   const applySelected = async () => {
