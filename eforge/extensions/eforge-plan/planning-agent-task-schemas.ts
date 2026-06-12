@@ -38,6 +38,14 @@ export const StartPlanningAgentRequestedOutputSectionSchema = Type.Union([
   Type.Literal('sessionPlanCreationDraft'),
 ]);
 export const MAX_PLANNING_AGENT_USER_GOAL_LENGTH = 4000;
+const MAX_PLAN_REVISION_LIST_LIMIT = 100;
+const DEFAULT_PLAN_REVISION_LIST_LIMIT = 50;
+const MAX_PLAN_REVISION_ANSWER_COUNT = 20;
+const MAX_PLAN_REVISION_SECTION_COUNT = 20;
+const MAX_PLAN_REVISION_ANSWER_LENGTH = 4000;
+const MAX_PLAN_REVISION_PROMPT_LENGTH = 2000;
+const MAX_PLAN_REVISION_REASON_LENGTH = 1000;
+const MAX_PLAN_REVISION_SECTION_LENGTH = 120;
 
 export const StartPlanningAgentTaskInputSchema = Type.Object({
   userGoal: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_PLANNING_AGENT_USER_GOAL_LENGTH, pattern: '\\S' })),
@@ -200,6 +208,61 @@ export const PlanningAgentTaskWorkflowStartOutputSchema = Type.Object({
   entry: PlanningTaskWorkflowEntrySchema,
 }, JsonObjectAdditionalProperties);
 
+const NonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
+const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
+
+export const PlanRevisionBaseSectionHashSchema = Type.Object({ dimension: NonEmptyStringSchema, sha256: Sha256HexSchema }, { additionalProperties: false });
+export const PlanRevisionTurnEntrySchema = Type.Object({
+  turnId: NonEmptyStringSchema,
+  taskId: ExtensionAgentTaskIdSchema,
+  userMessage: NonEmptyStringSchema,
+  basePlanFingerprint: Sha256HexSchema,
+  baseSectionHashes: Type.Array(PlanRevisionBaseSectionHashSchema),
+  retryOfTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  redraftOfTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  parentTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  appliedAt: Type.Optional(Type.String()),
+  appliedSections: Type.Optional(Type.Array(Type.String(), { uniqueItems: true })),
+  createdAt: Type.String(),
+}, { additionalProperties: false });
+export const PlanRevisionSessionEntrySchema = Type.Object({ threadId: NonEmptyStringSchema, targetSession: NonEmptyStringSchema, turns: Type.Array(PlanRevisionTurnEntrySchema), dismissedAt: Type.Optional(Type.String()), createdAt: Type.String(), updatedAt: Type.String() }, { additionalProperties: false });
+export const PlanRevisionIndexSchema = Type.Object({ schemaVersion: Type.Literal(1), sessions: Type.Array(PlanRevisionSessionEntrySchema) }, { additionalProperties: false });
+export const PlanRevisionTurnProjectionSchema = Type.Object({
+  turnId: NonEmptyStringSchema,
+  taskId: ExtensionAgentTaskIdSchema,
+  userMessage: NonEmptyStringSchema,
+  basePlanFingerprint: Sha256HexSchema,
+  baseSectionHashes: Type.Array(PlanRevisionBaseSectionHashSchema),
+  retryOfTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  redraftOfTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  parentTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  appliedAt: Type.Optional(Type.String()),
+  appliedSections: Type.Optional(Type.Array(Type.String(), { uniqueItems: true })),
+  createdAt: Type.String(),
+  turn: PlanRevisionTurnEntrySchema,
+  available: Type.Boolean(),
+  status: Type.Optional(ExtensionAgentTaskStatusSchema),
+  task: Type.Optional(ExtensionAgentTaskRecordSchema),
+  staleReason: Type.Optional(Type.String()),
+}, JsonObjectAdditionalProperties);
+export const PlanRevisionSessionProjectionSchema = Type.Object({ threadId: Type.String(), targetSession: Type.String(), turns: Type.Array(PlanRevisionTurnProjectionSchema), createdAt: Type.String(), updatedAt: Type.String(), plan: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)), readiness: Type.Optional(SessionPlanReadinessDetailSchema), path: Type.Optional(Type.String()), sourceRefs: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)), lifecycle: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)) }, JsonObjectAdditionalProperties);
+export const StartPlanRevisionSessionInputSchema = Type.Object({ session: NonEmptyStringSchema }, { additionalProperties: false });
+export const ListPlanRevisionSessionsInputSchema = Type.Object({ includePlan: Type.Optional(Type.Boolean()), includeDismissed: Type.Optional(Type.Boolean()), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_PLAN_REVISION_LIST_LIMIT, default: DEFAULT_PLAN_REVISION_LIST_LIMIT })), offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })) }, { additionalProperties: false });
+export const GetPlanRevisionSessionInputSchema = Type.Object({ session: Type.Optional(NonEmptyStringSchema), threadId: Type.Optional(NonEmptyStringSchema), includePlan: Type.Optional(Type.Boolean()) }, { additionalProperties: false, oneOf: [{ required: ['session'] }, { required: ['threadId'] }] });
+export const StartPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, message: Type.String({ minLength: 1, maxLength: MAX_PLANNING_AGENT_USER_GOAL_LENGTH, pattern: '\\S' }) }, { additionalProperties: false });
+export const RetryPlanRevisionTurnAnswerSchema = Type.Object({ questionId: Type.Optional(Type.String({ maxLength: MAX_PLAN_REVISION_PROMPT_LENGTH })), prompt: Type.Optional(Type.String({ maxLength: MAX_PLAN_REVISION_PROMPT_LENGTH })), answer: Type.String({ minLength: 1, maxLength: MAX_PLAN_REVISION_ANSWER_LENGTH, pattern: '\\S' }) }, { additionalProperties: false });
+export const RetryPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), answers: Type.Optional(Type.Array(RetryPlanRevisionTurnAnswerSchema, { minItems: 1, maxItems: MAX_PLAN_REVISION_ANSWER_COUNT })), steering: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_PLAN_REVISION_ANSWER_LENGTH, pattern: '\\S' })) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
+export const CancelPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), reason: Type.Optional(Type.String({ maxLength: MAX_PLAN_REVISION_REASON_LENGTH })) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
+export const ApplyPlanRevisionTurnInputSchema = Type.Object({ session: NonEmptyStringSchema, taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), sections: Type.Array(Type.String({ minLength: 1, maxLength: MAX_PLAN_REVISION_SECTION_LENGTH, pattern: '\\S' }), { minItems: 1, maxItems: MAX_PLAN_REVISION_SECTION_COUNT, uniqueItems: true }), previewAcknowledged: Type.Literal(true), confirmApply: Type.Literal(true) }, { additionalProperties: false, oneOf: [{ required: ['taskId'] }, { required: ['turnId'] }] });
+export const PlanRevisionSessionOutputSchema = PlanRevisionSessionProjectionSchema;
+export const PlanRevisionSessionsListOutputSchema = Type.Object({ sessions: Type.Array(PlanRevisionSessionProjectionSchema), total: Type.Integer({ minimum: 0 }), limit: Type.Integer({ minimum: 1, maximum: MAX_PLAN_REVISION_LIST_LIMIT }), offset: Type.Integer({ minimum: 0 }) }, JsonObjectAdditionalProperties);
+export const PlanRevisionTurnStartOutputSchema = Type.Object({ session: PlanRevisionSessionProjectionSchema, task: ExtensionAgentTaskRecordSchema, turn: PlanRevisionTurnEntrySchema }, JsonObjectAdditionalProperties);
+export const ApplyPlanRevisionTurnOutputSchema = Type.Union([
+  Type.Object({ kind: Type.Literal('applied'), session: Type.String(), turnId: NonEmptyStringSchema, taskId: ExtensionAgentTaskIdSchema, appliedSections: Type.Array(Type.String()), readiness: SessionPlanReadinessDetailSchema, plan: Type.Object({}, JsonObjectAdditionalProperties), path: Type.String(), message: Type.String() }, JsonObjectAdditionalProperties),
+  Type.Object({ kind: Type.Literal('stale'), session: Type.String(), turnId: NonEmptyStringSchema, taskId: ExtensionAgentTaskIdSchema, basePlanFingerprint: Sha256HexSchema, currentPlanFingerprint: Sha256HexSchema, message: Type.String() }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal('not-applicable'), session: Type.String(), taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), message: Type.String() }, { additionalProperties: false, anyOf: [{ required: ['taskId'] }, { required: ['turnId'] }] }),
+]);
+
 export type StartPlanningAgentTaskInput = Static<typeof StartPlanningAgentTaskInputSchema>;
 export type GetPlanningAgentTaskInput = Static<typeof GetPlanningAgentTaskInputSchema>;
 export type CancelPlanningAgentTaskInput = Static<typeof CancelPlanningAgentTaskInputSchema>;
@@ -221,3 +284,17 @@ export type RetryPlanningAgentTaskInput = Static<typeof RetryPlanningAgentTaskIn
 export type RemovePlanningAgentTaskInput = Static<typeof RemovePlanningAgentTaskInputSchema>;
 export type RedraftPlanningAgentTaskInput = Static<typeof RedraftPlanningAgentTaskInputSchema>;
 export type PlanningAgentTaskWorkflowStartOutput = Static<typeof PlanningAgentTaskWorkflowStartOutputSchema>;
+export type PlanRevisionBaseSectionHash = Static<typeof PlanRevisionBaseSectionHashSchema>;
+export type PlanRevisionTurnEntry = Static<typeof PlanRevisionTurnEntrySchema>;
+export type PlanRevisionSessionEntry = Static<typeof PlanRevisionSessionEntrySchema>;
+export type PlanRevisionIndex = Static<typeof PlanRevisionIndexSchema>;
+export type PlanRevisionTurnProjection = Static<typeof PlanRevisionTurnProjectionSchema>;
+export type PlanRevisionSessionProjection = Static<typeof PlanRevisionSessionProjectionSchema>;
+export type StartPlanRevisionSessionInput = Static<typeof StartPlanRevisionSessionInputSchema>;
+export type ListPlanRevisionSessionsInput = Static<typeof ListPlanRevisionSessionsInputSchema>;
+export type GetPlanRevisionSessionInput = Static<typeof GetPlanRevisionSessionInputSchema>;
+export type StartPlanRevisionTurnInput = Static<typeof StartPlanRevisionTurnInputSchema>;
+export type RetryPlanRevisionTurnInput = Static<typeof RetryPlanRevisionTurnInputSchema>;
+export type CancelPlanRevisionTurnInput = Static<typeof CancelPlanRevisionTurnInputSchema>;
+export type ApplyPlanRevisionTurnInput = Static<typeof ApplyPlanRevisionTurnInputSchema>;
+export type ApplyPlanRevisionTurnOutput = Static<typeof ApplyPlanRevisionTurnOutputSchema>;

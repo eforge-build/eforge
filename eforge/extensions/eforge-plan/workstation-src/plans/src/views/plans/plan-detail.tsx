@@ -11,6 +11,7 @@ import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { titleCase } from './dimensions';
 import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
+import { PlanRevisionPanel } from './plan-revision-panel';
 
 const bridge = getBridge();
 
@@ -102,6 +103,8 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
         <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
         <ReadinessChecklist plan={plan} readiness={readiness} onSetSection={setSection} onSelectDimensions={selectDimensions} />
         <MetadataEditor plan={plan} onSave={saveMetadata} />
+
+        <PlanRevisionPanel plan={plan} readiness={readiness} onApply={onApply} onRefresh={onRefresh} />
 
         {sectionEntries.length > 0 && (
           <div className="grid gap-2">

@@ -42,8 +42,21 @@ The payload MUST include:
      - `planDrafts` for eforge plan-file draft content.
      - `playbookDraft` for a reusable playbook draft.
      - `sessionPlanPatch` for updates to an existing session plan.
+     - `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan.
      - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`. `planningType` must be one of `bugfix`, `feature`, `refactor`, `architecture`, `docs`, `maintenance`, `unknown`; `planningDepth` must be one of `quick`, `focused`, `deep`. Optionally include `profile` (one of `errand`, `excursion`, `expedition`) and `agentProfile` (a string) when the appropriate planning profile or agent profile is known.
-   - **A needs-input result** when you cannot produce a ready session-plan creation draft. Set `decision: "needs-input"`, include a non-empty `clarificationQuestions` array of structured questions, and a `rationale` explaining what is blocking a ready draft. Do not emit a session-plan file output in this case.
+   - **A needs-input result** when you cannot produce a ready requested output. Set `decision: "needs-input"`, include a non-empty `clarificationQuestions` array of structured questions, and a `rationale` explaining what is blocking a ready draft. Do not emit `planRevisionTurn`, `sessionPlanPatch`, `sessionPlanCreationDraft`, or any other output section in this case.
+
+## Plan revision turn guidance
+
+When the requested output sections include `planRevisionTurn`:
+
+- Emit `planRevisionTurn` for bounded revision-session responses against the provided existing session plan.
+- Always copy the provided `basePlanFingerprint` exactly. If section hashes are provided, copy the relevant `baseSectionHashes` values exactly for sections you discuss or propose changing.
+- Use `assistantMessage` for the user-facing answer. Answer-only turns are valid: include `noPatchReason` when you are explaining, answering a question, or declining to propose edits.
+- For patch-bearing turns, include `proposedPatch.sections` entries with the target `dimension`, replacement `content`, and an optional `rationale`. Use structured edits only for sections you are proposing to change.
+- Use `proposedPatch.metadata.openQuestions` for open questions that can be carried with the proposal, and `proposedPatch.skippedDimensions` for dimensions you intentionally did not revise.
+- If a safe revision cannot be drafted without more user input, emit the top-level `needs-input` result instead of `planRevisionTurn`.
+- Do not claim that the session plan was modified, applied, saved, or persisted. This task only drafts an answer or structured proposal; the extension applies validated changes later.
 
 ## Backlog curation guidance
 

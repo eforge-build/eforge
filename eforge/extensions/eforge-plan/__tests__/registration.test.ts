@@ -13,9 +13,9 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations']);
-const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan']);
+const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
+const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -69,20 +69,24 @@ describe('eforge-plan extension registration', () => {
     const actions = state.actions.map((entry) => entry.value);
     expect(actions.map((action) => action.id).sort()).toEqual([
       'analyze-all-backlog',
+      'apply-plan-revision-turn',
       'apply-planner-result',
       'apply-planning-agent-task-result',
+      'cancel-plan-revision-turn',
       'cancel-planning-agent-task',
       'capture-item',
       'check-session-plan-readiness',
       'create-session-plan',
       'get-epic',
       'get-item',
+      'get-plan-revision-session',
       'get-planning-agent-task',
       'get-recommendations',
       'handoff-session-plan',
       'import-legacy-backlog',
       'list-board',
       'list-board-compact',
+      'list-plan-revision-sessions',
       'list-planning-agent-tasks',
       'list-planning-artifacts',
       'prepare-planner-context',
@@ -93,6 +97,7 @@ describe('eforge-plan extension registration', () => {
       'refresh-recommendations',
       'remove-planning-agent-task',
       'render-board-markdown',
+      'retry-plan-revision-turn',
       'retry-planning-agent-task',
       'search-items',
       'select-session-plan-dimensions',
@@ -100,6 +105,8 @@ describe('eforge-plan extension registration', () => {
       'set-session-plan-section',
       'show-session-plan',
       'show-session-plan-set',
+      'start-plan-revision-session',
+      'start-plan-revision-turn',
       'start-planning-agent-task',
       'update-item',
       'update-session-plan-metadata',
@@ -377,6 +384,13 @@ describe('eforge-plan extension registration', () => {
         'retry-planning-agent-task',
         'redraft-planning-agent-task',
         'apply-planning-agent-task-result',
+        'start-plan-revision-session',
+        'list-plan-revision-sessions',
+        'get-plan-revision-session',
+        'start-plan-revision-turn',
+        'retry-plan-revision-turn',
+        'cancel-plan-revision-turn',
+        'apply-plan-revision-turn',
       ]),
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
     });

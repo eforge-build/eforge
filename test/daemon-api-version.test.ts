@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { DAEMON_API_VERSION } from '@eforge-build/client';
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 64 for material backlog curation patch rationale requirements', () => {
-    expect(DAEMON_API_VERSION).toBe(64);
+  it('is 65 for planRevisionTurn requested-output and result contracts', () => {
+    expect(DAEMON_API_VERSION).toBe(65);
   });
 });

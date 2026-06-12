@@ -29,6 +29,7 @@ import { recommendationActions } from './recommendation-actions.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
 import { plannerActions } from './planner-actions.js';
 import { backlogCurationActions } from './backlog-curation-actions.js';
+import { planRevisionActions } from './plan-revision-actions.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
@@ -170,6 +171,7 @@ export default defineEforgeExtension((eforge) => {
   for (const action of plannerActions) eforge.registerAction(action);
   for (const action of backlogCurationActions) eforge.registerAction(action);
   for (const action of sessionPlanActions) eforge.registerAction(action);
+  for (const action of planRevisionActions) eforge.registerAction(action);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',
@@ -233,6 +235,13 @@ export default defineEforgeExtension((eforge) => {
       'set-session-plan-ready',
       'update-session-plan-metadata',
       'handoff-session-plan',
+      'start-plan-revision-session',
+      'list-plan-revision-sessions',
+      'get-plan-revision-session',
+      'start-plan-revision-turn',
+      'retry-plan-revision-turn',
+      'cancel-plan-revision-turn',
+      'apply-plan-revision-turn',
     ],
     frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
   }));
