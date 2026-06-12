@@ -208,7 +208,6 @@ export const PlanningAgentTaskWorkflowStartOutputSchema = Type.Object({
   entry: PlanningTaskWorkflowEntrySchema,
 }, JsonObjectAdditionalProperties);
 
-// --- eforge:region plan-02-plan-revision-extension-backend ---
 const NonEmptyStringSchema = Type.String({ minLength: 1, pattern: '\\S' });
 const Sha256HexSchema = Type.String({ pattern: '^[a-f0-9]{64}$' });
 
@@ -263,7 +262,6 @@ export const ApplyPlanRevisionTurnOutputSchema = Type.Union([
   Type.Object({ kind: Type.Literal('stale'), session: Type.String(), turnId: NonEmptyStringSchema, taskId: ExtensionAgentTaskIdSchema, basePlanFingerprint: Sha256HexSchema, currentPlanFingerprint: Sha256HexSchema, message: Type.String() }, { additionalProperties: false }),
   Type.Object({ kind: Type.Literal('not-applicable'), session: Type.String(), taskId: Type.Optional(ExtensionAgentTaskIdSchema), turnId: Type.Optional(NonEmptyStringSchema), message: Type.String() }, { additionalProperties: false, anyOf: [{ required: ['taskId'] }, { required: ['turnId'] }] }),
 ]);
-// --- eforge:endregion plan-02-plan-revision-extension-backend ---
 
 export type StartPlanningAgentTaskInput = Static<typeof StartPlanningAgentTaskInputSchema>;
 export type GetPlanningAgentTaskInput = Static<typeof GetPlanningAgentTaskInputSchema>;
@@ -286,7 +284,6 @@ export type RetryPlanningAgentTaskInput = Static<typeof RetryPlanningAgentTaskIn
 export type RemovePlanningAgentTaskInput = Static<typeof RemovePlanningAgentTaskInputSchema>;
 export type RedraftPlanningAgentTaskInput = Static<typeof RedraftPlanningAgentTaskInputSchema>;
 export type PlanningAgentTaskWorkflowStartOutput = Static<typeof PlanningAgentTaskWorkflowStartOutputSchema>;
-// --- eforge:region plan-02-plan-revision-extension-backend ---
 export type PlanRevisionBaseSectionHash = Static<typeof PlanRevisionBaseSectionHashSchema>;
 export type PlanRevisionTurnEntry = Static<typeof PlanRevisionTurnEntrySchema>;
 export type PlanRevisionSessionEntry = Static<typeof PlanRevisionSessionEntrySchema>;
@@ -301,4 +298,3 @@ export type RetryPlanRevisionTurnInput = Static<typeof RetryPlanRevisionTurnInpu
 export type CancelPlanRevisionTurnInput = Static<typeof CancelPlanRevisionTurnInputSchema>;
 export type ApplyPlanRevisionTurnInput = Static<typeof ApplyPlanRevisionTurnInputSchema>;
 export type ApplyPlanRevisionTurnOutput = Static<typeof ApplyPlanRevisionTurnOutputSchema>;
-// --- eforge:endregion plan-02-plan-revision-extension-backend ---

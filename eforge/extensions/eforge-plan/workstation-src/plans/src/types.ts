@@ -243,7 +243,6 @@ export interface PlanningTaskResult {
   planRevisionTurn?: PlanRevisionTurnResult;
 }
 
-// --- eforge:region plan-03-plan-revision-workstation ---
 export interface PlanRevisionSectionHash { dimension: string; sha256: string; }
 export interface PlanRevisionTurnProjection {
   turnId: string;
@@ -281,7 +280,6 @@ export type PlanRevisionApplyOutput =
   | { kind: 'stale'; session: string; turnId: string; taskId: string; basePlanFingerprint: string; currentPlanFingerprint: string; message: string }
   | { kind: 'not-applicable'; session: string; turnId?: string; taskId?: string; message: string };
 export interface PlanRevisionRedraftAnswer { questionId?: string; prompt?: string; answer: string; }
-// --- eforge:endregion plan-03-plan-revision-workstation ---
 export interface PlanningAgentTaskMetadata {
   label?: string;
   summary?: string;

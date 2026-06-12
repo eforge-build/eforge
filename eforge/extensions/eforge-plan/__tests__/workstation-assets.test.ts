@@ -23,12 +23,10 @@ const TASK_CARD = `${SRC}/views/backlog/planning-task-card.tsx`;
 const MOCK_DATA = `${SRC}/fixtures/mock-data.ts`;
 const BRIDGE = `${SRC}/bridge.ts`;
 const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
-// --- eforge:region plan-03-plan-revision-workstation ---
 const PLAN_REVISION_PANEL = `${SRC}/views/plans/plan-revision-panel.tsx`;
 const PLAN_REVISION_HOOK = `${SRC}/views/plans/use-plan-revision-session.ts`;
 const PLAN_REVISION_PATCH_PREVIEW = `${SRC}/views/plans/plan-revision-patch-preview.tsx`;
 const MOCK_PLAN_REVISIONS = `${SRC}/fixtures/mock-plan-revisions.ts`;
-// --- eforge:endregion plan-03-plan-revision-workstation ---
 const BOARD_MODEL = `${SRC}/views/backlog/board-model.ts`;
 const LIFECYCLE_PANEL = `${SRC}/views/backlog/lifecycle-panel.tsx`;
 const LIFECYCLE_EVIDENCE_PANEL = `${SRC}/views/plans/lifecycle-evidence-panel.tsx`;
@@ -45,7 +43,6 @@ const TASK_WORKFLOW_ACTIONS = [
   'apply-planning-agent-task-result',
   'analyze-all-backlog',
 ] as const;
-// --- eforge:region plan-03-plan-revision-workstation ---
 const PLAN_REVISION_ACTIONS = [
   'start-plan-revision-session',
   'list-plan-revision-sessions',
@@ -55,7 +52,6 @@ const PLAN_REVISION_ACTIONS = [
   'cancel-plan-revision-turn',
   'apply-plan-revision-turn',
 ] as const;
-// --- eforge:endregion plan-03-plan-revision-workstation ---
 
 describe('eforge-plan planning workstation assets', () => {
   it('stays inside extension-owned browser assets without private Console imports', async () => {
@@ -82,11 +78,9 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('Lifecycle evidence');
     expect(source).toContain('Source refs');
     expect(source).toContain('Partial progress');
-    // --- eforge:region plan-03-plan-revision-workstation ---
     expect(source).toContain('Revise with AI');
     expect(source).toContain('planRevisionTurn');
     for (const actionId of PLAN_REVISION_ACTIONS) expect(source).toContain(actionId);
-    // --- eforge:endregion plan-03-plan-revision-workstation ---
     expect(source).not.toContain('Promote as one plan');
     for (const actionId of TASK_WORKFLOW_ACTIONS) {
       expect(source).toContain(actionId);
@@ -118,10 +112,8 @@ describe('eforge-plan planning workstation assets', () => {
   it('mock bridge supports the durable planning task workflow actions', async () => {
     const source = await readFile(BRIDGE, 'utf-8');
 
-    // --- eforge:region plan-03-plan-revision-workstation ---
     expect(source).toContain("@/fixtures/mock-plan-revisions");
     for (const actionId of PLAN_REVISION_ACTIONS) expect(source).toContain(`case '${actionId}'`);
-    // --- eforge:endregion plan-03-plan-revision-workstation ---
     for (const actionId of TASK_WORKFLOW_ACTIONS) {
       expect(source).toContain(`case '${actionId}'`);
     }
@@ -208,7 +200,6 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('workflows.start');
   });
 
-  // --- eforge:region plan-03-plan-revision-workstation ---
   it('contains the plan revision workstation source contract', async () => {
     const [panel, hook, preview, fixtures, bridge] = await Promise.all([
       readFile(PLAN_REVISION_PANEL, 'utf-8'),
@@ -229,7 +220,6 @@ describe('eforge-plan planning workstation assets', () => {
       expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
     }
   });
-  // --- eforge:endregion plan-03-plan-revision-workstation ---
 
   it('requires explicit in-app confirmation before handoff', async () => {
     const source = await readFile(PLAN_DETAIL, 'utf-8');

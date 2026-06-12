@@ -16,7 +16,6 @@ import {
   startMockPlanningTaskFromInput,
   updateMockItem,
 } from '@/fixtures/mock-data';
-// --- eforge:region plan-03-plan-revision-workstation ---
 import {
   applyMockPlanRevisionTurn,
   cancelMockPlanRevisionTurn,
@@ -26,7 +25,6 @@ import {
   startMockPlanRevisionTurn,
   startOrResumeMockPlanRevisionSession,
 } from '@/fixtures/mock-plan-revisions';
-// --- eforge:endregion plan-03-plan-revision-workstation ---
 import type { EforgeBridge, JsonObject, PlanData } from '@/types';
 
 declare global { interface Window { eforge?: EforgeBridge; } }
@@ -77,7 +75,6 @@ function createMockBridge(): EforgeBridge {
         case 'retry-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'retry') as TOutput;
         case 'redraft-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'redraft') as TOutput;
         case 'cancel-planning-agent-task': return { task: cancelMockPlanningTask(String(input.taskId ?? mockPlanningTask.taskId), typeof input.reason === 'string' ? input.reason : undefined) } as TOutput;
-        // --- eforge:region plan-03-plan-revision-workstation ---
         case 'start-plan-revision-session': return startOrResumeMockPlanRevisionSession(input) as TOutput;
         case 'list-plan-revision-sessions': return listMockPlanRevisionSessions() as TOutput;
         case 'get-plan-revision-session': return getMockPlanRevisionSession(input) as TOutput;
@@ -85,7 +82,6 @@ function createMockBridge(): EforgeBridge {
         case 'retry-plan-revision-turn': return retryMockPlanRevisionTurn(input) as TOutput;
         case 'cancel-plan-revision-turn': return cancelMockPlanRevisionTurn(input) as TOutput;
         case 'apply-plan-revision-turn': return applyMockPlanRevisionTurn(input) as TOutput;
-        // --- eforge:endregion plan-03-plan-revision-workstation ---
         case 'apply-planning-agent-task-result': {
           if (input.applyBacklogCurationDraft !== undefined) return applyMockBacklogCurationDraft(String(input.taskId ?? mockPlanningTask.taskId)) as TOutput;
           const creationDraftInput = input.applySessionPlanCreationDraft as JsonObject | undefined;
