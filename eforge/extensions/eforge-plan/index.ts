@@ -29,6 +29,9 @@ import { recommendationActions } from './recommendation-actions.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
 import { plannerActions } from './planner-actions.js';
 import { backlogCurationActions } from './backlog-curation-actions.js';
+// --- eforge:region plan-02-plan-revision-extension-backend ---
+import { planRevisionActions } from './plan-revision-actions.js';
+// --- eforge:endregion plan-02-plan-revision-extension-backend ---
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
@@ -170,6 +173,9 @@ export default defineEforgeExtension((eforge) => {
   for (const action of plannerActions) eforge.registerAction(action);
   for (const action of backlogCurationActions) eforge.registerAction(action);
   for (const action of sessionPlanActions) eforge.registerAction(action);
+  // --- eforge:region plan-02-plan-revision-extension-backend ---
+  for (const action of planRevisionActions) eforge.registerAction(action);
+  // --- eforge:endregion plan-02-plan-revision-extension-backend ---
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',
@@ -233,6 +239,15 @@ export default defineEforgeExtension((eforge) => {
       'set-session-plan-ready',
       'update-session-plan-metadata',
       'handoff-session-plan',
+      // --- eforge:region plan-02-plan-revision-extension-backend ---
+      'start-plan-revision-session',
+      'list-plan-revision-sessions',
+      'get-plan-revision-session',
+      'start-plan-revision-turn',
+      'retry-plan-revision-turn',
+      'cancel-plan-revision-turn',
+      'apply-plan-revision-turn',
+      // --- eforge:endregion plan-02-plan-revision-extension-backend ---
     ],
     frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
   }));

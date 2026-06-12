@@ -108,6 +108,11 @@ describe('eforge-plan plan revision turn contract', () => {
       planRevisionTurn: { ...patchBearingTurn, proposedPatch: { sections: [{ dimension: 'scope' }] } },
     }).success).toBe(false);
     expect(safeParseEforgePlanPlanningDraftResult({
+      summary: 'Empty patch dimension.',
+      assumptionsOpenQuestions: [],
+      planRevisionTurn: { ...patchBearingTurn, proposedPatch: { sections: [{ dimension: '', content: 'x' }] } },
+    }).success).toBe(false);
+    expect(safeParseEforgePlanPlanningDraftResult({
       summary: 'Unexpected nested field.',
       assumptionsOpenQuestions: [],
       planRevisionTurn: { ...answerOnlyTurn, citations: [{ label: 'doc', unexpected: true }] },

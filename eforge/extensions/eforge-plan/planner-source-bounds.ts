@@ -8,7 +8,7 @@ const MAX_SELECTION_IDS = 50;
 const MAX_SELECTION_ID_LENGTH = 200;
 const SOURCE_TEXT_HARD_CAP_SUFFIX = '…[truncated]';
 
-export function boundedSourceText(userGoal: string, context: Record<string, unknown>, redraft?: Record<string, unknown>): string {
+export function boundedSourceText(userGoal: string, context: Record<string, unknown>, redraft?: Record<string, unknown>, fallbackContext?: (bounded: Record<string, unknown>, metadata: Record<string, unknown>) => Record<string, unknown>): string {
   const metadata: Record<string, unknown> = {};
   const bounded = truncateValue({ ...context }, metadata) as Record<string, unknown>;
   if (Array.isArray(bounded.items) && bounded.items.length > MAX_CONTEXT_ITEMS) {
@@ -25,7 +25,8 @@ export function boundedSourceText(userGoal: string, context: Record<string, unkn
     metadata.sourceTextTruncated = true;
     const summarizedRedraft = summarizeRedraft(boundedRedraft, metadata);
     const boundedSelection = boundSelection(bounded.selection, metadata);
-    sourceText = JSON.stringify({ userGoal, context: { schemaVersion: bounded.schemaVersion, selection: boundedSelection }, ...(summarizedRedraft !== undefined && { redraft: summarizedRedraft }), truncation: metadata }, null, 2);
+    const contextFallback = fallbackContext?.(bounded, metadata) ?? { schemaVersion: bounded.schemaVersion, selection: boundedSelection };
+    sourceText = JSON.stringify({ userGoal, context: contextFallback, ...(summarizedRedraft !== undefined && { redraft: summarizedRedraft }), truncation: metadata }, null, 2);
     if (sourceText.length > MAX_SOURCE_TEXT) {
       sourceText = `${sourceText.slice(0, MAX_SOURCE_TEXT - SOURCE_TEXT_HARD_CAP_SUFFIX.length)}${SOURCE_TEXT_HARD_CAP_SUFFIX}`;
     }

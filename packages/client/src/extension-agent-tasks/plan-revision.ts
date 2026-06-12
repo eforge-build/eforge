@@ -2,12 +2,12 @@ import { Type, type Static } from '@sinclair/typebox';
 import { EforgePlanPlanningNonEmptyStringSchema, EforgePlanPlanningSha256HexSchema } from './common.js';
 
 export const EforgePlanPlanningPlanRevisionBaseSectionHashSchema = Type.Object({
-  dimension: Type.String(),
+  dimension: EforgePlanPlanningNonEmptyStringSchema,
   sha256: EforgePlanPlanningSha256HexSchema,
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningPlanRevisionProposedSectionEditSchema = Type.Object({
-  dimension: Type.String(),
+  dimension: EforgePlanPlanningNonEmptyStringSchema,
   content: EforgePlanPlanningNonEmptyStringSchema,
   rationale: Type.Optional(Type.String()),
 }, { additionalProperties: false });
@@ -17,7 +17,7 @@ export const EforgePlanPlanningPlanRevisionMetadataGuidanceSchema = Type.Object(
 }, { additionalProperties: false });
 
 export const EforgePlanPlanningPlanRevisionSkippedDimensionGuidanceSchema = Type.Object({
-  dimension: Type.String(),
+  dimension: EforgePlanPlanningNonEmptyStringSchema,
   reason: EforgePlanPlanningNonEmptyStringSchema,
 }, { additionalProperties: false });
 
