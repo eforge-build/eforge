@@ -3,6 +3,9 @@ import {
   EforgePlanPlanningBacklogCurationDraftSchema,
   EforgePlanPlanningDepthSchema,
   EforgePlanPlanningDraftResultSchema,
+  // --- eforge:region client-engine-task-contract ---
+  EforgePlanPlanningPlanRevisionTurnSchema,
+  // --- eforge:endregion client-engine-task-contract ---
   EforgePlanPlanningTypeSchema,
   getSchemaYaml,
   parseEforgePlanPlanningDraftResult,
@@ -104,6 +107,9 @@ const planningDraftSubmissionToolSchema = Type.Object({
       reason: Type.String(),
     }, { additionalProperties: false }))),
   }, { additionalProperties: false })),
+  // --- eforge:region client-engine-task-contract ---
+  planRevisionTurn: Type.Optional(EforgePlanPlanningPlanRevisionTurnSchema),
+  // --- eforge:endregion client-engine-task-contract ---
   decision: Type.Optional(Type.Union([Type.Literal('ready'), Type.Literal('needs-input')])),
   sessionPlanCreationDraft: Type.Optional(Type.Object({
     session: Type.String(),

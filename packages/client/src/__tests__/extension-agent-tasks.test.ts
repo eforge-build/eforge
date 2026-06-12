@@ -199,9 +199,10 @@ describe('extension agent task contracts', () => {
     expect(source).toContain('buildPath(API_ROUTES.extensionAgentTaskCancel');
   });
 
-  it('bumps the daemon API version for the backlog curation draft contract', () => {
-    expect(DAEMON_API_VERSION).toBe(64);
+  it('bumps the daemon API version for the plan revision turn and backlog curation draft contracts', () => {
+    expect(DAEMON_API_VERSION).toBe(65);
     const source = readFileSync(new URL('../api-version-const.ts', import.meta.url), 'utf8');
+    expect(source).toContain('planRevisionTurn');
     expect(source).toContain('backlogCurationDraft');
     expect(source).toContain('non-empty rationale');
     expect(source).toContain('requested output section');
