@@ -44,6 +44,7 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
   itemChanges: Type.Integer({ minimum: 0 }),
   epicChanges: Type.Integer({ minimum: 0 }),
   noOpRechecks: Type.Integer({ minimum: 0 }),
+  skippedFreshRechecks: Type.Integer({ minimum: 0 }),
   changedItemIds: Type.Array(Type.String()),
   changedEpicIds: Type.Array(Type.String()),
   recheckedItemIds: Type.Array(Type.String()),

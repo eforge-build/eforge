@@ -64,9 +64,12 @@ export async function applyBacklogCurationDraftFromTask(
   const prospectiveEpics = new Map<string, ProspectiveEpic>(openEpicSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
 
   validateTargetsAndPreconditions(draft, items, epics, draft.sourceFingerprint);
+  const effectiveRechecks = draft.noOpRechecks
+    .map((recheck, index) => ({ recheck, target: prospectiveForRecheck(recheck, index, prospectiveItems, prospectiveEpics) }))
+    .filter(({ target }) => shouldApplyRecheck(target));
   draft.itemChanges.forEach((patch, index) => applyItemPatch(patch, requireProspective(prospectiveItems, patch.id, `backlogCurationDraft.itemChanges[${index}]`), `backlogCurationDraft.itemChanges[${index}]`));
   draft.epicChanges.forEach((patch, index) => applyEpicPatch(patch, requireProspective(prospectiveEpics, patch.id, `backlogCurationDraft.epicChanges[${index}]`), `backlogCurationDraft.epicChanges[${index}]`));
-  draft.noOpRechecks.forEach((recheck, index) => applyRecheck(recheck, recheck.kind === 'item' ? requireProspective(prospectiveItems, recheck.id, `backlogCurationDraft.noOpRechecks[${index}]`) : requireProspective(prospectiveEpics, recheck.id, `backlogCurationDraft.noOpRechecks[${index}]`)));
+  effectiveRechecks.forEach(({ recheck, target }) => applyRecheck(recheck, target));
 
   const visibleItemIds = new Set(itemSnapshots.map((snapshot) => snapshot.id));
   const visibleEpicIds = new Set(epicSnapshots.map((snapshot) => snapshot.id));
@@ -104,11 +107,12 @@ export async function applyBacklogCurationDraftFromTask(
   return {
     itemChanges: draft.itemChanges.length,
     epicChanges: draft.epicChanges.length,
-    noOpRechecks: draft.noOpRechecks.length,
+    noOpRechecks: effectiveRechecks.length,
+    skippedFreshRechecks: draft.noOpRechecks.length - effectiveRechecks.length,
     changedItemIds: changedItems.map((entry) => entry.snapshot.id),
     changedEpicIds: changedEpics.map((entry) => entry.snapshot.id),
-    recheckedItemIds: draft.noOpRechecks.filter((entry) => entry.kind === 'item').map((entry) => entry.id),
-    recheckedEpicIds: draft.noOpRechecks.filter((entry) => entry.kind === 'epic').map((entry) => entry.id),
+    recheckedItemIds: effectiveRechecks.filter(({ recheck }) => recheck.kind === 'item').map(({ recheck }) => recheck.id),
+    recheckedEpicIds: effectiveRechecks.filter(({ recheck }) => recheck.kind === 'epic').map(({ recheck }) => recheck.id),
     skipped: draft.skipped,
     needsInput: draft.needsInput,
     ...(recommendationBlock !== undefined && { recommendations: recommendationBlock }),
@@ -243,12 +247,31 @@ function applyMetadataPatch(patch: Patch, frontmatter: Record<string, unknown>, 
   }
 }
 
+function shouldApplyRecheck(target: ProspectiveItem | ProspectiveEpic): boolean {
+  const record = target.snapshot.record;
+  if (record.last_checked === undefined || record.stale_after === undefined) return true;
+  const staleAfter = dateKey(record.stale_after);
+  return staleAfter === undefined || staleAfter < utcTodayKey();
+}
+
+// Freshness dates are UTC date keys throughout (the curation source's
+// generatedAt and store timestamps come from toISOString()), so "today"
+// must be the UTC date, not the local one.
+function utcTodayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function applyRecheck(recheck: Recheck, target: ProspectiveItem | ProspectiveEpic): void {
   target.frontmatter.last_checked = recheck.last_checked;
   target.frontmatter.stale_after = recheck.stale_after;
   if (recheck.kind === 'item') normalizeBacklogItem(target.frontmatter, target.body);
   else normalizeBacklogEpic(target.frontmatter, target.body);
   target.changed = true;
+}
+
+function dateKey(value: string): string | undefined {
+  const match = /^\d{4}-\d{2}-\d{2}/.exec(value);
+  return match?.[0];
 }
 
 // --- eforge:endregion patch-application-helpers ---
@@ -275,6 +298,11 @@ function derivePostApplyOpenItemIds(items: Map<string, ProspectiveItem>): Set<st
 
 function derivePostApplyOpenEpicIds(epics: Map<string, ProspectiveEpic>): Set<string> {
   return new Set([...epics].filter(([, entry]) => isOpenStatus(normalizeBacklogEpic({ ...entry.frontmatter }, entry.body).status)).map(([id]) => id));
+}
+
+function prospectiveForRecheck(recheck: Recheck, index: number, items: Map<string, ProspectiveItem>, epics: Map<string, ProspectiveEpic>): ProspectiveItem | ProspectiveEpic {
+  const path = `backlogCurationDraft.noOpRechecks[${index}]`;
+  return recheck.kind === 'item' ? requireProspective(items, recheck.id, path) : requireProspective(epics, recheck.id, path);
 }
 
 function requireProspective<T>(map: Map<string, T>, id: string, path: string): T {

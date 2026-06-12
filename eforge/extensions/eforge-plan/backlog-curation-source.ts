@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { blockerRiskProjection, dependencyProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
+import { blockerRiskProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection, readPlannerTraceSummaries } from './recommendation-status.js';
@@ -46,6 +46,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const openEpics = openEpicSnapshots.map((snapshot) => projectEpic(snapshot, sourceFingerprint, truncation));
   const itemIds = openItems.map((item) => item.id as string);
   const traceSummaries = boundTraceSummaries(await readPlannerTraceSummaries(cwd, itemIds), truncation);
+  const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',
@@ -54,7 +55,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     openItems,
     openEpics,
     preconditions: { items: openItemSnapshots.map(projectPrecondition), epics: openEpicSnapshots.map(projectPrecondition) },
-    dependencies: dependencyProjection(openItemSnapshots.map((snapshot) => snapshot.record)),
+    dependencyDetails,
     blockers: blockerRiskProjection(openItemSnapshots.map((snapshot) => snapshot.record)),
     traceSummaries,
     roadmapEvidence,
@@ -88,6 +89,10 @@ function projectItem(snapshot: BacklogRecordSnapshot<BacklogItem>, sourceFingerp
     depends_on: record.depends_on,
     epic: record.epic,
     updated: record.updated,
+    last_checked: record.last_checked,
+    stale_after: record.stale_after,
+    evidence_notes: optionalString(record.evidence_notes),
+    recheck_notes: optionalString(record.recheck_notes),
     precondition: { ...projectPrecondition(snapshot), sourceFingerprint },
     sections: boundSections(record.body, truncation),
   };
@@ -102,9 +107,28 @@ function projectEpic(snapshot: BacklogRecordSnapshot<BacklogEpic>, sourceFingerp
     priority: record.priority,
     tags: record.tags,
     updated: record.updated,
+    last_checked: record.last_checked,
+    stale_after: record.stale_after,
+    evidence_notes: optionalString(record.evidence_notes),
+    recheck_notes: optionalString(record.recheck_notes),
     precondition: { ...projectPrecondition(snapshot), sourceFingerprint },
     sections: boundSections(record.body, truncation),
   };
+}
+
+function buildDependencyDetails(openItems: readonly BacklogItem[], allItems: readonly BacklogItem[]): Array<Record<string, unknown>> {
+  const byId = new Map(allItems.map((item) => [item.id, item]));
+  return openItems.map((item) => ({
+    itemId: item.id,
+    dependsOn: item.depends_on.map((dependencyId) => {
+      const dependency = byId.get(dependencyId);
+      return {
+        id: dependencyId,
+        missing: dependency === undefined,
+        ...(dependency !== undefined && { title: dependency.title, status: dependency.status }),
+      };
+    }),
+  }));
 }
 
 function projectPrecondition(snapshot: BacklogRecordSnapshot<BacklogItem | BacklogEpic>) {
@@ -117,6 +141,10 @@ function projectPrecondition(snapshot: BacklogRecordSnapshot<BacklogItem | Backl
     bodySha256: snapshot.bodySha256,
     recordSha256: snapshot.recordSha256,
   };
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function boundSections(body: string, truncation: { sectionStrings: number }): Record<string, string> {
@@ -163,7 +191,7 @@ function buildSourceText(source: Record<string, unknown>): string {
     openItems: (source.openItems as Array<Record<string, unknown>>).map(minimalRecord),
     openEpics: (source.openEpics as Array<Record<string, unknown>>).map(minimalRecord),
     preconditions: source.preconditions,
-    dependencies: source.dependencies,
+    dependencyDetails: source.dependencyDetails,
     blockers: source.blockers,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),
@@ -210,7 +238,13 @@ function stripSections(record: Record<string, unknown>): Record<string, unknown>
 }
 
 function minimalRecord(record: Record<string, unknown>): Record<string, unknown> {
-  return { id: record.id, status: record.status, precondition: record.precondition };
+  return {
+    id: record.id,
+    status: record.status,
+    last_checked: record.last_checked,
+    stale_after: record.stale_after,
+    precondition: record.precondition,
+  };
 }
 
 function stripRecommendationSummary(value: unknown): unknown {

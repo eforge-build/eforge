@@ -181,7 +181,28 @@ describe('backlog curation apply', () => {
       const result = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
       expect(result.recheckedItemIds).toEqual(['item-1']);
+      expect(result.skippedFreshRechecks).toBe(0);
       expect(await readBacklogItem(cwd, 'item-1')).toMatchObject({ status: 'planned', priority: 'low', tags: ['keep'], last_checked: '2026-03-01', stale_after: '2026-04-01', body: expect.stringContaining('Keep this body.') });
+    });
+  });
+
+  it('skips no-op rechecks for records that are already fresh', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'planned', last_checked: '2999-01-01', stale_after: '2999-02-01', body: '# Item\n\n## Claim\n\nKeep this body.\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [],
+        epicChanges: [],
+        noOpRechecks: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, last_checked: '2999-01-02', stale_after: '2999-03-01', rationale: 'Still valid.' }],
+      });
+
+      const result = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(result.noOpRechecks).toBe(0);
+      expect(result.skippedFreshRechecks).toBe(1);
+      expect(result.recheckedItemIds).toEqual([]);
+      expect(await readBacklogItem(cwd, 'item-1')).toMatchObject({ last_checked: '2999-01-01', stale_after: '2999-02-01' });
     });
   });
 

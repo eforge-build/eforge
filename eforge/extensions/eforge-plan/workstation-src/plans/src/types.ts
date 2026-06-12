@@ -289,6 +289,7 @@ export interface ApplyPlanningTaskResponse {
     itemChanges?: number;
     epicChanges?: number;
     noOpRechecks?: number;
+    skippedFreshRechecks?: number;
     changedItemIds?: string[];
     changedEpicIds?: string[];
     recheckedItemIds?: string[];
