@@ -14,7 +14,7 @@ import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
 const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
 
@@ -75,11 +75,14 @@ describe('eforge-plan extension registration', () => {
       'capture-item',
       'check-session-plan-readiness',
       'create-session-plan',
+      'get-epic',
+      'get-item',
       'get-planning-agent-task',
       'get-recommendations',
       'handoff-session-plan',
       'import-legacy-backlog',
       'list-board',
+      'list-board-compact',
       'list-planning-agent-tasks',
       'list-planning-artifacts',
       'prepare-planner-context',
@@ -91,6 +94,7 @@ describe('eforge-plan extension registration', () => {
       'remove-planning-agent-task',
       'render-board-markdown',
       'retry-planning-agent-task',
+      'search-items',
       'select-session-plan-dimensions',
       'set-session-plan-ready',
       'set-session-plan-section',
@@ -336,7 +340,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
+    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
     expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === 'refresh-recommendations')).toBe(false);
@@ -347,6 +351,10 @@ describe('eforge-plan extension registration', () => {
       id: 'planning-workstation',
       allowedActions: expect.arrayContaining([
         'update-item',
+        'list-board-compact',
+        'get-item',
+        'get-epic',
+        'search-items',
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',

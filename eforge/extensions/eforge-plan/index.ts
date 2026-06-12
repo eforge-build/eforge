@@ -10,6 +10,7 @@ import {
 } from '../../../packages/extension-sdk/src/index.js';
 import { extractMarkdownSections } from './backlog-domain.js';
 import { listBoard, renderBoardMarkdown } from './board-actions.js';
+import { backlogQueryActions } from './backlog-query-actions.js';
 import {
   importLegacyBacklog,
   readBacklogEpic,
@@ -164,6 +165,7 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
+  for (const action of backlogQueryActions) eforge.registerAction(action);
   for (const action of recommendationActions) eforge.registerAction(action);
   for (const action of plannerActions) eforge.registerAction(action);
   for (const action of backlogCurationActions) eforge.registerAction(action);
@@ -175,11 +177,15 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'markdown', title: 'Board summary', content: 'Use **Render board** to display the current derived kanban board from visible eforge-plan backlog records.' },
       { rendererId: 'status-badge', title: 'Lifecycle linkage', content: 'Trace sidecars enabled', status: 'active' },
       { rendererId: 'action-button', title: 'List board data', content: 'Return current board JSON.', action: { actionId: 'list-board' } },
+      { rendererId: 'action-button', title: 'List compact board data', content: 'Return bounded board JSON for agents and compact hosts.', action: { actionId: 'list-board-compact' } },
       { rendererId: 'action-button', title: 'Render board', content: 'Show current board Markdown', action: { actionId: 'render-board-markdown' } },
       { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
       { rendererId: 'action-button', title: 'Analyze all backlog', content: 'Curate backlog records and refresh recommendations from the post-curation backlog state.', action: { actionId: 'analyze-all-backlog' } },
+      { rendererId: 'action-form', title: 'Get backlog item', content: 'Read one compact backlog item detail without listing the board.', action: { actionId: 'get-item' } },
+      { rendererId: 'action-form', title: 'Get backlog epic', content: 'Read one compact backlog epic detail and paginated item summaries.', action: { actionId: 'get-epic' } },
+      { rendererId: 'action-form', title: 'Search backlog items', content: 'Search compact backlog item summaries with bounded output.', action: { actionId: 'search-items' } },
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
       { rendererId: 'action-form', title: 'Start planning agent task', content: 'Prepare bounded context and start a daemon-owned planning draft task.', action: { actionId: 'start-planning-agent-task', inputDefaults: { includeRoadmap: true } } },
@@ -198,6 +204,10 @@ export default defineEforgeExtension((eforge) => {
     description: 'Extension-owned planning workstation for backlog board data, flat session plans, and session plan sets.',
     allowedActions: [
       'list-board',
+      'list-board-compact',
+      'get-item',
+      'get-epic',
+      'search-items',
       'update-item',
       'render-board-markdown',
       'get-recommendations',
