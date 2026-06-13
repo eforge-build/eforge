@@ -51,6 +51,28 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
     expect(calls[0]?.args[0]).toBe(sourcePath);
   });
 
+  it('marks non-date session plan slugs as submitted after enqueue', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const planSession = 'detect-shipped-backlog-items-git-pr-history';
+    const filePath = await writeSessionPlanFile(tmpDir, planSession, makeSessionPlanRaw({ session: planSession }));
+
+    const { tracker } = makeStubTracker();
+    const db = openDatabase(resolve(tmpDir, 'monitor.db'));
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, workerTracker: tracker });
+
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
+      source: `.eforge/session-plans/${planSession}.md`,
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json() as { sessionId: string };
+    const updated = await readFile(filePath, 'utf-8');
+    expect(updated).toContain('status: submitted');
+    expect(updated).toContain(`eforge_session: ${data.sessionId}`);
+  });
+
   it('enqueue still succeeds when session-plan source is missing before request handling', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
