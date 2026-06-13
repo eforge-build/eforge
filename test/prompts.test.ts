@@ -62,6 +62,11 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('Recommendation target fields may reference only open item/epic ids.');
     expect(prompt).toContain('Treat closed dependencies as satisfied historical context, not active recommendation targets.');
     expect(prompt).toContain('`activeWork`, `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, `safeParallelizableGroups.epicIds`, `blockedChains.itemIds`, and `blockedChains.blockedBy` may reference only open targets.');
+    expect(prompt).toContain('Strong shipped-status item patches must cite compact shipped evidence from `source.shippedEvidenceCandidates`');
+    expect(prompt).toContain('`Shipped evidence: lifecycle trace — ...`');
+    expect(prompt).toContain('`Shipped evidence: inferred from git/PR history — ...`');
+    expect(prompt).toContain('`Ambiguous shipped candidate: needs input — ...`');
+    expect(prompt).toContain('Same-draft recommendation exclusion: when your `backlogCurationDraft` proposes closing an item or epic');
   });
 
   it('treats {{...}} inside substituted values as literal text', async () => {

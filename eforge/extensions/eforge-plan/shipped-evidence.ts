@@ -14,21 +14,26 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
     const caps = normalizeShippedEvidenceCaps(input.caps);
     const diagnostics: ShippedEvidenceDiagnostic[] = [];
     const traceRowsByItemId = lifecycleRowsByItemId(input.traceSummaries ?? []);
-    const git = await collectGitHistoryRecords(input.cwd, caps);
+    throwIfAborted(input.signal);
+    const git = await collectGitHistoryRecords(input.cwd, caps, input.signal);
     diagnostics.push(...git.diagnostics);
 
     const candidates: ShippedEvidenceCandidate[] = [];
     for (const item of input.items) {
+      throwIfAborted(input.signal);
       for (const record of git.records) {
-        const candidate = await candidateFromGitRecord(input.cwd, item, record, traceRowsByItemId.get(item.id) ?? [], caps, diagnostics);
+        throwIfAborted(input.signal);
+        const candidate = await candidateFromGitRecord(input.cwd, item, record, traceRowsByItemId.get(item.id) ?? [], caps, diagnostics, input.signal);
         if (candidate) candidates.push(candidate);
       }
       candidates.push(...candidatesFromLifecycle(item, traceRowsByItemId.get(item.id) ?? [], caps));
     }
 
     if (input.enrichPullRequests !== false) {
+      throwIfAborted(input.signal);
       const prNumbers = candidates.flatMap((candidate) => candidate.commit ? git.records.find((record) => record.hash === candidate.commit?.hash)?.prNumbers ?? [] : []);
-      const enrichment = await enrichPullRequests({ cwd: input.cwd, numbers: prNumbers, caps });
+      const enrichment = await enrichPullRequests({ cwd: input.cwd, numbers: prNumbers, caps, signal: input.signal });
+      throwIfAborted(input.signal);
       diagnostics.push(...enrichment.diagnostics);
       mergePullRequestMetadata(candidates, enrichment.pullRequests, git.records, caps);
     }
@@ -39,10 +44,11 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
   },
 };
 
-async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: GitHistoryRecord, lifecycleRows: LifecycleLinkRow[], caps: ShippedEvidenceCaps, diagnostics: ShippedEvidenceDiagnostic[]): Promise<ShippedEvidenceCandidate | undefined> {
+async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: GitHistoryRecord, lifecycleRows: LifecycleLinkRow[], caps: ShippedEvidenceCaps, diagnostics: ShippedEvidenceDiagnostic[], signal: AbortSignal | undefined): Promise<ShippedEvidenceCandidate | undefined> {
   const preliminary = analyzeEvidenceMatch({ item, record });
   if (!preliminary.itemId && !preliminary.slug && !preliminary.branchName && preliminary.titleScore < 0.35) return undefined;
-  const excerpts = await collectGitFileExcerpts({ cwd, record, queryText: `${item.id} ${item.title}`, caps, diagnostics });
+  throwIfAborted(signal);
+  const excerpts = await collectGitFileExcerpts({ cwd, record, queryText: `${item.id} ${item.title}`, caps, diagnostics, signal });
   const excerptText = excerpts.map((excerpt) => excerpt.text).join('\n');
   const signals = analyzeEvidenceMatch({ item, record, excerptText });
   const confidence = classifyConfidence({ source: 'git-history', reachableLanding: hasLocalLandingSignal(record), signals });
@@ -98,7 +104,8 @@ function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLink
   return rows.filter(isLandingLikeRow).slice(0, caps.candidateCount).map((row) => {
     const signals = analyzeEvidenceMatch({ item, lifecycleText: rowToText(row) });
     const staleOrUnreachablePr = row.stage === 'pr-open' || row.status === 'pr-open';
-    const confidence = classifyConfidence({ source: 'lifecycle-trace', reachableLanding: false, staleOrUnreachablePr, signals });
+    const reachableLanding = row.stage === 'landing' || row.status === 'shipped' || row.status === 'merged';
+    const confidence = classifyConfidence({ source: 'lifecycle-trace', reachableLanding, staleOrUnreachablePr, signals });
     const prNumber = row.prUrl ? extractPrNumberFromUrl(row.prUrl) : undefined;
     const candidate: ShippedEvidenceCandidate = {
       itemId: item.id,
@@ -153,6 +160,10 @@ function extractPrNumberFromUrl(value: string): number | undefined {
 
 function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.length > 0))].sort();
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error('Shipped evidence collection was aborted.');
 }
 
 function hasLocalLandingSignal(record: GitHistoryRecord): boolean {

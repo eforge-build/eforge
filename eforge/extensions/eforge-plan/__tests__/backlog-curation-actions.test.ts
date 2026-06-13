@@ -1,10 +1,14 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { execFile as execFileCallback } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { analyzeAllBacklogAction } from '../backlog-curation-actions.js';
 import { markPlanningTaskWorkflowEntryApplied, readPlanningTaskWorkflowIndex } from '../planning-task-workflow-store.js';
 import { writeBacklogItem } from '../markdown-store.js';
+
+const execFile = promisify(execFileCallback);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-curation-actions-'));
@@ -35,6 +39,44 @@ describe('analyze-all-backlog action', () => {
       expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
       expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
+    });
+  });
+
+  it('starts the daemon task with bounded shipped evidence in sourceText before model assembly', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'action-evidence', status: 'candidate', body: '# Action Evidence\n' });
+      await git(cwd, ['checkout', '-b', 'feature/action-evidence']);
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src/action-evidence.ts'), 'Action Evidence action-evidence\n');
+      await git(cwd, ['add', 'src/action-evidence.ts']);
+      await git(cwd, ['commit', '-m', 'feat(action-evidence): action evidence']);
+      await git(cwd, ['checkout', 'main']);
+      await git(cwd, ['merge', '--no-ff', 'feature/action-evidence', '-m', 'Merge pull request #777 from owner/action-evidence']);
+      const starts: unknown[] = [];
+      const ctx = {
+        cwd,
+        signal: new AbortController().signal,
+        agentTasks: {
+          async start(request: unknown) {
+            starts.push(request);
+            return { task: { taskId: 'task-evidence', kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' } };
+          },
+          async get() { throw new Error('not found'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        },
+      };
+
+      await analyzeAllBacklogAction.handler({}, ctx as never);
+      const sourceText = (starts[0] as { input: { sourceText: string } }).input.sourceText;
+      const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+
+      expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', source: 'git-history' })]);
+      expect(sourceText).toContain('shippedEvidenceCandidates');
+      expect(sourceText).toContain('src/action-evidence.ts');
     });
   });
 
@@ -185,3 +227,13 @@ describe('analyze-all-backlog action', () => {
     });
   });
 });
+
+async function initRepo(cwd: string): Promise<void> {
+  await git(cwd, ['init', '-b', 'main']);
+  await git(cwd, ['config', 'user.email', 'test@example.com']);
+  await git(cwd, ['config', 'user.name', 'Test User']);
+}
+
+async function git(cwd: string, args: readonly string[]): Promise<void> {
+  await execFile('git', [...args], { cwd });
+}

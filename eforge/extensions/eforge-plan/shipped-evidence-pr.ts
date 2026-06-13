@@ -14,6 +14,7 @@ export async function enrichPullRequests(input: {
   cwd: string;
   numbers: readonly number[];
   caps?: Partial<ShippedEvidenceCaps>;
+  signal?: AbortSignal;
 }): Promise<PullRequestEnrichmentResult> {
   const caps = normalizeShippedEvidenceCaps(input.caps);
   const numbers = [...new Set(input.numbers)].sort((left, right) => left - right).slice(0, caps.prEnrichmentCount);
@@ -23,7 +24,8 @@ export async function enrichPullRequests(input: {
   }
   const pullRequests: ShippedEvidencePrMetadata[] = [];
   for (const number of numbers) {
-    const result = await viewPullRequest(input.cwd, number, caps);
+    throwIfAborted(input.signal);
+    const result = await viewPullRequest(input.cwd, number, caps, input.signal);
     if (result.ok) pullRequests.push(result.pr);
     else diagnostics.push(result.diagnostic);
     if (diagnostics.length >= caps.diagnosticCount) break;
@@ -31,12 +33,14 @@ export async function enrichPullRequests(input: {
   return { pullRequests, diagnostics: diagnostics.slice(0, caps.diagnosticCount) };
 }
 
-export async function readGitHubRemote(cwd: string, caps: Partial<ShippedEvidenceCaps> = {}): Promise<{ owner: string; repo: string } | undefined> {
+export async function readGitHubRemote(cwd: string, caps: Partial<ShippedEvidenceCaps> = {}, signal?: AbortSignal): Promise<{ owner: string; repo: string } | undefined> {
   const limits = normalizeShippedEvidenceCaps(caps);
   try {
-    const { stdout } = await execFile('git', ['remote', 'get-url', 'origin'], { cwd, timeout: limits.subprocessTimeoutMs });
+    throwIfAborted(signal);
+    const { stdout } = await execFile('git', ['remote', 'get-url', 'origin'], { cwd, timeout: limits.subprocessTimeoutMs, signal });
     return parseGitHubRemote(String(stdout).trim());
   } catch {
+    throwIfAborted(signal);
     return undefined;
   }
 }
@@ -55,7 +59,7 @@ export function parseGitHubRemote(value: string): { owner: string; repo: string 
   }
 }
 
-async function viewPullRequest(cwd: string, number: number, caps: ShippedEvidenceCaps): Promise<{ ok: true; pr: ShippedEvidencePrMetadata } | { ok: false; diagnostic: ShippedEvidenceDiagnostic }> {
+async function viewPullRequest(cwd: string, number: number, caps: ShippedEvidenceCaps, signal: AbortSignal | undefined): Promise<{ ok: true; pr: ShippedEvidencePrMetadata } | { ok: false; diagnostic: ShippedEvidenceDiagnostic }> {
   try {
     const { stdout } = await execFile('gh', [
       'pr',
@@ -63,11 +67,16 @@ async function viewPullRequest(cwd: string, number: number, caps: ShippedEvidenc
       String(number),
       '--json',
       'number,title,body,url,state,mergedAt,headRefName,baseRefName,mergeCommit,files',
-    ], { cwd, timeout: caps.subprocessTimeoutMs, maxBuffer: 256 * 1024 });
+    ], { cwd, timeout: caps.subprocessTimeoutMs, maxBuffer: 256 * 1024, signal });
     return { ok: true, pr: normalizePullRequest(JSON.parse(String(stdout)) as Record<string, unknown>, caps) };
   } catch (error) {
+    throwIfAborted(signal);
     return { ok: false, diagnostic: diagnosticFromError(number, error) };
   }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error('Shipped evidence PR enrichment was aborted.');
 }
 
 function normalizePullRequest(value: Record<string, unknown>, caps: ShippedEvidenceCaps): ShippedEvidencePrMetadata {

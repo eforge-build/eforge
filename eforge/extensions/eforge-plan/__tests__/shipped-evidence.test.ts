@@ -140,7 +140,7 @@ describe('shipped evidence lifecycle and git diagnostics', () => {
 
       expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'gitUnavailable')).toBe(true);
       expect(result.candidates).toHaveLength(1);
-      expect(result.candidates[0]).toMatchObject({ itemId: 'trace-item', source: 'lifecycle-trace', changedPaths: ['src/trace-item.ts'] });
+      expect(result.candidates[0]).toMatchObject({ itemId: 'trace-item', source: 'lifecycle-trace', confidence: 'strong', changedPaths: ['src/trace-item.ts'] });
       expect(result.candidates[0]?.commit?.shortHash).toBe('1234567890ab');
       expect(result.candidates[0]?.excerpts[0]?.text.length).toBeLessThanOrEqual(32);
     });

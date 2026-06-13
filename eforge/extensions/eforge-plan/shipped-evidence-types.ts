@@ -120,6 +120,7 @@ export interface CollectShippedEvidenceInput {
   traceSummaries?: readonly TraceSummary[];
   caps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ShippedEvidenceProvider {

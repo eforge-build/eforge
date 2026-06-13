@@ -3,6 +3,9 @@ import { EforgePlanPlanningBacklogCurationDraftSchema } from '../../../packages/
 import { ExtensionActionInputValidationError } from '../../../packages/extension-sdk/src/index.js';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
 import { buildBacklogCurationSource } from './backlog-curation-source.js';
+// --- eforge:region plan-02-analyze-all-evidence-integration ---
+import { filterRecommendationsForCurationDraftStatusOverlay } from './backlog-curation-recommendation-overlay.js';
+// --- eforge:endregion plan-02-analyze-all-evidence-integration ---
 import {
   assertSafeBacklogId,
   listBacklogEpicSnapshots,
@@ -178,9 +181,11 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const postApplyItems = buildPostApplyItemRecords(itemSnapshots, prospectiveItems);
   const postApplyEpics = buildPostApplyEpicRecords(epicSnapshots, prospectiveEpics);
   const generatedRecommendationsPresent = rawResult?.recommendations !== undefined;
-  const generatedRecommendations = generatedRecommendationsPresent && !options.skipGeneratedRecommendationErrors ? parseGeneratedRecommendations(rawResult.recommendations) : undefined;
+  const generatedRecommendations = generatedRecommendationsPresent && !options.skipGeneratedRecommendationErrors
+    ? filterRecommendationsForCurationDraftStatusOverlay(parseGeneratedRecommendations(rawResult.recommendations), draft).recommendations
+    : undefined;
   const generatedRecommendationValidation = generatedRecommendations === undefined
-    ? generatedRecommendationValidationForSkipped(rawResult?.recommendations, generatedRecommendationsPresent, postApplyItems, postApplyEpics)
+    ? generatedRecommendationValidationForSkipped(rawResult?.recommendations, generatedRecommendationsPresent, postApplyItems, postApplyEpics, draft)
     : collectRecommendationReferenceValidationIssues(generatedRecommendations, postApplyItems, postApplyEpics);
 
   return {
@@ -194,10 +199,11 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   };
 }
 
-function generatedRecommendationValidationForSkipped(value: unknown, present: boolean, items: RecommendationReferenceRecord[], epics: RecommendationReferenceRecord[]): RecommendationReferenceValidationResult {
+function generatedRecommendationValidationForSkipped(value: unknown, present: boolean, items: RecommendationReferenceRecord[], epics: RecommendationReferenceRecord[], draft: Draft): RecommendationReferenceValidationResult {
   if (!present) return { valid: true, issues: [] };
   try {
-    return collectRecommendationReferenceValidationIssues(parseRecommendationModel(value) as BacklogRecommendationModel, items, epics);
+    const recommendations = filterRecommendationsForCurationDraftStatusOverlay(parseRecommendationModel(value) as BacklogRecommendationModel, draft).recommendations;
+    return collectRecommendationReferenceValidationIssues(recommendations, items, epics);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid generated recommendations.';
     return { valid: false, issues: [{ path: 'result.recommendations', id: '', kind: 'item', reason: 'unknown', message }] };

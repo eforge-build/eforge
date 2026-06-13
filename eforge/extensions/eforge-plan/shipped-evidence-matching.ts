@@ -100,6 +100,7 @@ export function classifyConfidence(input: {
   if (input.staleOrUnreachablePr) return 'weak';
   if (input.signals.broadOnly) return 'weak';
   const direct = input.signals.itemId || input.signals.slug || input.signals.branchName || input.signals.prMetadata;
+  if (input.source === 'lifecycle-trace' && input.reachableLanding && direct) return 'strong';
   if (input.reachableLanding && direct && (input.signals.pathOrExcerpt || input.signals.prMetadata)) return 'strong';
   if (input.reachableLanding && direct) return 'ambiguous';
   if (input.reachableLanding && input.signals.nearTitle && input.signals.pathOrExcerpt && !input.signals.broadOnly) return 'ambiguous';
