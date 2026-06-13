@@ -126,7 +126,6 @@ export async function markSessionPlanSubmittedAfterEnqueue(context: MonitorConte
   const absSource = resolve(cwd, source);
   if (!isWithinDir(absSource, storageRoot) || dirname(absSource) !== storageRoot || !absSource.endsWith('.md')) return;
   const sessionId = basename(absSource, '.md');
-  if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sessionId)) return;
   const adapterPath = adapter.flat.resolvePath({ cwd, session: sessionId });
   if (adapterPath !== absSource) return;
   try {

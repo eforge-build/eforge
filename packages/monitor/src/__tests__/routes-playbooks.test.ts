@@ -31,7 +31,7 @@ describe('playbook routes', () => {
     try {
       await seedPlaybook(h.cwd);
       expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', session: 1 })).status).toBe(400);
-      expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', session: 'bad' })).status).toBe(400);
+      expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', session: 'Bad_Id' })).status).toBe(400);
       expect((await h.postJson(API_ROUTES.sessionPlanCreateFromPlaybook, { playbook_name: 'demo', topic: {} })).status).toBe(400);
     } finally { await h.close(); }
   });
