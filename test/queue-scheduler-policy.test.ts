@@ -123,7 +123,7 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
       profile: 'careful',
       dependsOn: ['base-prd'],
     }));
-    expect(seenContext).not.toHaveProperty('compiledResume');
+    expect(seenContext).not.toHaveProperty('continueRepair');
 
     eventQueue.removeProducer();
   });
@@ -157,7 +157,7 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
       prdTitle?: string;
       profile?: string;
       dependsOn?: string[];
-      compiledResume?: {
+      continueRepair?: {
         mode?: string;
         sourcePrdId?: string;
         setName?: string;
@@ -195,7 +195,7 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
       prdTitle: 'Compiled Resume PRD',
       profile: 'careful',
       dependsOn: ['base-prd'],
-      compiledResume: {
+      continueRepair: {
         mode: 'compiled',
         sourcePrdId: 'failed-prd',
         setName: 'failed-set',

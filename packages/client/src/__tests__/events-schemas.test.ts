@@ -227,7 +227,18 @@ describe('safeParseEforgeEvent — new variants', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts phase:start with resume command', () => {
+  it('accepts phase:start with continue-repair command', () => {
+    const result = safeParseEforgeEvent({
+      type: 'phase:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      runId: 'run-1',
+      planSet: 'feature-x',
+      command: 'continue-repair',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects phase:start with resume command', () => {
     const result = safeParseEforgeEvent({
       type: 'phase:start',
       timestamp: '2025-01-01T00:00:00.000Z',
@@ -235,7 +246,7 @@ describe('safeParseEforgeEvent — new variants', () => {
       planSet: 'feature-x',
       command: 'resume',
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 });
 

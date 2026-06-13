@@ -45,7 +45,7 @@ function readAcceptedSuccessCompletedRuns(queueDir: string): AcceptedSuccessRunT
 }
 
 function isAcceptedSuccessFailedRun(run: RunInfo, setName: string): boolean {
-  return run.planSet === setName && run.status === 'failed' && ['build', 'resume', 'run'].includes(run.command);
+  return run.planSet === setName && run.status === 'failed' && ['build', 'resume', 'continue-repair', 'run'].includes(run.command);
 }
 
 export function selectAcceptedSuccessRun(runs: RunInfo[], setName: string, failedAt?: string): RunInfo | undefined {

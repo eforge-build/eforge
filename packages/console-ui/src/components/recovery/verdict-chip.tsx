@@ -1,10 +1,10 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-export type RecoveryVerdictValue = 'retry' | 'split' | 'abandon' | 'manual';
+export type RecoveryVerdictValue = 'retry' | 'continue-repair' | 'abandon' | 'manual';
 export type RecoveryConfidenceValue = 'low' | 'medium' | 'high';
 
-const VERDICT_VALUES: RecoveryVerdictValue[] = ['retry', 'split', 'abandon', 'manual'];
+const VERDICT_VALUES: RecoveryVerdictValue[] = ['retry', 'continue-repair', 'abandon', 'manual'];
 const CONFIDENCE_VALUES: RecoveryConfidenceValue[] = ['low', 'medium', 'high'];
 
 /**
@@ -27,14 +27,14 @@ export function asConfidence(value: string | undefined): RecoveryConfidenceValue
 
 /**
  * Returns the Badge class string for a given recovery verdict.
- * Color mapping: retry → blue, split → yellow/amber, abandon → red, manual → gray.
+ * Color mapping: retry → blue, continue-repair → yellow/amber, abandon → red, manual → gray.
  * Exported as a pure function so it can be unit-tested without DOM rendering.
  */
 export function getVerdictChipClass(verdict: RecoveryVerdictValue): string {
   switch (verdict) {
     case 'retry':
       return 'border-blue/30 bg-blue/10 text-blue';
-    case 'split':
+    case 'continue-repair':
       return 'border-yellow/30 bg-yellow/10 text-yellow';
     case 'abandon':
       return 'border-red/30 bg-red/10 text-red';
@@ -68,7 +68,7 @@ interface RecoveryVerdictChipProps {
  * Shadcn Badge-based chip that displays a recovery verdict with a
  * confidence dot indicator.
  *
- * Verdict colors: retry=blue, split=yellow, abandon=red, manual=gray.
+ * Verdict colors: retry=blue, continue-repair=yellow, abandon=red, manual=gray.
  * Confidence dot: high=green, medium=yellow, low=red.
  */
 export function RecoveryVerdictChip({

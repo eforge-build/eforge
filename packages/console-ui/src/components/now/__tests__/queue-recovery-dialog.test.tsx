@@ -9,8 +9,8 @@ import {
   fetchAcceptSuccessPreview,
   fetchQueueRecoveryAnalysis,
   fetchRecoverySidecar,
-  fetchResumeEligibility,
-  startResumeBuild,
+  fetchContinueRepairEligibility,
+  startContinueRepair,
   triggerRecoveryAnalysis,
   QUEUE_RECOVERY_STRATEGY_RETRY_AND_REACTIVATE,
   type AcceptSuccessPreviewResponse,
@@ -19,8 +19,8 @@ import {
   type QueueRecoveryAnalyzeResponse,
   type QueueRecoveryApplyResponse,
   type ReadSidecarResponse,
-  type ResumeBuildResponse,
-  type ResumeEligibilityResponse,
+  type ContinueRepairResponse,
+  type ContinueRepairEligibilityResponse,
 } from '@eforge-build/client/browser';
 
 vi.mock('@eforge-build/client/browser', async (importOriginal) => {
@@ -28,10 +28,10 @@ vi.mock('@eforge-build/client/browser', async (importOriginal) => {
   return {
     ...actual,
     fetchRecoverySidecar: vi.fn(),
-    fetchResumeEligibility: vi.fn(),
+    fetchContinueRepairEligibility: vi.fn(),
     applySidecarRecovery: vi.fn(),
     triggerRecoveryAnalysis: vi.fn(),
-    startResumeBuild: vi.fn(),
+    startContinueRepair: vi.fn(),
     fetchQueueRecoveryAnalysis: vi.fn(),
     applyQueueRecovery: vi.fn(),
     fetchAcceptSuccessPreview: vi.fn(),
@@ -52,7 +52,7 @@ function sidecarFixture(verdict: string, confidence: string): ReadSidecarRespons
       prdId: 'failed-prd',
       setName: 'demo-set',
       verdict: { verdict, confidence },
-      report: { operatorSummary: 'Root cause analysis.', recommendedAction: 'Retry.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      report: { operatorSummary: 'Root cause analysis.', recommendedAction: verdict === 'continue-repair' ? 'Continue and repair build.' : 'Retry from scratch.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
       boundedEvidence: {
         identity: { prdId: 'failed-prd', setName: 'demo-set', featureBranch: 'eforge/demo-set', baseBranch: 'main', failedAt: '2026-01-01T00:00:00Z' },
         plans: [],
@@ -65,16 +65,16 @@ function sidecarFixture(verdict: string, confidence: string): ReadSidecarRespons
 }
 
 function applyFixture(verdict: ApplyRecoveryResponse['verdict']): ApplyRecoveryResponse {
-  return { verdict, ...(verdict === 'split' ? { successorPrdId: 'successor-prd' } : {}) };
+  return { verdict };
 }
 
 function appliedSidecarFixture(): ReadSidecarResponse {
   return {
-    ...sidecarFixture('split', 'high'),
+    ...sidecarFixture('continue-repair', 'high'),
     markdown: '# Recovery report\n\nAlready applied.',
     json: {
-      ...sidecarFixture('split', 'high').json,
-      applied: { action: 'split', appliedAt: '2026-01-02T00:00:00Z', successorPrdId: 'successor-prd' },
+      ...sidecarFixture('continue-repair', 'high').json,
+      applied: { action: 'continue-repair', appliedAt: '2026-01-02T00:00:00Z' },
     },
   } as unknown as ReadSidecarResponse;
 }
@@ -124,7 +124,7 @@ function acceptedResponseFixture(): AcceptSuccessResponse {
   };
 }
 
-function eligibleFixture(): ResumeEligibilityResponse {
+function eligibleFixture(): ContinueRepairEligibilityResponse {
   return {
     prdId: 'failed-prd',
     setName: 'demo-set',
@@ -136,7 +136,7 @@ function eligibleFixture(): ResumeEligibilityResponse {
   };
 }
 
-function queuedResumeFixture(overrides: Partial<ResumeBuildResponse> = {}): ResumeBuildResponse {
+function queuedContinueRepairFixture(overrides: Partial<ContinueRepairResponse> = {}): ContinueRepairResponse {
   return {
     kind: 'queued',
     prdId: 'failed-prd',
@@ -145,12 +145,12 @@ function queuedResumeFixture(overrides: Partial<ResumeBuildResponse> = {}): Resu
     baseBranch: 'main',
     movedDescendantIds: ['child-prd'],
     status: 'queued',
-    profile: 'resume-profile',
+    profile: 'continue-profile',
     ...overrides,
   };
 }
 
-function ineligibleFixture(reason = 'No compiled build artifacts found.'): ResumeEligibilityResponse {
+function ineligibleFixture(reason = 'No preserved compiled artifacts found.'): ContinueRepairEligibilityResponse {
   return {
     prdId: 'failed-prd',
     setName: 'demo-set',
@@ -209,10 +209,10 @@ function renderDialog(props: Partial<React.ComponentProps<typeof QueueRecoveryDi
 
 beforeEach(() => {
   vi.mocked(fetchRecoverySidecar).mockReset().mockResolvedValue(sidecarFixture('retry', 'high'));
-  vi.mocked(fetchResumeEligibility).mockReset().mockResolvedValue(ineligibleFixture());
+  vi.mocked(fetchContinueRepairEligibility).mockReset().mockResolvedValue(ineligibleFixture());
   vi.mocked(applySidecarRecovery).mockReset().mockResolvedValue(applyFixture('retry'));
   vi.mocked(triggerRecoveryAnalysis).mockReset().mockResolvedValue({ sessionId: 'analysis-1', pid: 11 });
-  vi.mocked(startResumeBuild).mockReset().mockResolvedValue(queuedResumeFixture());
+  vi.mocked(startContinueRepair).mockReset().mockResolvedValue(queuedContinueRepairFixture());
   vi.mocked(fetchQueueRecoveryAnalysis).mockReset().mockResolvedValue(analysisFixture());
   vi.mocked(applyQueueRecovery).mockReset().mockResolvedValue(cascadeApplyFixture());
   vi.mocked(fetchAcceptSuccessPreview).mockReset().mockResolvedValue(ineligiblePreviewFixture());
@@ -261,30 +261,30 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     vi.mocked(applySidecarRecovery).mockResolvedValue(applyFixture('retry'));
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Re-queue PRD' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry from scratch' }));
     expect(applySidecarRecovery).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Re-queue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(applySidecarRecovery).toHaveBeenCalledTimes(1));
     expect(applyQueueRecovery).not.toHaveBeenCalled();
     expect(await screen.findByText(/the PRD has been re-queued/)).toBeDefined();
   });
 
-  it('split transitions to a completion panel with the successor PRD id and hides the Enqueue action', async () => {
-    vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('split', 'medium'));
-    vi.mocked(applySidecarRecovery).mockResolvedValue(applyFixture('split'));
+  it('continue-repair sidecar queues continue-and-repair and hides retry', async () => {
+    vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('continue-repair', 'medium'));
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
+    vi.mocked(startContinueRepair).mockResolvedValue(queuedContinueRepairFixture());
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Enqueue successor PRD' }));
-    expect(applySidecarRecovery).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue and repair build' }));
+    expect(startContinueRepair).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Enqueue' }));
-    await waitFor(() => expect(applySidecarRecovery).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue build' }));
+    await waitFor(() => expect(startContinueRepair).toHaveBeenCalledTimes(1));
+    expect(applySidecarRecovery).not.toHaveBeenCalled();
     expect(applyQueueRecovery).not.toHaveBeenCalled();
-    // Completion panel shows the successor PRD and the mutating action is gone.
-    expect(await screen.findByText(/enqueued the successor PRD/)).toBeDefined();
-    expect(screen.getAllByText(/successor-prd/).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: 'Enqueue successor PRD' })).toBeNull();
+    expect(await screen.findByText('Continue and repair queued')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Retry from scratch' })).toBeNull();
   });
 
   it('abandon transitions to a completion panel reporting the archived/removed PRD', async () => {
@@ -301,15 +301,16 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     expect(await screen.findByText(/archived or removed/)).toBeDefined();
   });
 
-  it('opens an already-applied completion panel from a split sidecar marker without calling apply', async () => {
+  it('opens an already-applied completion panel from a continue-repair sidecar marker without calling apply', async () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(appliedSidecarFixture());
     renderDialog();
 
     expect(await screen.findByText('Recovery already applied')).toBeDefined();
-    expect(screen.getAllByText(/successor-prd/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('continue-repair').length).toBeGreaterThan(0);
     // The mutating action must never be offered or invoked for an applied row.
-    expect(screen.queryByRole('button', { name: 'Enqueue successor PRD' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue and repair build' })).toBeNull();
     expect(applySidecarRecovery).not.toHaveBeenCalled();
+    expect(startContinueRepair).not.toHaveBeenCalled();
   });
 
   it('keeps a successful sidecar apply visible when the queue refresh fails', async () => {
@@ -320,8 +321,8 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
       <QueueRecoveryDialog open prdId="failed-prd" onOpenChange={vi.fn()} refreshQueue={refreshQueue} />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Re-queue PRD' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Re-queue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry from scratch' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
 
     // Mutation success stays visible; the refresh failure is secondary follow-up.
     expect(await screen.findByText(/the PRD has been re-queued/)).toBeDefined();
@@ -332,91 +333,93 @@ describe('QueueRecoveryDialog - sidecar verdict actions', () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('manual', 'low'));
     renderDialog();
 
-    expect(await screen.findByText('Manual review required.')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Re-queue PRD' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Enqueue successor PRD' })).toBeNull();
+    expect(await screen.findByText('Manual review / manual replanning required.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Retry from scratch' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue and repair build' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Archive failed PRD' })).toBeNull();
   });
 });
 
-describe('QueueRecoveryDialog - compiled-build resume', () => {
-  it('renders Resume compiled build when eligible', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
+describe('QueueRecoveryDialog - continue-and-repair', () => {
+  it('renders Continue and repair build when eligible', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
     renderDialog();
-    expect(await screen.findByRole('button', { name: 'Resume compiled build' })).toBeDefined();
+    expect(await screen.findByRole('button', { name: 'Continue and repair build' })).toBeDefined();
+    expect(screen.getAllByRole('button', { name: 'Continue and repair build' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retry from scratch' })).toBeNull();
   });
 
-  it('opens a confirmation before the resume helper is called', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
+  it('opens a confirmation before the continue-and-repair helper is called', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
-    expect(startResumeBuild).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue and repair build' }));
+    expect(startContinueRepair).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
-    await waitFor(() => expect(startResumeBuild).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue build' }));
+    await waitFor(() => expect(startContinueRepair).toHaveBeenCalledTimes(1));
   });
 
-  it('displays queued metadata on resume success and refreshes the queue', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
-    vi.mocked(startResumeBuild).mockResolvedValue(queuedResumeFixture());
+  it('displays queued metadata on continue-and-repair success and refreshes the queue', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
+    vi.mocked(startContinueRepair).mockResolvedValue(queuedContinueRepairFixture());
     const { refreshQueue } = renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue and repair build' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue build' }));
 
-    expect(await screen.findByText('Resume queued')).toBeDefined();
+    expect(await screen.findByText('Continue and repair queued')).toBeDefined();
     expect(screen.getAllByText(/failed-prd/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/demo-set/).length).toBeGreaterThan(0);
     expect(screen.getByText(/eforge\/demo/)).toBeDefined();
-    expect(screen.getByText(/resume-profile/)).toBeDefined();
+    expect(screen.getByText(/continue-profile/)).toBeDefined();
     expect(screen.queryByText(/Session:/)).toBeNull();
     expect(screen.queryByText(/PID:/)).toBeNull();
     await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
   });
 
-  it('treats an already-queued resume as a success completion showing the daemon detail', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
-    vi.mocked(startResumeBuild).mockResolvedValue(
-      queuedResumeFixture({ status: 'already-queued', detail: 'Resume already queued for failed-prd.' }),
+  it('treats an already-queued continue-and-repair as a success completion showing the daemon detail', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
+    vi.mocked(startContinueRepair).mockResolvedValue(
+      queuedContinueRepairFixture({ status: 'already-queued', detail: 'Continue and repair already queued for failed-prd.' }),
     );
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue and repair build' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue build' }));
 
-    expect(await screen.findByText('Compiled build resumed')).toBeDefined();
-    expect(screen.getByText(/Resume already queued for failed-prd/)).toBeDefined();
+    expect(await screen.findByText('Continue and repair queued')).toBeDefined();
+    expect(screen.getByText(/Continue and repair already queued for failed-prd/)).toBeDefined();
   });
 
-  it('shows the status when an already-queued resume has no detail', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
-    vi.mocked(startResumeBuild).mockResolvedValue(
-      queuedResumeFixture({ status: 'already-queued', detail: undefined }),
+  it('shows the status when an already-queued continue-and-repair has no detail', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
+    vi.mocked(startContinueRepair).mockResolvedValue(
+      queuedContinueRepairFixture({ status: 'already-queued', detail: undefined }),
     );
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue and repair build' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue build' }));
 
-    expect(await screen.findByText('Resume already-queued')).toBeDefined();
+    expect(await screen.findByText('Continue-and-repair status: already-queued')).toBeDefined();
   });
 
-  it('displays the daemon reason when resume is ineligible', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(ineligibleFixture('Worktree was cleaned up.'));
+  it('displays the daemon reason when continue-and-repair is ineligible', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(ineligibleFixture('Worktree was cleaned up.'));
     renderDialog();
     expect(await screen.findByText('Worktree was cleaned up.')).toBeDefined();
   });
 
-  it('displays the helper error message on resume failure', async () => {
-    vi.mocked(fetchResumeEligibility).mockResolvedValue(eligibleFixture());
-    vi.mocked(startResumeBuild).mockRejectedValue(new Error('Recovery request failed (500): resume queue failed'));
+  it('displays the helper error message on continue-and-repair failure', async () => {
+    vi.mocked(fetchContinueRepairEligibility).mockResolvedValue(eligibleFixture());
+    vi.mocked(startContinueRepair).mockRejectedValue(new Error('Recovery request failed (500): continue-and-repair queue failed'));
     renderDialog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume compiled build' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue and repair build' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue build' }));
 
-    expect(await screen.findByText(/resume queue failed/)).toBeDefined();
+    expect(await screen.findByText(/continue-and-repair queue failed/)).toBeDefined();
   });
 });
 
@@ -565,7 +568,7 @@ describe('QueueRecoveryDialog - advanced queue-cascade', () => {
   it('warns when the sidecar verdict is manual', async () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('manual', 'high'));
     renderDialog();
-    expect(await screen.findByText(/can contradict manual review guidance/)).toBeDefined();
+    expect(await screen.findByText(/can contradict manual guidance/)).toBeDefined();
   });
 
   it('warns when the recovery verdict has low confidence', async () => {

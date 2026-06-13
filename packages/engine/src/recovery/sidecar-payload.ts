@@ -3,7 +3,7 @@ import type {
   RecoverySidecarReport,
   RecoveryVerdictSidecar,
 } from '@eforge-build/client';
-import type { RecoverySidecarRecoveryOption, RecoverySidecarResumeEligibility, RecoverySidecarResumeEvidence } from './resume-sidecar.js';
+import type { RecoverySidecarRecoveryOption, RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
 import { boundList, truncateMiddleText, truncateText } from './text-bounds.js';
 
@@ -21,15 +21,15 @@ export interface BuildRecoverySidecarPayloadOptions {
   summary: BuildFailureSummary;
   verdict: RecoveryVerdict;
   generatedAt?: string;
-  resumeEligibility?: RecoverySidecarResumeEligibility;
+  continueRepairEligibility?: RecoverySidecarContinueRepairEligibility;
   recoveryOptions?: RecoverySidecarRecoveryOption[];
 }
 
-export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayloadOptions): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
+export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayloadOptions): RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence> {
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const boundedEvidence = buildBoundedEvidence(options.summary);
-  const recoveryOptions = recoveryOptionsFor(options.resumeEligibility, options.recoveryOptions);
-  const report = buildReport(options.summary, options.verdict, boundedEvidence, options.resumeEligibility);
+  const recoveryOptions = recoveryOptionsFor(options.continueRepairEligibility, options.recoveryOptions);
+  const report = buildReport(options.summary, options.verdict, boundedEvidence, options.continueRepairEligibility, recoveryOptions);
   return {
     schemaVersion: SCHEMA_VERSION,
     generatedAt,
@@ -38,7 +38,7 @@ export function buildRecoverySidecarPayload(options: BuildRecoverySidecarPayload
     verdict: options.verdict,
     report,
     boundedEvidence,
-    ...(options.resumeEligibility !== undefined ? { resumeEligibility: options.resumeEligibility } : {}),
+    ...(options.continueRepairEligibility !== undefined ? { continueRepairEligibility: options.continueRepairEligibility } : {}),
     ...(recoveryOptions !== undefined ? { recoveryOptions } : {}),
   };
 }
@@ -47,12 +47,13 @@ function buildReport(
   summary: BuildFailureSummary,
   verdict: RecoveryVerdict,
   evidence: RecoverySidecarBoundedEvidence,
-  resumeEligibility?: RecoverySidecarResumeEligibility,
+  continueRepairEligibility?: RecoverySidecarContinueRepairEligibility,
+  recoveryOptions?: RecoverySidecarRecoveryOption[],
 ): RecoverySidecarReport {
   const rootFailure = compactRootFailure(summary);
   return {
     operatorSummary: truncateText(verdict.rationale, BULLET_CHARS * 2, 'operator summary').text,
-    recommendedAction: resumeEligibility?.eligible === true ? compiledResumeRecommendedAction(verdict) : recommendedAction(verdict),
+    recommendedAction: hasRecommendedContinueRepairOption(recoveryOptions) && continueRepairEligibility?.eligible === true ? continueRepairRecommendedAction(summary.prdId) : recommendedAction(verdict),
     ...(rootFailure ? { rootFailure } : {}),
     keyEvidence: keyEvidence(summary, evidence),
     completedWork: boundedStrings(verdict.completedWork, 'completed work'),
@@ -186,29 +187,33 @@ function isAllUnknownAcceptanceFailure(acceptance: NonNullable<BuildFailureSumma
 }
 
 function recoveryOptionsFor(
-  resumeEligibility: RecoverySidecarResumeEligibility | undefined,
+  continueRepairEligibility: RecoverySidecarContinueRepairEligibility | undefined,
   recoveryOptions: RecoverySidecarRecoveryOption[] | undefined,
 ): RecoverySidecarRecoveryOption[] | undefined {
   if (recoveryOptions !== undefined) return recoveryOptions.length > 0 ? recoveryOptions : undefined;
-  if (resumeEligibility?.eligible !== true) return undefined;
+  if (continueRepairEligibility?.eligible !== true || continueRepairEligibility.partial === true) return undefined;
   return [{
-    kind: 'compiled-build-resume',
-    action: 'eforge_resume_build',
+    kind: 'continue-repair',
+    action: 'continue-repair',
     recommended: true,
-    reason: 'Compiled plan artifacts are eligible for scheduler-owned resume.',
+    reason: 'Compiled plan artifacts are eligible for continue-and-repair.',
   }];
 }
 
-function compiledResumeRecommendedAction(verdict: RecoveryVerdict): string {
-  return `Recommended operator action: queue a compiled-build resume with eforge_resume_build (or /eforge:recover resume). The apply-recovery verdict remains ${verdict.verdict}; do not use eforge_apply_recovery for this resume action.`;
+function hasRecommendedContinueRepairOption(recoveryOptions: RecoverySidecarRecoveryOption[] | undefined): boolean {
+  return recoveryOptions?.some((option) => option.kind === 'continue-repair' && option.action === 'continue-repair' && option.recommended) === true;
+}
+
+function continueRepairRecommendedAction(prdId: string): string {
+  return `Continue and repair build (Continue build): run \`eforge continue-repair ${prdId}\`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD.`;
 }
 
 function recommendedAction(verdict: RecoveryVerdict): string {
   switch (verdict.verdict) {
-    case 'retry': return 'Re-queue the failed PRD for another build attempt.';
-    case 'split': return 'Enqueue the suggested successor PRD and continue from preserved partial work when available.';
+    case 'continue-repair': return 'Continue and repair build from preserved compiled artifacts.';
+    case 'retry': return 'Retry from scratch: re-queue the failed PRD for another build attempt.';
     case 'abandon': return 'Archive the failed PRD and stop attempting this work.';
-    case 'manual': return 'Review the recovery report manually before taking further action.';
+    case 'manual': return 'Manual review / manual replanning required. Review bounded evidence and create a focused follow-up PRD only after human inspection.';
   }
 }
 

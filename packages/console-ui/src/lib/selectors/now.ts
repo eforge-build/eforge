@@ -253,7 +253,6 @@ function isAcceptedSuccessComplete(item: { recoveryApplied?: QueueRecoveryApplie
   return item.recoveryApplied?.action === 'accepted-success' && item.recoveryApplied.landing.status === 'complete';
 }
 function formatAppliedRecoveryDetail(applied: QueueRecoveryApplied): string {
-  if (applied.action === 'split') return `recovery applied: split → ${applied.successorPrdId}`;
   if (applied.action !== 'accepted-success') return `recovery applied: ${applied.action}`;
   const reason = applied.landing.reason?.trim();
   return `recovery applied: accepted-success landing ${applied.landing.status}${reason ? ` — ${reason}` : ''}`;

@@ -521,7 +521,7 @@ export interface QueueItem {
    * Absent when no sidecar is present or the sidecar is malformed.
    */
   recoveryVerdict?: {
-    verdict: 'retry' | 'split' | 'abandon' | 'manual';
+    verdict: 'retry' | 'continue-repair' | 'abandon' | 'manual';
     confidence: 'low' | 'medium' | 'high';
   };
   /** Durable applied-recovery marker; set when the failed item's sidecar carries a valid `applied` object. */

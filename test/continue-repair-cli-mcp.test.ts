@@ -1,6 +1,6 @@
-// --- eforge:region resume-build-cli-mcp-suite ---
+// --- eforge:region continue-repair-cli-mcp-suite ---
 /**
- * Tests for the resume CLI command and eforge_resume_build MCP tool.
+ * Tests for the continue-repair CLI command and eforge_continue_repair MCP tool.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -18,8 +18,9 @@ import {
   API_ROUTES,
   writeLockfile,
   clearApiVersionCache,
-  apiResumeBuild,
-  type ResumeBuildResponse,
+  apiContinueRepair,
+  apiContinueRepairIfRunning,
+  type ContinueRepairResponse,
 } from '@eforge-build/client';
 import { openDatabase } from '@eforge-build/monitor/db';
 import {
@@ -56,7 +57,7 @@ function initRepo(cwd: string): void {
 
 function createFeatureBranchWithArtifacts(cwd: string, setName: string): void {
   git(cwd, ['switch', '-c', `eforge/${setName}`]);
-  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'), `name: ${setName}\ndescription: Test\nbase_branch: main\nmode: excursion\nvalidate: []\nplans: []\npipeline:\n  scope: excursion\n  compile: []\n  defaultBuild: []\n  defaultReview:\n    strategy: auto\n    perspectives: [code]\n    maxRounds: 1\n    evaluatorStrictness: standard\n  rationale: resume\n`);
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'), `name: ${setName}\ndescription: Test\nbase_branch: main\nmode: excursion\nvalidate: []\nplans: []\npipeline:\n  scope: excursion\n  compile: []\n  defaultBuild: []\n  defaultReview:\n    strategy: auto\n    perspectives: [code]\n    maxRounds: 1\n    evaluatorStrictness: standard\n  rationale: continue-repair\n`);
   git(cwd, ['add', 'eforge']);
   git(cwd, ['commit', '-m', 'plan: compiled artifacts']);
   git(cwd, ['switch', 'main']);
@@ -71,7 +72,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: Array<{ command: st
   const tracker: WorkerTracker = {
     spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
       calls.push({ command, args });
-      return { sessionId: 'unexpected-resume-worker', pid: 30001 };
+      return { sessionId: 'unexpected-continue-repair-worker', pid: 30001 };
     },
     cancelWorker(): boolean {
       return false;
@@ -80,7 +81,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: Array<{ command: st
   return { tracker, calls };
 }
 
-function writeTestProfile(cwd: string, name = 'resume-profile'): void {
+function writeTestProfile(cwd: string, name = 'continue-repair-profile'): void {
   const configDir = join(cwd, 'eforge');
   mkdirSync(join(configDir, 'profiles'), { recursive: true });
   writeFileSync(join(configDir, 'config.yaml'), 'agents:\n  tiers: {}\n', 'utf-8');
@@ -96,7 +97,7 @@ const fakeExtra = {
   _meta: {},
 } as unknown as Parameters<RegisteredTool['handler']>[1];
 
-const makeTempDir = useTempDir('eforge-resume-cli-mcp-test-');
+const makeTempDir = useTempDir('eforge-continue-repair-cli-mcp-test-');
 
 let tmpDir: string;
 let dbPath: string;
@@ -137,37 +138,44 @@ afterEach(async () => {
   clearApiVersionCache();
 });
 
-describe('resume CLI command registration', () => {
-  it('registers the `resume` command on the Commander program', () => {
+describe('continue-repair CLI command registration', () => {
+  it('registers the `continue-repair` command on the Commander program', () => {
     const program = createProgram(undefined, 'test');
-    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
-    expect(resumeCommand).toBeDefined();
+    const continueRepairCommand = program.commands.find((cmd) => cmd.name() === 'continue-repair');
+    expect(continueRepairCommand).toBeDefined();
   });
 
-  it('resume command accepts expected user-facing options', () => {
+  it('does not register the removed `resume` command', () => {
     const program = createProgram(undefined, 'test');
-    const resumeCommand = program.commands.find((cmd) => cmd.name() === 'resume');
-    expect(resumeCommand?.usage()).toContain('prdId');
-    const optionNames = resumeCommand?.options.map((o) => o.long ?? '') ?? [];
+    expect(program.commands.some((cmd) => cmd.name() === 'resume')).toBe(false);
+  });
+
+  it('continue-repair command accepts expected user-facing options', () => {
+    const program = createProgram(undefined, 'test');
+    const continueRepairCommand = program.commands.find((cmd) => cmd.name() === 'continue-repair');
+    expect(continueRepairCommand?.usage()).toContain('prdId');
+    const optionNames = continueRepairCommand?.options.map((o) => o.long ?? '') ?? [];
     expect(optionNames).toContain('--set-name');
     expect(optionNames).toContain('--profile');
     expect(optionNames).toContain('--cwd');
-    expect(optionNames).toContain('--no-monitor');
+    expect(optionNames).toContain('--verbose');
+    expect(optionNames).not.toContain('--no-monitor');
   });
 });
 
-describe('eforge_resume_build MCP tool registration (source-level)', () => {
+describe('eforge_continue_repair MCP tool registration (source-level)', () => {
   const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
 
-  it('registers eforge_resume_build in the MCP proxy source and describes queued metadata', () => {
-    expect(mcpSource).toContain("name: 'eforge_resume_build'");
-    expect(mcpSource).toContain('apiResumeBuild');
-    expect(mcpSource).toContain('Queue a compiled build resume');
+  it('registers eforge_continue_repair in the MCP proxy source and describes queued metadata', () => {
+    expect(mcpSource).toContain("name: 'eforge_continue_repair'");
+    expect(mcpSource).not.toContain(['eforge', 'resume', 'build'].join('_'));
+    expect(mcpSource).toContain('apiContinueRepair');
+    expect(mcpSource).toMatch(/Queue[\s\S]{0,80}continue[\s\S]{0,40}repair/i);
     expect(mcpSource).toContain('no sessionId or pid');
   });
 
-  it('eforge_resume_build schema declares prdId, setName, and profile fields', () => {
-    const start = mcpSource.indexOf("name: 'eforge_resume_build'");
+  it('eforge_continue_repair schema declares prdId, setName, and profile fields', () => {
+    const start = mcpSource.indexOf("name: 'eforge_continue_repair'");
     expect(start).toBeGreaterThan(-1);
     const next = mcpSource.indexOf('createDaemonTool(', start + 1);
     const block = next > start ? mcpSource.slice(start, next) : mcpSource.slice(start);
@@ -178,11 +186,15 @@ describe('eforge_resume_build MCP tool registration (source-level)', () => {
   });
 });
 
-describe('apiResumeBuild helper', () => {
-  it('posts to API_ROUTES.resumeBuild and returns queued metadata without spawning a worker', async () => {
+describe('apiContinueRepair helper', () => {
+  it('exports the running-daemon convenience helper', () => {
+    expect(typeof apiContinueRepairIfRunning).toBe('function');
+  });
+
+  it('posts to API_ROUTES.continueRepair and returns queued metadata without spawning a worker', async () => {
     const prdId = 'my-feature-prd';
     prepareEligiblePrd(prdId);
-    const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId } });
+    const { data } = await apiContinueRepair({ cwd: tmpDir, body: { prdId } });
 
     expect(data).toMatchObject({
       kind: 'queued',
@@ -192,8 +204,8 @@ describe('apiResumeBuild helper', () => {
       baseBranch: 'main',
       movedDescendantIds: [],
     });
-    expect((data as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown }).sessionId).toBeUndefined();
-    expect((data as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown }).pid).toBeUndefined();
+    expect((data as ContinueRepairResponse & { sessionId?: unknown; pid?: unknown }).sessionId).toBeUndefined();
+    expect((data as ContinueRepairResponse & { sessionId?: unknown; pid?: unknown }).pid).toBeUndefined();
     expect(spawnCalls).toHaveLength(0);
   });
 
@@ -202,7 +214,7 @@ describe('apiResumeBuild helper', () => {
     const setName = 'my-set';
     createFeatureBranchWithArtifacts(tmpDir, setName);
     writeFailedPrd(tmpDir, prdId);
-    const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId, setName } });
+    const { data } = await apiContinueRepair({ cwd: tmpDir, body: { prdId, setName } });
 
     expect(data.kind).toBe('queued');
     expect(data.setName).toBe(setName);
@@ -212,11 +224,11 @@ describe('apiResumeBuild helper', () => {
 
   it('passes profile in the request body and receives profile metadata', async () => {
     const prdId = 'profile-prd';
-    const profile = 'resume-profile';
+    const profile = 'continue-repair-profile';
     prepareEligiblePrd(prdId);
     writeTestProfile(tmpDir, profile);
 
-    const { data } = await apiResumeBuild({ cwd: tmpDir, body: { prdId, profile } });
+    const { data } = await apiContinueRepair({ cwd: tmpDir, body: { prdId, profile } });
 
     expect(data.kind).toBe('queued');
     expect(data.profile).toBe(profile);
@@ -224,10 +236,10 @@ describe('apiResumeBuild helper', () => {
   });
 });
 
-describe('resume CLI command behavior', () => {
+describe('continue-repair CLI command behavior', () => {
   it('queues through the daemon route and prints queued metadata', async () => {
-    const prdId = 'cli-resume-prd';
-    const profile = 'resume-profile';
+    const prdId = 'cli-continue-repair-prd';
+    const profile = 'continue-repair-profile';
     prepareEligiblePrd(prdId);
     writeTestProfile(tmpDir, profile);
     const logs: string[] = [];
@@ -237,12 +249,13 @@ describe('resume CLI command behavior', () => {
 
     try {
       const program = createProgram(undefined, 'test');
-      await program.parseAsync(['resume', prdId, '--cwd', tmpDir, '--profile', profile, '--verbose'], { from: 'user' });
+      await program.parseAsync(['continue-repair', prdId, '--cwd', tmpDir, '--profile', profile, '--verbose'], { from: 'user' });
     } finally {
       logSpy.mockRestore();
     }
 
-    expect(logs.join('\n')).toContain(`Resume queued: ${prdId}`);
+    expect(logs.join('\n')).toMatch(new RegExp(`Continue (and repair build|build) queued: ${prdId}`));
+    expect(logs.join('\n').toLowerCase()).not.toContain('resume');
     expect(logs.join('\n')).toContain(`Set: ${prdId}`);
     expect(logs.join('\n')).toContain(`Feature branch: eforge/${prdId}`);
     expect(logs.join('\n')).toContain('Base branch: main');
@@ -253,30 +266,31 @@ describe('resume CLI command behavior', () => {
   });
 });
 
-describe('Pi eforge_resume_build tool registration (source-level)', () => {
+describe('Pi eforge_continue_repair tool registration (source-level)', () => {
   const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
   it('describes queued metadata and returns daemon JSON unchanged', () => {
-    const start = piSource.indexOf('name: "eforge_resume_build"');
+    expect(piSource).not.toContain(['eforge', 'resume', 'build'].join('_'));
+    const start = piSource.indexOf('name: "eforge_continue_repair"');
     expect(start).toBeGreaterThan(-1);
     const next = piSource.indexOf('pi.registerTool({', start + 1);
     const block = next > start ? piSource.slice(start, next) : piSource.slice(start);
-    expect(block).toContain('Queue a failed build to resume');
+    expect(block).toMatch(/Queue[\s\S]{0,80}continue[\s\S]{0,40}repair/i);
     expect(block).toContain('no sessionId or pid');
-    expect(block).toContain('API_ROUTES.resumeBuild');
+    expect(block).toContain('API_ROUTES.continueRepair');
     expect(block).toContain('return jsonResult(data)');
   });
 });
 
-describe('eforge_resume_build MCP tool handler', () => {
-  it('calls apiResumeBuild and returns the queued daemon response JSON', async () => {
+describe('eforge_continue_repair MCP tool handler', () => {
+  it('calls apiContinueRepair and returns the queued daemon response JSON', async () => {
     const mcpServer = new McpServer({ name: 'test', version: '0.0.0' });
     const prdId = 'mcp-handler-prd';
     prepareEligiblePrd(prdId);
 
     const registered = createDaemonTool(mcpServer, tmpDir, {
-      name: 'eforge_resume_build',
-      description: 'Test: resume build',
+      name: 'eforge_continue_repair',
+      description: 'Test: continue and repair build',
       schema: {
         prdId: z.string(),
         setName: z.string().optional(),
@@ -286,7 +300,7 @@ describe('eforge_resume_build MCP tool handler', () => {
         const body: { prdId: string; setName?: string; profile?: string } = { prdId: id };
         if (setName !== undefined) body.setName = setName;
         if (profile !== undefined) body.profile = profile;
-        const { data } = await apiResumeBuild({ cwd: toolCwd, body });
+        const { data } = await apiContinueRepair({ cwd: toolCwd, body });
         return data;
       },
     });
@@ -300,7 +314,7 @@ describe('eforge_resume_build MCP tool handler', () => {
     expect(typed.content).toHaveLength(1);
     expect(typed.content[0].type).toBe('text');
 
-    const parsed = JSON.parse(typed.content[0].text) as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown };
+    const parsed = JSON.parse(typed.content[0].text) as ContinueRepairResponse & { sessionId?: unknown; pid?: unknown };
     expect(parsed.kind).toBe('queued');
     expect(parsed.prdId).toBe(prdId);
     expect(parsed.sessionId).toBeUndefined();
@@ -311,13 +325,13 @@ describe('eforge_resume_build MCP tool handler', () => {
   it('forwards profile overrides through the MCP handler body', async () => {
     const mcpServer = new McpServer({ name: 'test', version: '0.0.0' });
     const prdId = 'mcp-profile-prd';
-    const profile = 'resume-profile';
+    const profile = 'continue-repair-profile';
     prepareEligiblePrd(prdId);
     writeTestProfile(tmpDir, profile);
 
     const registered = createDaemonTool(mcpServer, tmpDir, {
-      name: 'eforge_resume_build',
-      description: 'Test: resume build',
+      name: 'eforge_continue_repair',
+      description: 'Test: continue and repair build',
       schema: {
         prdId: z.string(),
         setName: z.string().optional(),
@@ -327,7 +341,7 @@ describe('eforge_resume_build MCP tool handler', () => {
         const body: { prdId: string; setName?: string; profile?: string } = { prdId: id };
         if (setName !== undefined) body.setName = setName;
         if (profileOverride !== undefined) body.profile = profileOverride;
-        const { data } = await apiResumeBuild({ cwd: toolCwd, body });
+        const { data } = await apiContinueRepair({ cwd: toolCwd, body });
         return data;
       },
     });
@@ -337,10 +351,10 @@ describe('eforge_resume_build MCP tool handler', () => {
       fakeExtra,
     );
     const typed = result as { content: Array<{ type: string; text: string }> };
-    const parsed = JSON.parse(typed.content[0].text) as ResumeBuildResponse;
+    const parsed = JSON.parse(typed.content[0].text) as ContinueRepairResponse;
 
     expect(parsed.profile).toBe(profile);
     expect(spawnCalls).toHaveLength(0);
   });
 });
-// --- eforge:endregion resume-build-cli-mcp-suite ---
+// --- eforge:endregion continue-repair-cli-mcp-suite ---

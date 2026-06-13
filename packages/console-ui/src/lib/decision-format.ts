@@ -86,9 +86,7 @@ export function decisionSummary(decision: Decision): string {
     case 'evaluator-strictness':
       return `${decision.strictness} (${decision.source})`;
     case 'recovery-verdict':
-      return decision.successorPrdId
-        ? `${decision.verdict} → ${decision.successorPrdId}`
-        : decision.verdict;
+      return decision.verdict;
     case 'merge-conflict-resolution':
       return `${decision.strategy} — ${decision.files.length} file(s)`;
     default:
@@ -161,7 +159,6 @@ export function decisionDetail(decision: Decision): string {
       break;
     case 'recovery-verdict':
       lines.push(`Verdict: ${decision.verdict}`);
-      if (decision.successorPrdId) lines.push(`Successor PRD: ${decision.successorPrdId}`);
       break;
     case 'merge-conflict-resolution':
       lines.push(`Strategy: ${decision.strategy}`);

@@ -153,7 +153,7 @@ describe('queued compiled-build resume execution', () => {
 
     const events = await collect(engine.buildSinglePrd(prd, {}, 'scheduler-session'));
 
-    expect(events).toContainEqual(expect.objectContaining({ type: 'phase:start', command: 'resume' }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'phase:start', command: 'continue-repair' }));
     expect(events.filter((event) => event.type === 'planning:start')).toHaveLength(0);
     expect(events.filter((event) => event.type === 'planning:complete')).toHaveLength(0);
     expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:start' }));

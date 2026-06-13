@@ -55,10 +55,10 @@ import {
   type ExtensionRemoveResponse,
   type ExtensionPromoteResponse,
   type ExtensionDemoteResponse,
-  type ResumeBuildRequest,
+  type ContinueRepairRequest,
   apiStackSync,
   apiStackSyncIfRunning,
-  apiResumeBuild,
+  apiContinueRepair,
   type StackSyncResponse,
   daemonRequestFromWorktree,
   DaemonNotDiscoverableError,
@@ -1720,7 +1720,7 @@ export function createProgram(abortController?: AbortController, version?: strin
 
   program
     .command('apply-recovery <prdId>')
-    .description('Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)')
+    .description('Apply the recovery verdict for a failed build plan (retry from scratch, continue-and-repair, abandon, or manual)')
     .option('--cwd <cwd>', 'Working directory override')
     .option('--no-monitor', 'Disable web monitor')
     .action(
@@ -1765,14 +1765,12 @@ export function createProgram(abortController?: AbortController, version?: strin
     );
 
   program
-    .command('resume <prdId>')
-    .description('Queue a compiled build resume for scheduler dispatch')
+    .command('continue-repair <prdId>')
+    .description('Continue and repair build from preserved compiled artifacts')
     .option('--set-name <setName>', 'Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId')
-    .option('--profile <name>', 'Override active profile for this resumed build')
+    .option('--profile <name>', 'Override active profile for this continue-and-repair build')
     .option('--cwd <cwd>', 'Working directory override')
     .option('--verbose', 'Print additional queued metadata')
-    .option('--no-monitor', 'Accepted for compatibility; the daemon route is still used')
-    .option('--session-id <uuid>', 'Accepted for compatibility; ignored because resume is queued')
     .action(
       async (
         prdId: string,
@@ -1781,8 +1779,6 @@ export function createProgram(abortController?: AbortController, version?: strin
           profile?: string;
           cwd?: string;
           verbose?: boolean;
-          monitor?: boolean;
-          sessionId?: string;
         },
       ) => {
         initDisplay({ verbose: options.verbose });
@@ -1793,11 +1789,11 @@ export function createProgram(abortController?: AbortController, version?: strin
         try {
           monitor = await ensureMonitor(cwd, { noServer: false });
           activeMonitor = monitor;
-          const body: ResumeBuildRequest = { prdId };
+          const body: ContinueRepairRequest = { prdId };
           if (options.setName !== undefined) body.setName = options.setName;
           if (options.profile !== undefined) body.profile = options.profile;
-          const { data } = await apiResumeBuild({ cwd, body });
-          console.log(chalk.green(`Resume queued: ${data.prdId}`));
+          const { data } = await apiContinueRepair({ cwd, body });
+          console.log(chalk.green(`Continue and repair build queued: ${data.prdId}`));
           console.log(`Set: ${data.setName}`);
           console.log(`Feature branch: ${data.featureBranch}`);
           console.log(`Base branch: ${data.baseBranch}`);
@@ -1805,7 +1801,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           if (data.movedDescendantIds.length > 0 || options.verbose) {
             console.log(`Moved descendants: ${data.movedDescendantIds.length > 0 ? data.movedDescendantIds.join(', ') : 'none'}`);
           }
-          if (data.status === 'already-queued') console.log(chalk.yellow(data.detail ?? 'Compiled-build resume was already queued.'));
+          if (data.status === 'already-queued') console.log(chalk.yellow(data.detail ?? 'Continue-and-repair build was already queued.'));
         } catch (err) {
           const { message, exitCode } = formatCliError(err);
           console.error(chalk.red(`Error: ${message}`));

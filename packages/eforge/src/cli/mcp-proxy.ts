@@ -16,7 +16,7 @@ import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfil
   apiUpdateQueuePriority,
   apiRemoveQueueItem,
   // --- eforge:endregion host-queue-controls ---
-  apiResumeBuild,
+  apiContinueRepair,
   dispatchEforgeExtensionAction,
 } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
@@ -28,7 +28,7 @@ import type {
   ConfigValidateResponse,
   VersionResponse,
   EforgeExtensionActionHelpers,
-  ResumeBuildRequest,
+  ContinueRepairRequest,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 import { registerExtensionContributionMcpTool } from './mcp-extension-contributions.js';
@@ -865,7 +865,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_apply_recovery
   createDaemonTool(server, cwd, {
     name: 'eforge_apply_recovery',
-    description: 'Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon).',
+    description: 'Apply the recovery verdict for a failed build plan: requeue from scratch (retry), queue continue-and-repair from preserved artifacts, archive (abandon), or report manual no-action.',
     schema: {
       prdId: z.string().describe('The plan ID (prdId) whose recovery verdict to apply'),
     },
@@ -877,20 +877,20 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
 
 
-  // Tool: eforge_resume_build
+  // Tool: eforge_continue_repair
   createDaemonTool(server, cwd, {
-    name: 'eforge_resume_build',
-    description: 'Queue a compiled build resume for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned.',
+    name: 'eforge_continue_repair',
+    description: 'Queue a continue-and-repair build from preserved compiled artifacts for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned.',
     schema: {
-      prdId: z.string().describe('The plan ID (prdId) of the failed compiled build to resume'),
+      prdId: z.string().describe('The plan ID (prdId) of the failed build to continue and repair'),
       setName: z.string().optional().describe('Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.'),
-      profile: z.string().optional().describe('Run this resumed build on the named profile instead of the active profile'),
+      profile: z.string().optional().describe('Run this continue-and-repair build on the named profile instead of the active profile'),
     },
     handler: async ({ prdId, setName, profile }, { cwd: toolCwd }) => {
-      const body: ResumeBuildRequest = { prdId };
+      const body: ContinueRepairRequest = { prdId };
       if (setName !== undefined) body.setName = setName;
       if (profile !== undefined) body.profile = profile;
-      const { data } = await apiResumeBuild({ cwd: toolCwd, body });
+      const { data } = await apiContinueRepair({ cwd: toolCwd, body });
       return data;
     },
   });

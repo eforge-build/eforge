@@ -71,8 +71,8 @@ describe('policy gate runtime', () => {
       prdTitle: 'Build B',
       priority: 3,
       dependsOn: queueDependsOn,
-      compiledResume: queueCompiledResume,
-    } as Parameters<typeof buildQueueDispatchPolicyGateContext>[0] & { compiledResume: typeof queueCompiledResume });
+      continueRepair: queueCompiledResume,
+    } as Parameters<typeof buildQueueDispatchPolicyGateContext>[0] & { continueRepair: typeof queueCompiledResume });
     queueDependsOn.push('prd-c');
     queueCompiledResume.sourcePrdId = 'mutated-prd';
     queueCompiledResume.setName = 'mutated-set';
@@ -85,7 +85,7 @@ describe('policy gate runtime', () => {
       prdTitle: 'Build B',
       priority: 3,
       dependsOn: ['prd-a'],
-      compiledResume: {
+      continueRepair: {
         mode: 'compiled',
         sourcePrdId: 'failed-prd',
         setName: 'failed-set',
@@ -95,7 +95,7 @@ describe('policy gate runtime', () => {
     });
     expect(Object.isFrozen(queueContext)).toBe(true);
     expect(Object.isFrozen(queueContext.dependsOn)).toBe(true);
-    expect(Object.isFrozen((queueContext as typeof queueContext & { compiledResume?: unknown }).compiledResume)).toBe(true);
+    expect(Object.isFrozen((queueContext as typeof queueContext & { continueRepair?: unknown }).continueRepair)).toBe(true);
 
     const diff = { files: [{ path: 'src/index.ts', status: 'modified' as const }] };
     const finalPlanIds = ['plan-a'];
@@ -123,7 +123,7 @@ describe('policy gate runtime', () => {
       prdId: 'prd-c',
       dependsOn: [],
     });
-    expect(normalQueueContext).not.toHaveProperty('compiledResume');
+    expect(normalQueueContext).not.toHaveProperty('continueRepair');
   });
 
   it('provides exec helper with cwd/env and subprocess exit codes', async () => {

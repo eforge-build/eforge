@@ -13,7 +13,7 @@ import { loadPrompt } from '../prompts.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { getRecoveryVerdictSchemaYaml } from '../schemas.js';
 import { parseRecoveryVerdictBlock } from './common.js';
-import { determineRecoveryRecommendation } from '../recovery/recommendation.js';
+import { determineRecoveryRecommendation, type ContinueRepairEligibilityForRecommendation, type RecoveryRecommendation } from '../recovery/recommendation.js';
 import { truncateText } from '../recovery/text-bounds.js';
 import { prepareRecoveryAnalystPromptContext } from '../recovery/analyst-context.js';
 
@@ -31,6 +31,10 @@ export interface RecoveryAnalystOptions extends SdkPassthroughConfig {
   prdContent: string;
   /** Build failure summary assembled from state + git */
   summary: BuildFailureSummary;
+  /** Precomputed deterministic recommendation, including continue-and-repair eligibility. */
+  deterministicRecommendation?: RecoveryRecommendation;
+  /** Precomputed continue-and-repair eligibility projected for the sidecar. */
+  continueRepairEligibility?: ContinueRepairEligibilityForRecommendation;
   /** PRD identifier — propagated into recovery events */
   prdId: string;
   /** Working directory */
@@ -41,6 +45,28 @@ export interface RecoveryAnalystOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: implementation tier default). */
   maxTurns?: number;
+}
+
+function formatContinueRepairEligibility(eligibility: ContinueRepairEligibilityForRecommendation | undefined): string {
+  if (eligibility === undefined) {
+    return 'Continue-and-repair eligibility was not available. Do not infer eligibility from omitted evidence; choose manual unless the failure summary independently justifies retry or abandon.';
+  }
+  if (!eligibility.eligible) {
+    return [
+      'Continue-and-repair eligibility: ineligible.',
+      eligibility.featureBranch ? `Feature branch: ${eligibility.featureBranch}.` : undefined,
+      eligibility.reason ? `Reason: ${eligibility.reason}` : undefined,
+    ].filter((line): line is string => line !== undefined).join('\n');
+  }
+  return [
+    'Continue-and-repair eligibility: eligible.',
+    eligibility.featureBranch ? `Feature branch: ${eligibility.featureBranch}.` : undefined,
+    eligibility.artifactAvailability ? `Artifact availability: ${eligibility.artifactAvailability}.` : undefined,
+    eligibility.artifactCommit ? `Artifact commit: ${eligibility.artifactCommit}.` : undefined,
+    eligibility.landedCommitCount !== undefined ? `Landed commits: ${eligibility.landedCommitCount}.` : undefined,
+    eligibility.failingPlanId ? `Failing plan: ${eligibility.failingPlanId}.` : undefined,
+    eligibility.partial !== undefined ? `Partial evidence: ${eligibility.partial ? 'yes' : 'no'}.` : undefined,
+  ].filter((line): line is string => line !== undefined).join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +95,7 @@ export async function* runRecoveryAnalyst(
     ? 'Note: this summary is partial (some context was unavailable); prefer verdict=manual and document missing context in the rationale.'
     : '';
 
-  const deterministicRec = determineRecoveryRecommendation(summary);
+  const deterministicRec = options.deterministicRecommendation ?? determineRecoveryRecommendation(summary, options.continueRepairEligibility);
   const promptRationale = truncateText(
     deterministicRec.rationale,
     4_000,
@@ -78,7 +104,8 @@ export async function* runRecoveryAnalyst(
   const deterministicRecommendation =
     `Deterministic policy recommendation: **${deterministicRec.verdict}**\n\n` +
     `Evidence: ${promptRationale}\n\n` +
-    `You may agree or disagree with this recommendation, but you must explain any disagreement with specific evidence from the failure summary.`;
+    `You may agree or disagree with this recommendation, but you must explain any disagreement with specific evidence from the failure summary. Do not generate successor PRD content.`;
+  const continueRepairEligibility = formatContinueRepairEligibility(options.continueRepairEligibility);
   // Build the failing plan IDs list using the same coverage logic as validateAnalystVerdict:
   // prefer failingPlans array, fall back to failingPlan.planId when it is present and not "unknown".
   let failingPlanIds: string[];
@@ -106,6 +133,7 @@ export async function* runRecoveryAnalyst(
       recovery_schema: getRecoveryVerdictSchemaYaml(),
       partialHint,
       deterministicRecommendation,
+      continueRepairEligibility,
       failedPlanIdsList,
       contextNotes,
     },

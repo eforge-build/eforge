@@ -4,12 +4,12 @@ import {
   applySidecarRecovery,
   fetchAcceptSuccessPreview,
   fetchRecoverySidecar,
-  fetchResumeEligibility,
-  startResumeBuild,
+  fetchContinueRepairEligibility,
+  startContinueRepair,
   triggerRecoveryAnalysis,
   type AcceptSuccessPreviewResponse,
   type ReadSidecarResponse,
-  type ResumeEligibilityResponse,
+  type ContinueRepairEligibilityResponse,
 } from '@eforge-build/client/browser';
 import { SheetPanel } from '@/components/ui/sheet-panel';
 import {
@@ -47,6 +47,34 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function eligibilityFromSidecar(response: ReadSidecarResponse): ContinueRepairEligibilityResponse | null {
+  const sidecarEligibility = response.json.continueRepairEligibility;
+  if (!sidecarEligibility) return null;
+  const identity = {
+    prdId: response.json.prdId,
+    setName: response.json.setName,
+    featureBranch: sidecarEligibility.featureBranch ?? response.json.boundedEvidence.identity.featureBranch,
+  };
+  if (!sidecarEligibility.eligible) {
+    return {
+      ...identity,
+      eligible: false,
+      reason: sidecarEligibility.reason,
+      ...(sidecarEligibility.checkedPath !== undefined && { checkedPath: sidecarEligibility.checkedPath }),
+    };
+  }
+  return {
+    ...identity,
+    eligible: true,
+    artifactAvailability: sidecarEligibility.artifactAvailability,
+    landedCommitCount: sidecarEligibility.landedCommitCount,
+    diffStat: sidecarEligibility.diffStat,
+    ...(sidecarEligibility.artifactCommit !== undefined && { artifactCommit: sidecarEligibility.artifactCommit }),
+    ...(sidecarEligibility.failingPlanId !== undefined && { failingPlanId: sidecarEligibility.failingPlanId }),
+    ...(sidecarEligibility.partial !== undefined && { partial: sidecarEligibility.partial }),
+  };
+}
+
 export function QueueRecoveryDialog({
   open,
   prdId,
@@ -59,15 +87,15 @@ export function QueueRecoveryDialog({
   const [sidecar, setSidecar] = React.useState<ReadSidecarResponse | null>(null);
   const [reportStatus, setReportStatus] = React.useState<ReportStatus>('loading');
   const [reportError, setReportError] = React.useState<string | null>(null);
-  const [eligibility, setEligibility] = React.useState<ResumeEligibilityResponse | null>(null);
+  const [eligibility, setEligibility] = React.useState<ContinueRepairEligibilityResponse | null>(null);
   const [eligibilityError, setEligibilityError] = React.useState<string | null>(null);
   const [applyError, setApplyError] = React.useState<string | null>(null);
   const [analysisStarted, setAnalysisStarted] = React.useState(false);
   const [analysisError, setAnalysisError] = React.useState<string | null>(null);
-  const [resumeError, setResumeError] = React.useState<string | null>(null);
+  const [continueRepairError, setContinueRepairError] = React.useState<string | null>(null);
   const [applyingSidecar, setApplyingSidecar] = React.useState(false);
   const [startingAnalysis, setStartingAnalysis] = React.useState(false);
-  const [startingResume, setStartingResume] = React.useState(false);
+  const [startingContinueRepair, setStartingContinueRepair] = React.useState(false);
   const [acceptSuccessPreview, setAcceptSuccessPreview] =
     React.useState<AcceptSuccessPreviewResponse | null>(null);
   const [acceptingSuccess, setAcceptingSuccess] = React.useState(false);
@@ -87,10 +115,10 @@ export function QueueRecoveryDialog({
     setApplyError(null);
     setAnalysisStarted(false);
     setAnalysisError(null);
-    setResumeError(null);
+    setContinueRepairError(null);
     setApplyingSidecar(false);
     setStartingAnalysis(false);
-    setStartingResume(false);
+    setStartingContinueRepair(false);
     setAcceptSuccessPreview(null);
     setAcceptingSuccess(false);
     setAcceptSuccessError(null);
@@ -110,6 +138,8 @@ export function QueueRecoveryDialog({
         }
         setSidecar(response);
         setReportStatus('loaded');
+        const sidecarEligibility = eligibilityFromSidecar(response);
+        if (sidecarEligibility) setEligibility(sidecarEligibility);
         // A durable applied marker means the verdict was already applied: show a
         // completion panel rather than the mutating action.
         const applied = response.json.applied;
@@ -127,7 +157,7 @@ export function QueueRecoveryDialog({
         }
       });
 
-    fetchResumeEligibility({ prdId })
+    fetchContinueRepairEligibility({ prdId })
       .then((response) => {
         if (!cancelled) setEligibility(response);
       })
@@ -147,7 +177,7 @@ export function QueueRecoveryDialog({
       })
       .catch((err: unknown) => {
         // Preview is best-effort: a failure just hides the accepted-success
-        // action. It must not block the recovery report or resume flows.
+        // action. It must not block the recovery report or continue-and-repair flows.
         console.error('Failed to load accepted-success preview:', err);
       });
 
@@ -198,25 +228,25 @@ export function QueueRecoveryDialog({
     }
   };
 
-  const handleResume = async () => {
-    if (!prdId || startingResume) return;
-    setStartingResume(true);
-    setResumeError(null);
+  const handleContinueRepair = async () => {
+    if (!prdId || startingContinueRepair) return;
+    setStartingContinueRepair(true);
+    setContinueRepairError(null);
     try {
       // Both `queued` and `already-queued` resolve (the helper only rejects on a
       // real failure), so any resolved response is a success completion.
-      const response = await startResumeBuild({ prdId, setName: eligibility?.setName });
+      const response = await startContinueRepair({ prdId, setName: eligibility?.setName ?? setName });
       let refreshError: string | undefined;
       try {
         await refreshQueue();
       } catch (err: unknown) {
         refreshError = errorMessage(err);
       }
-      setCompletion({ kind: 'resume', result: response, refreshError });
+      setCompletion({ kind: 'continue-repair', result: response, refreshError });
     } catch (err: unknown) {
-      setResumeError(errorMessage(err));
+      setContinueRepairError(errorMessage(err));
     } finally {
-      setStartingResume(false);
+      setStartingContinueRepair(false);
     }
   };
 
@@ -277,17 +307,17 @@ export function QueueRecoveryDialog({
           applyError={applyError}
           analysisStarted={analysisStarted}
           analysisError={analysisError}
-          resumeError={resumeError}
+          continueRepairError={continueRepairError}
           applyingSidecar={applyingSidecar}
           startingAnalysis={startingAnalysis}
-          startingResume={startingResume}
+          startingContinueRepair={startingContinueRepair}
           acceptSuccessPreview={acceptSuccessPreview}
           acceptingSuccess={acceptingSuccess}
           acceptSuccessError={acceptSuccessError}
           onAcceptSuccess={handleAcceptSuccess}
           onApplySidecar={handleApplySidecar}
           onRunAnalysis={handleRunAnalysis}
-          onResume={handleResume}
+          onContinueRepair={handleContinueRepair}
           refreshQueue={refreshQueue}
         />
       )}

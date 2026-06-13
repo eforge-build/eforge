@@ -114,11 +114,10 @@ export const BuildDecisionSchema = Type.Union([
     rationale: Type.String(),
     verdict: Type.Union([
       Type.Literal('retry'),
-      Type.Literal('split'),
+      Type.Literal('continue-repair'),
       Type.Literal('abandon'),
       Type.Literal('manual'),
     ]),
-    successorPrdId: Type.Optional(Type.String()),
   }),
   // Merge conflict resolution strategy
   Type.Object({

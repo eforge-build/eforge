@@ -191,7 +191,7 @@
                   "type": "string"
                 },
                 {
-                  "const": "resume",
+                  "const": "continue-repair",
                   "type": "string"
                 }
               ]
@@ -10060,7 +10060,7 @@
                       "type": "string"
                     },
                     {
-                      "const": "split",
+                      "const": "continue-repair",
                       "type": "string"
                     },
                     {
@@ -10109,9 +10109,6 @@
                   "items": {
                     "type": "string"
                   }
-                },
-                "suggestedSuccessorPrd": {
-                  "type": "string"
                 },
                 "partial": {
                   "type": "boolean"
@@ -10213,7 +10210,7 @@
                   "type": "string"
                 },
                 {
-                  "const": "split",
+                  "const": "continue-repair",
                   "type": "string"
                 },
                 {
@@ -10225,9 +10222,6 @@
                   "type": "string"
                 }
               ]
-            },
-            "successorPrdId": {
-              "type": "string"
             },
             "noAction": {
               "type": "boolean"
@@ -11596,7 +11590,7 @@
                           "type": "string"
                         },
                         {
-                          "const": "split",
+                          "const": "continue-repair",
                           "type": "string"
                         },
                         {
@@ -11608,9 +11602,6 @@
                           "type": "string"
                         }
                       ]
-                    },
-                    "successorPrdId": {
-                      "type": "string"
                     }
                   }
                 },

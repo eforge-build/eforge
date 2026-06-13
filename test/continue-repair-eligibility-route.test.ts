@@ -1,6 +1,6 @@
 /**
- * Tests for the read-only resume eligibility daemon route:
- *   GET /api/recover/resume-eligibility
+ * Tests for the read-only continue-repair eligibility daemon route:
+ *   GET /api/recover/continue-repair/eligibility
  *
  * Coverage:
  * - validation (missing/unsafe prdId)
@@ -23,7 +23,7 @@ import { dirname, join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type WorkerTracker, type MonitorServer } from '@eforge-build/monitor/server';
-import { API_ROUTES, type ResumeEligibilityResponse } from '@eforge-build/client';
+import { API_ROUTES, type ContinueRepairEligibilityResponse } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,7 +51,7 @@ function writeCompiledPlanSet(cwd: string, setName: string): void {
   writeFileEnsuringDir(
     join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'),
     `name: ${setName}
-description: Test resume plan set
+description: Test continue-repair plan set
 base_branch: main
 mode: excursion
 validate: []
@@ -78,7 +78,7 @@ pipeline:
       - code
     maxRounds: 1
     evaluatorStrictness: standard
-  rationale: resume
+  rationale: continue-repair
 `,
   );
   writeFileEnsuringDir(
@@ -120,7 +120,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   return { tracker, calls };
 }
 
-const makeTempDir = useTempDir('eforge-resume-eligibility-');
+const makeTempDir = useTempDir('eforge-continue-repair-eligibility-');
 
 let tmpDir: string;
 let dbPath: string;
@@ -139,7 +139,7 @@ async function setupServer(opts: { withTracker?: boolean } = {}): Promise<void> 
 
 function eligibilityUrl(query: Record<string, string>): string {
   const params = new URLSearchParams(query);
-  return `http://localhost:${server!.port}${API_ROUTES.resumeEligibility}?${params.toString()}`;
+  return `http://localhost:${server!.port}${API_ROUTES.continueRepairEligibility}?${params.toString()}`;
 }
 
 beforeEach(() => {
@@ -156,14 +156,14 @@ afterEach(async () => {
 // Validation
 // ---------------------------------------------------------------------------
 
-describe('GET /api/recover/resume-eligibility — validation', () => {
+describe('GET /api/recover/continue-repair/eligibility — validation', () => {
   beforeEach(async () => {
     initRepo(tmpDir);
     await setupServer();
   });
 
   it('returns 400 when prdId is missing', async () => {
-    const res = await fetch(`http://localhost:${server!.port}${API_ROUTES.resumeEligibility}`);
+    const res = await fetch(`http://localhost:${server!.port}${API_ROUTES.continueRepairEligibility}`);
     expect(res.status).toBe(400);
   });
 
@@ -182,7 +182,7 @@ describe('GET /api/recover/resume-eligibility — validation', () => {
 // Ineligible
 // ---------------------------------------------------------------------------
 
-describe('GET /api/recover/resume-eligibility — ineligible', () => {
+describe('GET /api/recover/continue-repair/eligibility — ineligible', () => {
   beforeEach(async () => {
     initRepo(tmpDir);
     await setupServer();
@@ -191,7 +191,7 @@ describe('GET /api/recover/resume-eligibility — ineligible', () => {
   it('returns eligible:false with a reason when the feature branch is missing', async () => {
     const res = await fetch(eligibilityUrl({ prdId: 'no-such-set' }));
     expect(res.status).toBe(200);
-    const data = (await res.json()) as ResumeEligibilityResponse;
+    const data = (await res.json()) as ContinueRepairEligibilityResponse;
     expect(data.eligible).toBe(false);
     if (!data.eligible) {
       expect(data.featureBranch).toBe('eforge/no-such-set');
@@ -206,7 +206,7 @@ describe('GET /api/recover/resume-eligibility — ineligible', () => {
 // Eligible
 // ---------------------------------------------------------------------------
 
-describe('GET /api/recover/resume-eligibility — eligible', () => {
+describe('GET /api/recover/continue-repair/eligibility — eligible', () => {
   beforeEach(async () => {
     initRepo(tmpDir);
   });
@@ -218,7 +218,7 @@ describe('GET /api/recover/resume-eligibility — eligible', () => {
 
     const res = await fetch(eligibilityUrl({ prdId: setName }));
     expect(res.status).toBe(200);
-    const data = (await res.json()) as ResumeEligibilityResponse & { sessionId?: unknown; pid?: unknown };
+    const data = (await res.json()) as ContinueRepairEligibilityResponse & { sessionId?: unknown; pid?: unknown };
     expect(data.eligible).toBe(true);
     if (data.eligible) {
       expect(data.prdId).toBe(setName);
@@ -227,7 +227,7 @@ describe('GET /api/recover/resume-eligibility — eligible', () => {
       expect(data.artifactAvailability).toBe('feature-branch');
       expect(typeof data.landedCommitCount).toBe('number');
     }
-    // This route never spawns a resume worker.
+    // This route never spawns a worker.
     expect(data.sessionId).toBeUndefined();
     expect(data.pid).toBeUndefined();
     expect(spawnCalls).toHaveLength(0);
@@ -244,14 +244,14 @@ describe('GET /api/recover/resume-eligibility — eligible', () => {
     await mkdir(failedDir, { recursive: true });
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify({ schemaVersion: 3, generatedAt, prdId, setName: resolvedSet, verdict: { verdict: 'manual', confidence: 'low', rationale: 'resume metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'resume metadata', recommendedAction: 'Resume.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: resolvedSet, featureBranch: `eforge/${resolvedSet}`, baseBranch: 'main', failedAt: generatedAt }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [{ sha: 'abc', subject: 'work', author: 'Test', date: generatedAt }], modelsUsed: [] } }),
+      JSON.stringify({ schemaVersion: 3, generatedAt, prdId, setName: resolvedSet, verdict: { verdict: 'manual', confidence: 'low', rationale: 'continue-repair metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'continue-repair metadata', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: resolvedSet, featureBranch: `eforge/${resolvedSet}`, baseBranch: 'main', failedAt: generatedAt }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [{ sha: 'abc', subject: 'work', author: 'Test', date: generatedAt }], modelsUsed: [] } }),
     );
 
     await setupServer();
 
     const res = await fetch(eligibilityUrl({ prdId }));
     expect(res.status).toBe(200);
-    const data = (await res.json()) as ResumeEligibilityResponse;
+    const data = (await res.json()) as ContinueRepairEligibilityResponse;
     expect(data.eligible).toBe(true);
     if (data.eligible) {
       expect(data.setName).toBe(resolvedSet);
@@ -264,7 +264,7 @@ describe('GET /api/recover/resume-eligibility — eligible', () => {
 // Read-only route does not require a workerTracker
 // ---------------------------------------------------------------------------
 
-describe('GET /api/recover/resume-eligibility — no workerTracker required', () => {
+describe('GET /api/recover/continue-repair/eligibility — no workerTracker required', () => {
   beforeEach(async () => {
     initRepo(tmpDir);
   });
@@ -276,7 +276,7 @@ describe('GET /api/recover/resume-eligibility — no workerTracker required', ()
 
     const res = await fetch(eligibilityUrl({ prdId: setName }));
     expect(res.status).toBe(200);
-    const data = (await res.json()) as ResumeEligibilityResponse;
+    const data = (await res.json()) as ContinueRepairEligibilityResponse;
     expect(data.eligible).toBe(true);
   });
 });

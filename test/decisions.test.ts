@@ -146,15 +146,14 @@ describe('BuildDecisionSchema — valid kinds', () => {
     expect(result.verdict).toBe('retry');
   });
 
-  it('parses recovery-verdict (split with successorPrdId)', () => {
+  it('parses recovery-verdict (continue-repair)', () => {
     const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'recovery-verdict',
-      rationale: 'Split into smaller PRD',
-      verdict: 'split',
-      successorPrdId: 'prd-02-follow-up.md',
+      rationale: 'Continue and repair from preserved compiled artifacts',
+      verdict: 'continue-repair',
     });
     expect(result.kind).toBe('recovery-verdict');
-    expect(result.successorPrdId).toBe('prd-02-follow-up.md');
+    expect(result.verdict).toBe('continue-repair');
   });
 
   it('parses merge-conflict-resolution', () => {

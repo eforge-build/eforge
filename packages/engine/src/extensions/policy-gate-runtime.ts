@@ -37,7 +37,7 @@ interface PolicyGateContextBase {
   };
 }
 
-export interface QueueDispatchCompiledResumeMetadata {
+export interface QueueDispatchContinueRepairMetadata {
   mode: 'compiled';
   sourcePrdId: string;
   setName: string;
@@ -53,7 +53,7 @@ export interface QueueDispatchPolicyGateContext extends PolicyGateContextBase {
   /** Current PRD frontmatter profile, before profile routers run. */
   profile?: string;
   dependsOn: string[];
-  compiledResume?: QueueDispatchCompiledResumeMetadata;
+  continueRepair?: QueueDispatchContinueRepairMetadata;
 }
 
 export interface PlanMergePolicyGateContext extends PolicyGateContextBase {
@@ -82,7 +82,7 @@ export interface QueueDispatchPolicyGateTarget {
   /** Current PRD frontmatter profile, before profile routers run. */
   profile?: string;
   dependsOn?: string[];
-  compiledResume?: QueueDispatchCompiledResumeMetadata;
+  continueRepair?: QueueDispatchContinueRepairMetadata;
 }
 
 export interface PlanMergePolicyGateTarget {
@@ -237,7 +237,7 @@ export function buildQueueDispatchPolicyGateContext(
     ...(target.priority !== undefined && { priority: target.priority }),
     ...(target.profile !== undefined && { profile: target.profile }),
     dependsOn: [...(target.dependsOn ?? [])],
-    ...(target.compiledResume !== undefined && { compiledResume: { ...target.compiledResume } }),
+    ...(target.continueRepair !== undefined && { continueRepair: { ...target.continueRepair } }),
     ...makeHelpers('queue-dispatch', options),
   });
 }

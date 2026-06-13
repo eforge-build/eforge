@@ -6,7 +6,7 @@
  * - abandon happy-path: PRD and sidecars removed (filesystem-only — commitSha:"")
  * - missing sidecar JSON → 404 with descriptive error
  * - malformed sidecar JSON → 400 with descriptive error
- * - split missing suggestedSuccessorPrd → 500 (apply helper throws; route surfaces as 500)
+ * - continue-repair happy-path: PRD is queued through preserved compiled artifacts
  * - no worker is spawned (WorkerTracker.spawnWorker never called)
  *
  * Follows AGENTS.md conventions:
@@ -14,7 +14,7 @@
  * - useTempDir for filesystem cleanup.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, access, readFile, readdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -27,7 +27,6 @@ import {
   type WorkerTracker,
 } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
-import { requireAcceptanceCriteriaInventoryFromPrd } from '@eforge-build/engine/validation/acceptance-criteria-inventory';
 import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 import { StubHarness } from './stub-harness.js';
 
@@ -51,8 +50,6 @@ async function pathExists(p: string): Promise<boolean> {
     return false;
   }
 }
-
-const RECOVERY_AC_SENTENCE = 'The successor must persist canonical acceptance criteria before recovery queueing completes.';
 
 function recoverySidecarFromLegacy(legacy: { generatedAt?: string; summary: Record<string, unknown>; verdict: Record<string, unknown>; applied?: unknown }): Record<string, unknown> {
   const summary = legacy.summary;
@@ -78,24 +75,6 @@ function recoverySidecarFromLegacy(legacy: { generatedAt?: string; summary: Reco
       ...(typeof summary.diffStat === 'string' ? { diffStat: summary.diffStat } : {}),
     },
     ...(legacy.applied !== undefined ? { applied: legacy.applied } : {}),
-  };
-}
-
-function bodyWithRecoveryAcceptanceCriteria(body: string): string {
-  return `${body.trimEnd()}\n\n## Acceptance Criteria\n\n- ${RECOVERY_AC_SENTENCE}\n`;
-}
-
-function validRecoveryExtractorResponse(): { resultText: string } {
-  return {
-    resultText: JSON.stringify({
-      version: 1,
-      criteria: [{
-        text: RECOVERY_AC_SENTENCE,
-        raw: `- ${RECOVERY_AC_SENTENCE}`,
-        sourceQuote: RECOVERY_AC_SENTENCE,
-        confidence: 0.95,
-      }],
-    }),
   };
 }
 
@@ -143,8 +122,8 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
 async function seedFailedPrd(
   dir: string,
   prdId: string,
-  verdict: 'retry' | 'split' | 'abandon' | 'manual',
-  opts?: { suggestedSuccessorPrd?: string; malformedJson?: boolean; missingJson?: boolean; summary?: Record<string, unknown> },
+  verdict: 'retry' | 'continue-repair' | 'abandon' | 'manual',
+  opts?: { malformedJson?: boolean; missingJson?: boolean; summary?: Record<string, unknown> },
 ): Promise<void> {
   const failedDir = join(dir, '.eforge', 'queue', 'failed');
   await mkdir(failedDir, { recursive: true });
@@ -174,11 +153,6 @@ async function seedFailedPrd(
         remainingWork: [],
         risks: [],
       };
-      if (verdict === 'split') {
-        verdictData.suggestedSuccessorPrd = bodyWithRecoveryAcceptanceCriteria(
-          opts?.suggestedSuccessorPrd ?? '# Successor Feature\n\nContinue the work.',
-        );
-      }
       const sidecarJson = {
         schemaVersion: 3,
         generatedAt: new Date().toISOString(),
@@ -233,7 +207,7 @@ async function setupServer(): Promise<void> {
       cwd: tmpDir,
       daemonState: makeDaemonState(),
       workerTracker: tracker,
-      agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]),
+      agentRuntimes: new StubHarness([]),
     },
   );
 }
@@ -384,18 +358,57 @@ describe('POST /api/recover/apply — malformed sidecar', () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/recover/apply — split continuation parity
+// POST /api/recover/apply — continue-repair
 // ---------------------------------------------------------------------------
 
-describe('POST /api/recover/apply — split continuation', () => {
-  it('writes continuation frontmatter when partial work evidence and branch are present', async () => {
-    const prdId = 'test-route-split-continuation';
-    execFileSync('git', ['branch', 'eforge/test-set'], { cwd: tmpDir });
-    await seedFailedPrd(tmpDir, prdId, 'split', {
-      summary: {
-        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
-      },
-    });
+describe('POST /api/recover/apply — continue-repair', () => {
+  async function createFeatureBranchWithArtifacts(cwd: string, setName = 'test-set'): Promise<void> {
+    execFileSync('git', ['switch', '-c', `eforge/${setName}`], { cwd });
+    const planDir = join(cwd, 'eforge', 'plans', setName);
+    await mkdir(planDir, { recursive: true });
+    await writeFile(
+      join(planDir, 'orchestration.yaml'),
+      `name: ${setName}
+description: Continue repair route fixture
+base_branch: main
+mode: excursion
+validate: []
+plans:
+  - id: plan-01
+    name: Plan 01
+    depends_on: []
+    branch: ${setName}/plan-01
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile: []
+  defaultBuild: []
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: continue-repair
+`,
+    );
+    await writeFile(join(planDir, 'plan-01.md'), '# Plan 01\n');
+    execFileSync('git', ['add', 'eforge'], { cwd });
+    execFileSync('git', ['commit', '-m', 'plan: compiled artifacts'], { cwd });
+    execFileSync('git', ['switch', 'main'], { cwd });
+  }
+
+  it('queues the failed PRD through compiled-artifact repair and returns applied metadata', async () => {
+    const prdId = 'test-route-continue-repair';
+    await createFeatureBranchWithArtifacts(tmpDir);
+    await seedFailedPrd(tmpDir, prdId, 'continue-repair');
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
       method: 'POST',
@@ -404,43 +417,28 @@ describe('POST /api/recover/apply — split continuation', () => {
     });
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { successorPrdId: string };
-    const content = await readFile(join(tmpDir, '.eforge', 'queue', `${data.successorPrdId}.md`), 'utf-8');
-    expect(content).toContain(`recovery_from: ${prdId}`);
-    expect(content).toContain('recovery_set_name: test-set');
-    expect(content).toContain('recovery_feature_branch: eforge/test-set');
-    expect(content).toContain('recovery_base_branch: main');
-    expect(requireAcceptanceCriteriaInventoryFromPrd(content).criteria).toHaveLength(1);
+    const data = await res.json() as { verdict: string; status?: string; commitSha?: string; noAction?: boolean; detail?: string };
+    expect(data.verdict).toBe('continue-repair');
+    expect(data.status).toBe('applied');
+    expect(data.noAction).toBe(false);
+    expect(data.commitSha).toBe('');
+    expect(data.detail).toMatch(/continue/i);
+
+    const queued = await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8');
+    expect(queued).toContain('resume_mode: compiled');
+    expect(queued).toContain('resume_set_name: test-set');
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
+    const sidecar = JSON.parse(await readFile(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8'));
+    expect(sidecar.applied).toMatchObject({ action: 'continue-repair' });
+    expect(typeof sidecar.applied.appliedAt).toBe('string');
+    expect(autoBuildWakeReasons).toContain('apply-recovery');
+    expect(spawnCalls).toHaveLength(0);
   });
 
-  it('returns non-2xx and writes no successor when partial work references a missing branch', async () => {
-    const prdId = 'test-route-split-missing-branch';
-    await seedFailedPrd(tmpDir, prdId, 'split', {
-      summary: {
-        landedCommits: [{ sha: 'abc123', subject: 'partial work', author: 'Test', date: new Date().toISOString() }],
-      },
-    });
-
-    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prdId }),
-    });
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    const entries = await readdir(join(tmpDir, '.eforge', 'queue'));
-    expect(entries.filter((entry) => entry.endsWith('.md'))).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/recover/apply — split idempotency
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/apply — split idempotency', () => {
-  it('repeated split apply returns already-applied with the same successorPrdId and no duplicate successor', async () => {
-    const prdId = 'test-route-split-idempotent';
-    await seedFailedPrd(tmpDir, prdId, 'split', { suggestedSuccessorPrd: '# Idempotent Successor\n\nContinue.' });
+  it('returns already-applied on a repeated continue-repair apply without duplicate queue files', async () => {
+    const prdId = 'test-route-continue-repair-idempotent';
+    await createFeatureBranchWithArtifacts(tmpDir);
+    await seedFailedPrd(tmpDir, prdId, 'continue-repair');
 
     const apply = () => fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
       method: 'POST',
@@ -448,76 +446,20 @@ describe('POST /api/recover/apply — split idempotency', () => {
       body: JSON.stringify({ prdId }),
     });
 
-    const firstRes = await apply();
-    expect(firstRes.status).toBe(200);
-    const first = await firstRes.json() as { verdict: string; successorPrdId: string; status?: string };
-    expect(first.verdict).toBe('split');
-    expect(first.status).toBe('applied');
-    expect(first.successorPrdId).toBeTruthy();
-
+    expect((await apply()).status).toBe(200);
     const secondRes = await apply();
     expect(secondRes.status).toBe(200);
-    const second = await secondRes.json() as { verdict: string; successorPrdId: string; status?: string };
+    const second = await secondRes.json() as { verdict: string; status?: string };
+    expect(second.verdict).toBe('continue-repair');
     expect(second.status).toBe('already-applied');
-    expect(second.successorPrdId).toBe(first.successorPrdId);
 
-    // Exactly one successor file in the queue root — no `-2` duplicate.
-    const entries = await readdir(join(tmpDir, '.eforge', 'queue'));
-    const successorFiles = entries.filter((e) => e.endsWith('.md'));
-    expect(successorFiles).toEqual([`${first.successorPrdId}.md`]);
+    const queuedFiles = (await readdir(join(tmpDir, '.eforge', 'queue'))).filter((entry) => entry.endsWith('.md'));
+    expect(queuedFiles).toEqual([`${prdId}.md`]);
   });
-});
 
-// ---------------------------------------------------------------------------
-// POST /api/recover/apply — split missing suggestedSuccessorPrd → 500
-// ---------------------------------------------------------------------------
-
-describe('POST /api/recover/apply — split missing successor', () => {
-  it('returns 500 when split verdict has no suggestedSuccessorPrd (apply helper throws)', async () => {
-    const prdId = 'test-split-no-successor';
-    // Write a split verdict sidecar with no suggestedSuccessorPrd
-    const failedDir = join(tmpDir, '.eforge', 'queue', 'failed');
-    await mkdir(failedDir, { recursive: true });
-    await writeFile(
-      join(failedDir, `${prdId}.md`),
-      `---\ntitle: Test Split PRD\ncreated: 2024-01-01\n---\n\n# Split PRD\n`,
-    );
-    await writeFile(
-      join(failedDir, `${prdId}.recovery.md`),
-      `## Recovery Report\n\nVerdict: split`,
-    );
-    const sidecarJson = {
-      schemaVersion: 3,
-      generatedAt: new Date().toISOString(),
-      summary: {
-        prdId,
-        setName: 'test-set',
-        featureBranch: 'eforge/test-set',
-        baseBranch: 'main',
-        plans: [],
-        failingPlan: { planId: 'plan-01' },
-        landedCommits: [],
-        diffStat: '',
-        modelsUsed: [],
-        failedAt: new Date().toISOString(),
-      },
-      // split verdict WITHOUT suggestedSuccessorPrd
-      verdict: {
-        verdict: 'split',
-        confidence: 'high',
-        rationale: 'Should have successor but missing.',
-        completedWork: [],
-        remainingWork: [],
-        risks: [],
-        // No suggestedSuccessorPrd intentionally
-      },
-    };
-    await writeFile(
-      join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify(recoverySidecarFromLegacy(sidecarJson), null, 2),
-    );
-    execFileSync('git', ['add', '--', failedDir], { cwd: tmpDir });
-    execFileSync('git', ['commit', '-m', `chore: seed split no-successor ${prdId}`], { cwd: tmpDir });
+  it('returns 409 and leaves files unmoved when continue-repair artifacts are missing', async () => {
+    const prdId = 'test-route-continue-repair-missing-artifacts';
+    await seedFailedPrd(tmpDir, prdId, 'continue-repair');
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
       method: 'POST',
@@ -525,9 +467,10 @@ describe('POST /api/recover/apply — split missing successor', () => {
       body: JSON.stringify({ prdId }),
     });
 
-    expect(res.status).toBe(500);
-    const data = await res.json() as { error: string };
-    expect(data.error).toContain(prdId);
+    expect(res.status).toBe(409);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
+    expect(autoBuildWakeReasons).toEqual([]);
   });
 });
 

@@ -222,7 +222,7 @@ function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { 
 }
 
 describe('EforgeEngine.resumeBuild — compile-free execution', () => {
-  it('emits a resume phase and no compile phase when compiled artifacts already exist', async () => {
+  it('emits a continue-repair phase and no compile phase when compiled artifacts already exist', async () => {
     const cwd = initRepo();
     const setName = 'compile-free-resume';
     createFeatureBranchWithArtifacts(cwd, setName);
@@ -252,7 +252,7 @@ describe('EforgeEngine.resumeBuild — compile-free execution', () => {
     }
 
     const phaseStarts = events.filter((event): event is Extract<EforgeEvent, { type: 'phase:start' }> => event.type === 'phase:start');
-    expect(phaseStarts.map((event) => event.command)).toContain('resume');
+    expect(phaseStarts.map((event) => event.command)).toContain('continue-repair');
     expect(phaseStarts.map((event) => event.command)).not.toContain('compile');
     expect(events.some((event) => event.type === 'planning:start')).toBe(false);
     expect(events.some((event) => event.type === 'planning:complete')).toBe(false);
@@ -538,7 +538,7 @@ depends_on: ["${prdId}"]
     try {
       for await (const event of withRecording(engine.resumeBuild(prdId, { cwd }), db, cwd)) {
         events.push(event);
-        if (event.type === 'phase:start' && event.command === 'resume') currentRunId = event.runId;
+        if (event.type === 'phase:start' && event.command === 'continue-repair') currentRunId = event.runId;
         if (event.type === 'build:resume:start' && currentRunId !== undefined) {
           const now = new Date().toISOString();
           insertRecoverySelectionEvent(db, currentRunId, 'plan:status:change', 'plan-01', now, { status: 'failed' });
@@ -556,8 +556,9 @@ depends_on: ["${prdId}"]
     expect(parsed.setName).toBe(setName);
     expect(parsed.boundedEvidence.failingPlan.planId).toBe('plan-01');
     expect(harness.roles).toEqual(['builder', 'recovery-analyst']);
-    expect(parsed.verdict.verdict).toBe('manual');
-    expect(parsed.verdict.rationale).toBe('Manual review for plan-01');
+    expect(parsed.verdict.verdict).toBe('continue-repair');
+    expect(parsed.verdict.recommendationSource).toBe('deterministic');
+    expect(parsed.verdict.recommendationRationale).toContain('Compiled plan artifacts are eligible');
     expect(md).toContain(setName);
     expect(md).toContain('plan-01');
   });
@@ -581,7 +582,7 @@ depends_on: ["${prdId}"]
     try {
       for await (const event of withRecording(engine.resumeBuild(prdId, { cwd }), db, cwd)) {
         events.push(event);
-        if (event.type === 'phase:start' && event.command === 'resume') currentRunId = event.runId;
+        if (event.type === 'phase:start' && event.command === 'continue-repair') currentRunId = event.runId;
         if (event.type === 'build:resume:start' && currentRunId !== undefined) {
           const now = new Date().toISOString();
           writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), '# Collision PRD\n');

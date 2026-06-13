@@ -40,13 +40,14 @@ function parseRecoverySidecar(jsonContent: string, prdId: string, statusForInval
 }
 
 function parseAppliedMarker(value: unknown): RecoveryVerdictSidecar['applied'] | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'object' || value === null) throw new Error('Recovery sidecar applied marker is invalid');
   const appliedObj = value as Record<string, unknown>;
   const acceptApplied = parseAcceptSuccessAppliedMetadata(appliedObj);
   if (acceptApplied !== undefined) return mergeForwardCompatible(appliedObj, acceptApplied, ['action', 'acceptedAt', 'reasonCategory', 'reason', 'cleanup', 'landing', 'dependents']) as unknown as RecoveryVerdictSidecar['applied'];
   const parsedApplied = parseRecoveryAppliedMetadata(appliedObj);
-  if (parsedApplied !== undefined) return mergeForwardCompatible(appliedObj, parsedApplied, ['action', 'appliedAt', 'successorPrdId', 'commitSha']) as unknown as RecoveryVerdictSidecar['applied'];
-  return undefined;
+  if (parsedApplied !== undefined) return mergeForwardCompatible(appliedObj, parsedApplied, ['action', 'appliedAt', 'commitSha']) as unknown as RecoveryVerdictSidecar['applied'];
+  throw new Error('Recovery sidecar applied marker is invalid');
 }
 
 function mergeForwardCompatible<T>(raw: Record<string, unknown>, parsed: T, knownFields: string[]): T & Record<string, unknown> {

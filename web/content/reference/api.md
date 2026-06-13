@@ -21,6 +21,8 @@ Total routes: 85
 | `cancel` | `/api/cancel/:sessionId` |
 | `configShow` | `/api/config/show` |
 | `configValidate` | `/api/config/validate` |
+| `continueRepair` | `/api/recover/continue-repair` |
+| `continueRepairEligibility` | `/api/recover/continue-repair/eligibility` |
 | `daemonEvents` | `/api/daemon-events` |
 | `daemonStop` | `/api/daemon/stop` |
 | `diff` | `/api/diff/:sessionId/:planId` |
@@ -73,8 +75,6 @@ Total routes: 85
 | `queueRemove` | `/api/queue/:prdId` |
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
-| `resumeBuild` | `/api/recover/resume-build` |
-| `resumeEligibility` | `/api/recover/resume-eligibility` |
 | `runs` | `/api/runs` |
 | `runState` | `/api/run-state/:id` |
 | `runSummary` | `/api/run-summary/:id` |

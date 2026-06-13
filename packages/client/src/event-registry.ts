@@ -1395,7 +1395,7 @@ const eventRegistry = {
     summary: (e) =>
       e.noAction
         ? 'Recovery verdict is manual — no changes made'
-        : `Recovery applied: ${e.verdict.toUpperCase()}${e.successorPrdId ? ` → ${e.successorPrdId}` : ''}`,
+        : `Recovery applied: ${e.verdict.toUpperCase()}`,
   },
 
   'recovery:apply:error': {

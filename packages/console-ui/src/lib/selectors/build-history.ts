@@ -1,6 +1,6 @@
 /**
  * Build rollup selector: collapse a session's per-phase "runs" (compile, build,
- * resume; successful enqueue bookkeeping excluded) into a single build row.
+ * continue-and-repair; successful enqueue bookkeeping excluded) into a single build row.
  *
  * The daemon records one run per phase, tied together by `sessionId`. The Build
  * history surfaces each session as one cohesive build, matching how the Build
@@ -18,7 +18,7 @@ function byStartedAtDesc(a: { startedAt: string }, b: { startedAt: string }): nu
   return 0;
 }
 
-/** A single phase run (one row per enqueue/compile/build/resume command). */
+/** A single phase run (one row per enqueue/compile/build/continue-and-repair command). */
 export interface NowRecentRunItem {
   id: string;
   sessionId: string | undefined;
@@ -104,7 +104,7 @@ export function classifyBuildStatus(status: string): BuildStatusClass {
  * isn't a build at all.
  *
  * The `enqueue` phase runs in its own session (a different `sessionId` than the
- * compile/build/resume it spawns), so a successful enqueue lands here as an
+ * compile/build/continue-and-repair it spawns), so a successful enqueue lands here as an
  * enqueue-only session. That's pre-build setup, not a build — drop it so it
  * doesn't double up with the real build's row. A *failed* enqueue is kept: the
  * build never got created, which is worth surfacing.
@@ -113,7 +113,7 @@ export function classifyBuildStatus(status: string): BuildStatusClass {
  * read from it.
  */
 function rollupBuild(runs: RunInfo[], now: number): NowBuildItem | null {
-  // A build needs an actual build phase (compile/build/resume) or a failed
+  // A build needs an actual build phase (compile/build/continue-and-repair) or a failed
   // enqueue. A session of only successful/in-flight enqueue runs is setup, not
   // a build.
   const window = runs.filter((r) => r.command !== 'enqueue' || classifyBuildStatus(r.status) === 'failed');

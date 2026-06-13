@@ -810,7 +810,7 @@ function renderRecoveryEvent(event: EforgeEvent): boolean {
       return true;
     case 'recovery:apply:complete':
       if (!event.noAction) {
-        console.log(chalk.green(`  ✓ Recovery applied: ${chalk.bold(event.verdict.toUpperCase())}${event.successorPrdId ? ` → ${event.successorPrdId}` : ''}`));
+        console.log(chalk.green(`  ✓ Recovery applied: ${chalk.bold(event.verdict.toUpperCase())}`));
       } else {
         console.log(chalk.dim(`  ℹ Recovery verdict is manual — no changes made. Review the recovery report.`));
       }

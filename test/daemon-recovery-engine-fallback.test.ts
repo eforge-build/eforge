@@ -297,9 +297,10 @@ describe('EforgeEngine.recover() fallback: multi-plan DB + unparsable analyst ou
 
 
 
-    expect(sidecarContent.verdict.verdict).toBe('split');
-    expect(sidecarContent.verdict.recommendationSource).toBe('deterministic');
+    expect(sidecarContent.verdict.verdict).toBe('manual');
+    expect(sidecarContent.verdict.recommendationSource).toBe('manual-fallback');
     expect(sidecarContent.verdict.recoveryError).toBeTruthy();
+    expect(sidecarContent.verdict).not.toHaveProperty('suggestedSuccessorPrd');
 
 
     expect(sidecarContent.boundedEvidence.plans).toHaveLength(7);

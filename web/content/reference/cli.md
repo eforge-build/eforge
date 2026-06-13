@@ -485,7 +485,7 @@ Analyse a failed build and write recovery sidecar files
 
 **Full command:** `eforge apply-recovery`
 
-Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)
+Apply the recovery verdict for a failed build plan (retry from scratch, continue-and-repair, abandon, or manual)
 
 
 **Options:**
@@ -495,11 +495,11 @@ Apply the recovery verdict for a failed build plan (requeue, enqueue successor, 
 | `--cwd <cwd>` | Working directory override |
 | `--no-monitor` | Disable web monitor |
 
-### `resume`
+### `continue-repair`
 
-**Full command:** `eforge resume`
+**Full command:** `eforge continue-repair`
 
-Queue a compiled build resume for scheduler dispatch
+Continue and repair build from preserved compiled artifacts
 
 
 **Options:**
@@ -507,11 +507,9 @@ Queue a compiled build resume for scheduler dispatch
 | Flag | Description |
 |------|-------------|
 | `--set-name <setName>` | Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId |
-| `--profile <name>` | Override active profile for this resumed build |
+| `--profile <name>` | Override active profile for this continue-and-repair build |
 | `--cwd <cwd>` | Working directory override |
 | `--verbose` | Print additional queued metadata |
-| `--no-monitor` | Accepted for compatibility; the daemon route is still used |
-| `--session-id <uuid>` | Accepted for compatibility; ignored because resume is queued |
 
 ### `playbook`
 

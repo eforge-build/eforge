@@ -47,7 +47,7 @@ export const DaemonQueueItemSchema = Type.Object({
     Type.Object({
       verdict: Type.Union([
         Type.Literal('retry'),
-        Type.Literal('split'),
+        Type.Literal('continue-repair'),
         Type.Literal('abandon'),
         Type.Literal('manual'),
       ]),
@@ -58,10 +58,9 @@ export const DaemonQueueItemSchema = Type.Object({
       ]),
     }),
   ),
-  // Action-discriminated: `split` requires `successorPrdId`; retry/abandon enqueue no successor; `accepted-success` uses the rich AcceptSuccessAppliedSummary shape (keyed by `acceptedAt`).
+  // Base recovery actions use an `appliedAt` marker; `accepted-success` uses the rich AcceptSuccessAppliedSummary shape (keyed by `acceptedAt`).
   recoveryApplied: Type.Optional(Type.Union([
-    Type.Object({ action: Type.Literal('split'), appliedAt: Type.String(), successorPrdId: Type.String(), commitSha: Type.Optional(Type.String()) }),
-    Type.Object({ action: Type.Union([Type.Literal('retry'), Type.Literal('abandon')]), appliedAt: Type.String(), commitSha: Type.Optional(Type.String()) }),
+    Type.Object({ action: Type.Union([Type.Literal('retry'), Type.Literal('continue-repair'), Type.Literal('abandon')]), appliedAt: Type.String(), commitSha: Type.Optional(Type.String()) }),
     Type.Object({ action: Type.Literal('accepted-success'), acceptedAt: Type.String(), reasonCategory: Type.Union([Type.Literal('bad_acceptance_criterion'), Type.Literal('manual_verification_passed'), Type.Literal('external_or_inconclusive_criterion_waived'), Type.Literal('other')]), reason: Type.String(), cleanup: Type.Object({ status: Type.Union([Type.Literal('committed'), Type.Literal('noop')]), commitSha: Type.Optional(Type.String()) }), landing: Type.Object({ action: Type.Union([Type.Literal('pr'), Type.Literal('merge'), Type.Literal('leave')]), status: Type.Union([Type.Literal('complete'), Type.Literal('skipped'), Type.Literal('failed')]), prUrl: Type.Optional(Type.String()), mergeCommitSha: Type.Optional(Type.String()), branch: Type.Optional(Type.String()), reason: Type.Optional(Type.String()), autoMerge: Type.Optional(Type.Union([Type.Object({ status: Type.Literal('complete') }), Type.Object({ status: Type.Literal('skipped'), reason: Type.String() }), Type.Object({ status: Type.Literal('failed'), reason: Type.String() })])) }), dependents: Type.Object({ unblocked: Type.Array(Type.String()), remainedBlocked: Type.Array(Type.String()), notFound: Type.Array(Type.String()) }) }),
   ])),
 });

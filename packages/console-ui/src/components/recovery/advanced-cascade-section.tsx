@@ -166,7 +166,7 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
 
       {verdict === 'manual' && (
         <p role="alert" className="text-xs text-yellow">
-          The recovery verdict is manual review: queue-cascade retry/reactivation can contradict manual review guidance.
+          The recovery verdict requires manual review / manual replanning: queue-cascade retry/reactivation can contradict manual guidance.
         </p>
       )}
       {confidence === 'low' && (

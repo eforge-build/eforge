@@ -1,9 +1,9 @@
-// --- eforge:region resume-build-route-suite ---
+// --- eforge:region continue-repair-route-suite ---
 /**
- * End-to-end tests for POST /api/recover/resume-build.
+ * End-to-end tests for POST /api/recover/continue-repair.
  *
- * Verifies queued compiled-resume mutation, validation, scheduler notification,
- * profile precedence, and that the route no longer spawns resume workers.
+ * Verifies queued continue-and-repair mutation, validation, scheduler notification,
+ * profile precedence, and that the route does not spawn workers.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -18,7 +18,7 @@ import {
   type MonitorServer,
   type WorkerTracker,
 } from '@eforge-build/monitor/server';
-import { API_ROUTES, type ResumeBuildResponse } from '@eforge-build/client';
+import { API_ROUTES, type ContinueRepairResponse } from '@eforge-build/client';
 
 interface SpawnCall {
   command: string;
@@ -47,7 +47,7 @@ function writeCompiledPlanSet(cwd: string, setName: string): void {
   writeFileEnsuringDir(
     join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'),
     `name: ${setName}
-description: Test resume plan set
+description: Test continue-repair plan set
 base_branch: main
 mode: excursion
 validate: []
@@ -74,7 +74,7 @@ pipeline:
       - code
     maxRounds: 1
     evaluatorStrictness: standard
-  rationale: resume
+  rationale: continue-repair
 `,
   );
   writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'plan-01.md'), '---\nid: plan-01\nname: Plan 01\n---\n\n# Plan 01\n');
@@ -93,7 +93,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
   const tracker: WorkerTracker = {
     spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
       calls.push({ command, args });
-      return { sessionId: 'unexpected-resume-worker', pid: 9999 };
+      return { sessionId: 'unexpected-continue-repair-worker', pid: 9999 };
     },
     cancelWorker(): boolean {
       return false;
@@ -104,7 +104,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
 
 const VALID_TEST_PROFILE_YAML = 'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-haiku-4-5\n      effort: low\n';
 
-function writeTestProfile(cwd: string, name = 'resume-profile', profileYaml = VALID_TEST_PROFILE_YAML): void {
+function writeTestProfile(cwd: string, name = 'continue-repair-profile', profileYaml = VALID_TEST_PROFILE_YAML): void {
   const configDir = join(cwd, 'eforge');
   mkdirSync(join(configDir, 'profiles'), { recursive: true });
   writeFileSync(join(configDir, 'config.yaml'), 'agents:\n  tiers: {}\n', 'utf-8');
@@ -122,7 +122,7 @@ async function writeFailedPrd(cwd: string, prdId: string, opts: { profile?: stri
   if (opts.setName) {
     await writeFile(
       join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify({ schemaVersion: 3, generatedAt: new Date().toISOString(), prdId, setName: opts.setName, verdict: { verdict: 'manual', confidence: 'low', rationale: 'resume metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'resume metadata', recommendedAction: 'Resume.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: opts.setName, featureBranch: `eforge/${opts.setName}`, baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] } }),
+      JSON.stringify({ schemaVersion: 3, generatedAt: new Date().toISOString(), prdId, setName: opts.setName, verdict: { verdict: 'manual', confidence: 'low', rationale: 'continue-repair metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'continue-repair metadata', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: opts.setName, featureBranch: `eforge/${opts.setName}`, baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] } }),
       'utf-8',
     );
   }
@@ -138,15 +138,15 @@ async function writeSkippedChild(cwd: string, childId: string, parentId: string)
   );
 }
 
-async function postResume(server: MonitorServer, body: unknown): Promise<Response> {
-  return fetch(`http://localhost:${server.port}${API_ROUTES.resumeBuild}`, {
+async function postContinueRepair(server: MonitorServer, body: unknown): Promise<Response> {
+  return fetch(`http://localhost:${server.port}${API_ROUTES.continueRepair}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
 
-const makeTempDir = useTempDir('eforge-resume-route-test-');
+const makeTempDir = useTempDir('eforge-continue-repair-route-test-');
 
 let tmpDir: string;
 let dbPath: string;
@@ -186,26 +186,26 @@ afterEach(async () => {
   await server?.stop();
 });
 
-describe('POST /api/recover/resume-build — validation', () => {
+describe('POST /api/recover/continue-repair — validation', () => {
   beforeEach(async () => {
     await setupServer();
   });
 
   it('returns 400 when the JSON body is null or an array', async () => {
-    expect((await postResume(server, null)).status).toBe(400);
-    expect((await postResume(server, [])).status).toBe(400);
+    expect((await postContinueRepair(server, null)).status).toBe(400);
+    expect((await postContinueRepair(server, [])).status).toBe(400);
     expect(spawnCalls).toHaveLength(0);
   });
 
   it('returns 400 when prdId is missing or unsafe', async () => {
-    expect((await postResume(server, {})).status).toBe(400);
-    expect((await postResume(server, { prdId: 'some/path' })).status).toBe(400);
-    expect((await postResume(server, { prdId: '../etc/passwd' })).status).toBe(400);
+    expect((await postContinueRepair(server, {})).status).toBe(400);
+    expect((await postContinueRepair(server, { prdId: 'some/path' })).status).toBe(400);
+    expect((await postContinueRepair(server, { prdId: '../etc/passwd' })).status).toBe(400);
     expect(spawnCalls).toHaveLength(0);
   });
 
   it('returns 400 when setName contains path separators', async () => {
-    const res = await postResume(server, { prdId: 'valid-prd', setName: 'some/set' });
+    const res = await postContinueRepair(server, { prdId: 'valid-prd', setName: 'some/set' });
     expect(res.status).toBe(400);
     expect(spawnCalls).toHaveLength(0);
   });
@@ -213,12 +213,22 @@ describe('POST /api/recover/resume-build — validation', () => {
   it('returns 503 when no working directory is configured', async () => {
     await server.stop();
     await setupServer({ withCwd: false });
-    const res = await postResume(server, { prdId: 'valid-prd' });
+    const res = await postContinueRepair(server, { prdId: 'valid-prd' });
     expect(res.status).toBe(503);
+  });
+
+  it('does not register the removed public route alias', async () => {
+    const removedPath = ['/api/recover', ['resume', '-build'].join('')].join('/');
+    const res = await fetch(`http://localhost:${server.port}${removedPath}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId: 'valid-prd' }),
+    });
+    expect(res.status).toBe(404);
   });
 });
 
-describe('POST /api/recover/resume-build — queued mutation', () => {
+describe('POST /api/recover/continue-repair — queued mutation', () => {
   it('returns queued metadata, moves queue files, notifies the scheduler, and never spawns a worker', async () => {
     const prdId = 'my-feature-prd';
     const childId = 'child-prd';
@@ -227,9 +237,9 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
     await writeSkippedChild(tmpDir, childId, prdId);
     await setupServer();
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(200);
-    const data = await res.json() as ResumeBuildResponse & { sessionId?: unknown; pid?: unknown };
+    const data = await res.json() as ContinueRepairResponse & { sessionId?: unknown; pid?: unknown };
     expect(data).toMatchObject({
       kind: 'queued',
       prdId,
@@ -255,9 +265,9 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
     await writeFailedPrd(tmpDir, prdId, { setName });
     await setupServer();
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(200);
-    const data = await res.json() as ResumeBuildResponse;
+    const data = await res.json() as ContinueRepairResponse;
     expect(data.setName).toBe(setName);
     expect(data.featureBranch).toBe(`eforge/${setName}`);
     expect(await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8')).toContain(`resume_set_name: ${setName}`);
@@ -265,15 +275,15 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
 
   it('applies an explicit profile override to the requeued PRD frontmatter', async () => {
     const prdId = 'profile-prd';
-    const profile = 'resume-profile';
+    const profile = 'continue-repair-profile';
     createFeatureBranchWithArtifacts(tmpDir, prdId);
     await writeFailedPrd(tmpDir, prdId, { profile: 'old-profile' });
     writeTestProfile(tmpDir, profile);
     await setupServer();
 
-    const res = await postResume(server, { prdId, profile });
+    const res = await postContinueRepair(server, { prdId, profile });
     expect(res.status).toBe(200);
-    const data = await res.json() as ResumeBuildResponse;
+    const data = await res.json() as ContinueRepairResponse;
     expect(data.profile).toBe(profile);
     const queued = await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8');
     expect(queued).toContain(`profile: ${profile}`);
@@ -286,9 +296,9 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
     await writeFailedPrd(tmpDir, prdId, { profile: 'existing-profile' });
     await setupServer();
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(200);
-    const data = await res.json() as ResumeBuildResponse;
+    const data = await res.json() as ContinueRepairResponse;
     expect(data.profile).toBe('existing-profile');
     expect(await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8')).toContain('profile: existing-profile');
   });
@@ -299,9 +309,9 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
     await writeFailedPrd(tmpDir, prdId);
     await setupServer();
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(200);
-    const data = await res.json() as ResumeBuildResponse;
+    const data = await res.json() as ContinueRepairResponse;
     expect(data.profile).toBeUndefined();
     expect(await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8')).not.toContain('profile:');
   });
@@ -313,9 +323,9 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
     await writeFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), `---\ntitle: Already queued\nresume_mode: compiled\nresume_from: ${prdId}\nresume_set_name: ${prdId}\nresume_feature_branch: eforge/${prdId}\nresume_base_branch: main\n---\n\n# Already queued\n`, 'utf-8');
     await setupServer();
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(200);
-    const data = await res.json() as ResumeBuildResponse;
+    const data = await res.json() as ContinueRepairResponse;
     expect(data.kind).toBe('queued');
     expect(data.status).toBe('already-queued');
     expect(data.detail).toContain('already queued');
@@ -329,19 +339,19 @@ describe('POST /api/recover/resume-build — queued mutation', () => {
     await writeFailedPrd(tmpDir, prdId);
     await setupServer({ withTracker: false });
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(200);
-    expect((await res.json() as ResumeBuildResponse).kind).toBe('queued');
+    expect((await res.json() as ContinueRepairResponse).kind).toBe('queued');
   });
 });
 
-describe('POST /api/recover/resume-build — blocked and profile errors', () => {
+describe('POST /api/recover/continue-repair — blocked and profile errors', () => {
   it('returns 409 and leaves queue files unmoved when artifacts are missing', async () => {
     const prdId = 'missing-artifacts-prd';
     await writeFailedPrd(tmpDir, prdId);
     await setupServer();
 
-    const res = await postResume(server, { prdId });
+    const res = await postContinueRepair(server, { prdId });
     expect(res.status).toBe(409);
     expect(existsSync(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
     expect(existsSync(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
@@ -354,14 +364,14 @@ describe('POST /api/recover/resume-build — blocked and profile errors', () => 
     await writeFailedPrd(tmpDir, prdId);
     await setupServer();
 
-    expect((await postResume(server, { prdId, profile: '' })).status).toBe(400);
-    expect((await postResume(server, { prdId, profile: 'missing-profile' })).status).toBe(400);
+    expect((await postContinueRepair(server, { prdId, profile: '' })).status).toBe(400);
+    expect((await postContinueRepair(server, { prdId, profile: 'missing-profile' })).status).toBe(400);
 
     writeTestProfile(tmpDir, 'bad-profile', 'agents:\n  tiers:\n    planning:\n      harness: invalid-harness\n      model: claude-haiku-4-5\n      effort: low\n');
-    expect((await postResume(server, { prdId, profile: 'bad-profile' })).status).toBe(400);
+    expect((await postContinueRepair(server, { prdId, profile: 'bad-profile' })).status).toBe(400);
     expect(existsSync(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
     expect(existsSync(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
     expect(queueMutationReasons).toEqual([]);
   });
 });
-// --- eforge:endregion resume-build-route-suite ---
+// --- eforge:endregion continue-repair-route-suite ---

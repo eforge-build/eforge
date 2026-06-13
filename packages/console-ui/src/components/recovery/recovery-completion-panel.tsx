@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type {
   ApplyRecoveryResponse,
-  ResumeBuildResponse,
+  ContinueRepairResponse,
   RecoveryAppliedMetadata,
   AcceptSuccessResponse,
   AcceptSuccessAppliedSummary,
@@ -19,7 +19,7 @@ import { ACCEPT_SUCCESS_REASON_LABELS } from './accept-success-action';
  */
 export type RecoveryCompletion =
   | { kind: 'sidecar-apply'; result: ApplyRecoveryResponse; refreshError?: string }
-  | { kind: 'resume'; result: ResumeBuildResponse; refreshError?: string }
+  | { kind: 'continue-repair'; result: ContinueRepairResponse; refreshError?: string }
   | { kind: 'already-applied'; applied: RecoveryAppliedMetadata; refreshError?: string }
   | { kind: 'accepted-success'; result: AcceptSuccessResponse; refreshError?: string };
 
@@ -27,12 +27,12 @@ function applyResultMessage(result: ApplyRecoveryResponse): string {
   switch (result.verdict) {
     case 'retry':
       return 'Applied retry: the PRD has been re-queued.';
-    case 'split':
-      return `Applied split: enqueued the successor PRD${result.successorPrdId ? ` (${result.successorPrdId})` : ''}.`;
+    case 'continue-repair':
+      return 'Continue-and-repair queued from preserved compiled artifacts.';
     case 'abandon':
       return 'Applied abandon: the failed PRD has been archived or removed.';
     case 'manual':
-      return 'Manual review required: no action was taken.';
+      return 'Manual review / manual replanning required: no action was taken.';
   }
 }
 
@@ -89,15 +89,6 @@ function AppliedMarkerView({ applied }: { applied: RecoveryAppliedMetadata }) {
   if (applied.action === 'accepted-success') {
     return <AcceptedSummaryView applied={applied} />;
   }
-  if (applied.action === 'split') {
-    return (
-      <div className="space-y-1">
-        <Field label="Action" value="split" />
-        <Field label="Successor PRD" value={applied.successorPrdId} />
-        {applied.commitSha && <Field label="Commit" value={applied.commitSha} />}
-      </div>
-    );
-  }
   return (
     <div className="space-y-1">
       <Field label="Action" value={applied.action} />
@@ -110,8 +101,8 @@ function completionTitle(completion: RecoveryCompletion): string {
   switch (completion.kind) {
     case 'sidecar-apply':
       return 'Recovery applied';
-    case 'resume':
-      return 'Compiled build resumed';
+    case 'continue-repair':
+      return 'Continue and repair queued';
     case 'already-applied':
       return 'Recovery already applied';
     case 'accepted-success':
@@ -125,19 +116,16 @@ function CompletionBody({ completion }: { completion: RecoveryCompletion }) {
       return (
         <div className="space-y-1">
           <p className="text-sm text-foreground">{applyResultMessage(completion.result)}</p>
-          {completion.result.successorPrdId && (
-            <Field label="Successor PRD" value={completion.result.successorPrdId} />
-          )}
           {completion.result.detail && (
             <p className="text-xs text-muted-foreground">{completion.result.detail}</p>
           )}
         </div>
       );
-    case 'resume':
+    case 'continue-repair':
       return (
         <div className="space-y-1">
           <p className="text-sm text-foreground">
-            {completion.result.detail ?? `Resume ${completion.result.status ?? completion.result.kind}`}
+            {completion.result.detail ?? `Continue-and-repair status: ${completion.result.status ?? completion.result.kind}`}
           </p>
           <Field label="PRD" value={completion.result.prdId} />
           <Field label="Set" value={completion.result.setName} />

@@ -201,15 +201,8 @@ describe('determineRecoveryRecommendation — transient retry policy', () => {
   });
 });
 
-describe('determineRecoveryRecommendation — transient split policy', () => {
-  /**
-   * All failed plans are transient-transport, but some plans have already completed or merged.
-   * Retrying the full PRD would redo completed work → split recommendation instead.
-   *
-   * Verification criterion: "The same transient failure facts produce a deterministic split verdict
-   * when at least one plan completed or merged before the failed plans."
-   */
-  it('returns split when all failed plans are transient but at least one plan merged', () => {
+describe('determineRecoveryRecommendation — continue-repair and preserved-work policy', () => {
+  it('returns continue-repair when compiled artifacts are eligible', () => {
     const summary: BuildFailureSummary = {
       prdId: 'test-prd',
       setName: 'test-set',
@@ -217,30 +210,30 @@ describe('determineRecoveryRecommendation — transient split policy', () => {
       baseBranch: 'main',
       plans: [
         { planId: 'plan-01', status: 'merged' },
-        { planId: 'plan-02', status: 'merged' },
-        { planId: 'plan-04', status: 'failed', error: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
-        { planId: 'plan-06', status: 'failed', error: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
+        { planId: 'plan-02', status: 'failed', error: 'API error 529', terminalSubtype: 'error_transient_transport' },
       ],
-      failingPlan: { planId: 'plan-06', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport' },
+      failingPlan: { planId: 'plan-02', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' },
       failingPlans: [
-        { planId: 'plan-04', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
-        { planId: 'plan-06', errorMessage: 'API error 529: overloaded_error', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
+        { planId: 'plan-02', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
       ],
-      landedCommits: [
-        { sha: 'abc1234', subject: 'feat: plan-01', author: 'Test', date: '2026-05-26T05:30:00.000Z' },
-      ],
-      diffStat: '5 files changed',
+      landedCommits: [{ sha: 'abc1234', subject: 'feat: plan-01', author: 'Test', date: '2026-05-26T05:30:00.000Z' }],
+      diffStat: '3 files changed',
       modelsUsed: [],
       failedAt: '2026-05-26T06:15:10.000Z',
     };
 
-    const recommendation = determineRecoveryRecommendation(summary);
-    expect(recommendation.verdict).toBe('split');
-    expect(recommendation.rationale).toBeTruthy();
+    const recommendation = determineRecoveryRecommendation(summary, {
+      eligible: true,
+      featureBranch: 'eforge/test-set',
+      artifactAvailability: 'feature-branch',
+      landedCommitCount: 1,
+      failingPlanId: 'plan-02',
+    });
+    expect(recommendation.verdict).toBe('continue-repair');
+    expect(recommendation.rationale).toMatch(/continue-and-repair/i);
   });
 
-  it('returns split when all failed plans are transient but at least one plan is completed (not merged)', () => {
-    // Criterion: partial completion (completed but not merged) still triggers split
+  it('returns manual when preserved work exists but continue-repair is not eligible', () => {
     const summary: BuildFailureSummary = {
       prdId: 'test-prd',
       setName: 'test-set',
@@ -260,8 +253,10 @@ describe('determineRecoveryRecommendation — transient split policy', () => {
       failedAt: '2026-05-26T06:15:10.000Z',
     };
 
-    const recommendation = determineRecoveryRecommendation(summary);
-    expect(recommendation.verdict).toBe('split');
+    const recommendation = determineRecoveryRecommendation(summary, { eligible: false, reason: 'feature branch missing' });
+    expect(recommendation.verdict).toBe('manual');
+    expect(recommendation.rationale).toMatch(/manual|replanning/i);
+    expect(recommendation.rationale).toMatch(/feature branch missing/);
   });
 });
 
@@ -464,9 +459,8 @@ describe('validateAnalystVerdict — failed plan ID coverage', () => {
    * Build a minimal RecoveryVerdict for testing.
    */
   function makeAnalystVerdict(
-    verdict: 'retry' | 'split' | 'abandon' | 'manual',
+    verdict: 'retry' | 'continue-repair' | 'abandon' | 'manual',
     rationale: string,
-    suggestedSuccessorPrd?: string,
   ) {
     return {
       verdict,
@@ -475,7 +469,6 @@ describe('validateAnalystVerdict — failed plan ID coverage', () => {
       completedWork: [],
       remainingWork: [],
       risks: [],
-      ...(suggestedSuccessorPrd !== undefined ? { suggestedSuccessorPrd } : {}),
     };
   }
 
@@ -580,177 +573,33 @@ describe('validateAnalystVerdict — failed plan ID coverage', () => {
   });
 });
 
-describe('validateAnalystVerdict — split successor PRD coverage', () => {
-  /** Summary with two failed plans and one merged plan. */
-  function makeMultiFailSummary() {
-    return {
+describe('validateAnalystVerdict — removed split verdict', () => {
+  it('rejects legacy split analyst verdicts even when the rationale names failed plans', () => {
+    const summary: BuildFailureSummary = {
       prdId: 'test-prd',
       setName: 'test-set',
       featureBranch: 'eforge/test-set',
       baseBranch: 'main',
-      plans: [
-        { planId: 'plan-01', status: 'merged' },
-        { planId: 'plan-04-queue-view', status: 'failed', error: 'API error 529' },
-        { planId: 'plan-06-static-serving', status: 'failed', error: 'API error 529' },
-      ],
-      failingPlan: { planId: 'plan-06-static-serving', errorMessage: 'API error 529' },
-      failingPlans: [
-        { planId: 'plan-04-queue-view', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' },
-        { planId: 'plan-06-static-serving', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' },
-      ],
+      plans: [{ planId: 'plan-04-queue-view', status: 'failed', error: 'API error 529' }],
+      failingPlan: { planId: 'plan-04-queue-view', errorMessage: 'API error 529' },
+      failingPlans: [{ planId: 'plan-04-queue-view', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' }],
       landedCommits: [],
       diffStat: '',
       modelsUsed: [],
       failedAt: '2026-05-26T06:15:10.000Z',
-    } satisfies BuildFailureSummary;
-  }
-
-  it('passes split verdict when successor PRD mentions all failed plan IDs', () => {
-    // Verification criterion: "A split analyst verdict without a successor PRD mentioning
-    // every failed and remaining plan is not emitted as the final split verdict."
-    // (inverse: when it DOES mention them, it passes)
-    const verdict = {
-      verdict: 'split' as const,
-      confidence: 'medium' as const,
-      rationale: 'plan-04-queue-view and plan-06-static-serving failed due to transient API errors.',
-      completedWork: ['plan-01 merged'],
-      remainingWork: [],
-      risks: [],
-      suggestedSuccessorPrd: [
-        '# Successor PRD',
-        '',
-        'Continue work on plan-04-queue-view and plan-06-static-serving.',
-        'Both plans failed due to 529 API errors.',
-      ].join('\n'),
     };
-    const result = validateAnalystVerdict(verdict, makeMultiFailSummary());
-    expect(result.valid).toBe(true);
-  });
-
-  it('rejects split verdict when successor PRD omits one failed plan ID', () => {
-    const verdict = {
-      verdict: 'split' as const,
-      confidence: 'medium' as const,
-      rationale: 'plan-04-queue-view and plan-06-static-serving failed due to transient API errors.',
+    const legacyVerdict = {
+      verdict: 'split',
+      confidence: 'medium',
+      rationale: 'plan-04-queue-view failed due to a transient API error.',
       completedWork: [],
       remainingWork: [],
       risks: [],
-      // Successor PRD only covers plan-06, completely ignoring plan-04
-      suggestedSuccessorPrd: [
-        '# Successor PRD',
-        '',
-        'Continue work on plan-06-static-serving only.',
-      ].join('\n'),
-    };
-    const result = validateAnalystVerdict(verdict, makeMultiFailSummary());
+    } as unknown as Parameters<typeof validateAnalystVerdict>[0];
+
+    const result = validateAnalystVerdict(legacyVerdict, summary);
     expect(result.valid).toBe(false);
-    expect(result.invalidationReason).toMatch(/plan-04-queue-view/);
-  });
-
-  it('rejects split verdict that has no suggestedSuccessorPrd', () => {
-    const verdict = {
-      verdict: 'split' as const,
-      confidence: 'medium' as const,
-      rationale: 'plan-04-queue-view and plan-06-static-serving failed. Split recommended.',
-      completedWork: [],
-      remainingWork: [],
-      risks: [],
-      // No suggestedSuccessorPrd
-    };
-    const result = validateAnalystVerdict(verdict, makeMultiFailSummary());
-    expect(result.valid).toBe(false);
-    expect(result.invalidationReason).toBeTruthy();
-  });
-
-  it('rejects split verdict when successor PRD omits a remaining non-completed/non-merged plan', () => {
-    // Summary with one failed plan AND one remaining pending plan (not yet started)
-    const summaryWithRemaining: BuildFailureSummary = {
-      prdId: 'test-prd',
-      setName: 'test-set',
-      featureBranch: 'eforge/test-set',
-      baseBranch: 'main',
-      plans: [
-        { planId: 'plan-01', status: 'merged' },
-        { planId: 'plan-02', status: 'failed', error: 'API error 529' },
-        { planId: 'plan-03', status: 'pending' }, // remaining — not yet started
-      ],
-      failingPlan: { planId: 'plan-02', errorMessage: 'API error 529' },
-      failingPlans: [
-        { planId: 'plan-02', errorMessage: 'API error 529', terminalSubtype: 'error_transient_transport' },
-      ],
-      landedCommits: [],
-      diffStat: '',
-      modelsUsed: [],
-      failedAt: '2026-05-26T06:15:10.000Z',
-    };
-
-    // Successor PRD covers the failed plan (plan-02) but omits plan-03 (remaining pending)
-    const verdict = {
-      verdict: 'split' as const,
-      confidence: 'medium' as const,
-      rationale: 'plan-02 failed with API 529 transient error. plan-01 was merged.',
-      completedWork: ['plan-01 merged'],
-      remainingWork: ['plan-02 needs retry'],
-      risks: [],
-      suggestedSuccessorPrd: '# Successor PRD\n\nRetry plan-02 as a standalone PRD.',
-    };
-
-    const result = validateAnalystVerdict(verdict, summaryWithRemaining);
-    expect(result.valid).toBe(false);
-    // Invalidation reason must mention the omitted remaining plan
-    expect(result.invalidationReason).toMatch(/plan-03/);
-  });
-});
-
-describe('selectFinalVerdict — remaining plans required in split successor', () => {
-  it('does not accept an analyst split as final when successor PRD omits a remaining pending plan', () => {
-    // Summary with one failed plan and one pending plan that has not yet started
-    const summaryWithRemaining: BuildFailureSummary = {
-      prdId: 'test-prd',
-      setName: 'test-set',
-      featureBranch: 'eforge/test-set',
-      baseBranch: 'main',
-      plans: [
-        { planId: 'plan-01', status: 'merged' },
-        { planId: 'plan-02', status: 'failed', error: 'API 529', terminalSubtype: 'error_transient_transport' },
-        { planId: 'plan-03', status: 'pending' }, // remaining — not yet started
-      ],
-      failingPlan: { planId: 'plan-02', errorMessage: 'API 529', terminalSubtype: 'error_transient_transport' },
-      failingPlans: [
-        { planId: 'plan-02', errorMessage: 'API 529', terminalSubtype: 'error_transient_transport', toolUseCount: 0 },
-      ],
-      landedCommits: [],
-      diffStat: '',
-      modelsUsed: [],
-      failedAt: '2026-05-26T06:15:10.000Z',
-    };
-
-    const deterministicRec = determineRecoveryRecommendation(summaryWithRemaining);
-
-    // Analyst produces split with successor PRD that covers plan-02 but omits plan-03 (remaining)
-    const invalidSplitVerdict = {
-      verdict: 'split' as const,
-      confidence: 'high' as const,
-      rationale: 'plan-02 failed with API 529 transient error.',
-      completedWork: ['plan-01 merged'],
-      remainingWork: [],
-      risks: [],
-      suggestedSuccessorPrd: '# Successor PRD\n\nRetry plan-02 only.',
-    };
-
-    const finalVerdict = selectFinalVerdict({
-      deterministicRecommendation: deterministicRec,
-      analystVerdict: invalidSplitVerdict,
-      summary: summaryWithRemaining,
-    });
-
-    // The invalid analyst split should not be accepted as analyst verdict
-    const source = (finalVerdict as Record<string, unknown>).recommendationSource;
-    expect(source).not.toBe('analyst');
-    // Invalidation reason must mention the omitted remaining plan
-    const invalidationReason = (finalVerdict as Record<string, unknown>).verdictInvalidationReason;
-    expect(invalidationReason).toBeTruthy();
-    expect(String(invalidationReason)).toMatch(/plan-03/);
+    expect(result.invalidationReason).toMatch(/no longer supported|continue-repair/i);
   });
 });
 
@@ -801,7 +650,7 @@ describe('selectFinalVerdict — deterministic fallback when analyst unavailable
 
   it('returns deterministic recommendation with recoveryError preserved when analyst fails', () => {
     // Verification criterion: "A timed-out or thrown analyst run produces a final verdict
-    // with deterministic source metadata when the deterministic recommendation is retry or split."
+    // with deterministic source metadata when the deterministic recommendation is retry or continue-repair."
     const summary = makeTransientSummary();
     const deterministicRecommendation = determineRecoveryRecommendation(summary);
 
@@ -877,13 +726,12 @@ describe('selectFinalVerdict — analyst verdict accepted with source metadata',
     const deterministicRecommendation = determineRecoveryRecommendation(summary);
 
     const analystVerdict = {
-      verdict: 'split' as const,
+      verdict: 'retry' as const,
       confidence: 'high' as const,
-      rationale: 'plan-04 failed with API 529 transient error. plan-01 was successfully merged.',
+      rationale: 'plan-04 failed with API 529 transient error. plan-01 was successfully merged; retry from scratch is acceptable after human review.',
       completedWork: ['plan-01 merged'],
       remainingWork: ['plan-04 needs retry'],
       risks: ['API instability may persist'],
-      suggestedSuccessorPrd: '# Successor\n\nRetry plan-04 as a standalone PRD.',
     };
 
     const finalVerdict = selectFinalVerdict({
@@ -892,7 +740,7 @@ describe('selectFinalVerdict — analyst verdict accepted with source metadata',
       summary,
     });
 
-    expect(finalVerdict.verdict).toBe('split');
+    expect(finalVerdict.verdict).toBe('retry');
     const source = (finalVerdict as Record<string, unknown>).recommendationSource;
     expect(source).toBe('analyst');
   });
@@ -955,22 +803,18 @@ describe('selectFinalVerdict — analyst verdict invalidated', () => {
     expect(['retry', 'manual']).toContain(finalVerdict.verdict);
   });
 
-  it('records verdictInvalidationReason when analyst split omits a failed plan from successor PRD', () => {
-    // Verification criterion: "A split analyst verdict without a successor PRD mentioning
-    // every failed and remaining plan is not emitted as the final split verdict."
+  it('records verdictInvalidationReason when analyst returns the removed split verdict', () => {
     const summary = makeMultiFailSummary();
     const deterministicRecommendation = determineRecoveryRecommendation(summary);
 
-    // Analyst mentions both plan IDs in rationale but successor PRD omits plan-04
     const invalidSplitVerdict = {
-      verdict: 'split' as const,
-      confidence: 'medium' as const,
+      verdict: 'split',
+      confidence: 'medium',
       rationale: 'plan-04-queue-view and plan-06-static-serving both failed with 529 transient errors.',
       completedWork: [],
       remainingWork: [],
       risks: [],
-      suggestedSuccessorPrd: '# Successor\n\nRetry plan-06-static-serving only.',
-    };
+    } as unknown as Parameters<typeof selectFinalVerdict>[0]['analystVerdict'];
 
     const finalVerdict = selectFinalVerdict({
       deterministicRecommendation,
@@ -980,11 +824,9 @@ describe('selectFinalVerdict — analyst verdict invalidated', () => {
 
     const verdictInvalidationReason = (finalVerdict as Record<string, unknown>).verdictInvalidationReason;
     expect(verdictInvalidationReason).toBeTruthy();
-    expect(String(verdictInvalidationReason)).toMatch(/plan-04-queue-view/);
-    // recommendationSource must NOT be 'analyst' — the analyst split verdict was rejected
+    expect(String(verdictInvalidationReason)).toMatch(/no longer supported|continue-repair/i);
     const source = (finalVerdict as Record<string, unknown>).recommendationSource;
     expect(source).not.toBe('analyst');
-    // The final verdict is not the analyst's split (deterministic policy would choose retry here)
     expect(finalVerdict.verdict).not.toBe('split');
   });
 });

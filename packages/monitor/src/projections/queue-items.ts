@@ -70,7 +70,7 @@ function parseRecoverySidecarProjection(raw: string, id: string): RecoverySideca
     recoveryVerdict: { verdict: sidecarData.verdict.verdict, confidence: sidecarData.verdict.confidence },
   };
   // Prefer the rich accepted-success marker (keyed by `acceptedAt`); fall back to
-  // the base `appliedAt`-keyed retry/split/abandon marker.
+  // the base `appliedAt`-keyed retry/continue-repair/abandon marker.
   const applied = parseAcceptSuccessAppliedMetadata(sidecarData.applied)
     ?? parseRecoveryAppliedMetadata(sidecarData.applied);
   if (applied !== undefined) projection.recoveryApplied = applied;

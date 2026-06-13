@@ -77,12 +77,11 @@ describe('parseRecoveryVerdictBlock', () => {
     expect(result!.completedWork).toEqual(['plan-01: merged successfully']);
     expect(result!.remainingWork).toEqual(['plan-02: timed out, retry should succeed']);
     expect(result!.risks).toEqual(['Network instability may persist']);
-    expect(result!.suggestedSuccessorPrd).toBeUndefined();
   });
 
-  it('parses split verdict with suggestedSuccessorPrd', () => {
-    const text = `<recovery verdict="split" confidence="medium">
-  <rationale>Foundation work is preserved; API work remains incomplete.</rationale>
+  it('parses continue-repair verdict', () => {
+    const text = `<recovery verdict="continue-repair" confidence="medium">
+  <rationale>Compiled artifacts are preserved and eligible for continue-and-repair.</rationale>
   <completedWork>
     <item>Database schema merged</item>
     <item>Auth middleware merged</item>
@@ -94,15 +93,23 @@ describe('parseRecoveryVerdictBlock', () => {
   <risks>
     <item>Type error must be fixed</item>
   </risks>
-  <suggestedSuccessorPrd># API Implementation\n\nBuild the REST layer.</suggestedSuccessorPrd>
 </recovery>`;
     const result = parseRecoveryVerdictBlock(text);
     expect(result).not.toBeNull();
-    expect(result!.verdict).toBe('split');
+    expect(result!.verdict).toBe('continue-repair');
     expect(result!.confidence).toBe('medium');
     expect(result!.completedWork).toHaveLength(2);
     expect(result!.remainingWork).toHaveLength(2);
-    expect(result!.suggestedSuccessorPrd).toContain('API Implementation');
+  });
+
+  it('rejects removed split verdicts', () => {
+    const text = `<recovery verdict="split" confidence="medium">
+  <rationale>Legacy split output is no longer accepted.</rationale>
+  <completedWork></completedWork>
+  <remainingWork></remainingWork>
+  <risks></risks>
+</recovery>`;
+    expect(parseRecoveryVerdictBlock(text)).toBeNull();
   });
 
   it('parses abandon verdict', () => {
@@ -166,7 +173,8 @@ describe('getRecoveryVerdictSchemaYaml', () => {
 
     expect(schema.type).toBe('object');
     expect(schema.required).toEqual(expect.arrayContaining(['verdict', 'confidence', 'rationale', 'completedWork', 'remainingWork', 'risks']));
-    expect(schema.properties.verdict.anyOf.map((entry: { const: string }) => entry.const)).toEqual(['retry', 'split', 'abandon', 'manual']);
+    expect(schema.properties.verdict.anyOf.map((entry: { const: string }) => entry.const)).toEqual(['retry', 'continue-repair', 'abandon', 'manual']);
+    expect(getRecoveryVerdictSchemaYaml()).not.toContain(['suggested', 'Successor', 'Prd'].join(''));
   });
 
   it('includes optional recovery metadata fields in the schema structure', () => {
@@ -200,20 +208,23 @@ describe('recoveryVerdictSchema', () => {
     expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ verdict: 'retry', confidence: 'high' })).success).toBe(true);
   });
 
-  it('accepts split verdict with suggestedSuccessorPrd', () => {
+  it('accepts continue-repair verdict', () => {
     const result = safeParseWithSchema(recoveryVerdictSchema, makeVerdict({
-      verdict: 'split',
+      verdict: 'continue-repair',
       confidence: 'medium',
-      suggestedSuccessorPrd: '# Successor PRD\n\nContent here.',
     }));
     expect(result.success).toBe(true);
+  });
+
+  it('rejects removed split verdict', () => {
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ verdict: 'split' })).success).toBe(false);
   });
 
   it('accepts abandon verdict', () => {
     expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ verdict: 'abandon' })).success).toBe(true);
   });
 
-  it('accepts manual verdict (no suggestedSuccessorPrd)', () => {
+  it('accepts manual verdict', () => {
     expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict()).success).toBe(true);
   });
 

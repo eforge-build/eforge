@@ -4,7 +4,7 @@ import { createControlPlaneRoutes } from './control-plane.js';
 import { createQueueControlRoutes } from './queue-control.js';
 import { createQueueRecoveryRoutes } from './queue-recovery.js';
 import { createRecoveryRoutes } from './recovery.js';
-import { createResumeRoutes } from './resume.js';
+import { createContinueRepairRoutes } from './continue-repair.js';
 import { createMonitorDataRoutes } from './monitor-data.js';
 import { createRunDetailRoutes } from './run-details.js';
 import { createStreamAttachRoutes } from './stream-attach.js';
@@ -26,8 +26,8 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'applyRecovery',
   'acceptRecoverySuccessPreview',
   'acceptRecoverySuccess',
-  'resumeBuild',
-  'resumeEligibility',
+  'continueRepair',
+  'continueRepairEligibility',
   'queueRecoveryAnalyze',
   'queueRecoveryApply',
   'queue',
@@ -47,7 +47,7 @@ export function createControlMonitorRoutes(context: MonitorContext, runtime?: Co
     ...createControlPlaneRoutes(context, runtime),
     ...createQueueControlRoutes(context),
     ...createRecoveryRoutes(context),
-    ...createResumeRoutes(context),
+    ...createContinueRepairRoutes(context),
     ...createQueueRecoveryRoutes(context),
     ...createMonitorDataRoutes(context),
     ...createRunDetailRoutes(context),

@@ -76,7 +76,7 @@ import type {
   ConfigShowResponse,
   VersionResponse,
   EforgeExtensionActionHelpers,
-  ResumeBuildRequest,
+  ContinueRepairRequest,
 } from '@eforge-build/client';
 import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
@@ -1744,10 +1744,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     label: "eforge apply recovery",
     description:
       "Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon and completes synchronously — no worker subprocess is spawned. " +
-      "Response shape: { verdict: 'retry' | 'split' | 'abandon' | 'manual', commitSha?: string, successorPrdId?: string, noAction?: boolean }. " +
-      "commitSha is returned for retry, split, and abandon verdicts. " +
-      "successorPrdId is returned only for split (the newly-enqueued successor PRD). " +
-      "noAction: true is returned for manual — no mutation occurs and the call is effectively a no-op.",
+      "Response shape includes verdict: 'retry' | 'continue-repair' | 'abandon' | 'manual'. " +
+      "retry starts fresh, continue-repair queues preserved compiled artifacts for repair, abandon archives the failed PRD, and manual returns noAction: true without mutation.",
     parameters: Type.Object({
       prdId: Type.String({
         description: "The plan ID (prdId) whose recovery verdict to apply",
@@ -1767,31 +1765,31 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
 
   // ------------------------------------------------------------------
-  // Tool: eforge_resume_build
+  // Tool: eforge_continue_repair
   // ------------------------------------------------------------------
   pi.registerTool({
-    name: "eforge_resume_build",
-    label: "eforge resume build",
-    description: "Queue a failed build to resume from its compiled artifacts. Use when a PRD failed after the compile stage and has a feature branch with partial compiled work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool.",
+    name: "eforge_continue_repair",
+    label: "eforge continue repair",
+    description: "Queue a continue-and-repair build from preserved compiled artifacts. Use when a failed PRD has eligible compiled artifacts and should continue from them with repair work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool.",
     parameters: Type.Object({
       prdId: Type.String({
-        description: "The plan ID (prdId) of the failed build to resume from compiled artifacts",
+        description: "The plan ID (prdId) of the failed build to continue and repair from compiled artifacts",
       }),
       setName: Type.Optional(Type.String({
         description: "Override the set name. When omitted, the set name is resolved from the recovery sidecar when available, otherwise derived from the prdId.",
       })),
       profile: Type.Optional(Type.String({
-        description: "Run this resumed build on the named profile instead of the active profile",
+        description: "Run this continue-and-repair build on the named profile instead of the active profile",
       })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const body: ResumeBuildRequest = { prdId: params.prdId };
+      const body: ContinueRepairRequest = { prdId: params.prdId };
       if (params.setName !== undefined) body.setName = params.setName;
       if (params.profile !== undefined) body.profile = params.profile;
       const { data } = await requireDaemon(
         ctx.cwd,
         "POST",
-        API_ROUTES.resumeBuild,
+        API_ROUTES.continueRepair,
         body,
       );
       if (_latestCtx) void refreshStatus(_latestCtx);

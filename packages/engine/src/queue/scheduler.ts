@@ -726,7 +726,7 @@ export class QueueScheduler {
 
           const policyGates = this.extensionRegistry?.policyGates;
           if (policyGates && policyGates.some((registration) => registration.gateKind === 'queue-dispatch')) {
-            const compiledResume = getCompiledResumeFrontmatter(currentPrd.frontmatter);
+            const continueRepair = getCompiledResumeFrontmatter(currentPrd.frontmatter);
             const policyResult = await executePolicyGate({
               registry: { policyGates },
               gateKind: 'queue-dispatch',
@@ -737,7 +737,7 @@ export class QueueScheduler {
                   priority: currentPrd.frontmatter.priority,
                   profile: currentPrd.frontmatter.profile,
                   dependsOn: currentPrd.frontmatter.depends_on ?? [],
-                  ...(compiledResume !== undefined && { compiledResume }),
+                  ...(continueRepair !== undefined && { continueRepair }),
                 },
                 { cwd: this.cwd, configDir: this.configDir },
               ),
