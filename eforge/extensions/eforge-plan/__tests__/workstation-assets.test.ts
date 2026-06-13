@@ -25,7 +25,7 @@ const BRIDGE = `${SRC}/bridge.ts`;
 const PLAN_DETAIL = `${SRC}/views/plans/plan-detail.tsx`;
 const PLAN_REVISION_PANEL = `${SRC}/views/plans/plan-revision-panel.tsx`;
 const PLAN_REVISION_HOOK = `${SRC}/views/plans/use-plan-revision-session.ts`;
-const PLAN_REVISION_PATCH_PREVIEW = `${SRC}/views/plans/plan-revision-patch-preview.tsx`;
+const PLAN_REVISION_PATCH_SUMMARY = `${SRC}/views/plans/plan-revision-patch-summary.tsx`;
 const MOCK_PLAN_REVISIONS = `${SRC}/fixtures/mock-plan-revisions.ts`;
 const BOARD_MODEL = `${SRC}/views/backlog/board-model.ts`;
 const LIFECYCLE_PANEL = `${SRC}/views/backlog/lifecycle-panel.tsx`;
@@ -201,20 +201,23 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('contains the plan revision workstation source contract', async () => {
-    const [panel, hook, preview, fixtures, bridge] = await Promise.all([
+    const [panel, hook, summary, fixtures, bridge] = await Promise.all([
       readFile(PLAN_REVISION_PANEL, 'utf-8'),
       readFile(PLAN_REVISION_HOOK, 'utf-8'),
-      readFile(PLAN_REVISION_PATCH_PREVIEW, 'utf-8'),
+      readFile(PLAN_REVISION_PATCH_SUMMARY, 'utf-8'),
       readFile(MOCK_PLAN_REVISIONS, 'utf-8'),
       readFile(BRIDGE, 'utf-8'),
     ]);
-    const combined = `${panel}\n${hook}\n${preview}\n${fixtures}\n${bridge}`;
+    const combined = `${panel}\n${hook}\n${summary}\n${fixtures}\n${bridge}`;
     expect(panel).toContain('Revise with AI');
     expect(combined).toContain('planRevisionTurn');
-    expect(combined).toContain('previewAcknowledged');
-    expect(combined).toContain('confirmApply');
+    // Completed patch turns auto-apply: the hook applies without any selection or
+    // confirmation flags, and the patch summary is a read-only record.
+    expect(hook).toContain('apply-plan-revision-turn');
+    expect(combined).not.toContain('previewAcknowledged');
+    expect(combined).not.toContain('confirmApply');
     for (const actionId of PLAN_REVISION_ACTIONS) expect(combined).toContain(actionId);
-    for (const source of [panel, hook, preview, fixtures, bridge]) {
+    for (const source of [panel, hook, summary, fixtures, bridge]) {
       expect(source).not.toMatch(/fetch\s*\(/);
       expect(source).not.toMatch(/XMLHttpRequest/);
       expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
@@ -247,7 +250,9 @@ describe('eforge-plan planning workstation assets', () => {
     expect(backlogPanel).toContain('Failed');
     expect(evidencePanel).toContain('Source refs');
     expect(evidencePanel).toContain('Partial progress');
-    expect(detail.indexOf('<PlanLifecycleEvidencePanel')).toBeLessThan(detail.indexOf('<ReadinessChecklist'));
+    // Status-first layout: the actionable readiness checklist leads; lifecycle
+    // provenance sinks into the collapsed Provenance panel below.
+    expect(detail.indexOf('<ReadinessChecklist')).toBeLessThan(detail.indexOf('<PlanLifecycleEvidencePanel'));
     expect(boardModel).toContain('lifecycleSearchText');
     expect(boardModel).toContain('row.prUrl');
     expect(boardModel).toContain('row.sessionId');

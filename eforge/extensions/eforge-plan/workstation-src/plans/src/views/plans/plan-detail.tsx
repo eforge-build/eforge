@@ -4,14 +4,17 @@ import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
+import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { useToast } from '@/components/toast';
 import type { PlanData, PlanDetail, Readiness } from '@/types';
 import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
+import { OpenQuestionsPanel } from './open-questions-panel';
 import { titleCase } from './dimensions';
 import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
 import { PlanRevisionPanel } from './plan-revision-panel';
+import { usePlanRevisionSession } from './use-plan-revision-session';
 
 const bridge = getBridge();
 
@@ -30,6 +33,10 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
   const plan = detail.plan;
   const readiness = detail.readiness ?? {};
   const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
+  const revision = usePlanRevisionSession({ session: plan.session, onApply, onRefresh });
+  // While an AI revision turn is running it auto-applies on completion, so the
+  // rest of the plan is locked to avoid concurrent edits and competing turns.
+  const locked = revision.hasRunningTurn;
 
   // Run a mutating action, surface a toast, apply the returned plan/readiness to
   // local detail state, then refresh the artifact list so statuses stay in sync.
@@ -77,6 +84,14 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
 
   const sectionEntries = Object.entries(plan.sections ?? {});
 
+  // Lead-with-status summary: how close the plan is to a clean handoff.
+  const missingCount = (readiness.missingDimensions?.length ?? 0) + (readiness.acDiagnostics?.length ?? 0);
+  const coveredCount = readiness.coveredDimensions?.length ?? 0;
+  const totalCount = coveredCount + (readiness.missingDimensions?.length ?? 0) + (readiness.skippedDimensions?.length ?? 0);
+  const readinessSummary = readiness.ready
+    ? 'Ready to hand off'
+    : totalCount > 0 ? `${coveredCount}/${totalCount} covered · ${missingCount} to resolve` : 'Not started';
+
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-3">
@@ -85,26 +100,24 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
           <CardDescription>{plan.session}</CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={checkReadiness}>Check readiness</Button>
-          <Button size="sm" disabled={!readiness.ready} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Set ready</Button>
-          <Button variant={confirmingHandoff ? 'destructive' : 'secondary'} size="sm" onClick={() => void handoff()} onBlur={() => setConfirmingHandoff(false)}>
+          <Button variant="outline" size="sm" disabled={locked} onClick={checkReadiness}>Check readiness</Button>
+          <Button size="sm" disabled={locked || !readiness.ready} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Set ready</Button>
+          <Button variant={confirmingHandoff ? 'destructive' : 'secondary'} size="sm" disabled={locked} onClick={() => void handoff()} onBlur={() => setConfirmingHandoff(false)}>
             {confirmingHandoff ? 'Confirm handoff' : 'Handoff'} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge>{plan.status}</Badge>
           <Badge variant={readiness.ready ? 'default' : 'outline'}>{readiness.ready ? 'ready' : 'not ready'}</Badge>
           {plan.planning_type && <Badge variant="outline">{plan.planning_type}</Badge>}
           {plan.planning_depth && <Badge variant="outline">{plan.planning_depth}</Badge>}
+          <span className={`ml-auto text-xs font-semibold ${readiness.ready ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
         </div>
 
-        <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
-        <ReadinessChecklist plan={plan} readiness={readiness} onSetSection={setSection} onSelectDimensions={selectDimensions} />
-        <MetadataEditor plan={plan} onSave={saveMetadata} />
-
-        <PlanRevisionPanel plan={plan} readiness={readiness} onApply={onApply} onRefresh={onRefresh} />
+        <ReadinessChecklist plan={plan} readiness={readiness} disabled={locked} onSetSection={setSection} onSelectDimensions={selectDimensions} />
+        <OpenQuestionsPanel plan={plan} />
 
         {sectionEntries.length > 0 && (
           <div className="grid gap-2">
@@ -117,6 +130,15 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
             ))}
           </div>
         )}
+
+        <PlanRevisionPanel plan={plan} api={revision} />
+
+        <CollapsiblePanel storageKey={`eforge-plan.provenance.${plan.session}`} title="Provenance & metadata">
+          <div className="grid gap-3">
+            <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
+            <MetadataEditor plan={plan} disabled={locked} onSave={saveMetadata} />
+          </div>
+        </CollapsiblePanel>
       </CardContent>
     </Card>
   );

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/toast';
 import type { EforgeBridge, PlanRevisionSessionProjection, PlanRevisionTurnProjection } from '@/types';
@@ -37,31 +37,61 @@ describe('usePlanRevisionSession', () => {
     expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false });
   });
 
-  it('applies with confirmation flags and refresh callbacks only for applied results', async () => {
+  it('applies a completed patch turn and refreshes parent callbacks without selection or confirmation flags', async () => {
     const onApply = vi.fn(); const onRefresh = vi.fn(async () => undefined);
     const invokeAction = vi.fn(async (actionId: string) => {
       if (actionId === 'start-plan-revision-session' || actionId === 'get-plan-revision-session') return session;
-      if (actionId === 'apply-plan-revision-turn') return { kind: 'applied', session: 's', turnId: 'turn-1', taskId: 'task-1', appliedSections: ['scope'], plan: { session: 's', topic: 't', status: 'planning' }, readiness: { ready: false }, message: 'Applied selected plan revision sections.' };
+      if (actionId === 'apply-plan-revision-turn') return { kind: 'applied', session: 's', turnId: 'turn-1', taskId: 'task-1', appliedSections: ['scope'], plan: { session: 's', topic: 't', status: 'planning' }, readiness: { ready: false }, message: 'Applied plan revision sections.' };
       throw new Error(actionId);
     });
     setBridge(invokeAction as EforgeBridge['invokeAction']);
     const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply, onRefresh }), { wrapper });
     await act(async () => { await result.current.ensureSession(); });
-    await act(async () => { await result.current.apply(turn, ['scope']); });
-    expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', { session: 's', turnId: 'turn-1', sections: ['scope'], previewAcknowledged: true, confirmApply: true });
+    await act(async () => { await result.current.apply(turn); });
+    expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', { session: 's', turnId: 'turn-1' });
     expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: true });
     expect(onApply).toHaveBeenCalledOnce();
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 
-  it('stores stale apply result without parent apply callback', async () => {
+  it('does not call the parent apply callback for not-applicable results', async () => {
     const onApply = vi.fn();
-    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn' ? { kind: 'stale', session: 's', turnId: 'turn-1', taskId: 'task-1', basePlanFingerprint: 'old', currentPlanFingerprint: 'new', message: 'Stale revision.' } : session);
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn' ? { kind: 'not-applicable', session: 's', turnId: 'turn-1', taskId: 'task-1', message: 'No patch to apply.' } : session);
     setBridge(invokeAction as EforgeBridge['invokeAction']);
     const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply, onRefresh: vi.fn() }), { wrapper });
     await act(async () => { await result.current.ensureSession(); });
-    await act(async () => { await result.current.apply(turn, ['scope']); });
-    expect(result.current.lastApplyByTurn['turn-1']?.kind).toBe('stale');
+    let applied: unknown;
+    await act(async () => { applied = await result.current.apply(turn); });
+    expect((applied as { kind?: string })?.kind).toBe('not-applicable');
     expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('retries auto-apply on a later reload when the prior attempt did not apply', async () => {
+    const patchTurn: PlanRevisionTurnProjection = { turnId: 'turn-patch', taskId: 'task-patch', userMessage: 'patch', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: 'now', task: { taskId: 'task-patch', kind: 'k', status: 'completed', createdAt: 'now', updatedAt: 'now', result: { summary: '', assumptionsOpenQuestions: [], planRevisionTurn: { schemaVersion: 1, targetSession: 's', assistantMessage: 'patch', basePlanFingerprint: 'h', proposedPatch: { sections: [{ dimension: 'scope', content: 'new' }] } } } } };
+    const patchSession: PlanRevisionSessionProjection = { ...session, turns: [patchTurn] };
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn'
+      ? { kind: 'not-applicable', session: 's', turnId: 'turn-patch', taskId: 'task-patch', message: 'Plan changed.' }
+      : { ...patchSession, turns: [...patchSession.turns] });
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn(async () => undefined) }), { wrapper });
+    await act(async () => { await result.current.ensureSession(); });
+    await waitFor(() => expect(invokeAction.mock.calls.filter(([id]) => id === 'apply-plan-revision-turn')).toHaveLength(1));
+    await act(async () => { await result.current.reload(); });
+    await waitFor(() => expect(invokeAction.mock.calls.filter(([id]) => id === 'apply-plan-revision-turn')).toHaveLength(2));
+  });
+
+  it('auto-applies a completed patch turn exactly once without selection or confirmation flags', async () => {
+    const patchTurn: PlanRevisionTurnProjection = { turnId: 'turn-patch', taskId: 'task-patch', userMessage: 'patch', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: 'now', task: { taskId: 'task-patch', kind: 'k', status: 'completed', createdAt: 'now', updatedAt: 'now', result: { summary: '', assumptionsOpenQuestions: [], planRevisionTurn: { schemaVersion: 1, targetSession: 's', assistantMessage: 'patch', basePlanFingerprint: 'h', proposedPatch: { sections: [{ dimension: 'scope', content: 'new' }] } } } } };
+    const patchSession: PlanRevisionSessionProjection = { ...session, turns: [patchTurn] };
+    const onApply = vi.fn();
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn'
+      ? { kind: 'applied', session: 's', turnId: 'turn-patch', taskId: 'task-patch', appliedSections: ['scope'], plan: { session: 's', topic: 't', status: 'planning' }, readiness: { ready: true }, message: 'Applied plan revision sections.' }
+      : patchSession);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply, onRefresh: vi.fn(async () => undefined) }), { wrapper });
+    await act(async () => { await result.current.ensureSession(); });
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', { session: 's', turnId: 'turn-patch' }));
+    expect(invokeAction.mock.calls.filter(([id]) => id === 'apply-plan-revision-turn')).toHaveLength(1);
+    expect(onApply).toHaveBeenCalledWith({ plan: { session: 's', topic: 't', status: 'planning' }, readiness: { ready: true } });
   });
 });

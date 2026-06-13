@@ -37,7 +37,7 @@ export function PlanLifecycleEvidencePanel({ plan, detail }: { plan: PlanData; d
             {groupRows(rows).map(([kind, groupedRows]) => (
               <div key={kind} className="grid gap-1 rounded border border-border p-2">
                 <h5 className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">{kind}</h5>
-                {groupedRows.map((row, index) => <EvidenceRow key={`${row.kind}-${row.stage ?? ''}-${index}`} row={row} />)}
+                {groupedRows.map((row, index) => <EvidenceRow key={`${row.kind}-${row.stage ?? ''}-${index}`} row={row} knownItemIds={sourceItemIds} />)}
               </div>
             ))}
           </div>
@@ -85,8 +85,12 @@ function groupRows(rows: LifecycleLinkRow[]): Array<[string, LifecycleLinkRow[]]
   return [...grouped.entries()];
 }
 
-function EvidenceRow({ row }: { row: LifecycleLinkRow }) {
+function EvidenceRow({ row, knownItemIds = [] }: { row: LifecycleLinkRow; knownItemIds?: string[] }) {
   const timestamp = row.timestamp ?? row.completedAt ?? row.landedAt ?? row.startedAt ?? row.queuedAt ?? row.promotedAt;
+  // Drop affected ids already shown under Source refs so the same backlog id is
+  // not repeated across every panel.
+  const knownItemIdSet = new Set(knownItemIds);
+  const extraAffectedItemIds = (row.affectedItemIds ?? []).filter((id) => !knownItemIdSet.has(id));
   return (
     <div className="rounded bg-card p-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
@@ -103,7 +107,7 @@ function EvidenceRow({ row }: { row: LifecycleLinkRow }) {
         {row.commitSha && <Value label="commit" value={row.commitSha} />}
       </div>
       {row.prUrl && <a className="mt-1 block break-all text-[color:var(--lane-ready)] underline" href={row.prUrl} target="_blank" rel="noreferrer">{row.prUrl}</a>}
-      {row.affectedItemIds && row.affectedItemIds.length > 0 && <p className="mt-1 text-muted-foreground">Affected item ids: {row.affectedItemIds.join(', ')}</p>}
+      {extraAffectedItemIds.length > 0 && <p className="mt-1 text-muted-foreground">Affected item ids: {extraAffectedItemIds.join(', ')}</p>}
     </div>
   );
 }

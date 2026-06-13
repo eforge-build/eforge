@@ -72,27 +72,20 @@ export function resolveCompletedRevisionTurnResult(task: ExtensionAgentTaskRecor
   return turn;
 }
 
-export function validateSelectedRevisionSections(plan: SessionPlan, turnResult: EforgePlanPlanningPlanRevisionTurn, selectedSections: string[]): { ok: true; sections: Array<{ dimension: string; content: string }> } | { ok: false; message: string } {
+export function validateRevisionPatchSections(plan: SessionPlan, turnResult: EforgePlanPlanningPlanRevisionTurn): { ok: true; sections: Array<{ dimension: string; content: string }> } | { ok: false; message: string } {
   const patchSections = turnResult.proposedPatch?.sections;
   if (patchSections === undefined || patchSections.length === 0) return { ok: false, message: 'Revision turn does not include section patches to apply.' };
   const allowed = allowedDimensions(plan);
   const normalizedPatch = normalizeProposedRevisionPatchSections(patchSections);
   if (!normalizedPatch.ok) return { ok: false, message: normalizedPatch.message };
-  const byDimension = normalizedPatch.sectionsByDimension;
-  const normalizedSelections: string[] = [];
-  const seenSelections = new Set<string>();
-  for (const rawDimension of selectedSections) {
-    const dimension = normalizeDimension(rawDimension);
-    if (seenSelections.has(dimension)) return { ok: false, message: `Section ${rawDimension} duplicates another selected section.` };
-    seenSelections.add(dimension);
-    normalizedSelections.push(dimension);
-    if (!allowed.has(dimension)) return { ok: false, message: `Section ${rawDimension} is not an allowed flat session-plan dimension.` };
-    if (!byDimension.has(dimension)) return { ok: false, message: `Revision turn did not propose a patch for ${rawDimension}.` };
+  const sections = [...normalizedPatch.sectionsByDimension.values()];
+  for (const section of sections) {
+    if (!allowed.has(section.dimension)) return { ok: false, message: `Section ${section.dimension} is not an allowed flat session-plan dimension.` };
   }
-  return { ok: true, sections: normalizedSelections.map((dimension) => byDimension.get(dimension)!) };
+  return { ok: true, sections };
 }
 
-export async function applySelectedRevisionSections(cwd: string, session: string, turnResult: EforgePlanPlanningPlanRevisionTurn, sections: string[]) {
+export async function applyRevisionPatchSections(cwd: string, session: string, turnResult: EforgePlanPlanningPlanRevisionTurn, sections: string[]) {
   const planning = createSessionPlanningWorkflowAdapter();
   const normalizedPatch = normalizeProposedRevisionPatchSections(turnResult.proposedPatch?.sections ?? []);
   if (!normalizedPatch.ok) throw new Error(normalizedPatch.message);
@@ -104,8 +97,18 @@ export async function applySelectedRevisionSections(cwd: string, session: string
     if (content === undefined) throw new Error(`Revision turn did not propose a patch for ${rawDimension}.`);
     plan = setSessionPlanSection(plan, dimension, content);
   }
+  // Apply resolved open questions from the patch metadata. Without this, a turn
+  // that resolves open questions only updates the body section, leaving the stale
+  // frontmatter open_questions list (shown in the Open Questions panel) untouched.
+  const resolvedOpenQuestions = turnResult.proposedPatch?.metadata?.openQuestions;
+  if (resolvedOpenQuestions !== undefined) plan = { ...plan, open_questions: resolvedOpenQuestions };
   await writeSessionPlan({ cwd, session, plan });
-  return { session, readiness: getReadinessDetail(plan), plan: projectSessionPlan(plan), path: planning.flat.resolvePath({ cwd, session }) };
+  return projectRevisionPlanResult(cwd, session, plan);
+}
+
+/** Shape one in-memory flat plan into the `applied` revision-apply output payload. */
+export function projectRevisionPlanResult(cwd: string, session: string, plan: SessionPlan) {
+  return { session, readiness: getReadinessDetail(plan), plan: projectSessionPlan(plan), path: createSessionPlanningWorkflowAdapter().flat.resolvePath({ cwd, session }) };
 }
 
 function normalizeProposedRevisionPatchSections(patchSections: NonNullable<NonNullable<EforgePlanPlanningPlanRevisionTurn['proposedPatch']>['sections']>): { ok: true; sectionsByDimension: Map<string, { dimension: string; content: string }> } | { ok: false; message: string } {

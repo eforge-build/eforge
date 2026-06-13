@@ -277,7 +277,6 @@ export interface PlanRevisionSessionProjection {
 }
 export type PlanRevisionApplyOutput =
   | { kind: 'applied'; session: string; turnId: string; taskId: string; appliedSections: string[]; plan?: PlanData; readiness?: Readiness; path?: string; message: string }
-  | { kind: 'stale'; session: string; turnId: string; taskId: string; basePlanFingerprint: string; currentPlanFingerprint: string; message: string }
   | { kind: 'not-applicable'; session: string; turnId?: string; taskId?: string; message: string };
 export interface PlanRevisionRedraftAnswer { questionId?: string; prompt?: string; answer: string; }
 export interface PlanningAgentTaskMetadata {

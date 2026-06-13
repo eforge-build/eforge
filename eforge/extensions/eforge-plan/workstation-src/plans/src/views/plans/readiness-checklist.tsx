@@ -13,6 +13,7 @@ const AC_DIMENSION = 'acceptance-criteria';
 interface ReadinessChecklistProps {
   plan: PlanData;
   readiness: Readiness;
+  disabled?: boolean;
   onSetSection: (dimension: string, content: string) => Promise<void>;
   onSelectDimensions: (planningType: string, planningDepth: string) => Promise<void>;
 }
@@ -22,7 +23,7 @@ interface ReadinessChecklistProps {
  * become inline section editors, acceptance-criteria quality issues become a
  * revise affordance, and an unselected plan gets a dimension-selection form.
  */
-export function ReadinessChecklist({ plan, readiness, onSetSection, onSelectDimensions }: ReadinessChecklistProps) {
+export function ReadinessChecklist({ plan, readiness, disabled, onSetSection, onSelectDimensions }: ReadinessChecklistProps) {
   const [editing, setEditing] = React.useState<string | null>(null);
   const missing = readiness.missingDimensions ?? [];
   const covered = readiness.coveredDimensions ?? [];
@@ -46,18 +47,18 @@ export function ReadinessChecklist({ plan, readiness, onSetSection, onSelectDime
       </div>
 
       {noDimensions
-        ? <SelectDimensionsForm plan={plan} onSelect={onSelectDimensions} />
+        ? <SelectDimensionsForm plan={plan} disabled={disabled} onSelect={onSelectDimensions} />
         : (
           <ul className="grid gap-1.5">
             {missing.map((dimension) => (
               <li key={dimension} className="rounded border border-dashed border-[color:var(--prio-medium)]/40 p-2">
                 <Row icon={<Circle className="h-4 w-4 text-[color:var(--prio-medium)]" />} label={titleCase(dimension)} hint="missing">
                   {editing !== dimension && (
-                    <Button size="sm" variant="outline" onClick={() => setEditing(dimension)}><Plus className="h-4 w-4" /> Add</Button>
+                    <Button size="sm" variant="outline" disabled={disabled} onClick={() => setEditing(dimension)}><Plus className="h-4 w-4" /> Add</Button>
                   )}
                 </Row>
                 {editing === dimension && (
-                  <SectionEditor dimension={dimension} onSave={(content) => save(dimension, content)} onCancel={() => setEditing(null)} />
+                  <SectionEditor dimension={dimension} disabled={disabled} onSave={(content) => save(dimension, content)} onCancel={() => setEditing(null)} />
                 )}
               </li>
             ))}
@@ -66,13 +67,14 @@ export function ReadinessChecklist({ plan, readiness, onSetSection, onSelectDime
               <li className="rounded border border-dashed border-[color:var(--lane-blocked)]/40 p-2">
                 <Row icon={<AlertTriangle className="h-4 w-4 text-[color:var(--lane-blocked)]" />} label="Acceptance criteria quality" hint="needs revision">
                   {editing !== AC_DIMENSION && (
-                    <Button size="sm" variant="outline" onClick={() => setEditing(AC_DIMENSION)}>Revise</Button>
+                    <Button size="sm" variant="outline" disabled={disabled} onClick={() => setEditing(AC_DIMENSION)}>Revise</Button>
                   )}
                 </Row>
                 <AcDiagnosticList diagnostics={acDiagnostics} />
                 {editing === AC_DIMENSION && (
                   <SectionEditor
                     dimension={AC_DIMENSION}
+                    disabled={disabled}
                     initialContent={sectionContent(plan.sections, AC_DIMENSION)}
                     onSave={(content) => save(AC_DIMENSION, content)}
                     onCancel={() => setEditing(null)}
@@ -123,7 +125,7 @@ function AcDiagnosticList({ diagnostics }: { diagnostics: AcDiagnostic[] }) {
   );
 }
 
-function SelectDimensionsForm({ plan, onSelect }: { plan: PlanData; onSelect: (type: string, depth: string) => Promise<void> }) {
+function SelectDimensionsForm({ plan, disabled, onSelect }: { plan: PlanData; disabled?: boolean; onSelect: (type: string, depth: string) => Promise<void> }) {
   const [planningType, setPlanningType] = React.useState(plan.planning_type ?? 'feature');
   const [planningDepth, setPlanningDepth] = React.useState(plan.planning_depth ?? 'focused');
   const [applying, setApplying] = React.useState(false);
@@ -147,7 +149,7 @@ function SelectDimensionsForm({ plan, onSelect }: { plan: PlanData; onSelect: (t
         <Select value={planningDepth} onChange={(event) => setPlanningDepth(event.target.value)} className="w-40">
           {PLANNING_DEPTHS.map((depth) => <option key={depth} value={depth}>{depth}</option>)}
         </Select>
-        <Button size="sm" variant="secondary" disabled={applying} onClick={() => void apply()}>
+        <Button size="sm" variant="secondary" disabled={disabled || applying} onClick={() => void apply()}>
           {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Apply dimensions
         </Button>
       </div>

@@ -54,7 +54,7 @@ describe('eforge-plan plan revision documentation contract', () => {
       'apply-plan-revision-turn',
       'answer-only',
       'patch preview',
-      'explicit apply',
+      'auto-apply',
       'stale',
       'retry',
       'redraft',
