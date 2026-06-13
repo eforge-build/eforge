@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatRelativeTime } from '@/lib/format-time';
 import type { BacklogCurationDraft, BacklogCurationPreviewDetails, JsonObject, PlanningTaskWorkflowEntry, RecommendationModel, RecommendationReferenceValidationResult } from '@/types';
 import type { RedraftInput } from './use-planning-task-workflows';
-import { abbreviateFingerprint, curationCounts, idLabel, metadataRows, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
+import { abbreviateFingerprint, curationCounts, curationEvidencePreview, displayRecommendationsForDraft, idLabel, metadataRows, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
 
 interface BacklogCurationPreviewProps {
   taskId: string;
@@ -21,6 +21,7 @@ interface BacklogCurationPreviewProps {
 export function BacklogCurationPreview({ taskId, entry, draft, recommendations, curationPreview, busy, onApply, onRedraft }: BacklogCurationPreviewProps) {
   const [reviewed, setReviewed] = React.useState(false);
   const [steering, setSteering] = React.useState('');
+  const displayRecommendations = displayRecommendationsForDraft(draft, recommendations);
   const counts = curationCounts(draft, recommendations);
   const applied = Boolean(entry.appliedAt);
   const canRedraft = steering.trim().length > 0;
@@ -45,8 +46,8 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
       </div>
 
       {draft.summary.length > 0 && <ListSection title="Summary" entries={draft.summary} />}
-      <PatchSection title="Item changes" patches={draft.itemChanges} />
-      <PatchSection title="Epic changes" patches={draft.epicChanges} />
+      <PatchSection title="Item changes" patches={draft.itemChanges} applied={applied} />
+      <PatchSection title="Epic changes" patches={draft.epicChanges} applied={applied} />
       {draft.noOpRechecks.length > 0 && (
         <PreviewBlock title="No-op rechecks">
           <details className="rounded border border-border p-2">
@@ -73,7 +74,10 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
       {draft.needsInput.length > 0 && (
         <PreviewBlock title="Needs-input cases">
           <ul className="grid gap-1.5 text-xs text-muted-foreground">
-            {draft.needsInput.map((entry, index) => <li key={`${entry.kind ?? 'record'}:${entry.id ?? index}`}><span className="text-foreground">{idLabel(entry.kind, entry.id)}:</span> {entry.question}{entry.reason ? ` — ${entry.reason}` : ''}</li>)}
+            {draft.needsInput.map((entry, index) => {
+              const evidence = curationEvidencePreview([entry.reason, entry.question]);
+              return <li key={`${entry.kind ?? 'record'}:${entry.id ?? index}`}><span className="text-foreground">{idLabel(entry.kind, entry.id)}:</span> {evidence.labels.map((label) => <span key={label} className="mr-1 rounded border border-amber-400/40 bg-amber-400/10 px-1 text-amber-200">{label}</span>)}{entry.question}{entry.reason ? ` — ${entry.reason}` : ''}</li>;
+            })}
           </ul>
         </PreviewBlock>
       )}
@@ -85,7 +89,7 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           </ul>
         </PreviewBlock>
       )}
-      {recommendations && <GeneratedRecommendations recommendations={recommendations} />}
+      {displayRecommendations && <GeneratedRecommendations recommendations={displayRecommendations} />}
 
       <div className="grid gap-2 border-t border-border pt-2">
         <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Redraft curation</span>
@@ -126,19 +130,20 @@ function ListSection({ title, entries }: { title: string; entries: string[] }) {
 
 type Patch = BacklogCurationDraft['itemChanges'][number] | BacklogCurationDraft['epicChanges'][number];
 
-function PatchSection({ title, patches }: { title: string; patches: Patch[] }) {
+function PatchSection({ title, patches, applied }: { title: string; patches: Patch[]; applied: boolean }) {
   if (patches.length === 0) return null;
   return (
     <PreviewBlock title={title}>
       <div className="grid gap-2">
-        {patches.map((patch) => <PatchCard key={`${patch.kind}:${patch.id}`} patch={patch} />)}
+        {patches.map((patch) => <PatchCard key={`${patch.kind}:${patch.id}`} patch={patch} applied={applied} />)}
       </div>
     </PreviewBlock>
   );
 }
 
-function PatchCard({ patch }: { patch: Patch }) {
+function PatchCard({ patch, applied }: { patch: Patch; applied: boolean }) {
   const rows = metadataRows(patch.metadata as Record<string, unknown> | undefined);
+  const evidence = curationEvidencePreview(patch.evidence ?? []);
   return (
     <article className="grid gap-2 rounded border border-border p-2">
       <div>
@@ -147,6 +152,14 @@ function PatchCard({ patch }: { patch: Patch }) {
       </div>
       {rows.length > 0 && <dl className="grid gap-1 text-xs">{rows.map((row) => <div key={row.label} className="grid grid-cols-[8rem_1fr] gap-2"><dt className="text-muted-foreground">{row.label}</dt><dd className="text-foreground">{row.value}</dd></div>)}</dl>}
       {patch.sectionOperations && patch.sectionOperations.length > 0 && <div className="grid gap-1">{patch.sectionOperations.map((operation) => <details key={`${operation.heading}:${operation.action}`} className="border-l-2 border-border pl-2"><summary className="cursor-pointer text-xs text-muted-foreground">{sectionOperationLabel(operation.action)} · {operation.heading}</summary><SafeMarkdown markdown={operation.content} /></details>)}</div>}
+      {evidence.labels.length > 0 && (
+        <div className="grid gap-1 rounded border border-primary/20 bg-primary/5 p-2 text-xs text-muted-foreground">
+          <p>{applied ? 'Applied shipped metadata evidence:' : 'Proposed shipped metadata evidence in this draft:'}</p>
+          <div className="flex flex-wrap gap-1">{evidence.labels.map((label) => <span key={label} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{label}</span>)}</div>
+          {evidence.prIds.length > 0 && <p>PR identifiers: {evidence.prIds.join(', ')}</p>}
+          {evidence.commitIds.length > 0 && <p>Commit identifiers: {evidence.commitIds.join(', ')}</p>}
+        </div>
+      )}
       {patch.evidence && patch.evidence.length > 0 && <ul className="list-disc pl-4 text-xs text-muted-foreground">{patch.evidence.map((entry) => <li key={entry}>{entry}</li>)}</ul>}
     </article>
   );
@@ -170,12 +183,13 @@ function RecommendationValidationWarning({ validation }: { validation: Recommend
   );
 }
 
-function GeneratedRecommendations({ recommendations }: { recommendations: RecommendationModel }) {
+function GeneratedRecommendations({ recommendations }: { recommendations: RecommendationModel & { removedTargetItemIds?: string[] } }) {
   const counts = recommendationSummaryCounts(recommendations);
   return (
     <PreviewBlock title="Generated recommendations (read-only)">
       <div className="grid gap-1.5 text-xs text-muted-foreground">
         <p>{counts.activeWork} active work items · {counts.readyCandidates} ready candidates · {counts.nextSequence} next-sequence items · {counts.safeParallelGroups} safe-parallel groups · {counts.blockedChains} blocked chains</p>
+        {recommendations.removedTargetItemIds && recommendations.removedTargetItemIds.length > 0 && <p>Removed proposed-shipped recommendation targets from this draft preview: {recommendations.removedTargetItemIds.join(', ')}</p>}
         {recommendations.rationaleAndAssumptions && recommendations.rationaleAndAssumptions.length > 0 && <ul className="list-disc pl-4">{recommendations.rationaleAndAssumptions.map((entry) => <li key={entry}>{entry}</li>)}</ul>}
       </div>
     </PreviewBlock>

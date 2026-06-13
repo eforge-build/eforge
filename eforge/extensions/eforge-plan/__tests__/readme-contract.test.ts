@@ -119,6 +119,12 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/invalid generated recommendation references/i);
     expect(readme).toMatch(/Invalid generated recommendations block normal curation apply/);
     expect(readme).toMatch(/apply curation only while discarding generated recommendations/);
+    expect(readme).toMatch(/bounded git\/PR history shipped evidence/);
+    expect(readme).toMatch(/optional PR enrichment is fail-closed/);
+    expect(readme).toContain('Shipped evidence: lifecycle trace');
+    expect(readme).toContain('Shipped evidence: inferred from git/PR history');
+    expect(readme).toContain('Ambiguous shipped candidate: needs input');
+    expect(readme).toMatch(/same-draft recommendation filtering/);
   });
 
   it('keeps action table side effects aligned with planning boundaries', async () => {
@@ -171,7 +177,8 @@ describe('eforge-plan README planner contract', () => {
     expect(boundary).toMatch(/requests `backlogCurationDraft` plus `recommendations`/);
     expect(boundary).toMatch(/Plan with AI monitor labels curation tasks and supports retry, redraft, cancel, remove, and apply/);
     expect(boundary).toMatch(/task result is read-only until the user previews it/);
-    expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, skipped cases, needs-input cases, generated recommendations, and preview-time invalid generated recommendation references/);
+    expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, skipped cases, needs-input cases, generated recommendations/);
+    expect(boundary).toMatch(/preview-time invalid generated recommendation references/);
     expect(boundary).toMatch(/Invalid generated recommendations block normal curation apply/);
     expect(boundary).toMatch(/apply curation only while discarding generated recommendations with `applyCurationOnly`/);
     expect(boundary).toMatch(/does not enqueue a build, mark backlog items shipped without durable evidence, or submit session plans/);

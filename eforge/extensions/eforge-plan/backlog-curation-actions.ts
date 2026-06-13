@@ -32,10 +32,10 @@ export const analyzeAllBacklogAction = defineExtensionAction({
   description: 'Start or reuse a daemon-owned curation planning task for all visible open eforge-plan backlog records.',
   inputSchema: AnalyzeAllBacklogInputSchema,
   outputSchema: AnalyzeAllBacklogOutputSchema,
-  sideEffects: ['local-read', 'local-write', 'daemon-state'],
+  sideEffects: ['local-read', 'local-write', 'network', 'daemon-state'],
   async handler(_input, ctx) {
     throwIfAborted(ctx.signal);
-    const { sourceFingerprint, sourceText } = await buildBacklogCurationSource(ctx.cwd);
+    const { sourceFingerprint, sourceText } = await buildBacklogCurationSource(ctx.cwd, undefined, { signal: ctx.signal });
     throwIfAborted(ctx.signal);
     return await runAnalyzeStartExclusive(ctx.cwd, sourceFingerprint, async () => {
       const active = await findReusableBacklogCurationTask(ctx, sourceFingerprint);

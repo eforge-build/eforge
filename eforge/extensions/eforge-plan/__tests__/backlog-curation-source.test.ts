@@ -1,9 +1,14 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { execFile as execFileCallback } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { buildBacklogCurationSource } from '../backlog-curation-source.js';
+import { BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS, buildBacklogCurationSource } from '../backlog-curation-source.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
+
+const execFile = promisify(execFileCallback);
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-curation-source-'));
@@ -103,4 +108,242 @@ describe('backlog curation source', () => {
       }
     });
   });
+
+  it('includes bounded strong git-history shipped evidence with commit, PR, and path citations and no full diff', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'ship-evidence-provider', status: 'candidate', body: '# Shipped Evidence Provider\n\n## Claim\n\nDetect shipped evidence.\n' });
+      await git(cwd, ['checkout', '-b', 'feature/ship-evidence-provider']);
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'shipped-evidence-provider.ts'), 'export const note = "Shipped Evidence Provider ship-evidence-provider";\n');
+      await git(cwd, ['add', 'src/shipped-evidence-provider.ts']);
+      await git(cwd, ['commit', '-m', 'feat(ship-evidence-provider): shipped evidence provider']);
+      await git(cwd, ['checkout', 'main']);
+      await git(cwd, ['merge', '--no-ff', 'feature/ship-evidence-provider', '-m', 'Merge pull request #191 from owner/feature/ship-evidence-provider']);
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>>; truncation: Record<string, number> };
+      const candidate = packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'ship-evidence-provider');
+
+      expect(candidate).toMatchObject({ itemId: 'ship-evidence-provider', confidence: 'strong', evidenceSource: 'git-history', evidenceLabel: 'Shipped evidence: inferred from git/PR history' });
+      expect(candidate?.commit).toMatchObject({ shortHash: expect.stringMatching(/^[a-f0-9]{7,12}$/), subject: expect.stringContaining('Merge pull request #191') });
+      expect(candidate?.changedPaths).toEqual(expect.arrayContaining(['src/shipped-evidence-provider.ts']));
+      expect(candidate?.citations).toEqual([expect.stringContaining('git ')]);
+      const serialized = JSON.stringify(candidate);
+      expect(serialized).not.toContain('@@');
+      expect((candidate?.changedPaths as unknown[]).length).toBeLessThanOrEqual(BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount);
+      expect((candidate?.excerpts as unknown[]).length).toBeLessThanOrEqual(BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptCount);
+    });
+  });
+
+  it('includes ambiguous git-history shipped evidence candidates in source context and source text', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'review-flow-item', status: 'candidate', body: '# Ambiguous Candidate Review Flow\n' });
+      await writeFile(join(cwd, 'unrelated.ts'), 'unrelated implementation\n');
+      await git(cwd, ['add', 'unrelated.ts']);
+      await git(cwd, ['commit', '-m', 'ship ambiguous candidate review']);
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+      const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+      const candidate = packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'review-flow-item');
+      const textCandidate = parsed.shippedEvidenceCandidates.find((entry) => entry.itemId === 'review-flow-item');
+
+      expect(candidate).toMatchObject({ itemId: 'review-flow-item', confidence: 'ambiguous', evidenceLabel: 'Ambiguous shipped candidate: needs input' });
+      expect(textCandidate).toMatchObject({ itemId: 'review-flow-item', confidence: 'ambiguous', evidenceLabel: 'Ambiguous shipped candidate: needs input' });
+    });
+  });
+
+  it('projects successful PR metadata enrichment into shipped evidence source context and text', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'enriched-pr', status: 'candidate', body: '# Enriched PR\n' });
+      await git(cwd, ['checkout', '-b', 'feature/enriched-pr']);
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'enriched-pr.ts'), 'Enriched PR enriched-pr\n');
+      await git(cwd, ['add', 'src/enriched-pr.ts']);
+      await git(cwd, ['commit', '-m', 'feat: enriched pr']);
+      await git(cwd, ['checkout', 'main']);
+      await git(cwd, ['merge', '--no-ff', 'feature/enriched-pr', '-m', 'Merge pull request #222 from owner/feature/enriched-pr']);
+      const fakeBin = join(cwd, 'fake-bin');
+      await mkdir(fakeBin, { recursive: true });
+      await writeFile(join(fakeBin, 'gh'), '#!/usr/bin/env node\nconsole.log(JSON.stringify({ number: 222, title: "Ship enriched PR metadata", headRefName: "feature/enriched-pr", state: "MERGED", mergedAt: "2026-01-01T00:00:00Z", mergeCommit: {}, files: [{ path: "src/enriched-pr.ts" }] }));\n');
+      await chmod(join(fakeBin, 'gh'), 0o755);
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${fakeBin}${delimiter}${previousPath ?? ''}`;
+      try {
+        const source = await buildBacklogCurationSource(cwd, undefined, { shippedEvidenceCaps: { prEnrichmentCount: 1 } });
+        const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+        const candidate = packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'enriched-pr');
+        const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+        const textCandidate = parsed.shippedEvidenceCandidates.find((entry) => entry.itemId === 'enriched-pr');
+
+        expect(candidate).toMatchObject({ evidenceSource: 'combined', pr: { number: 222, title: 'Ship enriched PR metadata', branch: 'feature/enriched-pr' } });
+        expect(textCandidate).toMatchObject({ evidenceSource: 'combined', pr: { number: 222, title: 'Ship enriched PR metadata', branch: 'feature/enriched-pr' } });
+        expect(source.sourceText).toContain('Ship enriched PR metadata');
+        expect(source.sourceText).toContain('feature/enriched-pr');
+        expect(source.sourceText).not.toContain('github-pr');
+        expect(source.sourceText).not.toContain('lifecycle-trace');
+      } finally {
+        process.env.PATH = previousPath;
+      }
+    });
+  });
+
+  it('returns source text and git-only candidates when PR metadata enrichment is unavailable', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'fallback-pr', status: 'candidate', body: '# Fallback PR Item\n' });
+      await writeFile(join(cwd, 'fallback-pr.ts'), 'Fallback PR Item fallback-pr\n');
+      await git(cwd, ['add', 'fallback-pr.ts']);
+      await git(cwd, ['commit', '-m', 'Merge pull request #999999 from owner/fallback-pr']);
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { shippedEvidenceCaps: { subprocessTimeoutMs: 1000, prEnrichmentCount: 1 } });
+      const packet = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceDiagnostics: Array<{ code: string }> };
+
+      expect(packet.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'fallback-pr' && candidate.evidenceSource === 'git-history')).toBe(true);
+      expect(packet.shippedEvidenceDiagnostics.some((diagnostic) => diagnostic.code.startsWith('pr'))).toBe(true);
+    });
+  });
+
+  it('caps shipped evidence candidates and keeps them in compact source text fallback', async () => {
+    await withTempProject(async (cwd) => {
+      await writeCappedLifecycleEvidence(cwd, { itemCount: 40, bodyRepeat: 500 });
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = JSON.parse(source.sourceText) as { openItems: Array<Record<string, unknown>>; shippedEvidenceCandidates: unknown[]; shippedEvidenceCandidateCounts: Record<string, unknown>; shippedEvidenceDiagnostics: unknown[]; truncation: { shippedEvidenceCandidates: number; fallback?: string } };
+
+      expect(packet.openItems[0]).not.toHaveProperty('sections');
+      expect(packet.truncation.fallback).toBeUndefined();
+      expect(packet.shippedEvidenceCandidates.length).toBeLessThanOrEqual(BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
+      expect(packet.truncation.shippedEvidenceCandidates).toBeGreaterThan(0);
+      expect(packet.shippedEvidenceCandidateCounts).toMatchObject({ included: packet.shippedEvidenceCandidates.length });
+      expect(packet.shippedEvidenceDiagnostics).toBeDefined();
+    });
+  });
+
+  it('keeps shipped evidence in minimal source text fallback', async () => {
+    await withTempProject(async (cwd) => {
+      await writeCappedLifecycleEvidence(cwd, { itemCount: 40, bodyRepeat: 500, evidenceNoteRepeat: 1000 });
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: unknown[]; shippedEvidenceCandidateCounts: Record<string, unknown>; shippedEvidenceDiagnostics: unknown[]; truncation: { shippedEvidenceCandidates: number; fallback?: string } };
+
+      expect(packet.truncation.fallback).toBe('minimal');
+      expect(packet.shippedEvidenceCandidates.length).toBeLessThanOrEqual(BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
+      expect(packet.truncation.shippedEvidenceCandidates).toBeGreaterThan(0);
+      expect(packet.shippedEvidenceCandidateCounts).toMatchObject({ included: packet.shippedEvidenceCandidates.length });
+      expect(packet.shippedEvidenceDiagnostics).toBeDefined();
+    });
+  });
+
+  it('omits weak git-history shipped evidence candidates from source context and source text', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'api-ui', status: 'candidate', body: '# API UI\n' });
+      await writeFile(join(cwd, 'api.ts'), 'api helper\n');
+      await git(cwd, ['add', 'api.ts']);
+      await git(cwd, ['commit', '-m', 'update api ui tests']);
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceCandidateCounts: { weakOmitted: number }; truncation: { shippedEvidenceCandidates: number } };
+      const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceCandidateCounts: { weakOmitted: number }; truncation: { shippedEvidenceCandidates: number } };
+
+      expect(packet.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'api-ui')).toBe(false);
+      expect(parsed.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'api-ui')).toBe(false);
+      expect(packet.shippedEvidenceCandidateCounts.weakOmitted).toBeGreaterThan(0);
+      expect(parsed.shippedEvidenceCandidateCounts.weakOmitted).toBe(packet.shippedEvidenceCandidateCounts.weakOmitted);
+      expect(packet.truncation.shippedEvidenceCandidates).toBeGreaterThan(0);
+    });
+  });
+
+  it('prioritizes lifecycle trace shipped evidence ahead of git-history evidence with lifecycle labeling', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'lifecycle-first', status: 'candidate', body: '# Lifecycle First\n' });
+      const trace = createTraceSidecar('lifecycle-first');
+      trace.landingResults.push({ featureBranch: 'feature/lifecycle-first', commitSha: '1234567890abcdef', status: 'shipped', path: 'src/lifecycle-first.ts', landedAt: '2026-01-01T00:00:00.000Z' });
+      await writeTraceSidecar(cwd, trace);
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'lifecycle-first.ts'), 'Lifecycle First lifecycle-first\n');
+      await git(cwd, ['add', 'src/lifecycle-first.ts']);
+      await git(cwd, ['commit', '-m', 'Merge pull request #401 from owner/lifecycle-first']);
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+
+      expect(packet.shippedEvidenceCandidates[0]).toMatchObject({ itemId: 'lifecycle-first', evidenceSource: 'lifecycle', evidenceLabel: 'Shipped evidence: lifecycle trace' });
+      expect(JSON.stringify(packet.shippedEvidenceCandidates[0])).not.toContain('lifecycle-trace');
+      expect(packet.shippedEvidenceCandidates.some((candidate, index) => index > 0 && candidate.itemId === 'lifecycle-first' && candidate.evidenceSource === 'combined')).toBe(true);
+    });
+  });
+
+  it('changes the source fingerprint when reachable git shipped evidence changes for the same open item', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'fingerprint-item', status: 'candidate', body: '# Fingerprint Item\n' });
+      const first = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      await writeFile(join(cwd, 'fingerprint-item.ts'), 'Fingerprint Item fingerprint-item\n');
+      await git(cwd, ['add', 'fingerprint-item.ts']);
+      await git(cwd, ['commit', '-m', 'Merge pull request #401 from owner/fingerprint-item']);
+      const second = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const third = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+
+      expect(second.sourceFingerprint).not.toBe(first.sourceFingerprint);
+      expect(third.sourceFingerprint).toBe(second.sourceFingerprint);
+    });
+  });
 });
+
+async function writeCappedLifecycleEvidence(cwd: string, options: { itemCount: number; bodyRepeat: number; evidenceNoteRepeat?: number }): Promise<void> {
+  for (let index = 0; index < options.itemCount; index += 1) {
+    const id = `cap-item-${index}`;
+    await writeBacklogItem(cwd, {
+      id,
+      status: 'candidate',
+      evidence_notes: options.evidenceNoteRepeat === undefined ? undefined : 'Large evidence note. '.repeat(options.evidenceNoteRepeat),
+      body: `# Cap Item ${index}\n\n## Claim\n\n${'Large claim. '.repeat(options.bodyRepeat)}\n`,
+    });
+    const trace = createTraceSidecar(id);
+    trace.landingResults.push({
+      featureBranch: `feature/${id}`,
+      commitSha: `${String(index).padStart(2, '0')}abcdef1234567890`,
+      status: 'shipped',
+      path: `${id}.ts`,
+      landedAt: '2026-01-01T00:00:00.000Z',
+    });
+    await writeTraceSidecar(cwd, trace);
+  }
+}
+
+async function initRepo(cwd: string): Promise<void> {
+  await git(cwd, ['init', '-b', 'main']);
+  await git(cwd, ['config', 'user.email', 'test@example.com']);
+  await git(cwd, ['config', 'user.name', 'Test User']);
+}
+
+async function git(cwd: string, args: readonly string[]): Promise<void> {
+  await execFile('git', [...args], { cwd });
+}

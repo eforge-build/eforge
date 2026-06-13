@@ -4,9 +4,16 @@ import { join } from 'node:path';
 import { blockerRiskProjection, dependencyStateProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
-import { buildRecommendationSourceProjection, readPlannerTraceSummaries } from './recommendation-status.js';
+import { buildRecommendationSourceProjection } from './recommendation-status.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
-import type { BacklogEpic, BacklogItem } from './backlog-domain.js';
+// --- eforge:region shipped-evidence-context ---
+import { collectShippedEvidence } from './shipped-evidence.js';
+import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
+import { shouldOmitWeakCandidate } from './shipped-evidence-matching.js';
+import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidenceResult } from './shipped-evidence-types.js';
+import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+// --- eforge:endregion shipped-evidence-context ---
+import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
@@ -18,8 +25,25 @@ const SOURCE_TEXT_TARGET = 180_000;
 const SECTION_LIMIT = 4000;
 const TRACE_LIMIT = 2000;
 const ROADMAP_EXCERPT_LIMIT = 2000;
+// --- eforge:region shipped-evidence-context ---
+export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
+  candidateCount: 12,
+  citationCount: 1,
+  changedPathCount: 6,
+  excerptCount: 2,
+  excerptBytes: 240,
+  diagnosticCount: 8,
+} as const;
 
-export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>): Promise<BacklogCurationSourceBuild> {
+interface BacklogCurationSourceBuildOptions {
+  signal?: AbortSignal;
+  shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
+  enrichPullRequests?: boolean;
+}
+// --- eforge:endregion shipped-evidence-context ---
+
+export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
+  throwIfAborted(options.signal);
   const [itemSnapshots, epicSnapshots, recommendationProjection, recommendations] = await Promise.all([
     listBacklogItemSnapshots(cwd),
     listBacklogEpicSnapshots(cwd),
@@ -28,9 +52,17 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   ]);
   const openItemSnapshots = itemSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status)).sort(bySnapshotId);
   const openEpicSnapshots = epicSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status)).sort(bySnapshotId);
+  const itemIds = openItemSnapshots.map((snapshot) => snapshot.id);
   const recommendationHash = recommendations === null ? null : sha256(canonicalJson(recommendations));
-  const truncation = { sectionStrings: 0, roadmapExcerpts: 0, traceDetails: 0 };
-  const roadmapEvidence = await readRoadmapEvidence(cwd, truncation);
+  const truncation = { sectionStrings: 0, roadmapExcerpts: 0, traceDetails: 0, shippedEvidenceCandidates: 0, shippedEvidencePaths: 0, shippedEvidenceExcerpts: 0, shippedEvidenceDiagnostics: 0 };
+  const [roadmapEvidence, rawTraceSummaries] = await Promise.all([
+    readRoadmapEvidence(cwd, truncation),
+    readRawTraceSummaries(cwd, itemIds),
+  ]);
+  throwIfAborted(options.signal);
+  const traceSummaries = boundTraceSummaries(rawTraceSummaries as unknown as Array<Record<string, unknown>>, truncation);
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options);
+  throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
     schemaVersion: 1,
@@ -41,13 +73,12 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
       epics: openEpicSnapshots.map(projectPrecondition),
     },
     dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
+    shippedEvidenceCandidates: shippedEvidence.fingerprintCandidates,
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
   const openItems = openItemSnapshots.map((snapshot) => projectItem(snapshot, sourceFingerprint, truncation));
   const openEpics = openEpicSnapshots.map((snapshot) => projectEpic(snapshot, sourceFingerprint, truncation));
-  const itemIds = openItems.map((item) => item.id as string);
-  const traceSummaries = boundTraceSummaries(await readPlannerTraceSummaries(cwd, itemIds), truncation);
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',
@@ -59,6 +90,9 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     dependencyDetails,
     blockers: blockerRiskProjection(openItemSnapshots.map((snapshot) => snapshot.record)),
     traceSummaries,
+    shippedEvidenceCandidates: shippedEvidence.candidates,
+    shippedEvidenceCandidateCounts: shippedEvidence.counts,
+    shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
     roadmapEvidence,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
@@ -78,6 +112,148 @@ export function buildBacklogCurationRedraftContext(parentTaskId: string, result:
     ...(input.steering !== undefined && { steering: input.steering }),
   };
 }
+
+// --- eforge:region shipped-evidence-context ---
+async function readRawTraceSummaries(cwd: string, itemIds: readonly string[]): Promise<TraceSummary[]> {
+  const relevantItemIds = new Set(itemIds);
+  const traces = await listTraceSidecars(cwd);
+  return traces.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => relevantItemIds.has(summary.itemId));
+}
+
+async function buildShippedEvidenceContext(
+  cwd: string,
+  items: readonly BacklogItem[],
+  traceSummaries: readonly TraceSummary[],
+  truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
+  options: BacklogCurationSourceBuildOptions,
+): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
+  const result = await collectShippedEvidence({
+    cwd,
+    items,
+    traceSummaries,
+    caps: collectCaps(options.shippedEvidenceCaps),
+    enrichPullRequests: options.enrichPullRequests,
+    signal: options.signal,
+  });
+  const eligible = result.candidates.filter((candidate) => !shouldOmitWeakCandidate(candidate)).sort(byEvidenceRank);
+  const selected = eligible.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
+  truncation.shippedEvidenceCandidates += Math.max(0, eligible.length - selected.length) + result.candidates.filter(shouldOmitWeakCandidate).length;
+  const diagnostics = boundEvidenceDiagnostics(result.diagnostics, truncation);
+  return {
+    candidates: selected.map((candidate) => projectEvidenceCandidateForContext(candidate, truncation)),
+    fingerprintCandidates: selected.map(projectEvidenceCandidateForFingerprint),
+    counts: buildEvidenceCounts(result, selected),
+    diagnostics,
+  };
+}
+
+function collectCaps(overrides: Partial<ShippedEvidenceCaps> | undefined): Partial<ShippedEvidenceCaps> {
+  return normalizeShippedEvidenceCaps({
+    candidateCount: Math.max(BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount * 3, 30),
+    changedPathCount: BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount + 6,
+    excerptCount: BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptCount + 2,
+    excerptBytes: BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptBytes,
+    diagnosticCount: BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.diagnosticCount + 12,
+    ...overrides,
+  });
+}
+
+function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate, truncation: { shippedEvidencePaths: number; shippedEvidenceExcerpts: number }): Record<string, unknown> {
+  const changedPaths = candidate.changedPaths.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount);
+  const excerpts = candidate.excerpts.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptCount).map((excerpt) => ({
+    evidenceSource: excerpt.evidenceSource,
+    text: boundString(excerpt.text, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptBytes, () => { truncation.shippedEvidenceExcerpts += 1; }),
+    ...(excerpt.path !== undefined && { path: excerpt.path }),
+    ...(excerpt.commit !== undefined && { commit: excerpt.commit }),
+  }));
+  truncation.shippedEvidencePaths += Math.max(0, candidate.changedPaths.length - changedPaths.length);
+  truncation.shippedEvidenceExcerpts += Math.max(0, candidate.excerpts.length - excerpts.length);
+  return {
+    itemId: candidate.itemId,
+    itemTitle: candidate.itemTitle,
+    evidenceSource: candidate.evidenceSource,
+    confidence: candidate.confidence,
+    evidenceLabel: evidenceLabel(candidate),
+    reasons: candidate.reasons,
+    citations: [candidate.citation].filter(Boolean).slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.citationCount),
+    ...(candidate.pr !== undefined && { pr: projectEvidencePr(candidate) }),
+    ...(candidate.commit !== undefined && { commit: projectEvidenceCommit(candidate) }),
+    changedPaths,
+    branchHints: candidate.branchHints,
+    excerpts,
+  };
+}
+
+function projectEvidenceCandidateForFingerprint(candidate: ShippedEvidenceCandidate): Record<string, unknown> {
+  return {
+    itemId: candidate.itemId,
+    itemTitle: candidate.itemTitle,
+    evidenceSource: candidate.evidenceSource,
+    confidence: candidate.confidence,
+    ...(candidate.pr !== undefined && { pr: projectEvidencePr(candidate) }),
+    ...(candidate.commit !== undefined && { commit: projectEvidenceCommit(candidate) }),
+    changedPaths: candidate.changedPaths.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount),
+    citations: [candidate.citation].filter(Boolean).slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.citationCount),
+  };
+}
+
+function projectEvidencePr(candidate: ShippedEvidenceCandidate): Record<string, unknown> | undefined {
+  if (candidate.pr === undefined) return undefined;
+  return {
+    number: candidate.pr.number,
+    ...(candidate.pr.title !== undefined && { title: candidate.pr.title }),
+    ...(candidate.pr.headRefName !== undefined && { branch: candidate.pr.headRefName }),
+  };
+}
+
+function projectEvidenceCommit(candidate: ShippedEvidenceCandidate): Record<string, unknown> | undefined {
+  if (candidate.commit === undefined) return undefined;
+  return { shortHash: candidate.commit.shortHash, subject: candidate.commit.subject };
+}
+
+function boundEvidenceDiagnostics(diagnostics: readonly ShippedEvidenceDiagnostic[], truncation: { shippedEvidenceDiagnostics: number }): Array<Record<string, unknown>> {
+  const bounded = diagnostics.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.diagnosticCount).map((diagnostic) => ({
+    code: diagnostic.code,
+    message: boundString(diagnostic.message, 400, () => {}),
+  }));
+  truncation.shippedEvidenceDiagnostics += Math.max(0, diagnostics.length - bounded.length);
+  return bounded;
+}
+
+function buildEvidenceCounts(result: ShippedEvidenceResult, selected: readonly ShippedEvidenceCandidate[]): Record<string, unknown> {
+  return {
+    collected: result.candidates.length,
+    included: selected.length,
+    strong: result.candidates.filter((candidate) => candidate.confidence === 'strong').length,
+    ambiguous: result.candidates.filter((candidate) => candidate.confidence === 'ambiguous').length,
+    weakOmitted: result.candidates.filter(shouldOmitWeakCandidate).length,
+    lifecycle: result.candidates.filter((candidate) => candidate.evidenceSource === 'lifecycle').length,
+    gitHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'git-history').length,
+    prHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'pr-history').length,
+    combined: result.candidates.filter((candidate) => candidate.evidenceSource === 'combined').length,
+  };
+}
+
+function evidenceLabel(candidate: ShippedEvidenceCandidate): string {
+  if (candidate.evidenceSource === 'lifecycle') return 'Shipped evidence: lifecycle trace';
+  if (candidate.confidence === 'ambiguous') return 'Ambiguous shipped candidate: needs input';
+  return 'Shipped evidence: inferred from git/PR history';
+}
+
+function byEvidenceRank(left: ShippedEvidenceCandidate, right: ShippedEvidenceCandidate): number {
+  return evidenceRank(right) - evidenceRank(left) || right.score - left.score || left.itemId.localeCompare(right.itemId) || left.citation.localeCompare(right.citation);
+}
+
+function evidenceRank(candidate: ShippedEvidenceCandidate): number {
+  const confidence = candidate.confidence === 'strong' ? 30 : candidate.confidence === 'ambiguous' ? 20 : 10;
+  const source = candidate.evidenceSource === 'lifecycle' ? 100 : 0;
+  return source + confidence;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error('Backlog curation source assembly was aborted.');
+}
+// --- eforge:endregion shipped-evidence-context ---
 
 function projectItem(snapshot: BacklogRecordSnapshot<BacklogItem>, sourceFingerprint: string, truncation: { sectionStrings: number }) {
   const record = snapshot.record;
@@ -214,6 +390,9 @@ function buildSourceText(source: Record<string, unknown>): string {
     preconditions: source.preconditions,
     dependencyDetails: source.dependencyDetails,
     blockers: source.blockers,
+    shippedEvidenceCandidates: source.shippedEvidenceCandidates,
+    shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
+    shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),
     truncation: { ...(source.truncation as Record<string, unknown>), fallback: 'minimal' },
