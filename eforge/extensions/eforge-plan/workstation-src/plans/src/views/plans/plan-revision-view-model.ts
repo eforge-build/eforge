@@ -1,5 +1,4 @@
-import type { AgentTaskStatus, PlanData, PlanRevisionApplyOutput, PlanRevisionTurnProjection, PlanningAgentTaskRecord } from '@/types';
-import { normalizeDimension, sectionContent } from './dimensions';
+import type { AgentTaskStatus, PlanRevisionTurnProjection, PlanningAgentTaskRecord } from '@/types';
 
 export type RevisionResultKind = 'answer' | 'patch' | 'needs-input' | 'failed' | 'cancelled' | 'running' | 'queued' | 'unavailable';
 
@@ -48,15 +47,6 @@ export function patchSections(turn: PlanRevisionTurnProjection) {
   return turn.task?.result?.planRevisionTurn?.proposedPatch?.sections ?? [];
 }
 
-export function currentSectionContent(plan: PlanData, dimension: string): string {
-  return sectionContent(plan.sections, dimension);
-}
-
-export function defaultSelectedSections(turn: PlanRevisionTurnProjection): string[] {
-  const applied = new Set((turn.appliedSections ?? []).map(normalizeDimension));
-  return patchSections(turn).map((section) => normalizeDimension(section.dimension)).filter((dimension) => !applied.has(dimension));
-}
-
 export function hasRunningRevisionTurn(turns: PlanRevisionTurnProjection[]): boolean {
   return turns.some((turn) => isActiveStatus(turn.task?.status ?? turn.status));
 }
@@ -86,21 +76,4 @@ function formatSectionProgressList(label: string, sections: unknown): string | u
   const visible = normalized.slice(0, 3).join(', ');
   const suffix = normalized.length > 3 ? ` +${normalized.length - 3}` : '';
   return `${label} (${normalized.length}): ${visible}${suffix}`;
-}
-
-export function applyResultText(result: PlanRevisionApplyOutput | undefined): string | null {
-  if (!result) return null;
-  if (result.kind === 'applied') return `Applied sections: ${result.appliedSections.join(', ')}`;
-  return result.message;
-}
-
-export function applyResultDetails(result: PlanRevisionApplyOutput | undefined): Array<[string, string]> {
-  if (!result) return [];
-  if (result.kind === 'stale') {
-    return [['session', result.session], ['basePlanFingerprint', result.basePlanFingerprint], ['currentPlanFingerprint', result.currentPlanFingerprint]];
-  }
-  if (result.kind === 'not-applicable') {
-    return [['session', result.session], ...(result.taskId ? [['taskId', result.taskId] as [string, string]] : []), ...(result.turnId ? [['turnId', result.turnId] as [string, string]] : [])];
-  }
-  return [];
 }

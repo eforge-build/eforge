@@ -5,7 +5,6 @@ import { ToastProvider } from '@/components/toast';
 import type { EforgeBridge, PlanDetail, PlanRevisionSessionProjection } from '@/types';
 import { PlanDetailCard } from './plan-detail';
 import { PlanSetDetailCard } from './plan-set-detail';
-import { PlanRevisionPatchPreview } from './plan-revision-patch-preview';
 
 const plan = { session: 's', topic: 'Topic', status: 'planning', sections: { scope: 'Old scope', 'acceptance criteria': 'Old AC' } };
 const patchResult = { schemaVersion: 1 as const, targetSession: 's', assistantMessage: 'Patch ready', basePlanFingerprint: 'old', proposedPatch: { sections: [{ dimension: 'scope', content: 'New scope' }, { dimension: 'acceptance-criteria', content: 'New AC' }] } };
@@ -50,19 +49,21 @@ describe('PlanDetailCard revision workstation', () => {
     expect(screen.queryByText('Revise with AI')).toBeNull();
   });
 
-  it('shows running turn progress, disables submit, and can cancel the turn', async () => {
+  it('shows running turn progress, disables submit and plan edits, and can cancel the turn', async () => {
     const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [runningTurn()] };
     const invokeAction = vi.fn(async () => session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
     fireEvent.click(screen.getByRole('button', { name: 'Start or resume revision session' }));
     await waitFor(() => expect(screen.getByText(/Drafting revision · Current section: scope/)).toBeTruthy());
-    expect(screen.getByText(/One revision turn can run per plan in V1/)).toBeTruthy();
+    expect(screen.getByText(/The AI is revising this plan/)).toBeTruthy();
     expect((screen.getByRole('button', { name: /Send to AI/ }) as HTMLButtonElement).disabled).toBe(true);
+    // The page is locked while a turn runs: every edit affordance is disabled.
+    screen.getAllByRole('button', { name: /Edit/ }).forEach((button) => expect((button as HTMLButtonElement).disabled).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: /Cancel/ }));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('cancel-plan-revision-turn', { session: 's', turnId: 'turn-running' }));
   });
 
-  it('renders answer-only turns without section apply actions', async () => {
+  it('renders answer-only turns without apply actions', async () => {
     const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [turn('answer')] };
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'start-plan-revision-turn' ? { session } : session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
@@ -70,54 +71,20 @@ describe('PlanDetailCard revision workstation', () => {
     fireEvent.change(screen.getByLabelText('Ask the AI for plan revisions or answers'), { target: { value: 'Why?' } });
     fireEvent.click(screen.getByRole('button', { name: /Send to AI/ }));
     await waitFor(() => expect(screen.getByText('Answer only')).toBeTruthy());
-    expect(screen.queryByRole('button', { name: /Apply selected revisions/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Apply selected/ })).toBeNull();
     expect(invokeAction.mock.calls.map(([id]) => id)).not.toContain('set-session-plan-section');
   });
 
-  it('applies only selected patch sections and refreshes parent callbacks', async () => {
+  it('auto-applies a completed patch turn and refreshes parent callbacks without apply controls', async () => {
     const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [turn('patch')] };
-    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn' ? { kind: 'applied', session: 's', turnId: 'turn-patch', taskId: 'task-patch', appliedSections: ['scope'], plan, readiness: { ready: true }, message: 'Applied selected plan revision sections.' } : session);
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn' ? { kind: 'applied', session: 's', turnId: 'turn-patch', taskId: 'task-patch', appliedSections: ['scope', 'acceptance-criteria'], plan, readiness: { ready: true }, message: 'Applied plan revision sections.' } : session);
     const { onApply, onRefresh } = renderDetail(invokeAction as EforgeBridge['invokeAction']);
     fireEvent.click(screen.getByRole('button', { name: 'Start or resume revision session' }));
-    await waitFor(() => expect(screen.getByText('New scope')).toBeTruthy());
-    fireEvent.click(screen.getByLabelText('Select Acceptance Criteria'));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply selected revisions' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm apply selected revisions' }));
-    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', expect.objectContaining({ sections: ['scope'], previewAcknowledged: true, confirmApply: true })));
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', { session: 's', turnId: 'turn-patch' }));
+    expect(invokeAction.mock.calls.filter(([id]) => id === 'apply-plan-revision-turn')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Apply selected/ })).toBeNull();
     expect(onApply).toHaveBeenCalledWith({ plan, readiness: { ready: true } });
-    expect(onRefresh).toHaveBeenCalledOnce();
-  });
-
-  it('renders stale apply warnings without parent callback', async () => {
-    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [turn('patch')] };
-    const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn' ? { kind: 'stale', session: 's', turnId: 'turn-patch', taskId: 'task-patch', basePlanFingerprint: 'old', currentPlanFingerprint: 'new', message: 'Stale revision.' } : session);
-    const { onApply } = renderDetail(invokeAction as EforgeBridge['invokeAction']);
-    fireEvent.click(screen.getByRole('button', { name: 'Start or resume revision session' }));
-    await waitFor(() => expect(screen.getByText('New scope')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Apply selected revisions' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm apply selected revisions' }));
-    await waitFor(() => expect(screen.getAllByText(/Stale revision\./).length).toBeGreaterThan(0));
-    expect(screen.getByText('session:')).toBeTruthy();
-    expect(screen.getByText('basePlanFingerprint:')).toBeTruthy();
-    expect(screen.getByText('currentPlanFingerprint:')).toBeTruthy();
-    expect(screen.getByText('new')).toBeTruthy();
-    expect(onApply).not.toHaveBeenCalled();
-  });
-
-  it('renders not-applicable apply details', () => {
-    render(<PlanRevisionPatchPreview plan={plan} turn={turn('patch')} applyResult={{ kind: 'not-applicable', session: 's', taskId: 'task-patch', message: 'Nothing to apply.' }} busy={false} onApply={vi.fn()} />);
-    expect(screen.getByText('Nothing to apply.')).toBeTruthy();
-    expect(screen.getByText('session:')).toBeTruthy();
-    expect(screen.getByText('taskId:')).toBeTruthy();
-    expect(screen.getByText('task-patch')).toBeTruthy();
-  });
-
-  it('drops applied sections from selected apply dimensions after reload', async () => {
-    const onApply = vi.fn(async () => undefined);
-    const initialTurn = turn('patch');
-    const { rerender } = render(<PlanRevisionPatchPreview plan={plan} turn={initialTurn} busy={false} onApply={onApply} />);
-    rerender(<PlanRevisionPatchPreview plan={plan} turn={{ ...initialTurn, appliedSections: ['scope', 'acceptance-criteria'] }} busy={false} onApply={onApply} />);
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Apply selected revisions' }) as HTMLButtonElement).disabled).toBe(true));
+    expect(onRefresh).toHaveBeenCalled();
   });
 
   it('redrafts clarification answers and retries failed turns without build or handoff actions', async () => {

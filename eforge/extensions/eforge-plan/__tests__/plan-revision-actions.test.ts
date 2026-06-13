@@ -20,8 +20,9 @@ function registry(): NativeExtensionRegistry {
   return { ...(state as NativeExtensionRecorderState), extensions: [], candidates: [] };
 }
 
-async function writeSessionPlanRaw(cwd: string, session: string, scope = 'Existing scope.', status = 'planning') {
+async function writeSessionPlanRaw(cwd: string, session: string, scope = 'Existing scope.', status = 'planning', openQuestions: string[] = []) {
   await mkdir(join(cwd, '.eforge', 'session-plans'), { recursive: true });
+  const openQuestionsYaml = openQuestions.length === 0 ? ' []' : `\n${openQuestions.map((question) => `  - ${question}`).join('\n')}`;
   await writeFile(join(cwd, '.eforge', 'session-plans', `${session}.md`), `---
 session: ${session}
 topic: ${session}
@@ -35,7 +36,7 @@ required_dimensions:
   - assumptions-and-validation
 optional_dimensions: []
 skipped_dimensions: []
-open_questions: []
+open_questions:${openQuestionsYaml}
 profile: null
 ---
 # ${session}
@@ -62,7 +63,8 @@ function queuedTask(taskId: string): ExtensionAgentTaskRecord {
   return { taskId, kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
 }
 
-function completedRevisionTask(taskId: string, targetSession: string, basePlanFingerprint: string, sections?: Array<{ dimension: string; content: string }>): ExtensionAgentTaskRecord {
+function completedRevisionTask(taskId: string, targetSession: string, basePlanFingerprint: string, sections?: Array<{ dimension: string; content: string }>, openQuestions?: string[]): ExtensionAgentTaskRecord {
+  const proposedPatch = sections ? { sections, ...(openQuestions !== undefined && { metadata: { openQuestions } }) } : undefined;
   return parseExtensionAgentTaskRecord({
     taskId,
     kind: 'eforge-plan.planning-draft',
@@ -71,7 +73,7 @@ function completedRevisionTask(taskId: string, targetSession: string, basePlanFi
     updatedAt: '2026-01-01T00:00:01.000Z',
     startedAt: '2026-01-01T00:00:00.000Z',
     completedAt: '2026-01-01T00:00:01.000Z',
-    result: { summary: 'Revision turn.', assumptionsOpenQuestions: [], planRevisionTurn: { schemaVersion: 1, targetSession, assistantMessage: 'Apply this revision.', basePlanFingerprint, ...(sections ? { proposedPatch: { sections } } : { noPatchReason: 'Answer only.' }) } },
+    result: { summary: 'Revision turn.', assumptionsOpenQuestions: [], planRevisionTurn: { schemaVersion: 1, targetSession, assistantMessage: 'Apply this revision.', basePlanFingerprint, ...(proposedPatch ? { proposedPatch } : { noPatchReason: 'Answer only.' }) } },
   });
 }
 
@@ -219,7 +221,7 @@ describe('plan revision actions', () => {
     });
   });
 
-  it('blocks stale apply, applies only selected sections, and treats answer-only turns as not applicable', async () => {
+  it('applies all proposed sections once, is idempotent on re-apply, and treats answer-only turns as not applicable', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'apply-me');
       const tasks = new Map<string, ExtensionAgentTaskRecord>();
@@ -227,57 +229,62 @@ describe('plan revision actions', () => {
       const turn = start.turn as { taskId: string; basePlanFingerprint: string };
       tasks.set(turn.taskId, completedRevisionTask(turn.taskId, 'apply-me', turn.basePlanFingerprint, [{ dimension: 'scope', content: 'Generated scope only.' }, { dimension: 'acceptance-criteria', content: '- Generated AC.' }]));
       const buildEnqueues: unknown[] = [];
-      const applied = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: turn.taskId, sections: ['Scope'], previewAcknowledged: true, confirmApply: true }, tasks, [], buildEnqueues);
-      expect(applied).toMatchObject({ kind: 'applied', session: 'apply-me', taskId: turn.taskId, appliedSections: ['scope'], plan: expect.any(Object), readiness: expect.any(Object), path: expect.stringContaining('apply-me.md') });
+      const applied = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: turn.taskId }, tasks, [], buildEnqueues);
+      expect(applied).toMatchObject({ kind: 'applied', session: 'apply-me', taskId: turn.taskId, appliedSections: ['scope', 'acceptance-criteria'], plan: expect.any(Object), readiness: expect.any(Object), path: expect.stringContaining('apply-me.md') });
       expect(buildEnqueues).toEqual([]);
       const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'apply-me.md'), 'utf-8');
       expect(raw).toContain('status: planning');
       expect(raw).toContain('Generated scope only.');
-      expect(raw).toContain('- `pnpm type-check` exits 0.');
-      expect(raw).not.toContain('Generated AC.');
+      expect(raw).toContain('- Generated AC.');
 
-      const incremental = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: turn.taskId, sections: ['acceptance-criteria'], previewAcknowledged: true, confirmApply: true }, tasks, [], buildEnqueues);
-      expect(incremental).toMatchObject({ kind: 'applied', session: 'apply-me', taskId: turn.taskId, appliedSections: ['acceptance-criteria'] });
-      const incrementallyRaw = await readFile(join(cwd, '.eforge', 'session-plans', 'apply-me.md'), 'utf-8');
-      expect(incrementallyRaw).toContain('Generated scope only.');
-      expect(incrementallyRaw).toContain('- Generated AC.');
+      // Re-applying the same completed turn is idempotent: it returns applied without rewriting the plan.
+      const reapplied = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: turn.taskId }, tasks, [], buildEnqueues);
+      expect(reapplied).toMatchObject({ kind: 'applied', session: 'apply-me', taskId: turn.taskId, appliedSections: expect.arrayContaining(['scope', 'acceptance-criteria']), message: expect.stringContaining('already applied') });
 
       const second = await dispatch(cwd, 'start-plan-revision-turn', { session: 'apply-me', message: 'Answer.' }, tasks, []);
       const secondTurn = second.turn as { taskId: string; basePlanFingerprint: string };
       tasks.set(secondTurn.taskId, completedRevisionTask(secondTurn.taskId, 'apply-me', secondTurn.basePlanFingerprint));
-      const answerOnly = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: secondTurn.taskId, sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+      const answerOnly = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: secondTurn.taskId }, tasks);
       expect(answerOnly).toMatchObject({ kind: 'not-applicable' });
-
-      const third = await dispatch(cwd, 'start-plan-revision-turn', { session: 'apply-me', message: 'Stale.' }, tasks, []);
-      const thirdTurn = third.turn as { taskId: string; basePlanFingerprint: string };
-      tasks.set(thirdTurn.taskId, completedRevisionTask(thirdTurn.taskId, 'apply-me', thirdTurn.basePlanFingerprint, [{ dimension: 'scope', content: 'Stale generated scope.' }]));
-      await writeSessionPlanRaw(cwd, 'apply-me', 'Manual edit.');
-      const stale = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'apply-me', taskId: thirdTurn.taskId, sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
-      expect(stale).toMatchObject({ kind: 'stale', session: 'apply-me', basePlanFingerprint: thirdTurn.basePlanFingerprint, currentPlanFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
-      expect(await readFile(join(cwd, '.eforge', 'session-plans', 'apply-me.md'), 'utf-8')).not.toContain('Stale generated scope.');
     });
   });
 
-  it('returns not-applicable without writes for invalid linkage, mismatched results, and missing selected sections', async () => {
+  it('applies resolved open questions from patch metadata, clearing the stale frontmatter list', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'oq', 'Existing scope.', 'planning', ['Stale assumption about naming?']);
+      const tasks = new Map<string, ExtensionAgentTaskRecord>();
+      const start = await dispatch(cwd, 'start-plan-revision-turn', { session: 'oq', message: 'Resolve the open questions.' }, tasks, []);
+      const turn = start.turn as { taskId: string; basePlanFingerprint: string };
+      tasks.set(turn.taskId, completedRevisionTask(turn.taskId, 'oq', turn.basePlanFingerprint, [{ dimension: 'scope', content: 'Tightened scope.' }], []));
+      const applied = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'oq', taskId: turn.taskId }, tasks);
+      expect(applied).toMatchObject({ kind: 'applied', appliedSections: ['scope'] });
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'oq.md'), 'utf-8');
+      expect(raw).toContain('Tightened scope.');
+      expect(raw).not.toContain('Stale assumption about naming?');
+      expect(raw).toContain('open_questions: []');
+    });
+  });
+
+  it('returns not-applicable without writes for invalid linkage, mismatched results, and invalid patches', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'invalid-apply', 'Original scope.', 'planning');
       const planPath = join(cwd, '.eforge', 'session-plans', 'invalid-apply.md');
       const tasks = new Map<string, ExtensionAgentTaskRecord>();
       const starts: unknown[] = [];
 
-      const unlinked = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: 'task-unlinked', sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+      const unlinked = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: 'task-unlinked' }, tasks);
       expect(unlinked).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: 'task-unlinked' });
       expect(await readFile(planPath, 'utf-8')).toContain('status: planning');
       expect(await readFile(planPath, 'utf-8')).toContain('Original scope.');
 
-      const unresolvedTurn = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', turnId: 'missing/turn', sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+      const unresolvedTurn = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', turnId: 'missing/turn' }, tasks);
       expect(unresolvedTurn).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', turnId: 'missing/turn' });
       expect(unresolvedTurn).not.toHaveProperty('taskId');
 
       const prunedTask = await dispatch(cwd, 'start-plan-revision-turn', { session: 'invalid-apply', message: 'Pruned task.' }, tasks, starts);
       const prunedTurn = prunedTask.turn as { taskId: string };
       tasks.delete(prunedTurn.taskId);
-      const missingTask = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: prunedTurn.taskId, sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+      const missingTask = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: prunedTurn.taskId }, tasks);
       expect(missingTask).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: prunedTurn.taskId, message: expect.stringContaining(`missing ${prunedTurn.taskId}`) });
 
       const targetMismatch = await dispatch(cwd, 'start-plan-revision-turn', { session: 'invalid-apply', message: 'Target mismatch.' }, tasks, starts);
@@ -290,36 +297,35 @@ describe('plan revision actions', () => {
       tasks.set(fingerprintTurn.taskId, completedRevisionTask(fingerprintTurn.taskId, 'invalid-apply', 'f'.repeat(64), [{ dimension: 'scope', content: 'Wrong fingerprint.' }]));
       await expectNotApplicableWithoutWrite(cwd, tasks, fingerprintTurn.taskId, 'invalid-apply', 'Wrong fingerprint.');
 
-      const missingSection = await dispatch(cwd, 'start-plan-revision-turn', { session: 'invalid-apply', message: 'Missing section.' }, tasks, starts);
-      const missingTurn = missingSection.turn as { taskId: string; basePlanFingerprint: string };
-      tasks.set(missingTurn.taskId, completedRevisionTask(missingTurn.taskId, 'invalid-apply', missingTurn.basePlanFingerprint, [{ dimension: 'scope', content: 'Only scope.' }]));
-      const missing = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: missingTurn.taskId, sections: ['acceptance-criteria'], previewAcknowledged: true, confirmApply: true }, tasks);
-      expect(missing).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: missingTurn.taskId });
-      const invalidDimension = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: missingTurn.taskId, sections: ['not-a-flat-plan-section'], previewAcknowledged: true, confirmApply: true }, tasks);
-      expect(invalidDimension).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: missingTurn.taskId });
-
       const duplicatePatch = await dispatch(cwd, 'start-plan-revision-turn', { session: 'invalid-apply', message: 'Duplicate patch.' }, tasks, starts);
       const duplicateTurn = duplicatePatch.turn as { taskId: string; basePlanFingerprint: string };
       tasks.set(duplicateTurn.taskId, completedRevisionTask(duplicateTurn.taskId, 'invalid-apply', duplicateTurn.basePlanFingerprint, [{ dimension: 'Scope', content: 'First duplicate.' }, { dimension: 'scope', content: 'Second duplicate.' }]));
-      const duplicate = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: duplicateTurn.taskId, sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+      const duplicate = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: duplicateTurn.taskId }, tasks);
       expect(duplicate).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: duplicateTurn.taskId, message: expect.stringContaining('duplicate patches') });
 
       const emptyPatchDimension = await dispatch(cwd, 'start-plan-revision-turn', { session: 'invalid-apply', message: 'Empty normalized patch dimension.' }, tasks, starts);
       const emptyPatchTurn = emptyPatchDimension.turn as { taskId: string; basePlanFingerprint: string };
       tasks.set(emptyPatchTurn.taskId, completedRevisionTask(emptyPatchTurn.taskId, 'invalid-apply', emptyPatchTurn.basePlanFingerprint, [{ dimension: '!!!', content: 'Empty normalized dimension.' }]));
-      const emptyDimension = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: emptyPatchTurn.taskId, sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+      const emptyDimension = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: emptyPatchTurn.taskId }, tasks);
       expect(emptyDimension).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: emptyPatchTurn.taskId, message: expect.stringContaining('empty section dimension') });
+
+      // A patch proposing a dimension outside the plan's allowed dimensions is rejected without writes.
+      const invalidDimension = await dispatch(cwd, 'start-plan-revision-turn', { session: 'invalid-apply', message: 'Invalid dimension.' }, tasks, starts);
+      const invalidDimensionTurn = invalidDimension.turn as { taskId: string; basePlanFingerprint: string };
+      tasks.set(invalidDimensionTurn.taskId, completedRevisionTask(invalidDimensionTurn.taskId, 'invalid-apply', invalidDimensionTurn.basePlanFingerprint, [{ dimension: 'not-a-flat-plan-section', content: 'Bad dimension.' }]));
+      const invalid = await dispatch(cwd, 'apply-plan-revision-turn', { session: 'invalid-apply', taskId: invalidDimensionTurn.taskId }, tasks);
+      expect(invalid).toMatchObject({ kind: 'not-applicable', session: 'invalid-apply', taskId: invalidDimensionTurn.taskId, message: expect.stringContaining('not an allowed flat session-plan dimension') });
 
       const raw = await readFile(planPath, 'utf-8');
       expect(raw).toContain('status: planning');
       expect(raw).toContain('Original scope.');
-      expect(raw).not.toContain('Only scope.');
+      expect(raw).not.toContain('Bad dimension.');
     });
   });
 });
 
 async function expectNotApplicableWithoutWrite(cwd: string, tasks: Map<string, ExtensionAgentTaskRecord>, taskId: string, session: string, absentContent: string): Promise<void> {
-  const result = await dispatch(cwd, 'apply-plan-revision-turn', { session, taskId, sections: ['scope'], previewAcknowledged: true, confirmApply: true }, tasks);
+  const result = await dispatch(cwd, 'apply-plan-revision-turn', { session, taskId }, tasks);
   expect(result).toMatchObject({ kind: 'not-applicable', session, taskId });
   const raw = await readFile(join(cwd, '.eforge', 'session-plans', `${session}.md`), 'utf-8');
   expect(raw).toContain('status: planning');

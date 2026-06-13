@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanData, PlanRevisionTurnProjection } from '@/types';
-import { chronologicalTurns, classifyRevisionTurn, currentSectionContent, defaultSelectedSections, revisionSummaryCounts, taskProgressText } from './plan-revision-view-model';
+import type { PlanRevisionTurnProjection } from '@/types';
+import { chronologicalTurns, classifyRevisionTurn, revisionSummaryCounts, taskProgressText } from './plan-revision-view-model';
 
 const patchTurn: PlanRevisionTurnProjection = { turnId: 'patch', taskId: 'task-patch', userMessage: 'patch', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: '2026-01-01T00:02:00.000Z', task: { taskId: 'task-patch', kind: 'k', status: 'completed', createdAt: '', updatedAt: '', result: { summary: '', assumptionsOpenQuestions: [], planRevisionTurn: { schemaVersion: 1, targetSession: 's', assistantMessage: 'Patch', basePlanFingerprint: 'h', proposedPatch: { sections: [{ dimension: 'scope', content: 'new' }] } } } } };
 const answerTurn: PlanRevisionTurnProjection = { ...patchTurn, turnId: 'answer', taskId: 'task-answer', createdAt: '2026-01-01T00:01:00.000Z', task: { ...patchTurn.task!, taskId: 'task-answer', result: { summary: '', assumptionsOpenQuestions: [], planRevisionTurn: { schemaVersion: 1, targetSession: 's', assistantMessage: 'Answer', basePlanFingerprint: 'h', noPatchReason: 'answer' } } } };
@@ -20,15 +20,6 @@ describe('plan revision view model', () => {
     expect(classifyRevisionTurn(running)).toBe('running');
     expect(classifyRevisionTurn(unavailable)).toBe('unavailable');
     expect(revisionSummaryCounts([running, patchTurn, needs, unavailable, { ...patchTurn, turnId: 'applied', appliedSections: ['scope'] }])).toMatchObject({ running: 1, patchReady: 2, needsInput: 1, failed: 1, appliedSections: 1 });
-  });
-
-  it('looks up acceptance-criteria content from acceptance criteria section keys', () => {
-    const plan: PlanData = { session: 's', topic: 't', status: 'planning', sections: { 'acceptance criteria': 'AC body' } };
-    expect(currentSectionContent(plan, 'acceptance-criteria')).toBe('AC body');
-  });
-
-  it('excludes already-applied sections from defaults', () => {
-    expect(defaultSelectedSections({ ...patchTurn, appliedSections: ['scope'] })).toEqual([]);
   });
 
   it('summarizes running task section progress metadata', () => {

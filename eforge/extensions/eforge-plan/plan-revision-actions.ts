@@ -27,14 +27,15 @@ import {
   recordPlanRevisionTurn,
 } from './plan-revision-store.js';
 import {
-  applySelectedRevisionSections,
+  applyRevisionPatchSections,
   buildPlanRevisionSourceText,
   buildRecentRevisionTurnContext,
   computeFlatPlanFingerprint,
   computeFlatSectionHashes,
   loadFlatPlanRevisionTarget,
+  projectRevisionPlanResult,
   resolveCompletedRevisionTurnResult,
-  validateSelectedRevisionSections,
+  validateRevisionPatchSections,
 } from './plan-revision-orchestration.js';
 
 export const PLAN_REVISION_REQUESTED_OUTPUT_SECTIONS = ['planRevisionTurn'] as const;
@@ -141,7 +142,7 @@ export const cancelPlanRevisionTurnAction = defineExtensionAction({
 export const applyPlanRevisionTurnAction = defineExtensionAction({
   id: 'apply-plan-revision-turn',
   title: 'Apply plan revision turn',
-  description: 'Apply selected structured section edits from a completed revision turn.',
+  description: 'Apply the structured section edits from a completed revision turn to the flat session plan.',
   inputSchema: ApplyPlanRevisionTurnInputSchema,
   outputSchema: ApplyPlanRevisionTurnOutputSchema,
   sideEffects: ['local-read', 'local-write'],
@@ -165,18 +166,18 @@ export const applyPlanRevisionTurnAction = defineExtensionAction({
     } catch (err) {
       return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, errorMessage(err)));
     }
-    const selected = validateSelectedRevisionSections(loaded.plan, turnResult, input.sections);
-    if (!selected.ok) return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, selected.message));
-    const selectedSections = selected.sections.map((section) => section.dimension);
-    const currentPlanFingerprint = computeFlatPlanFingerprint(loaded.plan);
-    const incrementalStatus = validateIncrementalApply(storedTurn, computeFlatSectionHashes(loaded.plan), selectedSections, currentPlanFingerprint !== storedTurn.basePlanFingerprint);
-    if (!incrementalStatus.ok) {
-      if (incrementalStatus.kind === 'stale') return toJsonSafeObject({ kind: 'stale', session: input.session, turnId: storedTurn.turnId, taskId: storedTurn.taskId, basePlanFingerprint: storedTurn.basePlanFingerprint, currentPlanFingerprint, message: incrementalStatus.message });
-      return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, incrementalStatus.message));
+    const validated = validateRevisionPatchSections(loaded.plan, turnResult);
+    if (!validated.ok) return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, validated.message));
+    const sections = validated.sections.map((section) => section.dimension);
+    // A revision turn applies all of its proposed sections exactly once. Re-apply
+    // requests (e.g. a duplicate auto-apply) return the already-applied result
+    // without rewriting the plan.
+    if (storedTurn.appliedAt !== undefined) {
+      return toJsonSafeObject({ kind: 'applied', turnId: storedTurn.turnId, taskId: storedTurn.taskId, appliedSections: storedTurn.appliedSections ?? sections, message: 'Plan revision sections were already applied.', ...projectRevisionPlanResult(ctx.cwd, input.session, loaded.plan) });
     }
-    const applied = await applySelectedRevisionSections(ctx.cwd, input.session, turnResult, selectedSections);
-    await markPlanRevisionTurnApplied(ctx.cwd, input.session, { taskId: storedTurn.taskId }, new Date().toISOString(), selectedSections);
-    return toJsonSafeObject({ kind: 'applied', turnId: storedTurn.turnId, taskId: storedTurn.taskId, appliedSections: selectedSections, message: 'Applied selected plan revision sections.', ...applied });
+    const applied = await applyRevisionPatchSections(ctx.cwd, input.session, turnResult, sections);
+    await markPlanRevisionTurnApplied(ctx.cwd, input.session, { taskId: storedTurn.taskId }, new Date().toISOString(), sections);
+    return toJsonSafeObject({ kind: 'applied', turnId: storedTurn.turnId, taskId: storedTurn.taskId, appliedSections: sections, message: 'Applied plan revision sections.', ...applied });
   },
 });
 
@@ -277,31 +278,6 @@ async function requireTurn(cwd: string, sessionId: string, ref: { taskId?: strin
 
 function notApplicable(session: string, ref: { taskId?: string; turnId?: string }, message: string) {
   return { kind: 'not-applicable' as const, session, ...(ref.taskId !== undefined ? { taskId: ref.taskId } : { turnId: ref.turnId }), message };
-}
-
-function validateIncrementalApply(storedTurn: PlanRevisionTurnEntry, currentSectionHashes: Array<{ dimension: string; sha256: string }>, selectedSections: string[], fullPlanChanged: boolean): { ok: true } | { ok: false; kind: 'stale' | 'not-applicable'; message: string } {
-  const applied = new Set(storedTurn.appliedSections ?? []);
-  const baseHashes = new Map(storedTurn.baseSectionHashes.map((section) => [section.dimension, section.sha256]));
-  const currentHashes = new Map(currentSectionHashes.map((section) => [section.dimension, section.sha256]));
-  for (const section of selectedSections) {
-    if (applied.has(section)) return { ok: false, kind: 'not-applicable', message: `Section ${section} was already applied from this revision turn; no sections were written.` };
-    const baseHash = baseHashes.get(section);
-    if (baseHash === undefined || currentHashes.get(section) !== baseHash) return { ok: false, kind: 'stale', message: `Section ${section} changed since this revision turn was generated; no sections were written.` };
-  }
-  let driftLimitedToAppliedSections = false;
-  for (const dimension of new Set([...baseHashes.keys(), ...currentHashes.keys()])) {
-    if (baseHashes.get(dimension) === currentHashes.get(dimension)) continue;
-    if (!applied.has(dimension)) return { ok: false, kind: 'stale', message: 'The session plan changed since this revision turn was generated; no sections were written.' };
-    driftLimitedToAppliedSections = true;
-  }
-  if (fullPlanChanged && !driftLimitedToAppliedSections) return { ok: false, kind: 'stale', message: 'The session plan changed since this revision turn was generated; no sections were written.' };
-  return { ok: true };
-}
-
-function boundExistingSessionPlan(value: string): string {
-  const maxLength = 60000;
-  const suffix = '…[truncated]';
-  return value.length > maxLength ? `${value.slice(0, maxLength - suffix.length)}${suffix}` : value;
 }
 
 function isStaleTaskLookupError(err: unknown): boolean {

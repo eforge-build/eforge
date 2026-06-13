@@ -1,23 +1,21 @@
 import * as React from 'react';
-import { RotateCcw, StopCircle } from 'lucide-react';
+import { Loader2, RotateCcw, StopCircle } from 'lucide-react';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
-import type { PlanData, PlanRevisionApplyOutput, PlanRevisionRedraftAnswer, PlanRevisionTurnProjection } from '@/types';
-import { PlanRevisionPatchPreview } from './plan-revision-patch-preview';
+import type { PlanRevisionRedraftAnswer, PlanRevisionTurnProjection } from '@/types';
+import { PlanRevisionPatchSummary } from './plan-revision-patch-summary';
+import { titleCase } from './dimensions';
 import { chronologicalTurns, classifyRevisionTurn, patchSections, statusLabel, taskProgressText } from './plan-revision-view-model';
 
 interface Props {
-  plan: PlanData;
   turns: PlanRevisionTurnProjection[];
   busy: boolean;
-  lastApplyByTurn: Record<string, PlanRevisionApplyOutput>;
   onCancel: (turn: PlanRevisionTurnProjection) => Promise<void>;
   onRetry: (turn: PlanRevisionTurnProjection) => Promise<void>;
   onRedraft: (turn: PlanRevisionTurnProjection, answers: PlanRevisionRedraftAnswer[], steering?: string) => Promise<void>;
-  onApply: (turn: PlanRevisionTurnProjection, sections: string[]) => Promise<unknown>;
 }
 
 function ClarificationForm({ turn, busy, onRedraft }: Pick<Props, 'busy' | 'onRedraft'> & { turn: PlanRevisionTurnProjection }) {
@@ -36,7 +34,7 @@ function ClarificationForm({ turn, busy, onRedraft }: Pick<Props, 'busy' | 'onRe
   </div>;
 }
 
-export function PlanRevisionThread({ plan, turns, busy, lastApplyByTurn, onCancel, onRetry, onRedraft, onApply }: Props) {
+export function PlanRevisionThread({ turns, busy, onCancel, onRetry, onRedraft }: Props) {
   if (turns.length === 0) return <p className="text-xs text-muted-foreground">No revision turns yet. Ask a question or request a targeted plan change.</p>;
   return <div className="grid gap-3">
     {chronologicalTurns(turns).map((turn) => {
@@ -44,6 +42,7 @@ export function PlanRevisionThread({ plan, turns, busy, lastApplyByTurn, onCance
       const kind = classifyRevisionTurn(turn);
       const revision = task?.result?.planRevisionTurn;
       const progress = taskProgressText(task);
+      const running = kind === 'queued' || kind === 'running';
       return <article key={turn.turnId} className="grid gap-2 rounded-md border p-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{statusLabel(turn)}</Badge>
@@ -52,16 +51,17 @@ export function PlanRevisionThread({ plan, turns, busy, lastApplyByTurn, onCance
           {turn.staleReason && <span>{turn.staleReason}</span>}
         </div>
         <div className="rounded-md bg-secondary/40 p-2 text-sm"><strong>You:</strong> {turn.userMessage}</div>
-        {progress && <p className="text-xs text-muted-foreground">{progress}</p>}
-        {(kind === 'queued' || kind === 'running') && <div className="flex items-center gap-2"><Badge>{kind}</Badge><Button size="sm" variant="outline" disabled={busy} onClick={() => void onCancel(turn)}><StopCircle className="h-4 w-4" /> Cancel</Button></div>}
+        {running && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{progress ?? 'Working on this revision…'}</p>}
+        {!running && progress && <p className="text-xs text-muted-foreground">{progress}</p>}
+        {running && <div><Button size="sm" variant="outline" disabled={busy} onClick={() => void onCancel(turn)}><StopCircle className="h-4 w-4" /> Cancel</Button></div>}
         {(kind === 'failed' || kind === 'cancelled') && <div className="grid gap-2"><p className="text-xs text-destructive-foreground">{task?.errorMessage ?? 'Revision turn did not complete.'}</p><div><Button size="sm" variant="outline" disabled={busy} onClick={() => void onRetry(turn)}><RotateCcw className="h-4 w-4" /> Retry with preserved context</Button></div></div>}
         {kind === 'unavailable' && <p className="text-xs text-muted-foreground">Revision task unavailable: {turn.staleReason ?? 'missing linked task record'}.</p>}
         {kind === 'needs-input' && <ClarificationForm turn={turn} busy={busy} onRedraft={onRedraft} />}
         {revision?.assistantMessage && <div className="rounded-md border bg-background/50 p-2 text-sm"><SafeMarkdown markdown={revision.assistantMessage} /></div>}
         {(revision?.citations?.length ?? 0) > 0 && <div className="flex flex-wrap gap-1 text-xs">{revision?.citations?.map((citation, index) => <Badge key={`${citation.label}-${index}`} variant="outline">{citation.label}{citation.excerpt ? `: ${citation.excerpt}` : ''}</Badge>)}</div>}
-        {kind === 'answer' && patchSections(turn).length === 0 && <p className="text-xs text-muted-foreground">Answer-only revision turn. No mutation controls are available.</p>}
-        {kind === 'patch' && <PlanRevisionPatchPreview plan={plan} turn={turn} busy={busy} applyResult={lastApplyByTurn[turn.turnId]} onApply={onApply} />}
-        {(turn.appliedSections?.length ?? 0) > 0 && <div className="flex flex-wrap gap-1 text-xs"><span>Applied {turn.appliedAt ?? ''}</span>{turn.appliedSections?.map((dimension) => <Badge key={dimension}>{dimension}</Badge>)}</div>}
+        {kind === 'answer' && patchSections(turn).length === 0 && <p className="text-xs text-muted-foreground">Answer-only revision turn.</p>}
+        {kind === 'patch' && <PlanRevisionPatchSummary turn={turn} />}
+        {(turn.appliedSections?.length ?? 0) > 0 && <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"><span>Applied {turn.appliedAt ? formatRelativeTime(turn.appliedAt) ?? '' : ''}:</span>{turn.appliedSections?.map((dimension) => <Badge key={dimension} variant="outline">{titleCase(dimension)}</Badge>)}</div>}
       </article>;
     })}
   </div>;

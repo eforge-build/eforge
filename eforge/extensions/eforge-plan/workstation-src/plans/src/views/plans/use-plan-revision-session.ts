@@ -2,7 +2,7 @@ import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { useToast } from '@/components/toast';
 import type { PlanData, PlanRevisionApplyOutput, PlanRevisionRedraftAnswer, PlanRevisionSessionProjection, PlanRevisionTurnProjection, Readiness } from '@/types';
-import { hasRunningRevisionTurn } from './plan-revision-view-model';
+import { classifyRevisionTurn, hasRunningRevisionTurn } from './plan-revision-view-model';
 
 const POLL_MS = 1600;
 
@@ -16,12 +16,19 @@ export function usePlanRevisionSession({ session, onApply, onRefresh }: UsePlanR
   const [initialized, setInitialized] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [lastApplyByTurn, setLastApplyByTurn] = React.useState<Record<string, PlanRevisionApplyOutput>>({});
+  // Turn ids whose completed patch has auto-applied successfully, plus in-flight
+  // applies. Failed attempts are remembered only for the current loaded
+  // projection, so a later reload can retry without looping on toast re-renders.
+  const autoAppliedRef = React.useRef<Set<string>>(new Set());
+  const autoApplyInFlightRef = React.useRef<Set<string>>(new Set());
+  const autoApplyAttemptedRef = React.useRef<Set<string>>(new Set());
+  const autoApplyProjectionRef = React.useRef(0);
   const currentSessionRef = React.useRef(session);
   currentSessionRef.current = session;
 
   const storeSession = React.useCallback((next: PlanRevisionSessionProjection) => {
     if (next.targetSession !== currentSessionRef.current) return next;
+    autoApplyProjectionRef.current += 1;
     setRevisionSession(next);
     setInitialized(true);
     return next;
@@ -32,7 +39,10 @@ export function usePlanRevisionSession({ session, onApply, onRefresh }: UsePlanR
     setInitialized(false);
     setLoading(false);
     setBusy(false);
-    setLastApplyByTurn({});
+    autoAppliedRef.current = new Set();
+    autoApplyInFlightRef.current = new Set();
+    autoApplyAttemptedRef.current = new Set();
+    autoApplyProjectionRef.current = 0;
   }, [session]);
 
   const ensureSession = React.useCallback(async () => {
@@ -102,17 +112,17 @@ export function usePlanRevisionSession({ session, onApply, onRefresh }: UsePlanR
     finally { setBusy(false); }
   }, [session, storeSession, toast]);
 
-  const apply = React.useCallback(async (turn: PlanRevisionTurnProjection, sections: string[]) => {
-    if (sections.length === 0) return null;
+  // Apply a completed revision turn's full patch. The backend writes every
+  // proposed section and is idempotent, so this is safe to call once per turn.
+  const apply = React.useCallback(async (turn: PlanRevisionTurnProjection) => {
     setBusy(true);
     try {
-      const result = await getBridge().invokeAction<PlanRevisionApplyOutput>('apply-plan-revision-turn', { session, turnId: turn.turnId, sections, previewAcknowledged: true, confirmApply: true });
-      setLastApplyByTurn((prev) => ({ ...prev, [turn.turnId]: result }));
+      const result = await getBridge().invokeAction<PlanRevisionApplyOutput>('apply-plan-revision-turn', { session, turnId: turn.turnId });
       if (result.kind === 'applied') {
         onApply({ plan: result.plan, readiness: result.readiness });
         await onRefresh();
         await reload({ includePlan: true });
-        toast.push('Applied selected plan revisions.', 'success');
+        toast.push('Applied AI plan revision.', 'success');
       } else {
         toast.push(result.message, 'error');
       }
@@ -133,7 +143,26 @@ export function usePlanRevisionSession({ session, onApply, onRefresh }: UsePlanR
     return () => window.clearInterval(id);
   }, [hasRunningTurn, initialized, reload]);
 
-  return { revisionSession, loading, busy, initialized, lastApplyByTurn, hasRunningTurn, ensureSession, reload, submit, cancel, retry, redraft, apply };
+  // Auto-apply: as soon as a turn produces a patch, write it without any
+  // section-selection or confirmation step. Successful turns apply at most once;
+  // failed attempts remain retryable on a later reload.
+  React.useEffect(() => {
+    const projection = autoApplyProjectionRef.current;
+    for (const turn of revisionSession?.turns ?? []) {
+      const attemptKey = `${projection}:${turn.turnId}`;
+      if (turn.appliedAt || autoAppliedRef.current.has(turn.turnId) || autoApplyInFlightRef.current.has(turn.turnId) || autoApplyAttemptedRef.current.has(attemptKey)) continue;
+      if (classifyRevisionTurn(turn) !== 'patch') continue;
+      autoApplyAttemptedRef.current.add(attemptKey);
+      autoApplyInFlightRef.current.add(turn.turnId);
+      void apply(turn).then((result) => {
+        if (result?.kind === 'applied') autoAppliedRef.current.add(turn.turnId);
+      }).finally(() => {
+        autoApplyInFlightRef.current.delete(turn.turnId);
+      });
+    }
+  }, [revisionSession, apply]);
+
+  return { revisionSession, loading, busy, initialized, hasRunningTurn, ensureSession, reload, submit, cancel, retry, redraft, apply };
 }
 
 export type PlanRevisionSessionApi = ReturnType<typeof usePlanRevisionSession>;
