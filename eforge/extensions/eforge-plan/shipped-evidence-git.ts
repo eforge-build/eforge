@@ -84,7 +84,7 @@ export async function collectGitFileExcerpts(input: {
     }
     const excerpt = redactSecretLikeText(excerptMatchingLines(shown.stdout, tokens, limits.excerptBytes));
     if (excerpt.length > 0) {
-      excerpts.push({ source: 'git-history', path, commit: input.record.shortHash, text: boundString(excerpt, limits.excerptBytes) });
+      excerpts.push({ evidenceSource: 'git-history', path, commit: input.record.shortHash, text: boundString(excerpt, limits.excerptBytes) });
     }
   }
   return excerpts;

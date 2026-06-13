@@ -11,6 +11,8 @@ export interface MatchSignals {
   branchName: boolean;
   prMetadata: boolean;
   pathOrExcerpt: boolean;
+  changedPathsPresent: boolean;
+  unrelatedChangedPaths: boolean;
   broadOnly: boolean;
   titleScore: number;
   reasons: string[];
@@ -76,8 +78,19 @@ export function analyzeEvidenceMatch(input: {
   const titleScore = titleTokenScore(input.item.title, text);
   const nearTitle = titleScore >= 0.72;
   const branchName = branchNameMatches(input.item, [...(input.record?.branchHints ?? []), input.pr?.headRefName ?? '']);
-  const prMetadata = input.pr !== undefined && (itemId || slug || nearTitle || branchName);
-  const pathOrExcerpt = hasPathOrExcerptSignal(input.item, [...(input.record?.changedPaths ?? []), ...(input.pr?.changedPaths ?? [])], input.excerptText ?? '');
+  const prText = [input.pr?.title, input.pr?.body, input.pr?.headRefName, ...(input.pr?.changedPaths ?? [])]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join('\n');
+  const prItemId = exactItemIdMatch(prText, input.item.id);
+  const prSlug = containsSlug(prText, itemSlug) || (titleSlug.length >= 8 && containsSlug(prText, titleSlug));
+  const prNearTitle = titleTokenScore(input.item.title, prText) >= 0.72;
+  const prBranchName = input.pr?.headRefName !== undefined && branchNameMatches(input.item, [input.pr.headRefName]);
+  const prPath = hasPathOrExcerptSignal(input.item, input.pr?.changedPaths ?? [], '');
+  const prMetadata = input.pr !== undefined && (prItemId || prSlug || prNearTitle || prBranchName || prPath);
+  const changedPaths = [...(input.record?.changedPaths ?? []), ...(input.pr?.changedPaths ?? [])];
+  const pathOrExcerpt = hasPathOrExcerptSignal(input.item, changedPaths, input.excerptText ?? '');
+  const changedPathsPresent = changedPaths.length > 0;
+  const unrelatedChangedPaths = changedPathsPresent && !pathOrExcerpt;
   const broadOnly = !itemId && !branchName && titleScore > 0 && tokenizeTitle(input.item.title).every((token) => BROAD_WORDS.has(token));
   const reasons = [
     ...(itemId ? [`exact item id ${input.item.id}`] : []),
@@ -86,9 +99,10 @@ export function analyzeEvidenceMatch(input: {
     ...(branchName ? ['branch-name hint match'] : []),
     ...(prMetadata ? ['PR metadata references item'] : []),
     ...(pathOrExcerpt ? ['changed paths or excerpts align'] : []),
+    ...(unrelatedChangedPaths ? ['changed paths present but not aligned'] : []),
     ...(broadOnly ? ['broad wording only'] : []),
   ];
-  return { itemId, slug, nearTitle, branchName, prMetadata, pathOrExcerpt, broadOnly, titleScore, reasons };
+  return { itemId, slug, nearTitle, branchName, prMetadata, pathOrExcerpt, changedPathsPresent, unrelatedChangedPaths, broadOnly, titleScore, reasons };
 }
 
 export function classifyConfidence(input: {
@@ -98,13 +112,15 @@ export function classifyConfidence(input: {
   signals: MatchSignals;
 }): ShippedEvidenceConfidence {
   if (input.staleOrUnreachablePr) return 'weak';
+  const directIdOrSlug = input.signals.itemId || input.signals.slug;
+  const direct = directIdOrSlug || input.signals.branchName || input.signals.prMetadata;
+  if (input.signals.broadOnly && input.reachableLanding) return 'ambiguous';
   if (input.signals.broadOnly) return 'weak';
-  const direct = input.signals.itemId || input.signals.slug || input.signals.branchName || input.signals.prMetadata;
-  if (input.source === 'lifecycle-trace' && input.reachableLanding && direct) return 'strong';
-  if (input.reachableLanding && direct && (input.signals.pathOrExcerpt || input.signals.prMetadata)) return 'strong';
-  if (input.reachableLanding && direct) return 'ambiguous';
-  if (input.reachableLanding && input.signals.nearTitle && input.signals.pathOrExcerpt && !input.signals.broadOnly) return 'ambiguous';
-  if (input.source === 'lifecycle-trace' && direct) return 'ambiguous';
+  if (input.reachableLanding && directIdOrSlug && input.signals.unrelatedChangedPaths && !input.signals.branchName && !input.signals.prMetadata && !input.signals.pathOrExcerpt) return 'weak';
+  if (input.source === 'lifecycle' && input.reachableLanding && direct) return 'strong';
+  if (input.reachableLanding && direct && (input.signals.pathOrExcerpt || input.signals.prMetadata || input.signals.branchName)) return 'strong';
+  if (input.reachableLanding && (direct || input.signals.nearTitle)) return 'ambiguous';
+  if (input.source === 'lifecycle' && direct) return 'ambiguous';
   return 'weak';
 }
 
@@ -119,7 +135,7 @@ export function rankCandidates(candidates: readonly ShippedEvidenceCandidate[]):
   });
 }
 
-export function formatCitation(candidate: Pick<ShippedEvidenceCandidate, 'source' | 'commit' | 'pr' | 'lifecycleRows'>): string {
+export function formatCitation(candidate: Pick<ShippedEvidenceCandidate, 'evidenceSource' | 'commit' | 'pr' | 'lifecycleRows'>): string {
   if (candidate.commit) {
     const pr = candidate.pr ? ` / PR #${candidate.pr.number}` : '';
     return `git ${candidate.commit.shortHash}${pr}: ${candidate.commit.subject}`;
@@ -127,7 +143,7 @@ export function formatCitation(candidate: Pick<ShippedEvidenceCandidate, 'source
   if (candidate.pr) return `PR #${candidate.pr.number}: ${candidate.pr.title ?? candidate.pr.url ?? 'metadata'}`;
   const row = candidate.lifecycleRows[0];
   if (row) return `trace ${row.kind}/${row.status}: ${row.label}`;
-  return candidate.source;
+  return candidate.evidenceSource;
 }
 
 export function signalScore(signals: MatchSignals): number {

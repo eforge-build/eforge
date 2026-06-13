@@ -74,7 +74,7 @@ describe('analyze-all-backlog action', () => {
       const sourceText = (starts[0] as { input: { sourceText: string } }).input.sourceText;
       const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
 
-      expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', source: 'git-history' })]);
+      expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', evidenceSource: 'git-history' })]);
       expect(sourceText).toContain('shippedEvidenceCandidates');
       expect(sourceText).toContain('src/action-evidence.ts');
     });

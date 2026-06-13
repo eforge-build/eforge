@@ -128,7 +128,7 @@ describe('backlog curation source', () => {
       const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>>; truncation: Record<string, number> };
       const candidate = packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'ship-evidence-provider');
 
-      expect(candidate).toMatchObject({ itemId: 'ship-evidence-provider', confidence: 'strong', source: 'git-history', evidenceLabel: 'Shipped evidence: inferred from git/PR history' });
+      expect(candidate).toMatchObject({ itemId: 'ship-evidence-provider', confidence: 'strong', evidenceSource: 'git-history', evidenceLabel: 'Shipped evidence: inferred from git/PR history' });
       expect(candidate?.commit).toMatchObject({ shortHash: expect.stringMatching(/^[a-f0-9]{7,12}$/), subject: expect.stringContaining('Merge pull request #191') });
       expect(candidate?.changedPaths).toEqual(expect.arrayContaining(['src/shipped-evidence-provider.ts']));
       expect(candidate?.citations).toEqual([expect.stringContaining('git ')]);
@@ -145,19 +145,19 @@ describe('backlog curation source', () => {
       await writeFile(join(cwd, 'README.md'), 'base\n');
       await git(cwd, ['add', 'README.md']);
       await git(cwd, ['commit', '-m', 'initial']);
-      await writeBacklogItem(cwd, { id: 'ambiguous-candidate', status: 'candidate', body: '# Ambiguous Candidate\n' });
+      await writeBacklogItem(cwd, { id: 'review-flow-item', status: 'candidate', body: '# Ambiguous Candidate Review Flow\n' });
       await writeFile(join(cwd, 'unrelated.ts'), 'unrelated implementation\n');
       await git(cwd, ['add', 'unrelated.ts']);
-      await git(cwd, ['commit', '-m', 'ship ambiguous-candidate']);
+      await git(cwd, ['commit', '-m', 'ship ambiguous candidate review']);
 
       const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
       const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
       const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
-      const candidate = packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'ambiguous-candidate');
-      const textCandidate = parsed.shippedEvidenceCandidates.find((entry) => entry.itemId === 'ambiguous-candidate');
+      const candidate = packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'review-flow-item');
+      const textCandidate = parsed.shippedEvidenceCandidates.find((entry) => entry.itemId === 'review-flow-item');
 
-      expect(candidate).toMatchObject({ itemId: 'ambiguous-candidate', confidence: 'ambiguous', evidenceLabel: 'Ambiguous shipped candidate: needs input' });
-      expect(textCandidate).toMatchObject({ itemId: 'ambiguous-candidate', confidence: 'ambiguous', evidenceLabel: 'Ambiguous shipped candidate: needs input' });
+      expect(candidate).toMatchObject({ itemId: 'review-flow-item', confidence: 'ambiguous', evidenceLabel: 'Ambiguous shipped candidate: needs input' });
+      expect(textCandidate).toMatchObject({ itemId: 'review-flow-item', confidence: 'ambiguous', evidenceLabel: 'Ambiguous shipped candidate: needs input' });
     });
   });
 
@@ -188,10 +188,12 @@ describe('backlog curation source', () => {
         const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
         const textCandidate = parsed.shippedEvidenceCandidates.find((entry) => entry.itemId === 'enriched-pr');
 
-        expect(candidate).toMatchObject({ pr: { number: 222, title: 'Ship enriched PR metadata', branch: 'feature/enriched-pr' } });
-        expect(textCandidate).toMatchObject({ pr: { number: 222, title: 'Ship enriched PR metadata', branch: 'feature/enriched-pr' } });
+        expect(candidate).toMatchObject({ evidenceSource: 'combined', pr: { number: 222, title: 'Ship enriched PR metadata', branch: 'feature/enriched-pr' } });
+        expect(textCandidate).toMatchObject({ evidenceSource: 'combined', pr: { number: 222, title: 'Ship enriched PR metadata', branch: 'feature/enriched-pr' } });
         expect(source.sourceText).toContain('Ship enriched PR metadata');
         expect(source.sourceText).toContain('feature/enriched-pr');
+        expect(source.sourceText).not.toContain('github-pr');
+        expect(source.sourceText).not.toContain('lifecycle-trace');
       } finally {
         process.env.PATH = previousPath;
       }
@@ -212,7 +214,7 @@ describe('backlog curation source', () => {
       const source = await buildBacklogCurationSource(cwd, undefined, { shippedEvidenceCaps: { subprocessTimeoutMs: 1000, prEnrichmentCount: 1 } });
       const packet = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceDiagnostics: Array<{ code: string }> };
 
-      expect(packet.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'fallback-pr' && candidate.source === 'git-history')).toBe(true);
+      expect(packet.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'fallback-pr' && candidate.evidenceSource === 'git-history')).toBe(true);
       expect(packet.shippedEvidenceDiagnostics.some((diagnostic) => diagnostic.code.startsWith('pr'))).toBe(true);
     });
   });
@@ -289,8 +291,9 @@ describe('backlog curation source', () => {
       const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
       const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
 
-      expect(packet.shippedEvidenceCandidates[0]).toMatchObject({ itemId: 'lifecycle-first', source: 'lifecycle-trace', evidenceLabel: 'Shipped evidence: lifecycle trace' });
-      expect(packet.shippedEvidenceCandidates.some((candidate, index) => index > 0 && candidate.itemId === 'lifecycle-first' && candidate.source === 'git-history')).toBe(true);
+      expect(packet.shippedEvidenceCandidates[0]).toMatchObject({ itemId: 'lifecycle-first', evidenceSource: 'lifecycle', evidenceLabel: 'Shipped evidence: lifecycle trace' });
+      expect(JSON.stringify(packet.shippedEvidenceCandidates[0])).not.toContain('lifecycle-trace');
+      expect(packet.shippedEvidenceCandidates.some((candidate, index) => index > 0 && candidate.itemId === 'lifecycle-first' && candidate.evidenceSource === 'combined')).toBe(true);
     });
   });
 

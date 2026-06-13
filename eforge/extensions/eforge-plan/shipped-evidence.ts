@@ -56,7 +56,7 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
     itemId: item.id,
     itemTitle: item.title,
     confidence,
-    source: 'git-history',
+    evidenceSource: lifecycleRows.length > 0 ? 'combined' : 'git-history',
     score: signalScore(signals) + (record.isMerge ? 20 : 0),
     citation: '',
     reasons: signals.reasons,
@@ -90,6 +90,7 @@ function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRe
       excerptText: candidate.excerpts.map((excerpt) => excerpt.text).join('\n'),
     });
     candidate.pr = { ...pr, changedPaths: boundChangedPaths(pr.changedPaths, caps) };
+    candidate.evidenceSource = 'combined';
     candidate.changedPaths = boundChangedPaths(uniqueStrings([...candidate.changedPaths, ...pr.changedPaths]), caps);
     candidate.branchHints = uniqueStrings([...candidate.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount);
     candidate.reasons = uniqueStrings([...candidate.reasons, ...signals.reasons]);
@@ -105,22 +106,22 @@ function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLink
     const signals = analyzeEvidenceMatch({ item, lifecycleText: rowToText(row) });
     const staleOrUnreachablePr = row.stage === 'pr-open' || row.status === 'pr-open';
     const reachableLanding = row.stage === 'landing' || row.status === 'shipped' || row.status === 'merged';
-    const confidence = classifyConfidence({ source: 'lifecycle-trace', reachableLanding, staleOrUnreachablePr, signals });
+    const confidence = classifyConfidence({ source: 'lifecycle', reachableLanding, staleOrUnreachablePr, signals });
     const prNumber = row.prUrl ? extractPrNumberFromUrl(row.prUrl) : undefined;
     const candidate: ShippedEvidenceCandidate = {
       itemId: item.id,
       itemTitle: item.title,
       confidence,
-      source: 'lifecycle-trace',
+      evidenceSource: 'lifecycle',
       score: signalScore(signals) + (row.status === 'shipped' || row.status === 'merged' ? 10 : 0),
       citation: '',
       reasons: signals.reasons.length > 0 ? signals.reasons : ['lifecycle trace references item'],
       ...(row.commitSha && { commit: { hash: row.commitSha, shortHash: row.commitSha.slice(0, 12), subject: row.label, isMerge: false, ...(row.timestamp && { committedAt: row.timestamp }) } }),
-      ...(prNumber && { pr: { source: 'github-pr', number: prNumber, url: row.prUrl, changedPaths: [] } }),
+      ...(prNumber && { pr: { source: 'pr-history', number: prNumber, url: row.prUrl, changedPaths: [] } }),
       lifecycleRows: [row],
       changedPaths: row.path ? boundChangedPaths([row.path], caps) : [],
       branchHints: row.featureBranch ? [row.featureBranch] : [],
-      excerpts: [{ source: 'lifecycle-trace', text: boundString(rowToText(row), caps.excerptBytes), ...(row.path && { path: boundString(row.path, caps.changedPathBytes) }) }],
+      excerpts: [{ evidenceSource: 'lifecycle', text: boundString(rowToText(row), caps.excerptBytes), ...(row.path && { path: boundString(row.path, caps.changedPathBytes) }) }],
     };
     candidate.citation = formatCitation(candidate);
     return candidate;
@@ -142,7 +143,7 @@ function isLandingLikeRow(row: LifecycleLinkRow): boolean {
 function dedupeCandidates(candidates: readonly ShippedEvidenceCandidate[]): ShippedEvidenceCandidate[] {
   const byKey = new Map<string, ShippedEvidenceCandidate>();
   for (const candidate of candidates) {
-    const key = `${candidate.itemId}:${candidate.commit?.hash ?? candidate.pr?.number ?? candidate.citation}`;
+    const key = `${candidate.itemId}:${candidate.evidenceSource}:${candidate.commit?.hash ?? candidate.pr?.number ?? candidate.citation}`;
     const existing = byKey.get(key);
     if (!existing || rankCandidates([candidate, existing])[0] === candidate) byKey.set(key, candidate);
   }
@@ -150,7 +151,7 @@ function dedupeCandidates(candidates: readonly ShippedEvidenceCandidate[]): Ship
 }
 
 function rowToText(row: LifecycleLinkRow): string {
-  return [row.kind, row.stage, row.status, row.label, row.featureBranch, row.commitSha, row.prUrl, row.path].filter(Boolean).join('\n');
+  return [row.kind, row.stage, row.status, row.label, row.featureBranch, row.commitSha, row.prUrl, row.path, ...(row.affectedItemIds ?? [])].filter(Boolean).join('\n');
 }
 
 function extractPrNumberFromUrl(value: string): number | undefined {

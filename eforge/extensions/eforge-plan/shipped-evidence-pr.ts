@@ -82,7 +82,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 function normalizePullRequest(value: Record<string, unknown>, caps: ShippedEvidenceCaps): ShippedEvidencePrMetadata {
   const mergeCommit = asRecord(value.mergeCommit);
   return {
-    source: 'github-pr',
+    source: 'pr-history',
     number: numberOrDefault(value.number, 0),
     title: stringOrUndefined(value.title),
     body: boundOptionalString(value.body, caps.excerptBytes * 2),

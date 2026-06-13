@@ -1,6 +1,6 @@
 import type { BacklogItem, LifecycleLinkRow, TraceSummary } from './backlog-domain.js';
 
-export type ShippedEvidenceSource = 'git-history' | 'github-pr' | 'lifecycle-trace';
+export type ShippedEvidenceSource = 'lifecycle' | 'git-history' | 'pr-history' | 'combined';
 export type ShippedEvidenceConfidence = 'strong' | 'ambiguous' | 'weak';
 
 export interface ShippedEvidenceCaps {
@@ -66,14 +66,14 @@ export interface GitHistoryCollection {
 }
 
 export interface ShippedEvidenceExcerpt {
-  source: ShippedEvidenceSource;
+  evidenceSource: ShippedEvidenceSource;
   text: string;
   path?: string;
   commit?: string;
 }
 
 export interface ShippedEvidencePrMetadata {
-  source: 'github-pr';
+  source: 'pr-history';
   number: number;
   title?: string;
   body?: string;
@@ -90,7 +90,7 @@ export interface ShippedEvidenceCandidate {
   itemId: string;
   itemTitle: string;
   confidence: ShippedEvidenceConfidence;
-  source: ShippedEvidenceSource;
+  evidenceSource: ShippedEvidenceSource;
   score: number;
   citation: string;
   reasons: string[];

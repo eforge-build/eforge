@@ -11,7 +11,7 @@ export interface CurationCounts {
 
 export interface DisplayRow { label: string; value: string; }
 
-// --- eforge:region plan-03-preview-labels-and-docs ---
+// --- eforge:region curation-preview-metadata ---
 export interface CurationEvidencePreview {
   labels: string[];
   prIds: string[];
@@ -21,7 +21,7 @@ export interface CurationEvidencePreview {
 export interface DisplayRecommendationModel extends RecommendationModel {
   removedTargetItemIds: string[];
 }
-// --- eforge:endregion plan-03-preview-labels-and-docs ---
+// --- eforge:endregion curation-preview-metadata ---
 
 const METADATA_LABELS: Record<string, string> = {
   status: 'Status',
@@ -80,7 +80,7 @@ export function recommendationSummaryCounts(recommendations?: RecommendationMode
   return { activeWork, readyCandidates, nextSequence, safeParallelGroups, blockedChains, total: activeWork + readyCandidates + nextSequence + safeParallelGroups + blockedChains };
 }
 
-// --- eforge:region plan-03-preview-labels-and-docs ---
+// --- eforge:region curation-preview-metadata ---
 const LIFECYCLE_LABEL = 'Shipped evidence: lifecycle trace';
 const INFERRED_LABEL = 'Shipped evidence: inferred from git/PR history';
 const AMBIGUOUS_LABEL = 'Ambiguous shipped candidate: needs input';
@@ -160,7 +160,7 @@ function keepItemId(id: string, closedItemIds: Set<string>, removedItemIds: Set<
   if (!keep) removedItemIds.add(id);
   return keep;
 }
-// --- eforge:endregion plan-03-preview-labels-and-docs ---
+// --- eforge:endregion curation-preview-metadata ---
 
 function formatValue(value: unknown): string {
   if (Array.isArray(value)) return value.join(', ');

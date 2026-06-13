@@ -63,6 +63,7 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('Treat closed dependencies as satisfied historical context, not active recommendation targets.');
     expect(prompt).toContain('`activeWork`, `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, `safeParallelizableGroups.epicIds`, `blockedChains.itemIds`, and `blockedChains.blockedBy` may reference only open targets.');
     expect(prompt).toContain('Strong shipped-status item patches must cite compact shipped evidence from `source.shippedEvidenceCandidates`');
+    expect(prompt).toContain('`source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.');
     expect(prompt).toContain('`Shipped evidence: lifecycle trace — ...`');
     expect(prompt).toContain('`Shipped evidence: inferred from git/PR history — ...`');
     expect(prompt).toContain('`Ambiguous shipped candidate: needs input — ...`');

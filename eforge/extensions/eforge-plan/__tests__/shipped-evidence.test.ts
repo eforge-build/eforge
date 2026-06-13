@@ -40,16 +40,30 @@ describe('shipped evidence matching', () => {
 
     const broad = analyzeEvidenceMatch({ item: backlogItem('api-ui', 'API UI'), record: historyRecord({ subject: 'update api ui tests' }) });
     expect(broad.broadOnly).toBe(true);
-    expect(classifyConfidence({ source: 'git-history', reachableLanding: true, signals: broad })).toBe('weak');
+    expect(classifyConfidence({ source: 'git-history', reachableLanding: true, signals: broad })).toBe('ambiguous');
 
     const weak = analyzeEvidenceMatch({ item, record: historyRecord({ subject: 'mention shipped backlog wording in docs' }) });
     expect(classifyConfidence({ source: 'git-history', reachableLanding: false, signals: weak })).toBe('weak');
   });
 
+  it('classifies reachable broad or similar title evidence as ambiguous and unrelated-path direct evidence as weak', () => {
+    const broad = analyzeEvidenceMatch({ item: backlogItem('api-ui', 'API UI'), record: historyRecord({ subject: 'ship api ui updates' }) });
+    expect(classifyConfidence({ source: 'git-history', reachableLanding: true, signals: broad })).toBe('ambiguous');
+
+    const similarTitle = analyzeEvidenceMatch({ item: backlogItem('checkout-flow', 'Checkout Flow Polish'), record: historyRecord({ subject: 'land checkout flow polish' }) });
+    expect(similarTitle.nearTitle).toBe(true);
+    expect(classifyConfidence({ source: 'git-history', reachableLanding: true, signals: similarTitle })).toBe('ambiguous');
+
+    const unrelatedPath = analyzeEvidenceMatch({ item: backlogItem('billing-export', 'Billing Export'), record: historyRecord({ subject: 'ship billing-export', changedPaths: ['src/auth/session.ts'] }) });
+    expect(unrelatedPath.itemId).toBe(true);
+    expect(unrelatedPath.unrelatedChangedPaths).toBe(true);
+    expect(classifyConfidence({ source: 'git-history', reachableLanding: true, signals: unrelatedPath })).toBe('weak');
+  });
+
   it('keeps stale or unreachable PR evidence weak', () => {
     const item = backlogItem('stale-pr', 'Stale PR Record');
     const signals = analyzeEvidenceMatch({ item, lifecycleText: 'PR https://github.com/acme/repo/pull/44 stale-pr pr-open' });
-    expect(classifyConfidence({ source: 'lifecycle-trace', reachableLanding: false, staleOrUnreachablePr: true, signals })).toBe('weak');
+    expect(classifyConfidence({ source: 'lifecycle', reachableLanding: false, staleOrUnreachablePr: true, signals })).toBe('weak');
   });
 });
 
@@ -76,7 +90,7 @@ describe('shipped evidence git collection', () => {
       });
 
       const strongCandidate = result.candidates.find((candidate) => candidate.confidence === 'strong');
-      expect(strongCandidate).toMatchObject({ itemId: 'ship-evidence-provider', confidence: 'strong', source: 'git-history' });
+      expect(strongCandidate).toMatchObject({ itemId: 'ship-evidence-provider', confidence: 'strong', evidenceSource: 'git-history' });
       expect(strongCandidate?.commit?.shortHash).toMatch(/^[a-f0-9]{7,12}$/);
       expect(strongCandidate?.commit?.subject).toContain('Merge pull request #191');
       expect(strongCandidate?.changedPaths).toContain('src/shipped-evidence-provider.ts');
@@ -140,7 +154,7 @@ describe('shipped evidence lifecycle and git diagnostics', () => {
 
       expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'gitUnavailable')).toBe(true);
       expect(result.candidates).toHaveLength(1);
-      expect(result.candidates[0]).toMatchObject({ itemId: 'trace-item', source: 'lifecycle-trace', confidence: 'strong', changedPaths: ['src/trace-item.ts'] });
+      expect(result.candidates[0]).toMatchObject({ itemId: 'trace-item', evidenceSource: 'lifecycle', confidence: 'strong', changedPaths: ['src/trace-item.ts'] });
       expect(result.candidates[0]?.commit?.shortHash).toBe('1234567890ab');
       expect(result.candidates[0]?.excerpts[0]?.text.length).toBeLessThanOrEqual(32);
     });
@@ -172,7 +186,7 @@ describe('shipped evidence PR fallback', () => {
         caps: { subprocessTimeoutMs: 1000, prEnrichmentCount: 1, diagnosticCount: 4 },
       });
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
-      expect(result.candidates[0]?.source).toBe('git-history');
+      expect(result.candidates[0]?.evidenceSource).toBe('git-history');
       expect(result.diagnostics.some((diagnostic) => diagnostic.code.startsWith('pr'))).toBe(true);
     });
   });

@@ -3,9 +3,9 @@ import { EforgePlanPlanningBacklogCurationDraftSchema } from '../../../packages/
 import { ExtensionActionInputValidationError } from '../../../packages/extension-sdk/src/index.js';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
 import { buildBacklogCurationSource } from './backlog-curation-source.js';
-// --- eforge:region plan-02-analyze-all-evidence-integration ---
+// --- eforge:region shipped-evidence-context ---
 import { filterRecommendationsForCurationDraftStatusOverlay } from './backlog-curation-recommendation-overlay.js';
-// --- eforge:endregion plan-02-analyze-all-evidence-integration ---
+// --- eforge:endregion shipped-evidence-context ---
 import {
   assertSafeBacklogId,
   listBacklogEpicSnapshots,

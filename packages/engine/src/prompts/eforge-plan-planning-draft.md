@@ -72,6 +72,7 @@ When the requested output sections include `backlogCurationDraft`:
 - Do not claim that backlog records were written or updated. This task only drafts structured output; the extension applies validated patches later.
 - Do not mark work shipped, superseded, or stale without durable evidence text in the relevant patch.
 - Strong shipped-status item patches must cite compact shipped evidence from `source.shippedEvidenceCandidates`; weak hints are intentionally omitted from the source context.
+- `source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.
 - Evidence entries for lifecycle-derived shipped patches must start exactly with `Shipped evidence: lifecycle trace — ...`.
 - Evidence entries for strong git/PR-inferred shipped patches must start exactly with `Shipped evidence: inferred from git/PR history — ...`.
 - Ambiguous shipped candidates are not enough for a shipped-status patch; route them to `needsInput` or `skipped` with evidence text that starts exactly with `Ambiguous shipped candidate: needs input — ...`.

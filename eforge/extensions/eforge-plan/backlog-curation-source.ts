@@ -6,13 +6,13 @@ import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordS
 import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection } from './recommendation-status.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
-// --- eforge:region plan-02-analyze-all-evidence-integration ---
+// --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 import { shouldOmitWeakCandidate } from './shipped-evidence-matching.js';
 import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidenceResult } from './shipped-evidence-types.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
-// --- eforge:endregion plan-02-analyze-all-evidence-integration ---
+// --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
 
 export interface BacklogCurationSourceBuild {
@@ -25,7 +25,7 @@ const SOURCE_TEXT_TARGET = 180_000;
 const SECTION_LIMIT = 4000;
 const TRACE_LIMIT = 2000;
 const ROADMAP_EXCERPT_LIMIT = 2000;
-// --- eforge:region plan-02-analyze-all-evidence-integration ---
+// --- eforge:region shipped-evidence-context ---
 export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
   candidateCount: 12,
   citationCount: 1,
@@ -40,7 +40,7 @@ interface BacklogCurationSourceBuildOptions {
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
 }
-// --- eforge:endregion plan-02-analyze-all-evidence-integration ---
+// --- eforge:endregion shipped-evidence-context ---
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
@@ -113,7 +113,7 @@ export function buildBacklogCurationRedraftContext(parentTaskId: string, result:
   };
 }
 
-// --- eforge:region plan-02-analyze-all-evidence-integration ---
+// --- eforge:region shipped-evidence-context ---
 async function readRawTraceSummaries(cwd: string, itemIds: readonly string[]): Promise<TraceSummary[]> {
   const relevantItemIds = new Set(itemIds);
   const traces = await listTraceSidecars(cwd);
@@ -161,7 +161,7 @@ function collectCaps(overrides: Partial<ShippedEvidenceCaps> | undefined): Parti
 function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate, truncation: { shippedEvidencePaths: number; shippedEvidenceExcerpts: number }): Record<string, unknown> {
   const changedPaths = candidate.changedPaths.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount);
   const excerpts = candidate.excerpts.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptCount).map((excerpt) => ({
-    source: excerpt.source,
+    evidenceSource: excerpt.evidenceSource,
     text: boundString(excerpt.text, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptBytes, () => { truncation.shippedEvidenceExcerpts += 1; }),
     ...(excerpt.path !== undefined && { path: excerpt.path }),
     ...(excerpt.commit !== undefined && { commit: excerpt.commit }),
@@ -171,7 +171,7 @@ function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate,
   return {
     itemId: candidate.itemId,
     itemTitle: candidate.itemTitle,
-    source: candidate.source,
+    evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
     evidenceLabel: evidenceLabel(candidate),
     reasons: candidate.reasons,
@@ -188,7 +188,7 @@ function projectEvidenceCandidateForFingerprint(candidate: ShippedEvidenceCandid
   return {
     itemId: candidate.itemId,
     itemTitle: candidate.itemTitle,
-    source: candidate.source,
+    evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
     ...(candidate.pr !== undefined && { pr: projectEvidencePr(candidate) }),
     ...(candidate.commit !== undefined && { commit: projectEvidenceCommit(candidate) }),
@@ -227,13 +227,15 @@ function buildEvidenceCounts(result: ShippedEvidenceResult, selected: readonly S
     strong: result.candidates.filter((candidate) => candidate.confidence === 'strong').length,
     ambiguous: result.candidates.filter((candidate) => candidate.confidence === 'ambiguous').length,
     weakOmitted: result.candidates.filter(shouldOmitWeakCandidate).length,
-    lifecycleTrace: result.candidates.filter((candidate) => candidate.source === 'lifecycle-trace').length,
-    gitHistory: result.candidates.filter((candidate) => candidate.source === 'git-history').length,
+    lifecycle: result.candidates.filter((candidate) => candidate.evidenceSource === 'lifecycle').length,
+    gitHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'git-history').length,
+    prHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'pr-history').length,
+    combined: result.candidates.filter((candidate) => candidate.evidenceSource === 'combined').length,
   };
 }
 
 function evidenceLabel(candidate: ShippedEvidenceCandidate): string {
-  if (candidate.source === 'lifecycle-trace') return 'Shipped evidence: lifecycle trace';
+  if (candidate.evidenceSource === 'lifecycle') return 'Shipped evidence: lifecycle trace';
   if (candidate.confidence === 'ambiguous') return 'Ambiguous shipped candidate: needs input';
   return 'Shipped evidence: inferred from git/PR history';
 }
@@ -244,14 +246,14 @@ function byEvidenceRank(left: ShippedEvidenceCandidate, right: ShippedEvidenceCa
 
 function evidenceRank(candidate: ShippedEvidenceCandidate): number {
   const confidence = candidate.confidence === 'strong' ? 30 : candidate.confidence === 'ambiguous' ? 20 : 10;
-  const source = candidate.source === 'lifecycle-trace' ? 100 : 0;
+  const source = candidate.evidenceSource === 'lifecycle' ? 100 : 0;
   return source + confidence;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Backlog curation source assembly was aborted.');
 }
-// --- eforge:endregion plan-02-analyze-all-evidence-integration ---
+// --- eforge:endregion shipped-evidence-context ---
 
 function projectItem(snapshot: BacklogRecordSnapshot<BacklogItem>, sourceFingerprint: string, truncation: { sectionStrings: number }) {
   const record = snapshot.record;
