@@ -1,5 +1,5 @@
 export const PLAYBOOK_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-export const SESSION_PLAN_ID_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const SESSION_PLAN_ID_RE = PLAYBOOK_NAME_RE;
 export const VALID_PLANNING_TYPES = ['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown'] as const;
 export const VALID_PLANNING_DEPTHS = ['quick', 'focused', 'deep'] as const;
 export const VALID_PROFILES = ['errand', 'excursion', 'expedition'] as const;
