@@ -1,0 +1,116 @@
+name: detect-shipped-backlog-items-from-git-and-pr-history
+description: Detect shipped eforge-plan backlog items from bounded git/PR
+  history evidence during analyze-all curation and filter proposed-shipped items
+  out of same-run recommendations.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-shipped-evidence-provider
+    name: Shipped Evidence Provider
+    depends_on: []
+    branch: detect-shipped-backlog-items-from-git-and-pr-history/plan-01-shipped-evidence-provider
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: New deterministic evidence collection and confidence classification
+          spans git subprocesses, optional PR metadata, and conservative
+          matching rules.
+      reviewer:
+        effort: high
+        rationale: Review must check bounded subprocess usage, fail-closed behavior, and
+          false-positive classification.
+  - id: plan-02-analyze-all-evidence-integration
+    name: Analyze-All Evidence Integration and Recommendation Overlay
+    depends_on:
+      - plan-01-shipped-evidence-provider
+    branch: detect-shipped-backlog-items-from-git-and-pr-history/plan-02-analyze-all-evidence-integration
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Integration changes affect curation source fingerprinting, model
+          prompt guidance, and recommendation apply semantics in one flow.
+      reviewer:
+        effort: high
+        rationale: Review must verify source fingerprint stability, recommendation
+          filtering, and model-prompt safety rules.
+  - id: plan-03-preview-labels-and-docs
+    name: Preview Labels and Documentation
+    depends_on:
+      - plan-02-analyze-all-evidence-integration
+    branch: detect-shipped-backlog-items-from-git-and-pr-history/plan-03-preview-labels-and-docs
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: UI and documentation changes are straightforward once backend labels
+          and evidence strings exist.
+      reviewer:
+        effort: medium
+        rationale: Review focuses on visible wording and test coverage rather than new
+          backend architecture.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - test-write
+      - doc-sync
+    - test-cycle
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a substantial but cohesive feature spanning analyze-all
+    evidence collection, curation context, preview labeling, recommendation
+    filtering, and regression tests. A single planner should be able to
+    decompose it, so excursion is appropriate rather than expedition. The build
+    pipeline includes documentation sync/authoring for user-facing behavior,
+    test writing and execution for the many required regression cases, the
+    registered validation gate before review, and an iterative code/test review
+    cycle for correctness of conservative shipped inference.
+diff_base_ref: d57fd4a6797f65e4afac35c54f63f307bebb1410
