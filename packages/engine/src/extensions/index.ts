@@ -128,7 +128,7 @@ export type {
   PolicyGateExecutionResult,
   PolicyGateFailurePolicy,
   PolicyGateTarget,
-  QueueDispatchCompiledResumeMetadata,
+  QueueDispatchContinueRepairMetadata,
   QueueDispatchPolicyGateContext,
   QueueDispatchPolicyGateTarget,
 } from './policy-gate-runtime.js';

@@ -191,10 +191,6 @@
                   "type": "string"
                 },
                 {
-                  "const": "resume",
-                  "type": "string"
-                },
-                {
                   "const": "continue-repair",
                   "type": "string"
                 }

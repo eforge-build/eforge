@@ -279,7 +279,7 @@ Prefer structured annotations with file/line data plus `fix`, `retryGuidance`, p
 
 ## Policy decisions
 
-Policy gates are runtime-supported for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`. Handlers receive read-only context snapshots, but extensions are still trusted, unsandboxed code running in the daemon/worker process. `beforeQueueDispatch` contexts include optional `compiledResume` metadata for continue-repair queue items with complete compiled-resume frontmatter; normal PRDs omit it. Policy gate failures, invalid decisions, and timeouts follow `extensions.policyGateFailurePolicy` (`fail-closed` by default, or `fail-open`).
+Policy gates are runtime-supported for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`. Handlers receive read-only context snapshots, but extensions are still trusted, unsandboxed code running in the daemon/worker process. `beforeQueueDispatch` contexts include optional `continueRepair` metadata for continue-and-repair queue items backed by complete compiled artifacts; normal PRDs omit it. Policy gate failures, invalid decisions, and timeouts follow `extensions.policyGateFailurePolicy` (`fail-closed` by default, or `fail-open`).
 
 Policy gate handlers return a discriminated union:
 

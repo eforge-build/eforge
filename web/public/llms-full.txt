@@ -1116,7 +1116,7 @@ V1 intentionally keeps several boundaries deferred: extension-authored arbitrary
 
 Agent-run hooks fire before each agent invocation. Handlers can inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope their contribution, then return `{ promptAppend, tools, allowedTools, disallowedTools }` to inject additional prompt context, expose extension tools for that run, and tune harness availability lists. Prompt fragments are appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section identifying the contributing extension. Multiple extensions contribute in registration order. The runtime is fail-open: a handler that throws or exceeds `extensions.agentContextHookTimeoutMs` emits a typed diagnostic event but does not abort the agent run.
 
-Policy gates run at three blocking points: `beforeQueueDispatch` runs before a queued PRD is dispatched, `beforePlanMerge` runs before a plan worktree is merged, and `beforeFinalMerge` runs before the completed feature branch is merged into the base branch. Gate contexts are read-only snapshots and include `ctx.logger` and `ctx.exec`; `beforeQueueDispatch` contexts also include optional `compiledResume` metadata for continue-repair queue items that carry complete compiled-resume frontmatter. They are not a sandbox. Extensions remain trusted, unsandboxed code running in the daemon/worker process.
+Policy gates run at three blocking points: `beforeQueueDispatch` runs before a queued PRD is dispatched, `beforePlanMerge` runs before a plan worktree is merged, and `beforeFinalMerge` runs before the completed feature branch is merged into the base branch. Gate contexts are read-only snapshots and include `ctx.logger` and `ctx.exec`; `beforeQueueDispatch` contexts also include optional `continueRepair` metadata for continue-and-repair queue items backed by complete compiled artifacts. They are not a sandbox. Extensions remain trusted, unsandboxed code running in the daemon/worker process.
 
 Policy decisions are strictly validated. `{ decision: 'allow' }` lets the operation continue. `{ decision: 'block', reason }` blocks it and surfaces the reason. `{ decision: 'require-approval', reason }` blocks the gated operation; eforge does not provide approval workflow, approval state, or Console approval UI in the current release. Thrown errors, timeouts, and invalid decisions emit `extension:policy:*` diagnostics and follow `extensions.policyGateFailurePolicy`: `fail-closed` blocks, while `fail-open` allows continuation after recording diagnostics.
 
@@ -2357,7 +2357,7 @@ Policy gate contexts are read-only snapshots for the gated operation. They inclu
 ```ts
 type PolicyGateKind = "queue-dispatch" | "plan-merge" | "final-merge";
 
-interface QueueDispatchCompiledResumeMetadata {
+interface QueueDispatchContinueRepairMetadata {
   mode: "compiled";
   sourcePrdId: string;
   setName: string;
@@ -2372,8 +2372,8 @@ interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   priority?: number;
   profile?: string;
   dependsOn: string[];
-  /** Present only for continue-repair queue items with complete compiled-resume frontmatter; omitted for normal PRDs. */
-  compiledResume?: QueueDispatchCompiledResumeMetadata;
+  /** Present only for continue-and-repair queue items backed by complete compiled artifacts; omitted for normal PRDs. */
+  continueRepair?: QueueDispatchContinueRepairMetadata;
 }
 
 interface PlanMergePolicyGateContext extends EforgeExtensionContext {
@@ -2406,7 +2406,7 @@ interface ExtensionDiff {
 }
 ```
 
-`compiledResume` is available only on `beforeQueueDispatch` contexts for continue-repair PRDs with complete compiled-resume frontmatter. The SDK exposes the parsed camelCase shape shown above rather than the raw `resume_*` frontmatter keys. Normal PRDs omit the property entirely.
+`continueRepair` is available only on `beforeQueueDispatch` contexts for continue-and-repair PRDs backed by complete compiled artifacts. The SDK exposes the parsed camelCase shape shown above. Normal PRDs omit the property entirely.
 
 ---
 

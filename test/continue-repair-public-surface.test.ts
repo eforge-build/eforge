@@ -71,6 +71,22 @@ describe('continue-repair public surface', () => {
     expect(source).not.toContain(term(['eforge_', 'resume_', 'build']));
   });
 
+  it('keeps public extension docs on continue-and-repair terminology', () => {
+    const publicExtensionDocs = readFiles([
+      ...listFiles('docs').filter((path) => /extensions.*\.md$/.test(path)),
+      ...listFiles('web/content/docs').filter((path) => /extensions.*\.md$/.test(path)),
+      ...listFiles('web/public/docs').filter((path) => /extensions.*\.md$/.test(path)),
+      'web/public/llms-full.txt',
+      'packages/extension-sdk/README.md',
+    ]);
+
+    expect(publicExtensionDocs).toContain('continueRepair');
+    expect(publicExtensionDocs).not.toContain('compiledResume');
+    expect(publicExtensionDocs).not.toContain('QueueDispatchCompiledResume');
+    expect(publicExtensionDocs).not.toContain('compiled-resume');
+    expect(publicExtensionDocs).not.toContain('resume_*');
+  });
+
   it('keeps recovery sidecars greenfield: no split successor fields or legacy recovery option actions', () => {
     const sidecarSurfaceFiles = [
       ...listFiles('packages/client/src/events'),

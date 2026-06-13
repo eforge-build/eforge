@@ -210,12 +210,12 @@ export interface AgentRunContext extends EforgeExtensionContext {
 }
 
 /**
- * Compiled-resume metadata exposed to queue-dispatch policy gates.
+ * Continue-and-repair metadata exposed to queue-dispatch policy gates.
  *
- * Normal PRDs omit this field. Complete compiled-resume queue items expose this
- * camelCase summary instead of the raw `resume_*` frontmatter fields.
+ * Normal PRDs omit this field. Continue-and-repair queue items backed by
+ * complete compiled artifacts expose this camelCase summary.
  */
-export interface QueueDispatchCompiledResumeMetadata {
+export interface QueueDispatchContinueRepairMetadata {
   mode: 'compiled';
   sourcePrdId: string;
   setName: string;
@@ -239,8 +239,8 @@ export interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   profile?: string;
   /** IDs of PRDs this item depends on. */
   dependsOn: string[];
-  /** Present only for complete compiled-resume queue items; omitted for normal PRDs. */
-  compiledResume?: QueueDispatchCompiledResumeMetadata;
+  /** Present only for continue-and-repair queue items backed by complete compiled artifacts; omitted for normal PRDs. */
+  continueRepair?: QueueDispatchContinueRepairMetadata;
 }
 
 /**
