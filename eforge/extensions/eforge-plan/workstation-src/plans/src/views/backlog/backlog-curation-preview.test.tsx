@@ -23,6 +23,7 @@ function renderPreview(input: Partial<React.ComponentProps<typeof BacklogCuratio
       entry={entry}
       draft={mockBacklogCurationDraft}
       recommendations={mockRecommendations}
+      curationPreview={{ valid: true, generatedRecommendationValidation: { valid: true, issues: [] } }}
       busy={false}
       onApply={vi.fn(async () => undefined)}
       onRedraft={vi.fn(async () => undefined)}

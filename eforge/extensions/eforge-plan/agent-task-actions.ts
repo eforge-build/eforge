@@ -26,6 +26,8 @@ import {
   ListPlanningAgentTasksOutputSchema,
   MAX_PLANNING_AGENT_USER_GOAL_LENGTH,
   GetPlanningAgentTaskInputSchema,
+  PreviewBacklogCurationTaskInputSchema,
+  PreviewBacklogCurationTaskOutputSchema,
   PlanningAgentTaskCancelOutputSchema,
   PlanningAgentTaskGetOutputSchema,
   PlanningAgentTaskStartOutputSchema,
@@ -104,6 +106,21 @@ export const getPlanningAgentTaskAction = defineExtensionAction({
   },
 });
 
+export const previewBacklogCurationTaskAction = defineExtensionAction({
+  id: 'preview-backlog-curation-task',
+  title: 'Preview backlog curation task validation',
+  description: 'Validate a completed backlog-curation planning task on demand before apply without slowing task list rendering.',
+  inputSchema: PreviewBacklogCurationTaskInputSchema,
+  outputSchema: PreviewBacklogCurationTaskOutputSchema,
+  sideEffects: ['local-read'],
+  async handler(input, ctx) {
+    const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId);
+    if (entry === undefined) return { valid: false, errors: [{ path: 'workflowEntry', message: `No preserved workflow context found for planning task ${input.taskId}.` }] };
+    const response = await ctx.agentTasks.get(input.taskId);
+    return await previewBacklogCurationDraftFromTask(ctx.cwd, response.task, entry);
+  },
+});
+
 export const cancelPlanningAgentTaskAction = defineExtensionAction({
   id: 'cancel-planning-agent-task',
   title: 'Cancel eforge-plan planning agent task',
@@ -133,7 +150,6 @@ export const listPlanningAgentTasksAction = defineExtensionAction({
           available: true,
           status: response.task.status,
           task: response.task,
-          ...(await backlogCurationPreviewIfAvailable(ctx.cwd, entry, response.task)),
         };
       } catch (err) {
         return { entry, available: false, staleReason: errorMessage(err) };
@@ -348,21 +364,6 @@ function selectionFromInput(input: StartPlanningAgentTaskInput): PlanningTaskWor
   };
 }
 
-// --- eforge:region recommendation-validation ---
-async function backlogCurationPreviewIfAvailable(cwd: string, entry: PlanningTaskWorkflowEntry, task: unknown): Promise<Record<string, unknown>> {
-  if (!isBacklogCurationWorkflowEntry(entry) || !isCompletedTaskRecord(task)) return {};
-  return { backlogCurationPreview: await previewBacklogCurationDraftFromTask(cwd, task, entry) };
-}
-
-function isCompletedTaskRecord(task: unknown): task is { taskId: string; kind: string; status: string; result?: unknown } {
-  return task !== null
-    && typeof task === 'object'
-    && typeof (task as { taskId?: unknown }).taskId === 'string'
-    && typeof (task as { kind?: unknown }).kind === 'string'
-    && (task as { status?: unknown }).status === 'completed';
-}
-// --- eforge:endregion recommendation-validation ---
-
 function plannerSelection(entry: PlanningTaskWorkflowEntry) {
   return {
     itemIds: entry.selection.itemIds,
@@ -477,6 +478,7 @@ function assertApplySelection(input: { applyRecommendations?: boolean; applyHand
 export const planningAgentTaskActions = [
   startPlanningAgentTaskAction,
   getPlanningAgentTaskAction,
+  previewBacklogCurationTaskAction,
   cancelPlanningAgentTaskAction,
   listPlanningAgentTasksAction,
   removePlanningAgentTaskAction,

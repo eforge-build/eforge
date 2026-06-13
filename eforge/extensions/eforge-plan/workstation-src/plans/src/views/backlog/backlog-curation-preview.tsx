@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { Textarea } from '@/components/ui/textarea';
+import { getBridge } from '@/bridge';
 import { formatRelativeTime } from '@/lib/format-time';
 import type { BacklogCurationDraft, BacklogCurationPreviewDetails, JsonObject, PlanningTaskWorkflowEntry, RecommendationModel, RecommendationReferenceValidationResult } from '@/types';
 import type { RedraftInput } from './use-planning-task-workflows';
@@ -21,12 +22,39 @@ interface BacklogCurationPreviewProps {
 export function BacklogCurationPreview({ taskId, entry, draft, recommendations, curationPreview, busy, onApply, onRedraft }: BacklogCurationPreviewProps) {
   const [reviewed, setReviewed] = React.useState(false);
   const [steering, setSteering] = React.useState('');
+  const [loadedPreview, setLoadedPreview] = React.useState<BacklogCurationPreviewDetails | null>(curationPreview ?? null);
+  const [previewLoading, setPreviewLoading] = React.useState(curationPreview === undefined);
   const displayRecommendations = displayRecommendationsForDraft(draft, recommendations);
   const counts = curationCounts(draft, recommendations);
   const applied = Boolean(entry.appliedAt);
   const canRedraft = steering.trim().length > 0;
-  const recommendationValidation = curationPreview?.generatedRecommendationValidation;
+  const effectivePreview = curationPreview ?? loadedPreview ?? undefined;
+  const recommendationValidation = effectivePreview?.generatedRecommendationValidation;
   const hasInvalidGeneratedRecommendations = recommendationValidation?.valid === false;
+  const previewErrors = effectivePreview?.errors ?? [];
+  const previewReady = effectivePreview !== undefined;
+  const canApplyNormally = previewReady && effectivePreview.valid && !hasInvalidGeneratedRecommendations;
+  const canApplyCurationOnly = previewReady && hasInvalidGeneratedRecommendations && previewErrors.length === 0;
+
+  React.useEffect(() => {
+    if (curationPreview !== undefined) {
+      setLoadedPreview(curationPreview);
+      setPreviewLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setPreviewLoading(true);
+    void getBridge().invokeAction<BacklogCurationPreviewDetails>('preview-backlog-curation-task', { taskId }).then((preview) => {
+      if (!active) return;
+      setLoadedPreview(preview);
+    }).catch((caught) => {
+      if (!active) return;
+      setLoadedPreview({ valid: false, errors: [{ path: '', message: caught instanceof Error ? caught.message : String(caught) }] });
+    }).finally(() => {
+      if (active) setPreviewLoading(false);
+    });
+    return () => { active = false; };
+  }, [curationPreview, taskId]);
 
   return (
     <div className="mt-3 grid gap-3 border-t border-border pt-3 text-sm">
@@ -81,11 +109,12 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           </ul>
         </PreviewBlock>
       )}
+      {previewLoading && <div className="rounded border border-border bg-card p-2 text-xs text-muted-foreground">Validating curation apply preconditions…</div>}
       {recommendationValidation && <RecommendationValidationWarning validation={recommendationValidation} />}
-      {curationPreview?.errors && curationPreview.errors.length > 0 && (
+      {previewErrors.length > 0 && (
         <PreviewBlock title="Curation preview validation errors">
           <ul className="grid gap-1.5 text-xs text-destructive-foreground">
-            {curationPreview.errors.map((error) => <li key={`${error.path}:${error.message}`}><span className="font-mono">{error.path}</span> — {error.message}</li>)}
+            {previewErrors.map((error) => <li key={`${error.path}:${error.message}`}><span className="font-mono">{error.path}</span> — {error.message}</li>)}
           </ul>
         </PreviewBlock>
       )}
@@ -105,8 +134,8 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
             <Button size="sm" disabled={busy} onClick={() => setReviewed(true)}>I reviewed this curation preview</Button>
           ) : (
             <>
-              <Button size="sm" variant="destructive" disabled={busy || hasInvalidGeneratedRecommendations} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } })}>Confirm apply curation</Button>
-              {hasInvalidGeneratedRecommendations && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } })}>Apply curation only / discard generated recommendations</Button>}
+              <Button size="sm" variant="destructive" disabled={busy || previewLoading || !canApplyNormally} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } })}>Confirm apply curation</Button>
+              {hasInvalidGeneratedRecommendations && <Button size="sm" variant="secondary" disabled={busy || previewLoading || !canApplyCurationOnly} onClick={() => void onApply(taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } })}>Apply curation only / discard generated recommendations</Button>}
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setReviewed(false)}>Cancel</Button>
             </>
           )}

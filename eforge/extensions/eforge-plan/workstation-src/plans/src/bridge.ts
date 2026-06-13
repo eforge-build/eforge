@@ -71,6 +71,7 @@ function createMockBridge(): EforgeBridge {
         case 'prepare-planner-context': return { items: mockBoard.items, epics: mockBoard.epics, recommendations: { model: mockRecommendations } } as TOutput;
         case 'start-planning-agent-task': return { task: startMockPlanningTaskFromInput(input).task } as TOutput;
         case 'get-planning-agent-task': return { task: { ...mockPlanningTask, taskId: String(input.taskId ?? mockPlanningTask.taskId) } } as TOutput;
+        case 'preview-backlog-curation-task': return { valid: true, itemChanges: 1, epicChanges: 0, noOpRechecks: 0 } as TOutput;
         case 'list-planning-agent-tasks': return { tasks: listMockPlanningTasks() } as TOutput;
         case 'retry-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'retry') as TOutput;
         case 'redraft-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'redraft') as TOutput;

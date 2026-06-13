@@ -39,11 +39,11 @@ export const analyzeAllBacklogAction = defineExtensionAction({
     throwIfAborted(ctx.signal);
     return await runAnalyzeStartExclusive(ctx.cwd, sourceFingerprint, async () => {
       const active = await findReusableBacklogCurationTask(ctx, sourceFingerprint);
-      if (active !== undefined) return toJsonSafeObject({ task: active.task, entry: active.entry, sourceFingerprint, reused: true });
+      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, sourceFingerprint, reused: true });
       throwIfAborted(ctx.signal);
       const response = await startBacklogCurationTask(ctx, sourceText);
       const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, sourceFingerprint));
-      return toJsonSafeObject({ task: response.task, entry, sourceFingerprint });
+      return toJsonSafeObject({ task: compactTask(response.task), entry, sourceFingerprint });
     });
   },
 });
@@ -127,6 +127,21 @@ function isReusableCompletedBacklogCurationTask(task: ExtensionAgentTaskRecord, 
   if (output.decision === 'needs-input' && Array.isArray(output.clarificationQuestions) && output.clarificationQuestions.length > 0) return true;
   const draft = safeParseWithSchema(EforgePlanPlanningBacklogCurationDraftSchema, output.backlogCurationDraft);
   return draft.success && draft.data.sourceFingerprint === sourceFingerprint;
+}
+
+function compactTask(task: ExtensionAgentTaskRecord): Record<string, unknown> {
+  return {
+    taskId: task.taskId,
+    kind: task.kind,
+    status: task.status,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    ...(task.startedAt !== undefined && { startedAt: task.startedAt }),
+    ...(task.completedAt !== undefined && { completedAt: task.completedAt }),
+    ...(task.cancelledAt !== undefined && { cancelledAt: task.cancelledAt }),
+    ...(task.errorCode !== undefined && { errorCode: task.errorCode }),
+    ...(task.errorMessage !== undefined && { errorMessage: task.errorMessage }),
+  };
 }
 
 function isMissingOrStaleTaskError(error: unknown): boolean {

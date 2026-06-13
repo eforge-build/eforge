@@ -4,7 +4,7 @@ import {
   EforgePlanPlanningBacklogCurationSkippedSchema,
   EforgePlanPlanningRequestedOutputSectionSchema,
   ExtensionAgentTaskIdSchema,
-  ExtensionAgentTaskRecordSchema,
+  ExtensionAgentTaskStatusSchema,
 } from '../../../packages/client/src/extension-agent-tasks.js';
 import { BacklogStatusSchema, RecommendationDerivedStatusSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
@@ -33,8 +33,21 @@ const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   createdAt: Type.String(),
 }, { additionalProperties: false });
 
+export const AnalyzeAllBacklogTaskSummarySchema = Type.Object({
+  taskId: ExtensionAgentTaskIdSchema,
+  kind: Type.String(),
+  status: ExtensionAgentTaskStatusSchema,
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  startedAt: Type.Optional(Type.String()),
+  completedAt: Type.Optional(Type.String()),
+  cancelledAt: Type.Optional(Type.String()),
+  errorCode: Type.Optional(Type.String()),
+  errorMessage: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
 export const AnalyzeAllBacklogOutputSchema = Type.Object({
-  task: ExtensionAgentTaskRecordSchema,
+  task: AnalyzeAllBacklogTaskSummarySchema,
   entry: AnalyzeAllBacklogWorkflowEntrySchema,
   sourceFingerprint: SourceFingerprintSchema,
   reused: Type.Optional(Type.Boolean()),

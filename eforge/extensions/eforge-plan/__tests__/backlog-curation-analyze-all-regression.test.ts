@@ -29,6 +29,7 @@ describe('analyze-all shipped evidence regression', () => {
       await git(cwd, ['commit', '-m', 'feat(analyze-shipped-item): analyze shipped item']);
       await git(cwd, ['checkout', 'main']);
       await git(cwd, ['merge', '--no-ff', 'feature/analyze-shipped-item', '-m', 'Merge pull request #515 from owner/feature/analyze-shipped-item']);
+      let producedItemChanges: Array<Record<string, unknown>> | undefined;
       const ctx = {
         cwd,
         signal: new AbortController().signal,
@@ -49,6 +50,7 @@ describe('analyze-all shipped evidence regression', () => {
               rationale: 'Reachable no-ff PR evidence shows this item shipped.',
               evidence: evidence.citations ?? ['Shipped evidence: inferred from git/PR history'],
             }] : [];
+            producedItemChanges = itemChanges;
             return {
               task: {
                 taskId: 'analyze-shipped-task',
@@ -69,9 +71,13 @@ describe('analyze-all shipped evidence regression', () => {
         },
       };
 
-      const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { task: { result: { backlogCurationDraft: { itemChanges: Array<Record<string, unknown>> } } } };
+      // analyze-all-backlog now returns a compact task summary (no result payload), so the produced
+      // curation draft is observed from the source the action feeds the planning task. This still
+      // exercises the regression: the source-building enriches the strong shipped-evidence candidate
+      // with the merge-PR citation, which drives the shipped itemChange.
+      await analyzeAllBacklogAction.handler({}, ctx as never);
 
-      expect(output.task.result.backlogCurationDraft.itemChanges).toEqual([
+      expect(producedItemChanges).toEqual([
         expect.objectContaining({ id: 'analyze-shipped-item', metadata: { status: 'shipped' }, evidence: [expect.stringContaining('Merge pull request #515')] }),
       ]);
     });
