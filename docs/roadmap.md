@@ -16,7 +16,8 @@
 
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
 - **Planning workstations** - Keep planning workflow UX in extension-owned workstations hosted by Console while preserving daemon/client session-plan compatibility plumbing for non-Console consumers and extension-owned input adapters.
-- **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, and model/runtime preferences through typed daemon/client APIs.
+- **WebUX workspaces** - Explore Console-hosted extension workstations for interactive web UI development: isolated worktrees, managed dev-server ports/processes, browser automation, UX goals, freshness/rebase reminders, checkpoint commits, and eforge-style branch finalization without turning interactive authoring into a kernel build mode. Design: [`docs/webux-workspaces.md`](webux-workspaces.md).
+- **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, WebUX workspace templates, and model/runtime preferences through typed daemon/client APIs.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.
 
 ---
@@ -26,7 +27,8 @@
 **Goal**: Make eforge an extensible forge: a small build-engine kernel surrounded by trusted, typed extension mechanisms and reusable input surfaces.
 
 - **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, and user-authored custom session-plan/playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
-- **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, and wrapper apps without treating every surface as engine functionality.
+- **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, worktree-backed workspaces, and wrapper apps without treating every surface as engine functionality.
+- **Workspace/process extension seams** - Add reusable platform support for extension-managed workspace state, long-running dev-server/process supervision, action progress/log streaming, and workstation artifact serving so packages like `eforge-webux` do not need private daemon or Console hooks.
 - **User-authored workflow registration** - Explore native extension APIs, building on the bundled adapters that already ship, for custom session-plan extraction and custom playbook extraction before deprecating direct built-in compatibility surfaces.
 
 ---
@@ -45,6 +47,8 @@
 **Goal**: Full lifecycle coverage, CI support, provider flexibility, and cross-project visibility without weakening the kernel/extension boundary.
 
 - **Queue lifecycle controls** - Add unshipped controls such as hold, pause, cascade-aware removal, and running cancellation by queued PRD id.
+- **Land existing branch** - Provide a generic daemon/client primitive for validating and landing an already-authored feature branch with normal trunk protection, freshness, PR/merge/leave policy, and provenance metadata. This enables interactive WebUX workspaces without routing them through fake PRD builds.
+- **Branch and landing leases** - Coordinate active builds, stack sync, and extension-managed workspaces with lightweight branch/landing locks so concurrent agents do not race on the same target branch.
 - **Overseer / multi-project observability** - Provide a durable unified view across many eforge projects and daemons without moving orchestration out of project-local daemons. Schaake OS epic: `cf245870-90f4-48db-b5e7-b7a0f17a458b`.
 - **Low-fidelity input handling** - When the user provides a high-level prompt with minimal detail, launch an exploration agent (or parallel exploratory agents) that performs thorough codebase exploration before compiling plans. Bypassed for detailed PRDs. Scope levels (expedition/errand/excursion) classify intended depth but don't perform exploration; this fills that gap.
 - **Schema library unification on TypeBox** - TypeBox is canonical for eforge-owned domain schemas; Zod is isolated to third-party SDK compatibility adapters. The first migration slice (client wire schemas, engine structured output, and custom-tool contracts) is complete. Config, input artifact, and MCP proxy schemas remain Zod until a follow-up PRD lands.
