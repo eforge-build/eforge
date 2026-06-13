@@ -1,0 +1,95 @@
+name: replace-split-recovery-with-continue-and-repair
+description: Replace automated split recovery and public resume-build surfaces
+  with a canonical continue-repair recovery flow backed by compiled artifacts.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-continue-repair-recovery
+    name: Continue-and-Repair Recovery Refactor
+    depends_on: []
+    branch: replace-split-recovery-with-continue-and-repair/plan-01-continue-repair-recovery
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - validate
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - docs
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Large breaking recovery refactor spanning shared client contracts,
+          engine recovery semantics, daemon routes, Console UI, CLI/MCP,
+          Pi/Claude integrations, docs, generated references, and tests.
+        shards:
+          - id: client-monitor
+            roots:
+              - packages/client/
+              - packages/monitor/
+          - id: engine
+            roots:
+              - packages/engine/
+          - id: cli-integrations
+            roots:
+              - packages/eforge/
+              - packages/pi-eforge/
+              - eforge-plugin/
+          - id: console
+            roots:
+              - packages/console-ui/
+          - id: tests-docs
+            roots:
+              - test/
+              - docs/
+              - web/
+      reviewer:
+        effort: high
+        rationale: Public wire-contract and user-facing integration changes need
+          cross-surface review.
+      tester:
+        effort: high
+        rationale: The refactor requires contract, route, engine, Console, integration
+          parity, docs, and grep-style validation.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a large cross-package breaking API and recovery-flow
+    refactor, but it is primarily a shared contract change with ordered consumer
+    updates rather than independent modules, so excursion is preferred over
+    expedition. Plan review is included to catch scope and dependency issues.
+    Documentation and tests are first-class requirements, so doc authoring, doc
+    sync, test writing, and test cycling are included. The loaded
+    maintainability validation provider requires validate before review.
+    Parallel code/API review with strict evaluation fits the risk of
+    daemon/client contract changes and removed public aliases.
+diff_base_ref: 49dca503af801ae97c7ff8c416fa9a58b783058d
