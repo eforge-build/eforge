@@ -42,7 +42,16 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('Skipped cases')).toBeTruthy();
     expect(screen.getByText('Needs-input cases')).toBeTruthy();
     expect(screen.getByText('Generated recommendations (read-only)')).toBeTruthy();
-    expect(screen.getByText('0 active work items · 0 ready candidates · 2 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeTruthy();
+    expect(screen.getByText('0 active work items · 1 ready candidates · 0 next-sequence items · 0 safe-parallel groups · 1 blocked chains')).toBeTruthy();
+    expect(screen.getByText('Shipped evidence: lifecycle trace')).toBeTruthy();
+    expect(screen.getByText('Shipped evidence: inferred from git/PR history')).toBeTruthy();
+    expect(screen.getByText(/PR identifiers: #191/)).toBeTruthy();
+    expect(screen.getByText(/Commit identifiers: abcdef1234567890/)).toBeTruthy();
+    expect(screen.getByText('recommend-next-work has git and PR evidence from the merged recommendation workflow.')).toBeTruthy();
+    expect(screen.getByText('Ambiguous shipped candidate: needs input')).toBeTruthy();
+    expect(screen.getAllByText('Proposed shipped metadata evidence in this draft:').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Applied shipped metadata evidence/)).toBeNull();
+    expect(screen.getByText('Removed proposed-shipped recommendation targets from this draft preview: add-import-preview, recommend-next-work')).toBeTruthy();
     expect(screen.getAllByText(/auto-mode/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/planning/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/traceability/).length).toBeGreaterThan(0);

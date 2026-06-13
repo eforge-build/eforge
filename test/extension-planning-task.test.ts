@@ -174,6 +174,77 @@ describe('eforge-plan planning draft task runner', () => {
     expect(harness.prompts[0]).toContain('durable evidence');
   });
 
+  it('accepts model-submitted shipped item curation when strong git/PR evidence is cited', async () => {
+    const sourceFingerprint = '2'.repeat(64);
+    const submission = {
+      summary: 'Marked shipped work from strong evidence.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft: {
+        schemaVersion: 1,
+        sourceFingerprint,
+        summary: ['Strong shipped evidence supports closing item-ship.'],
+        itemChanges: [{
+          id: 'item-ship',
+          kind: 'item',
+          precondition: { id: 'item-ship', kind: 'item', bodySha256: BODY_SHA, sourceFingerprint },
+          metadata: { status: 'shipped' },
+          sectionOperations: [{ heading: 'Evidence', action: 'append', content: 'Shipped evidence: inferred from git/PR history — git abc123 / PR #9: ship item-ship' }],
+          rationale: 'Strong reachable git/PR shipped evidence cites item-ship directly.',
+          evidence: ['Shipped evidence: inferred from git/PR history — git abc123 / PR #9: ship item-ship'],
+        }],
+        epicChanges: [],
+        noOpRechecks: [],
+        skipped: [],
+        needsInput: [],
+      },
+    };
+    const harness = new StubHarness([{ toolCalls: [{ tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: submission, output: '' }] }]);
+
+    const { result } = await collect(runEforgePlanPlanningDraftTask({
+      harness,
+      cwd: '/tmp',
+      input: {
+        topic: 'Curate backlog',
+        requestedOutputSections: ['backlogCurationDraft'],
+        sourceText: JSON.stringify({ sourceFingerprint, shippedEvidenceCandidates: [{ itemId: 'item-ship', confidence: 'strong', evidenceSource: 'combined', evidenceLabel: 'Shipped evidence: inferred from git/PR history', citations: ['git abc123 / PR #9: ship item-ship'] }] }),
+      },
+    }));
+
+    expect(result.backlogCurationDraft?.itemChanges[0]).toMatchObject({ id: 'item-ship', metadata: { status: 'shipped' }, evidence: [expect.stringContaining('Shipped evidence: inferred from git/PR history')] });
+  });
+
+  it('accepts model-submitted ambiguous title-only curation without a shipped item change', async () => {
+    const sourceFingerprint = '3'.repeat(64);
+    const submission = {
+      summary: 'Routed ambiguous evidence to needs input.',
+      assumptionsOpenQuestions: [],
+      backlogCurationDraft: {
+        schemaVersion: 1,
+        sourceFingerprint,
+        summary: ['Ambiguous title-only evidence is not enough to mark shipped.'],
+        itemChanges: [],
+        epicChanges: [],
+        noOpRechecks: [],
+        skipped: [],
+        needsInput: [{ id: 'item-ambiguous', kind: 'item', question: 'Confirm whether the title-only shipped evidence refers to this backlog item.', reason: 'Ambiguous shipped candidate: needs input — git def456: similar title only' }],
+      },
+    };
+    const harness = new StubHarness([{ toolCalls: [{ tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: submission, output: '' }] }]);
+
+    const { result } = await collect(runEforgePlanPlanningDraftTask({
+      harness,
+      cwd: '/tmp',
+      input: {
+        topic: 'Curate backlog',
+        requestedOutputSections: ['backlogCurationDraft'],
+        sourceText: JSON.stringify({ sourceFingerprint, shippedEvidenceCandidates: [{ itemId: 'item-ambiguous', confidence: 'ambiguous', evidenceSource: 'git-history', evidenceLabel: 'Ambiguous shipped candidate: needs input', citations: ['git def456: similar title only'] }] }),
+      },
+    }));
+
+    expect(result.backlogCurationDraft?.itemChanges).toEqual([]);
+    expect(result.backlogCurationDraft?.needsInput[0]).toMatchObject({ id: 'item-ambiguous', reason: expect.stringContaining('Ambiguous shipped candidate: needs input') });
+  });
+
   it('rejects structurally malformed backlog curation draft submissions', async () => {
     for (const patch of [
       { ...validBacklogCurationDraft.itemChanges[0], kind: 'task' },

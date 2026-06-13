@@ -226,23 +226,25 @@ describe('backlog curation apply', () => {
     });
   });
 
-  it('rejects generated recommendations that reference records closed by the curation patch before writing', async () => {
+  it('filters generated recommendations that reference records closed by the curation patch before writing', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
       const { source, entry } = await workflowEntry(cwd);
       const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
-      const before = await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8');
-      const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-1', rationale: 'Ready after curation.' }] };
+      const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-1', rationale: 'Ready after curation.' }], recommendedNextSequence: [{ itemId: 'item-1', rationale: 'Next.' }] };
       const task = curationTask(source.sourceFingerprint, {
-        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed with durable evidence.', evidence: ['Shipped in prior work.'] }],
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed with durable evidence.', evidence: ['Shipped evidence: inferred from git/PR history — shipped in prior work.'] }],
         epicChanges: [],
         noOpRechecks: [],
       }, recommendations);
 
-      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/item-1/);
+      const result = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
-      expect(await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8')).toBe(before);
-      expect(await readRecommendations(cwd)).toBeNull();
+      expect(result.recommendations?.recommendations.readyCandidates).toEqual([]);
+      expect(result.recommendations?.recommendations.recommendedNextSequence).toEqual([]);
+      expect(result.recommendations?.recommendations.rationaleAndAssumptions).toEqual([expect.stringContaining('Filtered recommendation targets')]);
+      expect(await readBacklogItem(cwd, 'item-1')).toMatchObject({ status: 'shipped' });
+      expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [], recommendedNextSequence: [] });
     });
   });
 
