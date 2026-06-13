@@ -43,6 +43,7 @@ const TASK_WORKFLOW_ACTIONS = [
   'apply-planning-agent-task-result',
   'analyze-all-backlog',
 ] as const;
+const CURATION_PREVIEW_ACTION = 'preview-backlog-curation-task';
 const PLAN_REVISION_ACTIONS = [
   'start-plan-revision-session',
   'list-plan-revision-sessions',
@@ -80,6 +81,7 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('Partial progress');
     expect(source).toContain('Revise with AI');
     expect(source).toContain('planRevisionTurn');
+    expect(source).toContain(CURATION_PREVIEW_ACTION);
     for (const actionId of PLAN_REVISION_ACTIONS) expect(source).toContain(actionId);
     expect(source).not.toContain('Promote as one plan');
     for (const actionId of TASK_WORKFLOW_ACTIONS) {
@@ -117,6 +119,7 @@ describe('eforge-plan planning workstation assets', () => {
     for (const actionId of TASK_WORKFLOW_ACTIONS) {
       expect(source).toContain(`case '${actionId}'`);
     }
+    expect(source).toContain(`case '${CURATION_PREVIEW_ACTION}'`);
     expect(source).toContain('listMockPlanningTasks');
     expect(source).toContain('relinkMockPlanningTask');
     expect(source).toContain('applyMockCreationDraft');

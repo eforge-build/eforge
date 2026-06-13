@@ -58,6 +58,8 @@ export const StartPlanningAgentTaskInputSchema = Type.Object({
 }, { additionalProperties: false, not: { anyOf: [{ required: ['itemIds', 'epicId'] }, { required: ['itemIds', 'recommendationRef'] }, { required: ['epicId', 'recommendationRef'] }] } });
 
 export const GetPlanningAgentTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema }, { additionalProperties: false });
+export const PreviewBacklogCurationTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema }, { additionalProperties: false });
+export const PreviewBacklogCurationTaskOutputSchema = BacklogCurationPreviewDetailsSchema;
 export const CancelPlanningAgentTaskInputSchema = Type.Object({ taskId: ExtensionAgentTaskIdSchema, reason: Type.Optional(Type.String()) }, { additionalProperties: false });
 
 export const ApplyPlanningAgentTaskHandoffSelectionSchema = Type.Object({ index: Type.Optional(Type.Integer({ minimum: 0 })), selection: Type.Optional(PromotionSelectionInputSchema), session: Type.Optional(Type.String()), title: Type.Optional(Type.String()), profile: Type.Optional(PlanningProfileSchema) }, { additionalProperties: false });
@@ -172,9 +174,6 @@ export const PlanningAgentTaskListItemSchema = Type.Object({
   status: Type.Optional(ExtensionAgentTaskStatusSchema),
   task: Type.Optional(ExtensionAgentTaskRecordSchema),
   staleReason: Type.Optional(Type.String()),
-  // --- eforge:region recommendation-validation ---
-  backlogCurationPreview: Type.Optional(BacklogCurationPreviewDetailsSchema),
-  // --- eforge:endregion recommendation-validation ---
 }, JsonObjectAdditionalProperties);
 
 export const ListPlanningAgentTasksOutputSchema = Type.Object({

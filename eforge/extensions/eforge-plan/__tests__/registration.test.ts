@@ -14,7 +14,7 @@ import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
 const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
 
@@ -90,6 +90,7 @@ describe('eforge-plan extension registration', () => {
       'list-planning-agent-tasks',
       'list-planning-artifacts',
       'prepare-planner-context',
+      'preview-backlog-curation-task',
       'promote-item',
       'promote-selection',
       'put-recommendations',
@@ -136,12 +137,15 @@ describe('eforge-plan extension registration', () => {
     expect(JSON.stringify(refreshOutput)).toMatch(/task|entry|sourceFingerprint|recommendation-refresh/);
     const analyzeOutput = actions.find((action) => action.id === 'analyze-all-backlog')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(analyzeOutput)).toMatch(/task|entry|sourceFingerprint|reused/);
+    expect(JSON.stringify((analyzeOutput.properties as Record<string, unknown>).task)).not.toMatch(/result|backlogCurationDraft|recommendations/);
     const applyPlanningOutput = actions.find((action) => action.id === 'apply-planning-agent-task-result')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(applyPlanningOutput)).toMatch(/backlogCuration|generatedRecommendationValidation|recommendationsSkipped/);
     const applyPlanningInput = actions.find((action) => action.id === 'apply-planning-agent-task-result')?.inputSchema as Record<string, unknown>;
     expect(JSON.stringify(applyPlanningInput)).toMatch(/applyBacklogCurationDraft|previewAcknowledged|confirmApply|applyCurationOnly/);
+    const previewCurationOutput = actions.find((action) => action.id === 'preview-backlog-curation-task')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation/);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
-    expect(JSON.stringify(listPlanningOutput)).toMatch(/backlogCurationPreview|generatedRecommendationValidation/);
+    expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
   });
 
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {
@@ -349,7 +353,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
+    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
     expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === 'refresh-recommendations')).toBe(false);
@@ -379,6 +383,7 @@ describe('eforge-plan extension registration', () => {
         'start-planning-agent-task',
         'analyze-all-backlog',
         'get-planning-agent-task',
+        'preview-backlog-curation-task',
         'cancel-planning-agent-task',
         'list-planning-agent-tasks',
         'retry-planning-agent-task',

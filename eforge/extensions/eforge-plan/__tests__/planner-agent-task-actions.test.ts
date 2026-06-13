@@ -568,7 +568,7 @@ describe('planning agent task actions', () => {
     });
   });
 
-  it('lists structured backlog curation preview validation without failing on malformed completed curation tasks', async () => {
+  it('previews backlog curation validation on demand without coupling it to task list rendering', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
@@ -603,26 +603,43 @@ describe('planning agent task actions', () => {
       });
       const records: Record<string, ExtensionAgentTaskRecord> = { [validPreviewTask.taskId]: validPreviewTask, [malformedTask.taskId]: malformedTask };
 
-      const result = await dispatchExtensionAction(load(), {
+      const agentTasks = () => ({
+        async start() { throw new Error('unexpected start'); },
+        async get(taskId: string) { return { task: records[taskId]! }; },
+        async cancel() { throw new Error('unexpected cancel'); },
+      });
+
+      const list = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:list-planning-agent-tasks',
         input: {},
         requestedBy: { host: 'console' },
         cwd,
         timeoutMs: 1000,
-        agentTasks: () => ({
-          async start() { throw new Error('unexpected start'); },
-          async get(taskId: string) { return { task: records[taskId]! }; },
-          async cancel() { throw new Error('unexpected cancel'); },
-        }),
+        agentTasks,
       });
+      expect(list.kind).toBe('success');
+      if (list.kind !== 'success') throw new Error(list.message);
+      const tasks = (list.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      expect(tasks.every((task) => task.backlogCurationPreview === undefined)).toBe(true);
 
-      expect(result.kind).toBe('success');
-      if (result.kind !== 'success') throw new Error(result.message);
-      const tasks = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
-      const validPreview = tasks.find((task) => (task.entry as { taskId: string }).taskId === 'task-curation-valid-preview')?.backlogCurationPreview as Record<string, unknown>;
-      const malformedPreview = tasks.find((task) => (task.entry as { taskId: string }).taskId === 'task-curation-malformed-preview')?.backlogCurationPreview as Record<string, unknown>;
-      expect(validPreview).toMatchObject({ valid: false, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } });
-      expect(malformedPreview).toMatchObject({ valid: false, errors: expect.any(Array) });
+      const validPreview = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:preview-backlog-curation-task',
+        input: { taskId: 'task-curation-valid-preview' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks,
+      });
+      const malformedPreview = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:preview-backlog-curation-task',
+        input: { taskId: 'task-curation-malformed-preview' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks,
+      });
+      expect(validPreview).toMatchObject({ kind: 'success', output: { valid: false, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } } });
+      expect(malformedPreview).toMatchObject({ kind: 'success', output: { valid: false, errors: expect.any(Array) } });
     });
   });
 

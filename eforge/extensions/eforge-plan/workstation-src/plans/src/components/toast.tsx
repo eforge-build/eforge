@@ -16,8 +16,8 @@ const ToastContext = React.createContext<ToastApi | null>(null);
 
 const TONE_CLASSES: Record<ToastTone, string> = {
   info: 'border-border bg-card text-foreground',
-  success: 'border-primary/40 bg-primary/10 text-text-bright',
-  error: 'border-destructive/40 bg-destructive/10 text-destructive-foreground',
+  success: 'border-primary/50 bg-card text-text-bright',
+  error: 'border-destructive/60 bg-card text-destructive-foreground',
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -44,7 +44,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={toast.id}
             type="button"
             onClick={() => dismiss(toast.id)}
-            className={`pointer-events-auto rounded-md border px-3 py-2 text-left text-sm shadow-lg transition-opacity ${TONE_CLASSES[toast.tone]}`}
+            className={`pointer-events-auto rounded-md border px-3 py-2 text-left text-sm shadow-2xl ring-1 ring-background/80 transition-opacity ${TONE_CLASSES[toast.tone]}`}
           >
             {toast.message}
           </button>
