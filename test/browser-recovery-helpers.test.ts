@@ -1,5 +1,5 @@
 /**
- * Route-selection tests for the browser-safe recovery/resume fetch helpers in
+ * Route-selection tests for the browser-safe recovery/continue-repair fetch helpers in
  * `@eforge-build/client/browser`. A stubbed `fetch` captures the request so we
  * can assert the helper targets the correct `API_ROUTES` path with the correct
  * method and body, and that non-2xx responses throw an Error carrying the
@@ -12,8 +12,8 @@ import {
   fetchRecoverySidecar,
   triggerRecoveryAnalysis,
   applySidecarRecovery,
-  startResumeBuild,
-  fetchResumeEligibility,
+  startContinueRepair,
+  fetchContinueRepairEligibility,
 } from '@eforge-build/client/browser';
 
 interface CapturedRequest {
@@ -67,17 +67,17 @@ describe('browser recovery helpers — route selection', () => {
     expect(captured[0].url).toBe(`${API_ROUTES.readRecoverySidecar}?prdId=prd-1`);
   });
 
-  it('fetchResumeEligibility GETs resumeEligibility with a URLSearchParams query', async () => {
+  it('fetchContinueRepairEligibility GETs continueRepairEligibility with a URLSearchParams query', async () => {
     nextResponse = { ok: true, status: 200, json: { eligible: false } };
-    await fetchResumeEligibility({ prdId: 'prd-2', setName: 'set-a' });
+    await fetchContinueRepairEligibility({ prdId: 'prd-2', setName: 'set-a' });
     expect(captured[0].method).toBe('GET');
-    expect(captured[0].url).toBe(`${API_ROUTES.resumeEligibility}?prdId=prd-2&setName=set-a`);
+    expect(captured[0].url).toBe(`${API_ROUTES.continueRepairEligibility}?prdId=prd-2&setName=set-a`);
   });
 
-  it('fetchResumeEligibility omits setName from the query when not provided', async () => {
+  it('fetchContinueRepairEligibility omits setName from the query when not provided', async () => {
     nextResponse = { ok: true, status: 200, json: { eligible: false } };
-    await fetchResumeEligibility({ prdId: 'prd-3' });
-    expect(captured[0].url).toBe(`${API_ROUTES.resumeEligibility}?prdId=prd-3`);
+    await fetchContinueRepairEligibility({ prdId: 'prd-3' });
+    expect(captured[0].url).toBe(`${API_ROUTES.continueRepairEligibility}?prdId=prd-3`);
   });
 
   it('applySidecarRecovery POSTs ApplyRecoveryRequest to applyRecovery', async () => {
@@ -89,11 +89,11 @@ describe('browser recovery helpers — route selection', () => {
     expect(captured[0].headers.get('Content-Type')).toBe('application/json');
   });
 
-  it('startResumeBuild POSTs ResumeBuildRequest to resumeBuild', async () => {
+  it('startContinueRepair POSTs ContinueRepairRequest to continueRepair', async () => {
     nextResponse = { ok: true, status: 200, json: { kind: 'queued', prdId: 'prd-5', setName: 'set-b', featureBranch: 'eforge/set-b', baseBranch: 'main', movedDescendantIds: [] } };
-    await startResumeBuild({ prdId: 'prd-5', setName: 'set-b' });
+    await startContinueRepair({ prdId: 'prd-5', setName: 'set-b' });
     expect(captured[0].method).toBe('POST');
-    expect(captured[0].url).toBe(API_ROUTES.resumeBuild);
+    expect(captured[0].url).toBe(API_ROUTES.continueRepair);
     expect(captured[0].body).toEqual({ prdId: 'prd-5', setName: 'set-b' });
   });
 
@@ -119,7 +119,7 @@ describe('browser recovery helpers — error surfacing', () => {
   });
 
   it('throws an Error including the daemon response text on a non-2xx POST', async () => {
-    nextResponse = { ok: false, status: 500, text: 'Failed to queue resume build' };
-    await expect(startResumeBuild({ prdId: 'prd-y' })).rejects.toThrow('Failed to queue resume build');
+    nextResponse = { ok: false, status: 500, text: 'Failed to queue continue-repair build' };
+    await expect(startContinueRepair({ prdId: 'prd-y' })).rejects.toThrow('Failed to queue continue-repair build');
   });
 });

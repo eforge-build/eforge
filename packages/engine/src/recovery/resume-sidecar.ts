@@ -1,25 +1,44 @@
 import { join } from 'node:path';
-import type {
-  BuildFailureSummary,
-  RecoverySidecarRecoveryOption,
-  RecoverySidecarResumeEligibility,
-  RecoverySidecarResumeEligibilitySource,
-} from '@eforge-build/client';
+import type { BuildFailureSummary } from '@eforge-build/client';
 import { projectResumeEligibility } from '../resume/compiled-build.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
 import { truncateMiddleText, truncateText } from './text-bounds.js';
 
-export type {
-  RecoverySidecarRecoveryOption,
-  RecoverySidecarResumeEligibility,
-  RecoverySidecarResumeEligibilitySource,
-} from '@eforge-build/client';
+export type RecoverySidecarContinueRepairEligibilitySource = 'continueRepairEligibility' | 'inspection-error';
+export type RecoverySidecarContinueRepairArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
 
-const RESUME_REASON_CHARS = 1_000;
-const RESUME_DIFF_STAT_CHARS = 4_000;
+export type RecoverySidecarContinueRepairEligibility =
+  | {
+      source: RecoverySidecarContinueRepairEligibilitySource;
+      eligible: true;
+      featureBranch: string;
+      artifactAvailability: RecoverySidecarContinueRepairArtifactAvailability;
+      artifactCommit?: string;
+      landedCommitCount: number;
+      diffStat: string;
+      failingPlanId?: string;
+      partial?: boolean;
+    }
+  | {
+      source: RecoverySidecarContinueRepairEligibilitySource;
+      eligible: false;
+      featureBranch: string;
+      reason: string;
+      checkedPath?: string;
+    };
 
-export interface RecoverySidecarResumeEvidence {
-  resumeEligibility: RecoverySidecarResumeEligibility;
+export interface RecoverySidecarRecoveryOption {
+  kind: 'continue-repair';
+  action: 'continue-repair';
+  recommended: boolean;
+  reason: string;
+}
+
+const CONTINUE_REPAIR_REASON_CHARS = 1_000;
+const CONTINUE_REPAIR_DIFF_STAT_CHARS = 4_000;
+
+export interface RecoverySidecarContinueRepairEvidence {
+  continueRepairEligibility: RecoverySidecarContinueRepairEligibility;
   recoveryOptions?: RecoverySidecarRecoveryOption[];
 }
 
@@ -36,10 +55,10 @@ export interface ProjectRecoverySidecarResumeEvidenceOptions {
 }
 
 /**
- * Read-only projection for recovery sidecars. This must not queue resume work,
+ * Read-only projection for recovery sidecars. This must not queue repair work,
  * create worktrees, materialize artifacts, or mutate queue state.
  */
-export async function projectRecoverySidecarResumeEvidence(options: ProjectRecoverySidecarResumeEvidenceOptions): Promise<RecoverySidecarResumeEvidence> {
+export async function projectRecoverySidecarResumeEvidence(options: ProjectRecoverySidecarResumeEvidenceOptions): Promise<RecoverySidecarContinueRepairEvidence> {
   const featureBranch = options.featureBranch ?? `eforge/${options.setName}`;
   const mergeWorktreePath = join(computeWorktreeBase(options.cwd, options.setName), '__merge__');
 
@@ -58,8 +77,8 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
     });
 
     if (projected.eligible) {
-      const resumeEligibility: RecoverySidecarResumeEligibility = {
-        source: 'projectResumeEligibility',
+      const continueRepairEligibility: RecoverySidecarContinueRepairEligibility = {
+        source: 'continueRepairEligibility',
         eligible: true,
         featureBranch: projected.featureBranch,
         artifactAvailability: projected.artifactAvailability,
@@ -70,47 +89,47 @@ export async function projectRecoverySidecarResumeEvidence(options: ProjectRecov
         ...(projected.partial !== undefined ? { partial: projected.partial } : {}),
       };
       return {
-        resumeEligibility,
-        recoveryOptions: [compiledResumeOption('Compiled plan artifacts are eligible for scheduler-owned resume.')],
+        continueRepairEligibility,
+        ...(projected.partial === true ? {} : { recoveryOptions: [continueRepairOption('Compiled plan artifacts are eligible for continue-and-repair.')] }),
       };
     }
 
     return {
-      resumeEligibility: {
-        source: 'projectResumeEligibility',
+      continueRepairEligibility: {
+        source: 'continueRepairEligibility',
         eligible: false,
         featureBranch: projected.featureBranch,
-        reason: boundReason(projected.reason, 'resume ineligibility reason'),
+        reason: boundReason(projected.reason, 'continue-and-repair ineligibility reason'),
         ...(projected.checkedPath !== undefined ? { checkedPath: projected.checkedPath } : {}),
       },
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
-      resumeEligibility: {
+      continueRepairEligibility: {
         source: 'inspection-error',
         eligible: false,
         featureBranch,
-        reason: `Resume eligibility inspection failed: ${boundReason(message, 'resume inspection failure')}`,
+        reason: `Continue-and-repair eligibility inspection failed: ${boundReason(message, 'continue-and-repair inspection failure')}`,
       },
     };
   }
 }
 
-function compiledResumeOption(reason: string): RecoverySidecarRecoveryOption {
+function continueRepairOption(reason: string): RecoverySidecarRecoveryOption {
   return {
-    kind: 'compiled-build-resume',
-    action: 'eforge_resume_build',
+    kind: 'continue-repair',
+    action: 'continue-repair',
     recommended: true,
     reason,
   };
 }
 
 function boundReason(reason: string, label: string): string {
-  const bounded = truncateText(reason.trim() || 'Resume eligibility inspection did not provide a reason.', RESUME_REASON_CHARS, label);
+  const bounded = truncateText(reason.trim() || 'Continue-and-repair eligibility inspection did not provide a reason.', CONTINUE_REPAIR_REASON_CHARS, label);
   return bounded.text;
 }
 
 function boundDiffStat(diffStat: string): string {
-  return truncateMiddleText(diffStat, RESUME_DIFF_STAT_CHARS, 'resume diff stat').text;
+  return truncateMiddleText(diffStat, CONTINUE_REPAIR_DIFF_STAT_CHARS, 'continue-and-repair diff stat').text;
 }

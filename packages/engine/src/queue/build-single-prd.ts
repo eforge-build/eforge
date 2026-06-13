@@ -17,13 +17,11 @@ import {
   getCompiledResumeFrontmatter,
   getHeadHash,
   getPrdDiffSummary,
-  getRecoveryContinuationFrontmatter,
   QueueSkipReason,
   type CompiledResumeFrontmatter,
   type PrdFrontmatter,
   type QueuedPrd,
   type QueueSkipReasonValue,
-  type RecoveryContinuationFrontmatter,
 } from '../prd-queue.js';
 import type { QueueOptions } from '../eforge.js';
 import { withRunId } from '../session.js';
@@ -72,10 +70,6 @@ type SessionInfo = {
 
 type ReadCompiledResumeResult =
   | { ok: true; compiledResume: CompiledResumeFrontmatter | undefined }
-  | { ok: false; message: string };
-
-type ReadRecoveryContinuationResult =
-  | { ok: true; recoveryContinuation: RecoveryContinuationFrontmatter | undefined }
   | { ok: false; message: string };
 
 type SimpleResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -300,24 +294,12 @@ function* emitStaleSkip(prd: QueuedPrd, injectedSessionId: string | undefined, r
 // --- eforge:endregion staleness ---
 
 // --- eforge:region compile-preparation ---
-function readRecoveryContinuation(frontmatter: PrdFrontmatter): ReadRecoveryContinuationResult {
-  try {
-    return { ok: true, recoveryContinuation: getRecoveryContinuationFrontmatter(frontmatter) };
-  } catch (err) {
-    return { ok: false, message: errorMessage(err) };
-  }
-}
-
 async function resolveQueuedStackContext(
   ctx: QueuedPrdBuildContext,
   prd: QueuedPrd,
   planSetName: string,
-  recoveryContinuation: RecoveryContinuationFrontmatter | undefined,
 ): Promise<SimpleResult<StackBaseContext | undefined>> {
-  if (recoveryContinuation !== undefined && hasExplicitStackMetadata(prd.frontmatter)) {
-    return { ok: false, message: 'Recovery continuation PRD cannot also use stack metadata' };
-  }
-  if (!ctx.config.stacking.enabled || recoveryContinuation !== undefined) return { ok: true, value: undefined };
+  if (!ctx.config.stacking.enabled) return { ok: true, value: undefined };
   try {
     return { ok: true, value: await resolveStackBaseContext({ cwd: ctx.cwd, config: ctx.config, prd, planSetName }) };
   } catch (err) {
@@ -342,18 +324,15 @@ async function requireQueuedStackProvider(
 async function* resolveCompileOverrides(
   ctx: QueuedPrdBuildContext,
   prd: QueuedPrd,
-  recoveryContinuation: RecoveryContinuationFrontmatter | undefined,
   stackContext: StackBaseContext | undefined,
 ): AsyncGenerator<EforgeEvent, SimpleResult<CompileOverrides>> {
-  const worktreeOverrideResult = yield* resolveCompileWorktreeOverride(ctx, prd, recoveryContinuation, stackContext);
+  const worktreeOverrideResult = yield* resolveCompileWorktreeOverride(ctx, prd, stackContext);
   if (!worktreeOverrideResult.ok) return worktreeOverrideResult;
   return {
     ok: true,
     value: {
-      ...(recoveryContinuation?.baseBranch !== undefined && { baseBranchOverride: recoveryContinuation.baseBranch }),
-      ...(recoveryContinuation?.featureBranch !== undefined && { worktreeBaseRefOverride: recoveryContinuation.featureBranch }),
-      ...(recoveryContinuation === undefined && stackContext?.baseBranch !== undefined && { baseBranchOverride: stackContext.baseBranch }),
-      ...(recoveryContinuation === undefined && worktreeOverrideResult.value !== undefined && { worktreeBaseRefOverride: worktreeOverrideResult.value }),
+      ...(stackContext?.baseBranch !== undefined && { baseBranchOverride: stackContext.baseBranch }),
+      ...(worktreeOverrideResult.value !== undefined && { worktreeBaseRefOverride: worktreeOverrideResult.value }),
     },
   };
 }
@@ -361,13 +340,8 @@ async function* resolveCompileOverrides(
 async function* resolveCompileWorktreeOverride(
   ctx: QueuedPrdBuildContext,
   prd: QueuedPrd,
-  recoveryContinuation: RecoveryContinuationFrontmatter | undefined,
   stackContext: StackBaseContext | undefined,
 ): AsyncGenerator<EforgeEvent, SimpleResult<string | undefined>> {
-  if (recoveryContinuation !== undefined) {
-    yield { timestamp: ts(), type: 'planning:progress', message: `Recovery continuation: starting successor from '${recoveryContinuation.featureBranch}' while targeting '${recoveryContinuation.baseBranch}' (PRD ${prd.id})` } as EforgeEvent;
-    return { ok: true, value: undefined };
-  }
   if (!ctx.config.build.trunkSync.enabled) return { ok: true, value: undefined };
   if (stackContext !== undefined) return yield* resolveStackedTrunkSyncOverride(ctx, prd, stackContext);
   return yield* resolveNonStackedTrunkSyncOverride(ctx, prd);
@@ -401,9 +375,6 @@ async function* resolveNonStackedTrunkSyncOverride(
   return { ok: true, value: tsSyncResult.baseRef !== resolvedTrunk ? tsSyncResult.baseRef : undefined };
 }
 
-function hasExplicitStackMetadata(frontmatter: PrdFrontmatter): boolean {
-  return frontmatter.stack_id !== undefined || frontmatter.stack_parent !== undefined || frontmatter.stack_provider !== undefined;
-}
 // --- eforge:endregion compile-preparation ---
 
 // --- eforge:region phase-execution ---
@@ -444,16 +415,13 @@ async function* prepareCompileAndBuild(
   prdSessionId: string,
   planSetName: string,
 ): AsyncGenerator<EforgeEvent, SessionResult & { stackContext?: StackBaseContext; stackProvider?: StackProviderAdapter }> {
-  const recoveryResult = readRecoveryContinuation(prd.frontmatter);
-  if (!recoveryResult.ok) return yield* failPreparedPrd(prd.id, recoveryResult.message);
-
-  const stackResult = await resolveQueuedStackContext(ctx, prd, planSetName, recoveryResult.recoveryContinuation);
+  const stackResult = await resolveQueuedStackContext(ctx, prd, planSetName);
   if (!stackResult.ok) return yield* failPreparedPrd(prd.id, stackResult.message);
 
   const providerResult = await requireQueuedStackProvider(ctx, stackResult.value);
   if (!providerResult.ok) return yield* failPreparedPrd(prd.id, providerResult.message);
 
-  const overridesResult = yield* resolveCompileOverrides(ctx, prd, recoveryResult.recoveryContinuation, stackResult.value);
+  const overridesResult = yield* resolveCompileOverrides(ctx, prd, stackResult.value);
   if (!overridesResult.ok) return { status: 'failed', summary: overridesResult.message };
 
   const compileResult = yield* runCompilePhase(ctx, prd, planSetName, options, prdSessionId, overridesResult.value);
@@ -490,7 +458,7 @@ async function* runCompiledResumePhase(
     yield { ...event, sessionId: prdSessionId } as EforgeEvent;
     if (event.type === 'phase:end' && event.result.status === 'failed') resumeFailed = true;
   }
-  return resumeFailed ? { status: 'failed', summary: 'Resume failed' } : { status: 'completed', summary: 'Resume complete' };
+  return resumeFailed ? { status: 'failed', summary: 'Continue-and-repair failed' } : { status: 'completed', summary: 'Continue-and-repair complete' };
 }
 
 async function* runCompilePhase(

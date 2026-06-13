@@ -40,15 +40,14 @@ describe('writeRecoverySidecar', () => {
     };
   }
 
-  function makeVerdict(verdict: string = 'split'): ReturnType<typeof parseRecoveryVerdictBlock> {
+  function makeVerdict(verdict: string = 'continue-repair'): ReturnType<typeof parseRecoveryVerdictBlock> {
     return {
-      verdict: verdict as 'retry' | 'split' | 'abandon' | 'manual',
+      verdict: verdict as 'retry' | 'continue-repair' | 'abandon' | 'manual',
       confidence: 'medium',
       rationale: 'Foundation work preserved; API work remains.',
       completedWork: ['Foundation merged'],
       remainingWork: ['API endpoints'],
       risks: ['Type error unresolved'],
-      suggestedSuccessorPrd: verdict === 'split' ? '# Successor PRD' : undefined,
     };
   }
 
@@ -86,7 +85,8 @@ describe('writeRecoverySidecar', () => {
     expect(parsed.report).toBeDefined();
     expect(parsed.boundedEvidence).toBeDefined();
     expect(parsed.verdict).toBeDefined();
-    expect(parsed.verdict.verdict).toBe('split');
+    expect(parsed.verdict.verdict).toBe('continue-repair');
+    expect(JSON.stringify(parsed)).not.toContain(['suggested', 'Successor', 'Prd'].join(''));
     expect(parsed.generatedAt).toBeDefined();
     expect(typeof parsed.generatedAt).toBe('string');
   });
@@ -101,24 +101,26 @@ describe('writeRecoverySidecar', () => {
     });
 
     const md = await readFile(mdPath, 'utf-8');
-    expect(md).toContain('SPLIT');
+    expect(md).toContain('CONTINUE-REPAIR');
     expect(md).toContain('plan-01');
     expect(md).toContain('plan-02');
     expect(md).toContain('feat: foundation');
     expect(md).toContain('abc123de');
   });
 
-  it('markdown includes suggestedSuccessorPrd for split verdict', async () => {
+  it('markdown omits generated successor PRD guidance', async () => {
     const dir = makeTempDir();
     const { mdPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
       prdId: 'test-prd',
       summary: makeSummary(),
-      verdict: makeVerdict('split')!,
+      verdict: makeVerdict('continue-repair')!,
     });
 
     const md = await readFile(mdPath, 'utf-8');
-    expect(md).toContain('Successor PRD');
+    expect(md).not.toContain(['Suggested', 'Successor', 'PRD'].join(' '));
+    expect(md).not.toContain(['suggested', 'Successor', 'Prd'].join(''));
+    expect(md).toContain('do not use generated successor content');
   });
 
   it('creates the target directory if it does not exist', async () => {
@@ -138,7 +140,7 @@ describe('writeRecoverySidecar', () => {
 
   it('produces valid JSON for each verdict type', async () => {
     const dir = makeTempDir();
-    for (const verdict of ['retry', 'split', 'abandon', 'manual'] as const) {
+    for (const verdict of ['retry', 'continue-repair', 'abandon', 'manual'] as const) {
       const subDir = join(dir, verdict);
       const { jsonPath } = await writeRecoverySidecar({
         failedPrdDir: subDir,
@@ -344,16 +346,16 @@ describe('writeRecoverySidecar', () => {
     expect(md).toContain('Validation command output was truncated for: pnpm test -- --large-output');
   });
 
-  it('JSON and Markdown include eligible compiled-build resume recommendation without changing the verdict vocabulary', async () => {
+  it('JSON and Markdown include eligible continue-and-repair recommendation as the primary action', async () => {
     const dir = makeTempDir();
     const { jsonPath, mdPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
       prdId: 'test-prd',
       summary: makeSummary(),
       verdict: makeVerdict('manual')!,
-      resumeEvidence: {
-        resumeEligibility: {
-          source: 'projectResumeEligibility',
+      continueRepairEvidence: {
+        continueRepairEligibility: {
+          source: 'continueRepairEligibility',
           eligible: true,
           featureBranch: 'eforge/test-set',
           artifactAvailability: 'feature-branch',
@@ -367,26 +369,27 @@ describe('writeRecoverySidecar', () => {
     const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
     const md = await readFile(mdPath, 'utf-8');
 
-    expect(parsed.resumeEligibility.eligible).toBe(true);
-    expect(parsed.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true }));
-    expect(['retry', 'split', 'abandon', 'manual']).toContain(parsed.verdict.verdict);
+    expect(parsed.continueRepairEligibility.eligible).toBe(true);
+    expect(parsed.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'continue-repair', action: 'continue-repair', recommended: true }));
+    expect(['retry', 'continue-repair', 'abandon', 'manual']).toContain(parsed.verdict.verdict);
     expect(parsed.verdict.verdict).toBe('manual');
-    expect(parsed.report.recommendedAction).toContain('eforge_resume_build');
-    expect(md).toContain('Compiled-build resume');
-    expect(md).toContain('eforge_resume_build');
+    expect(parsed.report.recommendedAction).toContain('eforge continue-repair');
+    expect(md).toContain('Continue-and-repair eligibility');
+    expect(md).toContain('eforge continue-repair');
     expect(md).toContain('Recommended operator action');
+    expect(md).not.toContain(['eforge', 'resume', 'build'].join('_'));
   });
 
-  it('JSON and Markdown include ineligible resume evidence without a recommended compiled-build option', async () => {
+  it('JSON and Markdown include ineligible continue-repair evidence without a recommended option', async () => {
     const dir = makeTempDir();
     const { jsonPath, mdPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
       prdId: 'test-prd',
       summary: makeSummary(),
       verdict: makeVerdict('retry')!,
-      resumeEvidence: {
-        resumeEligibility: {
-          source: 'projectResumeEligibility',
+      continueRepairEvidence: {
+        continueRepairEligibility: {
+          source: 'continueRepairEligibility',
           eligible: false,
           featureBranch: 'eforge/test-set',
           reason: 'feature branch eforge/test-set not found',
@@ -396,10 +399,10 @@ describe('writeRecoverySidecar', () => {
 
     const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
     const md = await readFile(mdPath, 'utf-8');
-    expect(parsed.resumeEligibility.eligible).toBe(false);
-    expect(parsed.resumeEligibility.reason).toContain('feature branch');
-    expect(parsed.recoveryOptions?.some((option: { kind: string; recommended: boolean }) => option.kind === 'compiled-build-resume' && option.recommended)).not.toBe(true);
-    expect(md).toContain('Compiled-build resume');
+    expect(parsed.continueRepairEligibility.eligible).toBe(false);
+    expect(parsed.continueRepairEligibility.reason).toContain('feature branch');
+    expect(parsed.recoveryOptions?.some((option: { kind: string; recommended: boolean }) => option.kind === 'continue-repair' && option.recommended)).not.toBe(true);
+    expect(md).toContain('Continue-and-repair eligibility');
     expect(md).toContain('ineligible');
   });
 
@@ -417,15 +420,15 @@ describe('writeRecoverySidecar', () => {
       prdId: 'test-prd',
       summary: makeSummary(),
       verdict: makeVerdict('manual')!,
-      resumeEvidence,
+      continueRepairEvidence: resumeEvidence,
     });
 
     const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
     const md = await readFile(mdPath, 'utf-8');
-    expect(parsed.resumeEligibility.eligible).toBe(false);
-    expect(parsed.resumeEligibility.reason.length).toBeGreaterThan(0);
-    expect(parsed.resumeEligibility.reason.length).toBeLessThanOrEqual(1100);
-    expect(md).toContain('Compiled-build resume');
+    expect(parsed.continueRepairEligibility.eligible).toBe(false);
+    expect(parsed.continueRepairEligibility.reason.length).toBeGreaterThan(0);
+    expect(parsed.continueRepairEligibility.reason.length).toBeLessThanOrEqual(1100);
+    expect(md).toContain('Continue-and-repair eligibility');
   });
 
   it('places operator guidance before detailed evidence in Markdown sidecars', async () => {
@@ -458,7 +461,8 @@ describe('writeRecoverySidecar', () => {
     expect(first80).toContain('**Root Failure Scope:** acceptance-validation');
     expect(first80).toContain('**Root Failure Stage:** acceptance-validation');
     expect(first80).toContain('### Recommended Action');
-    expect(first80).toContain('Review the recovery report manually before taking further action.');
+    expect(first80).toContain('Manual review / manual replanning required.');
+    expect(first80).toContain('Review bounded evidence and create a focused follow-up PRD only after human inspection.');
     expect(md.indexOf('### Plans')).toBeGreaterThan(detailedIndex);
     expect(md.indexOf('### Acceptance Validation')).toBeGreaterThan(detailedIndex);
     expect(md.indexOf('### Validation Commands')).toBeGreaterThan(detailedIndex);

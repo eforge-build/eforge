@@ -191,10 +191,10 @@ export const stalenessVerdictSchema = Type.Object({
 
 export const recoveryVerdictSchema = Type.Object({
   verdict: Type.Union(
-    [Type.Literal('retry'), Type.Literal('split'), Type.Literal('abandon'), Type.Literal('manual')],
+    [Type.Literal('retry'), Type.Literal('continue-repair'), Type.Literal('abandon'), Type.Literal('manual')],
     {
       description:
-        'Recovery verdict: retry = transient failure, split = partially complete (use suggestedSuccessorPrd), abandon = no longer viable, manual = human review required (safe default)',
+        'Recovery verdict: retry = retry from scratch after a transient failure, continue-repair = continue and repair from eligible compiled artifacts, abandon = no longer viable, manual = human review / bounded manual replanning required (safe default)',
     },
   ),
   confidence: Type.Union(
@@ -214,9 +214,6 @@ export const recoveryVerdictSchema = Type.Object({
   risks: Type.Array(Type.String(), {
     description: 'Risks identified in the recovery assessment (each risk on its own line)',
   }),
-  suggestedSuccessorPrd: Type.Optional(Type.String({
-    description: 'Full successor PRD content when verdict is split — must be complete and self-contained',
-  })),
   partial: Type.Optional(Type.Boolean({
     description: 'When true, the recovery analysis was based on partial context (some context was unavailable)',
   })),
@@ -252,12 +249,11 @@ export type RecoveryVerdictValue = Static<typeof recoveryVerdictSchema>['verdict
  */
 export interface ApplyRecoveryResult {
   verdict: RecoveryVerdictValue;
-  successorPrdId?: string;
   noAction: boolean;
   commitSha?: string;
   /**
    * Apply idempotency status. `applied` on first successful apply;
-   * `already-applied` when a durable marker or live successor scan shows the
+   * `already-applied` when a durable marker or queue preflight shows the
    * verdict was applied previously. Absent for verdicts without a durable marker.
    */
   status?: 'applied' | 'already-applied';

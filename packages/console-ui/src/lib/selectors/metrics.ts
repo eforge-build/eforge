@@ -38,7 +38,7 @@ export interface NowMetricsPanel {
 
 const SUCCESS_STATUSES = new Set(['landed', 'merged', 'built', 'complete', 'completed']);
 const FAILED_STATUSES = new Set(['failed', 'failure', 'error']);
-const BUILD_HEALTH_COMMANDS = new Set(['build', 'run', 'resume']);
+const BUILD_HEALTH_COMMANDS = new Set(['build', 'run', 'resume', 'continue-repair']);
 
 const OUTCOME_COLOR: Record<RunOutcome, string> = {
   completed: 'var(--color-green)',

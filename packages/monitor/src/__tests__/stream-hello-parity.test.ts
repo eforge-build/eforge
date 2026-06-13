@@ -256,8 +256,20 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     const failedPrdContent = '---\ntitle: Failed PRD\npriority: 1\n---\n\n# Failed PRD\n';
     writeFileSync(join(failedDir, 'failed-prd.md'), failedPrdContent, 'utf-8');
     const recoverySidecar = JSON.stringify({
-      verdict: { verdict: 'split', confidence: 'high' },
-      applied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-prd-successor' },
+      schemaVersion: 3,
+      generatedAt: '2025-01-01T00:00:00.000Z',
+      prdId: 'failed-prd',
+      setName: 'failed-set',
+      verdict: { verdict: 'continue-repair', confidence: 'high', rationale: 'Preserved artifacts are available.', completedWork: [], remainingWork: [], risks: [] },
+      report: { operatorSummary: 'Preserved artifacts are available.', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+      boundedEvidence: {
+        identity: { prdId: 'failed-prd', setName: 'failed-set', featureBranch: 'eforge/failed-set', baseBranch: 'main', failedAt: '2025-01-01T00:00:00.000Z' },
+        plans: [],
+        failingPlan: { planId: 'plan-01' },
+        landedCommits: [],
+        modelsUsed: [],
+      },
+      applied: { action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' },
     });
     writeFileSync(join(failedDir, 'failed-prd.recovery.json'), recoverySidecar, 'utf-8');
 

@@ -280,7 +280,7 @@ describe('selectNowAttentionItems', () => {
         {
           id: 'rv2',
           status: 'failed',
-          recoveryVerdict: { verdict: 'split', confidence: 'medium' },
+          recoveryVerdict: { verdict: 'continue-repair', confidence: 'medium' },
         },
         {
           id: 'rv3',
@@ -300,7 +300,7 @@ describe('selectNowAttentionItems', () => {
       detailsMap[item.id] = item.detail;
     }
     expect(detailsMap['queue-failed-verdict-rv1']).toBe('retry / high');
-    expect(detailsMap['queue-failed-verdict-rv2']).toBe('split / medium');
+    expect(detailsMap['queue-failed-verdict-rv2']).toBe('continue-repair / medium');
     expect(detailsMap['queue-failed-verdict-rv3']).toBe('abandon / low');
     expect(detailsMap['queue-failed-verdict-rv4']).toBe('manual / high');
   });
@@ -321,18 +321,18 @@ describe('selectNowAttentionItems', () => {
       ...baseState,
       queue: makeQueue([
         {
-          id: 'applied-split',
+          id: 'applied-continue-repair',
           status: 'failed',
-          recoveryVerdict: { verdict: 'split', confidence: 'high' },
-          recoveryApplied: { action: 'split', appliedAt: '2026-01-01T00:00:00Z', successorPrdId: 'successor-prd' },
+          recoveryVerdict: { verdict: 'continue-repair', confidence: 'high' },
+          recoveryApplied: { action: 'continue-repair', appliedAt: '2026-01-01T00:00:00Z' },
         },
       ]),
     };
     const { items } = selectNowAttentionItems(state, {}, now);
-    const item = items.find((i) => i.id === 'queue-failed-verdict-applied-split');
+    const item = items.find((i) => i.id === 'queue-failed-verdict-applied-continue-repair');
     expect(item).toBeDefined();
     // Applied rows are resolved: annotate the verdict, suppress the prompt.
-    expect(item!.detail).toBe('recovery applied: split → successor-prd');
+    expect(item!.detail).toBe('recovery applied: continue-repair');
     expect(item!.recovery).toBeUndefined();
   });
 

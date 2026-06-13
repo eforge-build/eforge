@@ -14,8 +14,8 @@ function recoverySidecar(prdId: string, applied: unknown): Record<string, unknow
     generatedAt: '2025-01-01T00:00:00.000Z',
     prdId,
     setName,
-    verdict: { verdict: 'split', confidence: 'high', rationale: 'Partial work landed', completedWork: [], remainingWork: [], risks: [] },
-    report: { operatorSummary: 'Partial work landed', recommendedAction: 'Split.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
+    verdict: { verdict: 'continue-repair', confidence: 'high', rationale: 'Preserved artifacts are available', completedWork: [], remainingWork: [], risks: [] },
+    report: { operatorSummary: 'Preserved artifacts are available', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] },
     boundedEvidence: {
       identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: '2025-01-01T00:00:00.000Z' },
       plans: [],
@@ -36,7 +36,7 @@ describe('queue item projections', () => {
     mkdirSync(join(queue, 'failed'), { recursive: true }); mkdirSync(join(queue, 'skipped'), { recursive: true }); mkdirSync(join(queue, 'waiting'), { recursive: true }); mkdirSync(locks);
     writeFileSync(join(queue, 'a.md'), prd('A', '[b, failed]')); writeFileSync(join(queue, 'b.md'), prd('B')); writeFileSync(join(locks, 'b.lock'), '');
     writeFileSync(join(queue, 'failed', 'failed.md'), prd('F', '[a]'));
-    writeFileSync(join(queue, 'failed', 'failed.recovery.json'), JSON.stringify(recoverySidecar('failed', { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-successor' })));
+    writeFileSync(join(queue, 'failed', 'failed.recovery.json'), JSON.stringify(recoverySidecar('failed', { action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' })));
     writeFileSync(join(queue, 'failed', 'accepted-complete.md'), prd('Accepted Complete'));
     writeFileSync(join(queue, 'failed', 'accepted-complete.recovery.json'), JSON.stringify(recoverySidecar('accepted-complete', { action: 'accepted-success', acceptedAt: '2025-01-02T00:00:00.000Z', reasonCategory: 'other', reason: 'ok', cleanup: { status: 'noop' }, landing: { action: 'pr', status: 'complete', branch: 'eforge/x', autoMerge: { status: 'complete' } }, dependents: { unblocked: [], remainedBlocked: [], notFound: [] } })));
     writeFileSync(join(queue, 'failed', 'accepted-failed.md'), prd('Accepted Failed'));
@@ -47,10 +47,10 @@ describe('queue item projections', () => {
     const asyncItems = await loadQueueItems(queue, locks);
     expect(asyncItems).toEqual(sync);
     expect(sync.find((i) => i.id === 'b')?.status).toBe('running');
-    expect(sync.find((i) => i.id === 'failed')?.recoveryVerdict).toEqual({ verdict: 'split', confidence: 'high' });
+    expect(sync.find((i) => i.id === 'failed')?.recoveryVerdict).toEqual({ verdict: 'continue-repair', confidence: 'high' });
     // Applied marker projects alongside the verdict, with sync/async parity.
-    expect(sync.find((i) => i.id === 'failed')?.recoveryApplied).toEqual({ action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-successor' });
-    expect(asyncItems.find((i) => i.id === 'failed')?.recoveryApplied).toEqual({ action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-successor' });
+    expect(sync.find((i) => i.id === 'failed')?.recoveryApplied).toEqual({ action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' });
+    expect(asyncItems.find((i) => i.id === 'failed')?.recoveryApplied).toEqual({ action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' });
     expect(sync.find((i) => i.id === 'accepted-complete')?.status).toBe('completed');
     expect(sync.find((i) => i.id === 'accepted-complete')?.recoveryApplied).toMatchObject({ action: 'accepted-success', landing: { status: 'complete', autoMerge: { status: 'complete' } } });
     expect(sync.find((i) => i.id === 'accepted-failed')?.status).toBe('failed');

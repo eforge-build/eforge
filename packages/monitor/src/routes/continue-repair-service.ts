@@ -1,17 +1,22 @@
 import { join, relative, resolve } from 'node:path';
-import type { ResumeBuildResponse, ResumeEligibilityResponse } from '@eforge-build/client';
+import type { ContinueRepairResponse, ContinueRepairEligibilityResponse } from '@eforge-build/client';
 import type { MonitorContext } from '../context.js';
+import type { AutoBuildQueueMutationReason } from '../auto-build-supervisor.js';
 import { HttpRouteError } from '../http/route-errors.js';
 import { isValidPathSegment } from './control-validation.js';
 
-export async function queueResumeBuild(context: MonitorContext, body: Record<string, unknown>): Promise<ResumeBuildResponse> {
+export async function queueContinueRepair(
+  context: MonitorContext,
+  body: Record<string, unknown>,
+  notifyReason: AutoBuildQueueMutationReason = 'external',
+): Promise<ContinueRepairResponse> {
   if (!context.cwd) throw new HttpRouteError(503, 'No working directory configured');
   if (!body.prdId || typeof body.prdId !== 'string') throw new HttpRouteError(400, 'Missing required field: prdId');
   if (!isValidPathSegment(body.prdId)) throw new HttpRouteError(400, 'Invalid prdId: must not contain path separators or traversal sequences');
   if (body.setName !== undefined && (typeof body.setName !== 'string' || !isValidPathSegment(body.setName))) {
     throw new HttpRouteError(400, 'Invalid setName: must not contain path separators or traversal sequences');
   }
-  if (typeof body.setName === 'string') await validateResumeSetName(body.setName);
+  if (typeof body.setName === 'string') await validateContinueRepairSetName(body.setName);
 
   const prdId = body.prdId;
   const setName = body.setName as string | undefined;
@@ -20,7 +25,7 @@ export async function queueResumeBuild(context: MonitorContext, body: Record<str
   const queueDir = context.options.config?.prdQueue?.dir ?? context.options.queueDir ?? '.eforge/queue';
   const trunkBranch = context.options.config?.build?.trunkBranch;
   const { prepareFailedPrdForQueuedCompiledResume } = await import('@eforge-build/engine/resume/compiled-build');
-  const result = await mapResumeMetadataValidation(async () => prepareFailedPrdForQueuedCompiledResume({
+  const result = await mapContinueRepairMetadataValidation(async () => prepareFailedPrdForQueuedCompiledResume({
     cwd,
     prdId,
     ...(setName !== undefined ? { setName } : {}),
@@ -33,7 +38,7 @@ export async function queueResumeBuild(context: MonitorContext, body: Record<str
 
   if (result.status === 'blocked') throw new HttpRouteError(409, result.reason);
 
-  context.notifyQueueMutation('external');
+  context.notifyQueueMutation(notifyReason);
   const profile = await readQueuedProfile(cwd, queueDir, result.prdId);
   return {
     kind: 'queued',
@@ -43,7 +48,7 @@ export async function queueResumeBuild(context: MonitorContext, body: Record<str
     baseBranch: result.baseBranch,
     movedDescendantIds: result.movedDescendantIds,
     status: result.status,
-    detail: result.status === 'already-queued' ? 'Compiled-build resume was already queued.' : 'Compiled-build resume queued.',
+    detail: result.status === 'already-queued' ? 'Continue and repair build was already queued.' : 'Continue and repair build queued.',
     ...(profile !== undefined ? { profile } : {}),
   };
 }
@@ -74,7 +79,7 @@ async function readQueuedProfile(cwd: string, queueDir: string, prdId: string): 
   }
 }
 
-async function validateResumeSetName(setName: string): Promise<void> {
+async function validateContinueRepairSetName(setName: string): Promise<void> {
   try {
     const { validatePlanSetName } = await import('@eforge-build/engine/plan');
     validatePlanSetName(setName);
@@ -86,7 +91,7 @@ async function validateResumeSetName(setName: string): Promise<void> {
   }
 }
 
-async function mapResumeMetadataValidation<T>(operation: () => Promise<T>): Promise<T> {
+async function mapContinueRepairMetadataValidation<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (err) {
@@ -98,15 +103,15 @@ async function mapResumeMetadataValidation<T>(operation: () => Promise<T>): Prom
   }
 }
 
-export async function buildResumeEligibility(context: MonitorContext, prdId: string, setNameParam: string | null): Promise<ResumeEligibilityResponse> {
+export async function buildContinueRepairEligibility(context: MonitorContext, prdId: string, setNameParam: string | null): Promise<ContinueRepairEligibilityResponse> {
   if (!context.cwd) throw new HttpRouteError(503, 'No working directory configured');
   const cwd = context.cwd;
   const { projectResumeEligibility, resolveQueuedCompiledResumeMetadata } = await import('@eforge-build/engine/resume/compiled-build');
   const { computeWorktreeBase } = await import('@eforge-build/engine/worktree-ops');
   const prdQueueDir = context.options.config?.prdQueue?.dir ?? context.options.queueDir ?? '.eforge/queue';
-  if (setNameParam !== null) await validateResumeSetName(setNameParam);
+  if (setNameParam !== null) await validateContinueRepairSetName(setNameParam);
   const trunkBranch = context.options.config?.build?.trunkBranch;
-  const metadata = await mapResumeMetadataValidation(async () => resolveQueuedCompiledResumeMetadata({
+  const metadata = await mapContinueRepairMetadataValidation(async () => resolveQueuedCompiledResumeMetadata({
     cwd,
     prdId,
     queueDir: prdQueueDir,

@@ -186,7 +186,7 @@ Total variants: 226
 | `recovery:complete` | `prdId`, `sidecarJsonPath`, `sidecarMdPath`, `verdict` |
 | `recovery:error` | `error`, `prdId`, `rawOutput` |
 | `recovery:apply:start` | `prdId` |
-| `recovery:apply:complete` | `noAction`, `prdId`, `successorPrdId`, `verdict` |
+| `recovery:apply:complete` | `noAction`, `prdId`, `verdict` |
 | `recovery:apply:error` | `message`, `prdId` |
 | `daemon:run:upsert` | `run` |
 | `daemon:auto-build:paused` | `reason` |

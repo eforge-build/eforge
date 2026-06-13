@@ -3,7 +3,7 @@
  * "Open full build history →" button that opens the filterable build-history
  * drawer (mirrors the "Open activity log →" affordance on the Build health card).
  *
- * Each row is one build (a session rolled up from its compile/build/resume
+ * Each row is one build (a session rolled up from its compile/build/continue-and-repair
  * phases), with the full-width title on line 1 and a color-coded status dot +
  * status + phase qualifier on line 2. Successful enqueue bookkeeping is already
  * folded into its build by the rollup, so there are no duplicate phase rows.

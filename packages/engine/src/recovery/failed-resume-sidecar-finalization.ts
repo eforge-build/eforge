@@ -73,8 +73,8 @@ export async function finalizeFailedQueuedResumeSidecars(options: FailedQueuedRe
   }
 
   const degradedReason = options.degradedReason ?? (evidence.inspectionError !== undefined
-    ? `Failed queued resume evidence inspection failed: ${evidence.inspectionError}`
-    : 'Failed queued resume reached activation, but current resume failure evidence was incomplete or not summarizable.');
+    ? `Failed continue-and-repair evidence inspection failed: ${evidence.inspectionError}`
+    : 'Failed continue-and-repair reached activation, but current repair failure evidence was incomplete or not summarizable.');
   return writeDegradedSidecar({ ...options, failedPrdDir, reason: degradedReason });
 }
 
@@ -84,7 +84,18 @@ function isTrustworthyResumeSummary(summary: BuildFailureSummary): boolean {
 
 async function writeCurrentSidecar(options: FailedQueuedResumeSidecarFinalizationOptions & { failedPrdDir: string; summary: BuildFailureSummary }): Promise<FailedQueuedResumeSidecarFinalizationResult> {
   const prdContent = await readPrdContent(options.failedPrdDir, options.prdId);
-  const deterministicRecommendation = determineRecoveryRecommendation(options.summary);
+  const continueRepairEvidence = await projectRecoverySidecarResumeEvidence({
+    cwd: options.cwd,
+    setName: options.setName,
+    prdId: options.prdId,
+    outputDir: options.config.plan.outputDir,
+    ...(options.trunkBranch !== undefined ? { trunkBranch: options.trunkBranch } : {}),
+    featureBranch: options.summary.featureBranch,
+    baseBranch: options.summary.baseBranch,
+    failureSummary: options.summary,
+    dbPath: resolve(options.cwd, '.eforge', 'monitor.db'),
+  });
+  const deterministicRecommendation = determineRecoveryRecommendation(options.summary, continueRepairEvidence.continueRepairEligibility);
   const agentConfig = resolveAgentConfig('recovery-analyst', options.config);
   let analystVerdict: RecoveryVerdict | null = null;
   let analystError: string | undefined;
@@ -95,7 +106,7 @@ async function writeCurrentSidecar(options: FailedQueuedResumeSidecarFinalizatio
   options.abortController?.signal.addEventListener('abort', abortForwarder, { once: true });
   try {
     try {
-      for await (const event of runRecoveryAnalyst({ ...agentConfig, harness: options.agentRuntimes.forRole('recovery-analyst'), prdContent, summary: options.summary, prdId: options.prdId, cwd: options.cwd, verbose: options.verbose, abortController: recoveryAbort, phase: 'standalone' })) {
+      for await (const event of runRecoveryAnalyst({ ...agentConfig, harness: options.agentRuntimes.forRole('recovery-analyst'), prdContent, summary: options.summary, deterministicRecommendation, continueRepairEligibility: continueRepairEvidence.continueRepairEligibility, prdId: options.prdId, cwd: options.cwd, verbose: options.verbose, abortController: recoveryAbort, phase: 'standalone' })) {
         if (event.type === 'recovery:complete') analystVerdict = event.verdict;
         if (event.type === 'recovery:error') parseError = event.error;
       }
@@ -103,7 +114,7 @@ async function writeCurrentSidecar(options: FailedQueuedResumeSidecarFinalizatio
       analystError = err instanceof Error ? err.message : String(err);
     }
     const verdict = selectFinalVerdict({ deterministicRecommendation, analystVerdict, analystError, parseError, summary: options.summary });
-    return await writeSidecarOrInvalidate(options, options.summary, verdict, 'refreshed');
+    return await writeSidecarOrInvalidate(options, options.summary, verdict, 'refreshed', continueRepairEvidence);
   } finally {
     clearTimeout(timer);
     options.abortController?.signal.removeEventListener('abort', abortForwarder);
@@ -130,12 +141,12 @@ async function writeDegradedSidecar(options: FailedQueuedResumeSidecarFinalizati
     confidence: 'low',
     rationale: options.reason,
     completedWork: [],
-    remainingWork: ['Review the failed queued resume and decide whether to retry, split, or abandon the PRD.'],
-    risks: ['Current resumed-run evidence was incomplete; stale pre-resume recovery sidecars are not authoritative.'],
+    remainingWork: ['Review the failed queued repair and decide whether to continue-and-repair, retry from scratch, abandon, or perform bounded manual replanning.'],
+    risks: ['Current continue-and-repair run evidence was incomplete; stale pre-repair recovery sidecars are not authoritative.'],
     partial: true,
     recoveryError: options.reason,
     recommendationSource: 'manual-fallback',
-    recommendationRationale: 'Failed queued-resume recovery sidecar finalization used a degraded manual fallback.',
+    recommendationRationale: 'Failed continue-and-repair sidecar finalization used a degraded manual fallback.'
   };
   return writeSidecarOrInvalidate(options, summary, verdict, 'degraded');
 }
@@ -145,9 +156,10 @@ async function writeSidecarOrInvalidate(
   summary: BuildFailureSummary,
   verdict: RecoveryVerdict,
   status: 'refreshed' | 'degraded',
+  precomputedContinueRepairEvidence?: Awaited<ReturnType<typeof projectRecoverySidecarResumeEvidence>>,
 ): Promise<FailedQueuedResumeSidecarFinalizationResult> {
   try {
-    const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+    const continueRepairEvidence = precomputedContinueRepairEvidence ?? await projectRecoverySidecarResumeEvidence({
       cwd: options.cwd,
       setName: options.setName,
       prdId: options.prdId,
@@ -158,7 +170,7 @@ async function writeSidecarOrInvalidate(
       failureSummary: summary,
       dbPath: resolve(options.cwd, '.eforge', 'monitor.db'),
     });
-    const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: options.failedPrdDir, prdId: options.prdId, summary, verdict, resumeEvidence });
+    const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: options.failedPrdDir, prdId: options.prdId, summary, verdict, continueRepairEvidence });
     return { status, mdPath, jsonPath };
   } catch (err) {
     await removeRecoverySidecars(options.failedPrdDir, options.prdId);
@@ -187,10 +199,10 @@ function inspectFailedResumeEvidence(dbPath: string, setName: string, resumeRunI
     const db = new DatabaseSync(dbPath);
     try {
       const run = resumeRunId !== undefined
-        ? db.prepare(`SELECT id FROM runs WHERE id = ? AND plan_set = ? AND command = 'resume' AND status IN ('running', 'failed') LIMIT 1`).get(resumeRunId, setName) as { id: string } | undefined
+        ? db.prepare(`SELECT id FROM runs WHERE id = ? AND plan_set = ? AND command IN ('resume', 'continue-repair') AND status IN ('running', 'failed') LIMIT 1`).get(resumeRunId, setName) as { id: string } | undefined
         : resumeSessionId !== undefined
-          ? db.prepare(`SELECT id FROM runs WHERE session_id = ? AND plan_set = ? AND command = 'resume' AND status IN ('running', 'failed') ORDER BY started_at DESC, id DESC LIMIT 1`).get(resumeSessionId, setName) as { id: string } | undefined
-          : db.prepare(`SELECT id FROM runs WHERE plan_set = ? AND command = 'resume' AND status = 'failed' ORDER BY started_at DESC, id DESC LIMIT 1`).get(setName) as { id: string } | undefined;
+          ? db.prepare(`SELECT id FROM runs WHERE session_id = ? AND plan_set = ? AND command IN ('resume', 'continue-repair') AND status IN ('running', 'failed') ORDER BY started_at DESC, id DESC LIMIT 1`).get(resumeSessionId, setName) as { id: string } | undefined
+          : db.prepare(`SELECT id FROM runs WHERE plan_set = ? AND command IN ('resume', 'continue-repair') AND status = 'failed' ORDER BY started_at DESC, id DESC LIMIT 1`).get(setName) as { id: string } | undefined;
       if (!run) return { hasFailedResumeRun: false, hasActivationEvidence: false, hasSummarizableEvidence: false };
       const eventCounts = db.prepare(`SELECT
         SUM(CASE WHEN type IN ('build:resume:start', 'build:resume:artifacts') THEN 1 ELSE 0 END) AS activationCount,

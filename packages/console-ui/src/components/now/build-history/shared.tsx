@@ -49,7 +49,8 @@ function phaseGerund(phase: string): string {
   switch (phase) {
     case 'compile': return 'compiling';
     case 'build': return 'building';
-    case 'resume': return 'resuming';
+    case 'resume':
+    case 'continue-repair': return 'continuing repair';
     case 'enqueue': return 'queuing';
     case 'adopt': return 'adopting';
     default: return phase;

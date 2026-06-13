@@ -1116,7 +1116,7 @@ V1 intentionally keeps several boundaries deferred: extension-authored arbitrary
 
 Agent-run hooks fire before each agent invocation. Handlers can inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope their contribution, then return `{ promptAppend, tools, allowedTools, disallowedTools }` to inject additional prompt context, expose extension tools for that run, and tune harness availability lists. Prompt fragments are appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section identifying the contributing extension. Multiple extensions contribute in registration order. The runtime is fail-open: a handler that throws or exceeds `extensions.agentContextHookTimeoutMs` emits a typed diagnostic event but does not abort the agent run.
 
-Policy gates run at three blocking points: `beforeQueueDispatch` runs before a queued PRD is dispatched, `beforePlanMerge` runs before a plan worktree is merged, and `beforeFinalMerge` runs before the completed feature branch is merged into the base branch. Gate contexts are read-only snapshots and include `ctx.logger` and `ctx.exec`; `beforeQueueDispatch` contexts also include optional `compiledResume` metadata for complete compiled-resume queue items. They are not a sandbox. Extensions remain trusted, unsandboxed code running in the daemon/worker process.
+Policy gates run at three blocking points: `beforeQueueDispatch` runs before a queued PRD is dispatched, `beforePlanMerge` runs before a plan worktree is merged, and `beforeFinalMerge` runs before the completed feature branch is merged into the base branch. Gate contexts are read-only snapshots and include `ctx.logger` and `ctx.exec`; `beforeQueueDispatch` contexts also include optional `compiledResume` metadata for continue-repair queue items that carry complete compiled-resume frontmatter. They are not a sandbox. Extensions remain trusted, unsandboxed code running in the daemon/worker process.
 
 Policy decisions are strictly validated. `{ decision: 'allow' }` lets the operation continue. `{ decision: 'block', reason }` blocks it and surfaces the reason. `{ decision: 'require-approval', reason }` blocks the gated operation; eforge does not provide approval workflow, approval state, or Console approval UI in the current release. Thrown errors, timeouts, and invalid decisions emit `extension:policy:*` diagnostics and follow `extensions.policyGateFailurePolicy`: `fail-closed` blocks, while `fail-open` allows continuation after recording diagnostics.
 
@@ -2372,7 +2372,7 @@ interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   priority?: number;
   profile?: string;
   dependsOn: string[];
-  /** Present only for complete compiled-resume queue items; omitted for normal PRDs. */
+  /** Present only for continue-repair queue items with complete compiled-resume frontmatter; omitted for normal PRDs. */
   compiledResume?: QueueDispatchCompiledResumeMetadata;
 }
 
@@ -2406,7 +2406,7 @@ interface ExtensionDiff {
 }
 ```
 
-`compiledResume` is available only on `beforeQueueDispatch` contexts for PRDs with complete compiled-resume frontmatter. The SDK exposes the parsed camelCase shape shown above rather than the raw `resume_*` frontmatter keys. Normal PRDs omit the property entirely.
+`compiledResume` is available only on `beforeQueueDispatch` contexts for continue-repair PRDs with complete compiled-resume frontmatter. The SDK exposes the parsed camelCase shape shown above rather than the raw `resume_*` frontmatter keys. Normal PRDs omit the property entirely.
 
 ---
 
@@ -3307,17 +3307,17 @@ Or from Claude Code or Pi:
 The recovery flow:
 
 1. Call `eforge_queue_list` to find failed PRDs.
-2. Read the recovery sidecar (`eforge_read_recovery_sidecar`) to get the recovery verdict.
+2. Read the recovery sidecar (`eforge_read_recovery_sidecar`) to get the recovery verdict and bounded evidence.
 3. The verdict is one of:
-   - `retry` - move the failed PRD back to the queue root and remove recovery sidecars so auto-build can try it again
-   - `split` - enqueue a successor PRD from `suggestedSuccessorPrd` while keeping the failed PRD and sidecars as an audit trail; when the sidecar records landed or merged partial work, the successor starts from the preserved feature branch while targeting the original base branch
+   - `retry` - move the failed PRD back to the queue root and remove recovery sidecars so auto-build can try it again from scratch
+   - `continue-repair` - queue the failed PRD through the compiled-artifact repair path, preserving existing queue controls and reactivating skipped descendants whose dependency chain reaches the parent
    - `abandon` - remove the failed PRD and recovery sidecars from the queue because the work should not continue
-   - `manual` - make no queue changes; a human must inspect the recovery report and decide what to do
-4. Check the sidecar's compiled-build resume fields. If `resumeEligibility.eligible` is true or `recoveryOptions` recommends `eforge_resume_build`, prefer that recommendation; if the sidecar says resume is ineligible, show the bounded reason. When older sidecars do not contain resume fields, use the read-only resume eligibility preflight (`GET /api/recover/resume-eligibility`) or Console preflight where available; in Claude Code or Pi, offer the resume command/tool only after explicit confirmation and let the daemon reject ineligible resumes rather than inferring eligibility manually from branch/artifact presence. Compiled-build resume (`eforge_resume_build` in Pi, `mcp__eforge__eforge_resume_build` in Claude Code, or `eforge resume <prdId>` via CLI) remains a separate queue-native option for rerunning the original compiled artifacts, not an `eforge_apply_recovery` verdict. Resume queues the failed PRD for scheduler dispatch, so it is subject to normal queue controls: parallelism limits, pause state, dependency gating, and profile routing. After dispatch and a successful resume, the engine automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics; after an activated failed resume, it rolls the PRD back to `failed/` and refreshes or degrades/removes the recovery sidecar so stale pre-resume evidence is not authoritative.
+   - `manual` - make no queue changes; a human must inspect the recovery report and decide whether bounded manual replanning or a deliberately authored follow-up PRD is appropriate
+4. Check the sidecar's continue-and-repair fields. If `continueRepairEligibility.eligible` is true or `recoveryOptions` recommends `continue-repair`, present one primary **Continue and repair build** action. If the sidecar says continue-and-repair is ineligible, show the bounded reason and do not infer eligibility manually from branch or artifact presence.
 5. Confirm the action with the user.
-6. Apply via `eforge_apply_recovery` or the standalone CLI command `eforge apply-recovery <prdId>` for verdict-based actions. For compiled-build resume, call `eforge_resume_build` (Pi), `mcp__eforge__eforge_resume_build` (Claude Code), or `eforge resume <prdId> [--set-name <name>] [--profile <name>]` (CLI) with the `prdId`; these commands queue the resume request and return queued metadata rather than a local worker session.
+6. Apply via `eforge_apply_recovery` / `eforge apply-recovery <prdId>` for `retry` and `abandon`. For `continue-repair`, call `eforge_continue_repair` (Pi), `mcp__eforge__eforge_continue_repair` (Claude Code), or `eforge continue-repair <prdId> [--set-name <name>] [--profile <name>]` (CLI). These commands queue the continued build and return queued metadata rather than a local worker session.
 
-When you are present in the Console Now dashboard, failed builds appear in the Needs attention strip with a **Recover…** action. The root-hosted recovery dialog leads with the recovery sidecar verdict and a single confirmed primary action (`retry` re-queues the PRD, `split` enqueues the successor PRD and may continue from the preserved feature branch when landed partial work is recorded, `abandon` archives the failed PRD, and `manual` shows manual-review guidance with no apply button), the rendered report may include sidecar-provided compiled-build resume guidance, and the dialog offers a confirmed **Resume compiled build** action when compiled artifacts are eligible. Compiled-build resume queues the failed PRD and waits for scheduler dispatch under the same queue controls described above; after dispatch and a successful resume it retires the failed queue item and reactivates skipped descendants automatically, while an activated failed resume returns the PRD to `failed/` with refreshed or degraded recovery evidence when possible. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue for explicit retry/repair and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. When no sidecar exists yet the dialog shows `recovery pending` with a confirmed **Run recovery analysis** action. Every mutating, queueing, or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
+When you are present in the Console Now dashboard, failed builds appear in the Needs attention strip with a **Recover…** action. The root-hosted recovery dialog leads with the recovery sidecar verdict and exactly one confirmed primary action: retry from scratch, continue and repair build from preserved compiled artifacts, abandon, or manual review / manual replanning guidance with no apply button. Continue-and-repair waits for scheduler dispatch under the same queue controls described above; after dispatch and a successful continued build it retires the failed queue item and reactivates skipped descendants automatically, while an activated failed continue-and-repair run returns the PRD to `failed/` with refreshed or degraded recovery evidence when possible. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue for explicit retry/repair and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. When no sidecar exists yet the dialog shows `recovery pending` with a confirmed **Run recovery analysis** action. Every mutating, queueing, or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
 
 ## Untrusted project extension blocks loading
 
@@ -3867,7 +3867,7 @@ Analyse a failed build and write recovery sidecar files
 
 **Full command:** `eforge apply-recovery`
 
-Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)
+Apply the recovery verdict for a failed build plan (retry from scratch, continue-and-repair, abandon, or manual)
 
 
 **Options:**
@@ -3877,11 +3877,11 @@ Apply the recovery verdict for a failed build plan (requeue, enqueue successor, 
 | `--cwd <cwd>` | Working directory override |
 | `--no-monitor` | Disable web monitor |
 
-### `resume`
+### `continue-repair`
 
-**Full command:** `eforge resume`
+**Full command:** `eforge continue-repair`
 
-Queue a compiled build resume for scheduler dispatch
+Continue and repair build from preserved compiled artifacts
 
 
 **Options:**
@@ -3889,11 +3889,9 @@ Queue a compiled build resume for scheduler dispatch
 | Flag | Description |
 |------|-------------|
 | `--set-name <setName>` | Override the set name; when omitted, resolved from recovery sidecar or derived from the prdId |
-| `--profile <name>` | Override active profile for this resumed build |
+| `--profile <name>` | Override active profile for this continue-and-repair build |
 | `--cwd <cwd>` | Working directory override |
 | `--verbose` | Print additional queued metadata |
-| `--no-monitor` | Accepted for compatibility; the daemon route is still used |
-| `--session-id <uuid>` | Accepted for compatibility; ignored because resume is queued |
 
 ### `playbook`
 
@@ -4035,6 +4033,8 @@ Total routes: 85
 | `cancel` | `/api/cancel/:sessionId` |
 | `configShow` | `/api/config/show` |
 | `configValidate` | `/api/config/validate` |
+| `continueRepair` | `/api/recover/continue-repair` |
+| `continueRepairEligibility` | `/api/recover/continue-repair/eligibility` |
 | `daemonEvents` | `/api/daemon-events` |
 | `daemonStop` | `/api/daemon/stop` |
 | `diff` | `/api/diff/:sessionId/:planId` |
@@ -4087,8 +4087,6 @@ Total routes: 85
 | `queueRemove` | `/api/queue/:prdId` |
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
-| `resumeBuild` | `/api/recover/resume-build` |
-| `resumeEligibility` | `/api/recover/resume-eligibility` |
 | `runs` | `/api/runs` |
 | `runState` | `/api/run-state/:id` |
 | `runSummary` | `/api/run-summary/:id` |
@@ -4311,7 +4309,7 @@ Total variants: 226
 | `recovery:complete` | `prdId`, `sidecarJsonPath`, `sidecarMdPath`, `verdict` |
 | `recovery:error` | `error`, `prdId`, `rawOutput` |
 | `recovery:apply:start` | `prdId` |
-| `recovery:apply:complete` | `noAction`, `prdId`, `successorPrdId`, `verdict` |
+| `recovery:apply:complete` | `noAction`, `prdId`, `verdict` |
 | `recovery:apply:error` | `message`, `prdId` |
 | `daemon:run:upsert` | `run` |
 | `daemon:auto-build:paused` | `reason` |
@@ -4619,8 +4617,8 @@ Total tools: 20
 | `eforge_init` | Initialize eforge in a project. The skill is responsible for picking harness/model/effort per tier interactively; the tool is a pure persister. Pass `profile.tiers` with one self-contained recipe per tier (planning/implementation/review/evaluation). Each tier carries its own harness + model + effort. Pass `trunkBranch` and `allowLocalMergeToTrunk` to configure the branch protection policy. |
 | `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
-| `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon). |
-| `eforge_resume_build` | Queue a compiled build resume for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. |
+| `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue from scratch (retry), queue continue-and-repair from preserved artifacts, archive (abandon), or report manual no-action. |
+| `eforge_continue_repair` | Queue a continue-and-repair build from preserved compiled artifacts for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. |
 | `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook's frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback. |
 | `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook's content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed (default activeBuildPolicy), 'deferred' means the sync was blocked by active builds and recorded for potential retry (requires activeBuildPolicy: 'defer'). |
@@ -4647,8 +4645,8 @@ Total tools: 21
 | `eforge_confirm_build` | Open an editor-first review flow so the user can revise, confirm, or cancel a build source before enqueuing. Returns the user's choice and confirmed source. |
 | `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
-| `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon and completes synchronously — no worker subprocess is spawned. Response shape: { verdict: 'retry' \| 'split' \| 'abandon' \| 'manual', commitSha?: string, successorPrdId?: string, noAction?: boolean }. commitSha is returned for retry, split, and abandon verdicts. successorPrdId is returned only for split (the newly-enqueued successor PRD). noAction: true is returned for manual — no mutation occurs and the call is effectively a no-op. |
-| `eforge_resume_build` | Queue a failed build to resume from its compiled artifacts. Use when a PRD failed after the compile stage and has a feature branch with partial compiled work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool. |
+| `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon and completes synchronously — no worker subprocess is spawned. Response shape includes verdict: 'retry' \| 'continue-repair' \| 'abandon' \| 'manual'. retry starts fresh, continue-repair queues preserved compiled artifacts for repair, abandon archives the failed PRD, and manual returns noAction: true without mutation. |
+| `eforge_continue_repair` | Queue a continue-and-repair build from preserved compiled artifacts. Use when a failed PRD has eligible compiled artifacts and should continue from them with repair work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool. |
 | `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook's frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback. |
 | `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook's content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. When active builds are running, the sync may be deferred — check the outcome field in the response and retry when active builds complete, or use activeBuildPolicy: 'defer' to get a retryable deferred result instead of skipping. |
@@ -4675,6 +4673,6 @@ Rows are generated from the docs generator skill-pair map and frontmatter in `ef
 | `status` | `eforge-status` | Check eforge run status and queue state via MCP tools |
 | `update` | `eforge-update` | Check for eforge updates and guide through updating the CLI package, daemon, and plugin |
 | `playbook` | `eforge-playbook` | Create, edit, run, list, and promote eforge playbooks — reusable recurring-workflow templates |
-| `recover` | `eforge-recover` | Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, split, abandon, resume from compiled artifacts, or manual) |
+| `recover` | `eforge-recover` | Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, continue-repair, abandon, or manual) |
 
 <!-- end-section: tools -->

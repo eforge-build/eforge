@@ -84,7 +84,7 @@ export const sessionLifecycleEventVariants = [
     type: Type.Literal('phase:start'),
     runId: Type.String(),
     planSet: Type.String(),
-    command: Type.Union([Type.Literal('compile'), Type.Literal('build'), Type.Literal('resume')]),
+    command: Type.Union([Type.Literal('compile'), Type.Literal('build'), Type.Literal('resume'), Type.Literal('continue-repair')]),
   }),
   Type.Object({
     type: Type.Literal('phase:end'),

@@ -9,7 +9,7 @@ import { forgeCommit, retryOnLock } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
 import type { ModelTracker } from './model-tracker.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
-import type { RecoverySidecarResumeEvidence } from './recovery/resume-sidecar.js';
+import type { RecoverySidecarContinueRepairEvidence } from './recovery/resume-sidecar.js';
 import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
@@ -29,12 +29,6 @@ const prdFrontmatterSchema = z.object({
   stack_provider: z.literal('git-spice').optional(),
   landing: z.enum(['pr', 'merge', 'leave']).optional(),
   landing_auto_merge: z.boolean().optional(),
-  recovery_from: z.string().min(1).optional(),
-  recovery_set_name: z.string().min(1).optional(),
-  recovery_feature_branch: z.string().min(1).optional(),
-  recovery_base_branch: z.string().min(1).optional(),
-  /** Source (failed) PRD id of a recovery `split` successor; always written so the crash-window idempotency scan can match a successor back to its failed PRD before the applied marker exists. */
-  recovery_split_source: z.string().min(1).optional(),
   resume_mode: z.literal('compiled').optional(),
   resume_from: z.string().min(1).optional(),
   resume_set_name: z.string().min(1).optional(),
@@ -44,43 +38,12 @@ const prdFrontmatterSchema = z.object({
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
 
-export interface RecoveryContinuationFrontmatter {
-  sourcePrdId: string;
-  setName: string;
-  featureBranch: string;
-  baseBranch: string;
-}
-
 export interface CompiledResumeFrontmatter {
   mode: 'compiled';
   sourcePrdId: string;
   setName: string;
   featureBranch: string;
   baseBranch: string;
-}
-
-export function getRecoveryContinuationFrontmatter(frontmatter: PrdFrontmatter): RecoveryContinuationFrontmatter | undefined {
-  const fields = {
-    recovery_from: frontmatter.recovery_from,
-    recovery_set_name: frontmatter.recovery_set_name,
-    recovery_feature_branch: frontmatter.recovery_feature_branch,
-    recovery_base_branch: frontmatter.recovery_base_branch,
-  };
-  const present = Object.values(fields).filter((value) => value !== undefined);
-  if (present.length === 0) return undefined;
-  if (present.length !== 4) {
-    const missing = Object.entries(fields)
-      .filter(([, value]) => value === undefined)
-      .map(([key]) => key)
-      .join(', ');
-    throw new Error(`Incomplete recovery continuation frontmatter; missing: ${missing}`);
-  }
-  return {
-    sourcePrdId: fields.recovery_from,
-    setName: fields.recovery_set_name,
-    featureBranch: fields.recovery_feature_branch,
-    baseBranch: fields.recovery_base_branch,
-  } as RecoveryContinuationFrontmatter;
 }
 
 export function getCompiledResumeFrontmatter(frontmatter: PrdFrontmatter): CompiledResumeFrontmatter | undefined {
@@ -412,7 +375,7 @@ export async function moveFailedWithSidecar(
   verdict: RecoveryVerdict,
   _modelTracker: ModelTracker | undefined,
   _cwd: string,
-  resumeEvidence?: RecoverySidecarResumeEvidence,
+  continueRepairEvidence?: RecoverySidecarContinueRepairEvidence,
 ): Promise<{ mdPath: string; jsonPath: string; destPath: string }> {
   const dir = resolve(filePath, '..');
   const destDir = resolve(dir, 'failed');
@@ -425,7 +388,7 @@ export async function moveFailedWithSidecar(
   await rename(filePath, destPath);
 
   // Write both sidecar files (atomic temp-then-rename inside writeRecoverySidecar)
-  const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: destDir, prdId, summary, verdict, ...(resumeEvidence !== undefined ? { resumeEvidence } : {}) });
+  const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: destDir, prdId, summary, verdict, ...(continueRepairEvidence !== undefined ? { continueRepairEvidence } : {}) });
 
   return { mdPath, jsonPath, destPath };
 }
@@ -613,11 +576,6 @@ export interface EnqueuePrdOptions {
   stack_id?: string;
   stack_parent?: string;
   stack_provider?: 'git-spice';
-  recovery_from?: string;
-  recovery_set_name?: string;
-  recovery_feature_branch?: string;
-  recovery_base_branch?: string;
-  recovery_split_source?: string;
   acceptanceCriteriaInventory?: CanonicalAcceptanceCriteriaInventory;
 }
 
@@ -665,11 +623,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     stack_id,
     stack_parent,
     stack_provider,
-    recovery_from,
-    recovery_set_name,
-    recovery_feature_branch,
-    recovery_base_branch,
-    recovery_split_source,
     acceptanceCriteriaInventory,
   } = options;
 
@@ -714,11 +667,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(stack_provider !== undefined && { stack_provider }),
     ...(landingAction !== undefined && { landing: landingAction }),
     ...(landingAutoMerge !== undefined && { landing_auto_merge: landingAutoMerge }),
-    ...(recovery_from !== undefined && { recovery_from }),
-    ...(recovery_set_name !== undefined && { recovery_set_name }),
-    ...(recovery_feature_branch !== undefined && { recovery_feature_branch }),
-    ...(recovery_base_branch !== undefined && { recovery_base_branch }),
-    ...(recovery_split_source !== undefined && { recovery_split_source }),
   };
   const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
   if (!frontmatterResult.success) {
@@ -757,11 +705,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (landingAutoMerge !== undefined) {
     fmLines.push(`landing_auto_merge: ${landingAutoMerge}`);
   }
-  // Recovery continuation/idempotency frontmatter, serialized in declaration order.
-  for (const [key, value] of Object.entries({ recovery_from, recovery_set_name, recovery_feature_branch, recovery_base_branch, recovery_split_source })) {
-    if (value !== undefined) fmLines.push(`${key}: ${value}`);
-  }
-
   const serializedBody = acceptanceCriteriaInventory ? appendAcceptanceCriteriaInventoryBlock(body, acceptanceCriteriaInventory).trimEnd() : body;
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${serializedBody}\n`;
   const filePath = resolve(absDir, `${slug}.md`);

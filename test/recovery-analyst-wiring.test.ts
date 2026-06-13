@@ -37,10 +37,10 @@ describe('runRecoveryAnalyst wiring', () => {
     };
   }
 
-  const SPLIT_OUTPUT = `Based on my analysis of the failure:
+  const CONTINUE_REPAIR_OUTPUT = `Based on my analysis of the failure:
 
-<recovery verdict="split" confidence="medium">
-  <rationale>Foundation work is preserved; API work remains incomplete due to the timeout.</rationale>
+<recovery verdict="continue-repair" confidence="medium">
+  <rationale>plan-01 has preserved compiled artifacts; continue-and-repair should reuse them.</rationale>
   <completedWork>
     <item>Database schema merged</item>
   </completedWork>
@@ -50,11 +50,10 @@ describe('runRecoveryAnalyst wiring', () => {
   <risks>
     <item>Timeout root cause unknown</item>
   </risks>
-  <suggestedSuccessorPrd># Successor PRD\n\nContinue the API work.</suggestedSuccessorPrd>
 </recovery>`;
 
   it('emits recovery:summary then recovery:complete for valid agent output', async () => {
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runRecoveryAnalyst({
@@ -72,7 +71,7 @@ describe('runRecoveryAnalyst wiring', () => {
 
     const complete = findEvent(events, 'recovery:complete');
     expect(complete).toBeDefined();
-    expect(complete!.verdict.verdict).toBe('split');
+    expect(complete!.verdict.verdict).toBe('continue-repair');
     expect(complete!.verdict.confidence).toBe('medium');
     expect(complete!.prdId).toBe('test-prd');
 
@@ -103,7 +102,7 @@ describe('runRecoveryAnalyst wiring', () => {
   });
 
   it('invokes harness with tools: "none"', async () => {
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     await collectEvents(runRecoveryAnalyst({
@@ -119,7 +118,7 @@ describe('runRecoveryAnalyst wiring', () => {
   });
 
   it('suppresses agent:message when verbose is false (default)', async () => {
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runRecoveryAnalyst({
@@ -134,7 +133,7 @@ describe('runRecoveryAnalyst wiring', () => {
   });
 
   it('emits agent:message when verbose is true', async () => {
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runRecoveryAnalyst({
@@ -150,7 +149,7 @@ describe('runRecoveryAnalyst wiring', () => {
   });
 
   it('always emits agent:result', async () => {
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runRecoveryAnalyst({
@@ -165,7 +164,7 @@ describe('runRecoveryAnalyst wiring', () => {
   });
 
   it('prompt includes prdContent, summary JSON, and schema YAML', async () => {
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     await collectEvents(runRecoveryAnalyst({
@@ -188,7 +187,7 @@ describe('runRecoveryAnalyst wiring', () => {
 
 
 
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     const summaryWithFailingPlans: BuildFailureSummary = {
@@ -230,7 +229,7 @@ describe('runRecoveryAnalyst wiring', () => {
 
     expect(prompt).toMatch(/every plan.*ID|all.*plan.*ID|must.*mention.*plan|plan.*ID.*rationale/i);
 
-    expect(prompt).toMatch(/split.*successor.*cover|successor.*PRD.*cover|split.*successor.*plan.*ID/i);
+    expect(prompt).toMatch(/continue-and-repair|successor PRD generation is removed|do not generate/i);
   });
 
   it('parses retry verdict correctly', async () => {
@@ -374,7 +373,7 @@ describe('runRecoveryAnalyst wiring', () => {
 
 
 
-    const backend = new StubHarness([{ resultText: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ resultText: CONTINUE_REPAIR_OUTPUT }]);
     const cwd = makeTempDir();
 
     const events = await collectEvents(runRecoveryAnalyst({
@@ -391,7 +390,7 @@ describe('runRecoveryAnalyst wiring', () => {
 
     const complete = findEvent(events, 'recovery:complete');
     expect(complete).toBeDefined();
-    expect(complete!.verdict.verdict).toBe('split');
+    expect(complete!.verdict.verdict).toBe('continue-repair');
     expect(complete!.prdId).toBe('test-prd');
 
 

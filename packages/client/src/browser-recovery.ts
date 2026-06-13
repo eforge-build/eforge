@@ -1,5 +1,5 @@
 /**
- * Browser-safe fetch helpers for the recovery and compiled-build resume routes.
+ * Browser-safe fetch helpers for the recovery and continue-and-repair routes.
  *
  * Console consumes these instead of inlining `/api/...` paths. Every helper
  * builds its URL from `API_ROUTES` and surfaces non-2xx responses as an Error
@@ -13,10 +13,10 @@ import type {
   RecoverResponse,
   ApplyRecoveryRequest,
   ApplyRecoveryResponse,
-  ResumeBuildRequest,
-  ResumeBuildResponse,
-  ResumeEligibilityRequest,
-  ResumeEligibilityResponse,
+  ContinueRepairRequest,
+  ContinueRepairResponse,
+  ContinueRepairEligibilityRequest,
+  ContinueRepairEligibilityResponse,
   AcceptSuccessPreviewRequest,
   AcceptSuccessPreviewResponse,
   AcceptSuccessRequest,
@@ -90,22 +90,22 @@ export function acceptRecoverySuccess(
   return postJson<AcceptSuccessResponse>(API_ROUTES.acceptRecoverySuccess, body, init);
 }
 
-/** Queue a compiled-build resume for scheduler dispatch. */
-export function startResumeBuild(
-  body: ResumeBuildRequest,
+/** Queue a continue-and-repair build for scheduler dispatch. */
+export function startContinueRepair(
+  body: ContinueRepairRequest,
   init?: RequestInit,
-): Promise<ResumeBuildResponse> {
-  return postJson<ResumeBuildResponse>(API_ROUTES.resumeBuild, body, init);
+): Promise<ContinueRepairResponse> {
+  return postJson<ContinueRepairResponse>(API_ROUTES.continueRepair, body, init);
 }
 
-/** Read-only preflight: check whether a compiled-build resume is available. */
-export function fetchResumeEligibility(
-  query: ResumeEligibilityRequest,
+/** Read-only preflight: check whether continue-and-repair is available. */
+export function fetchContinueRepairEligibility(
+  query: ContinueRepairEligibilityRequest,
   init?: RequestInit,
-): Promise<ResumeEligibilityResponse> {
+): Promise<ContinueRepairEligibilityResponse> {
   const params = new URLSearchParams({ prdId: query.prdId });
   if (query.setName !== undefined) {
     params.set('setName', query.setName);
   }
-  return getJson<ResumeEligibilityResponse>(`${API_ROUTES.resumeEligibility}?${params.toString()}`, init);
+  return getJson<ContinueRepairEligibilityResponse>(`${API_ROUTES.continueRepairEligibility}?${params.toString()}`, init);
 }

@@ -1121,7 +1121,7 @@ interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   priority?: number;
   profile?: string;
   dependsOn: string[];
-  /** Present only for complete compiled-resume queue items; omitted for normal PRDs. */
+  /** Present only for continue-repair queue items with complete compiled-resume frontmatter; omitted for normal PRDs. */
   compiledResume?: QueueDispatchCompiledResumeMetadata;
 }
 
@@ -1155,7 +1155,7 @@ interface ExtensionDiff {
 }
 ```
 
-`compiledResume` is available only on `beforeQueueDispatch` contexts for PRDs with complete compiled-resume frontmatter. The SDK exposes the parsed camelCase shape shown above rather than the raw `resume_*` frontmatter keys. Normal PRDs omit the property entirely.
+`compiledResume` is available only on `beforeQueueDispatch` contexts for continue-repair PRDs with complete compiled-resume frontmatter. The SDK exposes the parsed camelCase shape shown above rather than the raw `resume_*` frontmatter keys. Normal PRDs omit the property entirely.
 
 ---
 

@@ -19,7 +19,7 @@ describe('selectNowMetricsPanel — land rate', () => {
   it('buckets build run statuses into landed / failed / other and computes land rate', () => {
     const model = selectNowMetricsPanel([
       run({ id: 'completed-1', command: 'build', status: 'completed' }),
-      run({ id: 'completed-2', command: 'resume', status: 'success' }),
+      run({ id: 'completed-2', command: 'continue-repair', status: 'success' }),
       run({ id: 'failed-1', command: 'build', status: 'failed' }),
       run({ id: 'other-1', command: 'build', status: 'running' }),
     ]);

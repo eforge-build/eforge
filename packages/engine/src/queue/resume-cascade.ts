@@ -57,7 +57,7 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
   }
 
   const parent = snapshot.failed.find((prd) => prd.id === options.prdId);
-  if (!parent) return blockedRequeue(options, 'No failed queue PRD found for compiled-build resume requeue.');
+  if (!parent) return blockedRequeue(options, 'No failed queue PRD found for continue-and-repair requeue.');
 
   const descendantIds = findDescendantIds(options.prdId, snapshot.skipped);
   const moves = [
@@ -101,7 +101,7 @@ export async function requeueFailedPrdForCompiledResume(options: RequeueCompiled
     } else if (parentMove !== undefined && parentMoveApplied && await exists(parentMove.target)) {
       await writeFile(parentMove.target, originalParentContent, 'utf-8');
     }
-    return blockedRequeue(options, `Compiled resume requeue blocked: ${(err as Error).message}`);
+    return blockedRequeue(options, `Continue-and-repair requeue blocked: ${(err as Error).message}`);
   }
 
   await releasePrd(options.prdId, options.cwd);
@@ -114,7 +114,7 @@ export async function beginQueuedResume(options: QueuedResumeOptions): Promise<R
 
   const snapshot = await loadResumeQueueSnapshot(options);
   const parent = snapshot.failed.find((prd) => prd.id === options.prdId);
-  if (!parent) return { status: 'noop', prdId: options.prdId, reason: 'No failed queue PRD found for compiled-build resume.' };
+  if (!parent) return { status: 'noop', prdId: options.prdId, reason: 'No failed queue PRD found for continue-and-repair.' };
 
   const descendantIds = findDescendantIds(options.prdId, snapshot.skipped);
   const moves = [
@@ -143,7 +143,7 @@ export async function beginQueuedResume(options: QueuedResumeOptions): Promise<R
     } finally {
       await releasePrd(options.prdId, options.cwd);
     }
-    return blocked(options.prdId, `Queued resume start blocked: ${(err as Error).message}`);
+    return blocked(options.prdId, `Continue-and-repair start blocked: ${(err as Error).message}`);
   }
 
   return { status: 'started', prdId: options.prdId, movedDescendantIds: descendantIds };
@@ -157,7 +157,7 @@ export async function finalizeQueuedResumeSuccess(options: QueuedResumeOptions):
   const registry = await loadArtifactRegistry(options.cwd);
   const artifact = lookupArtifactByPrdId(registry, options.prdId);
   if (artifact?.status !== 'built') {
-    return blocked(options.prdId, `Cannot finalize queued resume for ${options.prdId}: no usable built artifact exists.`);
+    return blocked(options.prdId, `Cannot finalize continue-and-repair for ${options.prdId}: no usable built artifact exists.`);
   }
 
   const now = new Date().toISOString();
@@ -190,7 +190,7 @@ export async function rollbackQueuedResume(options: QueuedResumeOptions): Promis
   const rootExists = await exists(rootPath);
   if (rootExists && await exists(failedPath)) {
     await releasePrd(options.prdId, options.cwd);
-    return blocked(options.prdId, `Cannot roll back queued resume for ${options.prdId}: failed target already exists.`);
+    return blocked(options.prdId, `Cannot roll back continue-and-repair for ${options.prdId}: failed target already exists.`);
   }
 
   const descendantIds = findDescendantIds(options.prdId, snapshot.waiting);
@@ -270,7 +270,7 @@ async function moveNoOverwrite(source: string, target: string): Promise<void> {
 async function rollbackAppliedMoves(appliedMoves: Array<{ source: string; target: string }>): Promise<void> {
   for (const move of [...appliedMoves].reverse()) {
     if (!await exists(move.target)) continue;
-    if (await exists(move.source)) throw new Error(`Cannot roll back queued resume move: ${basename(move.source)} already exists.`);
+    if (await exists(move.source)) throw new Error(`Cannot roll back continue-and-repair move: ${basename(move.source)} already exists.`);
     await moveNoOverwrite(move.target, move.source);
   }
 }

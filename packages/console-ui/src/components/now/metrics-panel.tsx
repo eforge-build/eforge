@@ -1,5 +1,5 @@
 /**
- * MetricsPanel — at-a-glance build health from actual build/resume run history.
+ * MetricsPanel — at-a-glance build health from actual build/continue-and-repair run history.
  * Enqueue and compile bookkeeping runs are excluded so quick-read visuals match
  * user-visible build outcomes.
  */

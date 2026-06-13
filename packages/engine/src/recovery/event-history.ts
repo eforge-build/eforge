@@ -35,7 +35,7 @@ function selectRunForEventHistory(db: DatabaseSync, setName: string, runId?: str
     `SELECT r.id, r.command, r.started_at AS startedAt
      FROM runs r
      WHERE r.plan_set = ?
-       AND r.command IN ('build', 'resume')
+       AND r.command IN ('build', 'resume', 'continue-repair')
        AND r.status = 'failed'
        AND EXISTS (
          SELECT 1

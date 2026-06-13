@@ -7,7 +7,7 @@ import { startControlRouteHarness, type ControlRouteHarness } from './routes-con
 let harness: ControlRouteHarness | undefined;
 afterEach(async () => { await harness?.close(); harness = undefined; });
 
-describe('recovery and resume route modules', () => {
+describe('recovery and continue-repair route modules', () => {
   it('rejects cross-site sensitive requests', async () => {
     harness = await startControlRouteHarness();
     const res = await harness.rawPost(API_ROUTES.recover, JSON.stringify({}), { host: 'evil.example', 'content-type': 'application/json' });
@@ -38,11 +38,11 @@ describe('recovery and resume route modules', () => {
     const failed = join(harness.cwd, '.eforge', 'queue', 'failed');
     await mkdir(failed, { recursive: true });
     await writeFile(join(failed, 'prd-applied.recovery.md'), '# recovery');
-    await writeFile(join(failed, 'prd-applied.recovery.json'), JSON.stringify({ schemaVersion: 3, generatedAt: new Date(0).toISOString(), prdId: 'prd-applied', setName: 'set-1', verdict: { verdict: 'split', confidence: 'high', rationale: 'Partial work landed.', completedWork: [], remainingWork: [], risks: [], suggestedSuccessorPrd: '# Successor\n\nContinue.' }, report: { operatorSummary: 'Partial work landed.', recommendedAction: 'Split.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId: 'prd-applied', setName: 'set-1', featureBranch: 'eforge/set-1', baseBranch: 'main', failedAt: new Date(0).toISOString() }, plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [] }, applied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'prd-applied-successor' } }));
+    await writeFile(join(failed, 'prd-applied.recovery.json'), JSON.stringify({ schemaVersion: 3, generatedAt: new Date(0).toISOString(), prdId: 'prd-applied', setName: 'set-1', verdict: { verdict: 'continue-repair', confidence: 'high', rationale: 'Preserved artifacts are available.', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'Preserved artifacts are available.', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId: 'prd-applied', setName: 'set-1', featureBranch: 'eforge/set-1', baseBranch: 'main', failedAt: new Date(0).toISOString() }, plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], diffStat: '', modelsUsed: [] }, applied: { action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' } }));
     const res = await harness.get(`${API_ROUTES.readRecoverySidecar}?prdId=prd-applied`);
     expect(res.status).toBe(200);
-    const body = await res.json() as { json: { applied?: { action?: string; successorPrdId?: string } } };
-    expect(body.json.applied).toEqual({ action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'prd-applied-successor' });
+    const body = await res.json() as { json: { applied?: { action?: string } } };
+    expect(body.json.applied).toEqual({ action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' });
   });
 
   it('rejects cross-site accept-success preview and apply requests', async () => {
@@ -59,11 +59,11 @@ describe('recovery and resume route modules', () => {
     expect((await harness.get(`${API_ROUTES.acceptRecoverySuccessPreview}?prdId=ghost`)).status).toBe(404);
   });
 
-  it('validates resume requeue requests without spawning a worker', async () => {
+  it('validates continue-repair requeue requests without spawning a worker', async () => {
     const calls: unknown[] = [];
-    harness = await startControlRouteHarness({ serverOptions: { workerTracker: { spawnWorker: (command, args) => { calls.push([command, args]); return { sessionId: 'resume-1', pid: 9 }; }, cancelWorker: () => false } } });
-    expect((await harness.postJson(API_ROUTES.resumeBuild, null)).status).toBe(400);
-    const res = await harness.postJson(API_ROUTES.resumeBuild, { prdId: 'prd-1', setName: 'set-1' });
+    harness = await startControlRouteHarness({ serverOptions: { workerTracker: { spawnWorker: (command, args) => { calls.push([command, args]); return { sessionId: 'continue-1', pid: 9 }; }, cancelWorker: () => false } } });
+    expect((await harness.postJson(API_ROUTES.continueRepair, null)).status).toBe(400);
+    const res = await harness.postJson(API_ROUTES.continueRepair, { prdId: 'prd-1', setName: 'set-1' });
     expect(res.status).not.toBe(200); expect(calls).toEqual([]);
   });
 });

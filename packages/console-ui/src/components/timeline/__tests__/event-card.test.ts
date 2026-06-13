@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getVerdictChipClass,
   getConfidenceClass,
+  asVerdict,
   type RecoveryVerdictValue,
   type RecoveryConfidenceValue,
 } from '@/components/recovery/verdict-chip';
@@ -94,8 +95,12 @@ describe('EventCard recovery:complete rendering branch', () => {
     expect(getRecoveryVerdictProps(event)).toBeNull();
   });
 
+  it('rejects removed recovery split verdicts', () => {
+    expect(asVerdict('split')).toBeUndefined();
+  });
+
   it('chip styling is valid for all verdict/confidence combinations from recovery events', () => {
-    const verdicts: RecoveryVerdictValue[] = ['retry', 'split', 'abandon', 'manual'];
+    const verdicts: RecoveryVerdictValue[] = ['retry', 'continue-repair', 'abandon', 'manual'];
     const confidences: RecoveryConfidenceValue[] = ['low', 'medium', 'high'];
 
     verdicts.forEach((verdict) => {

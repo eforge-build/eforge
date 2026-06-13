@@ -81,8 +81,8 @@ async function recoverWithNetworkAnalystFailure(cwd: string, setName: string, pr
   return { sidecar, stub };
 }
 
-describe('EforgeEngine.recover() sidecar resume projection when recovery analyst has network failure', () => {
-  it('keeps compiled-build resume recommended when read-only projection is eligible', async () => {
+describe('EforgeEngine.recover() sidecar continue-repair projection when recovery analyst has network failure', () => {
+  it('keeps manual fallback when projected artifacts are eligible but failure context is partial', async () => {
     const prdId = 'eligible-network-fallback-prd';
     const setName = 'eligible-network-fallback-set';
     const cwd = await initFailedPrdFixture(prdId);
@@ -94,13 +94,11 @@ describe('EforgeEngine.recover() sidecar resume projection when recovery analyst
     expect(stub.calls).toHaveLength(1);
     expect(sidecar.verdict.recoveryError).toContain(NETWORK_TIMEOUT);
     expect(sidecar.verdict.verdict).toBe('manual');
-    expect(sidecar.resumeEligibility.eligible).toBe(true);
-    expect(sidecar.recoveryOptions).toContainEqual(expect.objectContaining({
-      kind: 'compiled-build-resume',
-      action: 'eforge_resume_build',
-      recommended: true,
-    }));
-    expect(sidecar.report.recommendedAction).toContain('eforge_resume_build');
+    expect(sidecar.verdict.recommendationSource).toBe('manual-fallback');
+    expect(sidecar.continueRepairEligibility.eligible).toBe(true);
+    expect(sidecar.continueRepairEligibility.partial).toBe(true);
+    expect(sidecar.recoveryOptions).toBeUndefined();
+    expect(sidecar.report.recommendedAction).toContain('Manual review / manual replanning required');
   });
 
   it('stays manual with an ineligibility reason when read-only projection is ineligible', async () => {
@@ -114,11 +112,11 @@ describe('EforgeEngine.recover() sidecar resume projection when recovery analyst
     expect(stub.calls).toHaveLength(1);
     expect(sidecar.verdict.recoveryError).toContain(NETWORK_TIMEOUT);
     expect(sidecar.verdict.verdict).toBe('manual');
-    expect(sidecar.resumeEligibility.eligible).toBe(false);
-    expect(sidecar.resumeEligibility.reason).toEqual(expect.any(String));
-    expect(sidecar.resumeEligibility.reason.length).toBeGreaterThan(0);
+    expect(sidecar.continueRepairEligibility.eligible).toBe(false);
+    expect(sidecar.continueRepairEligibility.reason).toEqual(expect.any(String));
+    expect(sidecar.continueRepairEligibility.reason.length).toBeGreaterThan(0);
     expect(sidecar.recoveryOptions?.some((option: { kind: string; action: string; recommended: boolean }) => (
-      option.kind === 'compiled-build-resume' && option.action === 'eforge_resume_build' && option.recommended
+      option.kind === 'continue-repair' && option.action === 'continue-repair' && option.recommended
     ))).not.toBe(true);
   });
 });

@@ -38,20 +38,19 @@ describe('EforgeEngine.recover', () => {
     await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nBuild a thing.', 'utf-8');
   }
 
-  const SPLIT_OUTPUT = `Based on my analysis:
+  const RETRY_OUTPUT = `Based on my analysis:
 
-<recovery verdict="split" confidence="medium">
-  <rationale>Foundation work is preserved; API work remains incomplete.</rationale>
+<recovery verdict="retry" confidence="medium">
+  <rationale>Retry from scratch is safe; no preserved compiled artifacts are eligible.</rationale>
   <completedWork>
-    <item>Foundation merged</item>
+    <item>No durable work recorded</item>
   </completedWork>
   <remainingWork>
     <item>API endpoints not implemented</item>
   </remainingWork>
   <risks>
-    <item>Type error unresolved</item>
+    <item>Timeout root cause unknown</item>
   </risks>
-  <suggestedSuccessorPrd># Successor PRD\n\nContinue the API work.</suggestedSuccessorPrd>
 </recovery>`;
 
   it('writes degraded sidecar when PRD file does not exist (no throw)', async () => {
@@ -59,7 +58,7 @@ describe('EforgeEngine.recover', () => {
     seedGitRepo(dir);
 
 
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: RETRY_OUTPUT }]);
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
 
 
@@ -72,12 +71,12 @@ describe('EforgeEngine.recover', () => {
     expect(complete!.verdict.recoveryError).toContain('not found');
   });
 
-  it('writes both sidecar files for a split verdict', async () => {
+  it('writes both sidecar files for a retry verdict', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
     await seedFixtures(dir);
 
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: RETRY_OUTPUT }]);
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
 
     const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
@@ -93,7 +92,7 @@ describe('EforgeEngine.recover', () => {
 
     const parsed = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
     expect(parsed.schemaVersion).toBe(3);
-    expect(parsed.verdict.verdict).toBe('split');
+    expect(parsed.verdict.verdict).toBe('retry');
   });
 
   it('produces a manual verdict sidecar on parse failure (no throw)', async () => {
@@ -119,15 +118,13 @@ describe('EforgeEngine.recover', () => {
     expect(json.schemaVersion).toBe(3);
   });
 
-  it.each(['retry', 'split', 'abandon', 'manual'] as const)('writes sidecars for %s verdict', async (verdict) => {
+  it.each(['retry', 'abandon', 'manual'] as const)('writes sidecars for %s verdict', async (verdict) => {
     const dir = makeTempDir();
     seedGitRepo(dir);
     await seedFixtures(dir);
 
     let verdictOutput: string;
-    if (verdict === 'split') {
-      verdictOutput = SPLIT_OUTPUT;
-    } else if (verdict === 'retry') {
+    if (verdict === 'retry') {
       verdictOutput = `<recovery verdict="retry" confidence="high">
   <rationale>Network timeout — transient failure.</rationale>
   <completedWork></completedWork>
@@ -171,7 +168,7 @@ describe('EforgeEngine.recover', () => {
     seedGitRepo(dir);
     await seedFixtures(dir);
 
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: RETRY_OUTPUT }]);
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
 
     const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
@@ -197,7 +194,7 @@ describe('EforgeEngine.recover', () => {
     const failedDir = join(dir, '.eforge', 'queue', 'failed');
     const prdPath = join(failedDir, 'test-prd.md');
 
-    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const backend = new StubHarness([{ text: RETRY_OUTPUT }]);
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
 
 
@@ -394,9 +391,9 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
     const db = openDatabase(dbPath);
 
     db.insertRun({
-      id: 'run-det-split-01',
-      sessionId: 'session-det-split-01',
-      planSet: 'det-split-set',
+      id: 'run-det-preserved-01',
+      sessionId: 'session-det-preserved-01',
+      planSet: 'det-preserved-set',
       command: 'build',
       status: 'failed',
       startedAt: new Date('2026-05-26T05:00:00.000Z').toISOString(),
@@ -406,7 +403,7 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
 
 
     db.insertEvent({
-      runId: 'run-det-split-01',
+      runId: 'run-det-preserved-01',
       type: 'plan:status:change',
       planId: 'plan-01',
       data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-01', status: 'merged' }),
@@ -415,14 +412,14 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
 
 
     db.insertEvent({
-      runId: 'run-det-split-01',
+      runId: 'run-det-preserved-01',
       type: 'plan:status:change',
       planId: 'plan-02',
       data: JSON.stringify({ type: 'plan:status:change', planId: 'plan-02', status: 'failed' }),
       timestamp: new Date('2026-05-26T06:15:00.000Z').toISOString(),
     });
     db.insertEvent({
-      runId: 'run-det-split-01',
+      runId: 'run-det-preserved-01',
       type: 'plan:build:failed',
       planId: 'plan-02',
       data: JSON.stringify({
@@ -508,13 +505,13 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
     expect(sidecarContent.verdict.recoveryError.length).toBeGreaterThan(0);
   });
 
-  it('produces split verdict with recommendationSource=deterministic when some plans completed before transient failures', async () => {
+  it('produces manual verdict with recommendationSource=manual-fallback when preserved work is not eligible for continue-repair', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
 
     const failedDir = join(dir, '.eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
-    await writeFile(join(failedDir, 'det-split-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
+    await writeFile(join(failedDir, 'det-preserved-prd.md'), '# Test PRD\n\nBuild something.', 'utf-8');
 
 
     seedTransientWithCompletionDb(dir);
@@ -524,7 +521,7 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
 
     const events: EforgeEvent[] = [];
-    for await (const event of engine.recover('det-split-set', 'det-split-prd')) {
+    for await (const event of engine.recover('det-preserved-set', 'det-preserved-prd')) {
       events.push(event);
     }
 
@@ -534,8 +531,9 @@ describe('EforgeEngine.recover() — deterministic verdict with all-transient fa
 
     const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
 
-    expect(sidecarContent.verdict.verdict).toBe('split');
-    expect(sidecarContent.verdict.recommendationSource).toBe('deterministic');
+    expect(sidecarContent.verdict.verdict).toBe('manual');
+    expect(sidecarContent.verdict.recommendationSource).toBe('manual-fallback');
+    expect(sidecarContent.verdict.recommendationRationale).toMatch(/manual|continue-and-repair/i);
   });
 
   it('sidecar JSON records recommendationSource for analyst-validated path', async () => {

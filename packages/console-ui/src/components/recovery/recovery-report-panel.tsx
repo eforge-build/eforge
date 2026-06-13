@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type {
   ReadSidecarResponse,
-  ResumeEligibilityResponse,
+  ContinueRepairEligibilityResponse,
   RecoveryAppliedMetadata,
   AcceptSuccessPreviewResponse,
 } from '@eforge-build/client/browser';
@@ -23,18 +23,20 @@ interface SidecarActionConfig {
   confirmLabel: string;
 }
 
-const SIDECAR_ACTIONS: Record<'retry' | 'split' | 'abandon', SidecarActionConfig> = {
+type SidecarActionVerdict = 'retry' | 'continue-repair' | 'abandon';
+
+const SIDECAR_ACTIONS: Record<SidecarActionVerdict, SidecarActionConfig> = {
   retry: {
-    triggerLabel: 'Re-queue PRD',
-    title: 'Re-queue this PRD?',
-    description: 'The recovery apply route will move the failed PRD back to the queue.',
-    confirmLabel: 'Re-queue',
+    triggerLabel: 'Retry from scratch',
+    title: 'Retry this PRD from scratch?',
+    description: 'The recovery apply route will move the failed PRD back to the queue for a clean rebuild.',
+    confirmLabel: 'Retry',
   },
-  split: {
-    triggerLabel: 'Enqueue successor PRD',
-    title: 'Enqueue the successor PRD?',
-    description: 'The recovery apply route will enqueue the suggested successor PRD. If the report records landed partial work, the successor may continue from the preserved feature branch while targeting the original base branch.',
-    confirmLabel: 'Enqueue',
+  'continue-repair': {
+    triggerLabel: 'Continue and repair build',
+    title: 'Continue and repair this build?',
+    description: 'Queue the failed PRD for scheduler-owned continue-and-repair from preserved compiled artifacts.',
+    confirmLabel: 'Continue build',
   },
   abandon: {
     triggerLabel: 'Archive failed PRD',
@@ -43,6 +45,10 @@ const SIDECAR_ACTIONS: Record<'retry' | 'split' | 'abandon', SidecarActionConfig
     confirmLabel: 'Archive',
   },
 };
+
+function isSidecarActionVerdict(verdict: RecoveryVerdictValue | undefined): verdict is SidecarActionVerdict {
+  return verdict === 'retry' || verdict === 'continue-repair' || verdict === 'abandon';
+}
 
 export interface RecoveryReportPanelProps {
   prdId: string | null;
@@ -60,15 +66,15 @@ export interface RecoveryReportPanelProps {
    * dialog also transitions to a completion panel in this case).
    */
   appliedMetadata: RecoveryAppliedMetadata | undefined;
-  eligibility: ResumeEligibilityResponse | null;
+  eligibility: ContinueRepairEligibilityResponse | null;
   eligibilityError: string | null;
   applyError: string | null;
   analysisStarted: boolean;
   analysisError: string | null;
-  resumeError: string | null;
+  continueRepairError: string | null;
   applyingSidecar: boolean;
   startingAnalysis: boolean;
-  startingResume: boolean;
+  startingContinueRepair: boolean;
   /** Read-only accepted-success preview; the action renders only when eligible. */
   acceptSuccessPreview: AcceptSuccessPreviewResponse | null;
   acceptingSuccess: boolean;
@@ -76,7 +82,7 @@ export interface RecoveryReportPanelProps {
   onAcceptSuccess: (input: AcceptSuccessApplyInput) => void;
   onApplySidecar: () => void;
   onRunAnalysis: () => void;
-  onResume: () => void;
+  onContinueRepair: () => void;
   refreshQueue: () => Promise<void> | void;
 }
 
@@ -99,19 +105,37 @@ export function RecoveryReportPanel({
   applyError,
   analysisStarted,
   analysisError,
-  resumeError,
+  continueRepairError,
   applyingSidecar,
   startingAnalysis,
-  startingResume,
+  startingContinueRepair,
   acceptSuccessPreview,
   acceptingSuccess,
   acceptSuccessError,
   onAcceptSuccess,
   onApplySidecar,
   onRunAnalysis,
-  onResume,
+  onContinueRepair,
   refreshQueue,
 }: RecoveryReportPanelProps) {
+  const sidecarRecommendsContinueRepair = sidecar?.json.recoveryOptions?.some(
+    (option) => option.kind === 'continue-repair' && option.recommended,
+  ) ?? false;
+  const liveContinueRepairRecommended = Boolean(
+    eligibility?.eligible && eligibility.partial !== true && (!sidecar || sidecarRecommendsContinueRepair),
+  );
+  const recommendedVerdict: RecoveryVerdictValue | undefined = liveContinueRepairRecommended
+    ? 'continue-repair'
+    : sidecarVerdict;
+  const recommendedActionVerdict = isSidecarActionVerdict(recommendedVerdict) ? recommendedVerdict : undefined;
+  const recommendedContinueRepair = recommendedActionVerdict === 'continue-repair';
+  const continueRepairActionInRecommendation = Boolean(
+    reportStatus === 'loaded' && sidecar && !appliedMetadata && recommendedContinueRepair,
+  );
+  const showContinueRepairPreflightAction = Boolean(
+    liveContinueRepairRecommended && !continueRepairActionInRecommendation,
+  );
+
   return (
     <div className="space-y-4 px-4 py-4">
       {/* Recovery report */}
@@ -156,21 +180,23 @@ export function RecoveryReportPanel({
       {reportStatus === 'loaded' && sidecar && !appliedMetadata && (
         <section className="space-y-2">
           <h3 className="text-sm font-medium text-foreground">Recommended recovery action</h3>
-          {sidecarVerdict === 'manual' ? (
-            <p className="text-sm text-muted-foreground">Manual review required.</p>
-          ) : sidecarVerdict && SIDECAR_ACTIONS[sidecarVerdict] ? (
+          {recommendedVerdict === 'manual' ? (
+            <p className="text-sm text-muted-foreground">Manual review / manual replanning required.</p>
+          ) : recommendedActionVerdict ? (
             <ConfirmAction
-              triggerLabel={SIDECAR_ACTIONS[sidecarVerdict].triggerLabel}
-              title={SIDECAR_ACTIONS[sidecarVerdict].title}
-              description={SIDECAR_ACTIONS[sidecarVerdict].description}
-              confirmLabel={SIDECAR_ACTIONS[sidecarVerdict].confirmLabel}
-              onConfirm={onApplySidecar}
-              disabled={applyingSidecar}
+              triggerLabel={SIDECAR_ACTIONS[recommendedActionVerdict].triggerLabel}
+              title={SIDECAR_ACTIONS[recommendedActionVerdict].title}
+              description={SIDECAR_ACTIONS[recommendedActionVerdict].description}
+              confirmLabel={SIDECAR_ACTIONS[recommendedActionVerdict].confirmLabel}
+              onConfirm={recommendedContinueRepair ? onContinueRepair : onApplySidecar}
+              disabled={recommendedContinueRepair ? startingContinueRepair : applyingSidecar}
             />
           ) : null}
-          {applyError && (
+          {continueRepairActionInRecommendation && continueRepairError ? (
+            <p role="alert" className="text-sm text-destructive">{continueRepairError}</p>
+          ) : applyError ? (
             <p role="alert" className="text-sm text-destructive">{applyError}</p>
-          )}
+          ) : null}
         </section>
       )}
 
@@ -187,27 +213,30 @@ export function RecoveryReportPanel({
         />
       )}
 
-      {/* Compiled-build resume */}
+      {/* Continue-and-repair eligibility */}
       <section className="space-y-2">
-        <h3 className="text-sm font-medium text-foreground">Compiled-build resume</h3>
+        <h3 className="text-sm font-medium text-foreground">Continue-and-repair eligibility</h3>
         {eligibilityError && (
           <p role="alert" className="text-sm text-destructive">{eligibilityError}</p>
         )}
-        {eligibility && eligibility.eligible && (
+        {eligibility && eligibility.eligible && !showContinueRepairPreflightAction && (
+          <p className="text-sm text-muted-foreground">Preserved compiled artifacts are eligible for continue-and-repair.</p>
+        )}
+        {showContinueRepairPreflightAction && eligibility?.eligible && (
           <ConfirmAction
-            triggerLabel="Resume compiled build"
-            title="Resume compiled build?"
-            description={`Resume the compiled build for ${eligibility.prdId} in set ${eligibility.setName}.`}
-            confirmLabel="Resume"
-            onConfirm={onResume}
-            disabled={startingResume}
+            triggerLabel="Continue and repair build"
+            title="Continue and repair this build?"
+            description={`Continue and repair the build for ${eligibility.prdId} in set ${eligibility.setName}.`}
+            confirmLabel="Continue build"
+            onConfirm={onContinueRepair}
+            disabled={startingContinueRepair}
           />
         )}
         {eligibility && !eligibility.eligible && (
           <p className="text-sm text-muted-foreground">{eligibility.reason}</p>
         )}
-        {resumeError && (
-          <p role="alert" className="text-sm text-destructive">{resumeError}</p>
+        {continueRepairError && !continueRepairActionInRecommendation && (
+          <p role="alert" className="text-sm text-destructive">{continueRepairError}</p>
         )}
       </section>
 

@@ -20,14 +20,12 @@ export interface ReadSidecarRequest {
 /**
  * Durable record that a recovery verdict was applied to a failed PRD. Persisted
  * as the optional `applied` field on `<prdId>.recovery.json` so a repeated apply
- * is idempotent (no duplicate successor enqueue, no repeated Console prompt).
+ * is idempotent (no duplicate queue mutation, no repeated Console prompt).
  *
- * Action-discriminated: a `split` marker requires `successorPrdId` (the apply
- * enqueues exactly one successor and idempotent Console UX needs the id);
- * `retry`/`abandon` do not carry one. The `accepted-success` action uses its own
- * rich `AcceptSuccessAppliedSummary` shape (keyed by `acceptedAt`), which is
- * unioned in below. The union stays forward compatible with later recovery
- * actions.
+ * The base recovery actions use an `appliedAt` marker. The `accepted-success`
+ * action uses its own rich `AcceptSuccessAppliedSummary` shape (keyed by
+ * `acceptedAt`), which is unioned in below. The union stays forward compatible
+ * with later recovery actions.
  */
 interface RecoveryAppliedMetadataBase {
   /** ISO timestamp when the action was applied. */
@@ -36,32 +34,18 @@ interface RecoveryAppliedMetadataBase {
   commitSha?: string;
 }
 
-/**
- * Applied marker for a `split` verdict. `successorPrdId` is required: a split
- * apply enqueues exactly one successor, and idempotent Console UX depends on the
- * identifier being present.
- */
-export interface RecoverySplitAppliedMetadata extends RecoveryAppliedMetadataBase {
-  action: 'split';
-  /** Successor PRD id enqueued by the `split` apply. */
-  successorPrdId: string;
-}
-
-/** Applied marker for non-split verdicts (no successor is enqueued). */
-export interface RecoveryNonSplitAppliedMetadata extends RecoveryAppliedMetadataBase {
-  action: 'retry' | 'abandon';
-  /** Not used by non-split applies; retained for forward compatibility. */
-  successorPrdId?: undefined;
+/** Applied marker for recovery actions that mutate queue state. */
+export interface RecoveryActionAppliedMetadata extends RecoveryAppliedMetadataBase {
+  action: 'retry' | 'continue-repair' | 'abandon';
 }
 
 /**
  * Durable applied marker union. `accepted-success` is the rich
  * `AcceptSuccessAppliedSummary` (keyed by `acceptedAt`, carrying reason / cleanup
- * / landing / dependents); the other actions use the `appliedAt`-based shapes.
+ * / landing / dependents); the other actions use the `appliedAt`-based shape.
  */
 export type RecoveryAppliedMetadata =
-  | RecoverySplitAppliedMetadata
-  | RecoveryNonSplitAppliedMetadata
+  | RecoveryActionAppliedMetadata
   | AcceptSuccessAppliedSummary;
 
 export interface RecoverySidecarReport {
@@ -114,9 +98,9 @@ export interface RecoverySidecarBoundedEvidence {
 /**
  * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
  * Current concise v3 contract: top-level identity, verdict, operator report,
- * bounded evidence, generated timestamp, optional read-only compiled-build resume
- * fields (`resumeEligibility` and `recoveryOptions`), and optional durable
- * `applied` marker.
+ * bounded evidence, generated timestamp, optional read-only continue-and-repair
+ * fields (`continueRepairEligibility` and `recoveryOptions`), and optional
+ * durable `applied` marker.
  */
 export interface RecoveryVerdictSidecar {
   schemaVersion: number;
@@ -126,8 +110,8 @@ export interface RecoveryVerdictSidecar {
   verdict: RecoveryVerdict;
   report: RecoverySidecarReport;
   boundedEvidence: RecoverySidecarBoundedEvidence;
-  /** Read-only compiled-build resume eligibility captured when the sidecar was generated. */
-  resumeEligibility?: RecoverySidecarResumeEligibility;
+  /** Read-only continue-and-repair eligibility captured when the sidecar was generated. */
+  continueRepairEligibility?: RecoverySidecarContinueRepairEligibility;
   /** Optional recovery options that point operators to routes outside apply-recovery. */
   recoveryOptions?: RecoverySidecarRecoveryOption[];
   /** Durable applied marker; absent on sidecars written before a verdict is applied. */
@@ -140,40 +124,41 @@ export interface ReadSidecarResponse {
   json: RecoveryVerdictSidecar;
 }
 
-/** POST /api/recover/resume-build */
-export interface ResumeBuildRequest {
+/** POST /api/recover/continue-repair */
+export interface ContinueRepairRequest {
   prdId: string;
   /** Override set name; when omitted, resolved from the recovery sidecar or prdId. */ setName?: string;
-  /** Override active profile for this resumed build (validated before requeue). */ profile?: string;
+  /** Override active profile for this continued build (validated before requeue). */ profile?: string;
 }
 
-/** Response for POST /api/recover/resume-build */
-export interface ResumeBuildResponse {
+/** Response for POST /api/recover/continue-repair */
+export interface ContinueRepairResponse {
   kind: 'queued'; prdId: string; setName: string;
   featureBranch: string; baseBranch: string;
   movedDescendantIds: string[]; /** Effective queued PRD profile frontmatter, when one is present. */ profile?: string;
-  /** Queue mutation status; `already-queued` makes the operation idempotent. */ status?: 'queued' | 'already-queued'; detail?: string;
+  /** Queue mutation status; `already-queued` makes the operation idempotent. */ status: 'queued' | 'already-queued'; detail?: string;
 }
 
 /**
- * Query params for GET /api/recover/resume-eligibility. When `setName` is omitted
- * the daemon resolves it from the recovery sidecar (`setName`), else `prdId`.
+ * Query params for GET /api/recover/continue-repair/eligibility. When `setName`
+ * is omitted the daemon resolves it from the recovery sidecar (`setName`), else
+ * `prdId`.
  */
-export interface ResumeEligibilityRequest {
+export interface ContinueRepairEligibilityRequest {
   prdId: string;
   setName?: string;
 }
 
-export type ResumeArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
+export type ContinueRepairArtifactAvailability = 'merge-worktree' | 'feature-branch' | 'branch-history';
 
-export type RecoverySidecarResumeEligibilitySource = 'projectResumeEligibility' | 'inspection-error';
+export type RecoverySidecarContinueRepairEligibilitySource = 'continueRepairEligibility' | 'inspection-error';
 
-export type RecoverySidecarResumeEligibility =
+export type RecoverySidecarContinueRepairEligibility =
   | {
-      source: RecoverySidecarResumeEligibilitySource;
+      source: RecoverySidecarContinueRepairEligibilitySource;
       eligible: true;
       featureBranch: string;
-      artifactAvailability: ResumeArtifactAvailability;
+      artifactAvailability: ContinueRepairArtifactAvailability;
       artifactCommit?: string;
       landedCommitCount: number;
       diffStat: string;
@@ -181,7 +166,7 @@ export type RecoverySidecarResumeEligibility =
       partial?: boolean;
     }
   | {
-      source: RecoverySidecarResumeEligibilitySource;
+      source: RecoverySidecarContinueRepairEligibilitySource;
       eligible: false;
       featureBranch: string;
       reason: string;
@@ -189,30 +174,30 @@ export type RecoverySidecarResumeEligibility =
     };
 
 export interface RecoverySidecarRecoveryOption {
-  kind: 'compiled-build-resume';
-  action: 'eforge_resume_build';
+  kind: 'continue-repair';
+  action: 'continue-repair';
   recommended: boolean;
   reason: string;
 }
 
-interface ResumeEligibilityIdentity {
+interface ContinueRepairEligibilityIdentity {
   prdId: string;
   setName: string;
   featureBranch: string;
 }
 
-/** Response for GET /api/recover/resume-eligibility — a read-only preflight. */
-export type ResumeEligibilityResponse =
-  | (ResumeEligibilityIdentity & {
+/** Response for GET /api/recover/continue-repair/eligibility — a read-only preflight. */
+export type ContinueRepairEligibilityResponse =
+  | (ContinueRepairEligibilityIdentity & {
       eligible: true;
-      artifactAvailability: ResumeArtifactAvailability;
+      artifactAvailability: ContinueRepairArtifactAvailability;
       artifactCommit?: string;
       landedCommitCount: number;
       diffStat: string;
       failingPlanId?: string;
       partial?: boolean;
     })
-  | (ResumeEligibilityIdentity & { eligible: false; reason: string; checkedPath?: string });
+  | (ContinueRepairEligibilityIdentity & { eligible: false; reason: string; checkedPath?: string });
 
 /** POST /api/recover/apply */
 export interface ApplyRecoveryRequest {
@@ -228,18 +213,16 @@ export interface ApplyRecoveryRequest {
  */
 export interface ApplyRecoveryResponse {
   /** The verdict that was applied. */
-  verdict: 'retry' | 'split' | 'abandon' | 'manual';
-  /** SHA of the commit produced by the apply operation. Absent for `manual` (no-op). */
+  verdict: 'retry' | 'continue-repair' | 'abandon' | 'manual';
+  /** Optional commit SHA, present and meaningful only when the apply action creates a commit. */
   commitSha?: string;
-  /** ID of the successor PRD enqueued by a `split` verdict. */
-  successorPrdId?: string;
   /** True when the verdict was `manual` and no git changes were made. */
   noAction?: boolean;
   /**
    * Apply idempotency status. `applied` on first successful apply;
-   * `already-applied` when a durable applied marker or a live successor scan
-   * shows the verdict was applied previously. Absent for verdicts that do not
-   * yet record a durable marker.
+   * `already-applied` when a durable applied marker or queue preflight shows the
+   * verdict was applied previously. Absent for verdicts that do not record a
+   * durable marker.
    */
   status?: 'applied' | 'already-applied';
   /** Human-readable detail about the apply outcome (e.g. idempotency notice). */

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type {
   ReadSidecarResponse,
-  ResumeEligibilityResponse,
+  ContinueRepairEligibilityResponse,
   AcceptSuccessPreviewResponse,
 } from '@eforge-build/client/browser';
 import { SheetPanel } from '@/components/ui/sheet-panel';
@@ -13,10 +13,6 @@ import { RecoveryReportPanel } from './recovery-report-panel';
  * SheetPanel chrome with hand-crafted wire payloads, so the side-panel layout
  * (width, scroll, markdown formatting) is exercised with zero network access.
  * Wire shapes are owned by the client, so fixtures are cast through `unknown`.
- *
- * The "loaded" markdown deliberately mirrors a real recovery report: wide
- * tables (Plans, Final Review Issues) and a fenced "Suggested Successor PRD"
- * block with long lines — the exact content that clipped in the old modal.
  */
 
 const REPORT_MARKDOWN = `# Recovery Analysis: add-queued-prd-priority-and-removal-controls
@@ -25,13 +21,13 @@ Generated: 2026-06-04T18:22:50.611Z  Set: add-queued-prd-priority-and-removal-co
 
 ## Verdict
 
-**SPLIT** (confidence: high)
+**CONTINUE-REPAIR** (confidence: high)
 
-**Verdict Source:** analyst
+**Verdict Source:** deterministic
 
 ## Rationale
 
-Meaningful work was already merged before the failure: plan-01-core-queue-control landed the client route/API surface and plan-03-console-queue-controls landed the Console queue actions. The failure is isolated to plan-02-host-queue-controls, which failed review with concrete, reviewer-confirmed race-safety blockers. A split is preferable to retrying the full PRD because the landed core and Console work should not be rebuilt.
+Preserved compiled artifacts are available for the failed build. Continue-and-repair is preferable to retrying from scratch because the previously completed work can be reused while the failed plan is repaired.
 
 ## Plans
 
@@ -39,61 +35,22 @@ Meaningful work was already merged before the failure: plan-01-core-queue-contro
 | --- | --- | --- |
 | plan-01-core-queue-control | completed | |
 | plan-03-console-queue-controls | completed | |
-| plan-02-host-queue-controls | failed | 4 blocking issue outcome(s) remain after 1 review round(s) (4 unresolved, 0 newly introduced) |
+| plan-02-host-queue-controls | failed | 4 blocking issue outcome(s) remain after 1 review round(s) |
 | plan-04-queue-control-docs | blocked | Blocked by failed dependency: plan-02-host-queue-controls |
 
 ## Failing Plans
 
 | Plan | Error |
 | --- | --- |
-| plan-02-host-queue-controls | 4 blocking issue outcome(s) remain after 1 review round(s) (4 unresolved, 0 newly introduced) |
+| plan-02-host-queue-controls | 4 blocking issue outcome(s) remain after 1 review round(s) |
 
-## Review Failure Details
+## Continue-and-Repair Eligibility
 
-Plan ID: plan-02-host-queue-controls
+Preserved compiled artifacts are available from the merge worktree. Continue and repair the build to reuse landed work and repair the failed plan.
 
-### Final Review Issues
+## Manual Guidance
 
-| Severity | Category | File | Line | Description |
-| --- | --- | --- | --- | --- |
-| blocking | correctness | packages/engine/src/queue/control.ts | 142 | The new Node client helper \`apiUpdateQueuePriority\` exposes priority as a required field but the daemon route treats it as optional, so stale located PRD data can be written after a concurrent claim. |
-| blocking | race-safety | packages/engine/src/queue/control.ts | 210 | Priority updates must operate on the current existing file and fail if the file moved after claim. |
-| blocking | race-safety | packages/engine/src/queue/control.ts | 268 | Waiting or other movable item mutations must avoid \`writeFile\` recreation after disappearance. |
-| blocking | correctness | packages/engine/src/queue/control.ts | 301 | Root removal must confirm the file still exists after claim or use non-force removal. |
-
-## Risks
-
-- The landed core queue-control helper may still have race-safety defects around stale located PRD data, vanished files, and force removal.
-- Rejected review suggestions attempted to change public client helper shapes; successor work must avoid re-breaking the contract.
-- Docs/reference generation may drift after CLI/MCP/Pi tool additions unless regenerated and checked.
-
-## Suggested Successor PRD
-
-\`\`\`markdown
-<![CDATA[
-# Complete Host Queue Controls, Race-Safety Fixes, and Docs
-
-## Overview
-
-Continue the partially completed "Add Queued PRD Priority and Removal Controls" work on the preserved feature branch.
-
-The previous build session already merged:
-- \`plan-01-core-queue-control\`: core client-owned route/API surface, daemon routes, engine wiring.
-- \`plan-03-console-queue-controls\`: Console Now queue priority and removal actions.
-
-This successor PRD covers the remaining work:
-- \`plan-02-host-queue-controls\`: finish CLI, Claude/MCP, and Pi host queue controls.
-- Resolve the reviewer-confirmed queue-control race-safety blockers discovered while building plan-02.
-- \`plan-04-queue-control-docs\`: update human and generated docs/reference artifacts.
-
-## Scope
-
-In scope:
-- Finish \`plan-02-host-queue-controls\`.
-- Add \`eforge queue priority <prdId> <priority>\`.
-- Add \`eforge queue remove <prdId>\`.
-]]>
-\`\`\`
+If continue-and-repair is not appropriate, perform bounded manual replanning for the failed plan only instead of regenerating broad follow-up work.
 `;
 
 function sidecarFixture(): ReadSidecarResponse {
@@ -104,14 +61,14 @@ function sidecarFixture(): ReadSidecarResponse {
       generatedAt: '2026-06-04T18:22:50.611Z',
       prdId: 'add-queued-prd-priority-and-removal-controls',
       setName: 'add-queued-prd-priority-and-removal-controls',
-      verdict: { verdict: 'split', confidence: 'high' },
+      verdict: { verdict: 'continue-repair', confidence: 'high' },
       report: {
-        operatorSummary: 'Meaningful work was already merged before the failure.',
-        recommendedAction: 'Enqueue the suggested successor PRD.',
-        keyEvidence: ['plan-02-host-queue-controls failed review'],
+        operatorSummary: 'Preserved compiled artifacts are available for the failed build.',
+        recommendedAction: 'Continue and repair build.',
+        keyEvidence: ['Compiled artifacts are available from the merge worktree.'],
         completedWork: ['Core and Console queue-control work landed.'],
-        remainingWork: ['Finish host queue controls and docs.'],
-        risks: ['Race-safety defects may remain.'],
+        remainingWork: ['Repair the failed host queue-control plan.'],
+        risks: ['The preserved artifacts may become stale if the worktree is cleaned up.'],
       },
       boundedEvidence: {
         identity: {
@@ -126,17 +83,37 @@ function sidecarFixture(): ReadSidecarResponse {
         landedCommits: [],
         modelsUsed: [],
       },
+      continueRepairEligibility: {
+        source: 'continueRepairEligibility',
+        eligible: true,
+        featureBranch: 'eforge/add-queued-prd-priority-and-removal-controls',
+        artifactAvailability: 'merge-worktree',
+        landedCommitCount: 2,
+        diffStat: '3 files changed',
+      },
     },
   } as unknown as ReadSidecarResponse;
 }
 
-function ineligibleFixture(): ResumeEligibilityResponse {
+function ineligibleFixture(): ContinueRepairEligibilityResponse {
   return {
     prdId: 'add-queued-prd-priority-and-removal-controls',
     setName: 'add-queued-prd-priority-and-removal-controls',
     featureBranch: 'eforge/add-queued-prd-priority-and-removal-controls',
     eligible: false,
-    reason: 'No compiled build artifacts found.',
+    reason: 'No preserved compiled artifacts found.',
+  };
+}
+
+function eligibleFixture(): ContinueRepairEligibilityResponse {
+  return {
+    prdId: 'add-queued-prd-priority-and-removal-controls',
+    setName: 'add-queued-prd-priority-and-removal-controls',
+    featureBranch: 'eforge/add-queued-prd-priority-and-removal-controls',
+    eligible: true,
+    artifactAvailability: 'merge-worktree',
+    landedCommitCount: 2,
+    diffStat: '3 files changed',
   };
 }
 
@@ -179,7 +156,7 @@ const meta = {
         title={
           <span className="flex items-center gap-2">
             <span>Recover failed build</span>
-            <RecoveryVerdictChip verdict="split" confidence="high" />
+            <RecoveryVerdictChip verdict="continue-repair" confidence="high" />
           </span>
         }
         description={
@@ -207,17 +184,17 @@ const meta = {
     applyError: null,
     analysisStarted: false,
     analysisError: null,
-    resumeError: null,
+    continueRepairError: null,
     applyingSidecar: false,
     startingAnalysis: false,
-    startingResume: false,
+    startingContinueRepair: false,
     acceptSuccessPreview: null,
     acceptingSuccess: false,
     acceptSuccessError: null,
     onAcceptSuccess: () => undefined,
     onApplySidecar: () => undefined,
     onRunAnalysis: () => undefined,
-    onResume: () => undefined,
+    onContinueRepair: () => undefined,
     refreshQueue: () => undefined,
   },
 } satisfies Meta<typeof RecoveryReportPanel>;
@@ -230,10 +207,10 @@ export const Loaded: Story = {
   args: {
     reportStatus: 'loaded',
     sidecar: sidecarFixture(),
-    sidecarVerdict: 'split',
-    effectiveVerdict: 'split',
+    sidecarVerdict: 'continue-repair',
+    effectiveVerdict: 'continue-repair',
     effectiveConfidence: 'high',
-    eligibility: ineligibleFixture(),
+    eligibility: eligibleFixture(),
   },
 };
 

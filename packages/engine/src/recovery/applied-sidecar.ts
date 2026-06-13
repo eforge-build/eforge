@@ -2,8 +2,8 @@
  * Shared helpers for the optional `applied` marker on recovery sidecars
  * (`<prdId>.recovery.json`). The marker is the durable idempotency store for
  * recovery applies: once a verdict is applied, the marker records the action so
- * a repeated apply is a no-op (no duplicate successor enqueue, no repeated
- * Console prompt).
+ * a repeated apply is a no-op (no duplicate queue mutation, no repeated Console
+ * prompt).
  *
  * Reads tolerate legacy sidecars that predate the field and never throw on a
  * missing or invalid marker. Writes preserve every existing v3 sidecar field
@@ -28,7 +28,7 @@ export type { RecoveryAppliedMetadata, AcceptSuccessAppliedSummary };
 // `parseAcceptSuccessAppliedMetadata`, not this `appliedAt`-based base parser.
 const VALID_ACTIONS = new Set<RecoveryAppliedMetadata['action']>([
   'retry',
-  'split',
+  'continue-repair',
   'abandon',
 ]);
 
@@ -46,19 +46,8 @@ export function parseRecoveryAppliedMetadata(value: unknown): RecoveryAppliedMet
   }
   if (typeof obj.appliedAt !== 'string' || obj.appliedAt.length === 0) return undefined;
   const commitSha = typeof obj.commitSha === 'string' ? obj.commitSha : undefined;
-  if (action === 'split') {
-    // Split applied metadata must carry the enqueued successor id; without it the
-    // marker cannot drive idempotent Console UX, so treat it as invalid.
-    if (typeof obj.successorPrdId !== 'string' || obj.successorPrdId.length === 0) return undefined;
-    return {
-      action: 'split',
-      appliedAt: obj.appliedAt,
-      successorPrdId: obj.successorPrdId,
-      ...(commitSha !== undefined && { commitSha }),
-    };
-  }
   return {
-    action: action as 'retry' | 'abandon',
+    action: action as 'retry' | 'continue-repair' | 'abandon',
     appliedAt: obj.appliedAt,
     ...(commitSha !== undefined && { commitSha }),
   };

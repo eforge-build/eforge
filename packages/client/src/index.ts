@@ -19,8 +19,8 @@ export type {
   ReadSidecarRequest,
   RecoverySidecarReport,
   RecoverySidecarBoundedEvidence,
-  RecoverySidecarResumeEligibilitySource,
-  RecoverySidecarResumeEligibility,
+  RecoverySidecarContinueRepairEligibilitySource,
+  RecoverySidecarContinueRepairEligibility,
   RecoverySidecarRecoveryOption,
   RecoveryVerdictSidecar,
   ReadSidecarResponse,
@@ -360,18 +360,18 @@ export type {
 
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse, RecoveryAppliedMetadata } from './routes.js';
 
-export type { ResumeBuildRequest, ResumeBuildResponse } from './routes.js';
-export { apiResumeBuild, apiResumeBuildIfRunning } from './api/resume-build.js';
+export type { ContinueRepairRequest, ContinueRepairResponse } from './routes.js';
+export { apiContinueRepair, apiContinueRepairIfRunning } from './api/continue-repair.js';
 
 export type {
-  ResumeEligibilityRequest,
-  ResumeEligibilityResponse,
-  ResumeArtifactAvailability,
+  ContinueRepairEligibilityRequest,
+  ContinueRepairEligibilityResponse,
+  ContinueRepairArtifactAvailability,
 } from './routes.js';
 export {
-  apiCheckResumeEligibility,
-  apiCheckResumeEligibilityIfRunning,
-} from './api/resume-eligibility.js';
+  apiCheckContinueRepairEligibility,
+  apiCheckContinueRepairEligibilityIfRunning,
+} from './api/continue-repair-eligibility.js';
 
 export {
   type LockfileData,

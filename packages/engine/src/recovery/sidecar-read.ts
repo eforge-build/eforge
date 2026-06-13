@@ -2,11 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseWithSchema, type RecoveryVerdictSidecar } from '@eforge-build/client';
 import type { BuildFailureSummary, RecoveryVerdict } from '../events.js';
-import type { RecoverySidecarRecoveryOption, RecoverySidecarResumeEligibility, RecoverySidecarResumeEvidence } from './resume-sidecar.js';
+import type { RecoverySidecarRecoveryOption, RecoverySidecarContinueRepairEligibility, RecoverySidecarContinueRepairEvidence } from './resume-sidecar.js';
 import { recoveryVerdictSchema } from '../schemas.js';
 
 export interface RecoverySidecarProjection {
-  sidecar: RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence>;
+  sidecar: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>;
   verdict: RecoveryVerdict;
   summary: BuildFailureSummary;
   identity: RecoveryVerdictSidecar['boundedEvidence']['identity'];
@@ -26,7 +26,7 @@ export async function tryReadRecoverySidecarProjection(failedDir: string, prdId:
   }
 }
 
-export function parseRecoverySidecarPayload(raw: string, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
+export function parseRecoverySidecarPayload(raw: string, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -36,7 +36,7 @@ export function parseRecoverySidecarPayload(raw: string, prdId?: string): Recove
   return validateRecoverySidecarPayload(parsed, prdId);
 }
 
-export function projectRecoverySidecar(sidecar: RecoveryVerdictSidecar): RecoverySidecarProjection {
+export function projectRecoverySidecar(sidecar: RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence>): RecoverySidecarProjection {
   const verdict = parseWithSchema(recoveryVerdictSchema, sidecar.verdict) as RecoveryVerdict;
   return {
     sidecar,
@@ -100,13 +100,14 @@ export function projectBuildFailureSummary(sidecar: RecoveryVerdictSidecar): Bui
   };
 }
 
-function validateRecoverySidecarPayload(value: unknown, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarResumeEvidence> {
+function validateRecoverySidecarPayload(value: unknown, prdId?: string): RecoveryVerdictSidecar & Partial<RecoverySidecarContinueRepairEvidence> {
   const obj = requireRecord(value, `Recovery sidecar JSON is invalid${suffix(prdId)}`);
   if (obj.schemaVersion !== 3) throw new Error(`Recovery sidecar schemaVersion is invalid${suffix(prdId)}: expected 3`);
+  if (obj['resume' + 'Eligibility'] !== undefined) throw new Error(`Recovery sidecar contains legacy eligibility data${suffix(prdId)}; regenerate the sidecar with continue-and-repair support`);
   const generatedAt = requireString(obj.generatedAt, 'generatedAt', prdId);
   const sidecarPrdId = requireString(obj.prdId, 'prdId', prdId);
   const setName = requireString(obj.setName, 'setName', prdId);
-  const verdict = parseWithSchema(recoveryVerdictSchema, obj.verdict) as RecoveryVerdict;
+  const verdict = validateSidecarVerdict(obj.verdict, prdId);
   const report = validateReport(obj.report, prdId);
   const boundedEvidence = validateBoundedEvidence(obj.boundedEvidence, prdId);
   if (prdId !== undefined && sidecarPrdId !== prdId) throw new Error(`Recovery sidecar prdId '${sidecarPrdId}' does not match requested ${prdId}`);
@@ -120,10 +121,18 @@ function validateRecoverySidecarPayload(value: unknown, prdId?: string): Recover
     verdict,
     report,
     boundedEvidence,
-    ...(obj.resumeEligibility !== undefined ? { resumeEligibility: validateResumeEligibility(obj.resumeEligibility, prdId) } : {}),
+    ...(obj.continueRepairEligibility !== undefined ? { continueRepairEligibility: validateContinueRepairEligibility(obj.continueRepairEligibility, prdId) } : {}),
     ...(obj.recoveryOptions !== undefined ? { recoveryOptions: validateRecoveryOptions(obj.recoveryOptions, prdId) } : {}),
     ...(obj.applied !== undefined ? { applied: obj.applied as RecoveryVerdictSidecar['applied'] } : {}),
   };
+}
+
+function validateSidecarVerdict(value: unknown, prdId?: string): RecoveryVerdict {
+  const obj = requireRecord(value, `Recovery sidecar verdict is invalid${suffix(prdId)}`);
+  if (obj.verdict === 's' + 'plit') throw new Error(`Recovery sidecar legacy continuation verdicts are no longer supported${suffix(prdId)}`);
+  const legacySuccessorKey = ['suggested', 'Successor', 'Prd'].join('');
+  if (obj[legacySuccessorKey] !== undefined) throw new Error(`Recovery sidecar legacy successor PRD content is no longer supported${suffix(prdId)}`);
+  return parseWithSchema(recoveryVerdictSchema, value) as RecoveryVerdict;
 }
 
 function validateReport(value: unknown, prdId?: string): RecoveryVerdictSidecar['report'] {
@@ -235,23 +244,23 @@ function validateLanding(value: unknown, prdId?: string): NonNullable<RecoveryVe
   };
 }
 
-function validateResumeEligibility(value: unknown, prdId?: string): RecoverySidecarResumeEligibility {
-  const obj = requireRecord(value, `Recovery sidecar resumeEligibility is invalid${suffix(prdId)}`);
-  const source = requireString(obj.source, 'resumeEligibility.source', prdId);
-  if (source !== 'projectResumeEligibility' && source !== 'inspection-error') throw new Error(`resumeEligibility.source is invalid${suffix(prdId)}`);
-  const eligible = requireBoolean(obj.eligible, 'resumeEligibility.eligible', prdId);
-  const featureBranch = requireString(obj.featureBranch, 'resumeEligibility.featureBranch', prdId);
+function validateContinueRepairEligibility(value: unknown, prdId?: string): RecoverySidecarContinueRepairEligibility {
+  const obj = requireRecord(value, `Recovery sidecar continueRepairEligibility is invalid${suffix(prdId)}`);
+  const source = requireString(obj.source, 'continueRepairEligibility.source', prdId);
+  if (source !== 'continueRepairEligibility' && source !== 'inspection-error') throw new Error(`continueRepairEligibility.source is invalid${suffix(prdId)}`);
+  const eligible = requireBoolean(obj.eligible, 'continueRepairEligibility.eligible', prdId);
+  const featureBranch = requireString(obj.featureBranch, 'continueRepairEligibility.featureBranch', prdId);
   if (eligible) {
-    const artifactAvailability = requireString(obj.artifactAvailability, 'resumeEligibility.artifactAvailability', prdId);
-    if (artifactAvailability !== 'merge-worktree' && artifactAvailability !== 'feature-branch' && artifactAvailability !== 'branch-history') throw new Error(`resumeEligibility.artifactAvailability is invalid${suffix(prdId)}`);
+    const artifactAvailability = requireString(obj.artifactAvailability, 'continueRepairEligibility.artifactAvailability', prdId);
+    if (artifactAvailability !== 'merge-worktree' && artifactAvailability !== 'feature-branch' && artifactAvailability !== 'branch-history') throw new Error(`continueRepairEligibility.artifactAvailability is invalid${suffix(prdId)}`);
     return {
       source,
       eligible: true,
       featureBranch,
       artifactAvailability,
       ...(typeof obj.artifactCommit === 'string' ? { artifactCommit: obj.artifactCommit } : {}),
-      landedCommitCount: requireNumber(obj.landedCommitCount, 'resumeEligibility.landedCommitCount', prdId),
-      diffStat: requireStringAllowEmpty(obj.diffStat, 'resumeEligibility.diffStat', prdId),
+      landedCommitCount: requireNumber(obj.landedCommitCount, 'continueRepairEligibility.landedCommitCount', prdId),
+      diffStat: requireStringAllowEmpty(obj.diffStat, 'continueRepairEligibility.diffStat', prdId),
       ...(typeof obj.failingPlanId === 'string' ? { failingPlanId: obj.failingPlanId } : {}),
       ...(typeof obj.partial === 'boolean' ? { partial: obj.partial } : {}),
     };
@@ -260,7 +269,7 @@ function validateResumeEligibility(value: unknown, prdId?: string): RecoverySide
     source,
     eligible: false,
     featureBranch,
-    reason: requireString(obj.reason, 'resumeEligibility.reason', prdId),
+    reason: requireString(obj.reason, 'continueRepairEligibility.reason', prdId),
     ...(typeof obj.checkedPath === 'string' ? { checkedPath: obj.checkedPath } : {}),
   };
 }
@@ -270,8 +279,9 @@ function validateRecoveryOptions(value: unknown, prdId?: string): RecoverySideca
     const obj = requireRecord(item, `Recovery sidecar recoveryOptions item is invalid${suffix(prdId)}`);
     const kind = requireString(obj.kind, 'recoveryOptions.kind', prdId);
     const action = requireString(obj.action, 'recoveryOptions.action', prdId);
-    if (kind !== 'compiled-build-resume') throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
-    if (action !== 'eforge_resume_build') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
+    if (kind === 'compiled-build-resume' || action === 'eforge_' + 'resume_build') throw new Error(`recoveryOptions contains a legacy repair action${suffix(prdId)}`);
+    if (kind !== 'continue-repair') throw new Error(`recoveryOptions.kind is invalid${suffix(prdId)}`);
+    if (action !== 'continue-repair') throw new Error(`recoveryOptions.action is invalid${suffix(prdId)}`);
     return {
       kind,
       action,

@@ -30,7 +30,7 @@ import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { projectRecoverySidecarResumeEvidence } from './recovery/resume-sidecar.js';
 import { finalizeFailedQueuedResumeSidecars } from './recovery/failed-resume-sidecar-finalization.js';
-import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual, normalizeRecoverySuccessorPrd, checkSplitRecoveryIdempotency } from './recovery/apply.js';
+import { applyRecoveryRetry, applyRecoveryContinueRepair, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
 import { determineRecoveryRecommendation, selectFinalVerdict } from './recovery/recommendation.js';
 import { parseRecoverySidecarPayload, projectRecoverySidecar } from './recovery/sidecar-read.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
@@ -1207,12 +1207,24 @@ export class EforgeEngine {
             let prdContent = '';
             try { prdContent = await readFile(filePath, 'utf-8'); } catch { /* ignore */ }
 
+            const continueRepairEvidence = await projectRecoverySidecarResumeEvidence({
+              cwd,
+              setName,
+              prdId,
+              outputDir: config.plan.outputDir,
+              dbPath,
+              ...(config.build.trunkBranch !== undefined ? { trunkBranch: config.build.trunkBranch } : {}),
+              featureBranch: summary.featureBranch,
+              baseBranch: summary.baseBranch,
+              failureSummary: summary,
+            });
+
             // Run recovery analyst with 90s timeout
             let verdict: RecoveryVerdict;
             const recoveryModelTracker = new ModelTracker();
             const recoveryAbort = new AbortController();
             const recoveryTimer = setTimeout(() => recoveryAbort.abort(), 90_000);
-            const inlineDeterministicRec = determineRecoveryRecommendation(summary);
+            const inlineDeterministicRec = determineRecoveryRecommendation(summary, continueRepairEvidence.continueRepairEligibility);
             try {
               let verdictResult: RecoveryVerdict | null = null;
               const harness = agentRuntimes.forRole('recovery-analyst');
@@ -1226,6 +1238,8 @@ export class EforgeEngine {
                   harness,
                   prdContent,
                   summary,
+                  deterministicRecommendation: inlineDeterministicRec,
+                  continueRepairEligibility: continueRepairEvidence.continueRepairEligibility,
                   prdId,
                   cwd,
                   abortController: recoveryAbort,
@@ -1257,19 +1271,8 @@ export class EforgeEngine {
             }
 
             // Move PRD to failed/ and write sidecar files (filesystem-only)
-            const resumeEvidence = await projectRecoverySidecarResumeEvidence({
-              cwd,
-              setName,
-              prdId,
-              outputDir: config.plan.outputDir,
-              dbPath,
-              ...(config.build.trunkBranch !== undefined ? { trunkBranch: config.build.trunkBranch } : {}),
-              featureBranch: summary.featureBranch,
-              baseBranch: summary.baseBranch,
-              failureSummary: summary,
-            });
             try {
-              await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd, resumeEvidence);
+              await moveFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd, continueRepairEvidence);
             } catch {
               // Fallback: plain move without sidecars
               try { await movePrdToSubdir(filePath, 'failed', cwd); } catch { /* best-effort */ }
@@ -1857,7 +1860,7 @@ export class EforgeEngine {
           recommendationSource: 'manual-fallback',
           recommendationRationale: 'PRD file not found; cannot perform automated recovery analysis.',
         };
-        const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+        const continueRepairEvidence = await projectRecoverySidecarResumeEvidence({
           cwd,
           setName,
           prdId,
@@ -1868,7 +1871,7 @@ export class EforgeEngine {
           baseBranch: summary.baseBranch,
           failureSummary: summary,
         });
-        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, resumeEvidence });
+        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, continueRepairEvidence });
         yield {
           timestamp: new Date().toISOString(),
           type: 'recovery:complete',
@@ -1908,7 +1911,18 @@ export class EforgeEngine {
       let parseError: string | undefined;
       let agentError: string | undefined;
 
-      const deterministicRec = determineRecoveryRecommendation(summary);
+      const continueRepairEvidence = await projectRecoverySidecarResumeEvidence({
+        cwd,
+        setName,
+        prdId,
+        outputDir: this.config.plan.outputDir,
+        dbPath,
+        ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
+        featureBranch: summary.featureBranch,
+        baseBranch: summary.baseBranch,
+        failureSummary: summary,
+      });
+      const deterministicRec = determineRecoveryRecommendation(summary, continueRepairEvidence.continueRepairEligibility);
 
       try {
         for await (const event of runRecoveryAnalyst({
@@ -1916,6 +1930,8 @@ export class EforgeEngine {
           harness,
           prdContent,
           summary,
+          deterministicRecommendation: deterministicRec,
+          continueRepairEligibility: continueRepairEvidence.continueRepairEligibility,
           prdId,
           cwd,
           verbose,
@@ -1946,23 +1962,12 @@ export class EforgeEngine {
       });
 
       // Write sidecar files
-      const resumeEvidence = await projectRecoverySidecarResumeEvidence({
-        cwd,
-        setName,
-        prdId,
-        outputDir: this.config.plan.outputDir,
-        dbPath,
-        ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
-        featureBranch: summary.featureBranch,
-        baseBranch: summary.baseBranch,
-        failureSummary: summary,
-      });
       const { mdPath, jsonPath } = await writeRecoverySidecar({
         failedPrdDir: failedDir,
         prdId,
         summary,
         verdict,
-        resumeEvidence,
+        continueRepairEvidence,
       });
 
       // Emit final recovery:complete with sidecar paths
@@ -2003,7 +2008,7 @@ export class EforgeEngine {
           recommendationSource: 'manual-fallback',
           recommendationRationale: 'Recovery process failed unexpectedly; cannot perform automated recovery analysis.',
         };
-        const resumeEvidence = await projectRecoverySidecarResumeEvidence({
+        const continueRepairEvidence = await projectRecoverySidecarResumeEvidence({
           cwd,
           setName,
           prdId,
@@ -2014,7 +2019,7 @@ export class EforgeEngine {
           baseBranch: summary.baseBranch,
           failureSummary: summary,
         });
-        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, resumeEvidence });
+        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict, continueRepairEvidence });
         yield {
           timestamp: new Date().toISOString(),
           type: 'recovery:complete',
@@ -2041,13 +2046,12 @@ export class EforgeEngine {
    * Reads the recovery sidecar JSON written by `recover()`, validates the verdict,
    * and dispatches to one of four verdict-specific helpers:
    *   - retry: moves the failed PRD back to the queue and removes sidecars
-   *   - split: writes the successor PRD to the queue
+   *   - continue-repair: queues the failed PRD through the compiled-artifact repair path
    *   - abandon: removes the failed PRD and both sidecars
    *   - manual: no-op, returns noAction: true
    *
-   * Filesystem-only queue dispatch; split recovery runs the acceptance criteria extractor
-   * when the sidecar does not already carry a valid legacy inventory.
-   * Throws on missing sidecar, validation failure, or missing suggestedSuccessorPrd for split.
+   * Filesystem-only queue dispatch. Throws on missing sidecar, validation
+   * failure, or continue-and-repair eligibility failure.
    */
   async *applyRecovery(
     prdId: string,
@@ -2090,12 +2094,19 @@ export class EforgeEngine {
       }
 
       // Parse and validate the current v3 sidecar; derive decision attribution
-      // and split-continuation context from bounded evidence.
+      // from bounded evidence.
       const projectedSidecar = projectRecoverySidecar(parseRecoverySidecarPayload(rawJson, prdId));
       const failingPlanId = projectedSidecar.summary.failingPlan?.planId ?? prdId;
       const verdict = projectedSidecar.verdict;
 
-      const helperOptions = { cwd, prdId, queueDir };
+      const helperOptions = {
+        cwd,
+        prdId,
+        queueDir,
+        outputDir: this.config.plan.outputDir,
+        dbPath: resolve(cwd, '.eforge', 'monitor.db'),
+        ...(this.config.build.trunkBranch !== undefined ? { trunkBranch: this.config.build.trunkBranch } : {}),
+      };
 
       let result: ApplyRecoveryResult;
 
@@ -2105,47 +2116,15 @@ export class EforgeEngine {
           result = { verdict: 'retry', noAction: false, commitSha };
           break;
         }
-        case 'split': {
-          // Idempotency preflight: a durable applied marker OR a live successor
-          // from a crash window means the successor was already enqueued. Run
-          // this before validating `suggestedSuccessorPrd` and before the
-          // acceptance criteria extractor so a repeated apply short-circuits
-          // cleanly even when verdict data is missing or the extractor fails.
-          const alreadyApplied = await checkSplitRecoveryIdempotency(helperOptions);
-          if (alreadyApplied) {
-            result = {
-              verdict: 'split',
-              noAction: false,
-              commitSha: alreadyApplied.commitSha,
-              successorPrdId: alreadyApplied.successorPrdId,
-              status: alreadyApplied.status,
-              detail: `Split recovery already applied; successor ${alreadyApplied.successorPrdId} exists.`,
-            };
-            break;
-          }
-          if (!verdict.suggestedSuccessorPrd) {
-            throw new Error(`split verdict for ${prdId} is missing suggestedSuccessorPrd`);
-          }
-          const normalized = normalizeRecoverySuccessorPrd(verdict.suggestedSuccessorPrd);
-          let acceptanceCriteriaInventory = normalized.legacyAcceptanceCriteriaInventory;
-          if (!acceptanceCriteriaInventory) {
-            const extractorConfig = resolveAgentConfig('prd-validator', this.config);
-            const extractorGen = runAcceptanceCriteriaExtractor({
-              ...extractorConfig,
-              cwd,
-              prdContent: normalized.visibleBody,
-              phase: 'standalone',
-              harness: this.agentRuntimes.forRole('prd-validator'),
-            });
-            let extractorResult = await extractorGen.next();
-            while (!extractorResult.done) {
-              yield extractorResult.value;
-              extractorResult = await extractorGen.next();
-            }
-            acceptanceCriteriaInventory = extractorResult.value;
-          }
-          const { commitSha, successorPrdId, status } = await applyRecoverySplit(helperOptions, verdict, { summary: projectedSidecar.summary, acceptanceCriteriaInventory });
-          result = { verdict: 'split', noAction: false, commitSha, successorPrdId, status };
+        case 'continue-repair': {
+          const { commitSha, status, detail } = await applyRecoveryContinueRepair(helperOptions);
+          result = {
+            verdict: 'continue-repair',
+            noAction: false,
+            commitSha,
+            status: status === 'already-queued' ? 'already-applied' : 'applied',
+            detail,
+          };
           break;
         }
         case 'abandon': {
@@ -2170,7 +2149,6 @@ export class EforgeEngine {
         type: 'recovery:apply:complete',
         prdId,
         verdict: result.verdict,
-        successorPrdId: result.successorPrdId,
         noAction: result.noAction,
       };
 
@@ -2178,7 +2156,6 @@ export class EforgeEngine {
       yield emitBuildDecisionForPlan(failingPlanId, {
         kind: 'recovery-verdict',
         verdict: result.verdict,
-        successorPrdId: result.successorPrdId,
         rationale: verdict.rationale,
       });
 
@@ -2260,7 +2237,7 @@ export class EforgeEngine {
     // to suppress compile phases and seed orchestrator state.
     const runId = randomUUID();
     let status: 'completed' | 'failed' = 'completed';
-    let buildSummary = 'Resume complete';
+    let buildSummary = 'Continue-and-repair complete';
     const terminalTracker = createBuildTerminalFailureTracker(runId);
     let tracing: ReturnType<typeof createTracingContext> | undefined;
     let queuedResumeStarted = false;
@@ -2270,9 +2247,9 @@ export class EforgeEngine {
 
     try {
       validatePlanSetName(setName);
-      tracing = createTracingContext(this.config, runId, 'build', setName);
+      tracing = createTracingContext(this.config, runId, 'continue-repair', setName);
 
-      yield { type: 'phase:start', runId, planSet: setName, command: 'resume', timestamp: ts() };
+      yield { type: 'phase:start', runId, planSet: setName, command: 'continue-repair', timestamp: ts() };
       tracing.setInput({ planSet: setName, prdId, resumeMode: true });
 
       if (!options.schedulerOwned) {
@@ -2575,7 +2552,7 @@ export class EforgeEngine {
         yield event;
         terminalTracker.observe(event);
         if (event.type === 'plan:build:failed') { status = 'failed'; buildSummary = event.error.startsWith('Merge failed') ? `Merge failed for ${event.planId}` : `Build failed for ${event.planId}`; }
-        if (event.type === 'validation:complete') { status = event.passed ? 'completed' : 'failed'; buildSummary = event.passed ? 'Resume complete' : 'Post-merge validation failed'; }
+        if (event.type === 'validation:complete') { status = event.passed ? 'completed' : 'failed'; buildSummary = event.passed ? 'Continue-and-repair complete' : 'Post-merge validation failed'; }
         if (event.type === 'prd_validation:complete') {
           if (!event.passed) {
             status = 'failed';
@@ -2628,13 +2605,13 @@ export class EforgeEngine {
           const rollback = await rollbackQueuedResume({ cwd, prdId, queueDir: this.config.prdQueue.dir });
           if (rollback.status === 'blocked') {
             status = 'failed';
-            buildSummary = `Queued resume rollback blocked: ${rollback.reason}`;
+            buildSummary = `Continue-and-repair rollback blocked: ${rollback.reason}`;
           } else if (rollback.status === 'rolled-back' && resumeActivationReached) {
             await finalizeFailedQueuedResumeSidecars({ cwd, queueDir: this.config.prdQueue.dir, prdId, setName, featureBranch, baseBranch: baseBranch ?? this.config.build.trunkBranch ?? 'main', trunkBranch: this.config.build.trunkBranch, agentRuntimes: this.agentRuntimes, config: this.config, verbose: options.verbose, abortController: options.abortController, activationReached: true, resumeRunId: runId, ...(queuedResumeFinalizationFailure !== undefined ? { degradedReason: queuedResumeFinalizationFailure } : {}) });
           }
         } catch (err) {
           status = 'failed';
-          buildSummary = `Queued resume rollback failed: ${(err as Error).message}`;
+          buildSummary = `Continue-and-repair rollback failed: ${(err as Error).message}`;
         }
       }
       tracing?.setOutput({ status, summary: buildSummary });

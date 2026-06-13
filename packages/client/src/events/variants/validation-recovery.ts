@@ -174,11 +174,10 @@ export const validationRecoveryEventVariants = [
     prdId: Type.String(),
     verdict: Type.Union([
       Type.Literal('retry'),
-      Type.Literal('split'),
+      Type.Literal('continue-repair'),
       Type.Literal('abandon'),
       Type.Literal('manual'),
     ]),
-    successorPrdId: Type.Optional(Type.String()),
     noAction: Type.Boolean(),
   }),
   Type.Object({

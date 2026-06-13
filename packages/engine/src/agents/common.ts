@@ -142,7 +142,7 @@ export function parseStalenessBlock(text: string): StalenessVerdict | null {
 // Recovery Verdict Parsing
 // ---------------------------------------------------------------------------
 
-const VALID_RECOVERY_VERDICTS = new Set(['retry', 'split', 'abandon', 'manual']);
+const VALID_RECOVERY_VERDICTS = new Set(['retry', 'continue-repair', 'abandon', 'manual']);
 const VALID_RECOVERY_CONFIDENCES = new Set(['low', 'medium', 'high']);
 
 export type RecoveryVerdict = Static<typeof recoveryVerdictSchema>;
@@ -169,8 +169,8 @@ function parseListItems(content: string, tagName: string): string[] {
  *
  * Expected format:
  * ```xml
- * <recovery verdict="split" confidence="medium">
- *   <rationale>The plan was too large to complete in one session.</rationale>
+ * <recovery verdict="continue-repair" confidence="medium">
+ *   <rationale>Compiled artifacts are eligible and plan-02 failed after plan-01 landed.</rationale>
  *   <completedWork>
  *     <item>Database schema implemented</item>
  *   </completedWork>
@@ -180,7 +180,6 @@ function parseListItems(content: string, tagName: string): string[] {
  *   <risks>
  *     <item>Foundation may need updates</item>
  *   </risks>
- *   <suggestedSuccessorPrd>Full PRD content here</suggestedSuccessorPrd>
  * </recovery>
  * ```
  *
@@ -205,17 +204,13 @@ export function parseRecoveryVerdictBlock(text: string): RecoveryVerdict | null 
   const remainingWork = parseListItems(inner, 'remainingWork');
   const risks = parseListItems(inner, 'risks');
 
-  const successorMatch = inner.match(/<suggestedSuccessorPrd>([\s\S]*?)<\/suggestedSuccessorPrd>/);
-  const suggestedSuccessorPrd = successorMatch ? successorMatch[1].trim() : undefined;
-
   return {
-    verdict: verdict as 'retry' | 'split' | 'abandon' | 'manual',
+    verdict: verdict as 'retry' | 'continue-repair' | 'abandon' | 'manual',
     confidence: confidence as 'low' | 'medium' | 'high',
     rationale,
     completedWork,
     remainingWork,
     risks,
-    ...(suggestedSuccessorPrd !== undefined && { suggestedSuccessorPrd }),
   };
 }
 

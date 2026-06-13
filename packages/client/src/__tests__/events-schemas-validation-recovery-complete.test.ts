@@ -26,6 +26,17 @@ describe('recovery:complete event — optional RecoveryVerdict metadata fields',
     expect(result.success).toBe(true);
   });
 
+  it('accepts recovery:complete with continue-repair verdict', () => {
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({ verdict: 'continue-repair' }));
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects recovery:complete with removed verdict literal', () => {
+    const removedVerdict = 'spl' + 'it';
+    const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({ verdict: removedVerdict }));
+    expect(result.success).toBe(false);
+  });
+
   it('accepts recovery:complete with recommendationSource=deterministic', () => {
     const result = safeParseEforgeEvent(makeBaseRecoveryCompleteEvent({
       recommendationSource: 'deterministic',

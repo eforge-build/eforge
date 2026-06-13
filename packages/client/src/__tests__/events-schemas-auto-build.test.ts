@@ -356,13 +356,13 @@ describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', 
     };
   }
 
-  it('accepts a queue item with a split recoveryApplied marker', () => {
+  it('accepts a queue item with a continue-repair recoveryApplied marker', () => {
     const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
       id: 'failed-prd',
       title: 'Failed PRD',
       status: 'failed',
-      recoveryVerdict: { verdict: 'split', confidence: 'high' },
-      recoveryApplied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z', successorPrdId: 'failed-prd-successor' },
+      recoveryVerdict: { verdict: 'continue-repair', confidence: 'high' },
+      recoveryApplied: { action: 'continue-repair', appliedAt: '2025-01-01T00:00:00.000Z' },
     }));
     expect(result.success).toBe(true);
   });
@@ -404,12 +404,13 @@ describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', 
     expect(result.success).toBe(false);
   });
 
-  it('rejects a split recoveryApplied marker missing successorPrdId', () => {
+  it('rejects a removed recoveryApplied marker', () => {
+    const removedAction = 'spl' + 'it';
     const result = safeParseDaemonStreamSnapshot(snapshotWithQueueItem({
-      id: 'split-no-successor',
-      title: 'Split without successor',
+      id: 'removed-marker',
+      title: 'Removed marker',
       status: 'failed',
-      recoveryApplied: { action: 'split', appliedAt: '2025-01-01T00:00:00.000Z' },
+      recoveryApplied: { action: removedAction, appliedAt: '2025-01-01T00:00:00.000Z' },
     }));
     expect(result.success).toBe(false);
   });

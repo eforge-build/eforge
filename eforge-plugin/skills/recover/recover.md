@@ -1,15 +1,15 @@
 ---
-description: Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, split, abandon, resume from compiled artifacts, or manual)
+description: Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, continue-repair, abandon, or manual)
 disable-model-invocation: true
 ---
 
 # /eforge:recover
 
-Inspect the recovery analysis for a failed PRD and act on the verdict — re-queue, split into a successor PRD, resume from compiled artifacts, or archive the original.
+Inspect the recovery analysis for a failed PRD and act on the verdict — retry from scratch, continue and repair from preserved compiled artifacts, archive the original, or stop for manual replanning.
 
 ## Workflow
 
-Call `mcp__eforge__eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and call `mcp__eforge__eforge_apply_recovery` to execute. For compiled-build resume, call `mcp__eforge__eforge_resume_build` after confirmation. Never auto-apply — always confirm.
+Call `mcp__eforge__eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and then call the matching tool. Use `mcp__eforge__eforge_apply_recovery` for `retry` and `abandon`. Use `mcp__eforge__eforge_continue_repair` for the `continue-repair` action when preserved artifacts are eligible. Never auto-apply — always confirm.
 
 ## Steps
 
@@ -42,7 +42,7 @@ Call `mcp__eforge__eforge_read_recovery_sidecar` with `{ prdId }`.
 Display the recovery report to the user:
 
 **PRD**: `{prdId}`
-**Verdict**: `{verdict}` (`retry` / `split` / `abandon` / `manual`)
+**Verdict**: `{verdict}` (`retry` / `continue-repair` / `abandon` / `manual`)
 **Confidence**: `{confidence}` (`low` / `medium` / `high`)
 
 **Rationale**
@@ -57,58 +57,45 @@ Display the recovery report to the user:
 **Risks**
 {risks — bullet list}
 
-If the verdict is `split`, also show:
+Inspect sidecar-provided continue-and-repair fields. If `continueRepairEligibility.eligible === true` or `recoveryOptions` contains a recommended continue-and-repair option such as `{ kind: "continue-repair", action: "continue-repair", recommended: true }`, present exactly one primary action:
 
-**Suggested successor PRD**
-```
-{suggestedSuccessorPrd}
-```
+> This recovery sidecar recommends **Continue and repair build** from preserved compiled artifacts. Continue with `mcp__eforge__eforge_continue_repair`? (yes / no)
 
-First inspect sidecar-provided compiled-build resume fields. If `resumeEligibility.eligible === true` or `recoveryOptions` contains `{ kind: "compiled-build-resume", action: "eforge_resume_build", recommended: true }`, prefer that sidecar recommendation and present it alongside the verdict-recommended action:
+If `continueRepairEligibility.eligible === false`, show the bounded reason and do not recommend continue-and-repair. The mutating `mcp__eforge__eforge_continue_repair` tool validates eligibility server-side if the user explicitly asks to try after reviewing the warning.
 
-> This recovery sidecar recommends compiled-build resume from preserved artifacts. You may either follow the verdict action above or resume the build using `mcp__eforge__eforge_resume_build`. Which would you prefer?
-
-If the sidecar has `resumeEligibility.eligible === false`, show the bounded reason and do not recommend resume unless the user asks to resume anyway because branch/artifact state may have changed. There is no separate read-only live eligibility tool; rely on sidecar fields unless the user confirms calling `mcp__eforge__eforge_resume_build`, which will validate eligibility server-side and queue a resume only when eligible. If the sidecar does not contain resume fields, do not infer eligibility manually; offer `mcp__eforge__eforge_resume_build` only after explicit confirmation and explain that the daemon will reject ineligible resumes.
+Do not author replacement PRD content from the recovery sidecar. If the verdict is `manual`, render the full report and use the manual guidance below.
 
 ### Step 4: Confirm the Action
 
-Ask the user to confirm the verdict-specific action or the resume option:
+Ask the user to confirm the verdict-specific action:
 
-- `retry`: "Re-queue PRD `{prdId}` for another attempt? (yes / no)"
-- `split`: "Enqueue a successor PRD based on the suggested content above? If landed partial work is recorded in the sidecar, the queued successor will start from the preserved feature branch while targeting the original base branch. (yes / no)"
+- `retry`: "Retry PRD `{prdId}` from scratch? (yes / no)"
+- `continue-repair`: "Continue and repair build `{prdId}` from preserved compiled artifacts with `mcp__eforge__eforge_continue_repair`? (yes / no)"
 - `abandon`: "Archive the failed PRD `{prdId}` (this cannot be undone)? (yes / no)"
-- `manual`: If the sidecar recommends compiled-build resume, offer the resume confirmation below; a `manual` verdict can coexist with a resume recommendation because `manual` applies only to `mcp__eforge__eforge_apply_recovery`. Otherwise render the full markdown report and stop. Tell the user:
+- `manual`: Render the full markdown report and stop. Tell the user:
 
-> This verdict requires manual intervention. Review the report above and take action outside of eforge. No automated apply-recovery action is available for the `manual` verdict.
+> This verdict requires manual review / manual replanning. Review the report above, decide the bounded repair plan outside of eforge, and enqueue any replacement work deliberately. No automated apply-recovery action is available for the `manual` verdict.
 
-**Stop here** for `manual` unless a sidecar-provided compiled-build resume recommendation is present and the user chooses it. Do not call `eforge_apply_recovery`. If it were called it would return `{ verdict: 'manual', noAction: true }` — no mutation occurs.
-
-- **resume**: "Resume PRD `{prdId}` from its compiled artifacts with `mcp__eforge__eforge_resume_build`? (yes / no)"
+**Stop here** for `manual`. Do not call `mcp__eforge__eforge_apply_recovery`; if it were called it would return `{ verdict: 'manual', noAction: true }` and no mutation would occur.
 
 ### Step 5: Apply the Recovery
 
-**Verdict-based recovery**: On confirmation for `retry`, `split`, or `abandon`, call `mcp__eforge__eforge_apply_recovery` with `{ prdId }`.
+On confirmation, call the appropriate tool:
 
-The daemon applies the action in-process and returns synchronously. Report the result using the returned response fields:
+- **retry**: Call `mcp__eforge__eforge_apply_recovery` with `{ prdId }`. Report: "PRD `{prdId}` has been queued to retry from scratch."
+- **continue-repair**: Call `mcp__eforge__eforge_continue_repair` with `{ prdId }`, adding `setName` when the sidecar top-level `setName` differs from the PRD id and `profile` when the user requests a specific agent runtime profile. Report: "Queued continue-and-repair build for PRD `{prdId}`. It will wait for scheduler dispatch under the current queue controls."
+- **abandon**: Call `mcp__eforge__eforge_apply_recovery` with `{ prdId }`. Report: "PRD `{prdId}` has been archived."
 
-- **retry**: "PRD `{prdId}` has been re-queued. Commit: `{commitSha}`."
-- **split**: "Successor PRD `{successorPrdId}` enqueued. If landed partial work was recorded in the sidecar, it will continue from the preserved feature branch while targeting the original base branch. Commit: `{commitSha}`."
-- **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
+A dispatched continue-and-repair build preserves normal queue controls: parallelism, pause state, dependency gating, and profile routing. It returns queued metadata such as the PRD id, set name, branches, moved descendants, and optional profile; it does not return a session id or PID.
 
-**Compiled-build resume**: On confirmation for resume, call `mcp__eforge__eforge_resume_build` with `{ prdId }`, adding `setName` when the sidecar top-level `setName` differs from the PRD id and `profile` when the user requests a specific agent runtime profile. The tool queues a compiled resume request for scheduler dispatch, preserves normal queue controls (parallelism, pause state, dependency gating, and profile routing), and returns queued metadata such as the PRD id, set name, branches, moved descendants, and optional profile. It does not start a background resume worker immediately and does not return a session id or PID. Report:
-
-> Queued compiled-build resume for PRD `{prdId}`. It will wait for scheduler dispatch under the current queue controls.
-
-A dispatched compiled-build resume automatically retires the failed queue item and reactivates skipped descendants using normal dependency semantics when it succeeds. If an activated resume fails, the engine rolls the PRD back to `failed/` and refreshes the recovery sidecar from resumed-run evidence, or writes/removes degraded evidence so stale pre-resume sidecars are not authoritative. Manual queue-cascade recovery remains available for explicit retry or repair workflows.
-
-## When to Choose Compiled-Build Resume vs PRD-Level Retry
+## When to Choose Continue and Repair vs Retry from Scratch
 
 | Situation | Recommended action |
 |-----------|-------------------|
-| PRD failed early (before compile stage) — no artifacts | Use `retry` or `split` via `mcp__eforge__eforge_apply_recovery` |
-| Sidecar recommends compiled-build resume | Prefer `mcp__eforge__eforge_resume_build` after confirmation, even when the apply-recovery verdict is `manual` |
-| PRD failed after compile — feature branch exists with partial work | Use `mcp__eforge__eforge_apply_recovery` with a `split` verdict to enqueue a continuation successor; use `mcp__eforge__eforge_resume_build` when the sidecar recommends it, or when no sidecar resume fields exist only after explicit user confirmation because the daemon validates eligibility server-side |
+| Sidecar recommends continue-and-repair from preserved compiled artifacts | Prefer `mcp__eforge__eforge_continue_repair` after confirmation |
+| PRD failed early before compiled artifacts were preserved | Use `retry` via `mcp__eforge__eforge_apply_recovery` |
 | Compiled artifacts are stale or the plan has changed significantly | Use `retry` via `mcp__eforge__eforge_apply_recovery` to start fresh |
+| The report cannot determine a safe automated action | Stop for manual review / manual replanning |
 | User wants to archive the failed PRD without further attempts | Use `abandon` via `mcp__eforge__eforge_apply_recovery` |
 
 ## Error Handling
@@ -118,7 +105,7 @@ A dispatched compiled-build resume automatically retires the failed queue item a
 | `eforge_read_recovery_sidecar` returns 404 | Offer to call `eforge_recover` to generate the verdict (Step 2) |
 | Sidecar contains `recoveryError` | Offer to re-run `eforge_recover` to regenerate (Step 2) |
 | `eforge_apply_recovery` fails | Surface the daemon error message verbatim; do not retry automatically |
-| `eforge_resume_build` fails | Surface the daemon error message verbatim; do not retry automatically |
+| `eforge_continue_repair` fails | Surface the daemon error message verbatim; do not retry automatically |
 <!-- parity-skip-start -->
 | Tool unavailable | Warn that eforge MCP tools are not available; suggest checking plugin configuration |
 <!-- parity-skip-end -->
@@ -129,4 +116,4 @@ A dispatched compiled-build resume automatically retires the failed queue item a
 |-------|---------|----------------|
 | Status | `mcp__eforge__eforge_queue_list` | Check which PRDs are failed before recovering |
 | Build | `/eforge:build` | Enqueue new work after a successful recovery |
-| Plan | `/eforge:plan` | Plan a replacement PRD before re-queuing |
+| Plan | `/eforge:plan` | Plan replacement work before queuing it |

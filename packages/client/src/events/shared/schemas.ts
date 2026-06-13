@@ -131,7 +131,7 @@ export const StalenessVerdictSchema = Type.Union([
 export const RecoveryVerdictSchema = Type.Object({
   verdict: Type.Union([
     Type.Literal('retry'),
-    Type.Literal('split'),
+    Type.Literal('continue-repair'),
     Type.Literal('abandon'),
     Type.Literal('manual'),
   ]),
@@ -140,7 +140,6 @@ export const RecoveryVerdictSchema = Type.Object({
   completedWork: Type.Array(Type.String()),
   remainingWork: Type.Array(Type.String()),
   risks: Type.Array(Type.String()),
-  suggestedSuccessorPrd: Type.Optional(Type.String()),
   partial: Type.Optional(Type.Boolean()),
   recoveryError: Type.Optional(Type.String()),
   recommendationSource: Type.Optional(Type.Union([

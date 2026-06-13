@@ -4,7 +4,7 @@
 
 **Goal**: Make the build-engine kernel more resilient without expanding it into input authoring or host workflow UX.
 
-- **Typed recovery paths** - Continue moving failure analysis, retry, split, abandon, queue-cascade recovery, and validation repair behind typed events and daemon/client routes so recovery decisions are inspectable and repeatable.
+- **Typed recovery paths** - Continue moving failure analysis, retry, continue-and-repair, abandon, queue-cascade recovery, and validation repair behind typed events and daemon/client routes so recovery decisions are inspectable and repeatable.
 - **Honest gates** - Strengthen fail-closed validation, acceptance evidence, waiver visibility, dirty-worktree invariants, and no-output safeguards so completed builds mean verified work rather than optimistic success.
 - **Engine boundary discipline** - Keep normalized build-source intake, dependency-aware branch/worktree orchestration, build execution, conservative gates, and typed failure/recovery dispatch in the kernel while leaving input authoring and richer workflow UX to extension surfaces.
 

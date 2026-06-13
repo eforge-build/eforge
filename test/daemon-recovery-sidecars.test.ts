@@ -153,7 +153,7 @@ describe('moveFailedWithSidecar', () => {
     expect(existsSync(jsonPath)).toBe(true);
   });
 
-  it('passes optional compiled-build resume evidence through to written sidecars', async () => {
+  it('passes optional continue-and-repair evidence through to written sidecars', async () => {
     const dir = makeTestDir();
     initGitRepo(dir);
     const queueDir = join(dir, '.eforge', 'queue');
@@ -183,20 +183,20 @@ describe('moveFailedWithSidecar', () => {
     };
 
     const { jsonPath } = await moveFailedWithSidecar(prdPath, summary, verdict, undefined, dir, {
-      resumeEligibility: {
-        source: 'projectResumeEligibility',
+      continueRepairEligibility: {
+        source: 'continueRepairEligibility',
         eligible: true,
         featureBranch: 'eforge/resume-set',
         artifactAvailability: 'feature-branch',
         landedCommitCount: 1,
         diffStat: '1 file changed',
       },
-      recoveryOptions: [{ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true, reason: 'Eligible artifacts.' }],
+      recoveryOptions: [{ kind: 'continue-repair', action: 'continue-repair', recommended: true, reason: 'Eligible artifacts.' }],
     });
 
     const sidecarJson = JSON.parse(await readFile(jsonPath, 'utf-8'));
-    expect(sidecarJson.resumeEligibility.eligible).toBe(true);
-    expect(sidecarJson.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'compiled-build-resume', action: 'eforge_resume_build', recommended: true }));
+    expect(sidecarJson.continueRepairEligibility.eligible).toBe(true);
+    expect(sidecarJson.recoveryOptions).toContainEqual(expect.objectContaining({ kind: 'continue-repair', action: 'continue-repair', recommended: true }));
   });
 });
 
