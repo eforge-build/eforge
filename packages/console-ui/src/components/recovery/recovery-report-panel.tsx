@@ -118,11 +118,8 @@ export function RecoveryReportPanel({
   onContinueRepair,
   refreshQueue,
 }: RecoveryReportPanelProps) {
-  const sidecarRecommendsContinueRepair = sidecar?.json.recoveryOptions?.some(
-    (option) => option.kind === 'continue-repair' && option.recommended,
-  ) ?? false;
   const liveContinueRepairRecommended = Boolean(
-    eligibility?.eligible && eligibility.partial !== true && (!sidecar || sidecarRecommendsContinueRepair),
+    eligibility?.eligible && eligibility.partial !== true,
   );
   const recommendedVerdict: RecoveryVerdictValue | undefined = liveContinueRepairRecommended
     ? 'continue-repair'
