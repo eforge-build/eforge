@@ -100,7 +100,10 @@ export const mockBoard: Board = {
 export const mockRecommendations: RecommendationModel = {
   schemaVersion: 1,
   activeWork: [],
-  readyCandidates: [],
+  readyCandidates: [
+    { ref: 'ready-import-preview', itemId: 'add-import-preview', rationale: 'Originally recommended before same-draft shipped filtering.' },
+    { ref: 'ready-traceability', itemId: 'traceability', rationale: 'Still ready after curation filtering.' },
+  ],
   recommendedNextSequence: [
     { ref: 'next-recommendations', itemId: 'recommend-next-work', rationale: 'Foundation for choosing useful follow-up work.' },
     { ref: 'next-import-preview', itemId: 'add-import-preview', rationale: 'Ready, scoped, and user-visible.' },
@@ -357,6 +360,18 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
     sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Confirmed auto-mode remains blocked by traceability evidence.' }],
     rationale: 'auto-mode has durable dependency evidence and should carry fresh recheck metadata.',
     evidence: ['Trace sidecars still blocks auto-mode.'],
+  }, {
+    kind: 'item', id: 'add-import-preview',
+    precondition: { kind: 'item', id: 'add-import-preview', bodySha256: 'add-import-preview-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
+    metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' },
+    rationale: 'add-import-preview has confirmed lifecycle landing evidence and should be proposed as shipped.',
+    evidence: ['Shipped evidence: lifecycle trace — landing row merge commit 1234567890abcdef for feature/add-import-preview.'],
+  }, {
+    kind: 'item', id: 'recommend-next-work',
+    precondition: { kind: 'item', id: 'recommend-next-work', bodySha256: 'recommend-next-work-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
+    metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' },
+    rationale: 'recommend-next-work has git and PR evidence from the merged recommendation workflow.',
+    evidence: ['Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.'],
   }],
   epicChanges: [{
     kind: 'epic', id: 'planning',
@@ -368,7 +383,7 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
   }],
   noOpRechecks: [{ kind: 'item', id: 'traceability', precondition: { kind: 'item', id: 'traceability', bodySha256: 'traceability-body' }, last_checked: '2026-06-07', stale_after: '2026-07-07', rationale: 'Traceability remains accurate and ready.' }],
   skipped: [{ kind: 'item', id: 'legacy-cleanup', reason: 'Legacy shipped record is ambiguous and should not be rewritten by curation.' }],
-  needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'The claim lacks durable evidence.' }],
+  needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'Ambiguous shipped candidate: needs input — git history mentions stale-idea but lacks a confirmed merge or lifecycle landing.' }],
 };
 
 export const mockBacklogCurationPreview = {
