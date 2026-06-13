@@ -31,11 +31,11 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
 
     if (input.enrichPullRequests !== false) {
       throwIfAborted(input.signal);
-      const prNumbers = candidates.flatMap((candidate) => candidate.commit ? git.records.find((record) => record.hash === candidate.commit?.hash)?.prNumbers ?? [] : []);
+      const prNumbers = git.records.flatMap((record) => record.prNumbers);
       const enrichment = await enrichPullRequests({ cwd: input.cwd, numbers: prNumbers, caps, signal: input.signal });
       throwIfAborted(input.signal);
       diagnostics.push(...enrichment.diagnostics);
-      mergePullRequestMetadata(candidates, enrichment.pullRequests, git.records, caps);
+      mergePullRequestMetadata(candidates, enrichment.pullRequests, git.records, input.items, caps);
     }
 
     const ranked = rankCandidates(dedupeCandidates(candidates)).slice(0, caps.candidateCount);
@@ -67,6 +67,7 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
       isMerge: record.isMerge,
       ...(record.committedAt && { committedAt: record.committedAt }),
     },
+    ...(record.prNumbers[0] !== undefined && { pr: { source: 'pr-history' as const, number: record.prNumbers[0], ...(record.branchHints[0] !== undefined && { headRefName: record.branchHints[0] }), changedPaths: [] } }),
     lifecycleRows,
     changedPaths: boundChangedPaths(record.changedPaths, caps),
     branchHints: record.branchHints.slice(0, caps.branchHintCount),
@@ -76,29 +77,74 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
   return candidate;
 }
 
-function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRequests: readonly ShippedEvidencePrMetadata[], records: readonly GitHistoryRecord[], caps: ShippedEvidenceCaps): void {
+function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRequests: readonly ShippedEvidencePrMetadata[], records: readonly GitHistoryRecord[], items: readonly BacklogItem[], caps: ShippedEvidenceCaps): void {
   const prByNumber = new Map(pullRequests.map((pr) => [pr.number, pr]));
   const recordByHash = new Map(records.map((record) => [record.hash, record]));
+  const candidatesByItem = new Map(items.map((item) => [item.id, item]));
   for (const candidate of candidates) {
     const record = candidate.commit ? recordByHash.get(candidate.commit.hash) : undefined;
     const pr = record?.prNumbers.map((number) => prByNumber.get(number)).find((value): value is ShippedEvidencePrMetadata => value !== undefined);
-    if (!record || !pr) continue;
-    const signals = analyzeEvidenceMatch({
-      item: { id: candidate.itemId, title: candidate.itemTitle, status: 'candidate', tags: [], depends_on: [], body: '' },
-      record,
-      pr,
-      excerptText: candidate.excerpts.map((excerpt) => excerpt.text).join('\n'),
-    });
-    candidate.pr = { ...pr, changedPaths: boundChangedPaths(pr.changedPaths, caps) };
-    candidate.evidenceSource = 'combined';
-    candidate.changedPaths = boundChangedPaths(uniqueStrings([...candidate.changedPaths, ...pr.changedPaths]), caps);
-    candidate.branchHints = uniqueStrings([...candidate.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount);
-    candidate.reasons = uniqueStrings([...candidate.reasons, ...signals.reasons]);
-    const localLanding = hasLocalLandingSignal(record);
-    candidate.confidence = classifyConfidence({ source: 'git-history', reachableLanding: localLanding || hasMergedPullRequestEvidence(record, pr), staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals });
-    candidate.score += signalScore(signals);
-    candidate.citation = formatCitation(candidate);
+    const item = candidatesByItem.get(candidate.itemId);
+    if (!record || !pr || !item) continue;
+    mergePullRequestIntoCandidate(candidate, item, record, pr, caps);
   }
+  for (const record of records) {
+    const pr = record.prNumbers.map((number) => prByNumber.get(number)).find((value): value is ShippedEvidencePrMetadata => value !== undefined);
+    if (!pr) continue;
+    for (const item of items) {
+      if (hasCandidateForRecordOrPr(candidates, item.id, record, pr)) continue;
+      const signals = analyzeEvidenceMatch({ item, record, pr });
+      if (!signals.prMetadata) continue;
+      const localLanding = hasLocalLandingSignal(record);
+      const candidate: ShippedEvidenceCandidate = {
+        itemId: item.id,
+        itemTitle: item.title,
+        confidence: classifyConfidence({ source: 'git-history', reachableLanding: localLanding || hasReachablePullRequestMergeCommit(record, pr), staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals }),
+        evidenceSource: 'combined',
+        score: signalScore(signals) + (record.isMerge ? 20 : 0),
+        citation: '',
+        reasons: signals.reasons,
+        commit: {
+          hash: record.hash,
+          shortHash: record.shortHash,
+          subject: record.subject,
+          isMerge: record.isMerge,
+          ...(record.committedAt && { committedAt: record.committedAt }),
+        },
+        pr: { ...pr, changedPaths: boundChangedPaths(pr.changedPaths, caps) },
+        lifecycleRows: [],
+        changedPaths: boundChangedPaths(uniqueStrings([...record.changedPaths, ...pr.changedPaths]), caps),
+        branchHints: uniqueStrings([...record.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount),
+        excerpts: [],
+      };
+      candidate.citation = formatCitation(candidate);
+      candidates.push(candidate);
+    }
+  }
+}
+
+function mergePullRequestIntoCandidate(candidate: ShippedEvidenceCandidate, item: BacklogItem, record: GitHistoryRecord, pr: ShippedEvidencePrMetadata, caps: ShippedEvidenceCaps): void {
+  const signals = analyzeEvidenceMatch({
+    item,
+    record,
+    pr,
+    excerptText: candidate.excerpts.map((excerpt) => excerpt.text).join('\n'),
+  });
+  const hasLifecycleEvidence = candidate.evidenceSource === 'lifecycle' || candidate.lifecycleRows.length > 0;
+  candidate.pr = { ...pr, changedPaths: boundChangedPaths(pr.changedPaths, caps) };
+  if (!hasLifecycleEvidence) candidate.evidenceSource = 'combined';
+  candidate.changedPaths = boundChangedPaths(uniqueStrings([...candidate.changedPaths, ...pr.changedPaths]), caps);
+  candidate.branchHints = uniqueStrings([...candidate.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount);
+  candidate.reasons = uniqueStrings([...candidate.reasons, ...signals.reasons]);
+  const localLanding = hasLocalLandingSignal(record);
+  const enrichedConfidence = classifyConfidence({ source: 'git-history', reachableLanding: localLanding || hasReachablePullRequestMergeCommit(record, pr), staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals });
+  candidate.confidence = hasLifecycleEvidence ? strongerConfidence(candidate.confidence, enrichedConfidence) : enrichedConfidence;
+  candidate.score += signalScore(signals);
+  candidate.citation = formatCitation(candidate);
+}
+
+function hasCandidateForRecordOrPr(candidates: readonly ShippedEvidenceCandidate[], itemId: string, record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
+  return candidates.some((candidate) => candidate.itemId === itemId && (candidate.commit?.hash === record.hash || candidate.pr?.number === pr.number));
 }
 
 function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLinkRow[], caps: ShippedEvidenceCaps): ShippedEvidenceCandidate[] {
@@ -143,7 +189,7 @@ function isLandingLikeRow(row: LifecycleLinkRow): boolean {
 function dedupeCandidates(candidates: readonly ShippedEvidenceCandidate[]): ShippedEvidenceCandidate[] {
   const byKey = new Map<string, ShippedEvidenceCandidate>();
   for (const candidate of candidates) {
-    const key = `${candidate.itemId}:${candidate.evidenceSource}:${candidate.commit?.hash ?? candidate.pr?.number ?? candidate.citation}`;
+    const key = `${candidate.itemId}:${candidate.commit?.hash ?? ''}:${candidate.pr?.number ?? candidate.citation}`;
     const existing = byKey.get(key);
     if (!existing || rankCandidates([candidate, existing])[0] === candidate) byKey.set(key, candidate);
   }
@@ -171,10 +217,15 @@ function hasLocalLandingSignal(record: GitHistoryRecord): boolean {
   return record.isMerge || /\b(merge(?:d)?|land(?:ed|ing)?|ship(?:ped)?|release(?:d)?)\b/i.test(record.subject);
 }
 
-function hasMergedPullRequestEvidence(record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
-  return pr.state?.toUpperCase() === 'MERGED' || pr.mergedAt !== undefined || (pr.mergeCommitOid !== undefined && pr.mergeCommitOid === record.hash);
+function hasReachablePullRequestMergeCommit(record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
+  return pr.mergeCommitOid !== undefined && pr.mergeCommitOid === record.hash;
 }
 
 function isStaleOrUnreachablePullRequest(record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
-  return !hasMergedPullRequestEvidence(record, pr);
+  return !hasReachablePullRequestMergeCommit(record, pr);
+}
+
+function strongerConfidence(left: ShippedEvidenceCandidate['confidence'], right: ShippedEvidenceCandidate['confidence']): ShippedEvidenceCandidate['confidence'] {
+  const rank: Record<ShippedEvidenceCandidate['confidence'], number> = { strong: 3, ambiguous: 2, weak: 1 };
+  return rank[left] >= rank[right] ? left : right;
 }

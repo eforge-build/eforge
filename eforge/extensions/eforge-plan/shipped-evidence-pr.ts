@@ -17,7 +17,7 @@ export async function enrichPullRequests(input: {
   signal?: AbortSignal;
 }): Promise<PullRequestEnrichmentResult> {
   const caps = normalizeShippedEvidenceCaps(input.caps);
-  const numbers = [...new Set(input.numbers)].sort((left, right) => left - right).slice(0, caps.prEnrichmentCount);
+  const numbers = [...new Set(input.numbers)].slice(0, caps.prEnrichmentCount);
   const diagnostics: ShippedEvidenceDiagnostic[] = [];
   if (input.numbers.length > numbers.length) {
     diagnostics.push({ code: 'capExceeded', message: `PR enrichment capped at ${caps.prEnrichmentCount} pull requests.` });

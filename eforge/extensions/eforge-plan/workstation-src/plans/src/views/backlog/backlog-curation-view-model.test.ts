@@ -8,6 +8,7 @@ describe('backlog curation view model', () => {
       'Shipped evidence: lifecycle trace — merge commit 1234567890abcdef.',
       'Shipped evidence: inferred from git/PR history — commit abcdef1234567890 via PR #191 and https://host/repo/pull/192.',
       'Ambiguous shipped candidate: needs input — #193 needs review.',
+      'Shipped evidence: inferred from git/PR history — git deadbee / PR #194: land formatCitation-style evidence.',
     ]);
 
     expect(preview.labels).toEqual([
@@ -15,8 +16,8 @@ describe('backlog curation view model', () => {
       'Shipped evidence: inferred from git/PR history',
       'Ambiguous shipped candidate: needs input',
     ]);
-    expect(preview.prIds).toEqual(['#191', '#192', '#193']);
-    expect(preview.commitIds).toEqual(['1234567890abcdef', 'abcdef1234567890']);
+    expect(preview.prIds).toEqual(['#191', '#192', '#193', '#194']);
+    expect(preview.commitIds).toEqual(['1234567890abcdef', 'abcdef1234567890', 'deadbee']);
   });
 
   it('filters generated recommendation targets proposed shipped in the same draft', () => {

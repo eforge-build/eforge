@@ -85,7 +85,7 @@ const LIFECYCLE_LABEL = 'Shipped evidence: lifecycle trace';
 const INFERRED_LABEL = 'Shipped evidence: inferred from git/PR history';
 const AMBIGUOUS_LABEL = 'Ambiguous shipped candidate: needs input';
 const PR_PATTERNS = [/\bPR\s+#(\d{1,10})\b/gi, /(?:^|[^\w/])#(\d{1,10})\b/g, /\/pull\/(\d{1,10})\b/gi];
-const COMMIT_PATTERN = /\b(?:merge\s+commit|commit)\s+([a-f0-9]{7,40})\b/gi;
+const COMMIT_PATTERN = /\b(?:merge\s+commit|commit|git)\s+([a-f0-9]{7,40})\b/gi;
 
 export function curationEvidencePreview(values: Array<string | undefined>): CurationEvidencePreview {
   const labelSet = new Set<string>();

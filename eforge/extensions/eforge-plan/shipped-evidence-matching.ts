@@ -10,6 +10,7 @@ export interface MatchSignals {
   nearTitle: boolean;
   branchName: boolean;
   prMetadata: boolean;
+  prExplicitItem: boolean;
   pathOrExcerpt: boolean;
   changedPathsPresent: boolean;
   unrelatedChangedPaths: boolean;
@@ -86,7 +87,8 @@ export function analyzeEvidenceMatch(input: {
   const prNearTitle = titleTokenScore(input.item.title, prText) >= 0.72;
   const prBranchName = input.pr?.headRefName !== undefined && branchNameMatches(input.item, [input.pr.headRefName]);
   const prPath = hasPathOrExcerptSignal(input.item, input.pr?.changedPaths ?? [], '');
-  const prMetadata = input.pr !== undefined && (prItemId || prSlug || prNearTitle || prBranchName || prPath);
+  const prExplicitItem = input.pr !== undefined && (prItemId || prSlug);
+  const prMetadata = input.pr !== undefined && (prExplicitItem || prNearTitle || prBranchName || prPath);
   const changedPaths = [...(input.record?.changedPaths ?? []), ...(input.pr?.changedPaths ?? [])];
   const pathOrExcerpt = hasPathOrExcerptSignal(input.item, changedPaths, input.excerptText ?? '');
   const changedPathsPresent = changedPaths.length > 0;
@@ -97,12 +99,13 @@ export function analyzeEvidenceMatch(input: {
     ...(slug ? ['item slug/title slug match'] : []),
     ...(nearTitle ? [`near-title token score ${titleScore.toFixed(2)}`] : []),
     ...(branchName ? ['branch-name hint match'] : []),
-    ...(prMetadata ? ['PR metadata references item'] : []),
+    ...(prExplicitItem ? ['PR metadata explicitly references item'] : []),
+    ...(prMetadata && !prExplicitItem ? ['PR metadata references item'] : []),
     ...(pathOrExcerpt ? ['changed paths or excerpts align'] : []),
     ...(unrelatedChangedPaths ? ['changed paths present but not aligned'] : []),
     ...(broadOnly ? ['broad wording only'] : []),
   ];
-  return { itemId, slug, nearTitle, branchName, prMetadata, pathOrExcerpt, changedPathsPresent, unrelatedChangedPaths, broadOnly, titleScore, reasons };
+  return { itemId, slug, nearTitle, branchName, prMetadata, prExplicitItem, pathOrExcerpt, changedPathsPresent, unrelatedChangedPaths, broadOnly, titleScore, reasons };
 }
 
 export function classifyConfidence(input: {
@@ -114,11 +117,13 @@ export function classifyConfidence(input: {
   if (input.staleOrUnreachablePr) return 'weak';
   const directIdOrSlug = input.signals.itemId || input.signals.slug;
   const direct = directIdOrSlug || input.signals.branchName || input.signals.prMetadata;
+  if (input.source === 'lifecycle' && input.reachableLanding && direct) return 'strong';
   if (input.signals.broadOnly && input.reachableLanding) return 'ambiguous';
   if (input.signals.broadOnly) return 'weak';
   if (input.reachableLanding && directIdOrSlug && input.signals.unrelatedChangedPaths && !input.signals.branchName && !input.signals.prMetadata && !input.signals.pathOrExcerpt) return 'weak';
-  if (input.source === 'lifecycle' && input.reachableLanding && direct) return 'strong';
-  if (input.reachableLanding && direct && (input.signals.pathOrExcerpt || input.signals.prMetadata || input.signals.branchName)) return 'strong';
+  if (input.reachableLanding && input.signals.prMetadata && input.signals.prExplicitItem) return 'strong';
+  const reinforcingSignals = [directIdOrSlug, input.signals.branchName, input.signals.prExplicitItem, input.signals.nearTitle].filter(Boolean).length;
+  if (input.reachableLanding && input.signals.pathOrExcerpt && reinforcingSignals > 0) return 'strong';
   if (input.reachableLanding && (direct || input.signals.nearTitle)) return 'ambiguous';
   if (input.source === 'lifecycle' && direct) return 'ambiguous';
   return 'weak';
@@ -147,7 +152,7 @@ export function formatCitation(candidate: Pick<ShippedEvidenceCandidate, 'eviden
 }
 
 export function signalScore(signals: MatchSignals): number {
-  return (signals.itemId ? 35 : 0) + (signals.slug ? 25 : 0) + (signals.branchName ? 20 : 0) + (signals.prMetadata ? 20 : 0) + (signals.pathOrExcerpt ? 15 : 0) + Math.round(signals.titleScore * 20) - (signals.broadOnly ? 30 : 0);
+  return (signals.itemId ? 35 : 0) + (signals.slug ? 25 : 0) + (signals.branchName ? 20 : 0) + (signals.prMetadata ? 20 : 0) + (signals.prExplicitItem ? 10 : 0) + (signals.pathOrExcerpt ? 15 : 0) + Math.round(signals.titleScore * 20) - (signals.broadOnly ? 30 : 0);
 }
 
 export function shouldOmitWeakCandidate(candidate: ShippedEvidenceCandidate): boolean {
