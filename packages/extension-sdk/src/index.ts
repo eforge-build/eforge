@@ -120,6 +120,7 @@ export type {
   ExtensionBuildQueueApi,
   // --- eforge:endregion extension-build-queue-context ---
   ExtensionActionOutput,
+  ExtensionActionUserErrorDetail,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
   ExtensionActionSideEffect,
@@ -143,6 +144,7 @@ export {
 } from './bounded-contributions.js';
 export {
   ExtensionActionInputValidationError,
+  ExtensionActionUserError,
   defineConsoleContribution,
   defineConsoleWorkstation,
   defineExtensionAction,

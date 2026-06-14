@@ -70,12 +70,31 @@ export interface ExtensionActionInputValidationErrorDetail {
   [key: string]: ExtensionJsonValue;
 }
 
+export type ExtensionActionUserErrorDetail = ExtensionActionInputValidationErrorDetail;
+
 export class ExtensionActionInputValidationError extends Error {
   details: ExtensionActionInputValidationErrorDetail[];
 
   constructor(message: string, details: ExtensionActionInputValidationErrorDetail[]) {
     super(message);
     this.name = 'ExtensionActionInputValidationError';
+    this.details = details;
+  }
+}
+
+/**
+ * Throw from an action handler when the request is valid JSON but cannot be
+ * fulfilled because of a user-fixable precondition or domain rule. The action
+ * runtime reports this as `invalid-input` with the sanitized message/details
+ * instead of the generic `handler-error` used for unexpected implementation
+ * failures.
+ */
+export class ExtensionActionUserError extends Error {
+  details: ExtensionActionUserErrorDetail[];
+
+  constructor(message: string, details: ExtensionActionUserErrorDetail[] = [{ path: '', message }]) {
+    super(message);
+    this.name = 'ExtensionActionUserError';
     this.details = details;
   }
 }

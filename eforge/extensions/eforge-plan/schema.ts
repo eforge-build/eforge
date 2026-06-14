@@ -222,6 +222,7 @@ export const PlannerContextSelectionSchema = Type.Object({
   itemIds: Type.Array(Type.String()),
   epicIds: Type.Array(Type.String()),
   recommendationRef: Type.Optional(Type.String()),
+  sourceRecommendationRef: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 export const PlannerItemProjectionSchema = Type.Object({
   id: Type.String(),
@@ -249,6 +250,7 @@ export const PreparePlannerContextInputSchema = Type.Object({
   itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })),
   epicId: Type.Optional(Type.String()),
   recommendationRef: Type.Optional(Type.String()),
+  sourceRecommendationRef: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
 }, {
   additionalProperties: false,

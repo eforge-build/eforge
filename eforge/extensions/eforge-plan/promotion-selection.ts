@@ -8,6 +8,7 @@ import {
 } from './backlog-domain.js';
 import { listBacklogItems, readBacklogEpic, readBacklogItem } from './markdown-store.js';
 import { readRecommendations } from './recommendations-store.js';
+import { userActionError } from './action-errors.js';
 import type { BacklogRecommendationModel, PlanningProfileInput, RecommendationGroup, RecommendationItemRef } from './schema.js';
 
 export interface PromotionSelectionInput {
@@ -70,13 +71,13 @@ export async function resolvePromotionSelection(input: PromotionSelectionInput):
 function validateSelectorFamilies(input: PromotionSelectionInput): void {
   const selectors = [input.itemIds !== undefined, input.epicId !== undefined, input.recommendationRef !== undefined].filter(Boolean).length;
   if (selectors !== 1) {
-    throw new Error('Promotion selection must include exactly one selector: itemIds, epicId, or recommendationRef.');
+    throw userActionError('Promotion selection must include exactly one selector: itemIds, epicId, or recommendationRef.', { path: 'selection', details: { selectorCount: selectors } });
   }
   if (input.itemIds !== undefined) {
-    if (input.itemIds.length === 0) throw new Error('Promotion selection itemIds must include at least one item id.');
+    if (input.itemIds.length === 0) throw userActionError('Promotion selection itemIds must include at least one item id.', { path: 'itemIds' });
     const seen = new Set<string>();
     for (const id of input.itemIds) {
-      if (seen.has(id)) throw new Error(`Duplicate backlog item id in promotion selection: ${id}`);
+      if (seen.has(id)) throw userActionError(`Duplicate backlog item id in promotion selection: ${id}`, { path: 'itemIds', details: { itemId: id } });
       seen.add(id);
     }
   }
@@ -88,18 +89,18 @@ async function resolveExplicitItems(cwd: string, itemIds: string[]): Promise<Res
 
 async function resolveEpicItems(cwd: string, epicId: string): Promise<ResolvedSelection> {
   const epic = await readBacklogEpic(cwd, epicId);
-  if (!epic) throw new Error(`Backlog epic not found: ${epicId}`);
+  if (!epic) throw userActionError(`Backlog epic not found: ${epicId}`, { path: 'epicId', details: { epicId } });
   const items = sortItemsDependencyBeforeDependent(itemsForEpic(await listBacklogItems(cwd), epicId));
-  if (items.length === 0) throw new Error(`No open backlog items found for epic: ${epicId}`);
+  if (items.length === 0) throw userActionError(`No open backlog items found for epic: ${epicId}`, { path: 'epicId', details: { epicId } });
   return { items, extraEpicIds: [epicId], title: epic.title };
 }
 
 async function resolveRecommendationItems(cwd: string, recommendationRef: string): Promise<ResolvedSelection> {
   const recommendations = await readRecommendations(cwd);
-  if (!recommendations) throw new Error(`Recommendation ref not found: ${recommendationRef}`);
+  if (!recommendations) throw userActionError(`Recommendation ref not found: ${recommendationRef}`, { path: 'recommendationRef', details: { recommendationRef } });
   const group = recommendations.safeParallelizableGroups.find((entry) => entry.ref === recommendationRef);
   if (group) {
-    if (group.itemIds.length === 0) throw new Error(`Recommendation group ${recommendationRef} must include at least one item id.`);
+    if (group.itemIds.length === 0) throw userActionError(`Recommendation group ${recommendationRef} must include at least one item id.`, { path: 'recommendationRef', details: { recommendationRef } });
     return {
       items: await readRequiredItems(cwd, group.itemIds),
       extraEpicIds: group.epicIds,
@@ -116,14 +117,14 @@ async function resolveRecommendationItems(cwd: string, recommendationRef: string
       recommendationModel: recommendations,
     };
   }
-  throw new Error(`Recommendation ref not found: ${recommendationRef}`);
+  throw userActionError(`Recommendation ref not found: ${recommendationRef}`, { path: 'recommendationRef', details: { recommendationRef } });
 }
 
 async function readRequiredItems(cwd: string, itemIds: string[]): Promise<BacklogItem[]> {
   const items: BacklogItem[] = [];
   for (const itemId of itemIds) {
     const item = await readBacklogItem(cwd, itemId);
-    if (!item) throw new Error(`Backlog item not found: ${itemId}`);
+    if (!item) throw userActionError(`Backlog item not found: ${itemId}`, { path: 'itemIds', details: { itemId } });
     items.push(item);
   }
   return items;
