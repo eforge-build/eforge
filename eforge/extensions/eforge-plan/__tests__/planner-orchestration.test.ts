@@ -193,7 +193,14 @@ describe('planner orchestration', () => {
           planningType: 'feature',
           planningDepth: 'focused',
           ...draftExtra,
-          sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+          sections: [
+            { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+            { dimension: 'scope', content: 'Generated scope content.' },
+            { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+            { dimension: 'code-impact', content: 'Update the eforge-plan extension apply flow and related tests.' },
+            { dimension: 'design-decisions', content: 'Validate generated drafts before any persistence.' },
+            { dimension: 'assumptions-and-validation', content: 'Run targeted apply tests and type checking.' },
+          ],
         },
       },
     };
@@ -245,6 +252,103 @@ describe('planner orchestration', () => {
     const raw = await readFile(join(cwd, '.eforge', 'session-plans', `${session}.md`), 'utf-8');
     return parseMarkdownRecord(raw).frontmatter;
   }
+
+  function bugfixCreationDraftTask(session: string, sections = [
+    { dimension: 'problem-statement', content: 'Grouped fast UX fixes regress dashboard refresh behavior.' },
+    { dimension: 'reproduction-steps', content: 'Open the dashboard, apply a filter, and refresh.' },
+    { dimension: 'root-cause', content: 'Filter state is reset before the refresh callback reads it.' },
+    { dimension: 'acceptance-criteria', content: '- Dashboard preserves selected filters after refresh.' },
+    { dimension: 'assumptions-and-validation', content: 'Validate with targeted UI coverage and a smoke check.' },
+  ], skippedDimensions: Array<{ dimension: string; reason: string }> = []) {
+    return {
+      taskId: 'task-creation',
+      kind: 'eforge-plan.planning-draft',
+      status: 'completed',
+      result: {
+        summary: 'Drafted a bugfix plan.',
+        assumptionsOpenQuestions: [],
+        decision: 'ready',
+        sessionPlanCreationDraft: {
+          session,
+          topic: 'Group fast UX bugfixes',
+          planningType: 'bugfix',
+          planningDepth: 'focused',
+          sections,
+          skippedDimensions,
+        },
+      },
+    };
+  }
+
+  it('applies a recommendation-lane bugfix/focused creation draft only when required ids are covered or skipped', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await writeRecommendations(cwd, {
+        ...createEmptyRecommendationModel(),
+        safeParallelizableGroups: [{ ref: 'group-fast-ux-bugfixes', title: 'Fast UX fixes', itemIds: ['item-one', 'item-two'], rationale: 'Plan together.' }],
+      });
+      await recordCreationWorkflow(cwd, { recommendationRef: 'group-fast-ux-bugfixes' });
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, bugfixCreationDraftTask('group-fast-ux-bugfixes', [
+        { dimension: 'problem-statement', content: 'Grouped fast UX fixes regress dashboard refresh behavior.' },
+        { dimension: 'reproduction-steps', content: 'Open the dashboard, apply a filter, and refresh.' },
+        { dimension: 'acceptance-criteria', content: '- Dashboard preserves selected filters after refresh.' },
+        { dimension: 'assumptions-and-validation', content: 'Validate with targeted UI coverage and a smoke check.' },
+      ], [{ dimension: 'root-cause', reason: 'Root cause needs production telemetry and is explicitly tracked.' }]), {
+        taskId: 'task-creation',
+        applySessionPlanCreationDraft: {},
+      });
+
+      expect(result.sessionPlanCreationDraft?.readiness).toMatchObject({ ready: true, missingDimensions: [] });
+      const readiness = result.sessionPlanCreationDraft!.readiness;
+      expect([...readiness.coveredDimensions, ...readiness.skippedDimensions].sort()).toEqual([
+        'acceptance-criteria',
+        'assumptions-and-validation',
+        'problem-statement',
+        'reproduction-steps',
+        'root-cause',
+      ]);
+      expect(existsSync(join(cwd, '.eforge', 'session-plans', 'group-fast-ux-bugfixes.md'))).toBe(true);
+    });
+  });
+
+  it('rejects group-fast-ux-bugfixes friendly-heading creation drafts before writing a session plan', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await writeRecommendations(cwd, {
+        ...createEmptyRecommendationModel(),
+        safeParallelizableGroups: [{ ref: 'group-fast-ux-bugfixes', title: 'Fast UX fixes', itemIds: ['item-one', 'item-two'], rationale: 'Plan together.' }],
+      });
+      await recordCreationWorkflow(cwd, { recommendationRef: 'group-fast-ux-bugfixes' });
+      await expect(applyCompletedPlanningAgentTaskResult(cwd, bugfixCreationDraftTask('group-fast-ux-bugfixes', [
+        { dimension: 'Goal', content: 'Fix the grouped UX bug quickly.' },
+        { dimension: 'Scope', content: 'Limit the fix to dashboard refresh behavior.' },
+        { dimension: 'Context and Evidence', content: 'The current plan uses friendly headings.' },
+        { dimension: 'Implementation Plan', content: 'Patch the refresh code.' },
+        { dimension: 'Validation', content: 'Run dashboard tests.' },
+        { dimension: 'Risks and Guardrails', content: 'Avoid broad UI rewrites.' },
+      ]), { taskId: 'task-creation', applySessionPlanCreationDraft: {} })).rejects.toThrow(/expected required dimension ids: problem-statement, reproduction-steps, root-cause, acceptance-criteria, assumptions-and-validation/);
+
+      await expect(applyCompletedPlanningAgentTaskResult(cwd, bugfixCreationDraftTask('group-fast-ux-bugfixes', [
+        { dimension: 'Goal', content: 'Fix the grouped UX bug quickly.' },
+        { dimension: 'Validation', content: 'Run dashboard tests.' },
+      ]), { taskId: 'task-creation', applySessionPlanCreationDraft: {} })).rejects.toThrow(/unknown dimension ids: Goal, Validation/);
+      expect(existsSync(join(cwd, '.eforge', 'session-plans', 'group-fast-ux-bugfixes.md'))).toBe(false);
+    });
+  });
+
+  it('rejects creation drafts with acceptance-criteria diagnostics before writing a session plan', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await expect(applyCompletedPlanningAgentTaskResult(cwd, bugfixCreationDraftTask('bad-ac-session', [
+        { dimension: 'problem-statement', content: 'Grouped fast UX fixes regress dashboard refresh behavior.' },
+        { dimension: 'reproduction-steps', content: 'Open the dashboard, apply a filter, and refresh.' },
+        { dimension: 'root-cause', content: 'Filter state is reset before the refresh callback reads it.' },
+        { dimension: 'acceptance-criteria', content: '- Works correctly.' },
+        { dimension: 'assumptions-and-validation', content: 'Validate with targeted UI coverage and a smoke check.' },
+      ]), { taskId: 'task-creation', applySessionPlanCreationDraft: {} })).rejects.toThrow(/acceptance criteria/i);
+      expect(existsSync(join(cwd, '.eforge', 'session-plans', 'bad-ac-session.md'))).toBe(false);
+    });
+  });
 
   it('links AI creation drafts to item workflow selections, writes trace sidecars, ignores spoofed model ids, and leaves item statuses unchanged', async () => {
     await withTempProject(async (cwd) => {
@@ -354,7 +458,20 @@ describe('planner orchestration', () => {
       await seed(cwd);
       const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-two', rationale: 'Ready.' }] };
       const baseResult = { summary: 'Drafted a plan.', assumptionsOpenQuestions: ['Assumes API is stable.'], decision: 'ready', recommendations };
-      const validDraft = { session: 'new-session', topic: 'Created topic', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Generated scope content.' }] };
+      const validDraft = {
+        session: 'new-session',
+        topic: 'Created topic',
+        planningType: 'feature',
+        planningDepth: 'focused',
+        sections: [
+          { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+          { dimension: 'scope', content: 'Generated scope content.' },
+          { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+          { dimension: 'code-impact', content: 'Update the eforge-plan extension apply flow and related tests.' },
+          { dimension: 'design-decisions', content: 'Validate generated drafts before any persistence.' },
+          { dimension: 'assumptions-and-validation', content: 'Run targeted apply tests and type checking.' },
+        ],
+      };
       const cases: Array<{ result: Record<string, unknown>; selection: { session?: string }; error: RegExp }> = [
         { result: { ...baseResult }, selection: {}, error: /does not include a session-plan creation draft/ },
         { result: { ...baseResult, sessionPlanCreationDraft: { ...validDraft, planningType: 'nonsense' } }, selection: {}, error: /unsupported planning type/ },

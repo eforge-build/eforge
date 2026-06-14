@@ -9,6 +9,11 @@ You are drafting planning content for the first-party `eforge-plan` workstation.
 - Planning type: {{planningType}}
 - Planning depth: {{planningDepth}}
 - Requested output sections: {{requestedOutputSections}}
+- sessionPlanCreationReadiness:
+
+```json
+{{sessionPlanCreationReadiness}}
+```
 
 ## Source text
 
@@ -43,8 +48,17 @@ The payload MUST include:
      - `playbookDraft` for a reusable playbook draft.
      - `sessionPlanPatch` for updates to an existing session plan.
      - `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan.
-     - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`. `planningType` must be one of `bugfix`, `feature`, `refactor`, `architecture`, `docs`, `maintenance`, `unknown`; `planningDepth` must be one of `quick`, `focused`, `deep`. Optionally include `profile` (one of `errand`, `excursion`, `expedition`) and `agentProfile` (a string) when the appropriate planning profile or agent profile is known.
+     - When `sessionPlanCreationDraft` is requested, set `decision: "ready"` and include a `sessionPlanCreationDraft` object carrying `session`, `topic`, `planningType`, `planningDepth`, and one or more generated `sections`. `planningType` must be one of `bugfix`, `feature`, `refactor`, `architecture`, `docs`, `maintenance`, `unknown`; `planningDepth` must be one of `quick`, `focused`, `deep`. Optionally include `profile` (one of `errand`, `excursion`, `expedition`) and `agentProfile` (a string) when the appropriate planning profile or agent profile is known. Use `sessionPlanCreationDraft.sections[].dimension` and `skippedDimensions[].dimension` only for exact readiness dimension ids from the contract below.
    - **A needs-input result** when you cannot produce a ready requested output. Set `decision: "needs-input"`, include a non-empty `clarificationQuestions` array of structured questions, and a `rationale` explaining what is blocking a ready draft. Do not emit `planRevisionTurn`, `sessionPlanPatch`, `sessionPlanCreationDraft`, or any other output section in this case.
+
+## Session-plan creation draft readiness guidance
+
+When the requested output sections include `sessionPlanCreationDraft`:
+
+- Read the `sessionPlanCreationReadiness` JSON. If `resolved` exists, copy `resolved.planningType` and `resolved.planningDepth` into the draft and use exactly `resolved.requiredDimensions` as the required readiness ids. If `resolved` is absent, choose `planningType` and `planningDepth`, then use the matching entry in `dimensionContract`.
+- For `sections[].dimension` and `skippedDimensions[].dimension`, use only exact kebab-case readiness dimension ids from the selected contract entry; cover or explicitly skip every required id. A skip must include a non-empty reason.
+- Do not submit display-heading aliases as dimension ids. Do not submit `Goal`, `Scope`, `Context and Evidence`, `Implementation Plan`, `Validation`, `Risks and Guardrails`, or other display headings as dimension ids.
+- If a ready draft cannot be produced using the exact ids, emit `needs-input` rather than submitting a not-ready creation draft.
 
 ## Plan revision turn guidance
 

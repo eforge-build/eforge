@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
-import { createSessionPlanningWorkflowAdapter, type PlanningDepth, type PlanningType } from '../../../packages/input/src/index.js';
+import { createSessionPlanningWorkflowAdapter, validateSessionPlanCreationDraftReadiness, type PlanningDepth, type PlanningType } from '../../../packages/input/src/index.js';
 import {
   blockerRiskProjection,
   dependencyProjection,
@@ -43,6 +43,7 @@ import type {
   ApplyPlanningAgentTaskResultInput,
   ApplyPlanningAgentTaskResultOutput,
   AppliedSessionPlanCreationDraft,
+  PlanningTaskWorkflowEntry,
 } from './planning-agent-task-schemas.js';
 
 export async function preparePlannerContext(cwd: string, input: PlannerContextInput = {}) {
@@ -139,7 +140,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
   const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
-  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft);
+  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
 
   if (input.applyRecommendations) {
     const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
@@ -241,7 +242,8 @@ function isSessionPlanCreationDraft(value: unknown): value is SessionPlanCreatio
   if (value.profile !== undefined && !(PLANNING_PROFILES as readonly string[]).includes(value.profile as string)) return false;
   if (value.agentProfile !== undefined && typeof value.agentProfile !== 'string') return false;
   if (!Array.isArray(value.sections) || value.sections.length === 0) return false;
-  return value.sections.every((entry) => isRecord(entry) && typeof entry.dimension === 'string' && typeof entry.content === 'string');
+  if (!value.sections.every((entry) => isRecord(entry) && typeof entry.dimension === 'string' && typeof entry.content === 'string')) return false;
+  return value.skippedDimensions === undefined || (Array.isArray(value.skippedDimensions) && value.skippedDimensions.every((entry) => isRecord(entry) && typeof entry.dimension === 'string' && typeof entry.reason === 'string'));
 }
 
 function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): asserts task is PlanningAgentTaskRecordLike & { status: 'completed'; result: unknown } {
@@ -347,8 +349,10 @@ async function validatePlanningAgentTaskApplyTargets(
   handoffDrafts: PlannerHandoffDraft[] | undefined,
   sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
   creationDraft: ResolvedSessionPlanCreationDraft | undefined,
+  workflowEntry: PlanningTaskWorkflowEntry | undefined,
 ): Promise<void> {
   if (creationDraft !== undefined) {
+    validateSessionPlanCreationDraftForApply(creationDraft, workflowEntry);
     const path = createSessionPlanningWorkflowAdapter().flat.resolvePath({ cwd, session: creationDraft.session });
     if (existsSync(path)) throw userActionError(`Session plan "${creationDraft.session}" already exists; choose a different target session id before applying a creation draft.`, { path: 'applySessionPlanCreationDraft.session', details: { session: creationDraft.session } });
   }
@@ -363,6 +367,45 @@ async function validatePlanningAgentTaskApplyTargets(
     ...sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })),
   ]);
 }
+
+// --- eforge:region session-plan-creation-readiness ---
+function validateSessionPlanCreationDraftForApply(creationDraft: ResolvedSessionPlanCreationDraft, workflowEntry: PlanningTaskWorkflowEntry | undefined): void {
+  const expectedPlanningType = isPlanningType(workflowEntry?.planningType) ? workflowEntry.planningType : creationDraft.draft.planningType as PlanningType;
+  const expectedPlanningDepth = isPlanningDepth(workflowEntry?.planningDepth) ? workflowEntry.planningDepth : creationDraft.draft.planningDepth as PlanningDepth;
+  if (creationDraft.draft.planningType !== expectedPlanningType || creationDraft.draft.planningDepth !== expectedPlanningDepth) {
+    throw userActionError(`sessionPlanCreationDraft planning contract mismatch: expected ${expectedPlanningType}/${expectedPlanningDepth}, got ${creationDraft.draft.planningType}/${creationDraft.draft.planningDepth}.`, {
+      path: 'sessionPlanCreationDraft',
+      details: { expectedPlanningType, expectedPlanningDepth, actualPlanningType: creationDraft.draft.planningType, actualPlanningDepth: creationDraft.draft.planningDepth },
+    });
+  }
+  const validation = validateSessionPlanCreationDraftReadiness({
+    session: creationDraft.session,
+    topic: creationDraft.draft.topic,
+    planningType: expectedPlanningType,
+    planningDepth: expectedPlanningDepth,
+    sections: creationDraft.draft.sections,
+    skippedDimensions: creationDraft.draft.skippedDimensions,
+  });
+  if (validation.valid) return;
+  throw userActionError(validation.messages.join('\n'), {
+    path: 'sessionPlanCreationDraft',
+    details: {
+      planningType: validation.planningType,
+      planningDepth: validation.planningDepth,
+      requiredDimensions: validation.requiredDimensions,
+      unknownDimensions: validation.unknownDimensions,
+      missingDimensions: validation.missingDimensions,
+    },
+  });
+}
+function isPlanningType(value: string | undefined): value is PlanningType {
+  return value !== undefined && (PLANNING_TYPES as readonly string[]).includes(value);
+}
+
+function isPlanningDepth(value: string | undefined): value is PlanningDepth {
+  return value !== undefined && (PLANNING_DEPTHS as readonly string[]).includes(value);
+}
+// --- eforge:endregion session-plan-creation-readiness ---
 
 function sessionPlanSessions(selections: Array<{ session: string }> | undefined): string[] {
   return [...new Set((selections ?? []).map((selection) => selection.session))];

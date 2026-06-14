@@ -492,6 +492,50 @@ describe('planning agent task actions', () => {
     });
   });
 
+  it('includes the canonical creation-readiness contract when starting a recommendation-lane creation draft', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await writeRecommendations(cwd, { ...createEmptyRecommendationModel(), safeParallelizableGroups: [{ ref: 'group-fast-ux-bugfixes', title: 'Fast UX fixes', itemIds: ['item-one'], rationale: 'Plan together.' }] });
+      let taskInput: Record<string, unknown> | undefined;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: {
+          recommendationRef: 'group-fast-ux-bugfixes',
+          includeRoadmap: false,
+          planningType: 'bugfix',
+          planningDepth: 'focused',
+          requestedOutputSections: ['sessionPlanCreationDraft'],
+        },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) { taskInput = request.input as Record<string, unknown>; return { task: runningTask('task-creation-readiness') }; },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+
+      expect(result.kind).toBe('success');
+      const readiness = taskInput?.sessionPlanCreationReadiness as {
+        dimensionContract: Record<string, Record<string, { requiredDimensions: string[]; optionalDimensions: string[] }>>;
+        resolved: { planningType: string; planningDepth: string; requiredDimensions: string[]; optionalDimensions: string[] };
+      };
+      expect(readiness.dimensionContract.bugfix.focused.requiredDimensions).toEqual([
+        'problem-statement',
+        'reproduction-steps',
+        'root-cause',
+        'acceptance-criteria',
+        'assumptions-and-validation',
+      ]);
+      expect(readiness.resolved).toMatchObject({
+        planningType: 'bugfix',
+        planningDepth: 'focused',
+        requiredDimensions: ['problem-statement', 'reproduction-steps', 'root-cause', 'acceptance-criteria', 'assumptions-and-validation'],
+      });
+    });
+  });
+
   it('plans an explicit ready item subset while preserving its source recommendation ref', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -1054,7 +1098,14 @@ describe('planning agent task actions', () => {
             topic: 'Created topic',
             planningType: 'feature',
             planningDepth: 'focused',
-            sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+            sections: [
+              { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+              { dimension: 'scope', content: 'Generated scope content.' },
+              { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+              { dimension: 'code-impact', content: 'Update extension apply behavior and tests.' },
+              { dimension: 'design-decisions', content: 'Validate generated drafts before persistence.' },
+              { dimension: 'assumptions-and-validation', content: 'Run extension action tests and type checking.' },
+            ],
           },
         },
       });
@@ -1099,7 +1150,14 @@ describe('planning agent task actions', () => {
             topic: 'Created topic',
             planningType: 'feature',
             planningDepth: 'focused',
-            sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+            sections: [
+              { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+              { dimension: 'scope', content: 'Generated scope content.' },
+              { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+              { dimension: 'code-impact', content: 'Update extension apply behavior and tests.' },
+              { dimension: 'design-decisions', content: 'Validate generated drafts before persistence.' },
+              { dimension: 'assumptions-and-validation', content: 'Run extension action tests and type checking.' },
+            ],
           },
         },
       });
