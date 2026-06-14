@@ -529,4 +529,27 @@ describe('planner orchestration', () => {
       expect(await readRecommendations(cwd)).toMatchObject({ recommendedNextSequence: [{ itemId: 'item-one' }] });
     });
   });
+
+  it('allows a creation draft to replace an abandoned target session plan', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      const planning = createSessionPlanningWorkflowAdapter();
+      await planning.flat.create({ cwd, session: 'abandoned-session', topic: 'Old abandoned plan' });
+      await planning.flat.setSection({ cwd, session: 'abandoned-session', dimension: 'scope', content: 'Old abandoned content.' });
+      await planning.flat.setStatus({ cwd, session: 'abandoned-session', status: 'abandoned' });
+
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('abandoned-session'), {
+        taskId: 'task-creation',
+        applySessionPlanCreationDraft: {},
+      });
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'abandoned-session.md'), 'utf-8');
+      const loaded = await planning.flat.load({ cwd, session: 'abandoned-session' });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({ session: 'abandoned-session', relativePath: '.eforge/session-plans/abandoned-session.md' });
+      expect(loaded.plan.status).toBe('planning');
+      expect(raw).toContain('status: planning');
+      expect(raw).toContain('Generated scope content.');
+      expect(raw).not.toContain('Old abandoned content.');
+    });
+  });
 });

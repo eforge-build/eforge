@@ -2,7 +2,17 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
-import { createSessionPlanningWorkflowAdapter, validateSessionPlanCreationDraftReadiness, type PlanningDepth, type PlanningType } from '../../../packages/input/src/index.js';
+import {
+  createSessionPlan,
+  createSessionPlanningWorkflowAdapter,
+  setSessionPlanDimensions,
+  setSessionPlanSection,
+  skipDimension,
+  validateSessionPlanCreationDraftReadiness,
+  writeSessionPlan,
+  type PlanningDepth,
+  type PlanningType,
+} from '../../../packages/input/src/index.js';
 import {
   blockerRiskProjection,
   dependencyProjection,
@@ -140,7 +150,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
   const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
-  await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
+  const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
 
   if (input.applyRecommendations) {
     const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
@@ -162,7 +172,7 @@ export async function applyCompletedPlanningAgentTaskResult(
     output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
   }
   if (creationDraft !== undefined) {
-    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage);
+    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage, applyTargets.creationDraftTarget);
   }
   return output;
 }
@@ -196,18 +206,22 @@ function resolveSessionPlanCreationDraft(result: Record<string, unknown>, select
   return { draft, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
 }
 
-async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft, linkage: CreationDraftSourceLinkage | undefined): Promise<AppliedSessionPlanCreationDraft> {
+async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft, linkage: CreationDraftSourceLinkage | undefined, target: CreationDraftTargetDisposition | undefined): Promise<AppliedSessionPlanCreationDraft> {
   const planning = createSessionPlanningWorkflowAdapter();
   const { draft, session, selection } = resolved;
   const planningType = draft.planningType as PlanningType;
   const planningDepth = draft.planningDepth as PlanningDepth;
-  await planning.flat.create({ cwd, session, topic: draft.topic, planningType, planningDepth });
-  await planning.flat.selectDimensions({ cwd, session, planningType, planningDepth });
-  for (const section of draft.sections) {
-    await planning.flat.setSection({ cwd, session, dimension: section.dimension, content: section.content });
-  }
-  for (const skipped of draft.skippedDimensions ?? []) {
-    await planning.flat.skipDimension({ cwd, session, dimension: skipped.dimension, reason: skipped.reason });
+  if (target === 'abandoned') {
+    await replaceAbandonedSessionPlanCreationDraft(cwd, resolved, planningType, planningDepth);
+  } else {
+    await planning.flat.create({ cwd, session, topic: draft.topic, planningType, planningDepth });
+    await planning.flat.selectDimensions({ cwd, session, planningType, planningDepth });
+    for (const section of draft.sections) {
+      await planning.flat.setSection({ cwd, session, dimension: section.dimension, content: section.content });
+    }
+    for (const skipped of draft.skippedDimensions ?? []) {
+      await planning.flat.skipDimension({ cwd, session, dimension: skipped.dimension, reason: skipped.reason });
+    }
   }
   await updateSessionPlanMetadata({
     cwd,
@@ -233,6 +247,19 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
       traceItemIds: linkage.sourceItemIds,
     }),
   } as AppliedSessionPlanCreationDraft;
+}
+
+async function replaceAbandonedSessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft, planningType: PlanningType, planningDepth: PlanningDepth): Promise<void> {
+  const { draft, session } = resolved;
+  let plan = createSessionPlan({ session, topic: draft.topic, planningType, planningDepth });
+  plan = setSessionPlanDimensions(plan, { planningType, planningDepth });
+  for (const section of draft.sections) {
+    plan = setSessionPlanSection(plan, section.dimension, section.content);
+  }
+  for (const skipped of draft.skippedDimensions ?? []) {
+    plan = skipDimension(plan, skipped.dimension, skipped.reason);
+  }
+  await writeSessionPlan({ cwd, plan });
 }
 
 function isSessionPlanCreationDraft(value: unknown): value is SessionPlanCreationDraftShape {
@@ -344,17 +371,23 @@ function workflowSelectionInput(selection: { itemIds?: string[]; epicId?: string
   return undefined;
 }
 
+type CreationDraftTargetDisposition = 'new' | 'abandoned';
+
+interface PlanningAgentTaskApplyTargets {
+  creationDraftTarget?: CreationDraftTargetDisposition;
+}
+
 async function validatePlanningAgentTaskApplyTargets(
   cwd: string,
   handoffDrafts: PlannerHandoffDraft[] | undefined,
   sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
   creationDraft: ResolvedSessionPlanCreationDraft | undefined,
   workflowEntry: PlanningTaskWorkflowEntry | undefined,
-): Promise<void> {
+): Promise<PlanningAgentTaskApplyTargets> {
+  const targets: PlanningAgentTaskApplyTargets = {};
   if (creationDraft !== undefined) {
     validateSessionPlanCreationDraftForApply(creationDraft, workflowEntry);
-    const path = createSessionPlanningWorkflowAdapter().flat.resolvePath({ cwd, session: creationDraft.session });
-    if (existsSync(path)) throw userActionError(`Session plan "${creationDraft.session}" already exists; choose a different target session id before applying a creation draft.`, { path: 'applySessionPlanCreationDraft.session', details: { session: creationDraft.session } });
+    targets.creationDraftTarget = await resolveCreationDraftTargetDisposition(cwd, creationDraft.session);
   }
   await Promise.all([
     ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
@@ -366,6 +399,20 @@ async function validatePlanningAgentTaskApplyTargets(
     })),
     ...sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })),
   ]);
+  return targets;
+}
+
+async function resolveCreationDraftTargetDisposition(cwd: string, session: string): Promise<CreationDraftTargetDisposition> {
+  const planning = createSessionPlanningWorkflowAdapter();
+  const path = planning.flat.resolvePath({ cwd, session });
+  if (!existsSync(path)) return 'new';
+  try {
+    const loaded = await planning.flat.load({ cwd, session });
+    if (loaded.plan.status === 'abandoned') return 'abandoned';
+  } catch {
+    throw userActionError(`Session plan "${session}" already exists but could not be read; choose a different target session id before applying a creation draft.`, { path: 'applySessionPlanCreationDraft.session', details: { session } });
+  }
+  throw userActionError(`Session plan "${session}" already exists; choose a different target session id before applying a creation draft.`, { path: 'applySessionPlanCreationDraft.session', details: { session } });
 }
 
 // --- eforge:region session-plan-creation-readiness ---
