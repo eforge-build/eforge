@@ -18,8 +18,9 @@ function turn(kind: 'answer' | 'patch' | 'needs' | 'failed') {
 }
 function detail(): PlanDetail & { plan: typeof plan } { return { plan, readiness: { ready: false } }; }
 function renderDetail(invokeAction: EforgeBridge['invokeAction'], onApply = vi.fn(), onRefresh = vi.fn(async () => undefined)) {
+  const onDeleted = vi.fn(async () => undefined);
   window.eforge = { invokeAction };
-  return { ...render(<ToastProvider><PlanDetailCard detail={detail()} onApply={onApply} onRefresh={onRefresh} /></ToastProvider>), onApply, onRefresh };
+  return { ...render(<ToastProvider><PlanDetailCard detail={detail()} onApply={onApply} onRefresh={onRefresh} onDeleted={onDeleted} /></ToastProvider>), onApply, onRefresh, onDeleted };
 }
 
 function runningTurn(): PlanRevisionSessionProjection['turns'][number] {

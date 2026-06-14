@@ -20,6 +20,8 @@ import {
   CheckSessionPlanReadinessOutputSchema,
   CreateSessionPlanInputSchema,
   CreateSessionPlanOutputSchema,
+  DeleteSessionPlanInputSchema,
+  DeleteSessionPlanOutputSchema,
   HandoffSessionPlanInputSchema,
   HandoffSessionPlanOutputSchema,
   ListPlanningArtifactsInputSchema,
@@ -193,6 +195,25 @@ export const setSessionPlanReady = defineExtensionAction({
   },
 });
 
+export const deleteSessionPlanAction = defineExtensionAction({
+  id: 'delete-session-plan',
+  title: 'Delete session plan',
+  description: 'Hide a flat session plan from active planning lists by marking it abandoned; the Markdown file is retained.',
+  inputSchema: DeleteSessionPlanInputSchema,
+  outputSchema: DeleteSessionPlanOutputSchema,
+  sideEffects: ['local-write'],
+  async handler(input, ctx) {
+    const result = await adapter().flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'abandoned' });
+    return toJsonSafeObject({
+      kind: 'deleted',
+      session: input.session,
+      status: 'abandoned',
+      message: `Deleted ${input.session} from active plans by marking it abandoned.`,
+      plan: projectSessionPlan(result.plan),
+    });
+  },
+});
+
 export const updateSessionPlanMetadataAction = defineExtensionAction({
   id: 'update-session-plan-metadata',
   title: 'Update session plan metadata',
@@ -274,6 +295,7 @@ export const sessionPlanActions = [
   selectSessionPlanDimensions,
   checkSessionPlanReadiness,
   setSessionPlanReady,
+  deleteSessionPlanAction,
   updateSessionPlanMetadataAction,
   handoffSessionPlan,
 ] as const;

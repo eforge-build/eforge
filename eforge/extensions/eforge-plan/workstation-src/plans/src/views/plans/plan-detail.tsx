@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Trash2 } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,15 +24,17 @@ interface PlanDetailCardProps {
   detail: PlanDetail & { plan: PlanData };
   onApply: (result: MutationResult) => void;
   onRefresh: () => Promise<void>;
+  onDeleted: () => Promise<void>;
 }
 
 /** Structured flat session-plan detail: header actions, readiness checklist,
  *  editable metadata, and rendered dimension sections. */
-export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardProps) {
+export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDetailCardProps) {
   const toast = useToast();
   const plan = detail.plan;
   const readiness = detail.readiness ?? {};
   const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const revision = usePlanRevisionSession({ session: plan.session, onApply, onRefresh });
   // While an AI revision turn is running it auto-applies on completion, so the
   // rest of the plan is locked to avoid concurrent edits and competing turns.
@@ -70,13 +72,25 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
   const setReady = () => void mutate('set-session-plan-ready', {}, 'Marked ready.');
 
   const handoff = async () => {
-    if (!confirmingHandoff) { setConfirmingHandoff(true); return; }
+    if (!confirmingHandoff) { setConfirmingHandoff(true); setConfirmingDelete(false); return; }
     setConfirmingHandoff(false);
     try {
       const result = await bridge.invokeAction<{ kind?: string; command?: string; message?: string }>('handoff-session-plan', { session: plan.session });
       const failed = result.kind === 'not-ready' || result.kind === 'enqueue-failed';
       toast.push(result.message ?? result.command ?? 'Handoff prepared.', failed ? 'error' : 'success');
       await onRefresh();
+    } catch (caught) {
+      toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
+    }
+  };
+
+  const deletePlan = async () => {
+    if (!confirmingDelete) { setConfirmingDelete(true); setConfirmingHandoff(false); return; }
+    setConfirmingDelete(false);
+    try {
+      const result = await bridge.invokeAction<{ message?: string }>('delete-session-plan', { session: plan.session });
+      toast.push(result.message ?? `Deleted ${plan.session}.`, 'success');
+      await onDeleted();
     } catch (caught) {
       toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
     }
@@ -102,6 +116,9 @@ export function PlanDetailCard({ detail, onApply, onRefresh }: PlanDetailCardPro
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" disabled={locked} onClick={checkReadiness}>Check readiness</Button>
           <Button size="sm" disabled={locked || !readiness.ready} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Set ready</Button>
+          <Button variant={confirmingDelete ? 'destructive' : 'outline'} size="sm" disabled={locked} onClick={() => void deletePlan()} onBlur={() => setConfirmingDelete(false)}>
+            <Trash2 className="h-4 w-4" /> {confirmingDelete ? 'Confirm delete' : 'Delete'}
+          </Button>
           <Button variant={confirmingHandoff ? 'destructive' : 'secondary'} size="sm" disabled={locked} onClick={() => void handoff()} onBlur={() => setConfirmingHandoff(false)}>
             {confirmingHandoff ? 'Confirm handoff' : 'Handoff'} <ArrowRight className="h-4 w-4" />
           </Button>
