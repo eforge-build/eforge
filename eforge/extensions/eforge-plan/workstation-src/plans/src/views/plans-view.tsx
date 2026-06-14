@@ -90,7 +90,11 @@ export function PlansView({ artifacts, onRefresh }: PlansViewProps) {
 
       <section className="min-w-0">
         {isPlanDetail(detail) && detail.plan
-          ? <PlanDetailCard detail={{ ...detail, plan: detail.plan }} onApply={applyResult} onRefresh={onRefresh} />
+          ? <PlanDetailCard detail={{ ...detail, plan: detail.plan }} onApply={applyResult} onRefresh={onRefresh} onDeleted={async () => {
+            setDetail(null);
+            router.navigate('plans');
+            await onRefresh();
+          }} />
           : detail
             ? <PlanSetDetailCard detail={detail as PlanSetDetail} />
             : <Card><CardHeader><CardTitle>Details</CardTitle><CardDescription>Select an artifact to inspect it.</CardDescription></CardHeader></Card>}

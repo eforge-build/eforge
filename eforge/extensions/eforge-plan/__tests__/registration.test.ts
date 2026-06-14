@@ -13,7 +13,7 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
+const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
 const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
@@ -77,6 +77,7 @@ describe('eforge-plan extension registration', () => {
       'capture-item',
       'check-session-plan-readiness',
       'create-session-plan',
+      'delete-session-plan',
       'get-epic',
       'get-item',
       'get-plan-revision-session',
@@ -375,6 +376,7 @@ describe('eforge-plan extension registration', () => {
         'set-session-plan-section',
         'check-session-plan-readiness',
         'set-session-plan-ready',
+        'delete-session-plan',
         'handoff-session-plan',
         'get-recommendations',
         'put-recommendations',

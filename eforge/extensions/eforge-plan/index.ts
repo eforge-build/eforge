@@ -256,6 +256,7 @@ export default defineEforgeExtension((eforge) => {
       'select-session-plan-dimensions',
       'check-session-plan-readiness',
       'set-session-plan-ready',
+      'delete-session-plan',
       'update-session-plan-metadata',
       'handoff-session-plan',
       'start-plan-revision-session',

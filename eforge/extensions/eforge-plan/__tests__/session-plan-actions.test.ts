@@ -181,6 +181,21 @@ describe('eforge-plan session-plan extension actions', () => {
     });
   });
 
+  it('deletes flat plans from active lists by marking them abandoned', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'delete-me', readyBody());
+
+      const deleted = await dispatch(cwd, 'delete-session-plan', { session: 'delete-me' });
+      const listed = await dispatch(cwd, 'list-planning-artifacts', {});
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'delete-me.md'), 'utf-8');
+
+      expect(deleted).toMatchObject({ kind: 'deleted', session: 'delete-me', status: 'abandoned', plan: { status: 'abandoned' } });
+      expect(raw).toContain('status: abandoned');
+      expect((listed.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)).not.toContain('plan:delete-me');
+      expect(collectUndefinedPaths(deleted)).toEqual([]);
+    });
+  });
+
   it('leaves non-ready plans unchanged when setting ready or handing off', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'not-ready', '# Not Ready\n\n## Scope\n\nOnly one section.\n');

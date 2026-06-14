@@ -148,6 +148,14 @@ export const SetSessionPlanReadyOutputSchema = Type.Union([
     plan: SessionPlanProjectionSchema,
   }, JsonObjectAdditionalProperties),
 ]);
+export const DeleteSessionPlanInputSchema = Type.Object({ session: Type.String() });
+export const DeleteSessionPlanOutputSchema = Type.Object({
+  kind: Type.Literal('deleted'),
+  session: Type.String(),
+  status: Type.Literal('abandoned'),
+  message: Type.String(),
+  plan: SessionPlanProjectionSchema,
+}, JsonObjectAdditionalProperties);
 export const UpdateSessionPlanMetadataInputSchema = Type.Object({
   session: Type.String(),
   profile: Type.Optional(Type.Union([PlanningProfileSchema, Type.Null()])),
@@ -185,5 +193,6 @@ export type SetSessionPlanSectionInput = Static<typeof SetSessionPlanSectionInpu
 export type SelectSessionPlanDimensionsInput = Static<typeof SelectSessionPlanDimensionsInputSchema>;
 export type CheckSessionPlanReadinessInput = Static<typeof CheckSessionPlanReadinessInputSchema>;
 export type SetSessionPlanReadyInput = Static<typeof SetSessionPlanReadyInputSchema>;
+export type DeleteSessionPlanInput = Static<typeof DeleteSessionPlanInputSchema>;
 export type UpdateSessionPlanMetadataInput = Static<typeof UpdateSessionPlanMetadataInputSchema>;
 export type HandoffSessionPlanInput = Static<typeof HandoffSessionPlanInputSchema>;
