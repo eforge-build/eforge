@@ -65,7 +65,7 @@ export function getSessionPlanSourceMetadata(plan: SessionPlan): SessionPlanSour
 }
 
 function withSessionPlanSourceMetadata(plan: SessionPlan, metadata: SessionPlanSourceMetadata): SessionPlan {
-  const extensionMetadata = {
+  const extensionMetadata: Record<string, unknown> = {
     ...asRecord((plan as SessionPlan & { eforge_plan?: unknown }).eforge_plan),
     source_item_ids: [...metadata.sourceItemIds],
     source_epic_ids: [...metadata.sourceEpicIds],

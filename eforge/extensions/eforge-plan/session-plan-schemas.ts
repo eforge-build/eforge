@@ -4,6 +4,7 @@ import {
   JsonValueSchema,
   LifecycleLinkRowSchema,
   LifecycleStateSchema,
+  ListBoardOutputSchema,
   PlanSourceRefsSchema,
   PlanningProfileSchema,
   SessionPlanLifecycleProjectionSchema,
@@ -25,12 +26,24 @@ export const PlanningDepthSchema = Type.Union([
   Type.Literal('deep'),
 ]);
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
+// Mirrors AcDiagnostic from @eforge-build/input/acceptance-criteria-quality.
+export const AcDiagnosticSchema = Type.Object({
+  kind: Type.Union([
+    Type.Literal('grouping-label'),
+    Type.Literal('bare-command'),
+    Type.Literal('manual-only'),
+    Type.Literal('vague'),
+  ]),
+  line: Type.String(),
+  message: Type.String(),
+  suggestion: Type.String(),
+});
 export const SessionPlanReadinessDetailSchema = Type.Object({
   ready: Type.Boolean(),
   missingDimensions: Type.Array(Type.String()),
   coveredDimensions: Type.Array(Type.String()),
   skippedDimensions: Type.Array(Type.String()),
-  acDiagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), JsonValueSchema))),
+  acDiagnostics: Type.Optional(Type.Array(AcDiagnosticSchema)),
 }, JsonObjectAdditionalProperties);
 export const SessionPlanProjectionSchema = Type.Object({
   session: Type.String(),
@@ -63,7 +76,7 @@ export const ListPlanningArtifactsOutputSchema = Type.Object({
   artifacts: Type.Array(PlanningArtifactSchema),
   plans: Type.Array(PlanningArtifactSchema),
   planSets: Type.Array(PlanningArtifactSchema),
-  board: Type.Optional(JsonValueSchema),
+  board: Type.Optional(ListBoardOutputSchema),
 }, JsonObjectAdditionalProperties);
 export const ShowSessionPlanInputSchema = Type.Object({ session: Type.String() });
 export const ShowSessionPlanOutputSchema = SessionPlanDetailOutputSchema;

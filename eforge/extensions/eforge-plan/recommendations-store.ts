@@ -75,6 +75,8 @@ function assertRecommendationGroupsHaveItems(value: unknown): void {
   }
 }
 
+export function summarizeRecommendations(model: BacklogRecommendationModel): RecommendationSummary;
+export function summarizeRecommendations(model: BacklogRecommendationModel | null | undefined): RecommendationSummary | undefined;
 export function summarizeRecommendations(model: BacklogRecommendationModel | null | undefined): RecommendationSummary | undefined {
   if (!model) return undefined;
   return {

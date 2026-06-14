@@ -33,6 +33,7 @@ import {
   PLANNING_PROFILES,
   PLANNING_TYPES,
   type ApplyPlannerResultInput,
+  type ApplyPlannerResultOutput,
   type BacklogRecommendationModel,
   type PlannerContextInput,
   type PlannerHandoffDraft,
@@ -64,7 +65,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
     recommendations: { exists: recommendationModel !== null, model: recommendations, summary: summarizeRecommendations(recommendations) },
     recommendationRationale: recommendations.rationaleAndAssumptions,
     dependencies: dependencyContext(selected.items),
-    roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] },
+    roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: ROADMAP_EVIDENCE_PATH, exists: false, headings: [], excerpts: [] },
     traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
   };
 }
@@ -73,7 +74,7 @@ export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultI
   if (input.recommendations === undefined && input.handoffDraft === undefined) {
     throw userActionError('Planner result must include recommendations, handoffDraft, or both.');
   }
-  const result: Record<string, unknown> = { schemaVersion: 1 };
+  const result: ApplyPlannerResultOutput = { schemaVersion: 1 };
   if (input.recommendations !== undefined) {
     const recommendations = await writeRecommendations(cwd, input.recommendations);
     const status = options.recommendationSourceFingerprint !== undefined
@@ -453,8 +454,10 @@ function dependencyContext(items: readonly BacklogItem[]) {
   }));
 }
 
+const ROADMAP_EVIDENCE_PATH = 'docs/roadmap.md' as const;
+
 async function readRoadmapEvidence(cwd: string) {
-  const path = 'docs/roadmap.md';
+  const path = ROADMAP_EVIDENCE_PATH;
   const absolute = join(cwd, path);
   if (!existsSync(absolute)) return { path, exists: false, headings: [], excerpts: [] };
   const markdown = await readFile(absolute, 'utf-8');

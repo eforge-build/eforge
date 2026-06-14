@@ -7,6 +7,9 @@ import {
   defineExtensionDeepLink,
   defineIntegrationCommand,
   type EventHookContext,
+  type ExtensionAction,
+  type TObject,
+  type TSchema,
 } from '../../../packages/extension-sdk/src/index.js';
 import { extractMarkdownSections } from './backlog-domain.js';
 import { listBoard, renderBoardMarkdown } from './board-actions.js';
@@ -156,6 +159,21 @@ const importLegacyBacklogAction = defineExtensionAction({
   },
 });
 
+// registerAction infers a single (TInput, TOutput) per call, so a heterogeneous
+// array of actions cannot be passed element-by-element while preserving each
+// action's input/output schema generics (the handler is contravariant in its
+// validated input). Registration is a schema-erased sink: the host re-validates
+// every input against the action's own inputSchema at call time, so accepting
+// the generic-erased action shape here is safe.
+type RegistrableAction = ExtensionAction<TObject, TSchema | undefined>;
+
+function registerActions(
+  eforge: { registerAction(action: RegistrableAction): void },
+  actions: readonly RegistrableAction[],
+): void {
+  for (const action of actions) eforge.registerAction(action);
+}
+
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
   eforge.registerAction(listBoard);
@@ -166,12 +184,15 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
-  for (const action of backlogQueryActions) eforge.registerAction(action);
-  for (const action of recommendationActions) eforge.registerAction(action);
-  for (const action of plannerActions) eforge.registerAction(action);
-  for (const action of backlogCurationActions) eforge.registerAction(action);
-  for (const action of sessionPlanActions) eforge.registerAction(action);
-  for (const action of planRevisionActions) eforge.registerAction(action);
+  // Each collection is a tuple of actions with distinct input/output schemas;
+  // registration erases those generics (see registerActions), so cast through
+  // unknown to the schema-erased element type.
+  registerActions(eforge, backlogQueryActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, recommendationActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, plannerActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, backlogCurationActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, sessionPlanActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, planRevisionActions as unknown as readonly RegistrableAction[]);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',

@@ -14,6 +14,7 @@ import {
   RetryPlanRevisionTurnInputSchema,
   StartPlanRevisionSessionInputSchema,
   StartPlanRevisionTurnInputSchema,
+  type PlanRevisionIndex,
   type PlanRevisionSessionEntry,
   type PlanRevisionTurnEntry,
 } from './planning-agent-task-schemas.js';
@@ -262,7 +263,7 @@ async function projectSessionEntry(ctx: ExtensionActionContext, session: PlanRev
   return { threadId: session.threadId, targetSession: session.targetSession, turns, createdAt: session.createdAt, updatedAt: session.updatedAt, ...plan };
 }
 
-function requireSession(index: { sessions: PlanRevisionSessionEntry[] }, ref: { session?: string; threadId?: string }): PlanRevisionSessionEntry {
+function requireSession(index: PlanRevisionIndex, ref: { session?: string; threadId?: string }): PlanRevisionSessionEntry {
   const session = findPlanRevisionSession(index, ref);
   if (session === undefined) throw new Error('No matching plan revision session found.');
   return session;

@@ -1,7 +1,7 @@
 import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
 import { toJsonSafeObject } from './json-safe.js';
-import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema } from './backlog-curation-schemas.js';
+import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
 import {
   BACKLOG_CURATION_WORKFLOW_PURPOSE,
   listBacklogCurationWorkflowEntries,
@@ -115,18 +115,27 @@ async function recordEntryOrCancelTask(ctx: Pick<ExtensionActionContext, 'cwd' |
   }
 }
 
-function compactTask(task: ExtensionAgentTaskRecord): Record<string, unknown> {
+function compactTask(task: ExtensionAgentTaskRecord): AnalyzeAllBacklogTaskSummary {
+  // These fields exist only on specific status variants of the task union; read
+  // them defensively so the projection works across every variant.
+  const optional = task as Partial<{
+    startedAt: string;
+    completedAt: string;
+    cancelledAt: string;
+    errorCode: string;
+    errorMessage: string;
+  }>;
   return {
     taskId: task.taskId,
     kind: task.kind,
     status: task.status,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
-    ...(task.startedAt !== undefined && { startedAt: task.startedAt }),
-    ...(task.completedAt !== undefined && { completedAt: task.completedAt }),
-    ...(task.cancelledAt !== undefined && { cancelledAt: task.cancelledAt }),
-    ...(task.errorCode !== undefined && { errorCode: task.errorCode }),
-    ...(task.errorMessage !== undefined && { errorMessage: task.errorMessage }),
+    ...(optional.startedAt !== undefined && { startedAt: optional.startedAt }),
+    ...(optional.completedAt !== undefined && { completedAt: optional.completedAt }),
+    ...(optional.cancelledAt !== undefined && { cancelledAt: optional.cancelledAt }),
+    ...(optional.errorCode !== undefined && { errorCode: optional.errorCode }),
+    ...(optional.errorMessage !== undefined && { errorMessage: optional.errorMessage }),
   };
 }
 
