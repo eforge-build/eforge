@@ -59,6 +59,58 @@ export const EforgePlanPlanningSourceProviderSchema = Type.Object({
   input: Type.Optional(Type.Object({}, { additionalProperties: true })),
 }, { additionalProperties: false });
 
+// --- eforge:region session-plan-creation-readiness ---
+export const EforgePlanPlanningTypeSchema = Type.Union([
+  Type.Literal('bugfix'),
+  Type.Literal('feature'),
+  Type.Literal('refactor'),
+  Type.Literal('architecture'),
+  Type.Literal('docs'),
+  Type.Literal('maintenance'),
+  Type.Literal('unknown'),
+]);
+
+export const EforgePlanPlanningDepthSchema = Type.Union([
+  Type.Literal('quick'),
+  Type.Literal('focused'),
+  Type.Literal('deep'),
+]);
+
+export const EforgePlanPlanningCreationDraftDimensionIdSchema = Type.String({
+  minLength: 1,
+  pattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$',
+});
+
+export const EforgePlanPlanningSessionPlanCreationReadinessEntrySchema = Type.Object({
+  requiredDimensions: Type.Array(EforgePlanPlanningCreationDraftDimensionIdSchema),
+  optionalDimensions: Type.Array(EforgePlanPlanningCreationDraftDimensionIdSchema),
+}, { additionalProperties: false });
+
+const EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema = Type.Object({
+  quick: EforgePlanPlanningSessionPlanCreationReadinessEntrySchema,
+  focused: EforgePlanPlanningSessionPlanCreationReadinessEntrySchema,
+  deep: EforgePlanPlanningSessionPlanCreationReadinessEntrySchema,
+}, { additionalProperties: false });
+
+export const EforgePlanPlanningSessionPlanCreationReadinessSchema = Type.Object({
+  dimensionContract: Type.Object({
+    bugfix: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+    feature: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+    refactor: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+    architecture: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+    docs: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+    maintenance: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+    unknown: EforgePlanPlanningSessionPlanCreationReadinessDepthsSchema,
+  }, { additionalProperties: false }),
+  resolved: Type.Optional(Type.Object({
+    planningType: EforgePlanPlanningTypeSchema,
+    planningDepth: EforgePlanPlanningDepthSchema,
+    requiredDimensions: Type.Array(EforgePlanPlanningCreationDraftDimensionIdSchema),
+    optionalDimensions: Type.Array(EforgePlanPlanningCreationDraftDimensionIdSchema),
+  }, { additionalProperties: false })),
+}, { additionalProperties: false });
+// --- eforge:endregion session-plan-creation-readiness ---
+
 export const EforgePlanPlanningDraftInputSchema = Type.Object({
   topic: EforgePlanPlanningTopicSchema,
   session: Type.Optional(Type.String()),
@@ -68,6 +120,9 @@ export const EforgePlanPlanningDraftInputSchema = Type.Object({
   sourceProvider: Type.Optional(EforgePlanPlanningSourceProviderSchema),
   existingSessionPlan: Type.Optional(Type.String()),
   requestedOutputSections: Type.Optional(Type.Array(EforgePlanPlanningRequestedOutputSectionSchema, { minItems: 1 })),
+  // --- eforge:region session-plan-creation-readiness ---
+  sessionPlanCreationReadiness: Type.Optional(EforgePlanPlanningSessionPlanCreationReadinessSchema),
+  // --- eforge:endregion session-plan-creation-readiness ---
   includeRoadmap: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
@@ -93,22 +148,6 @@ export const EforgePlanPlanningSessionPlanPatchSchema = Type.Object({
 }, { additionalProperties: false });
 
 // --- eforge:region session-plan-creation-draft ---
-export const EforgePlanPlanningTypeSchema = Type.Union([
-  Type.Literal('bugfix'),
-  Type.Literal('feature'),
-  Type.Literal('refactor'),
-  Type.Literal('architecture'),
-  Type.Literal('docs'),
-  Type.Literal('maintenance'),
-  Type.Literal('unknown'),
-]);
-
-export const EforgePlanPlanningDepthSchema = Type.Union([
-  Type.Literal('quick'),
-  Type.Literal('focused'),
-  Type.Literal('deep'),
-]);
-
 export const EforgePlanPlanningSessionPlanCreationDraftSchema = Type.Object({
   session: Type.String({ minLength: 1, pattern: '\\S' }),
   topic: Type.String({ minLength: 1, pattern: '\\S' }),
@@ -117,11 +156,11 @@ export const EforgePlanPlanningSessionPlanCreationDraftSchema = Type.Object({
   profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
   agentProfile: Type.Optional(Type.String()),
   sections: Type.Array(Type.Object({
-    dimension: Type.String(),
+    dimension: EforgePlanPlanningCreationDraftDimensionIdSchema,
     content: Type.String(),
   }, { additionalProperties: false }), { minItems: 1 }),
   skippedDimensions: Type.Optional(Type.Array(Type.Object({
-    dimension: Type.String(),
+    dimension: EforgePlanPlanningCreationDraftDimensionIdSchema,
     reason: Type.String(),
   }, { additionalProperties: false }))),
 }, { additionalProperties: false });
@@ -216,6 +255,32 @@ const eforgePlanPlanningDraftResultBaseFields = {
 
 export const EforgePlanPlanningDraftResultBaseSchema = Type.Object(eforgePlanPlanningDraftResultBaseFields, { additionalProperties: false });
 
+const EforgePlanPlanningLegacySessionPlanCreationDraftSchema = Type.Object({
+  session: Type.String({ minLength: 1, pattern: '\\S' }),
+  topic: Type.String({ minLength: 1, pattern: '\\S' }),
+  planningType: EforgePlanPlanningTypeSchema,
+  planningDepth: EforgePlanPlanningDepthSchema,
+  profile: Type.Optional(Type.Union([Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')])),
+  agentProfile: Type.Optional(Type.String()),
+  sections: Type.Array(Type.Object({
+    dimension: Type.String({ minLength: 1 }),
+    content: Type.String(),
+  }, { additionalProperties: false }), { minItems: 1 }),
+  skippedDimensions: Type.Optional(Type.Array(Type.Object({
+    dimension: Type.String({ minLength: 1 }),
+    reason: Type.String(),
+  }, { additionalProperties: false }))),
+}, { additionalProperties: false });
+
+const EforgePlanPlanningLegacyCreationDraftRecordResultSchema = Type.Object({
+  ...eforgePlanPlanningDraftResultBaseFields,
+  decision: Type.Literal('ready'),
+  sessionPlanCreationDraft: EforgePlanPlanningLegacySessionPlanCreationDraftSchema,
+  planDrafts: Type.Optional(Type.Array(EforgePlanPlanningPlanDraftSchema, { minItems: 1 })),
+  playbookDraft: Type.Optional(EforgePlanPlanningPlaybookDraftSchema),
+  sessionPlanPatch: Type.Optional(EforgePlanPlanningSessionPlanPatchSchema),
+}, { additionalProperties: false });
+
 export const EforgePlanPlanningDraftResultSchema = Type.Union([
   // --- eforge:region client-engine-task-contract ---
   Type.Object({
@@ -292,6 +357,11 @@ export const EforgePlanPlanningDraftResultSchema = Type.Union([
   // --- eforge:endregion session-plan-creation-draft ---
 ]);
 
+const EforgePlanPlanningStoredDraftResultSchema = Type.Union([
+  EforgePlanPlanningDraftResultSchema,
+  EforgePlanPlanningLegacyCreationDraftRecordResultSchema,
+]);
+
 export const ExtensionAgentTaskStartRequestSchema = Type.Object({
   kind: ExtensionAgentTaskKindSchema,
   input: EforgePlanPlanningDraftInputSchema,
@@ -340,7 +410,7 @@ export const ExtensionAgentTaskRecordSchema = Type.Union([
     status: Type.Literal('completed'),
     startedAt: Type.Optional(Type.String()),
     completedAt: Type.String(),
-    result: EforgePlanPlanningDraftResultSchema,
+    result: EforgePlanPlanningStoredDraftResultSchema,
   }, { additionalProperties: false }),
   Type.Object({
     ...extensionAgentTaskRecordBaseFields,
@@ -381,6 +451,9 @@ export type EforgePlanPlanningPlanDraft = Static<typeof EforgePlanPlanningPlanDr
 export type EforgePlanPlanningPlaybookDraft = Static<typeof EforgePlanPlanningPlaybookDraftSchema>;
 export type EforgePlanPlanningSessionPlanPatch = Static<typeof EforgePlanPlanningSessionPlanPatchSchema>;
 export type EforgePlanPlanningSessionPlanCreationDraft = Static<typeof EforgePlanPlanningSessionPlanCreationDraftSchema>;
+// --- eforge:region session-plan-creation-readiness ---
+export type EforgePlanPlanningSessionPlanCreationReadiness = Static<typeof EforgePlanPlanningSessionPlanCreationReadinessSchema>;
+// --- eforge:endregion session-plan-creation-readiness ---
 export type EforgePlanPlanningClarificationQuestion = Static<typeof EforgePlanPlanningClarificationQuestionSchema>;
 export type EforgePlanPlanningDecision = Static<typeof EforgePlanPlanningDecisionSchema>;
 export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanningSectionProgressSchema>;

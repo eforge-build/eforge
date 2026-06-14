@@ -193,7 +193,14 @@ describe('planner orchestration', () => {
           planningType: 'feature',
           planningDepth: 'focused',
           ...draftExtra,
-          sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+          sections: [
+            { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+            { dimension: 'scope', content: 'Generated scope content.' },
+            { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+            { dimension: 'code-impact', content: 'Update the eforge-plan extension apply flow and related tests.' },
+            { dimension: 'design-decisions', content: 'Validate generated drafts before any persistence.' },
+            { dimension: 'assumptions-and-validation', content: 'Run targeted apply tests and type checking.' },
+          ],
         },
       },
     };
@@ -307,6 +314,10 @@ describe('planner orchestration', () => {
   it('rejects group-fast-ux-bugfixes friendly-heading creation drafts before writing a session plan', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
+      await writeRecommendations(cwd, {
+        ...createEmptyRecommendationModel(),
+        safeParallelizableGroups: [{ ref: 'group-fast-ux-bugfixes', title: 'Fast UX fixes', itemIds: ['item-one', 'item-two'], rationale: 'Plan together.' }],
+      });
       await recordCreationWorkflow(cwd, { recommendationRef: 'group-fast-ux-bugfixes' });
       await expect(applyCompletedPlanningAgentTaskResult(cwd, bugfixCreationDraftTask('group-fast-ux-bugfixes', [
         { dimension: 'Goal', content: 'Fix the grouped UX bug quickly.' },
@@ -447,7 +458,20 @@ describe('planner orchestration', () => {
       await seed(cwd);
       const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-two', rationale: 'Ready.' }] };
       const baseResult = { summary: 'Drafted a plan.', assumptionsOpenQuestions: ['Assumes API is stable.'], decision: 'ready', recommendations };
-      const validDraft = { session: 'new-session', topic: 'Created topic', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Generated scope content.' }] };
+      const validDraft = {
+        session: 'new-session',
+        topic: 'Created topic',
+        planningType: 'feature',
+        planningDepth: 'focused',
+        sections: [
+          { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+          { dimension: 'scope', content: 'Generated scope content.' },
+          { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+          { dimension: 'code-impact', content: 'Update the eforge-plan extension apply flow and related tests.' },
+          { dimension: 'design-decisions', content: 'Validate generated drafts before any persistence.' },
+          { dimension: 'assumptions-and-validation', content: 'Run targeted apply tests and type checking.' },
+        ],
+      };
       const cases: Array<{ result: Record<string, unknown>; selection: { session?: string }; error: RegExp }> = [
         { result: { ...baseResult }, selection: {}, error: /does not include a session-plan creation draft/ },
         { result: { ...baseResult, sessionPlanCreationDraft: { ...validDraft, planningType: 'nonsense' } }, selection: {}, error: /unsupported planning type/ },

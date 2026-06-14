@@ -253,7 +253,7 @@ function setBodySection(body: string, dimensionName: string, content: string): s
 // Dimension playbook
 // ---------------------------------------------------------------------------
 
-interface DimensionSpec {
+export interface SessionPlanDimensionSpec {
   required: string[];
   optional: string[];
 }
@@ -266,7 +266,7 @@ interface DimensionSpec {
  */
 const ALWAYS_REQUIRED_DIMENSIONS = ['acceptance-criteria', 'assumptions-and-validation'] as const;
 
-const DIMENSION_MAP: Record<PlanningType, DimensionSpec> = {
+const DIMENSION_MAP: Record<PlanningType, SessionPlanDimensionSpec> = {
   bugfix: {
     required: ['problem-statement', 'reproduction-steps', 'root-cause', 'acceptance-criteria', 'assumptions-and-validation'],
     optional: ['code-impact', 'risks'],
@@ -311,7 +311,7 @@ const DIMENSION_MAP: Record<PlanningType, DimensionSpec> = {
  * Used by `selectDimensions` when the plan's frontmatter does not already
  * have explicit dimension lists.
  */
-function getDimensionsForType(planningType: PlanningType, planningDepth: PlanningDepth): DimensionSpec {
+export function getSessionPlanDimensionSpec(planningType: PlanningType, planningDepth: PlanningDepth): SessionPlanDimensionSpec {
   const base = DIMENSION_MAP[planningType];
 
   if (planningDepth === 'quick') {
@@ -323,16 +323,16 @@ function getDimensionsForType(planningType: PlanningType, planningDepth: Plannin
       .filter((d) => d !== anchor && !ALWAYS_REQUIRED_DIMENSIONS.includes(d as typeof ALWAYS_REQUIRED_DIMENSIONS[number]))
       .slice(0, 1);
     const required = [...new Set([anchor, ...typeSpecific, ...ALWAYS_REQUIRED_DIMENSIONS])];
-    return { required, optional: base.optional };
+    return { required, optional: [...base.optional] };
   }
 
   if (planningDepth === 'deep') {
     // All required AND all optional dimensions.
-    return { required: base.required, optional: base.optional };
+    return { required: [...base.required], optional: [...base.optional] };
   }
 
   // focused (default): all required dimensions, no optional.
-  return { required: base.required, optional: [] };
+  return { required: [...base.required], optional: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -482,10 +482,10 @@ export function selectDimensions(plan: SessionPlan): {
     };
   }
 
-  const dims = getDimensionsForType(plan.planning_type, plan.planning_depth);
+  const dims = getSessionPlanDimensionSpec(plan.planning_type, plan.planning_depth);
   return {
-    required: dims.required,
-    optional: dims.optional,
+    required: [...dims.required],
+    optional: [...dims.optional],
     skipped,
   };
 }
@@ -804,13 +804,13 @@ export function setSessionPlanDimensions(plan: SessionPlan, opts: SetSessionPlan
     };
   }
 
-  const dims = getDimensionsForType(planningType, planningDepth);
+  const dims = getSessionPlanDimensionSpec(planningType, planningDepth);
   return {
     ...plan,
     planning_type: planningType,
     planning_depth: planningDepth,
-    required_dimensions: dims.required,
-    optional_dimensions: dims.optional,
+    required_dimensions: [...dims.required],
+    optional_dimensions: [...dims.optional],
   };
 }
 

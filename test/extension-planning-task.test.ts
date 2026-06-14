@@ -272,6 +272,64 @@ describe('eforge-plan planning draft task runner', () => {
     }
   });
 
+  it('returns creation-draft schema guidance when alias dimensions fail strict parsing', async () => {
+    const malformedSubmission = {
+      summary: 'Drafted a plan with heading aliases.',
+      assumptionsOpenQuestions: [],
+      decision: 'ready',
+      sessionPlanCreationDraft: {
+        session: 'demo-session',
+        topic: 'Fix grouped UX bugs',
+        planningType: 'bugfix',
+        planningDepth: 'focused',
+        sections: [
+          { dimension: 'Goal', content: 'Fix grouped UX bugs.' },
+          { dimension: 'Validation', content: 'Run UI checks.' },
+        ],
+      },
+    };
+    const harness = new StubHarness([{
+      toolCalls: [{ tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: malformedSubmission, output: '' }],
+      text: 'The malformed creation draft was rejected.',
+    }]);
+    const events: EforgeEvent[] = [];
+    const run = runEforgePlanPlanningDraftTask({
+      harness,
+      cwd: '/tmp',
+      input: {
+        topic: 'Fix grouped UX bugs',
+        requestedOutputSections: ['sessionPlanCreationDraft'],
+        sessionPlanCreationReadiness: {
+          dimensionContract: {} as never,
+          resolved: {
+            planningType: 'bugfix',
+            planningDepth: 'focused',
+            requiredDimensions: ['problem-statement', 'reproduction-steps', 'root-cause', 'acceptance-criteria', 'assumptions-and-validation'],
+            optionalDimensions: [],
+          },
+        },
+      },
+    });
+
+    await expect((async () => {
+      while (true) {
+        const next = await run.next();
+        if (next.done) return next.value;
+        events.push(next.value);
+      }
+    })()).rejects.toThrow('submit_eforge_plan_planning_result');
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'agent:tool_result',
+      tool: 'submit_eforge_plan_planning_result',
+      output: expect.stringContaining('expected required dimension ids: problem-statement, reproduction-steps, root-cause, acceptance-criteria, assumptions-and-validation'),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'agent:tool_result',
+      output: expect.stringContaining('Do not use display-heading aliases such as Goal, Scope, or Validation.'),
+    }));
+  });
+
   it('returns a submission rejection tool result for malformed backlog curation drafts', async () => {
     const malformedSubmission = {
       summary: 'Malformed curation draft.',

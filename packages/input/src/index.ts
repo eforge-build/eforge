@@ -101,6 +101,7 @@ export {
   selectDimensions,
   checkReadiness,
   getReadinessDetail,
+  getSessionPlanDimensionSpec,
   migrateBooleanDimensions,
 
   // Mutation helpers
@@ -140,12 +141,24 @@ export type {
   CreateSessionPlanFromPlaybookSeedOpts,
   SetSessionPlanStatusMetadata,
   SetSessionPlanDimensionsOpts,
+  SessionPlanDimensionSpec,
   ResolveSessionPlanPathOpts,
   LoadSessionPlanOpts,
   WriteSessionPlanOpts,
   NormalizeBuildSourceInput,
   NormalizeBuildSourceResult,
 } from './session-plan.js';
+
+export {
+  validateSessionPlanCreationDraftReadiness,
+} from './session-plan-creation-draft.js';
+
+export type {
+  SessionPlanCreationDraftReadinessInput,
+  SessionPlanCreationDraftReadinessValidation,
+  SessionPlanCreationDraftSection,
+  SessionPlanCreationDraftSkippedDimension,
+} from './session-plan-creation-draft.js';
 
 // ---------------------------------------------------------------------------
 // Session plan-set exports (read-only)

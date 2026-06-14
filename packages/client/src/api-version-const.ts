@@ -23,4 +23,4 @@
  * (v54 is a case 2 bump: the optional recovery applied metadata is additive,
  * but Console depends on it, so stale daemons must fail version verification.)
  */
-export const DAEMON_API_VERSION = 67; // v67: extension agent tasks accept deferred source providers so long-running source assembly moves out of short action handlers.
+export const DAEMON_API_VERSION = 68; // v68: extension agent task start input carries session-plan-creation readiness context, and creation-draft dimensions are canonical kebab-case ids.

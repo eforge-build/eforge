@@ -1098,7 +1098,14 @@ describe('planning agent task actions', () => {
             topic: 'Created topic',
             planningType: 'feature',
             planningDepth: 'focused',
-            sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+            sections: [
+              { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+              { dimension: 'scope', content: 'Generated scope content.' },
+              { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+              { dimension: 'code-impact', content: 'Update extension apply behavior and tests.' },
+              { dimension: 'design-decisions', content: 'Validate generated drafts before persistence.' },
+              { dimension: 'assumptions-and-validation', content: 'Run extension action tests and type checking.' },
+            ],
           },
         },
       });
@@ -1143,7 +1150,14 @@ describe('planning agent task actions', () => {
             topic: 'Created topic',
             planningType: 'feature',
             planningDepth: 'focused',
-            sections: [{ dimension: 'scope', content: 'Generated scope content.' }],
+            sections: [
+              { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+              { dimension: 'scope', content: 'Generated scope content.' },
+              { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+              { dimension: 'code-impact', content: 'Update extension apply behavior and tests.' },
+              { dimension: 'design-decisions', content: 'Validate generated drafts before persistence.' },
+              { dimension: 'assumptions-and-validation', content: 'Run extension action tests and type checking.' },
+            ],
           },
         },
       });

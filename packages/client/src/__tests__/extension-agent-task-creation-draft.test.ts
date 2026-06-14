@@ -244,7 +244,7 @@ describe('eforge-plan session-plan creation drafts and decisions', () => {
   });
 
   it('rejects display-heading aliases in creation-draft section dimension fields', () => {
-    const result = safeParseEforgePlanPlanningDraftResult({
+    const legacyAliasResult = {
       summary: 'Drafted a plan with friendly headings.',
       assumptionsOpenQuestions: [],
       decision: 'ready',
@@ -255,12 +255,11 @@ describe('eforge-plan session-plan creation drafts and decisions', () => {
           { dimension: 'Validation', content: 'Run dashboard tests.' },
         ],
       }),
-    });
+    };
+    const result = safeParseEforgePlanPlanningDraftResult(legacyAliasResult);
 
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(JSON.stringify(result.error)).toContain('Goal');
-    }
+    expect(safeParseExtensionAgentTaskRecord(completedRecord(legacyAliasResult)).success).toBe(true);
   });
 
   it('rejects display-heading aliases in creation-draft skipped dimension fields', () => {

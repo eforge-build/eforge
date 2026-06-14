@@ -1,5 +1,6 @@
 import { defineExtensionAction, ExtensionActionInputValidationError, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness } from '../../../packages/client/src/extension-agent-tasks.js';
+import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '../../../packages/input/src/index.js';
 import {
   applyCompletedPlanningAgentTaskResult,
   preparePlannerContext,
@@ -43,6 +44,7 @@ import {
   type PlanningTaskWorkflowSelection,
   type StartPlanningAgentTaskInput,
 } from './planning-agent-task-schemas.js';
+import { PLANNING_DEPTHS, PLANNING_TYPES } from './schema.js';
 
 
 type RequestedOutputSections = PlanningTaskWorkflowEntry['requestedOutputSections'];
@@ -71,6 +73,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
     const planningType = typeof input.planningType === 'string' ? input.planningType : undefined;
     const planningDepth = typeof input.planningDepth === 'string' ? input.planningDepth : undefined;
     const sourceText = boundedSourceText(derivedGoal, context);
+    const sessionPlanCreationReadiness = buildSessionPlanCreationReadiness(requestedOutputSections, planningType, planningDepth);
     throwIfAborted(ctx.signal);
     const response = await ctx.agentTasks.start({
       kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
@@ -81,6 +84,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
         ...(planningType !== undefined && { planningType }),
         ...(planningDepth !== undefined && { planningDepth }),
         ...(requestedOutputSections !== undefined && { requestedOutputSections }),
+        ...(sessionPlanCreationReadiness !== undefined && { sessionPlanCreationReadiness }),
       },
     });
     await recordEntryOrCancelTask(ctx, response.task.taskId, buildEntry({
@@ -277,6 +281,7 @@ interface StartLinkedTaskParams {
 async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedTaskParams): Promise<PlanningAgentTaskWorkflowStartOutput> {
   const { parent } = params;
   const requested = params.requestedOutputSections.length > 0 ? params.requestedOutputSections : undefined;
+  const sessionPlanCreationReadiness = buildSessionPlanCreationReadiness(requested, parent.planningType, parent.planningDepth);
   const response = await ctx.agentTasks.start({
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
@@ -287,6 +292,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
       ...(parent.planningDepth !== undefined && { planningDepth: parent.planningDepth }),
       ...(parent.includeRoadmap !== undefined && { includeRoadmap: parent.includeRoadmap }),
       ...(requested !== undefined && { requestedOutputSections: requested }),
+      ...(sessionPlanCreationReadiness !== undefined && { sessionPlanCreationReadiness }),
     },
   });
   const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildEntry({
@@ -388,6 +394,40 @@ function plannerSelection(entry: PlanningTaskWorkflowEntry) {
 function hasBacklogSelection(selection: PlanningTaskWorkflowSelection): boolean {
   return selection.itemIds !== undefined || selection.epicId !== undefined || selection.recommendationRef !== undefined;
 }
+
+// --- eforge:region session-plan-creation-readiness ---
+function buildSessionPlanCreationReadiness(
+  requestedOutputSections: RequestedOutputSections | undefined,
+  planningType: string | undefined,
+  planningDepth: string | undefined,
+): EforgePlanPlanningSessionPlanCreationReadiness | undefined {
+  if (!requestedOutputSections?.includes('sessionPlanCreationDraft')) return undefined;
+  const dimensionContract = Object.fromEntries(PLANNING_TYPES.map((type) => [
+    type,
+    Object.fromEntries(PLANNING_DEPTHS.map((depth) => [depth, dimensionEntry(type, depth)])),
+  ])) as EforgePlanPlanningSessionPlanCreationReadiness['dimensionContract'];
+  const resolved = isPlanningType(planningType) && isPlanningDepth(planningDepth)
+    ? { planningType, planningDepth, ...dimensionEntry(planningType, planningDepth) }
+    : undefined;
+  return {
+    dimensionContract,
+    ...(resolved !== undefined && { resolved }),
+  };
+}
+
+function dimensionEntry(planningType: PlanningType, planningDepth: PlanningDepth): { requiredDimensions: string[]; optionalDimensions: string[] } {
+  const spec = getSessionPlanDimensionSpec(planningType, planningDepth);
+  return { requiredDimensions: [...spec.required], optionalDimensions: [...spec.optional] };
+}
+
+function isPlanningType(value: string | undefined): value is PlanningType {
+  return value !== undefined && (PLANNING_TYPES as readonly string[]).includes(value);
+}
+
+function isPlanningDepth(value: string | undefined): value is PlanningDepth {
+  return value !== undefined && (PLANNING_DEPTHS as readonly string[]).includes(value);
+}
+// --- eforge:endregion session-plan-creation-readiness ---
 
 function resolveRequestedOutputSections(input: StartPlanningAgentTaskInput, selection: PlanningTaskWorkflowSelection): RequestedOutputSections | undefined {
   if (input.requestedOutputSections !== undefined) return input.requestedOutputSections;
