@@ -25,6 +25,7 @@ import {
 import { updateSessionPlanMetadata, updateSessionPlanSourceMetadata, type SessionPlanSourceMetadata } from './session-plan-metadata.js';
 import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, recordPlannerRecommendationApplied, recordPlannerRecommendationAppliedForSourceFingerprint } from './recommendation-status.js';
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
+import { userActionError } from './action-errors.js';
 import { upsertPromotedSessionPlan } from './trace-store.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry } from './planning-task-workflow-store.js';
 import {
@@ -56,6 +57,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
       itemIds: selected.items.map((item) => item.id),
       epicIds: selected.epics.map((epic) => epic.id),
       ...(input.recommendationRef !== undefined && { recommendationRef: input.recommendationRef }),
+      ...(input.itemIds !== undefined && input.sourceRecommendationRef !== undefined && { sourceRecommendationRef: input.sourceRecommendationRef }),
     },
     items: selected.items.map((item, index) => projectItem(item, sourceRefs[index])),
     epics: selected.epics.map((epic) => projectEpic(epic)),
@@ -69,7 +71,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
 
 export async function applyPlannerResult(cwd: string, input: ApplyPlannerResultInput, options: { recommendationSourceFingerprint?: string; lastRefreshedBy?: string } = {}) {
   if (input.recommendations === undefined && input.handoffDraft === undefined) {
-    throw new Error('Planner result must include recommendations, handoffDraft, or both.');
+    throw userActionError('Planner result must include recommendations, handoffDraft, or both.');
   }
   const result: Record<string, unknown> = { schemaVersion: 1 };
   if (input.recommendations !== undefined) {
@@ -118,12 +120,12 @@ export async function applyCompletedPlanningAgentTaskResult(
   }
   assertCompletedPlanningDraftTask(task);
   const rawResult = task.result as Record<string, unknown> | undefined;
-  if (rawResult === undefined || Object.keys(rawResult).length === 0) throw new Error(`Planning task ${task.taskId} completed without a result.`);
+  if (rawResult === undefined || Object.keys(rawResult).length === 0) throw userActionError(`Planning task ${task.taskId} completed without a result.`, { path: 'taskId', details: { taskId: task.taskId } });
   if (rawResult.backlogCurationDraft !== undefined) {
-    throw new Error('Planning task results that include a backlog curation draft must be applied with applyBacklogCurationDraft; standalone recommendations, handoff, session-plan patch, and creation-draft apply selections are not allowed.');
+    throw userActionError('Planning task results that include a backlog curation draft must be applied with applyBacklogCurationDraft; standalone recommendations, handoff, session-plan patch, and creation-draft apply selections are not allowed.', { path: 'applyBacklogCurationDraft' });
   }
   if (workflowEntry !== undefined && isBacklogCurationWorkflowEntry(workflowEntry)) {
-    throw new Error('Backlog curation task results must be applied with applyBacklogCurationDraft; standalone recommendations, handoff, session-plan patch, and creation-draft apply selections are not allowed.');
+    throw userActionError('Backlog curation task results must be applied with applyBacklogCurationDraft; standalone recommendations, handoff, session-plan patch, and creation-draft apply selections are not allowed.', { path: 'applyBacklogCurationDraft' });
   }
   const output: ApplyPlanningAgentTaskResultOutput = {
     schemaVersion: 1,
@@ -131,7 +133,7 @@ export async function applyCompletedPlanningAgentTaskResult(
     applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0 },
   };
   const recommendations = input.applyRecommendations ? rawResult.recommendations : undefined;
-  if (input.applyRecommendations && !isRecord(recommendations)) throw new Error(`Planning task ${task.taskId} result does not include generated recommendations.`);
+  if (input.applyRecommendations && !isRecord(recommendations)) throw userActionError(`Planning task ${task.taskId} result does not include generated recommendations.`, { path: 'applyRecommendations', details: { taskId: task.taskId } });
   const handoffDrafts = input.applyHandoffDrafts?.map((selection) => mergeHandoffSelection(resolveHandoffDraft(rawResult, selection.index), selection));
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
   const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
@@ -183,11 +185,11 @@ interface ResolvedSessionPlanCreationDraft {
 
 function resolveSessionPlanCreationDraft(result: Record<string, unknown>, selection: ApplyPlanningAgentTaskCreationDraftSelection): ResolvedSessionPlanCreationDraft {
   const draft = result.sessionPlanCreationDraft;
-  if (!isSessionPlanCreationDraft(draft)) throw new Error('Planning task result does not include a session-plan creation draft.');
-  if (!(PLANNING_TYPES as readonly string[]).includes(draft.planningType)) throw new Error(`Session-plan creation draft has an unsupported planning type "${draft.planningType}"; expected one of ${PLANNING_TYPES.join(', ')}.`);
-  if (!(PLANNING_DEPTHS as readonly string[]).includes(draft.planningDepth)) throw new Error(`Session-plan creation draft has an unsupported planning depth "${draft.planningDepth}"; expected one of ${PLANNING_DEPTHS.join(', ')}.`);
+  if (!isSessionPlanCreationDraft(draft)) throw userActionError('Planning task result does not include a session-plan creation draft.', { path: 'applySessionPlanCreationDraft' });
+  if (!(PLANNING_TYPES as readonly string[]).includes(draft.planningType)) throw userActionError(`Session-plan creation draft has an unsupported planning type "${draft.planningType}"; expected one of ${PLANNING_TYPES.join(', ')}.`, { path: 'sessionPlanCreationDraft.planningType' });
+  if (!(PLANNING_DEPTHS as readonly string[]).includes(draft.planningDepth)) throw userActionError(`Session-plan creation draft has an unsupported planning depth "${draft.planningDepth}"; expected one of ${PLANNING_DEPTHS.join(', ')}.`, { path: 'sessionPlanCreationDraft.planningDepth' });
   const session = (selection.session ?? draft.session).trim();
-  if (session.length === 0) throw new Error('Session-plan creation draft requires a non-empty target session id.');
+  if (session.length === 0) throw userActionError('Session-plan creation draft requires a non-empty target session id.', { path: 'applySessionPlanCreationDraft.session' });
   const openQuestions = selection.openQuestions ?? (Array.isArray(result.assumptionsOpenQuestions) ? result.assumptionsOpenQuestions.filter((value): value is string => typeof value === 'string') : undefined);
   return { draft, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
 }
@@ -242,21 +244,21 @@ function isSessionPlanCreationDraft(value: unknown): value is SessionPlanCreatio
 }
 
 function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): asserts task is PlanningAgentTaskRecordLike & { status: 'completed'; result: unknown } {
-  if (task.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) throw new Error(`Task ${task.taskId} is not an eforge-plan planning-draft task.`);
-  if (task.status !== 'completed') throw new Error(`Planning task ${task.taskId} is ${task.status}; only completed tasks can be applied.`);
-  if (!('result' in task)) throw new Error(`Planning task ${task.taskId} completed without a result.`);
+  if (task.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) throw userActionError(`Task ${task.taskId} is not an eforge-plan planning-draft task.`, { path: 'taskId', details: { taskId: task.taskId, kind: String(task.kind) } });
+  if (task.status !== 'completed') throw userActionError(`Planning task ${task.taskId} is ${task.status}; only completed tasks can be applied.`, { path: 'taskId', details: { taskId: task.taskId, status: String(task.status) } });
+  if (!('result' in task)) throw userActionError(`Planning task ${task.taskId} completed without a result.`, { path: 'taskId', details: { taskId: task.taskId } });
 }
 
 function resolveHandoffDraft(result: Record<string, unknown>, index: number | undefined): Partial<PlannerHandoffDraft> {
   const drafts = Array.isArray(result.handoffDrafts) ? result.handoffDrafts : result.handoffDraft !== undefined ? [result.handoffDraft] : [];
   const draft = drafts[index ?? 0];
-  if (!isRecord(draft)) throw new Error('Selected planning task handoff draft is missing.');
+  if (!isRecord(draft)) throw userActionError('Selected planning task handoff draft is missing.', { path: 'applyHandoffDrafts' });
   return draft as Partial<PlannerHandoffDraft>;
 }
 
 function mergeHandoffSelection(draft: Partial<PlannerHandoffDraft>, selection: NonNullable<ApplyPlanningAgentTaskResultInput['applyHandoffDrafts']>[number]): PlannerHandoffDraft {
   const selected = selection.selection ?? draft.selection;
-  if (selected === undefined) throw new Error('Applying a handoff draft requires a selected backlog item, epic, or recommendation ref.');
+  if (selected === undefined) throw userActionError('Applying a handoff draft requires a selected backlog item, epic, or recommendation ref.', { path: 'applyHandoffDrafts.selection' });
   return {
     selection: selected,
     session: selection.session ?? draft.session,
@@ -275,7 +277,7 @@ function resolveSelectedSessionPlanSections(
     const sections = patch.sections.filter((section) => requested.has(section.dimension));
     const resolved = new Set(sections.map((section) => section.dimension));
     const missing = selection.sections.filter((dimension) => !resolved.has(dimension));
-    if (missing.length > 0) throw new Error(`Planning task result is missing selected session-plan sections for ${selection.session}: ${missing.join(', ')}.`);
+    if (missing.length > 0) throw userActionError(`Planning task result is missing selected session-plan sections for ${selection.session}: ${missing.join(', ')}.`, { path: 'applySessionPlanDrafts.sections', details: { session: selection.session, missing } });
     return { session: selection.session, sections };
   });
 }
@@ -292,11 +294,12 @@ async function resolveCreationDraftSourceLinkage(cwd: string, taskId: string): P
   if (entry === undefined) return undefined;
   const selection = workflowSelectionInput(entry.selection);
   if (selection === undefined) return undefined;
-  const resolved = await resolvePromotionSelection({ cwd, ...selection });
+  const resolved = await resolvePromotionSelection({ cwd, itemIds: selection.itemIds, epicId: selection.epicId, recommendationRef: selection.recommendationRef });
+  const sourceRecommendationRef = selection.sourceRecommendationRef ?? resolved.recommendationRef;
   return {
     sourceItemIds: resolved.itemIds,
     sourceEpicIds: resolved.epicIds,
-    ...(resolved.recommendationRef !== undefined && { sourceRecommendationRef: resolved.recommendationRef }),
+    ...(sourceRecommendationRef !== undefined && { sourceRecommendationRef }),
     items: resolved.items,
   };
 }
@@ -326,12 +329,13 @@ async function applyCreationDraftSourceLinkage(cwd: string, session: string, lin
   };
 }
 
-function workflowSelectionInput(selection: { itemIds?: string[]; epicId?: string; recommendationRef?: string }): { itemIds?: string[]; epicId?: string; recommendationRef?: string } | undefined {
+function workflowSelectionInput(selection: { itemIds?: string[]; epicId?: string; recommendationRef?: string; sourceRecommendationRef?: string }): { itemIds?: string[]; epicId?: string; recommendationRef?: string; sourceRecommendationRef?: string } | undefined {
   if (selection.itemIds !== undefined || selection.epicId !== undefined || selection.recommendationRef !== undefined) {
     return {
       ...(selection.itemIds !== undefined && { itemIds: selection.itemIds }),
       ...(selection.epicId !== undefined && { epicId: selection.epicId }),
       ...(selection.recommendationRef !== undefined && { recommendationRef: selection.recommendationRef }),
+      ...(selection.sourceRecommendationRef !== undefined && { sourceRecommendationRef: selection.sourceRecommendationRef }),
     };
   }
   return undefined;
@@ -345,7 +349,7 @@ async function validatePlanningAgentTaskApplyTargets(
 ): Promise<void> {
   if (creationDraft !== undefined) {
     const path = createSessionPlanningWorkflowAdapter().flat.resolvePath({ cwd, session: creationDraft.session });
-    if (existsSync(path)) throw new Error(`Session plan "${creationDraft.session}" already exists; choose a different target session id before applying a creation draft.`);
+    if (existsSync(path)) throw userActionError(`Session plan "${creationDraft.session}" already exists; choose a different target session id before applying a creation draft.`, { path: 'applySessionPlanCreationDraft.session', details: { session: creationDraft.session } });
   }
   await Promise.all([
     ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
@@ -384,7 +388,7 @@ function resolveSessionPlanPatch(result: Record<string, unknown>): { sections: A
     const patch = result.sessionPlanDrafts.find(isSessionPlanPatch);
     if (patch !== undefined) return patch;
   }
-  throw new Error('Planning task result does not include session-plan draft sections.');
+  throw userActionError('Planning task result does not include session-plan draft sections.', { path: 'applySessionPlanDrafts' });
 }
 
 function isSessionPlanPatch(value: unknown): value is { sections: Array<{ dimension: string; content: string }> } {

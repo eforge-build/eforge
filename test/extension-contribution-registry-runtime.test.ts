@@ -153,6 +153,33 @@ describe('extension contribution registry runtime', () => {
     });
   });
 
+  it('maps extension user errors to invalid-input with safe details', async () => {
+    const root = makeTempDir();
+    const result = await loadFixture(root, {
+      'user-error.js': `import { Type, ExtensionActionUserError } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({ id: 'prepare', title: 'Prepare', inputSchema: Type.Object({}), handler: () => {
+          throw new ExtensionActionUserError('Select exactly one backlog source.', [{ path: 'itemIds', message: 'Cannot combine itemIds with recommendationRef.', selectorCount: 2 }]);
+        } });
+      }`,
+    });
+
+    const dispatched = await dispatchExtensionAction(result.registry, {
+      actionId: 'user-error:prepare',
+      input: {},
+      requestedBy: { host: 'cli' },
+      cwd: root,
+      configDir: resolve(root, 'eforge'),
+      timeoutMs: 1000,
+    });
+
+    expect(dispatched).toMatchObject({
+      kind: 'invalid-input',
+      message: 'Select exactly one backlog source.',
+      validationErrors: [{ path: 'itemIds', message: 'Cannot combine itemIds with recommendationRef.', selectorCount: 2 }],
+    });
+  });
+
   it('emits invalid and duplicate diagnostics for unsafe contribution registrations', async () => {
     const result = await loadFixture(makeTempDir(), {
       'first.js': `import { Type } from '@eforge-build/extension-sdk';

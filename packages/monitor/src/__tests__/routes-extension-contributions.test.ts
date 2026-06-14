@@ -23,7 +23,7 @@ async function seedExtension(cwd: string, body: string, timeoutMs = 1000): Promi
 }
 
 const extensionSource = `
-import { Type, ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
+import { Type, ExtensionActionInputValidationError, ExtensionActionUserError } from '@eforge-build/extension-sdk';
 
 export default function extension(eforge) {
   const empty = Type.Object({});
@@ -36,6 +36,7 @@ export default function extension(eforge) {
   });
   eforge.registerAction({ id: 'throws', title: 'Throws', inputSchema: empty, handler() { throw new Error('boom'); } });
   eforge.registerAction({ id: 'structured-invalid', title: 'Structured invalid', inputSchema: empty, handler() { throw new ExtensionActionInputValidationError('Bad references.', [{ path: 'items[0]', message: 'Closed item.', id: 'item-1', kind: 'item', reason: 'closed', status: 'shipped', title: 'Done' }]); } });
+  eforge.registerAction({ id: 'user-error', title: 'User error', inputSchema: empty, handler() { throw new ExtensionActionUserError('Select exactly one backlog source.', [{ path: 'itemIds', message: 'Cannot combine itemIds with recommendationRef.', selectorCount: 2 }]); } });
   eforge.registerAction({ id: 'bad-output', title: 'Bad output', inputSchema: empty, handler() { return undefined; } });
   eforge.registerAction({ id: 'schema-output', title: 'Schema output', inputSchema: empty, outputSchema: Type.Object({ ok: Type.Boolean() }), handler() { return { ok: 'no' }; } });
   eforge.registerAction({ id: 'slow', title: 'Slow', inputSchema: empty, async handler() { await new Promise((resolve) => setTimeout(resolve, 50)); return { ok: true }; } });
@@ -96,6 +97,7 @@ describe('extension contribution routes', () => {
     ['unknown action', 'missing.action', {}, 404, 'unknown-action'],
     ['invalid input', 'echo', {}, 400, 'invalid-input'],
     ['handler throw', 'throws', {}, 500, 'handler-error'],
+    ['user error', 'user-error', {}, 400, 'invalid-input'],
     ['non-JSON-safe output', 'bad-output', {}, 500, 'invalid-output'],
     ['output schema failure', 'schema-output', {}, 500, 'output-schema-failed'],
   ])('maps %s dispatcher outcomes to typed failure responses', async (_label, localOrEffectiveId, input, status, code) => {
@@ -109,15 +111,21 @@ describe('extension contribution routes', () => {
     } finally { await harness.close(); }
   });
 
-  it('preserves structured validation errors in action failure responses', async () => {
+  it('preserves structured validation and user errors in action failure responses', async () => {
     const harness = await startContentRouteHarness();
     try {
       await seedExtension(harness.cwd, extensionSource);
-      const { res, body } = await invoke(harness, await actionIdFor(harness, 'structured-invalid'), {});
-      expect(res.status).toBe(400);
-      expect(body).toMatchObject({
+      const structured = await invoke(harness, await actionIdFor(harness, 'structured-invalid'), {});
+      expect(structured.res.status).toBe(400);
+      expect(structured.body).toMatchObject({
         ok: false,
         error: { code: 'invalid-input', details: [{ id: 'item-1', kind: 'item', reason: 'closed', status: 'shipped' }] },
+      });
+      const userError = await invoke(harness, await actionIdFor(harness, 'user-error'), {});
+      expect(userError.res.status).toBe(400);
+      expect(userError.body).toMatchObject({
+        ok: false,
+        error: { code: 'invalid-input', message: 'Select exactly one backlog source.', details: [{ selectorCount: 2 }] },
       });
     } finally { await harness.close(); }
   });

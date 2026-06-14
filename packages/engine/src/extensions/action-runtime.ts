@@ -68,7 +68,7 @@ export async function dispatchExtensionAction(
     if (err instanceof TimeoutError) {
       return failure('timeout', action, options, invocationId, started, `Action handler timed out after ${options.timeoutMs}ms`, undefined, options.timeoutMs);
     }
-    if (isExtensionActionInputValidationError(err)) {
+    if (isExtensionActionInputValidationError(err) || isExtensionActionUserError(err)) {
       return failure('invalid-input', action, options, invocationId, started, err.message, err.details);
     }
     logHandlerError(action, err);
@@ -214,7 +214,15 @@ function logHandlerError(action: ActionRegistration, err: unknown): void {
 }
 
 function isExtensionActionInputValidationError(err: unknown): err is Error & { details: ExtensionActionValidationError[] } {
-  if (!(err instanceof Error) || err.name !== 'ExtensionActionInputValidationError') return false;
+  return isNamedActionError(err, 'ExtensionActionInputValidationError');
+}
+
+function isExtensionActionUserError(err: unknown): err is Error & { details: ExtensionActionValidationError[] } {
+  return isNamedActionError(err, 'ExtensionActionUserError');
+}
+
+function isNamedActionError(err: unknown, name: string): err is Error & { details: ExtensionActionValidationError[] } {
+  if (!(err instanceof Error) || err.name !== name) return false;
   const details = (err as unknown as { details?: unknown }).details;
   return Array.isArray(details) && details.every((detail) => isValueError(detail));
 }

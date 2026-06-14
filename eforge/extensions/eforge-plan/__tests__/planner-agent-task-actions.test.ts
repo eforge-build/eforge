@@ -170,7 +170,7 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-      expect(result.kind).toBe('handler-error');
+      expect(result.kind).toBe('invalid-input');
       expect(starts).toBe(0);
     });
   });
@@ -231,7 +231,7 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-      expect(result.kind).toBe('handler-error');
+      expect(result.kind).toBe('invalid-input');
       expect(await readRecommendations(cwd)).toBeNull();
     });
   });
@@ -285,7 +285,7 @@ describe('planning agent task actions', () => {
           timeoutMs: 1000,
           agentTasks: () => ({ async start() { throw new Error('unexpected start'); }, async get() { return { task }; }, async cancel() { throw new Error('unexpected cancel'); } }),
         });
-        expect(result.kind).toBe('handler-error');
+        expect(result.kind).toBe('invalid-input');
       }
     });
   });
@@ -358,7 +358,7 @@ describe('planning agent task actions', () => {
         }),
       });
 
-      expect(result.kind).toBe('handler-error');
+      expect(result.kind).toBe('invalid-input');
       expect(await readRecommendations(cwd)).toBeNull();
     });
   });
@@ -489,6 +489,53 @@ describe('planning agent task actions', () => {
       expect(entry.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
       expect(entry.originalRequest).toBe('');
       expect(entry.derivedRequest).toContain('recommendation next-one');
+    });
+  });
+
+  it('plans an explicit ready item subset while preserving its source recommendation ref', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { itemIds: ['item-one'], sourceRecommendationRef: 'group-one', includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start(request) {
+            expect(String(request.input.topic)).toContain('recommendation group-one');
+            expect(request.input.requestedOutputSections).toEqual(['sessionPlanCreationDraft']);
+            const source = JSON.parse(String(request.input.sourceText));
+            expect(source.context.selection).toMatchObject({ kind: 'itemIds', itemIds: ['item-one'], sourceRecommendationRef: 'group-one' });
+            return { task: runningTask('task-rec-subset') };
+          },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      const entry = (await readPlanningTaskWorkflowIndex(cwd)).entries[0]!;
+      expect(entry.selection).toMatchObject({ itemIds: ['item-one'], sourceRecommendationRef: 'group-one' });
+      expect(entry.selection).not.toHaveProperty('recommendationRef');
+    });
+  });
+
+  it('rejects source recommendation provenance without an explicit item selection', async () => {
+    await withTempProject(async (cwd) => {
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { sourceRecommendationRef: 'group-one', includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('invalid-input');
+      expect(JSON.stringify(result)).toContain('sourceRecommendationRef requires itemIds');
     });
   });
 
@@ -663,7 +710,7 @@ describe('planning agent task actions', () => {
       expect((await readPlanningTaskWorkflowIndex(cwd)).entries.map((entry) => entry.taskId)).toEqual(['task-running']);
 
       const rejected = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:remove-planning-agent-task', input: { taskId: 'task-running' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(rejected.kind).toBe('handler-error');
+      expect(rejected.kind).toBe('invalid-input');
       expect((await readPlanningTaskWorkflowIndex(cwd)).entries.map((entry) => entry.taskId)).toEqual(['task-running']);
     });
   });
@@ -981,7 +1028,7 @@ describe('planning agent task actions', () => {
             async cancel() { throw new Error('unexpected cancel'); },
           }),
         });
-        expect(result.kind).toBe('handler-error');
+        expect(result.kind).toBe('invalid-input');
         expect(starts).toBe(0);
       }
     });
@@ -1068,7 +1115,7 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-      expect(result.kind).toBe('handler-error');
+      expect(result.kind).toBe('invalid-input');
       expect(await readRecommendations(cwd)).toBeNull();
     });
   });

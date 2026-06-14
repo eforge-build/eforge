@@ -18,6 +18,7 @@ import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
 import { buildBacklogCurationSource, buildBacklogCurationRedraftContext } from './backlog-curation-source.js';
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
+import { userActionError } from './action-errors.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
   ApplyPlanningAgentTaskResultOutputSchema,
@@ -54,11 +55,13 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
   sideEffects: ['local-read', 'local-write', 'daemon-state'],
   async handler(input, ctx) {
     throwIfAborted(ctx.signal);
+    validateSourceRecommendationRef(input);
     const selection = selectionFromInput(input);
     const context = await preparePlannerContext(ctx.cwd, {
       itemIds: input.itemIds,
       epicId: input.epicId,
       recommendationRef: input.recommendationRef,
+      sourceRecommendationRef: input.sourceRecommendationRef,
       includeRoadmap: input.includeRoadmap,
     });
     throwIfAborted(ctx.signal);
@@ -171,7 +174,7 @@ export const removePlanningAgentTaskAction = defineExtensionAction({
       const response = await ctx.agentTasks.get(input.taskId);
       const status = response.task.status;
       if (status === 'queued' || status === 'running') {
-        throw new Error(`Task ${input.taskId} is ${status}; cancel it before removing it from the workflow list.`);
+        throw userActionError(`Task ${input.taskId} is ${status}; cancel it before removing it from the workflow list.`, { path: 'taskId', details: { taskId: input.taskId, status } });
       }
     } catch (err) {
       if (!isMissingTaskError(err)) throw err;
@@ -356,11 +359,18 @@ function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
   };
 }
 
+function validateSourceRecommendationRef(input: StartPlanningAgentTaskInput): void {
+  if (input.sourceRecommendationRef !== undefined && input.itemIds === undefined) {
+    throw new ExtensionActionInputValidationError('sourceRecommendationRef requires itemIds.', [{ path: 'sourceRecommendationRef', message: 'sourceRecommendationRef records recommendation-lane provenance for an explicit itemIds selection; use recommendationRef when the recommendation itself is the selector.' }]);
+  }
+}
+
 function selectionFromInput(input: StartPlanningAgentTaskInput): PlanningTaskWorkflowSelection {
   return {
     ...(input.itemIds !== undefined && { itemIds: input.itemIds }),
     ...(input.epicId !== undefined && { epicId: input.epicId }),
     ...(input.recommendationRef !== undefined && { recommendationRef: input.recommendationRef }),
+    ...(input.sourceRecommendationRef !== undefined && { sourceRecommendationRef: input.sourceRecommendationRef }),
   };
 }
 
@@ -369,6 +379,7 @@ function plannerSelection(entry: PlanningTaskWorkflowEntry) {
     itemIds: entry.selection.itemIds,
     epicId: entry.selection.epicId,
     recommendationRef: entry.selection.recommendationRef,
+    sourceRecommendationRef: entry.selection.sourceRecommendationRef,
     includeRoadmap: entry.includeRoadmap,
   };
 }
@@ -389,10 +400,11 @@ function deriveUserGoal(explicit: string | undefined, selection: PlanningTaskWor
   if (explicit !== undefined && explicit.trim().length > 0) return boundedUserGoal(explicit);
   const titles = context.items.map((item) => (item.title?.trim() ? item.title.trim() : item.id));
   const coverage = titles.length > 0 ? ` covering ${titles.join(', ')}` : '';
-  if (selection.recommendationRef !== undefined) return boundedUserGoal(`Draft a session plan for recommendation ${selection.recommendationRef}${coverage}.`);
+  const recommendationRef = selection.recommendationRef ?? (selection.itemIds !== undefined ? selection.sourceRecommendationRef : undefined);
+  if (recommendationRef !== undefined) return boundedUserGoal(`Draft a session plan for recommendation ${recommendationRef}${coverage}.`);
   if (selection.epicId !== undefined) return boundedUserGoal(`Draft a session plan for epic ${selection.epicId}${coverage}.`);
   if (hasBacklogSelection(selection) && titles.length > 0) return boundedUserGoal(`Draft a session plan for ${titles.join(', ')}.`);
-  throw new Error('start-planning-agent-task requires a userGoal or a backlog selection to derive a planning goal.');
+  throw userActionError('start-planning-agent-task requires a userGoal or a backlog selection to derive a planning goal.', { path: 'userGoal' });
 }
 
 function explicitOrPreservedGoal(explicit: string | undefined, parent: PlanningTaskWorkflowEntry, context: PlannerContextLike): string {
@@ -425,7 +437,7 @@ function assertRedraftableParent(task: unknown, taskId: string, allowCurationDra
   const hasQuestions = Array.isArray(result?.clarificationQuestions) && result.clarificationQuestions.length > 0;
   if (allowCurationDraft && (result?.backlogCurationDraft !== undefined || (result?.decision === 'needs-input' && hasQuestions))) return;
   if (result?.decision !== 'needs-input' || !hasQuestions) {
-    throw new Error(`Planning task ${taskId} is not a completed needs-input clarification result; only tasks that requested clarification can be redrafted.`);
+    throw userActionError(`Planning task ${taskId} is not a completed needs-input clarification result; only tasks that requested clarification can be redrafted.`, { path: 'taskId', details: { taskId } });
   }
 }
 
@@ -438,7 +450,7 @@ function completedTaskResult(task: unknown): Record<string, unknown> | undefined
 
 function requireWorkflowEntry(index: Awaited<ReturnType<typeof readPlanningTaskWorkflowIndex>>, taskId: string, operation: string): PlanningTaskWorkflowEntry {
   const entry = findPlanningTaskWorkflowEntry(index, taskId);
-  if (entry === undefined) throw new Error(`No preserved workflow context found for planning task ${taskId}; cannot ${operation}.`);
+  if (entry === undefined) throw userActionError(`No preserved workflow context found for planning task ${taskId}; cannot ${operation}.`, { path: 'taskId', details: { taskId, operation } });
   return entry;
 }
 

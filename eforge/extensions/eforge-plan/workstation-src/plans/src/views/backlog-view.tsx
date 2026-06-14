@@ -109,7 +109,7 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
   const planRecommendationLane = React.useCallback(async (itemIds: string[], recommendationRef?: string) => {
     const readyItemIds = itemIds.filter((id) => readyById.get(id) === true);
     if (readyItemIds.length === 0) return;
-    await workflows.start({ itemIds: readyItemIds, ...(recommendationRef ? { recommendationRef } : {}) });
+    await workflows.start({ itemIds: readyItemIds, ...(recommendationRef ? { sourceRecommendationRef: recommendationRef } : {}) });
   }, [readyById, workflows]);
 
   const promoteSelectedReady = async () => {

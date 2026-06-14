@@ -277,6 +277,21 @@ describe('planner orchestration', () => {
     });
   });
 
+  it('links AI creation drafts to item workflow selections with source recommendation refs', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await recordCreationWorkflow(cwd, { itemIds: ['item-one'], sourceRecommendationRef: 'group-one' });
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('linked-source-recommendation-session'), { taskId: 'task-creation', applySessionPlanCreationDraft: {} });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({
+        sourceRefs: { sourceItemIds: ['item-one'], sourceEpicIds: ['epic-one'], recommendationRef: 'group-one' },
+        traceItemIds: ['item-one'],
+      });
+      const frontmatter = await readSessionPlanFrontmatter(cwd, 'linked-source-recommendation-session');
+      expect(frontmatter.eforge_plan).toMatchObject({ source_item_ids: ['item-one'], source_epic_ids: ['epic-one'], source_recommendation_ref: 'group-one' });
+    });
+  });
+
   it('links AI creation drafts to recommendation workflow selections and traces all resolved source items', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);

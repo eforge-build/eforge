@@ -48,10 +48,30 @@ function createLiveBridge(): EforgeBridge {
         input,
         requestedBy: { host: 'console', surface: 'workstation-dev:eforge-plan' },
       });
-      if (!payload.ok) throw new Error(payload.error.message ?? `Action ${effectiveId} failed`);
+      if (!payload.ok) throw new Error(formatActionFailure(effectiveId, payload.error));
       return payload.output as TOutput;
     },
   };
+}
+
+function formatActionFailure(actionId: string, error: { code: string; message?: string; details?: unknown }): string {
+  const lead = error.code === 'invalid-input' ? 'Invalid input' : `Action ${actionId} failed (${error.code})`;
+  const message = error.message?.trim() || 'Action failed';
+  const details = summarizeActionFailureDetails(error.details);
+  const combined = message === 'Action input failed schema validation' && details ? details : message;
+  return details && combined !== details ? `${lead}: ${combined} — ${details}` : `${lead}: ${combined}`;
+}
+
+function summarizeActionFailureDetails(details: unknown): string | undefined {
+  if (!Array.isArray(details) || details.length === 0) return undefined;
+  return details.slice(0, 3).map((entry) => {
+    if (!entry || typeof entry !== 'object') return undefined;
+    const record = entry as { path?: unknown; message?: unknown };
+    const message = typeof record.message === 'string' ? record.message.trim() : '';
+    const path = typeof record.path === 'string' && record.path.trim().length > 0 ? record.path.trim() : '';
+    if (!message) return undefined;
+    return path ? `${path}: ${message}` : message;
+  }).filter((entry): entry is string => Boolean(entry)).join('; ') || undefined;
 }
 
 function createMockBridge(): EforgeBridge {

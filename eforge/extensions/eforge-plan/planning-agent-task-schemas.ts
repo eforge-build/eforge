@@ -50,6 +50,7 @@ export const StartPlanningAgentTaskInputSchema = Type.Object({
   itemIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, uniqueItems: true })),
   epicId: Type.Optional(Type.String()),
   recommendationRef: Type.Optional(Type.String()),
+  sourceRecommendationRef: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
   session: Type.Optional(Type.String()),
   planningType: Type.Optional(Type.Union(PlanningTypeLiteralSchemas)),
@@ -142,6 +143,7 @@ export const PlanningTaskWorkflowSelectionSchema = Type.Object({
   itemIds: Type.Optional(Type.Array(Type.String())),
   epicId: Type.Optional(Type.String()),
   recommendationRef: Type.Optional(Type.String()),
+  sourceRecommendationRef: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
 export const PlanningTaskWorkflowEntrySchema = Type.Object({

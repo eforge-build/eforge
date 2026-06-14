@@ -305,7 +305,7 @@ export interface PlanningAgentTaskResponse { task: PlanningAgentTaskRecord; }
 export interface RemovePlanningTaskResponse { taskId: string; removed: boolean; }
 
 // Durable planning task workflow projections (extension-owned index joined with daemon task records).
-export interface PlanningTaskWorkflowSelection { itemIds?: string[]; epicId?: string; recommendationRef?: string; }
+export interface PlanningTaskWorkflowSelection { itemIds?: string[]; epicId?: string; recommendationRef?: string; sourceRecommendationRef?: string; }
 export interface PlanningTaskWorkflowEntry {
   taskId: string;
   parentTaskId?: string;
