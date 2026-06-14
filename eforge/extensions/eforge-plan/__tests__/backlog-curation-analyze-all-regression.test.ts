@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { analyzeAllBacklogAction } from '../backlog-curation-actions.js';
+import { buildSource as buildBacklogCurationTaskSource } from '../backlog-curation-source-provider.js';
 import { writeBacklogItem } from '../markdown-store.js';
 
 const execFile = promisify(execFileCallback);
@@ -29,55 +30,32 @@ describe('analyze-all shipped evidence regression', () => {
       await git(cwd, ['commit', '-m', 'feat(analyze-shipped-item): analyze shipped item']);
       await git(cwd, ['checkout', 'main']);
       await git(cwd, ['merge', '--no-ff', 'feature/analyze-shipped-item', '-m', 'Merge pull request #515 from owner/feature/analyze-shipped-item']);
-      let producedItemChanges: Array<Record<string, unknown>> | undefined;
+      const starts: unknown[] = [];
       const ctx = {
         cwd,
         signal: new AbortController().signal,
         agentTasks: {
-          async start(request: { input: { sourceText: string } }) {
-            const source = JSON.parse(request.input.sourceText) as {
-              sourceFingerprint: string;
-              openItems: Array<{ id: string; precondition: Record<string, unknown> }>;
-              shippedEvidenceCandidates: Array<{ itemId: string; confidence: string; citations?: string[] }>;
-            };
-            const evidence = source.shippedEvidenceCandidates.find((candidate) => candidate.itemId === 'analyze-shipped-item' && candidate.confidence === 'strong');
-            const item = source.openItems.find((entry) => entry.id === 'analyze-shipped-item');
-            const itemChanges = evidence && item ? [{
-              kind: 'item',
-              id: 'analyze-shipped-item',
-              precondition: item.precondition,
-              metadata: { status: 'shipped' },
-              rationale: 'Reachable no-ff PR evidence shows this item shipped.',
-              evidence: evidence.citations ?? ['Shipped evidence: inferred from git/PR history'],
-            }] : [];
-            producedItemChanges = itemChanges;
-            return {
-              task: {
-                taskId: 'analyze-shipped-task',
-                kind: 'eforge-plan.planning-draft',
-                status: 'completed',
-                createdAt: 'now',
-                updatedAt: 'now',
-                result: {
-                  summary: 'ready',
-                  assumptionsOpenQuestions: [],
-                  backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: source.sourceFingerprint, summary: [], itemChanges, epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] },
-                },
-              },
-            };
+          async start(request: unknown) {
+            starts.push(request);
+            return { task: { taskId: 'analyze-shipped-task', kind: 'eforge-plan.planning-draft', status: 'running', createdAt: 'now', updatedAt: 'now' } };
           },
           async get() { throw new Error('not found'); },
           async cancel() { throw new Error('unexpected cancel'); },
         },
       };
 
-      // analyze-all-backlog now returns a compact task summary (no result payload), so the produced
-      // curation draft is observed from the source the action feeds the planning task. This still
-      // exercises the regression: the source-building enriches the strong shipped-evidence candidate
-      // with the merge-PR citation, which drives the shipped itemChange.
       await analyzeAllBacklogAction.handler({}, ctx as never);
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } } });
+      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal });
+      const source = JSON.parse(sourceText) as {
+        openItems: Array<{ id: string; precondition: Record<string, unknown> }>;
+        shippedEvidenceCandidates: Array<{ itemId: string; confidence: string; citations?: string[] }>;
+      };
+      const evidence = source.shippedEvidenceCandidates.find((candidate) => candidate.itemId === 'analyze-shipped-item' && candidate.confidence === 'strong');
+      const item = source.openItems.find((entry) => entry.id === 'analyze-shipped-item');
+      const itemChanges = evidence && item ? [{ id: 'analyze-shipped-item', metadata: { status: 'shipped' }, evidence: evidence.citations ?? [] }] : [];
 
-      expect(producedItemChanges).toEqual([
+      expect(itemChanges).toEqual([
         expect.objectContaining({ id: 'analyze-shipped-item', metadata: { status: 'shipped' }, evidence: [expect.stringContaining('Merge pull request #515')] }),
       ]);
     });

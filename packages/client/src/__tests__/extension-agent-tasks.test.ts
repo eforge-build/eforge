@@ -42,6 +42,7 @@ describe('extension agent task contracts', () => {
     };
     expect(safeParseExtensionAgentTaskStartRequest(valid).success).toBe(true);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: 'Demo', requestedOutputSections: ['recommendations', 'handoffDrafts'] } }).success).toBe(true);
+    expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: 'Demo', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'alpha' } } } }).success).toBe(true);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: '', requestedOutputSections: ['planDrafts'] } }).success).toBe(false);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: '   ', requestedOutputSections: ['planDrafts'] } }).success).toBe(false);
     expect(safeParseExtensionAgentTaskStartRequest({ ...valid, input: { topic: 'Demo', requestedOutputSections: ['unsupported'] } }).success).toBe(false);
@@ -199,10 +200,7 @@ describe('extension agent task contracts', () => {
     expect(source).toContain('buildPath(API_ROUTES.extensionAgentTaskCancel');
   });
 
-  it('bumps the daemon API version for the continue-repair recovery wire contract', () => {
-    expect(DAEMON_API_VERSION).toBe(66);
-    const source = readFileSync(new URL('../api-version-const.ts', import.meta.url), 'utf8');
-    expect(source).toContain('continue-repair');
-    expect(source).toContain('verdict/action vocabulary drops split');
+  it('requires a daemon API version new enough for deferred extension task source providers', () => {
+    expect(DAEMON_API_VERSION).toBeGreaterThanOrEqual(67);
   });
 });

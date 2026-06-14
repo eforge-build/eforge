@@ -2,7 +2,6 @@ import { safeParseWithSchema } from '@eforge-build/client';
 import { EforgePlanPlanningBacklogCurationDraftSchema } from '../../../packages/client/src/extension-agent-tasks.js';
 import { ExtensionActionInputValidationError } from '../../../packages/extension-sdk/src/index.js';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
-import { buildBacklogCurationSource } from './backlog-curation-source.js';
 // --- eforge:region shipped-evidence-context ---
 import { filterRecommendationsForCurationDraftStatusOverlay } from './backlog-curation-recommendation-overlay.js';
 // --- eforge:endregion shipped-evidence-context ---
@@ -149,14 +148,12 @@ interface PreparedBacklogCurationApply {
 
 async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined, options: { skipGeneratedRecommendationErrors?: boolean } = {}): Promise<PreparedBacklogCurationApply> {
   assertCompletedPlanningDraftTask(task);
-  if (entry === undefined || !isBacklogCurationWorkflowEntry(entry) || entry.sourceFingerprint === undefined) {
+  if (entry === undefined || !isBacklogCurationWorkflowEntry(entry)) {
     throw validationError('workflowEntry.purpose', 'Applying a backlog curation draft requires a backlog-curation workflow entry.');
   }
   const rawResult = task.result as Record<string, unknown> | undefined;
   const draft = parseDraft(rawResult?.backlogCurationDraft);
-  if (draft.sourceFingerprint !== entry.sourceFingerprint) throw validationError('backlogCurationDraft.sourceFingerprint', 'Curation draft source fingerprint does not match the workflow entry.');
-  const currentSource = await buildBacklogCurationSource(cwd);
-  if (currentSource.sourceFingerprint !== draft.sourceFingerprint) throw validationError('backlogCurationDraft.sourceFingerprint', 'Curation draft is stale for the current backlog source fingerprint.');
+  if (entry.sourceFingerprint !== undefined && draft.sourceFingerprint !== entry.sourceFingerprint) throw validationError('backlogCurationDraft.sourceFingerprint', 'Curation draft source fingerprint does not match the workflow entry.');
 
   const [itemSnapshots, epicSnapshots] = await Promise.all([listBacklogItemSnapshots(cwd), listBacklogEpicSnapshots(cwd)]);
   const openItemSnapshots = itemSnapshots.filter((snapshot) => isOpenStatus(snapshot.record.status));

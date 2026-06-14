@@ -41,6 +41,7 @@
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/input": "workspace:*",
+    "jiti": "^2.7.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
