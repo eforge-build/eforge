@@ -342,7 +342,7 @@ export interface GetRecommendationsResponse {
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
   entry: PlanningTaskWorkflowEntry;
-  sourceFingerprint: string;
+  sourceFingerprint?: string;
   reused?: boolean;
 }
 

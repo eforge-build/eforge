@@ -508,6 +508,9 @@ importers:
       '@eforge-build/input':
         specifier: workspace:*
         version: link:../input
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

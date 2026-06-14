@@ -1,9 +1,7 @@
-import { safeParseWithSchema } from '@eforge-build/client';
 import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, EforgePlanPlanningBacklogCurationDraftSchema, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema } from './backlog-curation-schemas.js';
-import { buildBacklogCurationSource } from './backlog-curation-source.js';
 import {
   BACKLOG_CURATION_WORKFLOW_PURPOSE,
   listBacklogCurationWorkflowEntries,
@@ -13,6 +11,7 @@ import {
 import type { PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
 
 const ANALYZE_ALL_TOPIC = 'Analyze and curate all open eforge-plan backlog records.';
+const ANALYZE_ALL_SOURCE_PROVIDER = { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } as const;
 export const BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS = ['backlogCurationDraft', 'recommendations'] as const;
 const analyzeStartChains = new Map<string, Promise<unknown>>();
 
@@ -20,7 +19,7 @@ type AnalyzeAllStartRequest = {
   kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
   input: {
     topic: string;
-    sourceText: string;
+    sourceProvider: typeof ANALYZE_ALL_SOURCE_PROVIDER;
     requestedOutputSections: typeof BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS;
     includeRoadmap: true;
   };
@@ -35,30 +34,26 @@ export const analyzeAllBacklogAction = defineExtensionAction({
   sideEffects: ['local-read', 'local-write', 'network', 'daemon-state'],
   async handler(_input, ctx) {
     throwIfAborted(ctx.signal);
-    const { sourceFingerprint, sourceText } = await buildBacklogCurationSource(ctx.cwd, undefined, { signal: ctx.signal });
-    throwIfAborted(ctx.signal);
-    return await runAnalyzeStartExclusive(ctx.cwd, sourceFingerprint, async () => {
-      const active = await findReusableBacklogCurationTask(ctx, sourceFingerprint);
-      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, sourceFingerprint, reused: true });
+    return await runAnalyzeStartExclusive(ctx.cwd, async () => {
+      const active = await findActiveBacklogCurationTask(ctx);
+      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, ...(active.entry.sourceFingerprint !== undefined && { sourceFingerprint: active.entry.sourceFingerprint }), reused: true });
       throwIfAborted(ctx.signal);
-      const response = await startBacklogCurationTask(ctx, sourceText);
-      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, sourceFingerprint));
-      return toJsonSafeObject({ task: compactTask(response.task), entry, sourceFingerprint });
+      const response = await startBacklogCurationTask(ctx);
+      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId));
+      return toJsonSafeObject({ task: compactTask(response.task), entry });
     });
   },
 });
 
-export async function findReusableBacklogCurationTask(
+export async function findActiveBacklogCurationTask(
   ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>,
-  sourceFingerprint: string,
 ): Promise<{ task: ExtensionAgentTaskRecord; entry: PlanningTaskWorkflowEntry } | undefined> {
   const index = await readPlanningTaskWorkflowIndex(ctx.cwd);
-  for (const entry of listBacklogCurationWorkflowEntries(index, sourceFingerprint)) {
+  for (const entry of listBacklogCurationWorkflowEntries(index)) {
     if (entry.appliedAt !== undefined) continue;
     try {
       const response = await ctx.agentTasks.get(entry.taskId);
       if (response.task.status === 'queued' || response.task.status === 'running') return { task: response.task, entry };
-      if (response.task.status === 'completed' && isReusableCompletedBacklogCurationTask(response.task, sourceFingerprint)) return { task: response.task, entry };
     } catch (error) {
       if (!isMissingOrStaleTaskError(error)) throw error;
       // Missing task records are stale and cannot be reused.
@@ -67,7 +62,7 @@ export async function findReusableBacklogCurationTask(
   return undefined;
 }
 
-export function buildBacklogCurationEntry(taskId: string, sourceFingerprint: string, parent?: PlanningTaskWorkflowEntry): PlanningTaskWorkflowEntry {
+export function buildBacklogCurationEntry(taskId: string, sourceFingerprint?: string, parent?: PlanningTaskWorkflowEntry): PlanningTaskWorkflowEntry {
   return {
     taskId,
     ...(parent !== undefined && { parentTaskId: parent.taskId }),
@@ -77,17 +72,17 @@ export function buildBacklogCurationEntry(taskId: string, sourceFingerprint: str
     requestedOutputSections: [...BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS],
     includeRoadmap: true,
     purpose: BACKLOG_CURATION_WORKFLOW_PURPOSE,
-    sourceFingerprint,
+    ...(sourceFingerprint !== undefined && { sourceFingerprint }),
     createdAt: new Date().toISOString(),
   };
 }
 
-async function startBacklogCurationTask(ctx: ExtensionActionContext, sourceText: string): Promise<{ task: ExtensionAgentTaskRecord }> {
+async function startBacklogCurationTask(ctx: ExtensionActionContext): Promise<{ task: ExtensionAgentTaskRecord }> {
   const request: AnalyzeAllStartRequest = {
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
       topic: ANALYZE_ALL_TOPIC,
-      sourceText,
+      sourceProvider: ANALYZE_ALL_SOURCE_PROVIDER,
       requestedOutputSections: BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS,
       includeRoadmap: true,
     },
@@ -95,8 +90,8 @@ async function startBacklogCurationTask(ctx: ExtensionActionContext, sourceText:
   return await (ctx.agentTasks.start as unknown as (request: AnalyzeAllStartRequest) => Promise<{ task: ExtensionAgentTaskRecord }>)(request);
 }
 
-function runAnalyzeStartExclusive<T>(cwd: string, sourceFingerprint: string, task: () => Promise<T>): Promise<T> {
-  const key = `${cwd}\0${sourceFingerprint}`;
+function runAnalyzeStartExclusive<T>(cwd: string, task: () => Promise<T>): Promise<T> {
+  const key = `${cwd}\0analyze-all-backlog`;
   const prior = analyzeStartChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
   let chain: Promise<unknown>;
@@ -118,15 +113,6 @@ async function recordEntryOrCancelTask(ctx: Pick<ExtensionActionContext, 'cwd' |
     }
     throw recordError;
   }
-}
-
-function isReusableCompletedBacklogCurationTask(task: ExtensionAgentTaskRecord, sourceFingerprint: string): boolean {
-  const result = (task as { result?: unknown }).result;
-  if (result === null || typeof result !== 'object') return false;
-  const output = result as Record<string, unknown>;
-  if (output.decision === 'needs-input' && Array.isArray(output.clarificationQuestions) && output.clarificationQuestions.length > 0) return true;
-  const draft = safeParseWithSchema(EforgePlanPlanningBacklogCurationDraftSchema, output.backlogCurationDraft);
-  return draft.success && draft.data.sourceFingerprint === sourceFingerprint;
 }
 
 function compactTask(task: ExtensionAgentTaskRecord): Record<string, unknown> {

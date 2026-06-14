@@ -53,12 +53,19 @@ export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as cons
 export const ExtensionAgentTaskIdSchema = Type.String({ minLength: 1, maxLength: 128, pattern: EXTENSION_AGENT_TASK_ID_PATTERN });
 export const EforgePlanPlanningTopicSchema = Type.String({ minLength: 1, pattern: '\\S' });
 
+export const EforgePlanPlanningSourceProviderSchema = Type.Object({
+  module: Type.String({ minLength: 1, pattern: '\\S' }),
+  exportName: Type.Optional(Type.String({ minLength: 1, pattern: '\\S' })),
+  input: Type.Optional(Type.Object({}, { additionalProperties: true })),
+}, { additionalProperties: false });
+
 export const EforgePlanPlanningDraftInputSchema = Type.Object({
   topic: EforgePlanPlanningTopicSchema,
   session: Type.Optional(Type.String()),
   planningType: Type.Optional(Type.String()),
   planningDepth: Type.Optional(Type.String()),
   sourceText: Type.Optional(Type.String()),
+  sourceProvider: Type.Optional(EforgePlanPlanningSourceProviderSchema),
   existingSessionPlan: Type.Optional(Type.String()),
   requestedOutputSections: Type.Optional(Type.Array(EforgePlanPlanningRequestedOutputSectionSchema, { minItems: 1 })),
   includeRoadmap: Type.Optional(Type.Boolean()),

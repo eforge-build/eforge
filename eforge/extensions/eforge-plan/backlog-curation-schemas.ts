@@ -28,7 +28,7 @@ const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   planningDepth: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
   purpose: Type.Literal('backlog-curation'),
-  sourceFingerprint: SourceFingerprintSchema,
+  sourceFingerprint: Type.Optional(SourceFingerprintSchema),
   appliedAt: Type.Optional(Type.String()),
   createdAt: Type.String(),
 }, { additionalProperties: false });
@@ -49,7 +49,7 @@ export const AnalyzeAllBacklogTaskSummarySchema = Type.Object({
 export const AnalyzeAllBacklogOutputSchema = Type.Object({
   task: AnalyzeAllBacklogTaskSummarySchema,
   entry: AnalyzeAllBacklogWorkflowEntrySchema,
-  sourceFingerprint: SourceFingerprintSchema,
+  sourceFingerprint: Type.Optional(SourceFingerprintSchema),
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 

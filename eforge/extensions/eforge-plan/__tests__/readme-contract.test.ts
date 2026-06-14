@@ -172,9 +172,9 @@ describe('eforge-plan README planner contract', () => {
     const readme = await readFile(README, 'utf-8');
     const boundary = sectionBetween(readme, '## Planning workstation boundary', '');
 
-    expect(boundary).toMatch(/analyze-all-backlog` starts or reuses a daemon-owned read-only `backlog-curation` planning task/);
-    expect(boundary).toMatch(/current source fingerprint/);
-    expect(boundary).toMatch(/requests `backlogCurationDraft` plus `recommendations`/);
+    expect(boundary).toMatch(/analyze-all-backlog` starts or reuses an active daemon-owned read-only `backlog-curation` planning task/);
+    expect(boundary).toMatch(/defers all-open-backlog curation source assembly to that background task/);
+    expect(boundary).toMatch(/`backlogCurationDraft` plus `recommendations`/);
     expect(boundary).toMatch(/Plan with AI monitor labels curation tasks and supports retry, redraft, cancel, remove, and apply/);
     expect(boundary).toMatch(/task result is read-only until the user previews it/);
     expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, skipped cases, needs-input cases, generated recommendations/);

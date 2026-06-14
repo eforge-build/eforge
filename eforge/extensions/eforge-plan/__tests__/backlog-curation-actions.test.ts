@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { analyzeAllBacklogAction } from '../backlog-curation-actions.js';
+import { buildSource as buildBacklogCurationTaskSource } from '../backlog-curation-source-provider.js';
 import { markPlanningTaskWorkflowEntryApplied, readPlanningTaskWorkflowIndex } from '../planning-task-workflow-store.js';
 import { writeBacklogItem } from '../markdown-store.js';
 
@@ -33,16 +34,16 @@ describe('analyze-all-backlog action', () => {
         },
         buildQueue: { async enqueue() { throw new Error('analyze-all-backlog must not enqueue builds'); } },
       };
-      const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint: string };
-      expect(output.sourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint?: string };
+      expect(output.sourceFingerprint).toBeUndefined();
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true } });
+      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
       expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
     });
   });
 
-  it('starts the daemon task with bounded shipped evidence in sourceText before model assembly', async () => {
+  it('defers bounded shipped evidence source assembly to the daemon-owned background task', async () => {
     await withTempProject(async (cwd) => {
       await initRepo(cwd);
       await writeFile(join(cwd, 'README.md'), 'base\n');
@@ -71,7 +72,8 @@ describe('analyze-all-backlog action', () => {
       };
 
       await analyzeAllBacklogAction.handler({}, ctx as never);
-      const sourceText = (starts[0] as { input: { sourceText: string } }).input.sourceText;
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } } });
+      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal });
       const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
 
       expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', evidenceSource: 'git-history' })]);
@@ -80,7 +82,7 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
-  it.each(['queued', 'running', 'completed'] as const)('reuses unapplied %s same-fingerprint curation tasks', async (status) => {
+  it.each(['queued', 'running'] as const)('reuses unapplied active %s curation tasks without building source first', async (status) => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       const started: unknown[] = [];
@@ -89,10 +91,8 @@ describe('analyze-all-backlog action', () => {
         cwd,
         signal: new AbortController().signal,
         agentTasks: {
-          async start(request: unknown) {
-            const sourceText = (request as { input: { sourceText: string } }).input.sourceText;
-            const sourceFingerprint = (JSON.parse(sourceText) as { sourceFingerprint: string }).sourceFingerprint;
-            const task = { taskId: `task-${started.length + 1}`, kind: 'eforge-plan.planning-draft', status, createdAt: 'now', updatedAt: 'now', ...(status === 'completed' && { result: { summary: 'ready', assumptionsOpenQuestions: [], backlogCurationDraft: { schemaVersion: 1, sourceFingerprint, summary: [], itemChanges: [], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] } } }) };
+          async start() {
+            const task = { taskId: `task-${started.length + 1}`, kind: 'eforge-plan.planning-draft', status, createdAt: 'now', updatedAt: 'now' };
             started.push(task);
             tasks.set(task.taskId, task);
             return { task };
@@ -101,9 +101,8 @@ describe('analyze-all-backlog action', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         },
       };
-      const first = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint: string };
-      const second = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint: string; reused?: boolean };
-      expect(second.sourceFingerprint).toBe(first.sourceFingerprint);
+      await analyzeAllBacklogAction.handler({}, ctx as never);
+      const second = await analyzeAllBacklogAction.handler({}, ctx as never) as { reused?: boolean };
       expect(second.reused).toBe(true);
       expect(started).toHaveLength(1);
     });
@@ -157,7 +156,7 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
-  it('reuses a completed same-fingerprint needs-input curation entry', async () => {
+  it('starts a new task instead of synchronously validating completed needs-input curation entries', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       let starts = 0;
@@ -178,8 +177,8 @@ describe('analyze-all-backlog action', () => {
       };
       await analyzeAllBacklogAction.handler({}, ctx as never);
       const second = await analyzeAllBacklogAction.handler({}, ctx as never) as { reused?: boolean };
-      expect(second.reused).toBe(true);
-      expect(starts).toBe(1);
+      expect(second.reused).toBeUndefined();
+      expect(starts).toBe(2);
     });
   });
 

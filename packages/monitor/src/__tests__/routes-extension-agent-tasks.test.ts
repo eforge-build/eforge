@@ -1,5 +1,5 @@
 import { request } from 'node:http';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -228,6 +228,53 @@ describe('extension agent task routes and service', () => {
     }
   });
 
+  it('resolves deferred source providers in the background task before running the planner', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-source-provider-'));
+    const extensionRoot = join(cwd, '.eforge', 'extensions', 'source-owner');
+    await mkdir(extensionRoot, { recursive: true });
+    await writeFile(join(extensionRoot, 'source-provider.mjs'), `export function buildSource({ input }) { return { sourceText: 'deferred-source:' + input.marker }; }\n`);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const harness = new SubmitHarness(submittedResult);
+    const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const service = new ExtensionAgentTaskService(context);
+      const started = await service.start(
+        { kind: 'eforge-plan.planning-draft', input: { topic: 'Build with deferred source', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'alpha' } } } },
+        { owner: { extensionName: 'source-owner', extensionPath: extensionRoot } },
+      );
+      await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
+      expect(String(harness.calls[0]?.prompt)).toContain('deferred-source:alpha');
+      expect(taskEvents(db, started.task.taskId).some((event) => event.metadata?.progressMessage === 'Preparing planner source')).toBe(true);
+    } finally {
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves deferred source providers relative to file-layout extension directories', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-file-source-provider-'));
+    const extensionDir = join(cwd, '.eforge', 'extensions');
+    const extensionPath = join(extensionDir, 'source-owner.mjs');
+    await mkdir(extensionDir, { recursive: true });
+    await writeFile(extensionPath, `export default function extension() {}\n`);
+    await writeFile(join(extensionDir, 'source-provider.mjs'), `export function buildSource({ input }) { return { sourceText: 'file-layout-source:' + input.marker }; }\n`);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const harness = new SubmitHarness(submittedResult);
+    const context = await createMonitorContext(db, 0, { cwd, agentRuntimes: singletonRegistry(harness) });
+    try {
+      const service = new ExtensionAgentTaskService(context);
+      const started = await service.start(
+        { kind: 'eforge-plan.planning-draft', input: { topic: 'Build with file-layout deferred source', sourceProvider: { module: './source-provider.mjs', exportName: 'buildSource', input: { marker: 'beta' } } } },
+        { owner: { extensionName: 'source-owner', extensionPath } },
+      );
+      await waitFor(() => taskEvents(db, started.task.taskId).some((event) => event.type === 'extension:agent-task:complete'));
+      expect(String(harness.calls[0]?.prompt)).toContain('file-layout-source:beta');
+    } finally {
+      db.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('emits owner extension name for extension-owned service tasks', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'eforge-agent-task-owner-'));
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
@@ -323,6 +370,7 @@ describe('extension agent task routes and service', () => {
       expect((await rawPost(server.port, API_ROUTES.extensionAgentTaskStart, '{}', { Host: 'localhost', 'Sec-Fetch-Site': 'cross-site', 'content-type': 'application/json' })).status).toBe(403);
       expect((await fetch(`${server.url}${API_ROUTES.extensionAgentTaskStart}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' })).status).toBe(400);
       expect((await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'unsupported', input: { topic: 'x' } })).status).toBe(400);
+      expect((await postJson(server.url, API_ROUTES.extensionAgentTaskStart, { kind: 'eforge-plan.planning-draft', input: { topic: 'x', sourceProvider: { module: './provider.mjs' } } })).status).toBe(400);
       expect((await fetch(`${server.url}${buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'bad id' })}`)).status).toBe(400);
       expect((await fetch(`${server.url}${buildPath(API_ROUTES.extensionAgentTaskGet, { taskId: 'task-missing' })}`)).status).toBe(404);
     } finally {

@@ -1,3 +1,7 @@
+import { lstat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
   parseEforgePlanPlanningDraftResult,
@@ -61,9 +65,12 @@ export class ExtensionAgentTaskService {
     if (validRequest.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) {
       throw new AgentTaskServiceError(`Unsupported task kind: ${validRequest.kind as string}`, 400);
     }
+    const owner = options.owner;
+    if (validRequest.input.sourceProvider !== undefined && owner === undefined) {
+      throw new AgentTaskServiceError('Deferred source providers require an extension owner', 400);
+    }
     const now = new Date().toISOString();
     const taskId = createAgentTaskId();
-    const owner = options.owner;
     const metadata = sanitizeMetadata({ label: owner?.extensionName ?? 'extension agent task', progressMessage: 'Starting planner task' });
     const record: StoredExtensionAgentTaskRecord = {
       taskId,
@@ -81,7 +88,7 @@ export class ExtensionAgentTaskService {
     this.controllers.set(taskId, controller);
     emitAgentTaskStart(this.context, eventBase(record));
     queueMicrotask(() => {
-      void this.runInBackground({ taskId, request: validRequest, controller, startedAtMs: Date.now() })
+      void this.runInBackground({ taskId, request: validRequest, controller, startedAtMs: Date.now(), owner })
         .catch((err: unknown) => logBackgroundTaskError(taskId, err));
     });
     return { task: projectAgentTaskRecord(record) };
@@ -115,7 +122,7 @@ export class ExtensionAgentTaskService {
     return { task: projectAgentTaskRecord(cancelled) };
   }
 
-  private async runInBackground(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; startedAtMs: number }): Promise<void> {
+  private async runInBackground(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; startedAtMs: number; owner?: ExtensionAgentTaskOwner }): Promise<void> {
     try {
       const result = await this.runPlannerTask(options);
       await this.complete(options.taskId, result, options.startedAtMs);
@@ -126,8 +133,9 @@ export class ExtensionAgentTaskService {
     }
   }
 
-  private async runPlannerTask(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController }): Promise<EforgePlanPlanningDraftResult> {
+  private async runPlannerTask(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<EforgePlanPlanningDraftResult> {
     const cwd = this.requireCwd();
+    const input = await this.resolveDeferredSourceInput(options);
     const { loadConfig } = await import('@eforge-build/engine/config');
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const { buildAgentRuntimeRegistry, singletonRegistry } = await import('@eforge-build/engine/agent-runtime-registry');
@@ -143,7 +151,7 @@ export class ExtensionAgentTaskService {
       ...plannerConfig,
       harness,
       cwd,
-      input: options.request.input,
+      input,
       abortController: options.controller,
       maxTurns: plannerConfig.maxTurns,
       taskId: options.taskId,
@@ -160,6 +168,16 @@ export class ExtensionAgentTaskService {
       next = await task.next();
     }
     return next.value;
+  }
+
+  private async resolveDeferredSourceInput(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<ExtensionAgentTaskStartRequest['input']> {
+    const provider = options.request.input.sourceProvider;
+    if (provider === undefined) return options.request.input;
+    if (options.owner === undefined) throw new AgentTaskServiceError('Deferred source providers require an extension owner', 400);
+    await this.updateProgress(options.taskId, 'Preparing planner source');
+    const source = await runDeferredSourceProvider({ cwd: this.requireCwd(), owner: options.owner, provider, signal: options.controller.signal });
+    const { sourceProvider: _omitted, ...inputWithoutProvider } = options.request.input;
+    return { ...inputWithoutProvider, sourceText: source.sourceText };
   }
 
   private async complete(taskId: string, result: EforgePlanPlanningDraftResult, startedAtMs: number): Promise<void> {
@@ -320,6 +338,74 @@ function countOutputSections(result: EforgePlanPlanningDraftResult): number {
   const planRevisionTurn = taskResult.planRevisionTurn ? 1 : 0;
   // --- eforge:endregion client-engine-task-contract ---
   return (taskResult.recommendations ? 1 : 0) + backlogCurationDraft + planRevisionTurn + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.playbookDraft ? 1 : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft;
+}
+
+type DeferredSourceProviderSpec = NonNullable<ExtensionAgentTaskStartRequest['input']['sourceProvider']>;
+type DeferredSourceProviderHandler = (context: { cwd: string; input: Record<string, unknown>; signal: AbortSignal }) => Promise<unknown> | unknown;
+
+async function runDeferredSourceProvider(options: { cwd: string; owner: ExtensionAgentTaskOwner; provider: DeferredSourceProviderSpec; signal: AbortSignal }): Promise<{ sourceText: string }> {
+  throwIfSourceProviderAborted(options.signal);
+  const modulePath = await resolveProviderModulePath(options.owner.extensionPath, options.provider.module);
+  const moduleExports = await importDeferredSourceProviderModule(modulePath);
+  const handler = resolveDeferredSourceProviderHandler(moduleExports, options.provider.exportName);
+  const result = await handler({ cwd: options.cwd, input: options.provider.input ?? {}, signal: options.signal });
+  throwIfSourceProviderAborted(options.signal);
+  if (!isRecord(result) || typeof result.sourceText !== 'string') {
+    throw new AgentTaskServiceError(`Deferred source provider ${options.provider.module} did not return { sourceText: string }`, 500);
+  }
+  return { sourceText: result.sourceText };
+}
+
+async function resolveProviderModulePath(extensionPath: string, moduleSpecifier: string): Promise<string> {
+  if (moduleSpecifier.includes('\0') || isAbsolute(moduleSpecifier)) {
+    throw new AgentTaskServiceError('Deferred source provider module must be relative to the extension root', 400);
+  }
+  const root = await resolveExtensionOwnerRoot(extensionPath);
+  const target = resolve(root, moduleSpecifier);
+  const rel = relative(root, target);
+  if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new AgentTaskServiceError('Deferred source provider module must stay within the extension root', 400);
+  }
+  return target;
+}
+
+async function resolveExtensionOwnerRoot(extensionPath: string): Promise<string> {
+  if (extensionPath.includes('\0')) {
+    throw new AgentTaskServiceError('Extension owner path is invalid', 400);
+  }
+  const resolved = resolve(extensionPath);
+  try {
+    const info = await lstat(resolved);
+    return info.isDirectory() ? resolved : dirname(resolved);
+  } catch {
+    throw new AgentTaskServiceError(`Extension owner path is unavailable: ${extensionPath}`, 500);
+  }
+}
+
+async function importDeferredSourceProviderModule(modulePath: string): Promise<Record<string, unknown>> {
+  if (/\.[cm]?tsx?$/.test(modulePath)) {
+    const require = createRequire(import.meta.url);
+    const { createJiti } = require('jiti') as { createJiti: (filename: string, options?: { moduleCache?: boolean }) => { import: (id: string) => Promise<unknown> } };
+    const jiti = createJiti(import.meta.url, { moduleCache: false });
+    return await jiti.import(modulePath) as Record<string, unknown>;
+  }
+  return await import(pathToFileURL(modulePath).href) as Record<string, unknown>;
+}
+
+function resolveDeferredSourceProviderHandler(moduleExports: Record<string, unknown>, exportName: string | undefined): DeferredSourceProviderHandler {
+  const value = exportName === undefined ? moduleExports.default ?? moduleExports.buildSource : moduleExports[exportName];
+  if (typeof value !== 'function') {
+    throw new AgentTaskServiceError(`Deferred source provider export ${exportName ?? 'default'} is not a function`, 500);
+  }
+  return value as DeferredSourceProviderHandler;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function throwIfSourceProviderAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new Error('Deferred source provider was aborted.');
 }
 
 function sanitizeErrorMessage(message: string): string {
