@@ -7,6 +7,8 @@ import type {
   SessionPlanSetValidationResult,
 } from '../../../packages/input/src/index.js';
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
+import type { ListBoardOutput } from './schema.js';
+import { toJsonSafeRecord } from './json-safe.js';
 
 export type PlanningArtifactKey = `plan:${string}` | `plan-set:${string}`;
 
@@ -21,7 +23,7 @@ export function sessionPlanSetKey(planSetId: string): PlanningArtifactKey {
 export function projectPlanningArtifacts(input: {
   plans: readonly SessionPlanningListEntry[];
   planSets: readonly SessionPlanSetListEntry[];
-  board?: unknown;
+  board?: ListBoardOutput;
   lifecycleBySession?: ReadonlyMap<string, SessionPlanLifecycleProjection>;
 }) {
   const plans = input.plans.map((entry) => projectPlanListEntry(entry, input.lifecycleBySession?.get(entry.session)));
@@ -90,8 +92,9 @@ export function projectSessionPlan(plan: SessionPlan) {
 
 export function projectSessionPlanSetDetail(load: SessionPlanSetLoadResult, validation: SessionPlanSetValidationResult) {
   return {
-    planSet: validation.summary,
-    validation,
+    // planSet and validation are modelled as opaque JSON in ShowSessionPlanSetOutputSchema.
+    planSet: toJsonSafeRecord(validation.summary),
+    validation: toJsonSafeRecord(validation),
     dir: load.dir,
     manifestPath: load.manifestPath,
     ...(load.anchor?.exists === true && load.anchor.content !== undefined ? { anchorContent: load.anchor.content } : {}),

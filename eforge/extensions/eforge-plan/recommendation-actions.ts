@@ -1,4 +1,4 @@
-import { defineExtensionAction } from '../../../packages/extension-sdk/src/index.js';
+import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
 import { toJsonSafeObject } from './json-safe.js';
 import {
   GetRecommendationsInputSchema,
@@ -61,7 +61,7 @@ export const putRecommendations = defineExtensionAction({
   },
 });
 
-async function readActiveRefreshTaskIfAvailable(ctx: Parameters<typeof getRecommendations.handler>[1], statusSourceFingerprint?: string) {
+async function readActiveRefreshTaskIfAvailable(ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>, statusSourceFingerprint?: string) {
   try {
     const sourceFingerprint = statusSourceFingerprint ?? await computeRecommendationSourceFingerprint(ctx.cwd);
     return await findActiveRecommendationRefreshTask(ctx, sourceFingerprint);

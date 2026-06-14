@@ -47,12 +47,13 @@ export async function buildRecentRevisionTurnContext(ctx: { agentTasks: { get(ta
     try {
       const response = await ctx.agentTasks.get(turn.taskId);
       const result = response.task.status === 'completed' ? parseResultIfPossible(response.task) : undefined;
+      const planRevisionTurn = (result as { planRevisionTurn?: EforgePlanPlanningPlanRevisionTurn } | undefined)?.planRevisionTurn;
       return {
         turnId: turn.turnId,
         taskId: turn.taskId,
         userMessage: turn.userMessage,
         status: response.task.status,
-        ...(result?.planRevisionTurn !== undefined && { assistantMessage: result.planRevisionTurn.assistantMessage }),
+        ...(planRevisionTurn !== undefined && { assistantMessage: planRevisionTurn.assistantMessage }),
         ...(Array.isArray((result as { clarificationQuestions?: unknown[] } | undefined)?.clarificationQuestions) && { clarificationQuestions: (result as { clarificationQuestions: unknown[] }).clarificationQuestions }),
         ...(turn.appliedAt !== undefined && { appliedAt: turn.appliedAt, appliedSections: turn.appliedSections ?? [] }),
       };
@@ -158,7 +159,7 @@ function normalizeDimension(value: string): string {
 
 async function buildLifecycleForPlan(cwd: string, plan: SessionPlan) {
   const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
-  return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries: traces.map(summarizeTrace) });
+  return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries: traces.flatMap((trace) => summarizeTrace(trace) ?? []) });
 }
 
 function parseResultIfPossible(task: ExtensionAgentTaskRecord): Record<string, unknown> | undefined {

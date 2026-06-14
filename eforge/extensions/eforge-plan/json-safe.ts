@@ -1,9 +1,25 @@
 export type JsonSafeValue = null | boolean | number | string | JsonSafeValue[] | { [key: string]: JsonSafeValue };
 
-export function toJsonSafeObject(value: unknown): Record<string, JsonSafeValue> {
+export function toJsonSafeObject<T extends object>(value: T): T {
   const projected = toJsonSafeValue(value);
   if (!isPlainRecord(projected)) {
     throw new Error('Extension action output must be a JSON object at the root.');
+  }
+  // The runtime projection strips undefined/non-JSON values but is a structural
+  // identity for already-JSON-safe input, so preserve the caller's type. This
+  // makes action handlers type-check their constructed payload against the
+  // declared outputSchema instead of erasing it to Record<string, JsonSafeValue>.
+  return projected as unknown as T;
+}
+
+// Erase a precisely-typed value to an opaque JSON record. Use this only at
+// boundaries the output schema intentionally models as `Record<string, JsonValue>`
+// (e.g. third-party shapes with no TypeBox mirror); prefer toJsonSafeObject
+// elsewhere so handler payloads stay type-checked against their schema.
+export function toJsonSafeRecord(value: unknown): Record<string, JsonSafeValue> {
+  const projected = toJsonSafeValue(value);
+  if (!isPlainRecord(projected)) {
+    throw new Error('Expected a JSON object at the root.');
   }
   return projected;
 }

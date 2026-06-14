@@ -27,7 +27,10 @@ const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   planningType: Type.Optional(Type.String()),
   planningDepth: Type.Optional(Type.String()),
   includeRoadmap: Type.Optional(Type.Boolean()),
-  purpose: Type.Literal('backlog-curation'),
+  // Mirrors PlanningTaskWorkflowEntry.purpose; analyze-all-backlog only ever
+  // produces 'backlog-curation' entries, but the stored value is the generic
+  // workflow entry type, so accept the full union it can statically carry.
+  purpose: Type.Optional(Type.Union([Type.Literal('recommendation-refresh'), Type.Literal('backlog-curation')])),
   sourceFingerprint: Type.Optional(SourceFingerprintSchema),
   appliedAt: Type.Optional(Type.String()),
   createdAt: Type.String(),
@@ -115,6 +118,7 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
 
 export type AnalyzeAllBacklogInput = Static<typeof AnalyzeAllBacklogInputSchema>;
 export type AnalyzeAllBacklogOutput = Static<typeof AnalyzeAllBacklogOutputSchema>;
+export type AnalyzeAllBacklogTaskSummary = Static<typeof AnalyzeAllBacklogTaskSummarySchema>;
 export type RecommendationReferenceValidationIssue = Static<typeof RecommendationReferenceValidationIssueSchema>;
 export type RecommendationReferenceValidationResult = Static<typeof RecommendationReferenceValidationResultSchema>;
 export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;

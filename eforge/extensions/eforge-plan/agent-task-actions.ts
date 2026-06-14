@@ -38,6 +38,7 @@ import {
   RemovePlanningAgentTaskOutputSchema,
   RetryPlanningAgentTaskInputSchema,
   StartPlanningAgentTaskInputSchema,
+  type PlanningAgentTaskWorkflowStartOutput,
   type PlanningTaskWorkflowEntry,
   type PlanningTaskWorkflowSelection,
   type StartPlanningAgentTaskInput,
@@ -273,7 +274,7 @@ interface StartLinkedTaskParams {
   requestedOutputSections: RequestedOutputSections;
 }
 
-async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedTaskParams): Promise<Record<string, unknown>> {
+async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedTaskParams): Promise<PlanningAgentTaskWorkflowStartOutput> {
   const { parent } = params;
   const requested = params.requestedOutputSections.length > 0 ? params.requestedOutputSections : undefined;
   const response = await ctx.agentTasks.start({
