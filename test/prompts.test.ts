@@ -57,6 +57,7 @@ describe('loadPrompt() throws on unresolved template variables', () => {
       progressTool: 'progress',
       submitTool: 'submit',
       resultSchema: 'type: object',
+      sessionPlanCreationReadiness: '{}',
     });
 
     expect(prompt).toContain('Recommendation target fields may reference only open item/epic ids.');
@@ -68,6 +69,36 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('`Shipped evidence: inferred from git/PR history — ...`');
     expect(prompt).toContain('`Ambiguous shipped candidate: needs input — ...`');
     expect(prompt).toContain('Same-draft recommendation exclusion: when your `backlogCurationDraft` proposes closing an item or epic');
+  });
+
+  it('includes exact-id and no-alias guidance for session-plan creation drafts', async () => {
+    const prompt = await loadPrompt('eforge-plan-planning-draft', {
+      topic: 'Fast UX bugfix group',
+      session: 'group-fast-ux-bugfixes',
+      planningType: 'bugfix',
+      planningDepth: 'focused',
+      requestedOutputSections: 'sessionPlanCreationDraft',
+      sourceText: 'source',
+      existingSessionPlan: 'none',
+      progressTool: 'progress',
+      submitTool: 'submit',
+      resultSchema: 'type: object',
+      sessionPlanCreationReadiness: JSON.stringify({
+        resolved: {
+          planningType: 'bugfix',
+          planningDepth: 'focused',
+          requiredDimensions: ['problem-statement', 'reproduction-steps', 'root-cause', 'acceptance-criteria', 'assumptions-and-validation'],
+        },
+      }),
+    });
+
+    expect(prompt).toContain('sessionPlanCreationReadiness');
+    expect(prompt).toContain('use only exact kebab-case readiness dimension ids');
+    expect(prompt).toContain('copy `resolved.planningType` and `resolved.planningDepth`');
+    expect(prompt).toContain('use exactly `resolved.requiredDimensions`');
+    expect(prompt).toContain('cover or explicitly skip every required id');
+    expect(prompt).toContain('emit `needs-input`');
+    expect(prompt).toMatch(/Do not submit.*Goal.*Scope.*Context and Evidence.*Implementation Plan.*Validation.*Risks and Guardrails/s);
   });
 
   it('treats {{...}} inside substituted values as literal text', async () => {

@@ -87,7 +87,14 @@ describe('eforge-plan planning agent task actions', () => {
             topic: 'Root topic',
             planningType: 'feature',
             planningDepth: 'focused',
-            sections: [{ dimension: 'scope', content: 'Generated scope.' }],
+            sections: [
+              { dimension: 'problem-statement', content: 'Users need the root workflow to preserve generated context.' },
+              { dimension: 'scope', content: 'Generated scope.' },
+              { dimension: 'acceptance-criteria', content: '- Created session plan contains all generated feature readiness sections.' },
+              { dimension: 'code-impact', content: 'Update the extension apply path and session-plan write flow.' },
+              { dimension: 'design-decisions', content: 'Validate the AI draft before persisting a session plan.' },
+              { dimension: 'assumptions-and-validation', content: 'Run the extension action apply tests and inspect readiness output.' },
+            ],
           },
         },
       };
@@ -95,7 +102,18 @@ describe('eforge-plan planning agent task actions', () => {
       const result = await applyCompletedPlanningAgentTaskResult(cwd, task, { taskId: 'task-1', applySessionPlanCreationDraft: {} });
 
       expect(result.sessionPlanCreationDraft).toMatchObject({ session: 'root-session', relativePath: '.eforge/session-plans/root-session.md' });
-      expect(result.sessionPlanCreationDraft?.readiness).toMatchObject({ ready: expect.any(Boolean) });
+      expect(result.sessionPlanCreationDraft?.readiness).toMatchObject({ ready: true, missingDimensions: [] });
+      expect([
+        ...result.sessionPlanCreationDraft!.readiness.coveredDimensions,
+        ...result.sessionPlanCreationDraft!.readiness.skippedDimensions,
+      ].sort()).toEqual([
+        'acceptance-criteria',
+        'assumptions-and-validation',
+        'code-impact',
+        'design-decisions',
+        'problem-statement',
+        'scope',
+      ]);
       const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'root-session.md'), 'utf-8');
       expect(markdown).toContain('Generated scope.');
       expect(markdown).not.toContain('status: submitted');
@@ -126,6 +144,13 @@ describe('eforge-plan planning agent task actions', () => {
       })) as { entry: { parentTaskId?: string; selection: { itemIds?: string[] } } };
 
       expect(request?.input).toMatchObject({ topic: 'Draft a session plan for Item One.', session: 'session-x', planningType: 'feature', planningDepth: 'deep', requestedOutputSections: ['sessionPlanCreationDraft'] });
+      expect((request?.input as Record<string, unknown> | undefined)?.sessionPlanCreationReadiness).toMatchObject({
+        resolved: {
+          planningType: 'feature',
+          planningDepth: 'deep',
+          requiredDimensions: ['problem-statement', 'scope', 'acceptance-criteria', 'code-impact', 'design-decisions', 'assumptions-and-validation'],
+        },
+      });
       expect(output.entry).toMatchObject({ parentTaskId: 'task-original', selection: { itemIds: ['item-one'] } });
     });
   });
