@@ -43,7 +43,6 @@ const SKILL_PAIRS_CONFIG = [
   { plugin: 'init', pi: 'eforge-init' },
   { plugin: 'workflow', pi: 'eforge-workflow' },
   { plugin: 'stack', pi: 'eforge-stack' },
-  { plugin: 'plan', pi: 'eforge-plan' },
   { plugin: 'extend', pi: 'eforge-extend' },
   { plugin: 'restart', pi: 'eforge-restart' },
   { plugin: 'status', pi: 'eforge-status' },

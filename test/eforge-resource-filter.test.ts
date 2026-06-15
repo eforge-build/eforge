@@ -77,7 +77,7 @@ describe('isEforgePiResource', () => {
     it('identifies resources when source is an absolute local path to pi-eforge', () => {
       expect(
         isEforgePiResource({
-          resolvedPath: '/Users/me/projects/eforge/packages/pi-eforge/skills/eforge-plan/SKILL.md',
+          resolvedPath: '/Users/me/projects/eforge/packages/pi-eforge/skills/eforge-build/SKILL.md',
           sourceInfoSource: '/Users/me/projects/eforge/packages/pi-eforge',
         }),
       ).toBe(true);

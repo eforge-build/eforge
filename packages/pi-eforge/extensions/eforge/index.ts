@@ -82,7 +82,6 @@ import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
-import { handlePlanCommand } from './plan-command';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
@@ -2031,7 +2030,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
       open: Type.Optional(
         Type.Boolean({
-          description: 'When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.',
+          description: 'When true, best-effort opens the resulting session plan file in the user\'s default application after a session is created or shown.',
         }),
       ),
       playbook_name: Type.Optional(
@@ -2286,13 +2285,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       },
     });
   }
-
-  pi.registerCommand("eforge:plan", {
-    description: "Start or resume a structured planning conversation",
-    handler: async (args, ctx) => {
-      await handlePlanCommand(pi, ctx as UIContext, args ?? "");
-    },
-  });
 
   // ------------------------------------------------------------------
   // Native commands - /eforge:profile, /eforge:profile:new, /eforge:config

@@ -60,13 +60,7 @@ The CLI has no init command yet: run `/eforge:init` once in Pi or Claude Code to
 
 ## Your First Build
 
-Once eforge is installed and initialized, start a build from Claude Code or Pi:
-
-```
-/eforge:plan
-```
-
-The `/eforge:plan` skill guides a structured planning conversation - exploring scope, architecture, risks, acceptance criteria, readiness, and any assumptions that need validation. It writes the conversation to a session-plan file under `.eforge/session-plans/` and records planning type, planning depth, required/optional dimensions, skipped dimensions, open questions, and a readiness status.
+Once eforge is installed and initialized, you can plan first through the generic eforge-plan planning entry when the eforge-plan extension is loaded/trusted. In Pi or Claude, discover and invoke the `eforge-plan:open-planning-entry` contribution with `eforge_extension_contribution`; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. You can also open the eforge-plan workstation deep link at `/console/workstations/eforge-plan%3Aplanning-workstation`. The workstation guides structured planning - exploring scope, architecture, risks, acceptance criteria, readiness, and assumptions - and writes a session-plan file under `.eforge/session-plans/` with planning type/depth, required/optional dimensions, skipped dimensions, open questions, and readiness status.
 
 When the session plan is ready to build:
 
@@ -435,7 +429,7 @@ Keep all documentation in sync with the latest code changes.
 
 **Validation timing**: the named profile is validated at execution time, not when the playbook is saved. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
 
-**Planning playbooks**: when a planning-mode playbook has a `profile` field and the agent creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+**Planning playbooks**: when a planning-mode playbook has a `profile` field and the eforge-plan planning flow creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
 
 **Blank profile fallback**: omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 
@@ -2889,11 +2883,11 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 **`mode: autonomous`** - running the playbook enqueues a build directly, like any other eforge input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
 
-**`mode: planning`** - running the playbook triggers an investigation-first workflow. The agent loads the playbook, investigates the codebase guided by the playbook's Goal, Acceptance criteria, and Notes, synthesizes findings into an implementation-ready session plan, and then continues interactively via `/eforge:plan` before handing off to `/eforge:build`. The daemon does not create the session plan directly; you drive the planning conversation.
+**`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
 
-When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning" }` - this signals that a Claude Code or Pi agent must take over the investigation, not that the build failed.
+When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 
-Planning-mode playbooks produce session plans through the host agent workflow, not by directly enqueueing a PRD. The agent creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
+Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
 
 ## Scope tiers
 
@@ -2959,7 +2953,7 @@ profile: browser-ui
 
 **Validation timing:** the named profile is validated at execution time, not when the playbook is saved.
 
-**Planning playbooks:** when a planning-mode playbook has a `profile` field and the agent creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+**Planning playbooks:** when a planning-mode playbook has a `profile` field and the eforge-plan planning flow creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
 
 **Blank profile fallback:** omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 
@@ -3000,7 +2994,7 @@ eforge play docs-sync       # shorthand
 
 `eforge play` is a shorthand for `eforge playbook run`.
 
-After a successful enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in Console.
+After a successful autonomous enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in Console. Planning playbooks instead return eforge-plan planning entry metadata or unavailable capability diagnostics.
 
 ## List playbooks
 
@@ -3109,7 +3103,6 @@ All eforge workflows are available as slash commands:
 | Command | Purpose |
 |---------|---------|
 | `/eforge:build` | Enqueue a build from a prompt or session plan |
-| `/eforge:plan` | Plan a change interactively before building |
 | `/eforge:playbook` | Create, run, list, edit, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
@@ -3142,7 +3135,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links, including the eforge-plan planning entry when that extension is loaded.
 
 ### Pi commands
 
@@ -4752,7 +4745,6 @@ Rows are generated from the docs generator skill-pair map and frontmatter in `ef
 | `init` | `eforge-init` | Initialize eforge in the current project with an interactive setup form |
 | `workflow` | `eforge-workflow` | Set up or reconfigure the eforge workflow preset — landing action, stacking, PR settings, and automatic stack sync |
 | `stack` | `eforge-stack` | Synchronize the git-spice stack, preview with dry-run, interpret the sync report, and recover from manual sync conflicts |
-| `plan` | `eforge-plan` | Start or resume a structured planning conversation for changes to be built by eforge. Classifies work type and depth, selects relevant dimensions from a per-type playbook, captures acceptance criteria, and produces a session plan that /eforge:build enqueues. |
 | `extend` | `eforge-extend` | Author eforge TypeScript extensions from a natural-language request using the existing extension tooling and docs/examples |
 | `restart` | `eforge-restart` | Safely restart the eforge daemon, checking for active builds first |
 | `status` | `eforge-status` | Check eforge run status and queue state via MCP tools |

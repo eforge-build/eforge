@@ -1014,7 +1014,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       status: z.enum(['planning', 'ready', 'abandoned', 'submitted']).optional().describe('New status (required for "set-status")'),
       planning_type: z.enum(['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown']).optional().describe('Planning work type (optional for "create" and "select-dimensions")'),
       planning_depth: z.enum(['quick', 'focused', 'deep']).optional().describe('Planning depth (optional for "create" and "select-dimensions")'),
-      open: z.boolean().optional().describe('When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.'),
+      open: z.boolean().optional().describe('When true, best-effort opens the resulting session plan file in the user\'s default application after a session is created or shown.'),
       playbook_name: z.string().optional().describe('Playbook name to seed from (required for "create-from-playbook")'),
       agent_profile: z.string().optional().describe('Optional agent runtime profile name inherited from a planning-mode playbook\'s profile field. Not validated at create time; used when the session plan is enqueued. Pass when creating a session plan from a playbook that has a profile set.'),
     },

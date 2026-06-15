@@ -703,7 +703,7 @@ describe('extractExpectedAcceptanceCriteria — grouped parent bullets', () => {
 
 describe('normalizeCriterionMatchText', () => {
   it('ignores harmless inline Markdown formatting for verdict matching', () => {
-    expect(normalizeCriterionMatchText('- `/eforge:plan` skill guidance')).toBe('/eforge:plan skill guidance');
+    expect(normalizeCriterionMatchText('- `eforge-plan` contribution guidance')).toBe('eforge-plan contribution guidance');
     expect(normalizeCriterionMatchText('**Formatter prompt** documents rules')).toBe('Formatter prompt documents rules');
     expect(normalizeCriterionMatchText('[CLI docs](docs/cli.md) mention status')).toBe('CLI docs mention status');
   });
@@ -761,10 +761,10 @@ describe('matchVerdictsToExpected', () => {
     const expected = extractExpectedAcceptanceCriteria(`
 ## Acceptance Criteria
 
-- \`/eforge:plan\` skill guidance constrains planned acceptance criteria to valid AC shape.
+- \`eforge-plan\` contribution guidance constrains planned acceptance criteria to valid AC shape.
 `.trim());
     const verdicts = [
-      { criterion: '/eforge:plan skill guidance constrains planned acceptance criteria to valid AC shape.', verdict: 'pass' as const, evidence: 'Skill docs updated.' },
+      { criterion: 'eforge-plan contribution guidance constrains planned acceptance criteria to valid AC shape.', verdict: 'pass' as const, evidence: 'Contribution docs updated.' },
     ];
     const matched = matchVerdictsToExpected(expected, verdicts);
     expect(matched.get('ac-001')).toEqual(verdicts[0]);

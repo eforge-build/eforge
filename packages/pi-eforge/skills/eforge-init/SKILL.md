@@ -307,7 +307,7 @@ Once the tool completes successfully, inform the user:
 | Config | `eforge_config` | User wants to view, edit, or validate the eforge config |
 | Profile | `eforge_profile` | User wants to inspect or switch agent runtime profiles |
 | Profile (new) | `/eforge:profile-new` | User wants to create a personal agent runtime profile |
-| Plan | `eforge_plan` | User wants to plan changes before building |
+| Planning entry | eforge-plan workstation / contribution | User wants to plan changes before building |
 | Status | `eforge_status` | User wants to check build progress or queue state |
 | Restart | `eforge_restart` | User wants to restart the eforge daemon |
 | Update | `eforge_update` | User wants to check for or install eforge updates |

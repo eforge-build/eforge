@@ -995,14 +995,14 @@ async function releaseWizard(pi: ExtensionAPI, ctx: ExtensionContext, setLastChe
 }
 
 async function prefillEforgePlan(ctx: ExtensionContext): Promise<void> {
-	ctx.ui.setEditorText("/eforge:plan ");
-	ctx.ui.notify("Prefilled /eforge:plan. Add the topic and press Enter.", "info");
+	ctx.ui.setEditorText('/eforge:extensions invoke command:eforge-plan:open-planning-entry {}');
+	ctx.ui.notify("Prefilled generic eforge-plan planning entry invocation. Press Enter to run.", "info");
 }
 
 async function showCockpit(pi: ExtensionAPI, ctx: ExtensionContext, state: DevState): Promise<string | null> {
 	const items: SelectItem[] = [
 		{ value: DEV_ACTION.BRANCH, label: "Create/switch branch from work description", description: "Describe the work; the model names the branch" },
-		{ value: DEV_ACTION.PLAN, label: "Prefill /eforge:plan", description: "Start the published pi-eforge planning flow" },
+		{ value: DEV_ACTION.PLAN, label: "Open eforge-plan planning entry", description: "Invoke the generic eforge-plan contribution" },
 		{ value: DEV_ACTION.TAIL_EVENTS, label: "Tail monitor events", description: "Live eforge monitor events" },
 		{ value: DEV_ACTION.TAIL_EXTENSION_EVENTS, label: "Tail extension events", description: "Preset for extension events" },
 		{ value: DEV_ACTION.CHECKS, label: "Run checks", description: "build, type-check, test, maintainability, docs drift/link check" },

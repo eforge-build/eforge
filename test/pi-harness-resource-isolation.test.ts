@@ -47,7 +47,7 @@ const EFORGE_EXT = makeExt('/node_modules/@eforge-build/pi-eforge/extensions/efo
 const USER_EXT_A = makeExt('/home/user/.pi/extensions/my-ext', 'my-package');
 const USER_EXT_B = makeExt('/project/.pi/extensions/acme', '@acme/pi-ext');
 
-const EFORGE_SKILL = makeSkill('/node_modules/@eforge-build/pi-eforge/skills/eforge-plan/SKILL.md', '@eforge-build/pi-eforge');
+const EFORGE_SKILL = makeSkill('/node_modules/@eforge-build/pi-eforge/skills/eforge-build/SKILL.md', '@eforge-build/pi-eforge');
 const USER_SKILL_A = makeSkill('/home/user/.pi/agent/skills/commit/SKILL.md', 'local');
 const USER_SKILL_B = makeSkill('/project/.pi/skills/custom/SKILL.md', 'custom-pkg');
 

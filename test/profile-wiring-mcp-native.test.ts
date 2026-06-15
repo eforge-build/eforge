@@ -318,12 +318,10 @@ describe('Skill-forwarding removed for native commands (plan-02-native-pi-ux)', 
     expect(block).not.toContain('sendUserMessage');
   });
 
-  it('native eforge:plan handler calls handlePlanCommand (not skill forwarding)', () => {
-    const idx = source.indexOf('pi.registerCommand("eforge:plan"');
-    expect(idx).toBeGreaterThan(-1);
-    const block = source.slice(idx, idx + 400);
-    expect(block).toContain('handlePlanCommand');
-    expect(block).not.toContain('sendUserMessage');
+  it('does not register native eforge:plan or import its removed handler', () => {
+    expect(source).not.toContain('pi.registerCommand("eforge:plan"');
+    expect(source).not.toContain('handlePlanCommand');
+    expect(source).not.toContain('./plan-command');
   });
 });
 
@@ -339,7 +337,7 @@ describe('Remaining commands still forward to skills (plan-02-native-pi-ux)', ()
 
   // eforge:build is now a dedicated native command (plan-01-per-build-profile-override),
   // eforge:status now has a native panel handler, eforge:restart has a
-  // native safe-restart selector/panel flow, and eforge:plan has native selectors,
+  // native safe-restart selector/panel flow, and eforge:plan has been removed,
   // so none of those commands is in the skillCommands array.
   for (const cmd of ['eforge:init', 'eforge:update']) {
     it(`${cmd} remains in the skillCommands array`, () => {

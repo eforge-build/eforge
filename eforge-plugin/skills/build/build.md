@@ -43,8 +43,8 @@ Parse and remember any `--profile <name>` override and any `--after <queue-id>` 
    - If the session status is `ready`, use the **session plan file path** (`plan.path` from the response) as the source — skip directly to **Step 4**. **Do not read the file and rewrite, summarize, or convert it into a different format.** The eforge daemon handles PRD formatting; the session plan file is the source material it needs.
    - If the session status is `planning`, warn: "This session is still in planning — some dimensions are still missing." Then:
      - Call `mcp__eforge__eforge_session_plan { action: 'readiness', session }` to get the readiness report. Use `missingDimensions` to list what's truly missing and `skippedDimensions` to list what was intentionally skipped with reasons.
-     - Recommend `/eforge:plan --resume` only if at least one dimension appears in `missingDimensions`.
-     - Ask the user whether to submit as-is or continue planning (suggest `/eforge:plan --resume`)
+     - Recommend continuing through the generic eforge-plan planning entry only if at least one dimension appears in `missingDimensions`.
+     - Ask the user whether to submit as-is or continue planning (suggest the eforge-plan workstation or `mcp__eforge__eforge_extension_contribution` planning entry)
    - If the user confirms a `planning` session, use the **session plan file path** as the source and proceed to **Step 4**
 
 2. **Fall back to conversation context** — If `--infer` was provided, no session plans are found, or the user declines to use one:

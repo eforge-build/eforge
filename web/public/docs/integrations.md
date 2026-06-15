@@ -42,7 +42,6 @@ All eforge workflows are available as slash commands:
 | Command | Purpose |
 |---------|---------|
 | `/eforge:build` | Enqueue a build from a prompt or session plan |
-| `/eforge:plan` | Plan a change interactively before building |
 | `/eforge:playbook` | Create, run, list, edit, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
@@ -75,7 +74,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links, including the eforge-plan planning entry when that extension is loaded.
 
 ### Pi commands
 

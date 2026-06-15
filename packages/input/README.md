@@ -35,7 +35,7 @@ Playbooks are Markdown files with YAML frontmatter encoding a reusable build int
 
 ### Session plans
 
-Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured `/eforge:plan` conversation. They are project-local only and compile to ordinary build source.
+Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured eforge-plan planning entry/workstation flow. They are project-local only and compile to ordinary build source.
 
 #### Lifecycle
 
@@ -204,7 +204,7 @@ This package compiles input artifacts (playbooks, session plans) to ordinary bui
 - No daemon HTTP client - use `@eforge-build/client` for daemon-backed flows
 - No engine queue knowledge - this package normalizes input before the engine sees it
 - No new CRUD or tool API surface - wire-protocol additions belong in `@eforge-build/client`
-- No conversational planning logic - the `/eforge:plan` skill owns structured planning conversations
+- No conversational planning logic - eforge-plan contribution/workstation surfaces own structured planning conversations
 
 ## Stability
 

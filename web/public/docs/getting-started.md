@@ -58,13 +58,7 @@ The CLI has no init command yet: run `/eforge:init` once in Pi or Claude Code to
 
 ## Your First Build
 
-Once eforge is installed and initialized, start a build from Claude Code or Pi:
-
-```
-/eforge:plan
-```
-
-The `/eforge:plan` skill guides a structured planning conversation - exploring scope, architecture, risks, acceptance criteria, readiness, and any assumptions that need validation. It writes the conversation to a session-plan file under `.eforge/session-plans/` and records planning type, planning depth, required/optional dimensions, skipped dimensions, open questions, and a readiness status.
+Once eforge is installed and initialized, you can plan first through the generic eforge-plan planning entry when the eforge-plan extension is loaded/trusted. In Pi or Claude, discover and invoke the `eforge-plan:open-planning-entry` contribution with `eforge_extension_contribution`; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. You can also open the eforge-plan workstation deep link at `/console/workstations/eforge-plan%3Aplanning-workstation`. The workstation guides structured planning - exploring scope, architecture, risks, acceptance criteria, readiness, and assumptions - and writes a session-plan file under `.eforge/session-plans/` with planning type/depth, required/optional dimensions, skipped dimensions, open questions, and readiness status.
 
 When the session plan is ready to build:
 
