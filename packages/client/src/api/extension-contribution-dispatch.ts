@@ -58,6 +58,7 @@ export interface ExtensionHostContributionInvokeTarget {
   actionId: string;
   requestedBy: ExtensionActionRequestedBy;
   input: ExtensionJsonObject;
+  outputProfile?: ExtensionActionOutputProfile;
 }
 
 export interface ExtensionHostContributionInvokeResult {
@@ -106,8 +107,8 @@ function resolveExtensionContributionInvocationWithInput(
 ): ResolveResult {
   const kind = params.kind ?? inferKind(manifest, params.id);
   if (kind === 'action') return resolveAction(manifest.actions, params.id, input, params.requestedBy);
-  if (kind === 'command') return resolveCommand(manifest.integrationCommands, params.id, input, params.requestedBy);
-  return resolveDeepLink(manifest.deepLinks, params.id, input, params.requestedBy);
+  if (kind === 'command') return resolveCommand(manifest.integrationCommands, manifest.actions, params.id, input, params.requestedBy);
+  return resolveDeepLink(manifest.deepLinks, manifest.actions, params.id, input, params.requestedBy);
 }
 
 export async function listEforgeExtensionContributions(opts: {
@@ -237,18 +238,21 @@ function resolveAction(
       actionId: entry.id,
       requestedBy,
       input,
+      outputProfile: entry.outputProfile,
     },
   };
 }
 
 function resolveCommand(
   entries: IntegrationCommandManifestEntry[],
+  actions: ExtensionActionManifestEntry[],
   id: string,
   input: ExtensionJsonObject,
   requestedBy: ExtensionActionRequestedBy,
 ): ResolveResult {
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown extension integration command "${id}"`);
+  const boundAction = actions.find((candidate) => candidate.id === entry.action.actionId);
   return {
     target: {
       kind: 'command',
@@ -259,12 +263,14 @@ function resolveCommand(
       actionId: entry.action.actionId,
       requestedBy: { ...requestedBy, commandId: entry.id } as ExtensionActionRequestedBy,
       input: { ...(entry.action.inputDefaults ?? {}), ...input },
+      outputProfile: boundAction?.outputProfile,
     },
   };
 }
 
 function resolveDeepLink(
   entries: ExtensionDeepLinkManifestEntry[],
+  actions: ExtensionActionManifestEntry[],
   id: string,
   input: ExtensionJsonObject,
   requestedBy: ExtensionActionRequestedBy,
@@ -272,6 +278,7 @@ function resolveDeepLink(
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown extension deep link "${id}"`);
   if (!entry.action) throw new Error(`Deep link "${id}" is not action-backed`);
+  const boundAction = actions.find((candidate) => candidate.id === entry.action?.actionId);
   return {
     target: {
       kind: 'deep-link',
@@ -282,6 +289,7 @@ function resolveDeepLink(
       actionId: entry.action.actionId,
       requestedBy: { ...requestedBy, deepLinkId: entry.id } as ExtensionActionRequestedBy,
       input: { ...(entry.action.inputDefaults ?? {}), ...input },
+      outputProfile: boundAction?.outputProfile,
     },
   };
 }

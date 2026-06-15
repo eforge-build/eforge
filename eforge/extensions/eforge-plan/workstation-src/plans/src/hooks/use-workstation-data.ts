@@ -17,6 +17,7 @@ export interface WorkstationDataState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  loadMoreBoard: () => Promise<void>;
   loadClosedLane: (lane: string) => Promise<void>;
   bridgeVersion?: number;
 }
@@ -54,6 +55,22 @@ export function useWorkstationData(): WorkstationDataState {
     setLoading(false);
   }, []);
 
+  const loadMoreBoard = React.useCallback(async () => {
+    const pagination = board.pagination;
+    if (!pagination?.hasMore || pagination.nextOffset === undefined) return;
+    try {
+      const response = await bridge.invokeAction<CompactBoardResponse>('list-board-compact', {
+        limit: INITIAL_BOARD_LIMIT,
+        includeArchive: true,
+        offset: pagination.nextOffset,
+      });
+      setBoard((current) => mergeCompactLanePage(current, response, recommendations));
+      setError(null);
+    } catch (caught) {
+      setError(reason('board page', caught));
+    }
+  }, [board.pagination, recommendations]);
+
   const loadClosedLane = React.useCallback(async (lane: string) => {
     const pagination = board.lanes.find((entry) => entry.lane === lane)?.pagination;
     if (pagination && !pagination.hasMore) return;
@@ -74,7 +91,7 @@ export function useWorkstationData(): WorkstationDataState {
 
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, loadClosedLane, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

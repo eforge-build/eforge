@@ -27,6 +27,7 @@ interface BoardProps {
   selected: Set<string>;
   onToggle: (item: BoardItem) => void;
   onOpenDetail: (item: BoardItem) => void;
+  onLoadMoreBoard?: () => Promise<void>;
   onLoadClosedLane?: (lane: string) => Promise<void>;
 }
 
@@ -47,15 +48,25 @@ function readExpandedColumns(): Set<string> {
   }
 }
 
-export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onLoadClosedLane }: BoardProps) {
+export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
   const allItems = board.items ?? [];
   const [hoverId, setHoverId] = React.useState<string | null>(null);
   const [expandedClosed, setExpandedClosed] = React.useState<Set<string>>(() => readExpandedColumns());
+  const initialExpandedLoads = React.useRef<Set<string>>(new Set());
+  const closedFilterLoadRequested = React.useRef(false);
   const filtered = React.useMemo(() => {
     const base = filterItems(allItems, query, filter);
     return epicFilter ? base.filter((item) => (item.epic ?? '') === epicFilter) : base;
   }, [allItems, query, filter, epicFilter]);
-  const columns = React.useMemo(() => buildColumns(board, filtered, group), [board, filtered, group]);
+  const columns = React.useMemo(() => {
+    const built = buildColumns(board, filtered, group);
+    if (filter !== 'closed' || group !== 'lane') return built;
+    const present = new Set(built.map((column) => column.key));
+    const closedRails = (board.lanes ?? [])
+      .filter((lane) => (lane.lane === 'done' || lane.lane === 'archive') && !present.has(lane.lane) && (lane.count ?? lane.closedCount ?? 0) > 0)
+      .map((lane): BoardColumn => ({ key: lane.lane, title: lane.title, tone: lane.lane === 'done' ? 'var(--lane-done)' : 'var(--lane-archive)', items: [], count: lane.count, pagination: lane.pagination }));
+    return [...built, ...closedRails];
+  }, [board, filtered, group, filter]);
   const cycles = React.useMemo(() => findDependencyCycles(allItems), [allItems]);
   const chips = React.useMemo(() => allEpicChips(allItems, board.epics ?? []), [allItems, board.epics]);
   const counts = React.useMemo(() => stats(allItems, board), [allItems, board]);
@@ -75,8 +86,29 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
     if ((lane === 'done' || lane === 'archive') && onLoadClosedLane) void onLoadClosedLane(lane);
   }, [onLoadClosedLane]);
 
+  React.useEffect(() => {
+    for (const lane of board.lanes ?? []) {
+      if ((lane.lane !== 'done' && lane.lane !== 'archive') || !expandedClosed.has(lane.lane) || initialExpandedLoads.current.has(lane.lane)) continue;
+      if ((lane.count ?? 0) <= lane.items.length || lane.pagination?.hasMore === false) continue;
+      initialExpandedLoads.current.add(lane.lane);
+      loadClosedLane(lane.lane);
+    }
+  }, [board.lanes, expandedClosed, loadClosedLane]);
+
+  React.useEffect(() => {
+    if (filter !== 'closed') {
+      closedFilterLoadRequested.current = false;
+      return;
+    }
+    if (closedFilterLoadRequested.current) return;
+    closedFilterLoadRequested.current = true;
+    loadClosedLane('done');
+    loadClosedLane('archive');
+  }, [filter, loadClosedLane]);
+
   const selectFilter = (value: StatusFilter) => {
     if (value === 'closed') {
+      closedFilterLoadRequested.current = true;
       loadClosedLane('done');
       loadClosedLane('archive');
     }
@@ -84,7 +116,10 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
   };
 
   const toggleClosedColumn = (key: string) => {
-    if (!expandedClosed.has(key)) loadClosedLane(key);
+    if (!expandedClosed.has(key)) {
+      initialExpandedLoads.current.add(key);
+      loadClosedLane(key);
+    }
     setExpandedClosed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -206,6 +241,16 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
             })}
           </div>
         )}
+
+      {onLoadMoreBoard && board.pagination?.hasMore && filter !== 'closed' && (
+        <button
+          type="button"
+          onClick={() => { if (onLoadMoreBoard) void onLoadMoreBoard(); }}
+          className="mx-auto rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+        >
+          Load more board items
+        </button>
+      )}
 
       {hovered && (dependencyIds.size > 0 || dependentIds.size > 0) && (
         <div className="pointer-events-none fixed bottom-4 left-4 z-20 flex items-center gap-3 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-lg">

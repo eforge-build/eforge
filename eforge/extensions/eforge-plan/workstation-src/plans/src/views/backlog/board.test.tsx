@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Board as BoardData, BoardItem } from '@/types';
 import { Board } from './board';
@@ -80,6 +80,59 @@ describe('Board compact closed-lane loading', () => {
     fireEvent.click(screen.getByTitle('Expand Done (3)'));
     expect(onLoadClosedLane).toHaveBeenCalledWith('done');
     expect(onLoadClosedLane).toHaveBeenCalledTimes(3);
+  });
+
+  it('requests closed lanes when mounted with the closed filter from query state', async () => {
+    const board: BoardData = {
+      items: [],
+      lanes: [
+        { lane: 'done', title: 'Done', items: [], count: 3, openCount: 0, closedCount: 3 },
+        { lane: 'archive', title: 'Archive', items: [], count: 2, openCount: 0, closedCount: 2 },
+      ],
+      counts: { total: 5, open: 0, closed: 5 },
+    };
+    const onLoadClosedLane = vi.fn().mockResolvedValue(undefined);
+
+    renderBoard(board, { filter: 'closed', onLoadClosedLane });
+
+    await waitFor(() => expect(onLoadClosedLane).toHaveBeenCalledTimes(2));
+    expect(onLoadClosedLane).toHaveBeenCalledWith('done');
+    expect(onLoadClosedLane).toHaveBeenCalledWith('archive');
+    expect(screen.getByTitle('Expand Done (3)')).toBeTruthy();
+  });
+
+  it('loads one missing page for persisted expanded closed lanes without draining pagination', async () => {
+    window.localStorage.setItem('eforge-plan:board:expanded-closed', JSON.stringify(['done']));
+    const board: BoardData = {
+      items: [],
+      lanes: [
+        { lane: 'done', title: 'Done', items: [], count: 10, openCount: 0, closedCount: 10, pagination: { limit: 5, offset: 0, returned: 0, hasMore: true, nextOffset: 0 } },
+      ],
+      counts: { total: 10, open: 0, closed: 10 },
+    };
+    const onLoadClosedLane = vi.fn().mockResolvedValue(undefined);
+
+    const { rerender } = renderBoard(board, { onLoadClosedLane });
+
+    await waitFor(() => expect(onLoadClosedLane).toHaveBeenCalledTimes(1));
+    expect(onLoadClosedLane).toHaveBeenCalledWith('done');
+
+    rerender(<Board
+      board={{ ...board, lanes: [{ ...board.lanes[0]!, pagination: { limit: 5, offset: 0, returned: 5, hasMore: true, nextOffset: 5 } }] }}
+      query=""
+      onQuery={() => {}}
+      filter="all"
+      onFilter={() => {}}
+      group="lane"
+      onGroup={() => {}}
+      epicFilter=""
+      onEpicFilter={() => {}}
+      selected={new Set()}
+      onToggle={() => {}}
+      onOpenDetail={() => {}}
+      onLoadClosedLane={onLoadClosedLane}
+    />);
+    expect(onLoadClosedLane).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces continuation text when an expanded closed lane page is partial', () => {

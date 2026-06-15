@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
+  formatExtensionContributionOutputText,
   invokeEforgeExtensionContribution,
   listEforgeExtensionContributions,
   type ExtensionHostContributionEntry,
@@ -123,7 +124,7 @@ function renderInvokeResult(result: Awaited<ReturnType<typeof invokeEforgeExtens
   console.log(`  Action:     ${result.target.actionId}`);
   if (result.response.ok) {
     console.log('  Output:');
-    console.log(JSON.stringify(result.response.output, null, 2));
+    console.log(formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }));
   } else {
     console.error(`${result.response.error.code}: ${result.response.error.message}`);
     if (result.response.error.details !== undefined) console.error(JSON.stringify(result.response.error.details, null, 2));

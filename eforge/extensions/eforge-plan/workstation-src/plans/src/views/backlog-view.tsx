@@ -19,10 +19,11 @@ interface BacklogViewProps {
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   onRefresh: () => Promise<void>;
+  onLoadMoreBoard?: () => Promise<void>;
   onLoadClosedLane?: (lane: string) => Promise<void>;
 }
 
-export function BacklogView({ board, recommendations, recommendationStatus, activeRecommendationRefreshTask, onRefresh, onLoadClosedLane }: BacklogViewProps) {
+export function BacklogView({ board, recommendations, recommendationStatus, activeRecommendationRefreshTask, onRefresh, onLoadMoreBoard, onLoadClosedLane }: BacklogViewProps) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [detailItemId, setDetailItemId] = React.useState<string | null>(null);
@@ -145,6 +146,7 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
         selected={selected}
         onToggle={toggle}
         onOpenDetail={(item) => setDetailItemId(item.id)}
+        onLoadMoreBoard={onLoadMoreBoard}
         onLoadClosedLane={onLoadClosedLane}
       />
       {detailItem && (

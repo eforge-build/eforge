@@ -1,6 +1,7 @@
 import type { EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
 import type { Scope } from '@eforge-build/scopes';
 import type {
+  ExtensionActionOutputProfile as ClientExtensionActionOutputProfile,
   ExtensionActionRequestedBy,
   ExtensionActionSideEffect,
   ExtensionAgentTaskCancelResponse,
@@ -86,6 +87,8 @@ export interface ExtensionBuildQueueApiShape {
 }
 // --- eforge:endregion extension-build-queue-context ---
 
+export type ExtensionActionOutputProfile = ClientExtensionActionOutputProfile;
+
 export interface ExtensionActionContextShape {
   invocationId: string;
   actionId: string;
@@ -106,7 +109,6 @@ export interface ExtensionActionContextShape {
   buildQueue: ExtensionBuildQueueApiShape;
   // --- eforge:endregion extension-build-queue-context ---
 }
-export type ExtensionActionOutputProfile = 'agent-compact' | 'agent-paginated' | 'markdown' | 'ui-rich' | 'debug-rich';
 export interface ExtensionActionSpec {
   id: string;
   title: string;

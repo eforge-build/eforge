@@ -6,6 +6,7 @@ import type {
   ExtensionAgentTaskGetResponse,
   ExtensionAgentTaskStartRequest,
   ExtensionAgentTaskStartResponse,
+  ExtensionActionOutputProfile,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
   EnqueueRequest,
@@ -13,8 +14,7 @@ import type {
   ExtensionJsonValue,
 } from '@eforge-build/client';
 
-export type { ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
-export type ExtensionActionOutputProfile = 'agent-compact' | 'agent-paginated' | 'markdown' | 'ui-rich' | 'debug-rich';
+export type { ExtensionActionOutputProfile, ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
 
 export type ExtensionActionSideEffect =
   | 'none'

@@ -46,6 +46,36 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(result.current.bridgeVersion).toBe(7);
   });
 
+  it('loads additional open board pages through compact pagination', async () => {
+    const calls: Array<{ actionId: string; input: unknown }> = [];
+    const firstPage = getMockCompactBoard({ limit: 50 });
+    const bridge: EforgeBridge = {
+      async invokeAction<TOutput>(actionId: string, input?: unknown): Promise<TOutput> {
+        calls.push({ actionId, input: input ?? {} });
+        if (actionId === 'list-board') throw new Error('list-board must not be used');
+        if (actionId === 'list-board-compact') {
+          const request = (input ?? {}) as Record<string, unknown>;
+          if (request.offset === undefined) return { ...firstPage, pagination: { limit: 50, offset: 0, returned: firstPage.items.length, hasMore: true, nextOffset: 1 } } as TOutput;
+          return getMockCompactBoard(request as Parameters<typeof getMockCompactBoard>[0]) as TOutput;
+        }
+        if (actionId === 'list-planning-artifacts') return { artifacts: getMockArtifacts() } as TOutput;
+        if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
+        throw new Error(`unexpected action ${actionId}`);
+      },
+    };
+    setBridge(bridge);
+
+    const { useWorkstationData } = await import('./use-workstation-data');
+    const { result } = renderHook(() => useWorkstationData());
+
+    await waitFor(() => expect(result.current.board.items.length).toBeGreaterThan(0));
+    await act(async () => { await result.current.loadMoreBoard(); });
+
+    expect(calls).not.toContainEqual({ actionId: 'list-board', input: expect.anything() });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, offset: 1 } });
+  });
+
   it('loads closed lanes through explicit compact lane pages and merges them once', async () => {
     const calls: Array<{ actionId: string; input: unknown }> = [];
     const doneFirst = withDonePagination(getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 50, offset: 0 }), true);
