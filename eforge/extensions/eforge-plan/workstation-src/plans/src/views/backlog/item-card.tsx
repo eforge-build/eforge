@@ -61,7 +61,7 @@ export function ItemCard({ item, selected, relation = null, onToggle, onOpenDeta
           <PanelRightOpen className="h-3.5 w-3.5" />
         </button>
       </div>
-      <code className="mt-0.5 block truncate pl-4 text-[0.66rem] text-muted-foreground/70" title={item.id}>{shortId(item.id)}</code>
+      <code className="mt-0.5 block truncate pl-4 text-2xs text-muted-foreground/70" title={item.id}>{shortId(item.id)}</code>
 
       <MetaRow item={item} lifecycle={lifecycle} />
       <ContextRow item={item} />
@@ -94,7 +94,7 @@ function ContextRow({ item }: { item: BoardItem }) {
   const hiddenTagCount = item.tags.length - visibleTags.length;
   if (!item.epicRef && item.tags.length === 0) return null;
   return (
-    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 pl-4 text-[0.68rem] text-muted-foreground">
+    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 pl-4 text-2xs text-muted-foreground">
       {item.epicRef && (
         <span
           className={`truncate ${item.epicRef.missing ? 'text-[color:var(--lane-blocked)]' : ''}`}
@@ -111,5 +111,5 @@ function ContextRow({ item }: { item: BoardItem }) {
 }
 
 function Badge({ children, className }: { children: React.ReactNode; className: string }) {
-  return <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[0.62rem] font-medium ${className}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${className}`}>{children}</span>;
 }

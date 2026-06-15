@@ -9,6 +9,7 @@ import type {
   PlanningTaskResult,
 } from '@/types';
 import { BacklogCurationPreview } from './backlog-curation-preview';
+import { SubBlock } from './sub-block';
 import type { RedraftInput } from './use-planning-task-workflows';
 
 interface PlanningTaskResultPreviewProps {
@@ -59,7 +60,7 @@ function CurationUnavailablePreview({ taskId, result, busy, onRedraft, canRedraf
   const trimmedSteering = steering.trim();
 
   return (
-    <div className="mt-3 grid gap-2 border-t border-border pt-3 text-sm">
+    <SubBlock className="mt-3 pt-3 text-sm">
       <p className="text-foreground">{result.summary}</p>
       {result.nextSteps && result.nextSteps.length > 0 && (
         <ul className="list-disc pl-4 text-xs text-muted-foreground">{result.nextSteps.map((step) => <li key={step}>{step}</li>)}</ul>
@@ -67,12 +68,12 @@ function CurationUnavailablePreview({ taskId, result, busy, onRedraft, canRedraf
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Backlog curation draft unavailable</span>
       <p className="text-xs text-muted-foreground">This result cannot be applied as backlog curation because it did not include an applicable curation draft.</p>
       {canRedraft && (
-        <div className="grid gap-2 border-t border-border pt-2">
+        <SubBlock>
           <Textarea className="min-h-16" value={steering} onChange={(event) => setSteering(event.target.value)} placeholder="Optional steering for a curation redraft" />
           <div><Button size="sm" variant="secondary" disabled={busy || trimmedSteering.length === 0} onClick={() => void onRedraft(taskId, { steering: trimmedSteering })}>Redraft curation</Button></div>
-        </div>
+        </SubBlock>
       )}
-    </div>
+    </SubBlock>
   );
 }
 
@@ -104,7 +105,7 @@ function NeedsInputPreview({ taskId, busy, summary, rationale, questions, onRedr
   };
 
   return (
-    <div className="mt-3 grid gap-2 border-t border-border pt-3">
+    <SubBlock className="mt-3 pt-3">
       <p className="text-foreground">{summary}</p>
       {rationale && <p className="text-xs text-muted-foreground">{rationale}</p>}
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Needs input before drafting</span>
@@ -127,7 +128,7 @@ function NeedsInputPreview({ taskId, busy, summary, rationale, questions, onRedr
       <div>
         <Button size="sm" disabled={busy || !canRedraft} onClick={submit}>Answer and redraft</Button>
       </div>
-    </div>
+    </SubBlock>
   );
 }
 
@@ -153,30 +154,26 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: Read
     void onApply(taskId, input);
   };
 
-  return (
-    <div className="mt-3 grid gap-2 border-t border-border pt-3 text-sm">
-      <p className="text-foreground">{result.summary}</p>
-      {result.nextSteps && result.nextSteps.length > 0 && (
-        <ul className="list-disc pl-4 text-xs text-muted-foreground">{result.nextSteps.map((step) => <li key={step}>{step}</li>)}</ul>
-      )}
+  const assumptions = result.assumptionsOpenQuestions ?? [];
+  const hasDetail =
+    Boolean(result.summary) ||
+    (result.nextSteps?.length ?? 0) > 0 ||
+    (creationDraft?.sections.length ?? 0) > 0 ||
+    patchSections.length > 0 ||
+    assumptions.length > 0;
 
+  return (
+    <SubBlock className="mt-3 pt-3 text-sm">
+      {/* Primary actions stay visible; the verbose summary/sections/assumptions
+          collapse so a list of ready cards stays scannable. The card header
+          already carries the plan topic, so it is not repeated here. */}
       {creationDraft && (
-        <div className="grid gap-1.5 border-t border-border pt-2">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Session-plan draft</span>
-              <p className="text-foreground">{creationDraft.topic}</p>
-              <p className="text-[0.68rem] text-muted-foreground">{creationDraft.session} · {creationDraft.planningType}/{creationDraft.planningDepth}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant={confirming === 'creation' ? 'destructive' : 'default'} disabled={busy} onClick={() => apply('creation', { applySessionPlanCreationDraft: {} })}>{confirming === 'creation' ? 'Confirm create session plan' : 'Create session plan'}</Button>
-              {confirming === 'creation' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground">Session-plan draft · {creationDraft.planningType}/{creationDraft.planningDepth} · {creationDraft.sections.length} section{creationDraft.sections.length === 1 ? '' : 's'}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant={confirming === 'creation' ? 'destructive' : 'default'} disabled={busy} onClick={() => apply('creation', { applySessionPlanCreationDraft: {} })}>{confirming === 'creation' ? 'Confirm create session plan' : 'Create session plan'}</Button>
+            {confirming === 'creation' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
           </div>
-          <div className="grid gap-1">
-            {creationDraft.sections.map((section) => <PreviewSection key={section.dimension} title={section.dimension} body={section.content} />)}
-          </div>
-          <p className="text-[0.68rem] text-muted-foreground">Creating the plan opens it in the Plans tab, where you can keep iterating.</p>
         </div>
       )}
 
@@ -197,25 +194,38 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: Read
       )}
 
       {patchSections.length > 0 && (
-        <div className="grid gap-1.5 border-t border-border pt-2">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Session-plan patch{sessionForPatch ? ` · ${sessionForPatch}` : ''}</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant={confirming === 'patch' ? 'destructive' : 'default'} disabled={busy || sessionForPatch.length === 0} onClick={() => apply('patch', { applySessionPlanDrafts: [{ session: sessionForPatch, sections: patchSections.map((section) => section.dimension) }] })}>{confirming === 'patch' ? 'Confirm apply session-plan content' : 'Apply session-plan content'}</Button>
-              {confirming === 'patch' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground">Session-plan patch{sessionForPatch ? ` · ${sessionForPatch}` : ''} · {patchSections.length} section{patchSections.length === 1 ? '' : 's'}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant={confirming === 'patch' ? 'destructive' : 'default'} disabled={busy || sessionForPatch.length === 0} onClick={() => apply('patch', { applySessionPlanDrafts: [{ session: sessionForPatch, sections: patchSections.map((section) => section.dimension) }] })}>{confirming === 'patch' ? 'Confirm apply session-plan content' : 'Apply session-plan content'}</Button>
+            {confirming === 'patch' && <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Cancel</Button>}
           </div>
-          <div className="grid gap-1">
-            {patchSections.map((section) => <PreviewSection key={section.dimension} title={section.dimension} body={section.content} />)}
-          </div>
-          {sessionForPatch.length === 0 && <span className="text-xs text-muted-foreground">No target session is associated with this task; patch apply is unavailable.</span>}
         </div>
       )}
+      {patchSections.length > 0 && sessionForPatch.length === 0 && <span className="text-xs text-muted-foreground">No target session is associated with this task; patch apply is unavailable.</span>}
 
-      {result.assumptionsOpenQuestions.length > 0 && (
-        <ul className="list-disc pl-4 text-xs text-muted-foreground">{result.assumptionsOpenQuestions.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+      {hasDetail && (
+        <details className="mt-0.5">
+          <summary className="cursor-pointer list-none text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">Review draft details</summary>
+          <div className="mt-2 grid gap-2">
+            {result.summary && <p className="text-foreground">{result.summary}</p>}
+            {result.nextSteps && result.nextSteps.length > 0 && (
+              <ul className="list-disc pl-4 text-xs text-muted-foreground">{result.nextSteps.map((step) => <li key={step}>{step}</li>)}</ul>
+            )}
+            {creationDraft && creationDraft.sections.length > 0 && (
+              <div className="grid gap-1">{creationDraft.sections.map((section) => <PreviewSection key={section.dimension} title={section.dimension} body={section.content} />)}</div>
+            )}
+            {patchSections.length > 0 && (
+              <div className="grid gap-1">{patchSections.map((section) => <PreviewSection key={section.dimension} title={section.dimension} body={section.content} />)}</div>
+            )}
+            {assumptions.length > 0 && (
+              <ul className="list-disc pl-4 text-xs text-muted-foreground">{assumptions.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+            )}
+            {creationDraft && <p className="text-2xs text-muted-foreground">Creating the plan opens it in the Plans tab, where you can keep iterating.</p>}
+          </div>
+        </details>
       )}
-    </div>
+    </SubBlock>
   );
 }
 
@@ -229,7 +239,7 @@ function PreviewSection({ title, body }: { title: string; body: string }) {
       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
         {title} <span className="ml-1 font-normal normal-case tracking-normal text-muted-foreground/70">{lineCount} line{lineCount === 1 ? '' : 's'}</span>
       </summary>
-      <div className="mt-1 max-h-96 overflow-auto">
+      <div className="mt-1">
         <SafeMarkdown markdown={body} />
       </div>
     </details>

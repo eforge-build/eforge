@@ -42,10 +42,10 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
   const summary = (
     <>
       <StatusBadge state={state} />
-      {groups.length > 0 && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-[0.68rem] text-[color:var(--lane-ready)]">{groups.length} lanes</span>}
-      {next.length > 0 && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-[0.68rem] text-[color:var(--lane-ready)]">{next.length} next</span>}
+      {groups.length > 0 && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]">{groups.length} lanes</span>}
+      {next.length > 0 && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]">{next.length} next</span>}
       {refreshing && (
-        <span className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">
+        <span className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">
           <Loader2 className="h-3 w-3 animate-spin" /> refreshing
         </span>
       )}
@@ -79,12 +79,12 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
       {state === 'stale' && !refreshing && staleReasons.length > 0 && (
         <div className="mb-2 rounded-md border border-[color:var(--prio-medium)]/30 bg-[color:var(--prio-medium)]/10 p-2">
-          <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">What changed</span>
+          <span className="block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">What changed</span>
           <ul className="mt-1 grid gap-1 text-xs text-muted-foreground">
             {staleReasons.map((reason, index) => (
               <li key={`${reason.code ?? reason.eventType ?? 'reason'}:${reason.timestamp ?? index}`}>
                 <div>{reasonText(reason)}</div>
-                <div className="mt-0.5 flex flex-wrap gap-1 text-[0.68rem]">
+                <div className="mt-0.5 flex flex-wrap gap-1 text-2xs">
                   {(reason.code ?? reason.eventType) && <Chip>{reason.code ?? reason.eventType}</Chip>}
                   {reason.eventType && <Chip>event {reason.eventType}</Chip>}
                   {reason.correlationKind && <Chip>{reason.correlationKind}</Chip>}
@@ -105,7 +105,7 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
       {groups.length > 0 && (
         <div className="mb-3">
-          <span className="mb-1 block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Planning lanes · safe to plan in parallel</span>
+          <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Planning lanes · safe to plan in parallel</span>
           <div className="grid gap-2 lg:grid-cols-2">
             {groups.map((group) => (
               <PlanningLaneCard key={group.ref} group={group} label={label} selected={selected} readyIds={readyIds} busy={busy} onPickItem={onPickItem} onPickItems={onPickItems} onPlanItems={onPlanItems} />
@@ -116,7 +116,7 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
       {next.length > 0 && (
         <div className="mb-2">
-          <span className="mb-1 block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Recommended next sequence</span>
+          <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Recommended next sequence</span>
           <div className="flex flex-wrap gap-2">
             {next.map((entry, index) => (
               <button
@@ -140,13 +140,13 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
           {chains.length > 0 && (
             <div className="mt-2">
-              <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Blocked chains</span>
+              <span className="block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Blocked chains</span>
               <ul className="mt-1 grid gap-2">
                 {chains.map((chain, index) => (
                   <li key={chain.ref ?? index}>
                     <div className="flex flex-wrap items-center gap-1">
                       {chain.itemIds.map((id) => <Chip key={id} tone="bad">{label(id)}</Chip>)}
-                      <span className="text-[0.7rem] text-muted-foreground">blocked by</span>
+                      <span className="text-2xs text-muted-foreground">blocked by</span>
                       {chain.blockedBy.map((id) => <Chip key={id} tone="warn">{label(id)}</Chip>)}
                     </div>
                     {chain.rationale && <span className="mt-0.5 block text-xs text-muted-foreground">{chain.rationale}</span>}
@@ -158,7 +158,7 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
           {rationale.length > 0 && (
             <div className="mt-2">
-              <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Rationale and assumptions</span>
+              <span className="block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Rationale and assumptions</span>
               <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
                 {rationale.map((entry) => <li key={entry}>{entry}</li>)}
               </ul>
@@ -202,7 +202,7 @@ function PlanningLaneCard({ group, label, selected, readyIds, busy, onPickItem, 
             type="button"
             title="Click to toggle this item in the backlog selection"
             onClick={() => onPickItem(id)}
-            className={`rounded border px-1.5 py-0.5 text-left text-[0.68rem] leading-snug transition-colors hover:border-primary ${selected.has(id) ? 'border-primary bg-primary/10 text-text-bright' : 'border-border bg-background/40 text-foreground'}`}
+            className={`rounded border px-1.5 py-0.5 text-left text-2xs leading-snug transition-colors hover:border-primary ${selected.has(id) ? 'border-primary bg-primary/10 text-text-bright' : 'border-border bg-background/40 text-foreground'}`}
           >
             {label(id)}
           </button>
@@ -241,7 +241,7 @@ const BADGE_TONE: Record<RecommendationStatusState, string> = {
 };
 
 function StatusBadge({ state }: { state: RecommendationStatusState }) {
-  return <span className={`rounded border px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wide ${BADGE_TONE[state]}`}>{state}</span>;
+  return <span className={`rounded border px-1.5 py-0.5 text-2xs uppercase tracking-wide ${BADGE_TONE[state]}`}>{state}</span>;
 }
 
 function statusCopy(state: RecommendationStatusState, refreshing: boolean): string {
@@ -267,7 +267,7 @@ function FreshnessLine({ status }: { status: RecommendationStatus | null }) {
   const stale = formatRelativeTime(status.staleSince);
   if (!fresh && !stale) return null;
   return (
-    <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+    <p className="mt-0.5 text-2xs text-muted-foreground">
       {fresh && <span title={`${status.freshAt}${status.lastRefreshedBy ? ` via ${status.lastRefreshedBy}` : ''}`}>Updated {fresh}</span>}
       {fresh && stale && ' · '}
       {stale && <span title={status.staleSince}>stale since {stale}</span>}
@@ -282,5 +282,5 @@ const CHIP_TONE: Record<string, string> = {
 };
 
 function Chip({ children, tone = 'default' }: { children: React.ReactNode; tone?: string }) {
-  return <span className={`rounded border px-1.5 py-0.5 text-[0.68rem] ${CHIP_TONE[tone] ?? CHIP_TONE.default}`}>{children}</span>;
+  return <span className={`rounded border px-1.5 py-0.5 text-2xs ${CHIP_TONE[tone] ?? CHIP_TONE.default}`}>{children}</span>;
 }

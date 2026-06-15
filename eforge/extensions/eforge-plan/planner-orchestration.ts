@@ -203,7 +203,31 @@ function resolveSessionPlanCreationDraft(result: Record<string, unknown>, select
   const session = (selection.session ?? draft.session).trim();
   if (session.length === 0) throw userActionError('Session-plan creation draft requires a non-empty target session id.', { path: 'applySessionPlanCreationDraft.session' });
   const openQuestions = selection.openQuestions ?? (Array.isArray(result.assumptionsOpenQuestions) ? result.assumptionsOpenQuestions.filter((value): value is string => typeof value === 'string') : undefined);
-  return { draft, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
+  const topic = conciseTopic(draft.topic, session);
+  return { draft: { ...draft, topic }, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
+}
+
+// The planner is given the verbose request as its planning goal and is asked to
+// author a concise title. Deterministic safety net so the seed prompt ("Draft a
+// session plan for ...") is never persisted as a plan topic even if the agent
+// echoes it: fall back to a humanized session slug so the Plans tab and
+// downstream commit/handoff text stay readable.
+//
+// INVARIANT: this mirrors the display-time fallback in the workstation bundle
+// (`workstation-src/plans/src/lib/plan-title.ts` - `isGeneratedPlannerPrompt` +
+// `humanizeSlug`). The seed-prompt regex and slug humanization MUST stay
+// identical across both: this is the durable persist-time fix, that is the
+// render-time fallback. They live in separate bundles and cannot share a module,
+// so change them together.
+function conciseTopic(topic: string, sessionSlug: string): string {
+  const trimmed = topic.trim();
+  if (trimmed.length > 0 && !/^draft a session plan for /i.test(trimmed)) return trimmed;
+  const humanized = sessionSlug
+    .replace(/^(?:group|epic)-/i, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+  return humanized.length > 0 ? humanized : (trimmed.length > 0 ? trimmed : sessionSlug);
 }
 
 async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSessionPlanCreationDraft, linkage: CreationDraftSourceLinkage | undefined, target: CreationDraftTargetDisposition | undefined): Promise<AppliedSessionPlanCreationDraft> {

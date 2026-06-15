@@ -226,6 +226,32 @@ describe('planner orchestration', () => {
     });
   });
 
+  it('never persists the seeded planner prompt as a plan topic, falling back to a humanized session slug', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await applyCompletedPlanningAgentTaskResult(
+        cwd,
+        creationDraftTask('group-kernel-playbook-migration', {}, { topic: 'Draft a session plan for recommendation group-kernel-playbook-migration covering Add contracts, Remove host surfaces.' }),
+        { taskId: 'task-creation', applySessionPlanCreationDraft: {} },
+      );
+      const loaded = await createSessionPlanningWorkflowAdapter().flat.load({ cwd, session: 'group-kernel-playbook-migration' });
+      expect(loaded.plan.topic).toBe('Kernel Playbook Migration');
+    });
+  });
+
+  it('preserves an agent-authored concise topic', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await applyCompletedPlanningAgentTaskResult(
+        cwd,
+        creationDraftTask('authored-topic-session', {}, { topic: 'Annotation-driven plan revisions' }),
+        { taskId: 'task-creation', applySessionPlanCreationDraft: {} },
+      );
+      const loaded = await createSessionPlanningWorkflowAdapter().flat.load({ cwd, session: 'authored-topic-session' });
+      expect(loaded.plan.topic).toBe('Annotation-driven plan revisions');
+    });
+  });
+
   it('defaults creation-draft open questions to the result assumptions and leaves backlog items unshipped', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);

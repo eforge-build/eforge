@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
 import type { Artifact, Detail, PlanData, PlanDetail, PlanSetDetail, Readiness } from '@/types';
+import { planDisplayTitle } from '@/lib/plan-title';
 import { PlanDetailCard } from './plans/plan-detail';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
 
@@ -139,5 +140,8 @@ function CreatePlanForm({ onClose, onCreated }: { onClose: () => void; onCreated
   );
 }
 
-function artifactTitle(artifact: Artifact) { return artifact.title || artifact.session || artifact.planSetId || artifact.key; }
+function artifactTitle(artifact: Artifact) {
+  if (artifact.kind === 'plan-set') return artifact.title || artifact.planSetId || artifact.key;
+  return planDisplayTitle(artifact.title, artifact.session ?? artifact.key);
+}
 function isPlanDetail(detail: Detail): detail is PlanDetail { return Boolean(detail && 'plan' in detail); }

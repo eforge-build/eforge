@@ -78,14 +78,14 @@ function lifecycleChips(item: BoardItem): string[] {
 }
 
 function LifecycleChip({ label }: { label: string }) {
-  return <span className={`rounded border px-1.5 py-0.5 text-[0.62rem] font-semibold ${CHIP_TONE[label] ?? 'border-border text-muted-foreground'}`}>{label}</span>;
+  return <span className={`rounded border px-1.5 py-0.5 text-2xs font-semibold ${CHIP_TONE[label] ?? 'border-border text-muted-foreground'}`}>{label}</span>;
 }
 
 function LifecycleRow({ row }: { row: LifecycleLinkRow }) {
   const timestamp = row.timestamp ?? row.completedAt ?? row.landedAt ?? row.startedAt ?? row.queuedAt ?? row.promotedAt;
   const branch = row.featureBranch ?? row.branch;
   return (
-    <div className="rounded border border-border bg-background/50 p-2 text-[0.68rem]">
+    <div className="rounded border border-border bg-background/50 p-2 text-2xs">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="rounded bg-secondary px-1.5 py-0.5 font-semibold uppercase tracking-wide text-muted-foreground">{row.kind}</span>
         {row.stage && <span className="text-text-bright">{row.stage}</span>}

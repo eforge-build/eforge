@@ -73,7 +73,7 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
       <header className="flex items-start gap-2 border-b border-border p-4">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold leading-snug text-text-bright">{item.title}</h3>
-          <code className="mt-1 block break-all text-[0.7rem] text-muted-foreground">{item.id}</code>
+          <code className="mt-1 block break-all text-2xs text-muted-foreground">{item.id}</code>
         </div>
         <button type="button" aria-label="Close details" className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -100,7 +100,7 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
             </Select>
           </Field>
           {openStatusWithBlockers && (
-            <p className="text-[0.7rem] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Unresolved dependencies ({item.unresolvedDependsOn.map(shortId).join(', ')}) keep this item in the Blocked lane regardless of status.
             </p>
           )}
@@ -121,7 +121,7 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
         {item.tags.length > 0 && (
           <Section title="Tags">
             <div className="flex flex-wrap gap-1">
-              {item.tags.map((tag) => <span key={tag} className="rounded border border-border px-1.5 py-0.5 text-[0.68rem] text-muted-foreground">{tag}</span>)}
+              {item.tags.map((tag) => <span key={tag} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{tag}</span>)}
             </div>
           </Section>
         )}
@@ -133,7 +133,7 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
           <Section title="Recommendations">
             {item.recLanes.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {item.recLanes.map((lane) => <span key={lane} className="rounded border border-border px-1.5 py-0.5 text-[0.68rem] text-muted-foreground">{lane}</span>)}
+                {item.recLanes.map((lane) => <span key={lane} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{lane}</span>)}
               </div>
             )}
             {item.recUnblock && <p className="mt-2 text-xs text-[color:var(--prio-medium)]">{item.recUnblock}</p>}
@@ -165,7 +165,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-4 border-t border-border pt-3">
-      <h4 className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+      <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
       {children}
     </section>
   );
@@ -178,11 +178,11 @@ function DependencySection({ title, refs }: { title: string; refs: DependencyRef
       <ul className="grid gap-1">
         {refs.map((ref) => (
           <li key={ref.id} className="flex items-baseline gap-2 text-xs">
-            <code className={`min-w-0 truncate rounded border px-1 text-[0.68rem] ${ref.blocking ? 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)]' : ref.missing ? 'border-dashed border-[color:var(--lane-blocked)]/50 text-[color:var(--lane-blocked)]' : 'border-border text-muted-foreground'}`} title={ref.id}>
+            <code className={`min-w-0 truncate rounded border px-1 text-2xs ${ref.blocking ? 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)]' : ref.missing ? 'border-dashed border-[color:var(--lane-blocked)]/50 text-[color:var(--lane-blocked)]' : 'border-border text-muted-foreground'}`} title={ref.id}>
               {shortId(ref.id)}
             </code>
             <span className="min-w-0 truncate text-muted-foreground" title={ref.title}>{ref.missing ? `Missing: ${ref.id}` : ref.title}</span>
-            {ref.status && <span className="ml-auto shrink-0 text-[0.65rem] capitalize text-muted-foreground/70">{ref.status}</span>}
+            {ref.status && <span className="ml-auto shrink-0 text-2xs capitalize text-muted-foreground/70">{ref.status}</span>}
           </li>
         ))}
       </ul>
@@ -194,7 +194,7 @@ function NoteSection({ title, content }: { title: string; content: string }) {
   if (!content.trim()) return null;
   return (
     <Section title={title}>
-      <pre className="whitespace-pre-wrap break-words rounded border border-border bg-background p-2 text-[0.7rem] text-foreground">{content.trim()}</pre>
+      <pre className="whitespace-pre-wrap break-words rounded border border-border bg-background p-2 text-2xs text-foreground">{content.trim()}</pre>
     </Section>
   );
 }

@@ -42,7 +42,7 @@ export function ReadinessChecklist({ plan, readiness, disabled, onSetSection, on
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Readiness</h4>
         <span className={`text-xs font-semibold ${readiness.ready ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>
-          {readiness.ready ? 'Ready to hand off' : `${missing.length + acDiagnostics.length} item(s) to resolve`}
+          {readiness.ready ? `${covered.length} covered` : `${missing.length + acDiagnostics.length} item(s) to resolve`}
         </span>
       </div>
 
@@ -105,7 +105,7 @@ function Row({ icon, label, hint, children }: { icon: React.ReactNode; label: st
     <div className="flex items-center gap-2 text-sm">
       {icon}
       <span className="text-foreground">{label}</span>
-      <span className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">{hint}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground">{hint}</span>
       <span className="ml-auto">{children}</span>
     </div>
   );
@@ -117,7 +117,7 @@ function AcDiagnosticList({ diagnostics }: { diagnostics: AcDiagnostic[] }) {
       {diagnostics.map((diagnostic, index) => (
         <li key={index} className="rounded bg-background p-2 text-xs">
           <p className="text-foreground">{diagnostic.message}</p>
-          {diagnostic.line && <code className="mt-0.5 block truncate text-[0.7rem] text-muted-foreground">{diagnostic.line}</code>}
+          {diagnostic.line && <code className="mt-0.5 block truncate text-2xs text-muted-foreground">{diagnostic.line}</code>}
           {diagnostic.suggestion && <p className="mt-0.5 text-[color:var(--lane-ready)]">{diagnostic.suggestion}</p>}
         </li>
       ))}

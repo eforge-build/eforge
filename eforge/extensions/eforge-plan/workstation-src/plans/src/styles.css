@@ -20,6 +20,10 @@
   --color-ring: #67f553;
   --color-text-bright: #f0f6fc;
   --radius: 0.375rem;
+  /* Single sub-xs step for chips and quiet meta lines, replacing ad-hoc
+     text-[0.6rem]..text-[0.7rem] literals. Use text-2xs for anything smaller
+     than text-xs so small text stays consistent and above a readable floor. */
+  --text-2xs: 0.6875rem;
   --lane-inbox: #7d8aa0;
   --lane-ready: #58a6ff;
   --lane-blocked: #f0613a;

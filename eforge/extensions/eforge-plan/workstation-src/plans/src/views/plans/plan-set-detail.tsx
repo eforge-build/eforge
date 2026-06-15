@@ -54,7 +54,7 @@ function ChildList({ children, strategy }: { children: PlanSetChild[]; strategy:
     <ol className="grid gap-2">
       {children.map((child, index) => (
         <li key={child.id} className="flex items-start gap-2">
-          <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem] text-muted-foreground">{index + 1}</span>
+          <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-2xs text-muted-foreground">{index + 1}</span>
           <div className="min-w-0 flex-1"><ChildCard child={child} showDeps={strategy === 'dag'} /></div>
         </li>
       ))}
@@ -79,11 +79,11 @@ function ChildCard({ child, showDeps }: { child: PlanSetChild; showDeps?: boolea
           {child.exists === false && <Badge variant="destructive">missing file</Badge>}
         </span>
       </div>
-      {child.file && <code className="mt-0.5 block truncate text-[0.7rem] text-muted-foreground">{child.file}</code>}
+      {child.file && <code className="mt-0.5 block truncate text-2xs text-muted-foreground">{child.file}</code>}
       {showDeps && dependsOn.length > 0 && (
         <p className="mt-1 flex flex-wrap items-baseline gap-1 text-xs">
-          <span className="text-[0.6rem] uppercase tracking-wide text-muted-foreground">Depends on</span>
-          {dependsOn.map((dep) => <code key={dep} className="rounded border border-border px-1 text-[0.68rem]">{dep}</code>)}
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground">Depends on</span>
+          {dependsOn.map((dep) => <code key={dep} className="rounded border border-border px-1 text-2xs">{dep}</code>)}
         </p>
       )}
     </div>
@@ -100,10 +100,10 @@ function DiagnosticList({ diagnostics }: { diagnostics: PlanSetDiagnostic[] }) {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-3.5 w-3.5 text-[color:var(--lane-blocked)]" />
               <span className="text-foreground">{diagnostic.message}</span>
-              {diagnostic.code && <span className="ml-auto text-[0.6rem] uppercase tracking-wide text-muted-foreground">{diagnostic.code}</span>}
+              {diagnostic.code && <span className="ml-auto text-2xs uppercase tracking-wide text-muted-foreground">{diagnostic.code}</span>}
             </div>
             {(diagnostic.childId || diagnostic.file) && (
-              <code className="mt-0.5 block truncate text-[0.68rem] text-muted-foreground">{diagnostic.childId ?? diagnostic.file}</code>
+              <code className="mt-0.5 block truncate text-2xs text-muted-foreground">{diagnostic.childId ?? diagnostic.file}</code>
             )}
           </li>
         ))}

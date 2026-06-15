@@ -8,6 +8,7 @@ import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { useToast } from '@/components/toast';
 import type { PlanData, PlanDetail, Readiness } from '@/types';
+import { planDisplayTitle } from '@/lib/plan-title';
 import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { OpenQuestionsPanel } from './open-questions-panel';
@@ -110,7 +111,7 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle>{plan.topic}</CardTitle>
+          <CardTitle>{planDisplayTitle(plan.topic, plan.session)}</CardTitle>
           <CardDescription>{plan.session}</CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">

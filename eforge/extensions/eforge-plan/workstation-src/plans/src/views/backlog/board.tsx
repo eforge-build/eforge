@@ -118,7 +118,7 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
               </button>
             ))}
           </div>
-          <span className="text-[0.7rem] text-muted-foreground">Group</span>
+          <span className="text-2xs text-muted-foreground">Group</span>
           <ButtonGroup options={GROUPS} active={group} onSelect={(value) => onGroup(value)} />
         </div>
       </div>
@@ -131,7 +131,7 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
               onClick={() => onEpicFilter(epicFilter === chip.id ? '' : chip.id)}
               className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors ${epicFilter === chip.id ? 'border-primary text-text-bright' : 'border-border text-muted-foreground hover:border-muted-foreground/50'} ${chip.missing ? 'border-dashed text-[color:var(--lane-blocked)]' : ''}`}
             >
-              {chip.title}<span className="rounded-full border border-border px-1 text-[0.65rem]">{chip.count}</span>
+              {chip.title}<span className="rounded-full border border-border px-1 text-2xs">{chip.count}</span>
             </button>
           ))}
         </div>
@@ -224,7 +224,7 @@ function CollapsedColumn({ column, onExpand }: { column: BoardColumn; onExpand: 
       <ChevronsLeft className="h-3.5 w-3.5" />
       <span className="h-2 w-2 rounded-full" style={{ background: column.tone }} />
       <span className="text-xs font-semibold [text-orientation:mixed] [writing-mode:vertical-rl]">{column.title}</span>
-      <span className="rounded-full border border-border px-1.5 text-[0.65rem]">{column.items.length}</span>
+      <span className="rounded-full border border-border px-1.5 text-2xs">{column.items.length}</span>
     </button>
   );
 }
