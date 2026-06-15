@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { upsertTrustRecord } from '@eforge-build/engine/extensions';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
@@ -10,8 +9,6 @@ import { useTempDir } from './test-tmpdir.js';
 import { postJson, setupProject, validAutonomousPlaybookRaw, validPlanningPlaybookRaw } from './daemon-session-plan-routes-helpers.js';
 
 const makeTempDir = useTempDir('eforge-playbook-planning-contract-');
-const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const EFORGE_PLAN_EXTENSION_PATH = resolve(REPO_ROOT, 'eforge/extensions/eforge-plan');
 
 let server: MonitorServer | undefined;
 
@@ -41,6 +38,18 @@ async function writeConfig(tmpDir: string, body: string): Promise<void> {
   await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), body, 'utf-8');
 }
 
+function minimalPlanningProviderBody(): string {
+  return `const route = '/console/workstations/eforge-plan%3Aplanning-workstation';
+const inputSchema = { [Symbol.for('TypeBox.Kind')]: 'Object', type: 'object', properties: {}, additionalProperties: false };
+export default function extension(eforge) {
+  eforge.registerAction({ id: 'open-planning-entry', title: 'Open planning entry', inputSchema, sideEffects: ['none'], handler() { return { kind: 'planning-entry', workstationUrl: route }; } });
+  eforge.registerIntegrationCommand({ id: 'open-planning-entry', label: 'Open planning entry', inputSchema, action: { actionId: 'open-planning-entry' } });
+  eforge.registerDeepLink({ id: 'planning-workstation', label: 'Open planning workstation', urlTemplate: route, action: { actionId: 'open-planning-entry' } });
+  eforge.registerConsoleWorkstation({ id: 'planning-workstation', title: 'Planning workstation', srcDoc: '<main>Planning</main>', allowedActions: ['open-planning-entry'] });
+}
+`;
+}
+
 async function writePlanningExtension(tmpDir: string, scope: 'project-local' | 'project-team', opts: { capabilityVersion?: string; body?: string } = {}): Promise<string> {
   const extensionDir = scope === 'project-local'
     ? resolve(tmpDir, '.eforge', 'extensions', 'eforge-plan')
@@ -67,7 +76,7 @@ describe('planning-mode playbooks depend on the eforge-plan planning contract', 
   it('returns generic planning entry metadata when eforge-plan provides the required capability', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
-    await writeConfig(tmpDir, `extensions:\n  paths:\n    - ${JSON.stringify(EFORGE_PLAN_EXTENSION_PATH)}\n`);
+    await writePlanningExtension(tmpDir, 'project-local', { body: minimalPlanningProviderBody() });
     await writeTeamPlaybook(tmpDir, 'my-planning', validPlanningPlaybookRaw({ name: 'my-planning' }));
     await start(tmpDir);
 
