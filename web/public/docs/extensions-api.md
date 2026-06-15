@@ -39,6 +39,50 @@ export default defineEforgeExtension((eforge) => {
 
 ---
 
+## Dependency and capability contracts
+
+Directory-layout extensions may declare public capabilities and dependency requirements in `package.json#eforge.extension` before any extension code is imported:
+
+```json
+{
+  "name": "acme-workflow",
+  "version": "1.2.0",
+  "eforge": {
+    "extension": {
+      "name": "acme-workflow",
+      "capabilities": [{ "name": "acme.workflow", "version": "1.2.0" }],
+      "dependencies": {
+        "required": [{ "name": "acme-core", "version": ">=1.0.0" }],
+        "optional": [{ "capabilities": [{ "name": "acme.backlog", "version": ">=1.0.0" }] }]
+      }
+    }
+  }
+}
+```
+
+Capability declarations use `{ name, version? }` with exact semantic versions. Dependency entries use `{ name?, version?, capabilities? }`; omit `name` only for capability-only requirements. Version constraints support exact semantic versions, `>`, `>=`, `<`, `<=`, and comma-separated AND constraints. Required failures skip the dependent extension; optional failures keep it loaded and surface availability metadata.
+
+Actions, Console contributions, workstations, commands, and deep links may also declare `requirements?: { dependencies?: [...], capabilities?: [...] }`. The contribution manifest includes `availability`; unavailable actions are rejected with error code `unavailable`.
+
+Action handlers receive immutable lookup data:
+
+```ts
+eforge.registerAction({
+  id: "inspect-backlog",
+  title: "Inspect backlog availability",
+  inputSchema: Type.Object({}),
+  requirements: { capabilities: [{ name: "acme.backlog" }] },
+  handler: (_input, ctx) => ({
+    dependency: ctx.dependencies.get("acme-core").available,
+    backlog: ctx.capabilities.get("acme.backlog", ">=1.0.0").available,
+  }),
+});
+```
+
+The lookup API reports availability only. It does not call, proxy, or invoke another extension.
+
+---
+
 ## Configuration fields
 
 Policy gate and validation-provider runtime behavior is controlled by native extension config:

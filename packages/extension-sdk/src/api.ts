@@ -17,6 +17,13 @@
  *
  * The `defineEforgeExtension` helper is available for named-export or
  * inference-friendly usage.
+ *
+ * Directory-layout extensions may declare public capabilities and required or
+ * optional dependencies in `package.json#eforge.extension`. The loader resolves
+ * those declarations before importing dependent factories. Action handlers can
+ * inspect immutable dependency and capability availability through
+ * `ctx.dependencies` and `ctx.capabilities`; the lookup API reports state only
+ * and does not invoke another extension.
  */
 
 import type { EforgeEvent } from './events.js';

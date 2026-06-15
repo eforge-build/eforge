@@ -77,6 +77,24 @@ describe('native extension loader', () => {
     expect(result.registry.tools.map((tool) => tool.name)).toEqual(['dir-tool']);
   });
 
+  it('loads required providers before dependents and skips dependents with missing required providers', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'provider', 'package.json'), JSON.stringify({ type: 'module', version: '1.0.0', eforge: { extension: { name: 'provider', capabilities: [{ name: 'ordered.capability', version: '1.0.0' }] } } }));
+    await writeModule(resolve(extensions, 'provider', 'index.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "provider-source", description: "provider", fetch: async () => "ok" }); }');
+    await writeModule(resolve(extensions, 'dependent', 'package.json'), JSON.stringify({ type: 'module', eforge: { extension: { name: 'dependent', dependencies: { required: [{ name: 'provider', capabilities: [{ name: 'ordered.capability' }] }] } } } }));
+    await writeModule(resolve(extensions, 'dependent', 'index.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "dependent-source", description: "dependent", fetch: async () => "ok" }); }');
+    await writeModule(resolve(extensions, 'missing-dependent', 'package.json'), JSON.stringify({ type: 'module', eforge: { extension: { name: 'missing-dependent', dependencies: { required: [{ name: 'missing-provider' }] } } } }));
+    await writeModule(resolve(extensions, 'missing-dependent', 'index.js'), 'throw new Error("missing dependent must not import"); export default function extension() {}');
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.extensions.map((extension) => extension.name)).toEqual(['provider', 'dependent']);
+    expect(result.candidates.find((candidate) => candidate.name === 'missing-dependent')).toMatchObject({ status: 'skipped' });
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:dependency-missing', name: 'missing-dependent' }));
+  });
+
   it('diagnoses invalid exports, factory errors, invalid registrations, and duplicate contributed names', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);

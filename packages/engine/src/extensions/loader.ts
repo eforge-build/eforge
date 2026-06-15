@@ -3,6 +3,11 @@ import { pathToFileURL } from 'node:url';
 import { createJiti } from 'jiti';
 
 import { discoverNativeExtensions } from './discovery.js';
+import {
+  finalizeCandidateDependencyAvailability,
+  finalizeRegistryDependencyAvailability,
+  resolveExtensionDependencyGraph,
+} from './dependency-resolution.js';
 import { createExtensionRecorder, mergeRecorderState } from './recorder.js';
 import type {
   LoadedNativeExtension,
@@ -20,8 +25,11 @@ export async function loadNativeExtensions(options: NativeExtensionLoaderOptions
   const diagnostics: NativeExtensionDiagnostic[] = [...discovery.diagnostics];
   const registry = createEmptyRegistry(discovery.candidates);
   registry.diagnostics.push(...discovery.diagnostics);
+  const dependencyResolution = resolveExtensionDependencyGraph(discovery.candidates);
+  diagnostics.push(...dependencyResolution.diagnostics);
+  registry.diagnostics.push(...dependencyResolution.diagnostics);
 
-  for (const candidate of discovery.candidates) {
+  for (const candidate of dependencyResolution.orderedCandidates) {
     if (candidate.status !== 'pending') continue;
     if (candidate.trustState === 'changed') {
       const diagnostic: NativeExtensionDiagnostic = {
@@ -58,6 +66,17 @@ export async function loadNativeExtensions(options: NativeExtensionLoaderOptions
       registry.diagnostics.push(diagnostic);
       continue;
     }
+    const runtimeDependencyDiagnostics = finalizeCandidateDependencyAvailability(candidate, registry, { requiredOnly: true });
+    if (runtimeDependencyDiagnostics.length > 0) {
+      candidate.diagnostics.push(...runtimeDependencyDiagnostics);
+      diagnostics.push(...runtimeDependencyDiagnostics);
+      registry.diagnostics.push(...runtimeDependencyDiagnostics);
+    }
+    if (candidate.resolvedDependencies?.required.some((dependency) => !dependency.available)) {
+      candidate.status = 'skipped';
+      continue;
+    }
+
     if (!candidate.entrypoint || !candidate.format) {
       const diagnostic: NativeExtensionDiagnostic = {
         severity: 'error',
@@ -109,6 +128,7 @@ export async function loadNativeExtensions(options: NativeExtensionLoaderOptions
   }
 
   registry.candidates = discovery.candidates;
+  diagnostics.push(...finalizeRegistryDependencyAvailability(registry));
   return { registry, diagnostics, candidates: discovery.candidates };
 }
 
@@ -185,6 +205,9 @@ function buildLoadedExtension(candidate: NativeExtensionCandidate, strategy: Nat
     registrations,
     ...(candidate.packageProvenance !== undefined && { packageProvenance: candidate.packageProvenance }),
     ...(candidate.installProvenance !== undefined && { installProvenance: candidate.installProvenance }),
+    ...(candidate.capabilities !== undefined && { capabilities: candidate.capabilities }),
+    ...(candidate.dependencies !== undefined && { dependencies: candidate.dependencies }),
+    ...(candidate.resolvedDependencies !== undefined && { resolvedDependencies: candidate.resolvedDependencies }),
   };
 }
 

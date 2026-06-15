@@ -136,6 +136,32 @@ describe('extension contribution schemas', () => {
     expect(safeParseExtensionContributionManifest(manifest()).success).toBe(true);
   });
 
+  it('accepts dependency/capability availability metadata and rejects malformed availability shapes', () => {
+    const value = manifest();
+    value.actions[0] = {
+      ...value.actions[0],
+      requirements: { capabilities: [{ name: 'demo.capability', version: '>=1.0.0' }] },
+      availability: { available: false, message: 'Capability unavailable', diagnostics: [{ code: 'extension:dependency-capability-incompatible', message: 'missing', severity: 'warning', capabilityName: 'demo.capability' }] },
+    } as never;
+    value.consoleContributions[0] = { ...value.consoleContributions[0], availability: { available: true } } as never;
+    value.consoleWorkstations[0] = { ...value.consoleWorkstations[0], availability: { available: true } } as never;
+    value.integrationCommands[0] = { ...value.integrationCommands[0], availability: { available: true } } as never;
+    value.deepLinks[0] = { ...value.deepLinks[0], availability: { available: true } } as never;
+    expect(safeParseExtensionContributionManifest(value).success).toBe(true);
+
+    const malformed = manifest();
+    malformed.actions[0] = { ...malformed.actions[0], availability: { available: 'nope' } } as never;
+    expect(safeParseExtensionContributionManifest(malformed).success).toBe(false);
+  });
+
+  it('rejects malformed dependency requirements', () => {
+    for (const dependency of [{}, { capabilities: [] }, { name: 'provider', version: 'next' }]) {
+      const value = manifest();
+      value.actions[0] = { ...value.actions[0], requirements: { dependencies: [dependency] } } as never;
+      expect(safeParseExtensionContributionManifest(value).success).toBe(false);
+    }
+  });
+
   it('accepts a manifest with a bundle-backed Console workstation', () => {
     const value = manifest();
     value.consoleWorkstations[0] = {

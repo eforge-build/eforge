@@ -16,6 +16,8 @@ import type {
   NativeExtensionLayout,
   NativeExtensionPackageProvenance,
   NativeExtensionScope,
+  NativeExtensionCapabilityDeclaration,
+  NativeExtensionDependencyManifest,
   NativeExtensionShadow,
   NativeExtensionTrust,
   NativeExtensionTrustState,
@@ -34,6 +36,8 @@ interface ResolvedLayout {
   layout: NativeExtensionLayout;
   packageProvenance?: NativeExtensionPackageProvenance;
   installProvenance?: NativeExtensionInstallProvenance;
+  capabilities?: NativeExtensionCapabilityDeclaration[];
+  dependencies?: NativeExtensionDependencyManifest;
 }
 
 interface RawAutoCandidate extends ResolvedLayout {
@@ -132,6 +136,7 @@ export async function discoverNativeExtensions(options: {
       diagnostics: winner.diagnostics ?? [],
       ...(winner.packageProvenance !== undefined && { packageProvenance: winner.packageProvenance }),
       ...(winner.installProvenance !== undefined && { installProvenance: winner.installProvenance }),
+      ...(winner.capabilities !== undefined && { capabilities: winner.capabilities }), ...(winner.dependencies !== undefined && { dependencies: winner.dependencies }),
     });
     for (const shadow of shadows) {
       const shadowTrust = initialTrustForScope(shadow.scope);
@@ -149,6 +154,7 @@ export async function discoverNativeExtensions(options: {
         diagnostics: shadow.diagnostics ?? [],
         ...(shadow.packageProvenance !== undefined && { packageProvenance: shadow.packageProvenance }),
         ...(shadow.installProvenance !== undefined && { installProvenance: shadow.installProvenance }),
+        ...(shadow.capabilities !== undefined && { capabilities: shadow.capabilities }), ...(shadow.dependencies !== undefined && { dependencies: shadow.dependencies }),
       });
     }
   }
@@ -198,6 +204,7 @@ export async function discoverNativeExtensions(options: {
       diagnostics: [...layoutResult.diagnostics],
       ...(layout.packageProvenance !== undefined && { packageProvenance: layout.packageProvenance }),
       ...(layout.installProvenance !== undefined && { installProvenance: layout.installProvenance }),
+      ...(layout.capabilities !== undefined && { capabilities: layout.capabilities }), ...(layout.dependencies !== undefined && { dependencies: layout.dependencies }),
     };
     explicitCandidates.push(candidate);
     const sameName = explicitByName.get(candidate.name) ?? [];
@@ -389,13 +396,16 @@ async function resolveExtensionLayoutFull(path: string): Promise<ResolvedLayoutO
   const eforgeExt = manifestResult.ok ? manifestResult.metadata?.eforgeExtension : undefined;
   const hasInvalidName = manifestResult.errors.some((e) => e.code === 'eforge-extension-invalid-name');
   const hasInvalidEntrypoint = manifestResult.errors.some((e) => e.code === 'eforge-extension-invalid-entrypoint');
+  const hasInvalidDependencyMetadata = manifestResult.errors.some((e) => e.code === 'eforge-extension-invalid-capability' || e.code === 'eforge-extension-invalid-dependency');
+  const capabilities = eforgeExt?.capabilities;
+  const dependencies = eforgeExt?.dependencies;
 
   const effectiveName = (!hasInvalidName && eforgeExt?.name) ? eforgeExt.name : basename(path);
 
   // Emit diagnostics for invalid eforge.extension fields.
-  if (hasInvalidName || hasInvalidEntrypoint) {
+  if (hasInvalidName || hasInvalidEntrypoint || hasInvalidDependencyMetadata) {
     for (const err of manifestResult.errors) {
-      if (err.code === 'eforge-extension-invalid-name' || err.code === 'eforge-extension-invalid-entrypoint') {
+      if (err.code === 'eforge-extension-invalid-name' || err.code === 'eforge-extension-invalid-entrypoint' || err.code === 'eforge-extension-invalid-capability' || err.code === 'eforge-extension-invalid-dependency') {
         diagnostics.push({
           severity: 'error',
           code: 'extension:invalid-package-manifest',
@@ -446,6 +456,7 @@ async function resolveExtensionLayoutFull(path: string): Promise<ResolvedLayoutO
         layout: 'directory',
         ...(packageProvenance !== undefined && { packageProvenance }),
         ...(installProvenance !== undefined && { installProvenance }),
+        ...(capabilities !== undefined && { capabilities }), ...(dependencies !== undefined && { dependencies }),
       },
       diagnostics,
     };
@@ -478,6 +489,7 @@ async function resolveExtensionLayoutFull(path: string): Promise<ResolvedLayoutO
               layout: 'directory',
               ...(packageProvenance !== undefined && { packageProvenance }),
               ...(installProvenance !== undefined && { installProvenance }),
+              ...(capabilities !== undefined && { capabilities }), ...(dependencies !== undefined && { dependencies }),
             },
             diagnostics,
           };
@@ -526,6 +538,7 @@ async function resolveExtensionLayoutFull(path: string): Promise<ResolvedLayoutO
           layout: 'directory',
           ...(packageProvenance !== undefined && { packageProvenance }),
           ...(installProvenance !== undefined && { installProvenance }),
+          ...(capabilities !== undefined && { capabilities }), ...(dependencies !== undefined && { dependencies }),
         },
         diagnostics,
       };
@@ -556,6 +569,8 @@ function buildPackageProvenance(metadata: ExtensionPackageMetadata): NativeExten
   if (metadata.eforgeExtension?.entrypoint) { provenance.eforgeEntrypoint = metadata.eforgeExtension.entrypoint; hasAny = true; }
   if (metadata.repository) { provenance.repository = metadata.repository; hasAny = true; }
   if (metadata.homepage) { provenance.homepage = metadata.homepage; hasAny = true; }
+  if (metadata.eforgeExtension?.capabilities) { provenance.capabilities = metadata.eforgeExtension.capabilities; hasAny = true; }
+  if (metadata.eforgeExtension?.dependencies) { provenance.dependencies = metadata.eforgeExtension.dependencies; hasAny = true; }
   return hasAny ? provenance : undefined;
 }
 
@@ -585,43 +600,24 @@ function entrypointFromExports(exportsField: unknown): string | undefined {
 }
 
 async function readDirectoryEntries(dir: string): Promise<string[]> {
-  try {
-    const info = await lstat(dir);
-    if (!info.isDirectory() || info.isSymbolicLink()) return [];
-    return await readdir(dir);
-  } catch {
-    return [];
-  }
+  try { const info = await lstat(dir); return info.isDirectory() && !info.isSymbolicLink() ? readdir(dir) : []; } catch { return []; }
 }
 
 async function isRegularFile(path: string): Promise<boolean> {
-  try {
-    const info = await lstat(path);
-    return info.isFile();
-  } catch {
-    return false;
-  }
+  try { return (await lstat(path)).isFile(); } catch { return false; }
 }
 
 function formatFromExtension(ext: string): NativeExtensionFormat {
-  switch (ext) {
-    case '.ts': return 'ts';
-    case '.mts': return 'mts';
-    case '.js': return 'js';
-    case '.mjs': return 'mjs';
-    default: throw new Error(`Unsupported extension format: ${ext}`);
-  }
+  if (ext === '.ts' || ext === '.mts' || ext === '.js' || ext === '.mjs') return ext.slice(1) as NativeExtensionFormat;
+  throw new Error(`Unsupported extension format: ${ext}`);
 }
 
 function basenameWithoutKnownExtension(path: string): string {
-  const ext = extname(path);
-  return SUPPORTED_EXTENSIONS.has(ext) ? basename(path, ext) : basename(path);
+  const ext = extname(path); return SUPPORTED_EXTENSIONS.has(ext) ? basename(path, ext) : basename(path);
 }
 
 function passesAutoFilters(name: string, include: string[] | undefined, exclude: string[] | undefined): boolean {
-  if (include && !include.includes(name)) return false;
-  if (exclude?.includes(name)) return false;
-  return true;
+  return !(include && !include.includes(name)) && !exclude?.includes(name);
 }
 
 /**

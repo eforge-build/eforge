@@ -197,7 +197,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         return;
       }
       const id = resolveExtensionContributionId(extensionName, result.id);
-      state.actions.push({ kind: 'action', extensionName, extensionPath, localId: result.id, id, value: result.value });
+      state.actions.push({ kind: 'action', extensionName, extensionPath, localId: result.id, id, value: result.value, ...(result.value.requirements !== undefined && { requirements: result.value.requirements }) });
       for (const warning of collectActionSpecWarnings(result.value, { localId: result.id, effectiveId: id })) {
         addDiagnostic(warning.message, warning.code, warning.name, 'warning');
       }
@@ -208,7 +208,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         addDiagnostic(result.message ?? 'registerConsoleContribution registration is invalid', 'extension:invalid-registration', result.id);
         return;
       }
-      state.consoleContributions.push({ kind: 'consoleContribution', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
+      state.consoleContributions.push({ kind: 'consoleContribution', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value, ...(result.value.requirements !== undefined && { requirements: result.value.requirements }) });
     },
     registerConsoleWorkstation(workstation: unknown): void {
       const result = validateConsoleWorkstationSpec(workstation);
@@ -216,7 +216,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         addDiagnostic(result.message ?? 'registerConsoleWorkstation registration is invalid', 'extension:invalid-registration', result.id);
         return;
       }
-      state.consoleWorkstations.push({ kind: 'consoleWorkstation', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
+      state.consoleWorkstations.push({ kind: 'consoleWorkstation', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value, ...(result.value.requirements !== undefined && { requirements: result.value.requirements }) });
     },
     registerIntegrationCommand(command: unknown): void {
       const result = validateIntegrationCommandSpec(command);
@@ -224,7 +224,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         addDiagnostic(result.message ?? 'registerIntegrationCommand registration is invalid', 'extension:invalid-registration', result.id);
         return;
       }
-      state.integrationCommands.push({ kind: 'integrationCommand', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
+      state.integrationCommands.push({ kind: 'integrationCommand', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value, ...(result.value.requirements !== undefined && { requirements: result.value.requirements }) });
     },
     registerDeepLink(deepLink: unknown): void {
       const result = validateDeepLinkSpec(deepLink);
@@ -232,7 +232,7 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         addDiagnostic(result.message ?? 'registerDeepLink registration is invalid', 'extension:invalid-registration', result.id);
         return;
       }
-      state.deepLinks.push({ kind: 'deepLink', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
+      state.deepLinks.push({ kind: 'deepLink', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value, ...(result.value.requirements !== undefined && { requirements: result.value.requirements }) });
     },
   };
 

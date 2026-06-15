@@ -41,6 +41,7 @@ export type {
   ProfileSummary,
   ProfileUsageSummary,
   InputTransformContext,
+  EforgeExtensionDependencyLookupContext,
 } from './context.js';
 
 // Hook handler and result types
@@ -76,6 +77,23 @@ export type {
 // Event types (re-exported from @eforge-build/client)
 export type { EforgeEvent, AgentRole, EventOfType } from './events.js';
 export { EforgeEventSchema, safeParseEforgeEvent } from './events.js';
+
+export type {
+  ExtensionAvailabilityDiagnostic,
+  ExtensionCapabilityAvailability,
+  ExtensionCapabilityDeclaration,
+  ExtensionCapabilityLookup,
+  ExtensionCapabilityProviderAvailability,
+  ExtensionCapabilityRequirement,
+  ExtensionContributionAvailability,
+  ExtensionContributionRequirements,
+  ExtensionDependencyAvailability,
+  ExtensionDependencyDeclaration,
+  ExtensionDependencyKind,
+  ExtensionDependencyLookup,
+  ExtensionDependencyLookupContext,
+  ExtensionDependencyManifest,
+} from './dependencies.js';
 
 // Pattern matching
 export type { EventPattern } from './patterns.js';

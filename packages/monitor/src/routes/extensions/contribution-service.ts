@@ -126,15 +126,16 @@ export async function invokeExtensionAction(
     return { status: 404, body: failureBody(invocationId, 'unknown-action', result.message) };
   }
 
+  const validationErrors = 'validationErrors' in result ? result.validationErrors : undefined;
   emitExtensionActionFailed(context, provenance, {
     durationMs: result.durationMs,
     errorCode: result.kind,
     message: result.message,
-    ...(result.validationErrors !== undefined && { validationErrors: result.validationErrors }),
+    ...(validationErrors !== undefined && { validationErrors }),
   });
   return {
     status: statusForFailure(result.kind),
-    body: failureBody(invocationId, result.kind, result.message, result.validationErrors),
+    body: failureBody(invocationId, result.kind, result.message, validationErrors),
   };
 }
 
@@ -182,5 +183,6 @@ function sanitizeUnexpectedActionError(err: unknown): string {
 
 function statusForFailure(kind: Exclude<ExtensionActionInvokeErrorCode, 'unknown-action' | 'invalid-request' | 'timeout'>): number {
   if (kind === 'invalid-input') return 400;
+  if (kind === 'unavailable') return 409;
   return 500;
 }

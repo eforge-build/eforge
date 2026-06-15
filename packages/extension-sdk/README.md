@@ -65,6 +65,37 @@ Precedence is `project-local > project-team > user`. Supported entrypoints are `
 
 Loader-time registration capture is available today for runtime-wired families: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution/workstation registry support, daemon contribution routes, Console System rendering for declarative contributions, Console workstation rendering as sandboxed iframe workstations under `/console/workstations`, host discovery/invocation for actions, integration commands, and action-backed deep links, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, and daemon-owned `ctx.buildQueue.enqueue` dispatch for trusted build-queue handoffs are wired. The client-owned manifest contract preserves `srcDoc` entries and also supports source `frameBundle` entries rendered from eforge-owned workstation frame URLs. The bundled playbook and session-planning adapters live in `@eforge-build/input` and are not extension SDK registration APIs. Raw extension-owned HTTP routes are unsupported. Extension-owned AI planning/chat APIs are unsupported outside `ctx.agentTasks`. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, user-authored session-plan extraction, and user-authored playbook extraction remain separate, deferred, or unsupported runtime phases. Parent-Console plugins are unsupported.
 
+## Dependency and capability metadata
+
+Directory-layout extensions can declare public capabilities and required/optional dependencies in `package.json#eforge.extension`:
+
+```json
+{
+  "name": "acme-workflow",
+  "version": "1.2.0",
+  "eforge": {
+    "extension": {
+      "name": "acme-workflow",
+      "capabilities": [{ "name": "acme.workflow", "version": "1.2.0" }],
+      "dependencies": {
+        "optional": [{ "name": "acme-backlog", "capabilities": [{ "name": "acme.backlog", "version": ">=1.0.0" }] }]
+      }
+    }
+  }
+}
+```
+
+Required dependency failures skip the dependent extension. Optional failures keep it loaded and populate contribution/action lookup availability. Action handlers can inspect immutable state only:
+
+```ts
+handler: (_input, ctx) => ({
+  backlogAvailable: ctx.capabilities.get("acme.backlog", ">=1.0.0").available,
+  dependencyAvailable: ctx.dependencies.get("acme-backlog").available,
+})
+```
+
+The lookup API does not invoke other extensions.
+
 ## Scoped storage helpers
 
 Use `createEforgeProjectPaths` to resolve eforge-owned storage locations for the user, project-team, and project-local scopes. It is exported from the package root and `@eforge-build/extension-sdk/project-paths`, so extension tooling can use the same path convention without loading an extension module or running the daemon extension runtime.
@@ -114,7 +145,7 @@ The helper rejects empty segments, `.`/`..`, path separators, absolute paths, an
 | `registerPrdEnricher(spec)` | Enrich PRD/build-source content before queue write | Yes | Yes (fail-open) |
 | `registerReviewerPerspective(spec)` | Add custom reviewer perspective | Yes | Yes (parallel review-cycle dispatch) |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Yes (per-plan `validate` build stage) |
-| `registerAction(action)` | Register an extension-authored action | Yes | Engine action dispatcher via daemon action invocation route; action context includes daemon-owned `ctx.agentTasks` and `ctx.buildQueue` |
+| `registerAction(action)` | Register an extension-authored action | Yes | Engine action dispatcher via daemon action invocation route; action context includes dependency/capability lookup, daemon-owned `ctx.agentTasks`, and `ctx.buildQueue` |
 | `registerConsoleContribution(contribution)` | Register a Console contribution | Yes | Manifest/management metadata projection; Console renders declarative panels under `/console/system` |
 | `registerConsoleWorkstation(workstation)` | Register a sandboxed Console workstation | Yes | Manifest/management metadata projection; Console renders iframe workstations under `/console/workstations` from `srcDoc` entries or source `frameBundle` entries projected to daemon frame/asset URLs |
 | `registerIntegrationCommand(command)` | Register a host integration command | Yes | Manifest/management metadata projection; host integrations can invoke action-backed commands |
@@ -124,9 +155,9 @@ All capabilities have full TypeScript type contracts. Loading, registration capt
 
 ### Actions and host contributions
 
-Use `registerAction` for daemon-invoked work and bind it to declarative surfaces with `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink`. Local action IDs are resolved to effective namespaced manifest IDs by eforge, so author examples can bind to the local ID while hosts see stable manifest metadata.
+Use `registerAction` for daemon-invoked work and bind it to declarative surfaces with `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink`. Local action IDs are resolved to effective namespaced manifest IDs by eforge, so author examples can bind to the local ID while hosts see stable manifest metadata. Contributions may declare dependency/capability `requirements`; manifest entries include `availability`, and unavailable actions are rejected with error code `unavailable`.
 
-Action handlers also receive narrow daemon-owned APIs. `ctx.agentTasks` supports approved single-shot agent tasks; the daemon owns task storage under `.eforge/storage/agent-tasks`, profile/runtime resolution, cancellation, and lifecycle events. `ctx.buildQueue.enqueue({ source, ... })` submits a normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. Extensions do not import provider SDKs or `AgentHarness`, cannot supply arbitrary raw prompt templates, and cannot register custom task kinds through this API. The MVP resolves the existing planner role in read-only mode; planning-draft output can include `planRevisionTurn` for first-party eforge-plan revision sessions, but eforge-plan owns the revision thread storage and preview/apply semantics. Write-capable agent operation and multi-turn chat are not supported.
+Action handlers also receive immutable dependency/capability lookup plus narrow daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` report availability only and do not invoke another extension. `ctx.agentTasks` supports approved single-shot agent tasks; the daemon owns task storage under `.eforge/storage/agent-tasks`, profile/runtime resolution, cancellation, and lifecycle events. `ctx.buildQueue.enqueue({ source, ... })` submits a normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. Extensions do not import provider SDKs or `AgentHarness`, cannot supply arbitrary raw prompt templates, and cannot register custom task kinds through this API. The MVP resolves the existing planner role in read-only mode; planning-draft output can include `planRevisionTurn` for first-party eforge-plan revision sessions, but eforge-plan owns the revision thread storage and preview/apply semantics. Write-capable agent operation and multi-turn chat are not supported.
 
 ```ts
 import {
@@ -369,7 +400,11 @@ Extensions can be published as npm packages and installed by other projects with
   "eforge": {
     "extension": {
       "name": "my-extension",
-      "entrypoint": "./dist/index.js"
+      "entrypoint": "./dist/index.js",
+      "capabilities": [{ "name": "acme.workflow", "version": "1.0.0" }],
+      "dependencies": {
+        "optional": [{ "name": "acme-backlog", "version": ">=1.0.0" }]
+      }
     }
   }
 }
@@ -379,6 +414,9 @@ Extensions can be published as npm packages and installed by other projects with
 |-------|----------|---------|
 | `eforge.extension.name` | Yes | Extension name used for discovery, trust records, and management commands. |
 | `eforge.extension.entrypoint` | Yes | Relative path from the package root to the extension module entry point. |
+| `eforge.extension.capabilities` | No | Public capabilities provided by the extension. Capability versions are exact semantic versions. |
+| `eforge.extension.dependencies.required` | No | Provider/capability requirements that must resolve before this extension is imported. |
+| `eforge.extension.dependencies.optional` | No | Provider/capability requirements that populate availability state without blocking import. |
 
 ### Installing packaged extensions
 

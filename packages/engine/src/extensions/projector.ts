@@ -1,6 +1,15 @@
 import type { ConsoleContributionDetail, ConsoleWorkstationDetail, ExtensionActionDetail, ExtensionDeepLinkDetail, IntegrationCommandDetail, ReviewerPerspectiveDetail, ReviewerPerspectiveApplicabilitySummary, ValidationProviderDetail } from '@eforge-build/client';
 import { buildActionDetails, buildConsoleContributionDetails, buildConsoleWorkstationDetails, buildDeepLinkDetails, buildIntegrationCommandDetails } from './manifest.js';
-import type { NativeExtensionCandidate, NativeExtensionDiagnostic, NativeExtensionInstallProvenance, NativeExtensionPackageProvenance, NativeExtensionRegistry } from './types.js';
+import type {
+  NativeExtensionCandidate,
+  NativeExtensionDiagnostic,
+  NativeExtensionInstallProvenance,
+  NativeExtensionPackageProvenance,
+  NativeExtensionRegistry,
+  NativeExtensionCapabilityDeclaration,
+  NativeExtensionDependencyManifest,
+  NativeExtensionResolvedDependencyState,
+} from './types.js';
 
 export interface NativeExtensionRegistryProjection {
   extensions: Array<{
@@ -20,6 +29,9 @@ export interface NativeExtensionRegistryProjection {
     deepLinkDetails?: ExtensionDeepLinkDetail[];
     packageProvenance?: NativeExtensionPackageProvenance;
     installProvenance?: NativeExtensionInstallProvenance;
+    capabilities?: NativeExtensionCapabilityDeclaration[];
+    dependencies?: NativeExtensionDependencyManifest;
+    resolvedDependencies?: NativeExtensionResolvedDependencyState;
   }>;
   candidates: Array<{
     name: string;
@@ -38,6 +50,9 @@ export interface NativeExtensionRegistryProjection {
     shadows: Array<{ name: string; path: string; scope: string; entrypoint?: string }>;
     packageProvenance?: NativeExtensionPackageProvenance;
     installProvenance?: NativeExtensionInstallProvenance;
+    capabilities?: NativeExtensionCapabilityDeclaration[];
+    dependencies?: NativeExtensionDependencyManifest;
+    resolvedDependencies?: NativeExtensionResolvedDependencyState;
   }>;
   diagnostics: NativeExtensionDiagnostic[];
   totals: {
@@ -150,6 +165,9 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         ...(deepLinkDetails !== undefined && { deepLinkDetails }),
         ...(extension.packageProvenance !== undefined && { packageProvenance: { ...extension.packageProvenance } }),
         ...(extension.installProvenance !== undefined && { installProvenance: { ...extension.installProvenance } }),
+        ...(extension.capabilities !== undefined && { capabilities: cloneJson(extension.capabilities) }),
+        ...(extension.dependencies !== undefined && { dependencies: cloneJson(extension.dependencies) }),
+        ...(extension.resolvedDependencies !== undefined && { resolvedDependencies: cloneJson(extension.resolvedDependencies) }),
       };
     }),
     candidates: registry.candidates.map(projectExtensionCandidate),
@@ -171,6 +189,10 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       deepLinks: registry.deepLinks.length,
     },
   };
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function projectExtensionCandidate(candidate: NativeExtensionCandidate): NativeExtensionRegistryProjection['candidates'][number] {
@@ -196,5 +218,8 @@ function projectExtensionCandidate(candidate: NativeExtensionCandidate): NativeE
     })),
     ...(candidate.packageProvenance !== undefined && { packageProvenance: { ...candidate.packageProvenance } }),
     ...(candidate.installProvenance !== undefined && { installProvenance: { ...candidate.installProvenance } }),
+    ...(candidate.capabilities !== undefined && { capabilities: cloneJson(candidate.capabilities) }),
+    ...(candidate.dependencies !== undefined && { dependencies: cloneJson(candidate.dependencies) }),
+    ...(candidate.resolvedDependencies !== undefined && { resolvedDependencies: cloneJson(candidate.resolvedDependencies) }),
   };
 }

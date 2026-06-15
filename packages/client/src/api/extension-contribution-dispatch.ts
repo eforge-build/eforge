@@ -2,6 +2,7 @@ import {
   type ExtensionActionInvokeResponse,
   type ExtensionActionManifestEntry,
   type ExtensionActionOutputProfile,
+  type ExtensionContributionAvailability,
   type ExtensionActionRequestedBy,
   type ExtensionActionSideEffect,
   type ExtensionContributionDiagnostic,
@@ -34,6 +35,7 @@ export interface ExtensionHostContributionEntry {
   outputProfile?: ExtensionActionOutputProfile;
   inputSchema?: ExtensionJsonObject;
   inputDefaults?: ExtensionJsonObject;
+  availability?: ExtensionContributionAvailability;
 }
 
 export interface ExtensionHostContributionListResponse {
@@ -68,6 +70,7 @@ export interface ExtensionHostContributionInvokeResult {
 
 interface ResolveResult {
   target: ExtensionHostContributionInvokeTarget;
+  unavailableMessage?: string;
 }
 
 type ActionLookup = Map<string, ExtensionActionManifestEntry>;
@@ -132,11 +135,13 @@ export async function invokeEforgeExtensionContribution(opts: {
 } & ExtensionHostContributionInvokeParams): Promise<ExtensionHostContributionInvokeResult> {
   const input = validateExtensionContributionInvocationParams(opts);
   const manifest = await apiGetExtensionContributionManifest({ cwd: opts.cwd });
-  const { target } = resolveExtensionContributionInvocationWithInput(manifest, opts, input);
-  const response = await apiInvokeExtensionAction({
-    cwd: opts.cwd,
-    body: { actionId: target.actionId, input: target.input, requestedBy: target.requestedBy },
-  });
+  const { target, unavailableMessage } = resolveExtensionContributionInvocationWithInput(manifest, opts, input);
+  const response = unavailableMessage !== undefined
+    ? unavailableResponse(unavailableMessage)
+    : await apiInvokeExtensionAction({
+      cwd: opts.cwd,
+      body: { actionId: target.actionId, input: target.input, requestedBy: target.requestedBy },
+    });
   return { target, response };
 }
 
@@ -145,11 +150,13 @@ export async function invokeEforgeExtensionContributionIfRunning(opts: {
 } & ExtensionHostContributionInvokeParams): Promise<ExtensionHostContributionInvokeResult | null> {
   const manifest = await apiGetExtensionContributionManifestIfRunning({ cwd: opts.cwd });
   if (!manifest) return null;
-  const { target } = resolveExtensionContributionInvocation(manifest, opts);
-  const response = await apiInvokeExtensionActionIfRunning({
-    cwd: opts.cwd,
-    body: { actionId: target.actionId, input: target.input, requestedBy: target.requestedBy },
-  });
+  const { target, unavailableMessage } = resolveExtensionContributionInvocation(manifest, opts);
+  const response = unavailableMessage !== undefined
+    ? unavailableResponse(unavailableMessage)
+    : await apiInvokeExtensionActionIfRunning({
+      cwd: opts.cwd,
+      body: { actionId: target.actionId, input: target.input, requestedBy: target.requestedBy },
+    });
   return response ? { target, response } : null;
 }
 
@@ -166,6 +173,7 @@ function actionEntry(entry: ExtensionActionManifestEntry): ExtensionHostContribu
     sideEffects: entry.sideEffects,
     outputProfile: entry.outputProfile,
     inputSchema: entry.inputSchema,
+    availability: entry.availability,
   };
 }
 
@@ -183,6 +191,7 @@ function commandEntry(entry: IntegrationCommandManifestEntry, actionLookup: Acti
     outputProfile: boundAction?.outputProfile,
     inputSchema: entry.inputSchema ?? boundAction?.inputSchema,
     inputDefaults: entry.action.inputDefaults,
+    availability: combineContributionAvailability(entry.availability, boundAction?.availability),
   };
 }
 
@@ -201,6 +210,7 @@ function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry, actionLookup: Acti
     outputProfile: boundAction?.outputProfile,
     inputSchema: boundAction?.inputSchema,
     inputDefaults: entry.action?.inputDefaults,
+    availability: entry.action ? combineContributionAvailability(entry.availability, boundAction?.availability) : entry.availability,
   };
 }
 
@@ -228,7 +238,9 @@ function resolveAction(
 ): ResolveResult {
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown extension action "${id}"`);
+  const unavailableMessage = contributionUnavailableMessage(entry.availability, `Extension action "${id}" is unavailable`);
   return {
+    unavailableMessage,
     target: {
       kind: 'action',
       id: entry.id,
@@ -253,7 +265,10 @@ function resolveCommand(
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown extension integration command "${id}"`);
   const boundAction = actions.find((candidate) => candidate.id === entry.action.actionId);
+  const unavailableMessage = contributionUnavailableMessage(entry.availability, `Extension integration command "${id}" is unavailable`)
+    ?? contributionUnavailableMessage(boundAction?.availability, `Extension action "${entry.action.actionId}" is unavailable`);
   return {
+    unavailableMessage,
     target: {
       kind: 'command',
       id: entry.id,
@@ -279,7 +294,10 @@ function resolveDeepLink(
   if (!entry) throw new Error(`Unknown extension deep link "${id}"`);
   if (!entry.action) throw new Error(`Deep link "${id}" is not action-backed`);
   const boundAction = actions.find((candidate) => candidate.id === entry.action?.actionId);
+  const unavailableMessage = contributionUnavailableMessage(entry.availability, `Extension deep link "${id}" is unavailable`)
+    ?? contributionUnavailableMessage(boundAction?.availability, `Extension action "${entry.action.actionId}" is unavailable`);
   return {
+    unavailableMessage,
     target: {
       kind: 'deep-link',
       id: entry.id,
@@ -291,6 +309,33 @@ function resolveDeepLink(
       input: { ...(entry.action.inputDefaults ?? {}), ...input },
       outputProfile: boundAction?.outputProfile,
     },
+  };
+}
+
+function contributionUnavailableMessage(availability: ExtensionContributionAvailability | undefined, fallbackMessage: string): string | undefined {
+  return availability?.available === false ? availability.message ?? fallbackMessage : undefined;
+}
+
+function combineContributionAvailability(
+  entryAvailability: ExtensionContributionAvailability | undefined,
+  actionAvailability: ExtensionContributionAvailability | undefined,
+): ExtensionContributionAvailability | undefined {
+  if (entryAvailability?.available === false || actionAvailability?.available === false) {
+    const diagnostics = [...(entryAvailability?.diagnostics ?? []), ...(actionAvailability?.diagnostics ?? [])];
+    return {
+      available: false,
+      message: entryAvailability?.available === false ? entryAvailability.message ?? actionAvailability?.message : actionAvailability?.message,
+      ...(diagnostics.length > 0 && { diagnostics }),
+    };
+  }
+  return entryAvailability ?? actionAvailability;
+}
+
+function unavailableResponse(message: string): ExtensionActionInvokeResponse {
+  return {
+    ok: false,
+    invocationId: `client-unavailable-${Date.now()}`,
+    error: { code: 'unavailable', message },
   };
 }
 

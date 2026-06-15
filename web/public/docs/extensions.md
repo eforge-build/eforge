@@ -118,7 +118,15 @@ Extensions can be distributed as npm packages, local package directories, or tar
   "eforge": {
     "extension": {
       "name": "build-notifier",
-      "entrypoint": "./dist/index.js"
+      "entrypoint": "./dist/index.js",
+      "capabilities": [{ "name": "acme.notifications", "version": "1.0.0" }],
+      "dependencies": {
+        "optional": [{
+          "name": "acme-backlog",
+          "version": ">=1.0.0, <2.0.0",
+          "capabilities": [{ "name": "acme.backlog", "version": ">=1.0.0" }]
+        }]
+      }
     }
   }
 }
@@ -130,6 +138,11 @@ Fields:
 |-------|----------|---------|
 | `eforge.extension.name` | Yes | Extension name used for discovery, trust records, and management commands. |
 | `eforge.extension.entrypoint` | Yes | Relative path from the package root to the extension module entry point. |
+| `eforge.extension.capabilities` | No | Public capabilities provided by the extension. Capability versions are exact semantic versions. |
+| `eforge.extension.dependencies.required` | No | Provider/capability requirements that must resolve before this extension is imported. Missing, shadowed, untrusted, changed, errored, version-incompatible, or capability-incompatible providers skip the dependent and emit `extension:dependency-*` diagnostics. |
+| `eforge.extension.dependencies.optional` | No | Provider/capability requirements that populate availability state but do not block importing the dependent. |
+
+Version constraints accept exact semantic versions, comparators (`>`, `>=`, `<`, `<=`), and comma-separated AND constraints. Invalid dependency or capability metadata is reported as `extension:invalid-package-manifest`. Contribution manifests expose `availability` for actions, commands, deep links, Console contributions, and workstations; unavailable actions return `{ ok: false, error: { code: "unavailable" } }`. Action contexts expose immutable `ctx.dependencies` and `ctx.capabilities` lookup data. They report availability only — there is no cross-extension invocation API or invocation loop state.
 
 ### Install, update, and remove
 

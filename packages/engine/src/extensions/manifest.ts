@@ -16,6 +16,7 @@ import type {
 import { EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION } from '@eforge-build/client';
 
 import { jsonSafeClone } from './contribution-validation.js';
+import { applyContributionAvailability } from './dependency-resolution.js';
 import { resolveExtensionContributionId } from './ids.js';
 import { buildConsoleWorkstationFrameBundleManifest, ConsoleWorkstationAssetCatalogError } from './workstation-assets.js';
 import type {
@@ -31,6 +32,7 @@ import type {
 } from './types.js';
 
 export function buildExtensionContributionManifest(registry: NativeExtensionRegistry): ExtensionContributionManifestResponse {
+  applyContributionAvailability(registry);
   const projectionDiagnostics: NativeExtensionDiagnostic[] = [];
   const manifest = {
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
@@ -57,6 +59,8 @@ export function buildActionManifestEntry(reg: ActionRegistration): ExtensionActi
     outputSchema: reg.value.outputSchema === undefined ? undefined : cloneSchema(reg.value.outputSchema),
     outputProfile: reg.value.outputProfile,
     sideEffects: reg.value.sideEffects === undefined ? undefined : [...reg.value.sideEffects],
+    requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
+    availability: projectAvailability(reg.availability),
   }) as unknown as ExtensionActionManifestEntry;
 }
 
@@ -69,6 +73,8 @@ export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRe
     title: reg.value.title,
     description: reg.value.description,
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
+    requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
+    availability: projectAvailability(reg.availability),
     blocks: reg.value.blocks.map((block) => projectBlock(block, reg.extensionName)),
   }) as ConsoleContributionManifestEntry;
 }
@@ -82,6 +88,8 @@ export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegi
     title: reg.value.title,
     description: reg.value.description,
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
+    requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
+    availability: projectAvailability(reg.availability),
     allowedActions: projectAllowedActions(reg, registry),
   };
   if (reg.value.frameBundle !== undefined) {
@@ -99,6 +107,8 @@ export function buildIntegrationCommandManifestEntry(reg: IntegrationCommandRegi
     label: reg.value.label,
     description: reg.value.description,
     inputSchema: reg.value.inputSchema === undefined ? undefined : cloneSchema(reg.value.inputSchema),
+    requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
+    availability: projectAvailability(reg.availability),
     action: projectBinding(reg.value.action, reg.extensionName),
   }) as IntegrationCommandManifestEntry;
 }
@@ -112,6 +122,8 @@ export function buildDeepLinkManifestEntry(reg: DeepLinkRegistration): Extension
     label: reg.value.label,
     description: reg.value.description,
     urlTemplate: reg.value.urlTemplate,
+    requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
+    availability: projectAvailability(reg.availability),
     action: reg.value.action === undefined ? undefined : projectBinding(reg.value.action, reg.extensionName),
   }) as ExtensionDeepLinkManifestEntry;
 }
@@ -144,6 +156,14 @@ export function buildDeepLinkDetails(registry: NativeExtensionRegistry, extensio
 
 export function cloneSchema<T extends Record<string, unknown>>(schema: T): T {
   return jsonSafeClone(schema);
+}
+
+function projectRequirements(requirements: unknown): unknown {
+  return requirements === undefined ? undefined : jsonSafeClone(requirements);
+}
+
+function projectAvailability(availability: unknown): unknown {
+  return availability === undefined ? undefined : jsonSafeClone(availability);
 }
 
 function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string): ConsoleContributionBlock {
@@ -194,6 +214,12 @@ function projectDiagnostic(diagnostic: NativeExtensionDiagnostic, registry: Nati
     message: diagnostic.message,
     code: diagnostic.code,
     name: diagnostic.name,
+    dependencyName: diagnostic.dependencyName,
+    providerName: diagnostic.providerName,
+    capabilityName: diagnostic.capabilityName,
+    requiredVersion: diagnostic.requiredVersion,
+    actualVersion: diagnostic.actualVersion,
+    dependencyKind: diagnostic.dependencyKind,
   }) as ExtensionContributionManifestResponse['diagnostics'] extends Array<infer T> | undefined ? T : never;
 }
 

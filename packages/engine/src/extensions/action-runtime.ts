@@ -5,6 +5,7 @@ import { safeParseWithSchema, type ExtensionActionRequestedBy, type ExtensionJso
 import type { TSchema } from '@sinclair/typebox';
 
 import { validateJsonSafeValue, jsonSafeClone } from './contribution-validation.js';
+import { buildExtensionLookupContext, isContributionAvailable } from './dependency-resolution.js';
 import type { ActionRegistration, ExtensionAgentTasksApiShape, ExtensionBuildQueueApiShape, NativeExtensionRegistry } from './types.js';
 
 type ExtensionActionValidationError = ValueError & Record<string, ExtensionJsonValue>;
@@ -28,6 +29,7 @@ export interface DispatchExtensionActionOptions {
 export type DispatchExtensionActionResult =
   | { kind: 'success'; invocationId: string; actionId: string; extensionName: string; extensionPath: string; requestedBy: ExtensionActionRequestedBy; durationMs: number; output: ExtensionJsonValue }
   | { kind: 'unknown-action'; invocationId: string; actionId: string; requestedBy: ExtensionActionRequestedBy; message: string }
+  | { kind: 'unavailable'; invocationId: string; actionId: string; extensionName: string; extensionPath: string; requestedBy: ExtensionActionRequestedBy; durationMs: number; message: string }
   | { kind: 'invalid-input' | 'handler-error' | 'timeout' | 'invalid-output' | 'output-schema-failed'; invocationId: string; actionId: string; extensionName: string; extensionPath: string; requestedBy: ExtensionActionRequestedBy; durationMs: number; message: string; validationErrors?: ExtensionActionValidationError[]; timeoutMs?: number };
 
 export async function dispatchExtensionAction(
@@ -46,6 +48,9 @@ export async function dispatchExtensionAction(
     };
   }
   const started = Date.now();
+  if (!isContributionAvailable(action)) {
+    return failure('unavailable', action, options, invocationId, started, action.availability?.message ?? `Extension action "${options.actionId}" is unavailable`);
+  }
   let parsedInput: ReturnType<typeof safeParseWithSchema>;
   try {
     parsedInput = safeParseWithSchema(action.value.inputSchema as TSchema, options.input);
@@ -60,7 +65,7 @@ export async function dispatchExtensionAction(
   const controller = new AbortController();
   try {
     rawOutput = await runWithTimeout(
-      Promise.resolve().then(() => action.value.handler(parsedInput.data as Record<string, unknown>, buildActionContext(action, options, invocationId, controller.signal))),
+      Promise.resolve().then(() => action.value.handler(parsedInput.data as Record<string, unknown>, buildActionContext(registry, action, options, invocationId, controller.signal))),
       options.timeoutMs,
       controller,
     );
@@ -106,7 +111,7 @@ export async function dispatchExtensionAction(
   };
 }
 
-function buildActionContext(action: ActionRegistration, options: DispatchExtensionActionOptions, invocationId: string, signal: AbortSignal) {
+function buildActionContext(registry: NativeExtensionRegistry, action: ActionRegistration, options: DispatchExtensionActionOptions, invocationId: string, signal: AbortSignal) {
   return {
     invocationId,
     actionId: action.id,
@@ -115,6 +120,7 @@ function buildActionContext(action: ActionRegistration, options: DispatchExtensi
     signal,
     logger: buildLogger(action),
     paths: createEforgeProjectPaths({ cwd: options.cwd, configDir: options.configDir, extensionName: action.extensionName }),
+    ...buildExtensionLookupContext(registry, { extensionName: action.extensionName, extensionPath: action.extensionPath }),
     // --- eforge:region extension-agent-task-context ---
     agentTasks: options.agentTasks?.({ extensionName: action.extensionName, extensionPath: action.extensionPath }) ?? unavailableAgentTasks(),
     // --- eforge:endregion extension-agent-task-context ---

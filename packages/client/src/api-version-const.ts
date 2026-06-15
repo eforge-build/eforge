@@ -22,5 +22,8 @@
  * route, or changing a response's required fields IS breaking and must bump.
  * (v54 is a case 2 bump: the optional recovery applied metadata is additive,
  * but Console depends on it, so stale daemons must fail version verification.)
+ * (v69 is a case 2 bump: extension contribution manifests expose dependency,
+ * capability, and availability metadata, and action invocation can return an
+ * unavailable failure response.)
  */
-export const DAEMON_API_VERSION = 68; // v68: extension agent task start input carries session-plan-creation readiness context, and creation-draft dimensions are canonical kebab-case ids.
+export const DAEMON_API_VERSION = 69; // v69: extension dependency/capability availability metadata and unavailable action invoke failures.
