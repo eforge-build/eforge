@@ -1,0 +1,115 @@
+name: compact-eforge-plan-workstation-loading-and-oversized-output-safeguards
+description: Compact eforge-plan workstation loading plus extension contribution
+  validation and host oversized-output safeguards.
+base_branch: eforge/fix-workstation-session-plan-duplication-and-console-synthetic-resume-lanes
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm --filter @eforge-build/eforge-plan-workstation test
+  - pnpm test
+plans:
+  - id: plan-01-compact-workstation-reads
+    name: Compact Workstation Board Reads
+    depends_on: []
+    branch: compact-eforge-plan-workstation-loading-and-oversized-output-safeguards/plan-01-compact-workstation-reads
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The workstation data flow changes board API projections, UI state,
+          lazy detail loading, and tests across the extension and iframe app.
+      tester:
+        effort: high
+        rationale: The plan needs focused UI hook/component tests plus extension action
+          tests to prove rich board data is off the initial path.
+  - id: plan-02-contribution-output-profiles-validation
+    name: Contribution Output Profiles and Validation Warnings
+    depends_on:
+      - plan-01-compact-workstation-reads
+    branch: compact-eforge-plan-workstation-loading-and-oversized-output-safeguards/plan-02-contribution-output-profiles-validation
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan adds a backward-compatible contribution wire field, SDK
+          typing, registration diagnostics, and first-party action metadata.
+      reviewer:
+        effort: high
+        rationale: The client-owned manifest schema and extension SDK/engine boundary
+          need API-focused review.
+  - id: plan-03-host-output-safeguards-docs
+    name: Host Output Safeguards and Documentation
+    depends_on:
+      - plan-02-contribution-output-profiles-validation
+    branch: compact-eforge-plan-workstation-loading-and-oversized-output-safeguards/plan-03-host-output-safeguards-docs
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The same formatter must work across client, CLI, MCP, Pi, and Console
+          surfaces without route or wire-shape drift.
+      reviewer:
+        effort: high
+        rationale: Host behavior changes affect coding-agent context safety and
+          documentation/plugin parity.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - validate
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+    maxRounds: 3
+    evaluatorStrictness: standard
+  rationale: "This is a broad but cohesive cross-package feature, not a set of
+    independently planned modules: workstation compact loading, contribution
+    validation, host output formatting, and docs/tests are coupled by shared
+    contribution contracts. Excursion with plan review gives enough planning
+    rigor without expedition overhead. Build includes docs, test
+    authoring/execution, the registered maintainability validation gate before
+    review, and iterative review for the API-facing host/workstation changes."
