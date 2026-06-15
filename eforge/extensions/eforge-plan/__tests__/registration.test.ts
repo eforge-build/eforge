@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
+import { buildExtensionContributionManifest } from '../../../../packages/engine/src/extensions/manifest.js';
 import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
 import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../../../../packages/engine/src/extensions/types.js';
 import type { EforgeEvent, EventHookContext } from '../../../../packages/extension-sdk/src/index.js';
@@ -15,6 +16,7 @@ import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
 const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
 const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
+const NONE_ACTIONS = new Set(['open-planning-entry']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
 
@@ -56,6 +58,15 @@ function markdownSection(markdown: string, heading: string): string {
 }
 
 describe('eforge-plan extension registration', () => {
+  it('declares stable planning capabilities in package metadata', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8')) as { eforge?: { extension?: { name?: string; entrypoint?: string; capabilities?: Array<{ name: string; version?: string }> } } };
+    expect(pkg.eforge?.extension).toMatchObject({ name: 'eforge-plan', entrypoint: 'index.ts' });
+    expect(pkg.eforge?.extension?.capabilities).toEqual(expect.arrayContaining([
+      { name: 'eforge.plan.planning-workstation', version: '1.0.0' },
+      { name: 'eforge.plan.planning-mode-playbook', version: '1.0.0' },
+    ]));
+  });
+
   it('loads without creating runtime storage', async () => {
     await withTempProject(async (cwd) => {
       load();
@@ -91,6 +102,7 @@ describe('eforge-plan extension registration', () => {
       'list-plan-revision-sessions',
       'list-planning-agent-tasks',
       'list-planning-artifacts',
+      'open-planning-entry',
       'prepare-planner-context',
       'preview-backlog-curation-task',
       'promote-item',
@@ -121,6 +133,7 @@ describe('eforge-plan extension registration', () => {
       expect(JSON.stringify(action.outputSchema)).not.toMatch(/function|undefined/);
       if (BUILD_QUEUE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('build-queue');
       else expect(action.sideEffects).not.toContain('build-queue');
+      if (NONE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('none');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
       if (DAEMON_STATE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('daemon-state');
       if (action.id === 'refresh-recommendations' || action.id === 'import-legacy-backlog' || action.id === 'analyze-all-backlog') expect(action.sideEffects).toContain('local-read');
@@ -156,6 +169,8 @@ describe('eforge-plan extension registration', () => {
     expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation/);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
+    const planningEntryOutput = actions.find((action) => action.id === 'open-planning-entry')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(planningEntryOutput)).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
   });
 
   it('dispatches JSON-safe board output and keeps markdown rendering available', async () => {
@@ -363,7 +378,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'capture-item', 'update-item', 'import-legacy-backlog']) {
+    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'open-planning-entry', 'capture-item', 'update-item', 'import-legacy-backlog']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
     expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === 'refresh-recommendations')).toBe(false);
@@ -416,9 +431,20 @@ describe('eforge-plan extension registration', () => {
     expect(workstation!.allowedActions).not.toContain('promote-selection');
     expect(workstation!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstation!).toBe(false);
-
-    expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);
-    expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['promote-item', 'promote-selection', 'render-board-markdown']);
+    const manifest = buildExtensionContributionManifest(registryFromRecorderState(state));
+    expect(manifest.actions.find((entry) => entry.localId === 'open-planning-entry')).toMatchObject({ id: 'eforge-plan:open-planning-entry' });
+    expect(manifest.integrationCommands.find((entry) => entry.localId === 'open-planning-entry')).toMatchObject({ id: 'eforge-plan:open-planning-entry', action: { actionId: 'eforge-plan:open-planning-entry' } });
+    expect(state.integrationCommands.find((entry) => entry.value.id === 'open-planning-entry')?.value).toMatchObject({
+      label: 'Open eforge-plan planning entry',
+      action: { actionId: 'open-planning-entry' },
+    });
+    expect(state.deepLinks.find((entry) => entry.value.id === 'planning-workstation')?.value).toMatchObject({
+      label: 'Open eforge-plan planning workstation',
+      urlTemplate: '/console/workstations/eforge-plan%3Aplanning-workstation',
+      action: { actionId: 'open-planning-entry' },
+    });
+    expect(state.integrationCommands.map((entry) => entry.value.action.actionId).sort()).toEqual(['open-planning-entry', 'promote-item', 'promote-selection', 'render-board-markdown']);
+    expect(state.deepLinks.map((entry) => entry.value.action?.actionId).sort()).toEqual(['open-planning-entry', 'promote-item', 'promote-selection', 'render-board-markdown']);
     expect(state.eventHooks.map((entry) => entry.value.pattern).sort()).toEqual(['enqueue:complete', 'enqueue:start', 'landing:auto-merge:complete', 'landing:complete', 'queue:prd:complete', 'queue:prd:start', 'session:end', 'session:start']);
   });
 

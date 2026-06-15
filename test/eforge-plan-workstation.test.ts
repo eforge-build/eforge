@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ConsoleWorkstation, EforgeExtensionAPI } from '../packages/extension-sdk/src/index.js';
+import type { ConsoleWorkstation, EforgeExtensionAPI, ExtensionDeepLink } from '../packages/extension-sdk/src/index.js';
 import eforgePlanExtension from '../eforge/extensions/eforge-plan/index.js';
 
 describe('eforge-plan Console workstation dogfood registration', () => {
   it('registers the planning workstation as a frame bundle with planning actions', () => {
     const workstations: ConsoleWorkstation[] = [];
+    const deepLinks: ExtensionDeepLink[] = [];
     const api = {
       registerAction() {},
       registerInputSource() {},
@@ -13,7 +14,9 @@ describe('eforge-plan Console workstation dogfood registration', () => {
         workstations.push(workstation);
       },
       registerIntegrationCommand() {},
-      registerDeepLink() {},
+      registerDeepLink(deepLink: ExtensionDeepLink) {
+        deepLinks.push(deepLink);
+      },
       onEvent() {},
     } as unknown as EforgeExtensionAPI;
 
@@ -54,5 +57,11 @@ describe('eforge-plan Console workstation dogfood registration', () => {
     expect(workstations[0]!.allowedActions).not.toContain('promote-selection');
     expect(workstations[0]!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstations[0]!).toBe(false);
+    const effectiveWorkstationId = `eforge-plan:${workstations[0]!.id}`;
+    expect(effectiveWorkstationId).toBe('eforge-plan:planning-workstation');
+    expect(deepLinks.find((entry) => entry.id === 'planning-workstation')).toMatchObject({
+      urlTemplate: '/console/workstations/eforge-plan%3Aplanning-workstation',
+      action: { actionId: 'open-planning-entry' },
+    });
   });
 });

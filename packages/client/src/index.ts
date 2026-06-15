@@ -252,6 +252,10 @@ export type {
   PlaybookRunResponse,
   PlaybookRunEnqueuedResponse,
   PlaybookRunRequiresAgentResponse,
+  PlaybookRunPlanningUnavailableResponse,
+  PlaybookPlanningEntryMetadata,
+  PlaybookPlanningRequiredCapability,
+  PlaybookPlanningUnavailableDiagnostic,
 } from './routes.js';
 
 export type { StackLayersResponse } from './routes.js';

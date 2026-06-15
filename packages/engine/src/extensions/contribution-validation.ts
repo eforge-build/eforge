@@ -161,7 +161,7 @@ export function validateDeepLinkSpec(value: unknown): RegistrationValidationResu
   if (!base.ok) return base as RegistrationValidationResult<ExtensionDeepLinkSpec>;
   const spec = value as Record<string, unknown>;
   if (spec.urlTemplate !== undefined && !isNonBlankString(spec.urlTemplate)) return fail(base.id, 'registerDeepLink urlTemplate must be a non-empty string');
-  if (typeof spec.urlTemplate === 'string' && !isSafeUrlString(spec.urlTemplate, SAFE_DEEP_LINK_SCHEMES)) return fail(base.id, 'registerDeepLink urlTemplate must use a safe URL scheme');
+  if (typeof spec.urlTemplate === 'string' && !isSafeDeepLinkUrlString(spec.urlTemplate)) return fail(base.id, 'registerDeepLink urlTemplate must use a safe URL scheme');
   if (spec.action !== undefined && !isValidActionBindingSpec(spec.action)) return fail(base.id, 'registerDeepLink action must be a valid action binding');
   if (spec.urlTemplate === undefined && spec.action === undefined) return fail(base.id, 'registerDeepLink requires urlTemplate or an action binding');
   let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
@@ -347,6 +347,12 @@ function isSafeConsoleHref(value: string): boolean {
   if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
   if (value.startsWith('/console/')) return true;
   return isSafeUrlString(value, SAFE_CONSOLE_LINK_SCHEMES);
+}
+
+function isSafeDeepLinkUrlString(value: string): boolean {
+  if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
+  if (value.startsWith('/console/')) return true;
+  return isSafeUrlString(value, SAFE_DEEP_LINK_SCHEMES);
 }
 
 function isValidActionBindingSpec(value: unknown): value is ExtensionActionBindingSpec {

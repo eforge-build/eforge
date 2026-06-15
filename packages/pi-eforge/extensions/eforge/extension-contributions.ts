@@ -15,6 +15,7 @@ import { formatInvocationPanel, prepareContributionInput } from './extension-con
 import { showInfoPanel, showSearchableSelectPanel, withLoader, type UIContext } from './ui-helpers.js';
 
 const TOOL_ACTIONS = ['list', 'invoke'] as const;
+const TOOL_KINDS = [...EXTENSION_HOST_CONTRIBUTION_KINDS, 'all'] as const;
 
 export function registerExtensionContributionTool(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -24,7 +25,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
       'List and invoke extension-provided actions, integration commands, and action-backed deep links. Distinct from eforge_extension extension management.',
     parameters: Type.Object({
       action: StringEnum(TOOL_ACTIONS, { description: 'List host contributions or invoke one contribution' }),
-      kind: Type.Optional(StringEnum(EXTENSION_HOST_CONTRIBUTION_KINDS, { description: 'Contribution kind' })),
+      kind: Type.Optional(StringEnum(TOOL_KINDS, { description: 'Contribution kind. Use "all" only when listing all contributions.' })),
       id: Type.Optional(Type.String({ minLength: 1, description: 'Contribution id. Required for invoke.' })),
       input: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: 'JSON object input for invocation' })),
     }),
@@ -38,6 +39,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
         return jsonResult(result);
       }
       if (!params.id) throw new Error('"id" is required when action is "invoke"');
+      if (params.kind === 'all') throw new Error('"kind: all" is only valid when action is "list"');
       const result = await invokeEforgeExtensionContributionIfRunning({
         cwd: ctx.cwd,
         kind: params.kind as ExtensionHostContributionKind | undefined,

@@ -313,7 +313,8 @@ function resolveDependency(
 
   const missingCapability = (dependency.capabilities ?? []).find((requirement) => !candidateSatisfiesCapability(provider, requirement));
   if (missingCapability) {
-    return { ...base, available: false, diagnostics: [diagnostic(owner, dependency, kind, 'extension:dependency-capability-incompatible', `Dependency "${displayDependency(dependency)}" requires capability "${missingCapability.name}"${missingCapability.version ? ` satisfying "${missingCapability.version}"` : ''} from "${provider.name}"`, provider, missingCapability.name, missingCapability.version)] };
+    const actualCapabilityVersion = provider.capabilities?.find((capability) => capability.name === missingCapability.name)?.version;
+    return { ...base, available: false, diagnostics: [diagnostic(owner, dependency, kind, 'extension:dependency-capability-incompatible', `Dependency "${displayDependency(dependency)}" requires capability "${missingCapability.name}"${missingCapability.version ? ` satisfying "${missingCapability.version}"` : ''} from "${provider.name}"`, provider, missingCapability.name, missingCapability.version, actualCapabilityVersion ?? null)] };
   }
 
   if (provider.status === 'shadowed') {
@@ -348,7 +349,9 @@ function selectProvider(dependency: NativeExtensionDependencyDeclaration, candid
   if (compatible[0]) return { provider: compatible[0], code: '', message: '' };
   const shadowed = pool.filter((candidate) => candidate.status === 'shadowed').find((candidate) => candidateMatchesDependency(candidate, dependency));
   if (shadowed) return { shadowedProvider: shadowed, code: 'extension:dependency-shadowed', message: `Dependency "${displayDependency(dependency)}" is provided only by shadowed extension "${shadowed.name}"` };
-  if (nonShadowed[0]) return { provider: nonShadowed[0], code: '', message: '' };
+  if (dependency.name && nonShadowed[0]) return { provider: nonShadowed[0], code: '', message: '' };
+  const incompatibleCapabilityProvider = findProviderWithRequestedCapabilityName(dependency, nonShadowed, runtime);
+  if (incompatibleCapabilityProvider) return { provider: incompatibleCapabilityProvider, code: '', message: '' };
   return { code: 'extension:dependency-missing', message: `Missing extension dependency "${displayDependency(dependency)}"` };
 }
 
@@ -356,6 +359,16 @@ function candidateIsTrustedAndLoadable(candidate: NativeExtensionCandidate, runt
   if (candidate.trustState === 'untrusted' || candidate.trustState === 'changed') return false;
   if (runtime) return candidate.status === 'loaded';
   return candidate.status !== 'error';
+}
+
+function findProviderWithRequestedCapabilityName(
+  dependency: NativeExtensionDependencyDeclaration,
+  candidates: NativeExtensionCandidate[],
+  runtime: boolean,
+): NativeExtensionCandidate | undefined {
+  if (dependency.name !== undefined || (dependency.capabilities?.length ?? 0) === 0) return undefined;
+  const withCapabilityName = candidates.filter((candidate) => (dependency.capabilities ?? []).some((requirement) => candidate.capabilities?.some((capability) => capability.name === requirement.name)));
+  return withCapabilityName.find((candidate) => candidateIsTrustedAndLoadable(candidate, runtime)) ?? withCapabilityName[0];
 }
 
 function candidateMatchesDependency(candidate: NativeExtensionCandidate, dependency: NativeExtensionDependencyDeclaration): boolean {
@@ -415,6 +428,7 @@ function diagnostic(
   provider?: NativeExtensionCandidate,
   capabilityName?: string,
   requiredVersion?: string,
+  actualVersionOverride?: string | null,
 ): NativeExtensionDiagnostic {
   return {
     severity: kind === 'required' ? 'error' : 'warning',
@@ -429,7 +443,7 @@ function diagnostic(
     providerName: provider?.name,
     capabilityName,
     requiredVersion: requiredVersion ?? dependency.version,
-    actualVersion: provider ? providerVersion(provider) : undefined,
+    actualVersion: actualVersionOverride === null ? undefined : actualVersionOverride ?? (provider ? providerVersion(provider) : undefined),
     dependencyKind: kind,
     ...(provider?.currentHash !== undefined && { currentHash: provider.currentHash }),
     ...(provider?.trustedHash !== undefined && { trustedHash: provider.trustedHash }),

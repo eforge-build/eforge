@@ -474,82 +474,30 @@ describe('eforge-plugin/skills/plan/plan.md — AC quality guidance', () => {
 // Actionable planning-playbook contract (plan-01-actionable-planning-playbooks)
 // ---------------------------------------------------------------------------
 
-describe('playbook skills — implementation-ready session plan contract', () => {
+describe('playbook skills — generic eforge-plan planning entry contract', () => {
   const piPlaybook = readRepoFile('packages/pi-eforge/skills/eforge-playbook/SKILL.md');
   const pluginPlaybook = readRepoFile('eforge-plugin/skills/playbook/playbook.md');
 
-  it('Pi playbook skill contains "implementation-ready session plan"', () => {
-    expect(piPlaybook).toContain('implementation-ready session plan');
+  it('both playbook skills name the eforge-plan planning-mode playbook capability', () => {
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('eforge.plan.planning-mode-playbook');
+    }
   });
 
-  it('plugin playbook skill contains "implementation-ready session plan"', () => {
-    expect(pluginPlaybook).toContain('implementation-ready session plan');
+  it('both playbook skills route planning continuation through generic contribution discovery and invocation', () => {
+    expect(piPlaybook).toContain('eforge_extension_contribution');
+    expect(pluginPlaybook).toContain('mcp__eforge__eforge_extension_contribution');
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('eforge-plan:open-planning-entry');
+      expect(raw).toContain('eforge-plan:planning-workstation');
+    }
   });
 
-  it('Pi playbook skill contains a synthesis step heading in Step 5.5', () => {
-    expect(piPlaybook).toContain('Synthesize implementation handoff');
-  });
-
-  it('plugin playbook skill contains a synthesis step heading in Step 5.5', () => {
-    expect(pluginPlaybook).toContain('Synthesize implementation handoff');
-  });
-
-  it('Pi playbook skill mentions concrete implementation targets in synthesis step', () => {
-    expect(piPlaybook).toContain('implementation targets');
-  });
-
-  it('plugin playbook skill mentions concrete implementation targets in synthesis step', () => {
-    expect(pluginPlaybook).toContain('implementation targets');
-  });
-
-  it('Pi playbook skill mentions concrete actions in synthesis step', () => {
-    expect(piPlaybook).toContain('concrete actions');
-  });
-
-  it('plugin playbook skill mentions concrete actions in synthesis step', () => {
-    expect(pluginPlaybook).toContain('concrete actions');
-  });
-
-  it('Pi playbook skill mentions non-goals in synthesis step', () => {
-    expect(piPlaybook).toContain('non-goals');
-  });
-
-  it('plugin playbook skill mentions non-goals in synthesis step', () => {
-    expect(pluginPlaybook).toContain('non-goals');
-  });
-
-  it('Pi playbook skill mentions validation criteria in synthesis step', () => {
-    expect(piPlaybook).toContain('validation criteria');
-  });
-
-  it('plugin playbook skill mentions validation criteria in synthesis step', () => {
-    expect(pluginPlaybook).toContain('validation criteria');
-  });
-
-  it('Pi playbook skill mentions evidence/context placement', () => {
-    expect(piPlaybook).toMatch(/context.oriented/i);
-  });
-
-  it('plugin playbook skill mentions evidence/context placement', () => {
-    expect(pluginPlaybook).toMatch(/context.oriented/i);
-  });
-
-  it('Pi playbook skill mentions unresolved findings becoming open questions or follow-up scope', () => {
-    expect(piPlaybook).toContain('Open Questions');
-    expect(piPlaybook).toContain('follow-up scope');
-  });
-
-  it('plugin playbook skill mentions unresolved findings becoming open questions or follow-up scope', () => {
-    expect(pluginPlaybook).toContain('Open Questions');
-    expect(pluginPlaybook).toContain('follow-up scope');
-  });
-
-  it('Pi playbook skill warns against audit-repeat plans', () => {
-    expect(piPlaybook).toContain('audit-repeat');
-  });
-
-  it('plugin playbook skill warns against audit-repeat plans', () => {
-    expect(pluginPlaybook).toContain('audit-repeat');
+  it('both playbook skills name the eforge-plan workstation route and avoid plan-command continuation', () => {
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
+      expect(raw).not.toContain('/eforge:plan');
+    }
   });
 });
 

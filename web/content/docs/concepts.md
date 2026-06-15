@@ -98,7 +98,7 @@ A **profile** is a named YAML file that bundles tier recipes into a reusable uni
 
 The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models. See [Profiles](/docs/profiles) for a full walkthrough.
 
-**Playbooks** are a separate but related surface: a playbook is a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Playbooks run in either `autonomous` mode (enqueues a build directly) or `planning` mode (triggers an investigation-first workflow before building). See [Playbooks](/docs/playbooks).
+**Playbooks** are a separate but related surface: a playbook is a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Playbooks run in either `autonomous` mode (enqueues a build directly) or `planning` mode (checks the eforge-plan planning capability and returns planning entry metadata before building). See [Playbooks](/docs/playbooks).
 
 ## The Queue and Daemon
 

@@ -70,6 +70,37 @@ const ImportLegacyOutput = Type.Object({
   items: ImportLegacyKindOutput,
   epics: ImportLegacyKindOutput,
 }, { additionalProperties: false });
+const PLANNING_WORKSTATION_EFFECTIVE_ID = 'eforge-plan:planning-workstation';
+const PLANNING_WORKSTATION_ROUTE = '/console/workstations/eforge-plan%3Aplanning-workstation';
+const PLANNING_ENTRY_ACTION_EFFECTIVE_ID = 'eforge-plan:open-planning-entry';
+const PLANNING_ENTRY_COMMAND_EFFECTIVE_ID = 'eforge-plan:open-planning-entry';
+const PLANNING_ENTRY_DEEP_LINK_EFFECTIVE_ID = 'eforge-plan:planning-workstation';
+
+const PlanningEntryOutput = Type.Object({
+  kind: Type.Literal('planning-entry'),
+  workstationId: Type.Literal(PLANNING_WORKSTATION_EFFECTIVE_ID),
+  workstationUrl: Type.Literal(PLANNING_WORKSTATION_ROUTE),
+  integrationCommandId: Type.Literal(PLANNING_ENTRY_COMMAND_EFFECTIVE_ID),
+  deepLinkId: Type.Literal(PLANNING_ENTRY_DEEP_LINK_EFFECTIVE_ID),
+}, { additionalProperties: false });
+
+const openPlanningEntry = defineExtensionAction({
+  id: 'open-planning-entry',
+  title: 'Open eforge-plan planning entry',
+  description: 'Return generic eforge-plan planning entry metadata for hosts to continue in the planning workstation.',
+  inputSchema: Type.Object({}, { additionalProperties: false }),
+  outputSchema: PlanningEntryOutput,
+  sideEffects: ['none'],
+  handler() {
+    return {
+      kind: 'planning-entry',
+      workstationId: PLANNING_WORKSTATION_EFFECTIVE_ID,
+      workstationUrl: PLANNING_WORKSTATION_ROUTE,
+      integrationCommandId: PLANNING_ENTRY_COMMAND_EFFECTIVE_ID,
+      deepLinkId: PLANNING_ENTRY_DEEP_LINK_EFFECTIVE_ID,
+    } as const;
+  },
+});
 
 const captureItem = defineExtensionAction({
   id: 'capture-item', title: 'Capture backlog item', description: 'Create a visible eforge-plan backlog item and write it to private eforge-plan storage.',
@@ -181,6 +212,7 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(upsertEpic);
   eforge.registerAction(updateItem);
   eforge.registerAction(importLegacyBacklogAction);
+  eforge.registerAction(openPlanningEntry);
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
   eforge.registerAction(renderBoardMarkdown);
@@ -217,6 +249,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Cancel planning agent task', content: 'Cancel a running daemon-owned planning draft task.', action: { actionId: 'cancel-planning-agent-task' } },
       { rendererId: 'action-form', title: 'Remove planning agent task', content: 'Dismiss a non-running daemon-owned planning task from the workflow list.', action: { actionId: 'remove-planning-agent-task' } },
       { rendererId: 'action-form', title: 'Apply planning agent task result', content: 'Apply only selected generated recommendations, handoff drafts, or session-plan sections.', action: { actionId: 'apply-planning-agent-task-result' } },
+      { rendererId: 'action-button', title: 'Open planning workstation', content: 'Return the generic planning entry URL for the eforge-plan workstation.', action: { actionId: 'open-planning-entry' } },
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
       { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy selected legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
@@ -268,9 +301,11 @@ export default defineEforgeExtension((eforge) => {
     ],
     frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
   }));
+  eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'open-planning-entry', label: 'Open eforge-plan planning entry', description: 'Return the eforge-plan planning workstation URL for planning-mode continuation.', inputSchema: Type.Object({}, { additionalProperties: false }), action: { actionId: 'open-planning-entry' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'render-board', label: 'Render eforge-plan board', inputSchema: BoardInput, action: { actionId: 'render-board-markdown' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-item', label: 'Promote eforge-plan item', inputSchema: PromoteInput, action: { actionId: 'promote-item' } }));
   eforge.registerIntegrationCommand(defineIntegrationCommand({ id: 'promote-selection', label: 'Promote eforge-plan selection', inputSchema: PromoteSelectionInput, action: { actionId: 'promote-selection' } }));
+  eforge.registerDeepLink(defineExtensionDeepLink({ id: 'planning-workstation', label: 'Open eforge-plan planning workstation', description: 'Open the eforge-plan planning workstation for planning-mode playbook continuation.', urlTemplate: PLANNING_WORKSTATION_ROUTE, action: { actionId: 'open-planning-entry' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'board', label: 'Open eforge-plan board', action: { actionId: 'render-board-markdown' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote', label: 'Promote eforge-plan item', action: { actionId: 'promote-item' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote-selection', label: 'Promote eforge-plan selection', action: { actionId: 'promote-selection' } }));

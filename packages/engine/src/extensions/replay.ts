@@ -500,7 +500,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       ...(candidate.layout !== undefined && { layout: candidate.layout }),
       ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
       ...(candidate.capabilities !== undefined && { capabilities: cloneJson(candidate.capabilities) }),
-      ...(candidate.dependencies !== undefined && { dependencies: cloneJson(candidate.dependencies) }),
+      ...(candidate.dependencies !== undefined && { dependencies: cloneJson(candidate.dependencies) as ExtensionEntry['dependencies'] }),
       ...(candidate.resolvedDependencies !== undefined && { resolvedDependencies: cloneJson(candidate.resolvedDependencies) }),
       shadows: candidate.shadows.map((shadow) => ({
         name: shadow.name,
@@ -519,7 +519,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       ...(consoleWorkstationDetails !== undefined && { consoleWorkstationDetails }),
       ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
       ...(deepLinkDetails !== undefined && { deepLinkDetails }),
-      ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+      ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } as ExtensionEntry['package'] }),
       ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;
   }).sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
