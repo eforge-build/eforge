@@ -271,7 +271,7 @@ export function normalizeCriterionText(raw: string): string {
  *
  * This intentionally goes a little further than `normalizeCriterionText`: an
  * LLM may preserve the criterion wording while dropping harmless inline
- * Markdown (for example `` `/eforge:plan` `` → `/eforge:plan`). Treat those as
+ * Markdown (for example `` `eforge-plan` `` → `eforge-plan`). Treat those as
  * the same criterion without relaxing into semantic/fuzzy matching.
  */
 export function normalizeCriterionMatchText(raw: string): string {

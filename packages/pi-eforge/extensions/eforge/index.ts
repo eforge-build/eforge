@@ -82,7 +82,6 @@ import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
-import { handlePlanCommand } from './plan-command';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
@@ -1807,7 +1806,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_playbook",
     label: "eforge playbook",
     description:
-      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook\'s frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require an interactive agent session (returns { kind: "requires-agent", mode: "planning", name, message }); "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback.',
+      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook\'s frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require the eforge-plan capability and return generic planning entry metadata for eforge_extension_contribution / the eforge-plan workstation deep link when available, or { kind: "planning-unavailable", requiredCapability, diagnostics } when unavailable; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback.',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "save", "run", "promote", "demote", "validate"] as const, {
         description: "Operation to perform on playbooks",
@@ -1943,9 +1942,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         } else if ((data as { kind?: unknown }).kind === "enqueued") {
           lines.push(theme.fg("success", "✓ Enqueued: ") + theme.fg("accent", String((data as { id: string }).id)));
         } else if ((data as { kind?: unknown }).kind === "requires-agent") {
-          const d = data as { name: string; message: string };
-          lines.push(theme.fg("warning", "⚡ Planning playbook requires interactive session"));
-          lines.push(theme.fg("dim", `  ${d.message}`));
+          const d = data as { planningEntry?: { integrationCommandId?: string; workstationUrl?: string }; message: string };
+          lines.push(theme.fg("warning", "⚡ Planning playbook uses eforge-plan entry"));
+          if (d.planningEntry?.integrationCommandId) lines.push(theme.fg("dim", `  contribution: ${d.planningEntry.integrationCommandId}`));
+          if (d.planningEntry?.workstationUrl) lines.push(theme.fg("dim", `  workstation: ${d.planningEntry.workstationUrl}`));
+        } else if ((data as { kind?: unknown }).kind === "planning-unavailable") {
+          const d = data as { requiredCapability?: { name: string }; diagnostics?: Array<{ message: string }> };
+          lines.push(theme.fg("error", `✗ Missing capability: ${d.requiredCapability?.name ?? "eforge.plan.planning-mode-playbook"}`));
+          for (const diagnostic of d.diagnostics ?? []) lines.push(theme.fg("dim", `  ${diagnostic.message}`));
         } else if ((data as { path?: unknown }).path) {
           lines.push(theme.fg("success", "✓ ") + theme.fg("text", String((data as { path: string }).path)));
         } else if ((data as { ok?: unknown }).ok !== undefined) {
@@ -1978,7 +1982,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_session_plan",
     label: "eforge session-plan",
     description:
-      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook\'s content (requires playbook_name) — for a full interactive planning session use /eforge:playbook run <name> or /eforge:plan instead. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued.',
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook\'s content (requires playbook_name) — for full interactive planning, discover/invoke the generic eforge-plan planning entry via eforge_extension_contribution or open the eforge-plan workstation deep link. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued.',
     parameters: Type.Object({
       action: StringEnum(
         ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy", "create-from-playbook"] as const,
@@ -2026,7 +2030,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
       open: Type.Optional(
         Type.Boolean({
-          description: 'When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.',
+          description: 'When true, best-effort opens the resulting session plan file in the user\'s default application after a session is created or shown.',
         }),
       ),
       playbook_name: Type.Optional(
@@ -2281,13 +2285,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       },
     });
   }
-
-  pi.registerCommand("eforge:plan", {
-    description: "Start or resume a structured planning conversation",
-    handler: async (args, ctx) => {
-      await handlePlanCommand(pi, ctx as UIContext, args ?? "");
-    },
-  });
 
   // ------------------------------------------------------------------
   // Native commands - /eforge:profile, /eforge:profile:new, /eforge:config

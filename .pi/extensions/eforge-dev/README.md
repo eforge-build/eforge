@@ -16,7 +16,7 @@ This extension is intentionally separate from the published `@eforge-build/pi-ef
 /dev release      Guided protected-main release flow: PR, auto-merge, then tag merged main
 /dev release-finalize vX.Y.Z
                   After a release PR merges, tag main and push only the tag
-/dev plan         Prefill /eforge:plan for the published pi-eforge flow
+/dev plan         Invoke the generic eforge-plan planning entry for the published pi-eforge flow
 /dev tail-events [type|all] [limit] [plan=<id>] [run=<id>]
                   Live-tail eforge monitor events from .eforge/monitor.db
 /dev tail-extension-events [name] [limit]

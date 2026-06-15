@@ -133,7 +133,11 @@ To publish an example as a reusable package, add the `eforge.extension` manifest
   "eforge": {
     "extension": {
       "name": "build-notifier",
-      "entrypoint": "./dist/index.js"
+      "entrypoint": "./dist/index.js",
+      "capabilities": [{ "name": "acme.notifications", "version": "1.0.0" }],
+      "dependencies": {
+        "optional": [{ "name": "acme-backlog", "version": ">=1.0.0" }]
+      }
     }
   }
 }
@@ -157,7 +161,7 @@ eforge extension reload
 
 > **Supply-chain note:** npm packages, tarballs, and local package directories are unsandboxed arbitrary code. Inspect the installed extension source before trusting it, especially for project/team scope extensions that other team members will load.
 
-See [`docs/extensions.md`](../../docs/extensions.md) — "Package-managed extensions" — for the full install/update/remove/promote/demote workflow, trust behavior, and sidecar hash-exclusion details.
+See [`docs/extensions.md`](../../docs/extensions.md) — "Package-managed extensions" — for the full install/update/remove/promote/demote workflow, manifest dependency/capability fields, trust behavior, and sidecar hash-exclusion details.
 
 ## Validation
 

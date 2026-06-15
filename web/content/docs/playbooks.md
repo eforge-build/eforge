@@ -13,11 +13,11 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 **`mode: autonomous`** - running the playbook enqueues a build directly, like any other eforge input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
 
-**`mode: planning`** - running the playbook triggers an investigation-first workflow. The agent loads the playbook, investigates the codebase guided by the playbook's Goal, Acceptance criteria, and Notes, synthesizes findings into an implementation-ready session plan, and then continues interactively via `/eforge:plan` before handing off to `/eforge:build`. The daemon does not create the session plan directly; you drive the planning conversation.
+**`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
 
-When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning" }` - this signals that a Claude Code or Pi agent must take over the investigation, not that the build failed.
+When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 
-Planning-mode playbooks produce session plans through the host agent workflow, not by directly enqueueing a PRD. The agent creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
+Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
 
 ## Scope tiers
 
@@ -83,7 +83,7 @@ profile: browser-ui
 
 **Validation timing:** the named profile is validated at execution time, not when the playbook is saved.
 
-**Planning playbooks:** when a planning-mode playbook has a `profile` field and the agent creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+**Planning playbooks:** when a planning-mode playbook has a `profile` field and the eforge-plan planning flow creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
 
 **Blank profile fallback:** omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 
@@ -124,7 +124,7 @@ eforge play docs-sync       # shorthand
 
 `eforge play` is a shorthand for `eforge playbook run`.
 
-After a successful enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in Console.
+After a successful autonomous enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in Console. Planning playbooks instead return eforge-plan planning entry metadata or unavailable capability diagnostics.
 
 ## List playbooks
 

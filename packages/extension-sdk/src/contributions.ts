@@ -2,6 +2,12 @@ import type { TObject, TSchema, Static } from './schema.js';
 import type { ExtensionLogger } from './context.js';
 import type { EforgeProjectPaths } from './project-paths.js';
 import type {
+  ExtensionCapabilityLookup,
+  ExtensionContributionAvailability,
+  ExtensionContributionRequirements,
+  ExtensionDependencyLookup,
+} from './dependencies.js';
+import type {
   ExtensionAgentTaskCancelResponse,
   ExtensionAgentTaskGetResponse,
   ExtensionAgentTaskStartRequest,
@@ -52,6 +58,10 @@ export interface ExtensionActionContext {
   logger: ExtensionLogger;
   /** Scoped path helpers for resolving eforge-owned storage locations. */
   paths: EforgeProjectPaths;
+  /** Immutable dependency availability lookup for this extension. */
+  dependencies: ExtensionDependencyLookup;
+  /** Immutable capability availability lookup for loaded extensions. */
+  capabilities: ExtensionCapabilityLookup;
   // --- eforge:region extension-agent-task-context ---
   /** Daemon-owned single-shot agent tasks available to extension actions. */
   agentTasks: ExtensionAgentTasksApi;
@@ -111,6 +121,8 @@ export interface ExtensionAction<
   outputSchema?: TOutput;
   outputProfile?: ExtensionActionOutputProfile;
   sideEffects?: ExtensionActionSideEffect[];
+  requirements?: ExtensionContributionRequirements;
+  availability?: ExtensionContributionAvailability;
   handler: (
     input: Static<TInput>,
     ctx: ExtensionActionContext,
@@ -142,6 +154,8 @@ export interface ConsoleContribution {
   id: string;
   title: string;
   description?: string;
+  requirements?: ExtensionContributionRequirements;
+  availability?: ExtensionContributionAvailability;
   blocks: ConsoleContributionBlock[];
 }
 
@@ -149,6 +163,8 @@ export interface ConsoleWorkstationBase {
   id: string;
   title: string;
   description?: string;
+  requirements?: ExtensionContributionRequirements;
+  availability?: ExtensionContributionAvailability;
   /** Local action ids registered by this same extension. Omit to allow all same-extension actions; use [] to expose no actions. */
   allowedActions?: string[];
 }
@@ -178,6 +194,8 @@ export interface IntegrationCommand<TInput extends TObject | undefined = TObject
   label: string;
   description?: string;
   inputSchema?: TInput;
+  requirements?: ExtensionContributionRequirements;
+  availability?: ExtensionContributionAvailability;
   action: ExtensionActionBinding;
 }
 
@@ -186,6 +204,8 @@ export interface ExtensionDeepLink {
   label: string;
   description?: string;
   urlTemplate?: string;
+  requirements?: ExtensionContributionRequirements;
+  availability?: ExtensionContributionAvailability;
   action?: ExtensionActionBinding;
 }
 

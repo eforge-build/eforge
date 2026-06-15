@@ -1,0 +1,16 @@
+{
+  "name": "@eforge-build/eforge-plan-extension",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "eforge": {
+    "extension": {
+      "name": "eforge-plan",
+      "entrypoint": "index.ts",
+      "capabilities": [
+        { "name": "eforge.plan.planning-workstation", "version": "1.0.0" },
+        { "name": "eforge.plan.planning-mode-playbook", "version": "1.0.0" }
+      ]
+    }
+  }
+}

@@ -1,8 +1,8 @@
 /**
- * Unit tests for Pi playbook-commands planning-mode delegation and landing behavior.
+ * Unit tests for Pi playbook-commands planning-mode entry and landing behavior.
  *
  * Verifies:
- *   - Planning-mode playbooks delegate to /skill:eforge-playbook run before landing/queue prompts.
+ *   - Planning-mode playbooks resolve generic eforge-plan entry before landing/queue prompts.
  *   - Autonomous playbooks prompt for landing action and pass landingAction to enqueue body.
  *   - Project-default selection (no landingAction in gate result) omits landingAction from enqueue body.
  *   - Explicit landing selection propagates to immediate, delayed, and fallback enqueue bodies.
@@ -54,7 +54,7 @@ import {
   apiGetQueueIfRunning,
   type QueueItem,
 } from '@eforge-build/client';
-import { showSelectOverlay } from '../packages/pi-eforge/extensions/eforge/ui-helpers.js';
+import { showInfoOverlay, showSelectOverlay } from '../packages/pi-eforge/extensions/eforge/ui-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,21 +182,43 @@ function expectedBody(path: EnqueuePath, body: Omit<ExpectedEnqueueBody, 'name' 
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('Pi handlePlaybookCommand - planning-mode delegation', () => {
+describe('Pi handlePlaybookCommand - planning-mode entry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('delegates planning-mode playbook to /skill:eforge-playbook run before dependency prompts', async () => {
+  it('resolves a planning-mode playbook to generic eforge-plan entry guidance before dependency prompts', async () => {
     const pi = makePi();
     const ctx = makeCtx();
 
     mockPlaybookList([makeEntry({ name: 'my-planning', mode: 'planning' })]);
+    (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 200,
+      data: {
+        kind: 'requires-agent',
+        mode: 'planning',
+        name: 'my-planning',
+        planningEntry: {
+          integrationCommandId: 'eforge-plan:open-planning-entry',
+          workstationUrl: '/console/workstations/eforge-plan%3Aplanning-workstation',
+        },
+      },
+    });
 
     await handlePlaybookCommand(pi as any, ctx as any, 'run my-planning');
 
-    expect(pi.sendUserMessage).toHaveBeenCalledOnce();
-    expect(pi.sendUserMessage).toHaveBeenCalledWith('/skill:eforge-playbook run my-planning');
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(apiPlaybookRunIfRunning).toHaveBeenCalledWith({ cwd: ctx.cwd, body: { name: 'my-planning' } });
+    expect(showInfoOverlay).toHaveBeenCalledWith(
+      ctx,
+      'eforge - Planning Entry',
+      expect.stringContaining('eforge-plan:open-planning-entry'),
+    );
+    expect(showInfoOverlay).toHaveBeenCalledWith(
+      ctx,
+      'eforge - Planning Entry',
+      expect.stringContaining('/console/workstations/eforge-plan%3Aplanning-workstation'),
+    );
   });
 
   it('does not offer active-build dependency prompts for a planning-mode playbook', async () => {
@@ -209,11 +231,25 @@ describe('Pi handlePlaybookCommand - planning-mode delegation', () => {
       makeEntry({ name: 'my-planning', mode: 'planning' }),
       makeEntry({ name: 'my-feature', mode: 'autonomous' }),
     ]);
+    (apiPlaybookRunIfRunning as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 200,
+      data: {
+        kind: 'planning-unavailable',
+        mode: 'planning',
+        name: 'my-planning',
+        requiredCapability: { name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' },
+        diagnostics: [{ message: 'eforge-plan is not loaded.' }],
+      },
+    });
 
     await handlePlaybookCommand(pi as any, ctx as any, 'run my-planning');
 
-    expect(pi.sendUserMessage).toHaveBeenCalledOnce();
-    expect(pi.sendUserMessage).toHaveBeenCalledWith('/skill:eforge-playbook run my-planning');
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(showInfoOverlay).toHaveBeenCalledWith(
+      ctx,
+      'eforge - Planning Capability Unavailable',
+      expect.stringContaining('eforge.plan.planning-mode-playbook'),
+    );
     // Queue was never checked — planning-mode returned before step 3b
     expect(apiGetQueueIfRunning).not.toHaveBeenCalled();
   });

@@ -425,47 +425,27 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC quality guidance in plan skills (plan-01-complete-ac-quality-gate)
+// AC quality guidance in formatter/planner prompts (plan skill removed)
 // ---------------------------------------------------------------------------
 
-describe('eforge-plugin/skills/plan/plan.md — AC quality guidance', () => {
-  const raw = readRepoFile('eforge-plugin/skills/plan/plan.md');
+describe('formatter prompt — AC quality guidance', () => {
+  const raw = readRepoFile('packages/engine/src/prompts/formatter.md');
 
   it('documents the flat, standalone, atomic, objectively validatable AC rule', () => {
     expect(raw).toMatch(/flat.*standalone.*atomic.*objectively validatable/s);
   });
 
-  it('documents the "no grouping labels" rule (bullets ending with ":")', () => {
+  it('documents grouping labels, bare command fragments, and vague criteria', () => {
     expect(raw).toContain('grouping label');
-    expect(raw).toMatch(/ending.*:.*criteria/s);
-  });
-
-  it('documents the "no bare command fragments" rule', () => {
     expect(raw).toContain('bare command fragment');
-  });
-
-  it('documents the "no vague criteria" rule', () => {
     expect(raw).toContain('vague');
   });
 
-  it('includes a valid example with outcome: "`pnpm type-check` exits 0."', () => {
+  it('includes valid and invalid AC examples', () => {
     expect(raw).toContain('`pnpm type-check` exits 0.');
-  });
-
-  it('includes an invalid grouping-label example: "- Tests cover:"', () => {
     expect(raw).toContain('Tests cover:');
-  });
-
-  it('includes an invalid bare-command example: "- `pnpm type-check`."', () => {
-    // The bare command example (ending in period only)
     expect(raw).toMatch(/`pnpm type-check`\./);
-  });
-
-  it('includes an invalid vague example: "Works correctly."', () => {
     expect(raw).toContain('Works correctly.');
-  });
-
-  it('includes an invalid vague example: "Improves reliability."', () => {
     expect(raw).toContain('Improves reliability.');
   });
 });
@@ -474,255 +454,69 @@ describe('eforge-plugin/skills/plan/plan.md — AC quality guidance', () => {
 // Actionable planning-playbook contract (plan-01-actionable-planning-playbooks)
 // ---------------------------------------------------------------------------
 
-describe('playbook skills — implementation-ready session plan contract', () => {
+describe('playbook skills — generic eforge-plan planning entry contract', () => {
   const piPlaybook = readRepoFile('packages/pi-eforge/skills/eforge-playbook/SKILL.md');
   const pluginPlaybook = readRepoFile('eforge-plugin/skills/playbook/playbook.md');
 
-  it('Pi playbook skill contains "implementation-ready session plan"', () => {
-    expect(piPlaybook).toContain('implementation-ready session plan');
+  it('both playbook skills name the eforge-plan planning-mode playbook capability', () => {
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('eforge.plan.planning-mode-playbook');
+    }
   });
 
-  it('plugin playbook skill contains "implementation-ready session plan"', () => {
-    expect(pluginPlaybook).toContain('implementation-ready session plan');
+  it('both playbook skills route planning continuation through generic contribution discovery and invocation', () => {
+    expect(piPlaybook).toContain('eforge_extension_contribution');
+    expect(pluginPlaybook).toContain('mcp__eforge__eforge_extension_contribution');
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('eforge-plan:open-planning-entry');
+      expect(raw).toContain('eforge-plan:planning-workstation');
+      expect(raw).toContain('implementation-ready session plan');
+    }
   });
 
-  it('Pi playbook skill contains a synthesis step heading in Step 5.5', () => {
-    expect(piPlaybook).toContain('Synthesize implementation handoff');
-  });
-
-  it('plugin playbook skill contains a synthesis step heading in Step 5.5', () => {
-    expect(pluginPlaybook).toContain('Synthesize implementation handoff');
-  });
-
-  it('Pi playbook skill mentions concrete implementation targets in synthesis step', () => {
-    expect(piPlaybook).toContain('implementation targets');
-  });
-
-  it('plugin playbook skill mentions concrete implementation targets in synthesis step', () => {
-    expect(pluginPlaybook).toContain('implementation targets');
-  });
-
-  it('Pi playbook skill mentions concrete actions in synthesis step', () => {
-    expect(piPlaybook).toContain('concrete actions');
-  });
-
-  it('plugin playbook skill mentions concrete actions in synthesis step', () => {
-    expect(pluginPlaybook).toContain('concrete actions');
-  });
-
-  it('Pi playbook skill mentions non-goals in synthesis step', () => {
-    expect(piPlaybook).toContain('non-goals');
-  });
-
-  it('plugin playbook skill mentions non-goals in synthesis step', () => {
-    expect(pluginPlaybook).toContain('non-goals');
-  });
-
-  it('Pi playbook skill mentions validation criteria in synthesis step', () => {
-    expect(piPlaybook).toContain('validation criteria');
-  });
-
-  it('plugin playbook skill mentions validation criteria in synthesis step', () => {
-    expect(pluginPlaybook).toContain('validation criteria');
-  });
-
-  it('Pi playbook skill mentions evidence/context placement', () => {
-    expect(piPlaybook).toMatch(/context.oriented/i);
-  });
-
-  it('plugin playbook skill mentions evidence/context placement', () => {
-    expect(pluginPlaybook).toMatch(/context.oriented/i);
-  });
-
-  it('Pi playbook skill mentions unresolved findings becoming open questions or follow-up scope', () => {
-    expect(piPlaybook).toContain('Open Questions');
-    expect(piPlaybook).toContain('follow-up scope');
-  });
-
-  it('plugin playbook skill mentions unresolved findings becoming open questions or follow-up scope', () => {
-    expect(pluginPlaybook).toContain('Open Questions');
-    expect(pluginPlaybook).toContain('follow-up scope');
-  });
-
-  it('Pi playbook skill warns against audit-repeat plans', () => {
-    expect(piPlaybook).toContain('audit-repeat');
-  });
-
-  it('plugin playbook skill warns against audit-repeat plans', () => {
-    expect(pluginPlaybook).toContain('audit-repeat');
-  });
-});
-
-describe('plan skills — implementation-handoff contract in Path (c)', () => {
-  const piPlan = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
-  const pluginPlan = readRepoFile('eforge-plugin/skills/plan/plan.md');
-
-  it('Pi plan skill Path (c) option 3 says create an implementation-ready session plan', () => {
-    expect(piPlan).toContain('implementation-ready session plan');
-  });
-
-  it('plugin plan skill Path (c) option 3 says create an implementation-ready session plan', () => {
-    expect(pluginPlan).toContain('implementation-ready session plan');
-  });
-
-  it('Pi plan skill Path (c) states the topic describes the change to build', () => {
-    // Step 7 must tell the agent to ask for a topic describing the implementation change
-    expect(piPlan).toMatch(/topic.*describes.*implementation change to build/s);
-  });
-
-  it('plugin plan skill Path (c) states the topic describes the change to build', () => {
-    expect(pluginPlan).toMatch(/topic.*describes.*implementation change to build/s);
-  });
-
-  it('Pi plan skill Path (c) mentions Scope as an implementation-handoff section', () => {
-    const pathCStart = piPlan.indexOf('**Path (c)');
-    const pathCContent = piPlan.slice(pathCStart, pathCStart + 3000);
-    expect(pathCContent).toContain('Scope');
-  });
-
-  it('Pi plan skill Path (c) mentions Code Impact as an implementation-handoff section', () => {
-    const pathCStart = piPlan.indexOf('**Path (c)');
-    const pathCContent = piPlan.slice(pathCStart, pathCStart + 3000);
-    expect(pathCContent).toContain('Code Impact');
-  });
-
-  it('Pi plan skill Path (c) mentions Acceptance Criteria as an implementation-handoff section', () => {
-    const pathCStart = piPlan.indexOf('**Path (c)');
-    const pathCContent = piPlan.slice(pathCStart, pathCStart + 3000);
-    expect(pathCContent).toContain('Acceptance Criteria');
-  });
-
-  it('plugin plan skill Path (c) mentions Scope, Code Impact, and Acceptance Criteria as handoff sections', () => {
-    const pathCStart = pluginPlan.indexOf('**Path (c)');
-    const pathCContent = pluginPlan.slice(pathCStart, pathCStart + 3000);
-    expect(pathCContent).toContain('Scope');
-    expect(pathCContent).toContain('Code Impact');
-    expect(pathCContent).toContain('Acceptance Criteria');
-  });
-
-  it('Pi plan skill Path (c) contains synthesis step', () => {
-    expect(piPlan).toContain('Synthesize implementation handoff');
-  });
-
-  it('plugin plan skill Path (c) contains synthesis step', () => {
-    expect(pluginPlan).toContain('Synthesize implementation handoff');
-  });
-
-  it('Pi plan skill sub-note mentions synthesized handoff', () => {
-    expect(piPlan).toContain('synthesized implementation handoff');
-  });
-
-  it('plugin plan skill sub-note mentions synthesized handoff', () => {
-    expect(pluginPlan).toContain('synthesized implementation handoff');
-  });
-});
-
-describe('plan-command.ts — planning playbook option wording', () => {
-  const planCommand = readRepoFile('packages/pi-eforge/extensions/eforge/plan-command.ts');
-
-  it('does not contain "seed a session plan" for the planning playbook option', () => {
-    expect(planCommand).not.toContain('seed a session plan');
-  });
-
-  it('contains "implementation-ready session plan" for the planning playbook option', () => {
-    expect(planCommand).toContain('implementation-ready session plan');
+  it('both playbook skills name the eforge-plan workstation route and avoid plan-command continuation', () => {
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
+      expect(raw).not.toContain('/eforge:plan');
+    }
   });
 });
 
 describe('docs/config.md — planning playbook prose', () => {
   const docsConfig = readRepoFile('docs/config.md');
 
-  it('planning playbook prose contains "implementation-ready session plan"', () => {
-    expect(docsConfig).toContain('implementation-ready session plan');
+  it('documents planning playbook profile inheritance without the removed plan skill', () => {
+    expect(docsConfig).toContain('eforge-plan planning flow');
+    expect(docsConfig).toContain('agent_profile');
+    expect(docsConfig).not.toContain('/eforge:plan');
   });
 });
 
 // ---------------------------------------------------------------------------
 
-describe('plan skills — acceptance criteria set semantic review guidance', () => {
-  const piPlan = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
-  const pluginPlan = readRepoFile('eforge-plugin/skills/plan/plan.md');
-
-  it('both planning skills mention semantic-level review, over-granular field-by-field duplication, and contract-vs-behavior consolidation', () => {
-    for (const raw of [piPlan, pluginPlan]) {
-      expect(raw).toContain('semantic-level review');
-      expect(raw).toContain('over-granular field-by-field duplication');
-      expect(raw).toContain('contract-vs-behavior consolidation');
-    }
-  });
-
+describe('plan-skill removal versioning', () => {
   it('bumps the Claude plugin patch version and leaves the Pi package version unchanged', () => {
     const plugin = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
     const piPackage = JSON.parse(readRepoFile('packages/pi-eforge/package.json')) as { version: string };
 
-    expect(compareSemver(plugin.version, '0.25.55')).toBeGreaterThan(0);
+    expect(compareSemver(plugin.version, '0.25.64')).toBeGreaterThan(0);
     expect(piPackage.version).toBe('0.7.21');
   });
 });
 
 // ---------------------------------------------------------------------------
-
-describe('packages/pi-eforge/skills/eforge-plan/SKILL.md — AC quality guidance', () => {
-  const raw = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
-
-  it('documents the flat, standalone, atomic, objectively validatable AC rule', () => {
-    expect(raw).toMatch(/flat.*standalone.*atomic.*objectively validatable/s);
-  });
-
-  it('documents the "no grouping labels" rule', () => {
-    expect(raw).toContain('grouping label');
-  });
-
-  it('documents the "no bare command fragments" rule', () => {
-    expect(raw).toContain('bare command fragment');
-  });
-
-  it('documents the "no vague criteria" rule', () => {
-    expect(raw).toContain('vague');
-  });
-
-  it('includes a valid example: "`pnpm type-check` exits 0."', () => {
-    expect(raw).toContain('`pnpm type-check` exits 0.');
-  });
-
-  it('includes invalid examples: grouping label, bare command, vague criteria', () => {
-    expect(raw).toContain('Tests cover:');
-    expect(raw).toContain('Works correctly.');
-    expect(raw).toContain('Improves reliability.');
-  });
-
-  it('formatter prompt documents AC rules — grouping labels and bare commands forbidden', () => {
-    const formatterPrompt = readRepoFile('packages/engine/src/prompts/formatter.md');
-    expect(formatterPrompt).toContain('grouping label');
-    expect(formatterPrompt).toContain('bare command');
-    expect(formatterPrompt).toContain('exits 0');
-  });
-});
-
-
-
-// ---------------------------------------------------------------------------
 // Manual-only acceptance criteria guidance (plan-01-manual-only-ac-gate)
 // ---------------------------------------------------------------------------
 
-describe('manual-only AC prompt and skill guidance', () => {
-  const piPlan = readRepoFile('packages/pi-eforge/skills/eforge-plan/SKILL.md');
-  const pluginPlan = readRepoFile('eforge-plugin/skills/plan/plan.md');
+describe('manual-only AC prompt guidance', () => {
   const formatterPrompt = readRepoFile('packages/engine/src/prompts/formatter.md');
   const extractorPrompt = readRepoFile('packages/engine/src/prompts/acceptance-criteria-extractor.md');
   const validatorPrompt = readRepoFile('packages/engine/src/prompts/prd-validator.md');
 
-  it('Pi and Claude Code plan skills contain manual-only examples and notes guidance', () => {
-    for (const raw of [piPlan, pluginPlan]) {
-      expect(raw).toContain('Manually verify dashboard rendering in the browser.');
-      expect(raw).toContain('Visually inspect UI');
-      expect(raw).toContain('manual-only');
-      expect(raw).toContain('Manual Verification Notes');
-    }
-  });
-
   it('formatter prompt forbids manual-only/visual-only ACs and preserves notes', () => {
     expect(formatterPrompt).toMatch(/manual-only.*visual-only/s);
+    expect(formatterPrompt).toContain('Manually verify dashboard rendering in the browser.');
+    expect(formatterPrompt).toContain('Visually inspect UI');
     expect(formatterPrompt).toContain('Manual Verification Notes');
     expect(formatterPrompt).toMatch(/concrete automatable outcome|automatable criterion/s);
   });

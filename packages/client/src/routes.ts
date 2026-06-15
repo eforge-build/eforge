@@ -91,7 +91,11 @@ export type {
 export type {
   PlaybookRunRequest,
   PlaybookRunEnqueuedResponse,
+  PlaybookPlanningRequiredCapability,
+  PlaybookPlanningEntryMetadata,
+  PlaybookPlanningUnavailableDiagnostic,
   PlaybookRunRequiresAgentResponse,
+  PlaybookRunPlanningUnavailableResponse,
   PlaybookRunResponse,
 } from './routes/playbook.js';
 

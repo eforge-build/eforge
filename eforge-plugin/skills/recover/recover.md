@@ -116,4 +116,4 @@ A dispatched continue-and-repair build preserves normal queue controls: parallel
 |-------|---------|----------------|
 | Status | `mcp__eforge__eforge_queue_list` | Check which PRDs are failed before recovering |
 | Build | `/eforge:build` | Enqueue new work after a successful recovery |
-| Plan | `/eforge:plan` | Plan replacement work before queuing it |
+| Planning entry | eforge-plan workstation / contribution | Plan replacement work before queuing it |

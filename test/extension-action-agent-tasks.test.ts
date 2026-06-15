@@ -44,9 +44,60 @@ describe('extension action agent task API', () => {
     expect(result).toMatchObject({ kind: 'success', output: { taskId: 'task-123' } });
     expect(calls).toEqual(['start:eforge-plan.planning-draft:demo', 'get:task-123', 'cancel:task-123:done']);
   });
+
+  it('provides immutable dependency and capability lookup data on action context', async () => {
+    const registry = registryWithAction((_input, ctx: any) => ({
+      dependency: ctx.dependencies.get('provider').available,
+      capability: ctx.capabilities.get('demo.capability', '>=1.0.0').available,
+      providerCount: ctx.capabilities.get('demo.capability').providers.length,
+    }), Type.Object({
+      dependency: Type.Boolean(),
+      capability: Type.Boolean(),
+      providerCount: Type.Number(),
+    }, { additionalProperties: false }));
+    registry.extensions.push({
+      name: 'provider',
+      path: '/project/.eforge/extensions/provider.mjs',
+      entrypoint: '/project/.eforge/extensions/provider.mjs',
+      scope: 'project-local',
+      source: 'auto',
+      strategy: 'dynamic-import',
+      capabilities: [{ name: 'demo.capability', version: '1.0.0' }],
+      registrations: emptyRegistrations(),
+    });
+
+    const result = await dispatchExtensionAction(registry, {
+      actionId: 'tasks:run',
+      input: {},
+      requestedBy: { host: 'console' },
+      cwd: '/project',
+      timeoutMs: 1000,
+    });
+
+    expect(result).toMatchObject({ kind: 'success', output: { dependency: true, capability: true, providerCount: 1 } });
+  });
 });
 
-function registryWithAction(handler: (input: Record<string, unknown>, ctx: unknown) => unknown): NativeExtensionRegistry {
+function emptyRegistrations() {
+  return {
+    eventHooks: 0,
+    agentRunHooks: 0,
+    policyGates: 0,
+    profileRouters: 0,
+    inputSources: 0,
+    reviewerPerspectives: 0,
+    validationProviders: 0,
+    tools: 0,
+    prdEnrichers: 0,
+    actions: 0,
+    consoleContributions: 0,
+    consoleWorkstations: 0,
+    integrationCommands: 0,
+    deepLinks: 0,
+  };
+}
+
+function registryWithAction(handler: (input: Record<string, unknown>, ctx: unknown) => unknown, outputSchema = Type.Object({ taskId: Type.String() }, { additionalProperties: false })): NativeExtensionRegistry {
   return {
     extensions: [],
     candidates: [],
@@ -74,7 +125,7 @@ function registryWithAction(handler: (input: Record<string, unknown>, ctx: unkno
         id: 'run',
         title: 'Run task',
         inputSchema: Type.Object({}, { additionalProperties: false }),
-        outputSchema: Type.Object({ taskId: Type.String() }, { additionalProperties: false }),
+        outputSchema,
         handler,
       },
     }],

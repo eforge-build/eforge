@@ -41,6 +41,15 @@ export type {
   NativeExtensionLoadResult,
   NativeExtensionPackageProvenance,
   NativeExtensionRegistry,
+  NativeExtensionCapabilityDeclaration,
+  NativeExtensionCapabilityRequirement,
+  NativeExtensionDependencyDeclaration,
+  NativeExtensionDependencyManifest,
+  NativeExtensionContributionAvailability,
+  NativeExtensionContributionRequirements,
+  NativeExtensionDependencyAvailability,
+  NativeExtensionResolvedDependency,
+  NativeExtensionResolvedDependencyState,
   NativeExtensionScope,
   NativeExtensionShadow,
   NativeExtensionSource,
@@ -79,6 +88,16 @@ export type {
 export { discoverNativeExtensions } from './discovery.js';
 export { createExtensionRecorder, mergeRecorderState } from './recorder.js';
 export { loadNativeExtensions } from './loader.js';
+export {
+  applyContributionAvailability,
+  buildExtensionLookupContext,
+  finalizeCandidateDependencyAvailability,
+  finalizeRegistryDependencyAvailability,
+  isContributionAvailable,
+  isValidVersionConstraintSyntax,
+  resolveExtensionDependencyGraph,
+  versionSatisfies,
+} from './dependency-resolution.js';
 export {
   DEFAULT_EVENT_HOOK_DRAIN_GRACE_MS,
   DEFAULT_EVENT_HOOK_EXEC_OUTPUT_LIMIT_BYTES,

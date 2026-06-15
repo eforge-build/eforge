@@ -451,12 +451,20 @@ describe('eforge playbook run', () => {
     logSpy.mockRestore();
   });
 
-  it('prints guidance to use interactive agent command for a requires-agent response', async () => {
+  it('prints generic planning entry guidance for a requires-agent response', async () => {
     mockApiPlaybookRun.mockImplementation(() => wrap({
       kind: 'requires-agent',
       mode: 'planning',
       name: 'my-planning',
-      message: 'Playbook "my-planning" is planning-mode. Use /eforge:playbook run my-planning to start an interactive planning session.',
+      message: 'Continue through the generic eforge-plan planning entry.',
+      requiredCapability: { name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' },
+      planningEntry: {
+        actionId: 'eforge-plan:open-planning-entry',
+        integrationCommandId: 'eforge-plan:open-planning-entry',
+        deepLinkId: 'eforge-plan:planning-workstation',
+        workstationId: 'eforge-plan:planning-workstation',
+        workstationUrl: '/console/workstations/eforge-plan%3Aplanning-workstation',
+      },
     }));
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -464,12 +472,9 @@ describe('eforge playbook run', () => {
     await program.parseAsync(['node', 'eforge', 'playbook', 'run', 'my-planning']);
 
     const allCalls = logSpy.mock.calls.map((c) => c[0]);
-    // Should mention the need for an interactive session (not a created file)
-    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('interactive'))).toBe(true);
-    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('Planning session ready'))).toBe(false);
-    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('session plan'))).toBe(false);
-    // Should provide guidance to use /eforge:playbook run
-    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/eforge:playbook run'))).toBe(true);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('eforge-plan:open-planning-entry'))).toBe(true);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/console/workstations/eforge-plan%3Aplanning-workstation'))).toBe(true);
+    expect(allCalls.some((msg) => typeof msg === 'string' && msg.includes('/eforge:playbook run'))).toBe(false);
     logSpy.mockRestore();
   });
 });

@@ -342,7 +342,7 @@ To use different harnesses across tiers (e.g. `claude-sdk` for planning/review +
 | Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
 | Profile | `/eforge:profile` | User wants to inspect or switch agent runtime profiles |
 | Profile (new) | `/eforge:profile-new` | User wants to create a personal agent runtime profile |
-| Plan | `/eforge:plan` | User wants to plan changes before building |
+| Planning entry | eforge-plan workstation / contribution | User wants to plan changes before building |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |
 | Update | `/eforge:update` | User wants to check for or install eforge updates |

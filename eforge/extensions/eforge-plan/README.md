@@ -22,6 +22,15 @@ eforge extension reload
 
 Run `eforge extension show eforge-plan` to confirm the registered actions, integration commands, deep links, Console workstation, and input source.
 
+## Declared capabilities
+
+The directory extension manifest declares two stable first-party capabilities:
+
+- `eforge.plan.planning-workstation` version `1.0.0` — the extension owns the rich planning workstation UI.
+- `eforge.plan.planning-mode-playbook` version `1.0.0` — planning-mode playbook hosts may depend on this capability before offering planning continuation.
+
+Planning entry is exposed through generic extension contribution discovery. Hosts can list/invoke the `eforge-plan:open-planning-entry` action or integration command, or follow the action-backed `eforge-plan:planning-workstation` deep link. All return or point at the workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
+
 ## Usage
 
 Registered action IDs can be invoked by hosts that expose extension actions:
@@ -65,7 +74,7 @@ Registered action IDs can be invoked by hosts that expose extension actions:
 - `cancel-plan-revision-turn` example input: `{ "session": "2026-06-05-add-import-preview", "turnId": "turn_123", "reason": "Superseded." }`; cancels the linked daemon task.
 - `apply-plan-revision-turn` example input: `{ "session": "2026-06-05-add-import-preview", "turnId": "turn_123" }`; writes all structured section patches from the completed revision turn through adapter-backed section mutations, applies any resolved open questions from the patch metadata to the plan's `open_questions`, then refreshes readiness. The workstation calls this automatically as soon as a turn produces a patch, so there is no separate section-selection or apply-confirmation step. Apply is idempotent: re-applying an already-applied turn returns `kind: "applied"` without rewriting the plan. Answer-only, mismatched, or invalid-patch turns return `kind: "not-applicable"` without writing session-plan sections.
 
-Integration command IDs are `render-board`, `promote-item`, and `promote-selection`. Deep-link IDs are `board`, `promote`, and `promote-selection`; they dispatch `render-board-markdown`, `promote-item`, and `promote-selection` respectively. The input-source URI form is:
+Integration command IDs are `open-planning-entry`, `render-board`, `promote-item`, and `promote-selection`. Deep-link IDs are `planning-workstation`, `board`, `promote`, and `promote-selection`; they dispatch `open-planning-entry`, `render-board-markdown`, `promote-item`, and `promote-selection` respectively. The planning entry action returns the eforge-plan workstation route `/console/workstations/eforge-plan%3Aplanning-workstation`. The input-source URI form is:
 
 ```text
 eforge://input/eforge-plan/<itemId>
@@ -213,7 +222,7 @@ The Console System contribution is declarative and uses only the closed renderer
 
 The contribution includes board summary content, status badges, and action-backed controls for listing or rendering the board, reading recommendations, refreshing recommendations, analyzing all backlog records, promoting an item or selection, preparing planner context, applying structured planner results, capturing an item, updating an item, and importing legacy backlog records. Dynamic board content is surfaced by invoking `render-board-markdown`; the top-level contribution does not read the filesystem directly.
 
-Host integrations register commands and action-backed deep links for board rendering and promotion workflows.
+Host integrations register commands and action-backed deep links for board rendering, promotion workflows, and generic planning entry. Planning-mode playbook hosts should discover or invoke the `eforge-plan:open-planning-entry` contribution, or open the `eforge-plan:planning-workstation` deep link, instead of hard-coding host-specific planning commands.
 
 The planning workstation appears under `/console/workstations` as an extension-owned `frameBundle` rooted at `workstation-assets/plans` with `index.js` as its entrypoint. Browser assets are built from the TypeScript/React Vite app in `workstation-src/plans`, use local shadcn-style components owned by the extension, and are served through the daemon-owned frame/asset contract. They do not import parent Console React components, private Console routes, `packages/console-ui/src`, or `@/` aliases.
 

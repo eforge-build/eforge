@@ -116,12 +116,19 @@ async function runAction(name: string, options: { after?: string }): Promise<voi
         ...(options.after ? { afterQueueId: options.after } : {}),
       },
     });
-    if (data.kind === 'enqueued') {
-      console.log(chalk.green('✔') + ` Enqueued: ${data.id}`);
+    const kind = (data as { kind: string }).kind;
+    if (kind === 'enqueued') {
+      console.log(chalk.green('✔') + ` Enqueued: ${(data as { id: string }).id}`);
+    } else if (kind === 'requires-agent') {
+      const planning = data as unknown as { planningEntry: { integrationCommandId: string; workstationUrl: string } };
+      console.log(chalk.yellow('⚡') + ` Planning playbook "${name}" requires the eforge-plan planning entry.`);
+      console.log(chalk.dim(`  Invoke integration command contribution with: eforge extension contributions invoke ${planning.planningEntry.integrationCommandId} --kind command`));
+      console.log(chalk.dim(`  Or open ${planning.planningEntry.workstationUrl}.`));
     } else {
-      // kind === 'requires-agent': planning playbook needs an interactive session
-      console.log(chalk.yellow('⚡') + ` Planning playbook "${name}" requires an interactive agent session.`);
-      console.log(chalk.dim(`  Use /eforge:playbook run ${name} to start planning.`));
+      const unavailable = data as unknown as { requiredCapability: { name: string }; diagnostics: Array<{ message: string }> };
+      console.log(chalk.yellow('⚠') + ` Planning playbook "${name}" cannot continue: ${unavailable.requiredCapability.name} is unavailable.`);
+      for (const diagnostic of unavailable.diagnostics) console.log(chalk.dim(`  - ${diagnostic.message}`));
+      console.log(chalk.dim('  Load, trust, and reload eforge-plan, then discover/invoke the generic planning entry contribution.'));
     }
   } catch (err) {
     const { message, exitCode } = formatCliError(err);
@@ -362,7 +369,7 @@ export function registerPlaybookCommand(program: Command): void {
 
   playbook
     .command('run <name>')
-    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:playbook run <name> for interactive planning)')
+    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return generic eforge-plan planning entry metadata or unavailable diagnostics')
     .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);
@@ -417,7 +424,7 @@ export function registerPlaybookCommand(program: Command): void {
 
   program
     .command('play <name>')
-    .description('Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns requires-agent for planning playbooks')
+    .description('Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns eforge-plan planning entry metadata or unavailable diagnostics')
     .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
     .action(async (name: string, options: { after?: string }) => {
       await runAction(name, options);

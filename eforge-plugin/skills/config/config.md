@@ -271,7 +271,6 @@ hooks:
 | Profile | `/eforge:profile` | User wants to list, inspect, or switch agent runtime profiles |
 | Profile (new) | `/eforge:profile-new` | User wants to create a new agent runtime profile (project or user scope) |
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
-| Plan | `/eforge:plan` | User wants to plan changes before building |
 | Playbook | `/eforge:playbook` | User wants to create, run, or manage reusable automation playbooks |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |

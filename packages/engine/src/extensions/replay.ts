@@ -307,6 +307,14 @@ function normalizeDiagnostic(diagnostic: NativeExtensionDiagnostic | ExtensionDi
   const resultWithTrustHashes = result as ExtensionDiagnostic & { currentHash?: string; trustedHash?: string };
   if (trustHashes.currentHash !== undefined) resultWithTrustHashes.currentHash = trustHashes.currentHash;
   if (trustHashes.trustedHash !== undefined) resultWithTrustHashes.trustedHash = trustHashes.trustedHash;
+  const dependencyFields = diagnostic as { dependencyName?: string; providerName?: string; capabilityName?: string; requiredVersion?: string; actualVersion?: string; dependencyKind?: 'required' | 'optional' };
+  const resultWithDependencyFields = result as ExtensionDiagnostic & typeof dependencyFields;
+  if (dependencyFields.dependencyName !== undefined) resultWithDependencyFields.dependencyName = dependencyFields.dependencyName;
+  if (dependencyFields.providerName !== undefined) resultWithDependencyFields.providerName = dependencyFields.providerName;
+  if (dependencyFields.capabilityName !== undefined) resultWithDependencyFields.capabilityName = dependencyFields.capabilityName;
+  if (dependencyFields.requiredVersion !== undefined) resultWithDependencyFields.requiredVersion = dependencyFields.requiredVersion;
+  if (dependencyFields.actualVersion !== undefined) resultWithDependencyFields.actualVersion = dependencyFields.actualVersion;
+  if (dependencyFields.dependencyKind !== undefined) resultWithDependencyFields.dependencyKind = dependencyFields.dependencyKind;
   return result;
 }
 
@@ -458,6 +466,10 @@ function collectReviewerPerspectiveDetails(
   return details.length > 0 ? details : undefined;
 }
 
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boolean): ExtensionEntry[] {
   const loadedByKey = new Map(registry.extensions.map((extension) => [`${extension.name}\0${extension.path}`, extension]));
   return registry.candidates.map((candidate) => {
@@ -487,6 +499,9 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       ...(candidate.format !== undefined && { format: candidate.format }),
       ...(candidate.layout !== undefined && { layout: candidate.layout }),
       ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
+      ...(candidate.capabilities !== undefined && { capabilities: cloneJson(candidate.capabilities) }),
+      ...(candidate.dependencies !== undefined && { dependencies: cloneJson(candidate.dependencies) as ExtensionEntry['dependencies'] }),
+      ...(candidate.resolvedDependencies !== undefined && { resolvedDependencies: cloneJson(candidate.resolvedDependencies) }),
       shadows: candidate.shadows.map((shadow) => ({
         name: shadow.name,
         path: shadow.path,
@@ -504,7 +519,7 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       ...(consoleWorkstationDetails !== undefined && { consoleWorkstationDetails }),
       ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
       ...(deepLinkDetails !== undefined && { deepLinkDetails }),
-      ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
+      ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } as ExtensionEntry['package'] }),
       ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
     } satisfies ExtensionEntry;
   }).sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));

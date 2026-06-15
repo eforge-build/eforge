@@ -51,6 +51,5 @@ If the user explicitly requests a forced restart (even with active builds), call
 | Init | `eforge_init` | No eforge config found in the project |
 | Build | `eforge_build` | User wants to enqueue work for the daemon to build |
 | Config | `eforge_config` | User wants to view, edit, or validate the eforge config |
-| Plan | `eforge_plan` | User wants to plan changes before building |
 | Status | `eforge_status` | User wants to check build progress or queue state |
 | Update | `eforge_update` | User wants to check for or install eforge updates |

@@ -59,11 +59,11 @@ The web UI running locally at `http://localhost:<port>/console/` (port range 456
 
 ## Playbook
 
-A reusable Markdown workflow template for recurring work. Has a `mode` of either `autonomous` (enqueues a build directly) or `planning` (triggers investigation-first workflow). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
+A reusable Markdown workflow template for recurring work. Has a `mode` of either `autonomous` (enqueues a build directly) or `planning` (checks the eforge-plan planning capability and returns planning entry metadata). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
 
 ## Planner
 
-The agent stage that sizes work, chooses the workflow profile, and writes implementation plans. This is separate from the driver-side planning conversation exposed by `/eforge:plan`.
+The agent stage that sizes work, chooses the workflow profile, and writes implementation plans. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
 
 ## PRD
 
@@ -103,7 +103,7 @@ The blind review agent stage that evaluates a diff without the builder's reasoni
 
 ## Session plan
 
-A driver-side planning artifact created by `/eforge:plan` under `.eforge/session-plans/`. It captures planning type/depth, scope, acceptance criteria, risks, assumptions, skipped dimensions, readiness, and other dimensions before `/eforge:build` converts a ready file into build source.
+A driver-side planning artifact created by the generic eforge-plan planning entry under `.eforge/session-plans/`. It captures planning type/depth, scope, acceptance criteria, risks, assumptions, skipped dimensions, readiness, and other dimensions before `/eforge:build` converts a ready file into build source.
 
 ## Tier
 

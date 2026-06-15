@@ -31,11 +31,11 @@ Playbooks are Markdown files with YAML frontmatter encoding a reusable build int
 - `movePlaybook(name, opts)` - move a playbook between scope tiers
 - `copyPlaybookToScope(name, opts)` - copy a playbook to a target scope
 - `playbookToBuildSource(playbook)` - compile an autonomous playbook to ordinary build source for the engine queue
-- `playbookToPlanSeed(playbook)` - extract static plan-seed data (Goal, Out of scope, Acceptance criteria, Notes) from a planning playbook. Used by the `create-from-playbook` session-plan action as a static template/scratch helper. This is not the planning-playbook Run path — for investigation-first planning use `/eforge:playbook run <name>` or `/eforge:plan` path (c) which perform active codebase investigation before creating a session plan.
+- `playbookToPlanSeed(playbook)` - extract static plan-seed data (Goal, Out of scope, Acceptance criteria, Notes) from a planning playbook. Used by the `create-from-playbook` session-plan action as a static template/scratch helper. This is not the planning-playbook Run path — planning playbook runs check the eforge-plan planning capability and return generic planning entry metadata for the eforge-plan workstation, which performs active codebase investigation before creating a session plan.
 
 ### Session plans
 
-Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured `/eforge:plan` conversation. They are project-local only and compile to ordinary build source.
+Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured eforge-plan planning entry/workstation flow. They are project-local only and compile to ordinary build source.
 
 #### Lifecycle
 
@@ -204,7 +204,7 @@ This package compiles input artifacts (playbooks, session plans) to ordinary bui
 - No daemon HTTP client - use `@eforge-build/client` for daemon-backed flows
 - No engine queue knowledge - this package normalizes input before the engine sees it
 - No new CRUD or tool API surface - wire-protocol additions belong in `@eforge-build/client`
-- No conversational planning logic - the `/eforge:plan` skill owns structured planning conversations
+- No conversational planning logic - eforge-plan contribution/workstation surfaces own structured planning conversations
 
 ## Stability
 

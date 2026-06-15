@@ -1,5 +1,14 @@
 import type { EforgeEvent } from './events.js';
-import type { ConsoleContributionManifestEntry, ConsoleWorkstationManifestEntry, ExtensionActionManifestEntry, ExtensionDeepLinkManifestEntry, IntegrationCommandManifestEntry } from './extension-contributions.js';
+import type {
+  ConsoleContributionManifestEntry,
+  ConsoleWorkstationManifestEntry,
+  ExtensionActionManifestEntry,
+  ExtensionAvailabilityDiagnostic,
+  ExtensionCapabilityRequirement,
+  ExtensionDeepLinkManifestEntry,
+  ExtensionDependencyRequirement,
+  IntegrationCommandManifestEntry,
+} from './extension-contributions.js';
 import type { RecoveryAppliedMetadata } from './routes/recovery.js';
 
 // GET /api/health
@@ -158,29 +167,17 @@ export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
 export type ExtensionLayout = 'file' | 'directory';
 export type ExtensionTrust = 'trusted' | 'untrusted';
 export type ExtensionTrustState = 'not-required' | 'untrusted' | 'trusted' | 'changed';
+export interface ExtensionCapabilityDeclaration { name: string; version?: string }
+export type ExtensionDependencyDeclaration = ExtensionDependencyRequirement;
+export interface ExtensionDependencyManifest { required?: ExtensionDependencyDeclaration[]; optional?: ExtensionDependencyDeclaration[] }
+export interface ExtensionResolvedDependency { kind: 'required' | 'optional'; name?: string; providerName?: string; providerPath?: string; providerVersion?: string; requiredVersion?: string; available: boolean; capabilities: ExtensionCapabilityRequirement[]; diagnostics: ExtensionAvailabilityDiagnostic[] }
+export interface ExtensionResolvedDependencyState { available: boolean; required: ExtensionResolvedDependency[]; optional: ExtensionResolvedDependency[]; diagnostics: ExtensionAvailabilityDiagnostic[] }
 export type ExtensionScaffoldScope = 'local' | 'project' | 'user';
 export type ExtensionScaffoldTemplate = 'event-logger' | 'blank';
 
-export interface ExtensionDiagnostic {
-  severity: ExtensionDiagnosticSeverity;
-  code: string;
-  message: string;
-  name?: string;
-  path?: string;
-  scope?: ExtensionScope;
-  source?: ExtensionSource;
-  currentHash?: string;
-  trustedHash?: string;
-}
+export interface ExtensionDiagnostic { severity: ExtensionDiagnosticSeverity; code: string; message: string; name?: string; path?: string; scope?: ExtensionScope; source?: ExtensionSource; currentHash?: string; trustedHash?: string; dependencyName?: string; providerName?: string; capabilityName?: string; requiredVersion?: string; actualVersion?: string; dependencyKind?: 'required' | 'optional' }
 
-export interface ExtensionShadow {
-  name: string;
-  path: string;
-  entrypoint?: string;
-  scope: Exclude<ExtensionScope, 'external'>;
-  format?: ExtensionFormat;
-  layout?: ExtensionLayout;
-}
+export interface ExtensionShadow { name: string; path: string; entrypoint?: string; scope: Exclude<ExtensionScope, 'external'>; format?: ExtensionFormat; layout?: ExtensionLayout }
 
 export interface ExtensionRegistrationSummary {
   eventHooks: number; agentRunHooks: number; policyGates: number; profileRouters: number; inputSources: number; reviewerPerspectives: number; validationProviders: number; tools: number; prdEnrichers: number;
@@ -221,6 +218,7 @@ export interface ExtensionEntry {
   /** Metadata for each validation provider registered by this extension. Absent when the extension has no registered providers. */
   validationProviderDetails?: ValidationProviderDetail[];
   actionDetails?: ExtensionActionDetail[]; consoleContributionDetails?: ConsoleContributionDetail[]; consoleWorkstationDetails?: ConsoleWorkstationDetail[]; integrationCommandDetails?: IntegrationCommandDetail[]; deepLinkDetails?: ExtensionDeepLinkDetail[];
+  capabilities?: ExtensionCapabilityDeclaration[]; dependencies?: ExtensionDependencyManifest; resolvedDependencies?: ExtensionResolvedDependencyState;
   /** Package provenance, populated for directory-layout extensions with a `package.json`. */
   package?: ExtensionPackageProvenance;
   /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
@@ -319,6 +317,7 @@ export interface ExtensionPackageProvenance {
   repository?: string;
   /** Homepage URL. */
   homepage?: string;
+  capabilities?: ExtensionCapabilityDeclaration[]; dependencies?: ExtensionDependencyManifest;
 }
 
 /**

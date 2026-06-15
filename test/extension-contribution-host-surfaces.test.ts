@@ -127,22 +127,39 @@ describe('host contribution Pi surface', () => {
     }
   });
 
-  it('wires the Pi registration helpers from the bounded extension entrypoint', () => {
+  it('wires the Pi registration helpers from the bounded extension entrypoint without a plan shim', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
     expect(source).toContain('registerExtensionContributionTool');
     expect(source).toContain('registerExtensionContributionsCommand');
     expect(source).toContain('registerExtensionContributionTool(pi)');
     expect(source).toContain('registerExtensionContributionsCommand(pi, () => _latestCtx)');
+    expect(source).not.toContain('pi.registerCommand("eforge:plan"');
+    expect(source).not.toContain('handlePlanCommand');
   });
 
-  it('documents the Pi tool and native command without bumping the Pi package version', () => {
+  it('documents the Pi tool, native command, and generic planning entry without bumping the Pi package version', () => {
     const readme = readRepoFile('packages/pi-eforge/README.md');
     const packageJson = JSON.parse(readRepoFile('packages/pi-eforge/package.json')) as { version: string };
 
     expect(readme).toContain('eforge_extension_contribution');
     expect(readme).toContain('/eforge:extensions');
+    expect(readme).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
+    expect(readme).not.toContain('/eforge:plan');
     expect(packageJson.version).toBe('0.7.21');
+  });
+});
+
+describe('eforge-plan generic planning contribution routing', () => {
+  it('keeps planning entry as an extension contribution, workstation, and deep link', () => {
+    const source = readRepoFile('eforge/extensions/eforge-plan/index.ts');
+
+    expect(source).toContain('eforge-plan:open-planning-entry');
+    expect(source).toContain('eforge-plan:planning-workstation');
+    expect(source).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
+    expect(source).toContain('registerIntegrationCommand');
+    expect(source).toContain('registerDeepLink');
+    expect(source).toContain('registerConsoleWorkstation');
   });
 });
 

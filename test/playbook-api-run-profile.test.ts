@@ -78,13 +78,14 @@ function queueRoot(tmpDir: string): string {
   return resolve(tmpDir, '.eforge', 'queue');
 }
 
-async function expectRequiresAgentBody(res: Response, name: string): Promise<void> {
+async function expectPlanningUnavailableBody(res: Response, name: string): Promise<void> {
   expect(res.status).toBe(200);
-  const data = await res.json() as { kind: string; mode: string; name: string; message?: string };
+  const data = await res.json() as { kind: string; mode: string; name: string; message?: string; requiredCapability?: { name: string; version: string } };
   expect(data).toEqual(expect.objectContaining({
-    kind: 'requires-agent',
+    kind: 'planning-unavailable',
     mode: 'planning',
     name,
+    requiredCapability: { name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' },
   }));
 }
 
@@ -159,7 +160,7 @@ describe('POST /api/playbook/run', () => {
     expect(autoBuildWakeReasons).toContain('playbook-enqueue');
   });
 
-  it('returns { kind: "requires-agent", mode: "planning", name, message } for a planning-mode playbook and does not write a session plan or enqueue', async () => {
+  it('returns { kind: "planning-unavailable", mode: "planning", name, message } for a planning-mode playbook without eforge-plan and does not write a session plan or enqueue', async () => {
     const { tmpDir, configDir } = await init();
 
     await writeTeamPlaybook(configDir, 'my-planning', validPlaybookRaw({ name: 'my-planning', mode: 'planning' }));
@@ -176,12 +177,13 @@ describe('POST /api/playbook/run', () => {
     });
     expect(res.status).toBe(200);
 
-    const data = await res.json() as { kind: string; mode: string; name: string; message: string };
-    expect(data.kind).toBe('requires-agent');
+    const data = await res.json() as { kind: string; mode: string; name: string; message: string; requiredCapability?: { name: string; version: string } };
+    expect(data.kind).toBe('planning-unavailable');
     expect(data.mode).toBe('planning');
     expect(data.name).toBe('my-planning');
+    expect(data.requiredCapability).toEqual({ name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' });
     expect(typeof data.message).toBe('string');
-    expect(data.message).toContain('/eforge:playbook run my-planning');
+    expect(data.message).toContain('generic planning entry contribution');
 
     // Verify no session plan file was created and existing session plans were left untouched
     await expect(readdir(sessionPlanDir)).resolves.toEqual(['existing-plan.md']);
@@ -218,7 +220,7 @@ describe('POST /api/playbook/run', () => {
       raw: validPlaybookRaw({ name: 'my-planning', mode: 'planning' }),
       body: { name: 'my-planning', landingAction: 'pr' },
     },
-  ])('returns requires-agent for a planning-mode playbook when $scenario', async ({ playbookName, raw, body }) => {
+  ])('returns planning-unavailable for a planning-mode playbook without eforge-plan when $scenario', async ({ playbookName, raw, body }) => {
     const { tmpDir, configDir } = await init();
 
     await writeTeamPlaybook(configDir, playbookName, raw);
@@ -227,12 +229,12 @@ describe('POST /api/playbook/run', () => {
 
     const res = await runPlaybook(body);
 
-    await expectRequiresAgentBody(res, body.name);
+    await expectPlanningUnavailableBody(res, body.name);
     await expect(readdir(queueRoot(tmpDir))).rejects.toThrow();
     expect(autoBuildWakeReasons).toEqual([]);
   });
 
-  it('returns { kind: "requires-agent" } on repeated calls for a planning-mode playbook (no 409)', async () => {
+  it('returns { kind: "planning-unavailable" } on repeated calls for a planning-mode playbook without eforge-plan (no 409)', async () => {
     const { tmpDir, configDir } = await init();
 
     const teamDir = resolve(configDir, 'playbooks');
@@ -245,13 +247,13 @@ describe('POST /api/playbook/run', () => {
     const first = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
     expect(first.status).toBe(200);
     const firstData = await first.json() as { kind: string };
-    expect(firstData.kind).toBe('requires-agent');
+    expect(firstData.kind).toBe('planning-unavailable');
 
     // Second run — no collision since no file is written
     const second = await post(`http://localhost:${server.port}${API_ROUTES.playbookRun}`, { name: 'my-planning' });
     expect(second.status).toBe(200);
     const secondData = await second.json() as { kind: string };
-    expect(secondData.kind).toBe('requires-agent');
+    expect(secondData.kind).toBe('planning-unavailable');
     expect(autoBuildWakeReasons).toEqual([]);
   });
 

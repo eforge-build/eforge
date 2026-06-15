@@ -21,7 +21,7 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
       'List and invoke extension-provided actions, integration commands, and action-backed deep links. Distinct from eforge_extension extension management.',
     schema: {
       action: z.enum(['list', 'invoke']).describe('List host contributions or invoke one contribution'),
-      kind: z.enum(['action', 'command', 'deep-link']).optional().describe('Contribution kind. Required when an id is ambiguous.'),
+      kind: z.enum(['action', 'command', 'deep-link', 'all']).optional().describe('Contribution kind. Use "all" only when listing all contributions.'),
       id: z.string().min(1).optional().describe('Contribution id. Required when action is "invoke".'),
       input: z.record(z.string(), z.unknown()).optional().describe('JSON object input for invocation.'),
     },
@@ -30,6 +30,7 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
         return { action, result: await listEforgeExtensionContributions({ cwd: toolCwd, kind }) } satisfies ContributionToolEnvelope;
       }
       if (!id) throw new Error('"id" is required when action is "invoke"');
+      if (kind === 'all') throw new Error('"kind: all" is only valid when action is "list"');
       const result = await invokeEforgeExtensionContribution({
         cwd: toolCwd,
         kind,

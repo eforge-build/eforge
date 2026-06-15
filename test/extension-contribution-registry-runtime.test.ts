@@ -65,6 +65,7 @@ describe('extension contribution registry runtime', () => {
     expect(Date.parse(manifest.generatedAt)).not.toBeNaN();
     expect(manifest.consoleContributions[0]?.blocks[0]).toMatchObject({ action: { actionId: 'contrib:hello' } });
     expect(manifest.consoleWorkstations[0]).toMatchObject({ id: 'contrib:workspace', allowedActions: ['contrib:hello'], srcDoc: '<h1>Workspace</h1>' });
+    expect(manifest.actions[0]?.availability).toEqual({ available: true });
     expect(JSON.stringify(manifest)).not.toContain('handler');
 
     const projection = projectExtensionRegistry(result.registry);

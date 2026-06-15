@@ -20,9 +20,9 @@ A lower-tier playbook with the same name **shadows** a higher-tier one. eforge a
 Every playbook has a `mode` field in its frontmatter:
 
 - **`mode: autonomous`** — eforge builds the playbook end-to-end without further prompting. Hand-off-and-forget: the daemon enqueues it and runs it. Suitable for mechanical, repeatable workflows where the build agent does not need to consult the user mid-run.
-- **`mode: planning`** — running the playbook triggers an investigation-first workflow. The agent loads the playbook, performs the investigation guided by the playbook's Goal, Acceptance criteria, and Notes for the planner, synthesizes investigation findings into an implementation-ready session plan with concrete implementation targets, actions, non-goals, and validation criteria, and continues the planning conversation interactively. The daemon does not create the session plan directly.
+- **`mode: planning`** — running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff. The daemon does not create the session plan directly or enqueue a PRD.
 
-The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` starts an investigation-first planning workflow.
+The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` resolves generic eforge-plan planning entry metadata or unavailable capability diagnostics.
 
 ## Step 1: Branch on Arguments
 
@@ -46,7 +46,7 @@ Call `eforge_playbook { action: "list" }` to fetch the current playbook inventor
 
 **Shown only when playbooks exist:**
 - **2. Edit** — walk through a playbook section-by-section
-- **3. Run** — run a playbook (enqueue an autonomous playbook, or start an investigation-first planning workflow for a planning-mode playbook)
+- **3. Run** — run a playbook (enqueue an autonomous playbook, or resolve the generic eforge-plan planning entry for a planning-mode playbook)
 
 **Shown only when project-local playbooks exist (`.eforge/playbooks/`):**
 - **5. Promote** — move a `.eforge/playbooks/<name>.md` to `eforge/playbooks/<name>.md`
@@ -68,7 +68,7 @@ If `$ARGUMENTS` contains a description after `create`, use it as the starting po
 
 > "What recurring workflow do you want to capture as a playbook? Describe what it does and when you'd run it."
 
-If the user is entering Create from a mid-conversation `/eforge:plan` and has an in-progress session plan, offer to use that plan as the draft starting point:
+If the user is entering Create from an eforge-plan workstation planning continuation and has an in-progress session plan, offer to use that plan as the draft starting point:
 
 > "I see you have an active planning session for `{topic}`. Would you like to use that as the playbook draft?"
 
@@ -130,7 +130,7 @@ When classification is confident, state the inferred scope briefly:
 
 Ask the user which mode this playbook should use:
 
-> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (the agent investigates first, synthesizes findings into an implementation-ready session plan, and continues `/eforge:plan` interactively before building)?"
+> "Should this be an **autonomous** playbook (eforge builds it end-to-end without further prompting — hand-off-and-forget) or a **planning** playbook (the agent investigates first, synthesizes findings into an implementation-ready session plan, and continues in the eforge-plan workstation through the generic planning entry before building)?"
 
 **Default heuristic** — pre-select a suggestion before asking, based on the workflow description:
 
@@ -175,7 +175,7 @@ mode: {autonomous|planning}
 - `## Acceptance criteria` — specific, testable conditions for a successful run
 - `## Notes for the planner` — hints, constraints, or context for the build agent (optional but encouraged)
 
-Present the draft to the user for review. If entries were pre-filled from an `/eforge:plan` session, note which sections came from the session.
+Present the draft to the user for review. If entries were pre-filled from an eforge-plan workstation session, note which sections came from the session.
 
 ### 3.5: Validate and save
 
@@ -254,7 +254,7 @@ Same as Step 3.5. Validate before saving, surface errors verbatim, do NOT write 
 
 ## Branch: Run (Step 5)
 
-Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks the agent performs an investigation-first workflow: loads the playbook, investigates the codebase guided by the playbook's Goal, Acceptance criteria, and Notes, synthesizes findings into an implementation-ready session plan, and continues interactively via `/eforge:plan`.
+Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks, first check the `eforge.plan.planning-mode-playbook` capability and continue through generic extension contribution discovery/invocation into the eforge-plan workstation/deep-link entry.
 
 ### 5.1: Pick a playbook
 
@@ -267,7 +267,7 @@ Call `eforge_playbook { action: "show", name: "<name>" }` to get the full playbo
 **Branch on `mode`:**
 
 - **`mode: autonomous`** — proceed to Step 5.3 (choose landing action).
-- **`mode: planning`** — proceed to Step 5.5 (investigation-first flow).
+- **`mode: planning`** — proceed to Step 5.5 (generic eforge-plan planning entry flow).
 
 ### 5.3: Choose a landing action (autonomous only)
 
@@ -359,33 +359,21 @@ If the enqueue fails because the upstream is no longer active (404 from daemon),
 > "The build you selected has already finished. Running `{name}` now instead."
 Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from Step 5.3: include `landingAction: "<landingActionOverride>"` for explicit selections, or omit `landingAction` for project default. Also preserve `landingAutoMergeOverride` from Step 5.3: include `landingAutoMerge: <landingAutoMergeOverride>` when set, or omit `landingAutoMerge` when `undefined`.
 
-### 5.5: Investigation-first planning flow
+### 5.5: Generic eforge-plan planning entry flow
 
-Do not call `eforge_playbook { action: "run" }` for planning playbooks — the daemon does not execute the investigation. Instead, perform the investigation in the current conversation:
+Planning-mode playbook continuation is owned by eforge-plan. Do not create a session plan directly and do not enqueue. Instead:
 
-1. **Identify investigation targets**: Using the playbook content loaded in Step 5.2, read the Goal, Acceptance criteria, and Notes for the planner sections. Identify what needs to be investigated: relevant files to read, codebase areas to search, questions to answer, commands to run.
+1. **Check the capability through the playbook run response**: Call `eforge_playbook { action: "run", name: "<name>" }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-mode-playbook` capability.
+   - If the response is `{ kind: "planning-unavailable", requiredCapability, diagnostics }`, show the required capability and diagnostics verbatim. Tell the user to load, trust, and reload eforge-plan before continuing.
+   - If the response is `{ kind: "requires-agent", planningEntry, requiredCapability }`, continue with the generic planning entry metadata.
 
-2. **Investigate**: Using read, search, and command capabilities, gather evidence from the codebase. Validate cheap assumptions immediately before recording them. Separate confirmed evidence from inferences.
+2. **Discover the generic contribution**: Call `eforge_extension_contribution { action: "list", kind: "all" }` and confirm that `eforge-plan:open-planning-entry` and/or `eforge-plan:planning-workstation` are available. If an entry is unavailable, surface its availability message instead of continuing.
 
-3. **Summarize findings**: Build a clear summary of what was found — concrete evidence, confirmed facts, and any remaining assumptions with confidence levels.
+3. **Invoke the planning entry**: Prefer invoking the action-backed integration command with `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-plan:open-planning-entry", input: {} }`. If the host exposes deep-link opening, the equivalent deep link is `eforge-plan:planning-workstation`.
 
-4. **Synthesize implementation handoff**: Before asking for a topic, convert findings into an implementation-ready handoff:
-   - **Choose implementation targets**: When evidence supports a clear choice, name the specific files, modules, or components that will change.
-   - **Define concrete actions**: For each selected target, state what will be done (e.g., "refactor X to use Y", "add Z to module A").
-   - **Separate evidence from spec**: Put confirmed findings and assumptions in context/evidence-oriented content. Put implementation targets, actions, non-goals, and validation criteria in actionable sections (Scope, Code Impact, Acceptance Criteria).
-   - **Move unresolved findings**: Judgment-heavy or inconclusive findings become Open Questions, follow-up scope, or non-goals — not a directive to re-run the investigation during the build.
-   - **Avoid audit-repeat plans**: The session plan should not instruct the build agent to repeat the investigation. If evidence is insufficient to choose a target, state that as an open question.
+4. **Continue in the eforge-plan workstation**: Open the returned or declared workstation route `/console/workstations/eforge-plan%3Aplanning-workstation`. Carry the selected playbook name and the loaded playbook content as context for the workstation planning continuation. The workstation owns the investigation-first flow, session-plan drafting, revision, and handoff.
 
-5. **Ask for a topic**: Ask the user for a short topic that describes the implementation change to build — not the investigation already performed (e.g., "Reduce complexity in event parser" rather than "Audit complexity hotspots"). If the synthesized targets make the topic obvious, suggest it and allow override.
-
-6. **Create the session plan**: Generate a session ID `{YYYY-MM-DD}-{playbook-name}` (e.g. `2026-05-19-complexity-hotspot-reduction`). If the playbook has a `profile` field, call `eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true, agent_profile: "{playbook.profile}" }` so the session plan inherits the profile at enqueue time. If the playbook has no `profile`, call `eforge_session_plan { action: "create", session: "{session-id}", topic: "{topic}", open: true }`. If that session ID already exists, do not abandon the flow: ask whether to resume and update the existing session or create a new suffixed session ID (for example `{YYYY-MM-DD}-{playbook-name}-2`), then continue with the chosen session.
-
-7. **Write implementation-ready sections**: Write section content using `eforge_session_plan { action: "set-section", session, dimension, content }`. Scope, Code Impact, and Acceptance Criteria sections must describe the implementation handoff — concrete targets, actions, and validation criteria — not the investigation findings. Record confirmed findings and evidence in context-oriented sections. Include specific evidence — not generic playbook template language.
-
-8. **Continue planning**: Announce the session plan path and offer to continue into `/eforge:plan --resume` to work through the remaining dimensions before building.
-   > "Investigation complete. Session plan created at `{path}`. Would you like to continue with `/eforge:plan --resume` to work through the remaining planning dimensions?"
-
-**Defensive fallback**: If `eforge_playbook { action: "run" }` is called for a planning playbook and returns `{ kind: "requires-agent", mode: "planning", name, message }`, apply the investigation-first flow above starting from step 1. Do not prompt for a landing action in this fallback path.
+**Defensive fallback**: If any planning-mode response is returned from another path, use the generic `planningEntry` metadata and eforge-plan workstation/deep-link entry above. Do not prompt for a landing action in this fallback path.
 
 ---
 
@@ -492,7 +480,7 @@ Every save path (Create and Edit) must pass `eforge_playbook { action: "validate
 
 | Skill | When to suggest |
 |-------|----------------|
-| `/eforge:plan` | User wants to plan a one-off change (not recurring); at plan completion, offer to save as a playbook via `/eforge:playbook create` |
+| eforge-plan planning workstation | User wants to plan a one-off change (not recurring); at plan completion, offer to save as a playbook via `/eforge:playbook create` |
 | `/eforge:build` | User wants to enqueue a session plan (not a playbook) |
 | `/eforge:status` | User wants to check current build progress |
 | `/eforge:config` | User wants to view or edit `eforge/config.yaml` |

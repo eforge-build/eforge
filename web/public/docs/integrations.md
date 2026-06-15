@@ -42,7 +42,6 @@ All eforge workflows are available as slash commands:
 | Command | Purpose |
 |---------|---------|
 | `/eforge:build` | Enqueue a build from a prompt or session plan |
-| `/eforge:plan` | Plan a change interactively before building |
 | `/eforge:playbook` | Create, run, list, edit, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
@@ -75,7 +74,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links, including the eforge-plan planning entry when that extension is loaded.
 
 ### Pi commands
 
@@ -123,7 +122,7 @@ For standalone use, run `/eforge:init` in Claude Code or Pi first to create `efo
 
 ## Extension host contributions
 
-Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs.
+Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs. Manifest entries also carry dependency/capability availability metadata; unavailable actions are rejected with error code `unavailable`.
 
 Action-backed commands and deep links can be invoked generically through those host surfaces. Non-JSON host output is formatted for bounded display: exact `{ markdown: string }` outputs render as Markdown/plain text, oversized JSON is summarized with warnings and preserved identity/count/continuation fields, and rich/debug output profiles warn in coding-agent hosts. Use CLI `--json` or direct client/HTTP invocation only when you intentionally need the full raw action result. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; richer extension UI uses registered sandboxed workstations (`srcDoc` or daemon-owned `frameBundle` assets), not arbitrary parent-Console frontend bundles.
 

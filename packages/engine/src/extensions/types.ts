@@ -1,4 +1,15 @@
 import type { EforgeProjectPaths } from '@eforge-build/extension-sdk/project-paths';
+import type {
+  ExtensionCapabilityDeclaration,
+  ExtensionCapabilityLookup,
+  ExtensionCapabilityRequirement,
+  ExtensionContributionAvailability,
+  ExtensionContributionRequirements,
+  ExtensionDependencyAvailability,
+  ExtensionDependencyDeclaration,
+  ExtensionDependencyLookup,
+  ExtensionDependencyManifest,
+} from '@eforge-build/extension-sdk';
 import type { Scope } from '@eforge-build/scopes';
 import type {
   ExtensionActionOutputProfile as ClientExtensionActionOutputProfile,
@@ -17,6 +28,28 @@ import type {
  * Package provenance attached to directory-layout extensions that have a `package.json`.
  * Fields mirror npm package metadata and the optional `eforge.extension` block.
  */
+export type NativeExtensionCapabilityDeclaration = ExtensionCapabilityDeclaration;
+export type NativeExtensionCapabilityRequirement = ExtensionCapabilityRequirement;
+export type NativeExtensionDependencyDeclaration = ExtensionDependencyDeclaration;
+export type NativeExtensionDependencyManifest = ExtensionDependencyManifest;
+export type NativeExtensionContributionRequirements = ExtensionContributionRequirements;
+export type NativeExtensionContributionAvailability = ExtensionContributionAvailability;
+export type NativeExtensionDependencyAvailability = ExtensionDependencyAvailability;
+
+export interface NativeExtensionResolvedDependency extends Omit<ExtensionDependencyAvailability, 'diagnostics'> {
+  kind: 'required' | 'optional';
+  requiredVersion?: string;
+  providerPath?: string;
+  diagnostics: NativeExtensionDiagnostic[];
+}
+
+export interface NativeExtensionResolvedDependencyState {
+  available: boolean;
+  required: NativeExtensionResolvedDependency[];
+  optional: NativeExtensionResolvedDependency[];
+  diagnostics: NativeExtensionDiagnostic[];
+}
+
 export interface NativeExtensionPackageProvenance {
   /** npm package name from `package.json#name`. */
   packageName?: string;
@@ -32,6 +65,10 @@ export interface NativeExtensionPackageProvenance {
   repository?: string;
   /** Homepage URL from `package.json#homepage`. */
   homepage?: string;
+  /** Public capabilities declared in `package.json#eforge.extension.capabilities`. */
+  capabilities?: NativeExtensionCapabilityDeclaration[];
+  /** Dependencies declared in `package.json#eforge.extension.dependencies`. */
+  dependencies?: NativeExtensionDependencyManifest;
 }
 
 /**
@@ -102,6 +139,8 @@ export interface ExtensionActionContextShape {
   signal: AbortSignal;
   logger: { debug(message: string): void; info(message: string): void; warn(message: string): void; error(message: string): void };
   paths: EforgeProjectPaths;
+  dependencies: ExtensionDependencyLookup;
+  capabilities: ExtensionCapabilityLookup;
   // --- eforge:region extension-agent-task-context ---
   agentTasks: ExtensionAgentTasksApiShape;
   // --- eforge:endregion extension-agent-task-context ---
@@ -117,6 +156,8 @@ export interface ExtensionActionSpec {
   outputSchema?: Record<string, unknown>;
   outputProfile?: ExtensionActionOutputProfile;
   sideEffects?: ExtensionActionSideEffect[];
+  requirements?: NativeExtensionContributionRequirements;
+  availability?: NativeExtensionContributionAvailability;
   handler: (input: Record<string, unknown>, ctx: ExtensionActionContextShape) => ExtensionJsonValue | Promise<ExtensionJsonValue> | unknown;
 }
 export interface ExtensionActionBindingSpec { actionId: string; inputDefaults?: Record<string, unknown> }
@@ -127,14 +168,14 @@ export type ConsoleContributionBlockSpec =
   | { rendererId: 'link'; title?: string; content: string; href: string }
   | { rendererId: 'action-button'; title?: string; content: string; action: ExtensionActionBindingSpec }
   | { rendererId: 'action-form'; title?: string; content: string; action: ExtensionActionBindingSpec };
-export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[] }
-export interface ConsoleWorkstationBaseSpec { id: string; title: string; description?: string; allowedActions?: string[] }
+export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[]; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability }
+export interface ConsoleWorkstationBaseSpec { id: string; title: string; description?: string; allowedActions?: string[]; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability }
 export interface ConsoleWorkstationFrameBundleSpec { root: string; entrypoint: string; styles?: string[]; assets?: string[]; browserSdkVersion?: 1 }
 export interface ConsoleWorkstationSrcDocSpec extends ConsoleWorkstationBaseSpec { srcDoc: string; frameBundle?: never }
 export interface ConsoleWorkstationFrameBundleWorkstationSpec extends ConsoleWorkstationBaseSpec { srcDoc?: never; frameBundle: ConsoleWorkstationFrameBundleSpec }
 export type ConsoleWorkstationSpec = ConsoleWorkstationSrcDocSpec | ConsoleWorkstationFrameBundleWorkstationSpec;
-export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; action: ExtensionActionBindingSpec }
-export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; action?: ExtensionActionBindingSpec }
+export interface IntegrationCommandSpec { id: string; label: string; description?: string; inputSchema?: Record<string, unknown>; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability; action: ExtensionActionBindingSpec }
+export interface ExtensionDeepLinkSpec { id: string; label: string; description?: string; urlTemplate?: string; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability; action?: ExtensionActionBindingSpec }
 
 export interface EforgeExtensionAPIShape {
   onEvent(pattern: EventPattern, handler: ExtensionHandler): void;
@@ -187,6 +228,12 @@ export interface NativeExtensionDiagnostic {
   currentHash?: string;
   /** Trusted hash from the trust record (included in `extension:trust-changed` diagnostics). */
   trustedHash?: string;
+  dependencyName?: string;
+  providerName?: string;
+  capabilityName?: string;
+  requiredVersion?: string;
+  actualVersion?: string;
+  dependencyKind?: 'required' | 'optional';
 }
 
 export interface NativeExtensionShadow {
@@ -231,6 +278,12 @@ export interface NativeExtensionCandidate {
   packageProvenance?: NativeExtensionPackageProvenance;
   /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
   installProvenance?: NativeExtensionInstallProvenance;
+  /** Public capabilities declared without importing extension code. */
+  capabilities?: NativeExtensionCapabilityDeclaration[];
+  /** Required and optional dependency declarations parsed without importing extension code. */
+  dependencies?: NativeExtensionDependencyManifest;
+  /** Dependency availability after graph resolution. */
+  resolvedDependencies?: NativeExtensionResolvedDependencyState;
 }
 
 export interface NativeExtensionDiscoveryResult {
@@ -243,6 +296,8 @@ export interface BaseExtensionRegistration<TKind extends string, TValue> {
   extensionName: string;
   extensionPath: string;
   value: TValue;
+  requirements?: NativeExtensionContributionRequirements;
+  availability?: NativeExtensionContributionAvailability;
 }
 
 export type EventHookRegistration = BaseExtensionRegistration<'eventHook', {
@@ -297,6 +352,9 @@ export interface LoadedNativeExtension {
   packageProvenance?: NativeExtensionPackageProvenance;
   /** Install provenance, populated when a `.eforge-install.json` sidecar exists. */
   installProvenance?: NativeExtensionInstallProvenance;
+  capabilities?: NativeExtensionCapabilityDeclaration[];
+  dependencies?: NativeExtensionDependencyManifest;
+  resolvedDependencies?: NativeExtensionResolvedDependencyState;
   registrations: {
     eventHooks: number;
     agentRunHooks: number;

@@ -10,6 +10,7 @@
 
 import type { EforgeEvent } from './events.js';
 import type { EforgeProjectPaths } from './project-paths.js';
+import type { ExtensionDependencyLookupContext } from './dependencies.js';
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -93,6 +94,9 @@ export interface EforgeExtensionContext {
    */
   exec: ExtensionExecApi;
 }
+
+/** Shared immutable dependency/capability lookup context shape. */
+export type EforgeExtensionDependencyLookupContext = ExtensionDependencyLookupContext;
 
 // ---------------------------------------------------------------------------
 // Policy gate kinds

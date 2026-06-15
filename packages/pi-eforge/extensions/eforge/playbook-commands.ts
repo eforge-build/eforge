@@ -283,16 +283,8 @@ async function handleRunBranch(
     );
     if (!selectedName) return;
   }
-
-  // Step 3: If the selected playbook is planning-mode, delegate to the skill
-  // before offering any active-build dependency choices.
-  const selectedEntry = playbooks.find(
-    (p) => p.name === selectedName,
-  );
-  if (selectedEntry?.mode === "planning") {
-    pi.sendUserMessage(`/skill:eforge-playbook run ${selectedName!}`);
-    return;
-  }
+  const selectedEntry = playbooks.find((p) => p.name === selectedName);
+  if (selectedEntry?.mode === "planning") { await showPlanningPlaybookEntry(ctx, selectedName!); return; }
 
   // Step 3c: Prompt for landing action (autonomous playbooks only)
   const landingResult = await promptForPlaybookLandingGate(pi, ctx);
@@ -419,13 +411,8 @@ async function handleRunBranch(
   }
 
   if (runResult === null) return;
-
-  if (runResult.kind === "requires-agent") {
-    // Defensive: planning playbooks are caught before reaching this point via the
-    // mode check above. If the daemon still returns requires-agent (e.g. mode check
-    // was skipped for a pre-selected name not in the local list), delegate to skill.
-    pi.sendUserMessage(`/skill:eforge-playbook run ${selectedName!}`);
-  } else {
+  if (runResult.kind === "requires-agent" || (runResult as { kind: string }).kind === "planning-unavailable") await showPlanningRunResult(ctx, runResult);
+  else {
     const afterNote = afterBuildTitle
       ? `\n\nIt will start after **${afterBuildTitle}** completes.`
       : "";
@@ -436,11 +423,18 @@ async function handleRunBranch(
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Branch: List
-// ---------------------------------------------------------------------------
-
+async function showPlanningPlaybookEntry(ctx: UIContext, selectedName: string): Promise<void> {
+  try {
+    const result = await withLoader(ctx, `Checking planning entry for ${selectedName}...`, () => apiPlaybookRunIfRunning({ cwd: ctx.cwd, body: { name: selectedName } }));
+    if (result === null) await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE); else await showPlanningRunResult(ctx, result.data);
+  } catch (err) { await showInfoOverlay(ctx, "eforge - Error", `Failed to resolve planning entry for playbook "${selectedName}":\n\n${err instanceof Error ? err.message : String(err)}`); }
+}
+async function showPlanningRunResult(ctx: UIContext, runResult: PlaybookRunResponse): Promise<void> {
+  const result = runResult as unknown as { kind: string; id?: string; name: string; planningEntry?: { integrationCommandId: string; workstationUrl: string }; requiredCapability?: { name: string }; diagnostics?: Array<{ message: string }> };
+  if (result.kind === "enqueued") await showInfoOverlay(ctx, "eforge - Playbook Enqueued", `Playbook enqueued. Queued as \`${result.id}\`.`);
+  else if (result.kind === "requires-agent") await showInfoOverlay(ctx, "eforge - Planning Entry", `Playbook **${result.name}** is planning-mode.\n\nContinue via integration command contribution:\n\`eforge_extension_contribution({ action: "invoke", kind: "command", id: "${result.planningEntry?.integrationCommandId}", input: {} })\`\n\nOr open the eforge-plan workstation deep link:\n\`${result.planningEntry?.workstationUrl}\``);
+  else await showInfoOverlay(ctx, "eforge - Planning Capability Unavailable", [`Playbook **${result.name}** is planning-mode, but required capability \`${result.requiredCapability?.name}\` is unavailable.`, "", ...(result.diagnostics ?? []).map((diagnostic) => `- ${diagnostic.message}`), "", "Load, trust, and reload eforge-plan, then use the generic planning entry contribution or eforge-plan workstation deep link."].join("\n"));
+}
 async function handleListBranch(
   _pi: ExtensionAPI,
   ctx: UIContext,

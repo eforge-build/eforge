@@ -25,7 +25,7 @@
  *
  * Planning-mode playbooks are valid artifacts but `POST /api/playbook/run` does not
  * execute them directly — it returns a `requires-agent` response so first-party clients
- * can hand control to an interactive agent (e.g. /eforge:plan or /eforge:playbook run).
+ * can hand control to an interactive agent (e.g. the eforge-plan planning entry or /eforge:playbook run).
  */
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';

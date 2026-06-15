@@ -553,7 +553,7 @@ Open a playbook in $EDITOR, validate, and save to the same tier
 
 **Full command:** `eforge playbook run`
 
-Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return a requires-agent response (use /eforge:playbook run <name> for interactive planning)
+Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return generic eforge-plan planning entry metadata or unavailable diagnostics
 
 
 **Options:**
@@ -580,7 +580,7 @@ Demote a playbook from project-team to project-local (.eforge/playbooks/)
 
 **Full command:** `eforge play`
 
-Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns requires-agent for planning playbooks
+Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns eforge-plan planning entry metadata or unavailable diagnostics
 
 
 **Options:**

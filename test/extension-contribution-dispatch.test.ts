@@ -233,6 +233,16 @@ describe('extension contribution host dispatcher projection', () => {
     expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.url')?.outputProfile).toBeUndefined();
   });
 
+  it('projects bound action unavailability onto command and deep-link host summaries', () => {
+    const value = manifest();
+    value.actions[0] = { ...value.actions[0], availability: { available: false, message: 'missing capability', diagnostics: [{ code: 'extension:dependency-capability-incompatible', message: 'missing capability', severity: 'warning' }] } };
+    const summary = summarizeExtensionContributionManifest(value);
+
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.availability).toMatchObject({ available: false, message: 'missing capability' });
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.deep')?.availability).toMatchObject({ available: false, message: 'missing capability' });
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.url')?.availability).toBeUndefined();
+  });
+
   it('filters summary entries by requested kind', () => {
     const summary = summarizeExtensionContributionManifest(manifest(), { kind: 'deep-link' });
     expect(summary.entries.map((entry) => entry.kind)).toEqual(['deep-link', 'deep-link', 'deep-link']);

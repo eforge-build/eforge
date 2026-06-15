@@ -1,9 +1,4 @@
-export {
-  safeParseWithSchema,
-  parseWithSchema,
-  formatSchemaError,
-  getSchemaYaml,
-} from './schema-utils.js';
+export { safeParseWithSchema, parseWithSchema, formatSchemaError, getSchemaYaml } from './schema-utils.js';
 export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
 
 export { API_ROUTES, buildPath } from './routes.js';
@@ -252,6 +247,10 @@ export type {
   PlaybookRunResponse,
   PlaybookRunEnqueuedResponse,
   PlaybookRunRequiresAgentResponse,
+  PlaybookRunPlanningUnavailableResponse,
+  PlaybookPlanningEntryMetadata,
+  PlaybookPlanningRequiredCapability,
+  PlaybookPlanningUnavailableDiagnostic,
 } from './routes.js';
 
 export type { StackLayersResponse } from './routes.js';
@@ -517,8 +516,7 @@ export type {
   ExtensionDiagnosticSeverity,
   ExtensionFormat,
   ExtensionLayout,
-  ExtensionTrust,
-  ExtensionTrustState,
+  ExtensionTrust, ExtensionTrustState, ExtensionCapabilityDeclaration, ExtensionDependencyDeclaration, ExtensionDependencyManifest, ExtensionResolvedDependency, ExtensionResolvedDependencyState,
   ExtensionScaffoldScope,
   ExtensionScaffoldTemplate,
   ExtensionDiagnostic,

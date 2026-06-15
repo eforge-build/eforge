@@ -78,6 +78,47 @@ export const ExtensionActionOutputProfileSchema = Type.Union([
   Type.Literal('debug-rich'),
 ]);
 
+const EXTENSION_VERSION_CONSTRAINT_PATTERN = '^(?:[<>]=?|=)?\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?(?:\\s*,\\s*(?:[<>]=?|=)?\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?)*$';
+
+export const ExtensionCapabilityRequirementSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  version: Type.Optional(Type.String({ minLength: 1, pattern: EXTENSION_VERSION_CONSTRAINT_PATTERN })),
+}, { additionalProperties: false });
+
+export const ExtensionDependencyRequirementSchema = Type.Union([
+  Type.Object({
+    name: Type.String({ minLength: 1 }),
+    version: Type.Optional(Type.String({ minLength: 1, pattern: EXTENSION_VERSION_CONSTRAINT_PATTERN })),
+    capabilities: Type.Optional(Type.Array(ExtensionCapabilityRequirementSchema)),
+  }, { additionalProperties: false }),
+  Type.Object({
+    version: Type.Optional(Type.String({ minLength: 1, pattern: EXTENSION_VERSION_CONSTRAINT_PATTERN })),
+    capabilities: Type.Array(ExtensionCapabilityRequirementSchema, { minItems: 1 }),
+  }, { additionalProperties: false }),
+]);
+
+export const ExtensionContributionRequirementsSchema = Type.Object({
+  dependencies: Type.Optional(Type.Array(ExtensionDependencyRequirementSchema)),
+  capabilities: Type.Optional(Type.Array(ExtensionCapabilityRequirementSchema)),
+}, { additionalProperties: false });
+
+export const ExtensionAvailabilityDiagnosticSchema = Type.Object({
+  code: Type.String(),
+  message: Type.String(),
+  severity: Type.Optional(Type.Union([Type.Literal('warning'), Type.Literal('error')])),
+  dependencyName: Type.Optional(Type.String()),
+  providerName: Type.Optional(Type.String()),
+  capabilityName: Type.Optional(Type.String()),
+  requiredVersion: Type.Optional(Type.String()),
+  actualVersion: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const ExtensionContributionAvailabilitySchema = Type.Object({
+  available: Type.Boolean(),
+  message: Type.Optional(Type.String()),
+  diagnostics: Type.Optional(Type.Array(ExtensionAvailabilityDiagnosticSchema)),
+}, { additionalProperties: false });
+
 export const ExtensionActionBindingManifestSchema = Type.Object({
   actionId: Type.String(),
   inputDefaults: Type.Optional(ExtensionJsonObjectSchema),
@@ -146,6 +187,8 @@ export const ExtensionActionManifestEntrySchema = Type.Object({
   outputSchema: Type.Optional(TypeBoxSchemaDocumentSchema),
   outputProfile: Type.Optional(ExtensionActionOutputProfileSchema),
   sideEffects: Type.Optional(Type.Array(ExtensionActionSideEffectSchema)),
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
 }, { additionalProperties: false });
 
 export const ConsoleContributionManifestEntrySchema = Type.Object({
@@ -156,6 +199,8 @@ export const ConsoleContributionManifestEntrySchema = Type.Object({
   title: Type.String(),
   description: Type.Optional(Type.String()),
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
   blocks: Type.Array(ConsoleContributionBlockSchema),
 }, { additionalProperties: false });
 
@@ -182,6 +227,8 @@ export const ConsoleWorkstationSrcDocManifestEntrySchema = Type.Object({
   title: Type.String(),
   description: Type.Optional(Type.String()),
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
   srcDoc: Type.String(),
   allowedActions: Type.Array(Type.String()),
 }, { additionalProperties: false });
@@ -194,6 +241,8 @@ export const ConsoleWorkstationFrameBundleManifestEntrySchema = Type.Object({
   title: Type.String(),
   description: Type.Optional(Type.String()),
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
   frameBundle: ConsoleWorkstationFrameBundleManifestSchema,
   allowedActions: Type.Array(Type.String()),
 }, { additionalProperties: false });
@@ -212,6 +261,8 @@ export const IntegrationCommandManifestEntrySchema = Type.Object({
   description: Type.Optional(Type.String()),
   label: Type.String(),
   inputSchema: Type.Optional(TypeBoxObjectWireSchema),
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
   action: ExtensionActionBindingManifestSchema,
 }, { additionalProperties: false });
 
@@ -224,6 +275,8 @@ export const ExtensionDeepLinkManifestEntrySchema = Type.Object({
   description: Type.Optional(Type.String()),
   label: Type.String(),
   urlTemplate: Type.Optional(Type.String()),
+  requirements: Type.Optional(ExtensionContributionRequirementsSchema),
+  availability: Type.Optional(ExtensionContributionAvailabilitySchema),
   action: Type.Optional(ExtensionActionBindingManifestSchema),
 }, { additionalProperties: false });
 
@@ -234,6 +287,12 @@ export const ExtensionContributionDiagnosticSchema = Type.Object({
   message: Type.String(),
   code: Type.String(),
   name: Type.Optional(Type.String()),
+  dependencyName: Type.Optional(Type.String()),
+  providerName: Type.Optional(Type.String()),
+  capabilityName: Type.Optional(Type.String()),
+  requiredVersion: Type.Optional(Type.String()),
+  actualVersion: Type.Optional(Type.String()),
+  dependencyKind: Type.Optional(Type.Union([Type.Literal('required'), Type.Literal('optional')])),
 }, { additionalProperties: false });
 
 export const ExtensionContributionManifestResponseSchema = Type.Object({
@@ -258,6 +317,7 @@ export const ExtensionActionInvokeErrorCodeSchema = Type.Union([
   Type.Literal('invalid-request'),
   Type.Literal('invalid-input'),
   Type.Literal('daemon-unavailable'),
+  Type.Literal('unavailable'),
   Type.Literal('handler-error'),
   Type.Literal('timeout'),
   Type.Literal('invalid-output'),
@@ -297,6 +357,11 @@ export type ExtensionActionRequestedBy = Static<typeof ExtensionActionRequestedB
 export type ExtensionActionSideEffect = Static<typeof ExtensionActionSideEffectSchema>;
 export type ExtensionActionOutputProfile = Static<typeof ExtensionActionOutputProfileSchema>;
 export type ExtensionActionBindingManifest = Static<typeof ExtensionActionBindingManifestSchema>;
+export type ExtensionCapabilityRequirement = Static<typeof ExtensionCapabilityRequirementSchema>;
+export type ExtensionDependencyRequirement = Static<typeof ExtensionDependencyRequirementSchema>;
+export type ExtensionContributionRequirements = Static<typeof ExtensionContributionRequirementsSchema>;
+export type ExtensionAvailabilityDiagnostic = Static<typeof ExtensionAvailabilityDiagnosticSchema>;
+export type ExtensionContributionAvailability = Static<typeof ExtensionContributionAvailabilitySchema>;
 export type ConsoleContributionRendererId = Static<typeof ConsoleContributionRendererIdSchema>;
 export type ConsoleContributionBlock = Static<typeof ConsoleContributionBlockSchema>;
 export type ExtensionActionManifestEntry = Static<typeof ExtensionActionManifestEntrySchema>;

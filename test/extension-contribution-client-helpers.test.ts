@@ -11,6 +11,8 @@ import {
   apiGetExtensionContributionManifestIfRunning,
   apiInvokeExtensionAction,
   apiInvokeExtensionActionIfRunning,
+  summarizeExtensionContributionManifest,
+  resolveExtensionContributionInvocation,
   clearApiVersionCache,
   writeLockfile,
 } from '@eforge-build/client';
@@ -32,11 +34,43 @@ async function startServer(opts: { untypedInvokeResponse?: boolean } = {}) {
   const manifest = {
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
     generatedAt: '2026-06-03T00:00:00.000Z',
-    actions: [],
+    actions: [{
+      id: 'eforge-plan:open-planning-entry',
+      localId: 'open-planning-entry',
+      extensionName: 'eforge-plan',
+      extensionPath: '/extensions/eforge-plan',
+      title: 'Open eforge-plan planning entry',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      sideEffects: ['none'],
+    }],
     consoleContributions: [],
-    consoleWorkstations: [],
-    integrationCommands: [],
-    deepLinks: [],
+    consoleWorkstations: [{
+      id: 'eforge-plan:planning-workstation',
+      localId: 'planning-workstation',
+      extensionName: 'eforge-plan',
+      extensionPath: '/extensions/eforge-plan',
+      title: 'eforge-plan planning workstation',
+      schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
+      frameBundle: { browserSdkVersion: 1, frameUrl: '/api/extensions/workstations/eforge-plan%3Aplanning-workstation/frame', entrypoint: { id: 'sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-path-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', url: '/api/extensions/workstations/eforge-plan%3Aplanning-workstation/assets/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-path-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', relativePath: 'index.js', sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }, styles: [], assets: [] },
+      allowedActions: ['eforge-plan:open-planning-entry'],
+    }],
+    integrationCommands: [{
+      id: 'eforge-plan:open-planning-entry',
+      localId: 'open-planning-entry',
+      extensionName: 'eforge-plan',
+      extensionPath: '/extensions/eforge-plan',
+      label: 'Open eforge-plan planning entry',
+      action: { actionId: 'eforge-plan:open-planning-entry' },
+    }],
+    deepLinks: [{
+      id: 'eforge-plan:planning-workstation',
+      localId: 'planning-workstation',
+      extensionName: 'eforge-plan',
+      extensionPath: '/extensions/eforge-plan',
+      label: 'Open eforge-plan planning workstation',
+      urlTemplate: '/console/workstations/eforge-plan%3Aplanning-workstation',
+      action: { actionId: 'eforge-plan:open-planning-entry' },
+    }],
   };
   const invokeResponse = { ok: false as const, invocationId: 'invoke-1', error: { code: 'invalid-input' as const, message: 'Bad input' } };
 
@@ -136,6 +170,28 @@ describe('extension contribution Node client helpers', () => {
     const invokeRequest = serverState.requests.find((req) => req.url === API_ROUTES.extensionActionInvoke);
     expect(invokeRequest?.method).toBe('POST');
     expect(invokeRequest?.body).toBe(JSON.stringify(body));
+  });
+
+  it('resolves eforge-plan action-backed planning entry contributions', async () => {
+    serverState = await startServer();
+    writeLockfile(tmpDir, { pid: process.pid, port: serverState.port, startedAt: new Date().toISOString() });
+
+    const manifest = await apiGetExtensionContributionManifest({ cwd: tmpDir });
+    const summary = summarizeExtensionContributionManifest(manifest);
+
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'eforge-plan:open-planning-entry')).toMatchObject({
+      actionId: 'eforge-plan:open-planning-entry',
+      actionBacked: true,
+    });
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'eforge-plan:planning-workstation')).toMatchObject({
+      actionId: 'eforge-plan:open-planning-entry',
+      urlTemplate: '/console/workstations/eforge-plan%3Aplanning-workstation',
+      actionBacked: true,
+    });
+    expect(resolveExtensionContributionInvocation(manifest, { kind: 'command', id: 'eforge-plan:open-planning-entry', input: {}, requestedBy: { host: 'cli' } }).target).toMatchObject({
+      actionId: 'eforge-plan:open-planning-entry',
+      id: 'eforge-plan:open-planning-entry',
+    });
   });
 
   it('throws action HTTP status and body on untyped non-2xx responses', async () => {

@@ -9,6 +9,7 @@ import type {
   ConsoleWorkstationSpec,
   ExtensionActionBindingSpec,
   ExtensionActionSpec,
+  NativeExtensionContributionRequirements,
   ExtensionActionOutputProfile,
   ExtensionDeepLinkSpec,
   IntegrationCommandSpec,
@@ -78,8 +79,14 @@ export function validateActionSpec(value: unknown): RegistrationValidationResult
   if (spec.outputProfile !== undefined && (typeof spec.outputProfile !== 'string' || !OUTPUT_PROFILES.has(spec.outputProfile as ExtensionActionOutputProfile))) {
     return fail(base.id, 'registerAction outputProfile must be one of agent-compact, agent-paginated, markdown, ui-rich, or debug-rich');
   }
+  let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
+  if (spec.requirements !== undefined) {
+    const requirementsResult = validateContributionRequirements(spec.requirements, 'registerAction requirements');
+    if (!requirementsResult.ok) return fail(base.id, requirementsResult.message ?? 'registerAction requirements are invalid');
+    normalizedRequirements = requirementsResult.value;
+  }
   if (typeof spec.handler !== 'function') return fail(base.id, 'registerAction requires a handler function');
-  return { ok: true, id: base.id, value: value as ExtensionActionSpec };
+  return { ok: true, id: base.id, value: { ...(value as ExtensionActionSpec), ...(normalizedRequirements !== undefined && { requirements: normalizedRequirements }) } };
 }
 
 export function validateConsoleContributionSpec(value: unknown): RegistrationValidationResult<ConsoleContributionSpec> {
@@ -89,11 +96,17 @@ export function validateConsoleContributionSpec(value: unknown): RegistrationVal
   if (!isNonBlankString(value.title)) return fail(id, 'registerConsoleContribution title must be a non-empty string');
   if (value.description !== undefined && typeof value.description !== 'string') return fail(id, 'registerConsoleContribution description must be a string');
   if (!Array.isArray(value.blocks) || value.blocks.length === 0) return fail(id, 'registerConsoleContribution requires a non-empty blocks array');
+  let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
+  if (value.requirements !== undefined) {
+    const requirementsResult = validateContributionRequirements(value.requirements, 'registerConsoleContribution requirements');
+    if (!requirementsResult.ok) return fail(id, requirementsResult.message ?? 'registerConsoleContribution requirements are invalid');
+    normalizedRequirements = requirementsResult.value;
+  }
   for (const block of value.blocks) {
     const blockResult = validateConsoleContributionBlock(block);
     if (!blockResult.ok) return fail(id, blockResult.message ?? 'registerConsoleContribution block is invalid');
   }
-  return { ok: true, id, value: value as unknown as ConsoleContributionSpec };
+  return { ok: true, id, value: { ...(value as unknown as ConsoleContributionSpec), ...(normalizedRequirements !== undefined && { requirements: normalizedRequirements }) } };
 }
 
 export function validateConsoleWorkstationSpec(value: unknown): RegistrationValidationResult<ConsoleWorkstationSpec> {
@@ -114,9 +127,15 @@ export function validateConsoleWorkstationSpec(value: unknown): RegistrationVali
     if (!Array.isArray(value.allowedActions)) return fail(id, 'registerConsoleWorkstation allowedActions must be an array of local action ids');
     if (!value.allowedActions.every((actionId) => isValidExtensionLocalContributionId(actionId))) return fail(id, 'registerConsoleWorkstation allowedActions must contain only local action ids matching ^[a-z][a-z0-9-]{0,63}$');
   }
+  let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
+  if (value.requirements !== undefined) {
+    const requirementsResult = validateContributionRequirements(value.requirements, 'registerConsoleWorkstation requirements');
+    if (!requirementsResult.ok) return fail(id, requirementsResult.message ?? 'registerConsoleWorkstation requirements are invalid');
+    normalizedRequirements = requirementsResult.value;
+  }
   const jsonSafe = validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: true });
   if (!jsonSafe.ok) return fail(id, `registerConsoleWorkstation spec must be JSON-safe: ${jsonSafe.message}`);
-  return { ok: true, id, value: value as unknown as ConsoleWorkstationSpec };
+  return { ok: true, id, value: { ...(value as unknown as ConsoleWorkstationSpec), ...(normalizedRequirements !== undefined && { requirements: normalizedRequirements }) } };
 }
 
 export function validateIntegrationCommandSpec(value: unknown): RegistrationValidationResult<IntegrationCommandSpec> {
@@ -128,7 +147,13 @@ export function validateIntegrationCommandSpec(value: unknown): RegistrationVali
     if (!inputSchemaResult.ok) return fail(base.id, `registerIntegrationCommand inputSchema must be a JSON-safe object-root schema (type: "object"): ${inputSchemaResult.message}`);
   }
   if (!isValidActionBindingSpec(spec.action)) return fail(base.id, 'registerIntegrationCommand requires an action binding');
-  return { ok: true, id: base.id, value: value as IntegrationCommandSpec };
+  let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
+  if (spec.requirements !== undefined) {
+    const requirementsResult = validateContributionRequirements(spec.requirements, 'registerIntegrationCommand requirements');
+    if (!requirementsResult.ok) return fail(base.id, requirementsResult.message ?? 'registerIntegrationCommand requirements are invalid');
+    normalizedRequirements = requirementsResult.value;
+  }
+  return { ok: true, id: base.id, value: { ...(value as IntegrationCommandSpec), ...(normalizedRequirements !== undefined && { requirements: normalizedRequirements }) } };
 }
 
 export function validateDeepLinkSpec(value: unknown): RegistrationValidationResult<ExtensionDeepLinkSpec> {
@@ -136,10 +161,16 @@ export function validateDeepLinkSpec(value: unknown): RegistrationValidationResu
   if (!base.ok) return base as RegistrationValidationResult<ExtensionDeepLinkSpec>;
   const spec = value as Record<string, unknown>;
   if (spec.urlTemplate !== undefined && !isNonBlankString(spec.urlTemplate)) return fail(base.id, 'registerDeepLink urlTemplate must be a non-empty string');
-  if (typeof spec.urlTemplate === 'string' && !isSafeUrlString(spec.urlTemplate, SAFE_DEEP_LINK_SCHEMES)) return fail(base.id, 'registerDeepLink urlTemplate must use a safe URL scheme');
+  if (typeof spec.urlTemplate === 'string' && !isSafeDeepLinkUrlString(spec.urlTemplate)) return fail(base.id, 'registerDeepLink urlTemplate must use a safe URL scheme');
   if (spec.action !== undefined && !isValidActionBindingSpec(spec.action)) return fail(base.id, 'registerDeepLink action must be a valid action binding');
   if (spec.urlTemplate === undefined && spec.action === undefined) return fail(base.id, 'registerDeepLink requires urlTemplate or an action binding');
-  return { ok: true, id: base.id, value: value as ExtensionDeepLinkSpec };
+  let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
+  if (spec.requirements !== undefined) {
+    const requirementsResult = validateContributionRequirements(spec.requirements, 'registerDeepLink requirements');
+    if (!requirementsResult.ok) return fail(base.id, requirementsResult.message ?? 'registerDeepLink requirements are invalid');
+    normalizedRequirements = requirementsResult.value;
+  }
+  return { ok: true, id: base.id, value: { ...(value as ExtensionDeepLinkSpec), ...(normalizedRequirements !== undefined && { requirements: normalizedRequirements }) } };
 }
 
 export function validateActionBindingJson(binding: ExtensionActionBindingSpec): JsonSafeValidationResult {
@@ -147,6 +178,79 @@ export function validateActionBindingJson(binding: ExtensionActionBindingSpec): 
   if (binding.inputDefaults === undefined) return { ok: true };
   if (!isNonArrayObject(binding.inputDefaults)) return { ok: false, message: 'action binding inputDefaults must be JSON-safe object data' };
   return validateJsonSafeValue(binding.inputDefaults, { requireObjectRoot: true, rejectSymbolKeys: true });
+}
+
+export function validateContributionRequirements(value: unknown, label = 'contribution requirements'): RegistrationValidationResult<NativeExtensionContributionRequirements> {
+  if (!isNonArrayObject(value)) return fail(undefined, `${label} must be an object`);
+  if (value.dependencies !== undefined && !Array.isArray(value.dependencies)) return fail(undefined, `${label}.dependencies must be an array`);
+  if (value.capabilities !== undefined && !Array.isArray(value.capabilities)) return fail(undefined, `${label}.capabilities must be an array`);
+  const dependencies = Array.isArray(value.dependencies) ? value.dependencies : [];
+  const capabilities = Array.isArray(value.capabilities) ? value.capabilities : [];
+  const normalizedDependencies: NativeExtensionContributionRequirements['dependencies'] = [];
+  const normalizedCapabilities: NativeExtensionContributionRequirements['capabilities'] = [];
+  for (const dependency of dependencies) {
+    const result = normalizeDependencyRequirement(dependency, `${label}.dependencies`);
+    if (!result.ok) return fail(undefined, result.message ?? `${label}.dependencies is invalid`);
+    normalizedDependencies.push(result.value!);
+  }
+  for (const capability of capabilities) {
+    const result = normalizeCapabilityRequirement(capability, `${label}.capabilities`);
+    if (!result.ok) return fail(undefined, result.message ?? `${label}.capabilities is invalid`);
+    normalizedCapabilities.push(result.value!);
+  }
+  return {
+    ok: true,
+    value: {
+      ...(normalizedDependencies.length > 0 && { dependencies: normalizedDependencies }),
+      ...(normalizedCapabilities.length > 0 && { capabilities: normalizedCapabilities }),
+    },
+  };
+}
+
+function normalizeDependencyRequirement(value: unknown, label: string): RegistrationValidationResult<NonNullable<NativeExtensionContributionRequirements['dependencies']>[number]> {
+  if (typeof value === 'string' && value.trim().length > 0) return { ok: true, value: { name: value.trim() } };
+  if (!isNonArrayObject(value)) return fail(undefined, `${label} entries must be objects or non-empty provider name strings`);
+  const providerName = value.name ?? value.provider;
+  if (providerName !== undefined && !isNonBlankString(providerName)) return fail(undefined, `${label}.name must be a non-empty string when present`);
+  const version = value.version ?? value.providerVersion;
+  if (version !== undefined && (typeof version !== 'string' || !isVersionConstraint(version))) return fail(undefined, `${label}.version must be an exact semantic version or supported comparator constraint`);
+  const normalizedCapabilities: NonNullable<NativeExtensionContributionRequirements['dependencies']>[number]['capabilities'] = [];
+  if (value.capabilities !== undefined) {
+    if (!Array.isArray(value.capabilities)) return fail(undefined, `${label}.capabilities must be an array`);
+    for (const capability of value.capabilities) {
+      const result = normalizeCapabilityRequirement(capability, `${label}.capabilities`);
+      if (!result.ok) return fail(undefined, result.message ?? `${label}.capabilities is invalid`);
+      normalizedCapabilities.push(result.value!);
+    }
+  }
+  if (providerName === undefined && normalizedCapabilities.length === 0) return fail(undefined, `${label} entries must declare a provider name or capability requirement`);
+  const jsonSafe = validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: true });
+  if (!jsonSafe.ok) return fail(undefined, jsonSafe.message ?? `${label} entries must be JSON-safe`);
+  return {
+    ok: true,
+    value: {
+      ...(providerName !== undefined && { name: providerName as string }),
+      ...(version !== undefined && { version: version as string }),
+      ...(normalizedCapabilities.length > 0 && { capabilities: normalizedCapabilities }),
+    },
+  };
+}
+
+function validateCapabilityRequirement(value: unknown, label: string): JsonSafeValidationResult {
+  const result = normalizeCapabilityRequirement(value, label);
+  return result.ok ? { ok: true } : { ok: false, message: result.message };
+}
+
+function normalizeCapabilityRequirement(value: unknown, label: string): RegistrationValidationResult<NonNullable<NativeExtensionContributionRequirements['capabilities']>[number]> {
+  if (!isNonArrayObject(value) || !isNonBlankString(value.name)) return fail(undefined, `${label} entries require a non-empty name`);
+  if (value.version !== undefined && (typeof value.version !== 'string' || !isVersionConstraint(value.version))) return fail(undefined, `${label}.version must be an exact semantic version or supported comparator constraint`);
+  const jsonSafe = validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: true });
+  if (!jsonSafe.ok) return fail(undefined, jsonSafe.message ?? `${label} entries must be JSON-safe`);
+  return { ok: true, value: { name: value.name, ...(value.version !== undefined && { version: value.version as string }) } };
+}
+
+function isVersionConstraint(value: string): boolean {
+  return value.split(',').map((part) => part.trim()).every((part) => /^(?:[<>]=?|=)?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(part));
 }
 
 export function validateJsonSafeValue(value: unknown, options: { requireObjectRoot?: boolean; rejectSymbolKeys?: boolean } = {}): JsonSafeValidationResult {
@@ -243,6 +347,12 @@ function isSafeConsoleHref(value: string): boolean {
   if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
   if (value.startsWith('/console/')) return true;
   return isSafeUrlString(value, SAFE_CONSOLE_LINK_SCHEMES);
+}
+
+function isSafeDeepLinkUrlString(value: string): boolean {
+  if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
+  if (value.startsWith('/console/')) return true;
+  return isSafeUrlString(value, SAFE_DEEP_LINK_SCHEMES);
 }
 
 function isValidActionBindingSpec(value: unknown): value is ExtensionActionBindingSpec {
