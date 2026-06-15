@@ -226,6 +226,32 @@ describe('planner orchestration', () => {
     });
   });
 
+  it('never persists the seeded planner prompt as a plan topic, falling back to a humanized session slug', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await applyCompletedPlanningAgentTaskResult(
+        cwd,
+        creationDraftTask('group-kernel-playbook-migration', {}, { topic: 'Draft a session plan for recommendation group-kernel-playbook-migration covering Add contracts, Remove host surfaces.' }),
+        { taskId: 'task-creation', applySessionPlanCreationDraft: {} },
+      );
+      const loaded = await createSessionPlanningWorkflowAdapter().flat.load({ cwd, session: 'group-kernel-playbook-migration' });
+      expect(loaded.plan.topic).toBe('Kernel Playbook Migration');
+    });
+  });
+
+  it('preserves an agent-authored concise topic', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await applyCompletedPlanningAgentTaskResult(
+        cwd,
+        creationDraftTask('authored-topic-session', {}, { topic: 'Annotation-driven plan revisions' }),
+        { taskId: 'task-creation', applySessionPlanCreationDraft: {} },
+      );
+      const loaded = await createSessionPlanningWorkflowAdapter().flat.load({ cwd, session: 'authored-topic-session' });
+      expect(loaded.plan.topic).toBe('Annotation-driven plan revisions');
+    });
+  });
+
   it('defaults creation-draft open questions to the result assumptions and leaves backlog items unshipped', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
@@ -527,6 +553,29 @@ describe('planner orchestration', () => {
       expect(await readFile(overridePath, 'utf-8')).toBe(before);
       expect(existsSync(join(cwd, '.eforge', 'session-plans', 'draft-session.md'))).toBe(false);
       expect(await readRecommendations(cwd)).toMatchObject({ recommendedNextSequence: [{ itemId: 'item-one' }] });
+    });
+  });
+
+  it('allows a creation draft to replace an abandoned target session plan', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      const planning = createSessionPlanningWorkflowAdapter();
+      await planning.flat.create({ cwd, session: 'abandoned-session', topic: 'Old abandoned plan' });
+      await planning.flat.setSection({ cwd, session: 'abandoned-session', dimension: 'scope', content: 'Old abandoned content.' });
+      await planning.flat.setStatus({ cwd, session: 'abandoned-session', status: 'abandoned' });
+
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('abandoned-session'), {
+        taskId: 'task-creation',
+        applySessionPlanCreationDraft: {},
+      });
+      const raw = await readFile(join(cwd, '.eforge', 'session-plans', 'abandoned-session.md'), 'utf-8');
+      const loaded = await planning.flat.load({ cwd, session: 'abandoned-session' });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({ session: 'abandoned-session', relativePath: '.eforge/session-plans/abandoned-session.md' });
+      expect(loaded.plan.status).toBe('planning');
+      expect(raw).toContain('status: planning');
+      expect(raw).toContain('Generated scope content.');
+      expect(raw).not.toContain('Old abandoned content.');
     });
   });
 });

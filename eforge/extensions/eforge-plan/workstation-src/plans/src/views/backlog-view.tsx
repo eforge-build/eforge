@@ -8,6 +8,7 @@ import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
 import { PlanWithAiPanel } from './backlog/plan-with-ai-panel';
 import { usePlanningTaskWorkflows } from './backlog/use-planning-task-workflows';
+import { focusBoardItem } from '@/lib/focus-board-item';
 
 const GROUP_MODES: GroupMode[] = ['lane', 'epic', 'recommended'];
 const STATUS_FILTERS: StatusFilter[] = ['all', 'open', 'ready', 'blocked', 'review', 'closed'];
@@ -64,10 +65,7 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
 
   // Scroll a backlog card into view in the kanban board. No-op when the item is
   // filtered out of the current view.
-  const focusItem = React.useCallback((id: string) => {
-    if (typeof document === 'undefined') return;
-    document.getElementById(`board-item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, []);
+  const focusItem = React.useCallback((id: string) => focusBoardItem(id), []);
 
   // Clicking a recommendation toggles it into the current selection (like a
   // kanban card) and scrolls it into view - it does not start a plan. Planning

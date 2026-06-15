@@ -36,7 +36,7 @@ export function PlanLifecycleEvidencePanel({ plan, detail }: { plan: PlanData; d
           <div className="mt-2 grid gap-2">
             {groupRows(rows).map(([kind, groupedRows]) => (
               <div key={kind} className="grid gap-1 rounded border border-border p-2">
-                <h5 className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">{kind}</h5>
+                <h5 className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{kind}</h5>
                 {groupedRows.map((row, index) => <EvidenceRow key={`${row.kind}-${row.stage ?? ''}-${index}`} row={row} knownItemIds={sourceItemIds} />)}
               </div>
             ))}

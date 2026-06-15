@@ -29,15 +29,15 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
   const summary = (
     <>
       {activeCount > 0 && (
-        <span className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">
+        <span className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">
           <Loader2 className="h-3 w-3 animate-spin" /> {activeCount} running
         </span>
       )}
-      {readyCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">{readyCount} ready to review</span>}
-      {curationRunningCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">{curationRunningCount} backlog curation running</span>}
-      {curationReadyCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.68rem] text-text-bright">{curationReadyCount} curation ready</span>}
-      {failedCount > 0 && <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[0.68rem] text-destructive-foreground">{failedCount} failed</span>}
-      {items.length === 0 && !loading && <span className="text-[0.68rem] text-muted-foreground">no tasks</span>}
+      {readyCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">{readyCount} ready to review</span>}
+      {curationRunningCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">{curationRunningCount} backlog curation running</span>}
+      {curationReadyCount > 0 && <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">{curationReadyCount} curation ready</span>}
+      {failedCount > 0 && <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive-foreground">{failedCount} failed</span>}
+      {items.length === 0 && !loading && <span className="text-2xs text-muted-foreground">no tasks</span>}
     </>
   );
 
