@@ -37,7 +37,7 @@ import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, 
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { userActionError } from './action-errors.js';
 import { upsertPromotedSessionPlan } from './trace-store.js';
-import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry } from './planning-task-workflow-store.js';
+import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
   PLANNING_PROFILES,
@@ -120,6 +120,14 @@ interface PlanningAgentTaskRecordLike {
   result?: unknown;
 }
 
+// --- eforge:region plan-01-workstation-session-plan-consumption ---
+const creationDraftApplyInFlight = new Set<string>();
+
+function creationDraftApplyKey(cwd: string, taskId: string): string {
+  return `${cwd}\0${taskId}`;
+}
+// --- eforge:endregion plan-01-workstation-session-plan-consumption ---
+
 export async function applyCompletedPlanningAgentTaskResult(
   cwd: string,
   task: PlanningAgentTaskRecordLike,
@@ -152,27 +160,42 @@ export async function applyCompletedPlanningAgentTaskResult(
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
   const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
 
-  if (input.applyRecommendations) {
-    const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
-    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint, lastRefreshedBy: 'apply-planning-agent-task-result' });
-    output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
-    output.applied.recommendations = true;
-  }
-  if (handoffDrafts !== undefined) {
-    const handoffs: NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']> = [];
-    for (const handoffDraft of handoffDrafts) {
-      const applied = await applyPlannerResult(cwd, { handoffDraft });
-      if (applied.handoff !== undefined) handoffs.push(applied.handoff as NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']>[number]);
+  // --- eforge:region plan-01-workstation-session-plan-consumption ---
+  const applyKey = creationDraft !== undefined ? creationDraftApplyKey(cwd, task.taskId) : undefined;
+  if (applyKey !== undefined) {
+    if (creationDraftApplyInFlight.has(applyKey)) {
+      throw userActionError(`Planning task ${task.taskId} session-plan creation draft apply is already in progress.`, { path: 'taskId', details: { taskId: task.taskId } });
     }
-    output.handoffs = handoffs;
-    output.applied.handoffDrafts = handoffs.length;
+    creationDraftApplyInFlight.add(applyKey);
   }
-  if (sessionPlanDrafts !== undefined) {
-    output.sessionPlanDrafts = await applySelectedSessionPlanSections(cwd, sessionPlanDrafts);
-    output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
-  }
-  if (creationDraft !== undefined) {
-    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage, applyTargets.creationDraftTarget);
+  // --- eforge:endregion plan-01-workstation-session-plan-consumption ---
+
+  try {
+    if (input.applyRecommendations) {
+      const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
+      const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint, lastRefreshedBy: 'apply-planning-agent-task-result' });
+      output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
+      output.applied.recommendations = true;
+    }
+    if (handoffDrafts !== undefined) {
+      const handoffs: NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']> = [];
+      for (const handoffDraft of handoffDrafts) {
+        const applied = await applyPlannerResult(cwd, { handoffDraft });
+        if (applied.handoff !== undefined) handoffs.push(applied.handoff as NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']>[number]);
+      }
+      output.handoffs = handoffs;
+      output.applied.handoffDrafts = handoffs.length;
+    }
+    if (sessionPlanDrafts !== undefined) {
+      output.sessionPlanDrafts = await applySelectedSessionPlanSections(cwd, sessionPlanDrafts);
+      output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
+    }
+    if (creationDraft !== undefined) {
+      output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage, applyTargets.creationDraftTarget);
+      if (workflowEntry !== undefined) await markPlanningTaskWorkflowEntryApplied(cwd, task.taskId, new Date().toISOString());
+    }
+  } finally {
+    if (applyKey !== undefined) creationDraftApplyInFlight.delete(applyKey);
   }
   return output;
 }
@@ -411,6 +434,11 @@ async function validatePlanningAgentTaskApplyTargets(
   const targets: PlanningAgentTaskApplyTargets = {};
   if (creationDraft !== undefined) {
     validateSessionPlanCreationDraftForApply(creationDraft, workflowEntry);
+    // --- eforge:region plan-01-workstation-session-plan-consumption ---
+    if (workflowEntry?.appliedAt !== undefined) {
+      throw userActionError(`Planning task ${workflowEntry.taskId} session-plan creation draft was already applied.`, { path: 'taskId', details: { taskId: workflowEntry.taskId, appliedAt: workflowEntry.appliedAt } });
+    }
+    // --- eforge:endregion plan-01-workstation-session-plan-consumption ---
     targets.creationDraftTarget = await resolveCreationDraftTargetDisposition(cwd, creationDraft.session);
   }
   await Promise.all([
