@@ -31,7 +31,6 @@ const item: PlanningAgentTaskListItem = {
   task,
 };
 
-// --- eforge:region plan-01-workstation-session-plan-consumption ---
 const creationTask: PlanningAgentTaskRecord = {
   taskId: 'task-creation',
   kind: 'eforge-plan.planning-draft',
@@ -55,7 +54,6 @@ const creationItem: PlanningAgentTaskListItem = {
   status: 'completed',
   task: creationTask,
 };
-// --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 
 async function loadHookWithWrapper() {
   const [{ usePlanningTaskWorkflows }, { ToastProvider }] = await Promise.all([
@@ -136,7 +134,6 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
   });
 
-  // --- eforge:region plan-01-workstation-session-plan-consumption ---
   it('removes a consumed creation task from local state after successful apply and reloads', async () => {
     const onRefresh = vi.fn(async () => undefined);
     let listCalls = 0;
@@ -160,5 +157,4 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
   });
-  // --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 });

@@ -395,13 +395,11 @@ function hasBacklogSelection(selection: PlanningTaskWorkflowSelection): boolean 
   return selection.itemIds !== undefined || selection.epicId !== undefined || selection.recommendationRef !== undefined;
 }
 
-// --- eforge:region plan-01-workstation-session-plan-consumption ---
 function isConsumedSessionPlanCreationEntry(entry: PlanningTaskWorkflowEntry): boolean {
   return entry.appliedAt !== undefined
     && !isBacklogCurationWorkflowEntry(entry)
     && entry.requestedOutputSections.includes('sessionPlanCreationDraft');
 }
-// --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 
 // --- eforge:region session-plan-creation-readiness ---
 function buildSessionPlanCreationReadiness(

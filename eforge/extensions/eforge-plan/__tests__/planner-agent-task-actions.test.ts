@@ -92,7 +92,6 @@ function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
   });
 }
 
-// --- eforge:region plan-01-workstation-session-plan-consumption ---
 function creationDraftTask(taskId = 'task-creation', session = 'created-session'): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId, kind: 'eforge-plan.planning-draft', status: 'completed', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:00:01.000Z',
@@ -106,7 +105,6 @@ function creationDraftTask(taskId = 'task-creation', session = 'created-session'
     ] } },
   });
 }
-// --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 
 describe('planning agent task actions', () => {
   it('prepares planner context before starting a daemon-owned planning task', async () => {
@@ -1139,7 +1137,6 @@ describe('planning agent task actions', () => {
     });
   });
 
-  // --- eforge:region plan-01-workstation-session-plan-consumption ---
   it('marks a workflow-indexed session-plan creation draft applied and hides it from normal task lists', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -1191,5 +1188,4 @@ describe('planning agent task actions', () => {
       expect(removed).toMatchObject({ kind: 'success', output: { removed: true } });
     });
   });
-  // --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 });

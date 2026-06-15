@@ -120,13 +120,11 @@ interface PlanningAgentTaskRecordLike {
   result?: unknown;
 }
 
-// --- eforge:region plan-01-workstation-session-plan-consumption ---
 const creationDraftApplyInFlight = new Set<string>();
 
 function creationDraftApplyKey(cwd: string, taskId: string): string {
   return `${cwd}\0${taskId}`;
 }
-// --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 
 export async function applyCompletedPlanningAgentTaskResult(
   cwd: string,
@@ -160,7 +158,6 @@ export async function applyCompletedPlanningAgentTaskResult(
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
   const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
 
-  // --- eforge:region plan-01-workstation-session-plan-consumption ---
   const applyKey = creationDraft !== undefined ? creationDraftApplyKey(cwd, task.taskId) : undefined;
   if (applyKey !== undefined) {
     if (creationDraftApplyInFlight.has(applyKey)) {
@@ -168,7 +165,6 @@ export async function applyCompletedPlanningAgentTaskResult(
     }
     creationDraftApplyInFlight.add(applyKey);
   }
-  // --- eforge:endregion plan-01-workstation-session-plan-consumption ---
 
   try {
     if (input.applyRecommendations) {
@@ -434,11 +430,9 @@ async function validatePlanningAgentTaskApplyTargets(
   const targets: PlanningAgentTaskApplyTargets = {};
   if (creationDraft !== undefined) {
     validateSessionPlanCreationDraftForApply(creationDraft, workflowEntry);
-    // --- eforge:region plan-01-workstation-session-plan-consumption ---
     if (workflowEntry?.appliedAt !== undefined) {
       throw userActionError(`Planning task ${workflowEntry.taskId} session-plan creation draft was already applied.`, { path: 'taskId', details: { taskId: workflowEntry.taskId, appliedAt: workflowEntry.appliedAt } });
     }
-    // --- eforge:endregion plan-01-workstation-session-plan-consumption ---
     targets.creationDraftTarget = await resolveCreationDraftTargetDisposition(cwd, creationDraft.session);
   }
   await Promise.all([
