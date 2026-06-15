@@ -24,7 +24,10 @@ describe('eforge-plan Console workstation dogfood registration', () => {
       id: 'planning-workstation',
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
       allowedActions: expect.arrayContaining([
-        'list-board',
+        'list-board-compact',
+        'get-item',
+        'get-epic',
+        'search-items',
         'get-recommendations',
         'analyze-all-backlog',
         'list-planning-artifacts',
@@ -47,6 +50,7 @@ describe('eforge-plan Console workstation dogfood registration', () => {
     // The AI-first workstation never starts deterministic promotion; promote-selection
     // stays registered for integration commands and deep links, but is not allowed in
     // the workstation iframe action surface.
+    expect(workstations[0]!.allowedActions).not.toContain('list-board');
     expect(workstations[0]!.allowedActions).not.toContain('promote-selection');
     expect(workstations[0]!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstations[0]!).toBe(false);

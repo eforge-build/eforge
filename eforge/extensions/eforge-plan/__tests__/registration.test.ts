@@ -403,6 +403,7 @@ describe('eforge-plan extension registration', () => {
     });
     // promote-selection remains registered as an action, integration command, and
     // deep link, but the AI-first workstation no longer allows it in the iframe surface.
+    expect(workstation!.allowedActions).not.toContain('list-board');
     expect(workstation!.allowedActions).not.toContain('promote-selection');
     expect(workstation!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstation!).toBe(false);

@@ -9,6 +9,8 @@ export interface BoardColumn {
   title: string;
   tone: string;
   items: BoardItem[];
+  count?: number;
+  pagination?: { hasMore: boolean; nextOffset?: number };
 }
 
 export interface EpicGroup {
@@ -54,7 +56,7 @@ export function matchesQuery(item: BoardItem, query: string): boolean {
   const haystack = [
     item.id, item.title, item.status, item.priority, item.tags.join(' '),
     item.dependencies.map((dep) => dep.id).join(' '), item.epic ?? '', item.epicRef?.title ?? '',
-    item.notes.claim, item.notes.evidence, item.notes.recheck,
+    item.notes?.claim ?? '', item.notes?.evidence ?? '', item.notes?.recheck ?? '',
     lifecycleSearchText,
   ].join('\n').toLowerCase();
   return haystack.includes(query);
@@ -81,37 +83,52 @@ function sortItems(items: BoardItem[]): BoardItem[] {
   });
 }
 
-export function epicGroups(items: BoardItem[]): EpicGroup[] {
+export function epicGroups(items: BoardItem[], epics: Epic[] = []): EpicGroup[] {
   const groups = new Map<string, EpicGroup>();
+  for (const epic of epics) {
+    const count = epic.openItemCount ?? epic.itemCount ?? 0;
+    if (count > 0) groups.set(epic.id, { id: epic.id, title: epic.title ?? epic.id, count, missing: false });
+  }
   for (const item of items) {
     if (!item.epicRef) continue;
     const existing = groups.get(item.epicRef.id);
-    if (existing) existing.count += 1;
-    else groups.set(item.epicRef.id, { id: item.epicRef.id, title: item.epicRef.title, count: 1, missing: item.epicRef.missing });
+    if (existing) {
+      if (!epics.some((epic) => epic.id === item.epicRef?.id)) existing.count += 1;
+    } else groups.set(item.epicRef.id, { id: item.epicRef.id, title: item.epicRef.title, count: 1, missing: item.epicRef.missing });
   }
   return [...groups.values()].sort((a, b) => Number(a.missing) - Number(b.missing) || a.title.localeCompare(b.title));
 }
 
 export function buildColumns(board: Board, items: BoardItem[], group: GroupMode): BoardColumn[] {
-  if (group === 'epic') return buildEpicColumns(items);
+  if (group === 'epic') return buildEpicColumns(board, items);
   if (group === 'recommended') return buildRecommendedColumns(items);
   return buildLaneColumns(board, items);
 }
 
 function buildLaneColumns(board: Board, items: BoardItem[]): BoardColumn[] {
   const visible = new Set(items.map((item) => item.id));
-  const laneTitles = new Map(board.lanes.map((lane) => [lane.lane, lane.title]));
-  const lanesPresent = LANE_ORDER.filter((lane) => board.lanes.some((entry) => entry.lane === lane));
-  return lanesPresent.map((lane) => ({
-    key: lane,
-    title: laneTitles.get(lane) ?? lane,
-    tone: LANE_TONE[lane] ?? 'var(--lane-archive)',
-    items: sortItems(items.filter((item) => item.lane === lane && visible.has(item.id))),
-  })).filter((column) => column.items.length > 0);
+  const laneById = new Map(board.lanes.map((lane) => [lane.lane, lane]));
+  const lanesPresent = LANE_ORDER.filter((lane) => laneById.has(lane));
+  return lanesPresent.map((lane) => {
+    const boardLane = laneById.get(lane);
+    const laneItems = sortItems(items.filter((item) => item.lane === lane && visible.has(item.id)));
+    return {
+      key: lane,
+      title: boardLane?.title ?? lane,
+      tone: LANE_TONE[lane] ?? 'var(--lane-archive)',
+      items: laneItems,
+      count: boardLane?.count,
+      pagination: boardLane?.pagination,
+    };
+  }).filter((column) => {
+    if (column.items.length > 0) return true;
+    const boardLane = laneById.get(column.key);
+    return (column.key === 'done' || column.key === 'archive') && items.length === board.items.length && boardLane?.items.length === 0 && (column.count ?? 0) > 0;
+  });
 }
 
-function buildEpicColumns(items: BoardItem[]): BoardColumn[] {
-  const groups = epicGroups(items);
+function buildEpicColumns(board: Board, items: BoardItem[]): BoardColumn[] {
+  const groups = epicGroups(items, board.epics ?? []);
   const columns: BoardColumn[] = groups.map((group) => ({
     key: group.id,
     title: group.title,
@@ -167,24 +184,17 @@ export function shortId(id: string): string {
   return id.replace(/^backlog-\d{4}-\d{2}-\d{2}-/, '');
 }
 
-export function stats(items: BoardItem[]): { open: number; ready: number; blocked: number; review: number; closed: number } {
+export function stats(items: BoardItem[], board?: Board): { open: number; ready: number; blocked: number; review: number; closed: number } {
   const open = items.filter((item) => !item.closed);
   return {
-    open: open.length,
+    open: board?.counts?.open ?? open.length,
     ready: open.filter((item) => item.ready).length,
     blocked: open.filter((item) => item.blocked).length,
     review: items.filter((item) => item.reviewDue).length,
-    closed: items.filter((item) => item.closed).length,
+    closed: board?.counts?.closed ?? items.filter((item) => item.closed).length,
   };
 }
 
 export function allEpicChips(items: BoardItem[], epics: Epic[]): EpicGroup[] {
-  const groups = epicGroups(items);
-  const known = new Set(groups.map((group) => group.id));
-  for (const epic of epics) {
-    if (!known.has(epic.id) && items.some((item) => item.epic === epic.id)) {
-      groups.push({ id: epic.id, title: epic.title ?? epic.id, count: items.filter((item) => item.epic === epic.id).length, missing: false });
-    }
-  }
-  return groups;
+  return epicGroups(items, epics);
 }

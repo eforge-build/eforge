@@ -1,4 +1,4 @@
-import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -96,6 +96,16 @@ export const mockBoard: Board = {
   lifecycleLinks: items.flatMap((item) => item.lifecycleLinks ?? []),
   epicProgress: [mockEpicProgress],
 };
+export function getMockCompactBoard(input: JsonObject = {}): CompactBoardResponse {
+  const lane = typeof input.lane === 'string' ? input.lane : undefined; const includeClosed = input.includeClosed === true; const limit = typeof input.limit === 'number' ? input.limit : 50; const offset = typeof input.offset === 'number' ? input.offset : 0; const scoped = items.filter((item) => (lane ? item.lane === lane : true) && (includeClosed || !item.closed)); const pageItems = scoped.slice(offset, offset + limit); const nextOffset = offset + pageItems.length;
+  const pagination = { limit, offset, returned: pageItems.length, hasMore: nextOffset < scoped.length, ...(nextOffset < scoped.length ? { nextOffset } : {}) }; return { schemaVersion: 1, items: pageItems.map(compactItem), total: scoped.length, limit, offset, lanes: mockBoard.lanes.map((entry) => laneSummary(entry, lane, pagination)), epics: (mockBoard.epics ?? []).map((epic) => ({ ...epic, tags: [], itemCount: items.filter((item) => item.epic === epic.id).length, openItemCount: items.filter((item) => item.epic === epic.id && !item.closed).length })), counts: { total: items.length, open: items.filter((item) => !item.closed).length, closed: items.filter((item) => item.closed).length }, pagination };
+}
+export function getMockCompactItemDetail(id: string): CompactBoardDetailResponse {
+  const item = items.find((entry) => entry.id === id); if (!item) throw new Error(`Backlog item "${id}" not found.`); const refItem = (ref: { id: string; title: string; status?: string }) => compactItem(items.find((candidate) => candidate.id === ref.id) ?? card({ id: ref.id, title: ref.title, status: ref.status ?? 'candidate', lane: 'inbox' }));
+  return { schemaVersion: 1, item: { ...compactItem(item), path: `mock://backlog/items/${item.id}.md`, sections: { Claim: item.notes.claim || `${item.title} claim.`, Evidence: item.notes.evidence, Recheck: item.notes.recheck, 'Promotion Paths': item.notes.promotionPaths }, linkRows: item.linkRows ?? item.lifecycleLinks ?? [], failureEvidence: item.failureEvidence ?? [] }, dependencies: item.dependencies.filter((ref) => !ref.missing).map(refItem), dependents: item.dependents.filter((ref) => !ref.missing).map(refItem) };
+}
+function laneSummary(entry: { lane: string; title: string }, selectedLane: string | undefined, pagination: CompactBoardResponse['pagination']) { const allLaneItems = items.filter((item) => item.lane === entry.lane); return { lane: entry.lane, title: entry.title, count: allLaneItems.length, openCount: allLaneItems.filter((item) => !item.closed).length, closedCount: allLaneItems.filter((item) => item.closed).length, ...(selectedLane === entry.lane ? { pagination } : {}) }; }
+function compactItem(item: BoardItem): CompactBoardItem { return { id: item.id, title: item.title, status: item.status, priority: item.priority, tags: item.tags, lane: item.lane, reasons: item.reasons, dependsOn: item.dependencies.map((dependency) => dependency.id), unresolvedDependsOn: item.unresolvedDependsOn, activeTraceReasons: item.activeTraceReasons, blocked: item.blocked, ready: item.ready, reviewDue: item.reviewDue, closed: item.closed, ...(item.epic ? { epic: item.epic } : {}), lifecycleState: item.lifecycleState }; }
 
 export const mockRecommendations: RecommendationModel = {
   schemaVersion: 1,

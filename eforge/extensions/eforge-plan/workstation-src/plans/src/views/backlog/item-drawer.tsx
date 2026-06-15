@@ -4,7 +4,8 @@ import { getBridge } from '@/bridge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
-import type { BoardItem, DependencyRef, Epic } from '@/types';
+import { mergeCompactItemDetail } from '@/lib/compact-board-adapter';
+import type { BoardItem, CompactBoardDetailResponse, DependencyRef, Epic } from '@/types';
 import { shortId } from './board-model';
 import { LifecyclePanel } from './lifecycle-panel';
 
@@ -17,6 +18,7 @@ interface ItemDrawerProps {
   epics: Epic[];
   onClose: () => void;
   onRefresh: () => Promise<void>;
+  selectedItemIds?: string[];
 }
 
 /**
@@ -32,6 +34,9 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
   const [priority, setPriority] = React.useState(item.priority);
   const [epic, setEpic] = React.useState(item.epic ?? NO_EPIC);
   const [saving, setSaving] = React.useState(false);
+  const [detail, setDetail] = React.useState<BoardItem | null>(null);
+  const [detailLoading, setDetailLoading] = React.useState(false);
+  const [detailError, setDetailError] = React.useState<string | null>(null);
 
   // Re-seed the form when the drawer is pointed at a different card or the
   // board refreshes underneath it.
@@ -39,7 +44,19 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
     setStatus(item.status);
     setPriority(item.priority);
     setEpic(item.epic ?? NO_EPIC);
-  }, [item.id, item.status, item.priority, item.epic]);
+    setDetail(null);
+  }, [item.id]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    getBridge().invokeAction<CompactBoardDetailResponse>('get-item', { id: item.id })
+      .then((response) => { if (!cancelled) setDetail(mergeCompactItemDetail(item, response)); })
+      .catch((caught: unknown) => { if (!cancelled) setDetailError(caught instanceof Error ? caught.message : String(caught)); })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
+  }, [item]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
@@ -47,8 +64,9 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
+  const displayItem = detail ?? item;
   const dirty = status !== item.status || priority !== item.priority || epic !== (item.epic ?? NO_EPIC);
-  const openStatusWithBlockers = item.unresolvedDependsOn.length > 0 && ['candidate', 'planned', 'active'].includes(status);
+  const openStatusWithBlockers = displayItem.unresolvedDependsOn.length > 0 && ['candidate', 'planned', 'active'].includes(status);
 
   const save = async () => {
     setSaving(true);
@@ -101,7 +119,7 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
           </Field>
           {openStatusWithBlockers && (
             <p className="text-2xs text-muted-foreground">
-              Unresolved dependencies ({item.unresolvedDependsOn.map(shortId).join(', ')}) keep this item in the Blocked lane regardless of status.
+              Unresolved dependencies ({displayItem.unresolvedDependsOn.map(shortId).join(', ')}) keep this item in the Blocked lane regardless of status.
             </p>
           )}
           <div className="flex items-center gap-2">
@@ -112,41 +130,44 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
           </div>
         </section>
 
-        {item.reasons.length > 0 && (
+        {detailLoading && <p className="mt-4 rounded border border-border bg-background p-2 text-xs text-muted-foreground">Loading item details…</p>}
+        {detailError && <p className="mt-4 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive-foreground">{detailError}</p>}
+
+        {displayItem.reasons.length > 0 && (
           <Section title="Lane">
-            <p className="text-xs text-muted-foreground"><span className="capitalize text-foreground">{item.lane}</span> · {item.reasons.join('; ')}</p>
+            <p className="text-xs text-muted-foreground"><span className="capitalize text-foreground">{displayItem.lane}</span> · {displayItem.reasons.join('; ')}</p>
           </Section>
         )}
 
-        {item.tags.length > 0 && (
+        {displayItem.tags.length > 0 && (
           <Section title="Tags">
             <div className="flex flex-wrap gap-1">
-              {item.tags.map((tag) => <span key={tag} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{tag}</span>)}
+              {displayItem.tags.map((tag) => <span key={tag} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{tag}</span>)}
             </div>
           </Section>
         )}
 
-        <DependencySection title="Depends on" refs={item.dependencies} />
-        <DependencySection title="Enables" refs={item.dependents} />
+        <DependencySection title="Depends on" refs={displayItem.dependencies} />
+        <DependencySection title="Enables" refs={displayItem.dependents} />
 
-        {(item.recLanes.length > 0 || item.recUnblock) && (
+        {(displayItem.recLanes.length > 0 || displayItem.recUnblock) && (
           <Section title="Recommendations">
-            {item.recLanes.length > 0 && (
+            {displayItem.recLanes.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {item.recLanes.map((lane) => <span key={lane} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{lane}</span>)}
+                {displayItem.recLanes.map((lane) => <span key={lane} className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{lane}</span>)}
               </div>
             )}
-            {item.recUnblock && <p className="mt-2 text-xs text-[color:var(--prio-medium)]">{item.recUnblock}</p>}
+            {displayItem.recUnblock && <p className="mt-2 text-xs text-[color:var(--prio-medium)]">{displayItem.recUnblock}</p>}
           </Section>
         )}
 
-        <NoteSection title="Claim" content={item.notes.claim} />
-        <NoteSection title="Evidence" content={item.notes.evidence} />
-        <NoteSection title="Recheck" content={item.notes.recheck} />
-        <NoteSection title="Promotion paths" content={item.notes.promotionPaths} />
+        <NoteSection title="Claim" content={displayItem.notes.claim} />
+        <NoteSection title="Evidence" content={displayItem.notes.evidence} />
+        <NoteSection title="Recheck" content={displayItem.notes.recheck} />
+        <NoteSection title="Promotion paths" content={displayItem.notes.promotionPaths} />
 
         <Section title="Lifecycle">
-          <LifecyclePanel item={item} />
+          <LifecyclePanel item={displayItem} />
         </Section>
       </div>
     </aside>
