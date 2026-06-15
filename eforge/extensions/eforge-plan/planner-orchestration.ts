@@ -37,7 +37,7 @@ import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, 
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { userActionError } from './action-errors.js';
 import { upsertPromotedSessionPlan } from './trace-store.js';
-import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry } from './planning-task-workflow-store.js';
+import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
   PLANNING_PROFILES,
@@ -120,6 +120,12 @@ interface PlanningAgentTaskRecordLike {
   result?: unknown;
 }
 
+const creationDraftApplyInFlight = new Set<string>();
+
+function creationDraftApplyKey(cwd: string, taskId: string): string {
+  return `${cwd}\0${taskId}`;
+}
+
 export async function applyCompletedPlanningAgentTaskResult(
   cwd: string,
   task: PlanningAgentTaskRecordLike,
@@ -152,27 +158,40 @@ export async function applyCompletedPlanningAgentTaskResult(
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
   const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
 
-  if (input.applyRecommendations) {
-    const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
-    const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint, lastRefreshedBy: 'apply-planning-agent-task-result' });
-    output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
-    output.applied.recommendations = true;
-  }
-  if (handoffDrafts !== undefined) {
-    const handoffs: NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']> = [];
-    for (const handoffDraft of handoffDrafts) {
-      const applied = await applyPlannerResult(cwd, { handoffDraft });
-      if (applied.handoff !== undefined) handoffs.push(applied.handoff as NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']>[number]);
+  const applyKey = creationDraft !== undefined ? creationDraftApplyKey(cwd, task.taskId) : undefined;
+  if (applyKey !== undefined) {
+    if (creationDraftApplyInFlight.has(applyKey)) {
+      throw userActionError(`Planning task ${task.taskId} session-plan creation draft apply is already in progress.`, { path: 'taskId', details: { taskId: task.taskId } });
     }
-    output.handoffs = handoffs;
-    output.applied.handoffDrafts = handoffs.length;
+    creationDraftApplyInFlight.add(applyKey);
   }
-  if (sessionPlanDrafts !== undefined) {
-    output.sessionPlanDrafts = await applySelectedSessionPlanSections(cwd, sessionPlanDrafts);
-    output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
-  }
-  if (creationDraft !== undefined) {
-    output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage, applyTargets.creationDraftTarget);
+
+  try {
+    if (input.applyRecommendations) {
+      const recommendationSourceFingerprint = await resolveRecommendationApplySourceFingerprint(cwd, task.taskId);
+      const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint, lastRefreshedBy: 'apply-planning-agent-task-result' });
+      output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
+      output.applied.recommendations = true;
+    }
+    if (handoffDrafts !== undefined) {
+      const handoffs: NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']> = [];
+      for (const handoffDraft of handoffDrafts) {
+        const applied = await applyPlannerResult(cwd, { handoffDraft });
+        if (applied.handoff !== undefined) handoffs.push(applied.handoff as NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']>[number]);
+      }
+      output.handoffs = handoffs;
+      output.applied.handoffDrafts = handoffs.length;
+    }
+    if (sessionPlanDrafts !== undefined) {
+      output.sessionPlanDrafts = await applySelectedSessionPlanSections(cwd, sessionPlanDrafts);
+      output.applied.sessionPlanSections = output.sessionPlanDrafts.reduce((count, entry) => count + entry.sections.length, 0);
+    }
+    if (creationDraft !== undefined) {
+      output.sessionPlanCreationDraft = await applySessionPlanCreationDraft(cwd, creationDraft, creationDraftLinkage, applyTargets.creationDraftTarget);
+      if (workflowEntry !== undefined) await markPlanningTaskWorkflowEntryApplied(cwd, task.taskId, new Date().toISOString());
+    }
+  } finally {
+    if (applyKey !== undefined) creationDraftApplyInFlight.delete(applyKey);
   }
   return output;
 }
@@ -207,18 +226,8 @@ function resolveSessionPlanCreationDraft(result: Record<string, unknown>, select
   return { draft: { ...draft, topic }, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
 }
 
-// The planner is given the verbose request as its planning goal and is asked to
-// author a concise title. Deterministic safety net so the seed prompt ("Draft a
-// session plan for ...") is never persisted as a plan topic even if the agent
-// echoes it: fall back to a humanized session slug so the Plans tab and
-// downstream commit/handoff text stay readable.
-//
-// INVARIANT: this mirrors the display-time fallback in the workstation bundle
-// (`workstation-src/plans/src/lib/plan-title.ts` - `isGeneratedPlannerPrompt` +
-// `humanizeSlug`). The seed-prompt regex and slug humanization MUST stay
-// identical across both: this is the durable persist-time fix, that is the
-// render-time fallback. They live in separate bundles and cannot share a module,
-// so change them together.
+// Keep generated seed prompts out of persisted plan topics; mirror
+// workstation-src/plans/src/lib/plan-title.ts when changing this fallback.
 function conciseTopic(topic: string, sessionSlug: string): string {
   const trimmed = topic.trim();
   if (trimmed.length > 0 && !/^draft a session plan for /i.test(trimmed)) return trimmed;
@@ -411,6 +420,9 @@ async function validatePlanningAgentTaskApplyTargets(
   const targets: PlanningAgentTaskApplyTargets = {};
   if (creationDraft !== undefined) {
     validateSessionPlanCreationDraftForApply(creationDraft, workflowEntry);
+    if (workflowEntry?.appliedAt !== undefined) {
+      throw userActionError(`Planning task ${workflowEntry.taskId} session-plan creation draft was already applied.`, { path: 'taskId', details: { taskId: workflowEntry.taskId, appliedAt: workflowEntry.appliedAt } });
+    }
     targets.creationDraftTarget = await resolveCreationDraftTargetDisposition(cwd, creationDraft.session);
   }
   await Promise.all([

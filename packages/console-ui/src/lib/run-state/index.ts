@@ -54,5 +54,5 @@ export type {
 export { selectStackLayersForRun } from './selectors/stack-layers';
 
 // Lane registry
-export { LANE_REGISTRY, laneLabel, laneOrder } from './lane-registry';
+export { LANE_REGISTRY, laneLabel, laneOrder, isRegisteredPhaseLane } from './lane-registry';
 export type { LaneEntry } from './lane-registry';

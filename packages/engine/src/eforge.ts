@@ -2284,21 +2284,9 @@ export class EforgeEngine {
       }
 
       const { summary, diffStat, artifactBasePath } = eligibility;
-      const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans);
 
       resumeActivationReached = true;
       yield { timestamp: ts(), type: 'build:resume:start', prdId, setName, featureBranch };
-      yield {
-        timestamp: ts(), type: 'build:resume:state',
-        seededMerged, seededPending, featureBranch,
-        landedCommitCount: summary.landedCommits.length, diffStat,
-      };
-
-      // Build per-plan resume context map for builder prompt injection
-      const resumeContextByPlan = new Map<string, string>();
-      for (const planId of seededPending) {
-        resumeContextByPlan.set(planId, formatResumeContext({ planId, summary, seededMerged, seededPending }));
-      }
 
       // Orchestration artifacts are read from the recreated merge worktree when
       // present, or from a read-only recovery copy materialized from branch history.
@@ -2339,6 +2327,20 @@ export class EforgeEngine {
           yield { timestamp: ts(), type: 'planning:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
         }
         planFileMap.set(plan.id, planFile);
+      }
+
+      const allowedResumePlanIds = new Set(orchConfig.plans.map((plan) => plan.id));
+      const { seededMerged, seededPending } = deriveResumeSeedState(summary.plans, allowedResumePlanIds);
+      yield {
+        timestamp: ts(), type: 'build:resume:state',
+        seededMerged, seededPending, featureBranch,
+        landedCommitCount: summary.landedCommits.length, diffStat,
+      };
+
+      // Build per-plan resume context map for builder prompt injection
+      const resumeContextByPlan = new Map<string, string>();
+      for (const planId of seededPending) {
+        resumeContextByPlan.set(planId, formatResumeContext({ planId, summary, seededMerged, seededPending }));
       }
 
       const resolvedResumePrdContent = await resolveResumePrdContent({

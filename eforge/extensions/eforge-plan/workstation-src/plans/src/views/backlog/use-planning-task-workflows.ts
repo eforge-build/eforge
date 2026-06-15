@@ -199,6 +199,9 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     try {
       const response = await bridge.invokeAction<ApplyPlanningTaskResponse>('apply-planning-agent-task-result', { taskId, ...input });
       toast.push(`Applied generated output from ${response.taskId}.`, 'success');
+      if (response.sessionPlanCreationDraft !== undefined) {
+        setItems((prev) => prev.filter((existing) => existing.entry.taskId !== taskId));
+      }
       await onRefresh();
       await reload();
       return response;

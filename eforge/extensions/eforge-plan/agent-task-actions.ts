@@ -149,7 +149,7 @@ export const listPlanningAgentTasksAction = defineExtensionAction({
   outputSchema: ListPlanningAgentTasksOutputSchema,
   sideEffects: ['local-read'],
   async handler(_input, ctx) {
-    const entries = listPlanningTaskWorkflowEntries(await readPlanningTaskWorkflowIndex(ctx.cwd));
+    const entries = listPlanningTaskWorkflowEntries(await readPlanningTaskWorkflowIndex(ctx.cwd)).filter((entry) => !isConsumedSessionPlanCreationEntry(entry));
     const tasks = await Promise.all(entries.map(async (entry) => {
       try {
         const response = await ctx.agentTasks.get(entry.taskId);
@@ -393,6 +393,12 @@ function plannerSelection(entry: PlanningTaskWorkflowEntry) {
 
 function hasBacklogSelection(selection: PlanningTaskWorkflowSelection): boolean {
   return selection.itemIds !== undefined || selection.epicId !== undefined || selection.recommendationRef !== undefined;
+}
+
+function isConsumedSessionPlanCreationEntry(entry: PlanningTaskWorkflowEntry): boolean {
+  return entry.appliedAt !== undefined
+    && !isBacklogCurationWorkflowEntry(entry)
+    && entry.requestedOutputSections.includes('sessionPlanCreationDraft');
 }
 
 // --- eforge:region session-plan-creation-readiness ---

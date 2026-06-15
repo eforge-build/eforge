@@ -39,6 +39,10 @@ const registryById = new Map<string, LaneEntry>(
   LANE_REGISTRY.map((entry) => [entry.id, entry]),
 );
 
+export function isRegisteredPhaseLane(id: string): boolean {
+  return registryById.get(id)?.kind === 'phase';
+}
+
 /**
  * Returns the human-readable display label for a lane key.
  *

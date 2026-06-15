@@ -128,7 +128,53 @@ describe('handleBuildResumeState', () => {
     expect(stateThenArtifacts.planStatuses['plan-02']).toBe('plan');
   });
 
-  it('does not downgrade active, complete, or failed stages', () => {
+  it('does not create a synthetic acceptance-validation plan when state arrives before artifacts', () => {
+    const state = reduce(
+      reduce(createInitialRunState(), resumeStateEvent({ seededMerged: [], seededPending: ['acceptance-validation'] }), 'state'),
+      resumeEvent(),
+      'artifacts',
+    );
+
+    expect(state.planStatuses['acceptance-validation']).toBeUndefined();
+    expect(state.planStatuses).toEqual({ 'plan-01': 'plan', 'plan-02': 'plan' });
+  });
+
+  it('does not create a synthetic acceptance-validation plan when artifacts arrive before state', () => {
+    const state = reduce(
+      reduce(createInitialRunState(), resumeEvent(), 'artifacts'),
+      resumeStateEvent({ seededMerged: [], seededPending: ['acceptance-validation'] }),
+      'state',
+    );
+
+    expect(state.planStatuses['acceptance-validation']).toBeUndefined();
+    expect(state.planStatuses).toEqual({ 'plan-01': 'plan', 'plan-02': 'plan' });
+  });
+
+  it('does not create a synthetic acceptance-validation merged plan when state arrives before artifacts', () => {
+    const state = reduce(
+      reduce(createInitialRunState(), resumeStateEvent({ seededMerged: ['acceptance-validation', 'plan-01'], seededPending: [] }), 'state'),
+      resumeEvent(),
+      'artifacts',
+    );
+
+    expect(state.planStatuses['acceptance-validation']).toBeUndefined();
+    expect(state.planStatuses['plan-01']).toBe('complete');
+    expect(state.planStatuses['plan-02']).toBe('plan');
+  });
+
+  it('does not create a synthetic acceptance-validation merged plan when artifacts arrive before state', () => {
+    const state = reduce(
+      reduce(createInitialRunState(), resumeEvent(), 'artifacts'),
+      resumeStateEvent({ seededMerged: ['acceptance-validation', 'plan-01'], seededPending: [] }),
+      'state',
+    );
+
+    expect(state.planStatuses['acceptance-validation']).toBeUndefined();
+    expect(state.planStatuses['plan-01']).toBe('complete');
+    expect(state.planStatuses['plan-02']).toBe('plan');
+  });
+
+  it('does not downgrade active, complete, or failed stages before artifacts identify real plans', () => {
     const state = reduce({
       ...createInitialRunState(),
       planStatuses: {
@@ -144,7 +190,7 @@ describe('handleBuildResumeState', () => {
     }, resumeStateEvent({ seededMerged: ['missing', 'active', 'doc', 'test', 'review', 'evaluate', 'done', 'failed'], seededPending: [] }), 'state');
 
     expect(state.planStatuses).toEqual({
-      missing: 'complete',
+      missing: 'plan',
       active: 'implement',
       doc: 'doc-sync',
       test: 'test',
@@ -155,7 +201,7 @@ describe('handleBuildResumeState', () => {
     });
   });
 
-  it('does not downgrade active or terminal stages listed as seeded pending', () => {
+  it('does not downgrade active or terminal stages listed as seeded pending before artifacts identify real plans', () => {
     const state = reduce({
       ...createInitialRunState(),
       planStatuses: {
@@ -169,12 +215,15 @@ describe('handleBuildResumeState', () => {
       active: 'implement',
       done: 'complete',
       failed: 'failed',
-      missing: 'plan',
     });
   });
 
   it('lets later lifecycle events override seeded resume completion', () => {
-    const seeded = reduce(createInitialRunState(), resumeStateEvent({ seededMerged: ['plan-01'], seededPending: [] }), 'state');
+    const seeded = reduce(
+      reduce(createInitialRunState(), resumeStateEvent({ seededMerged: ['plan-01'], seededPending: [] }), 'state'),
+      resumeEvent(),
+      'artifacts',
+    );
     const running = reduce(seeded, {
       type: 'plan:status:change',
       timestamp: '2025-01-01T00:00:01.000Z',
@@ -195,9 +244,13 @@ describe('handleBuildResumeState', () => {
 
   it('lets seeded pending plans advance through later lifecycle events', () => {
     const seeded = reduce(
-      createInitialRunState(),
-      resumeStateEvent({ seededMerged: [], seededPending: ['plan-02'] }),
-      'state',
+      reduce(
+        createInitialRunState(),
+        resumeStateEvent({ seededMerged: [], seededPending: ['plan-02'] }),
+        'state',
+      ),
+      resumeEvent(),
+      'artifacts',
     );
     const running = reduce(seeded, {
       type: 'plan:status:change',

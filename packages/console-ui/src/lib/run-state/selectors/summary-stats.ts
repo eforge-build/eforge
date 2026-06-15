@@ -6,6 +6,7 @@
  */
 import type { RunState } from '../types';
 import { formatDuration } from '../format';
+import { selectPlanStatusCounts } from './plan-progress';
 
 export function getSummaryStats(state: RunState): {
   duration: string;
@@ -27,7 +28,7 @@ export function getSummaryStats(state: RunState): {
     ? formatDuration(end - state.startTime)
     : '--';
 
-  const statuses = Object.values(state.planStatuses);
+  const planStatusCounts = selectPlanStatusCounts(state);
 
   // Sum turns across finalized agent threads only (live agents tracked via liveAgentUsage overlay)
   const liveAgentIds = new Set(Object.keys(state.liveAgentUsage));
@@ -74,9 +75,9 @@ export function getSummaryStats(state: RunState): {
     cacheRead: state.cacheRead + liveExtra.cacheRead,
     cacheCreation: state.cacheCreation + liveExtra.cacheCreation,
     totalCost: state.totalCost + liveExtra.cost,
-    plansCompleted: statuses.filter((s) => s === 'complete').length,
-    plansFailed: statuses.filter((s) => s === 'failed').length,
-    plansTotal: statuses.length,
+    plansCompleted: planStatusCounts.complete,
+    plansFailed: planStatusCounts.failed,
+    plansTotal: planStatusCounts.total,
     totalTurns: totalTurns + liveExtra.turns,
     filesChanged,
     reviewCritical,

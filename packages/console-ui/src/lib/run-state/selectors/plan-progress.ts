@@ -5,7 +5,7 @@
  * data derived from RunState.
  */
 import type { RunState, PipelineStage, BuildStageSpec } from '../types';
-import { laneLabel, laneOrder } from '../lane-registry';
+import { isRegisteredPhaseLane, laneLabel, laneOrder } from '../lane-registry';
 
 /** Status counts across all plans in the run. */
 export interface PlanStatusCounts {
@@ -45,11 +45,17 @@ export function selectPlanStatusCounts(state: RunState): PlanStatusCounts {
   return { pending, running, complete, failed, total: planIds.size };
 }
 
-/** All plan IDs known to the run state (from orchestration, statuses, or events). */
+/** All plan IDs known to the run state (from orchestration, resume artifacts, or statuses). */
 function selectAllPlanIds(state: RunState): Set<string> {
   const ids = new Set<string>();
+  const artifactPlans = state.resumeArtifacts;
+  const orchestrationPlans = state.earlyOrchestration?.plans ?? [];
+  if ((state.earlyOrchestration !== null && state.earlyOrchestration !== undefined) || artifactPlans.length > 0) {
+    for (const plan of orchestrationPlans) ids.add(plan.id);
+    for (const plan of artifactPlans) ids.add(plan.id);
+    return ids;
+  }
   for (const id of Object.keys(state.planStatuses)) ids.add(id);
-  for (const plan of state.earlyOrchestration?.plans ?? []) ids.add(plan.id);
   return ids;
 }
 
@@ -108,6 +114,10 @@ export function selectMiniGanttRows(state: RunState): MiniGanttRow[] {
 
   if (orchPlans.length > 0) {
     return orchPlans.map((plan) => makeRow(plan.id, plan.name, plan.dependsOn ?? []));
+  }
+
+  if (state.resumeArtifacts.length > 0) {
+    return state.resumeArtifacts.map((plan) => makeRow(plan.id, plan.name, plan.dependsOn ?? []));
   }
 
   // Fallback: no orchestration — use planStatuses keys
@@ -186,6 +196,24 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
 // Lane labels and ordering are now sourced from the single lane registry
 // (lib/run-state/lane-registry.ts). See laneLabel() / laneOrder().
 
+function validationLaneForStart(startedAt: string, events: RunState['events']): 'validation' | 'final-validation' {
+  const startMs = new Date(startedAt).getTime();
+  let gapCloseCompleted = false;
+
+  for (const { event } of events) {
+    const eventMs = new Date(event.timestamp).getTime();
+    if (Number.isNaN(eventMs) || eventMs > startMs) continue;
+    if (event.type === 'gap_close:complete') gapCloseCompleted = true;
+  }
+
+  return gapCloseCompleted ? 'final-validation' : 'validation';
+}
+
+function validationCommandLaneIds(state: RunState): Set<string> {
+  if (state.validationCommands.length === 0) return new Set();
+  return new Set(state.validationCommands.map((span) => validationLaneForStart(span.startedAt, state.events)));
+}
+
 /**
  * Returns per-plan lanes for the mini swimlane, ordered the same way as
  * {@link selectMiniGanttRows}. Each lane carries the build-stage sequence
@@ -200,8 +228,11 @@ function aggregateLaneAgents(threads: RunState['agentThreads']): PlanLaneAgent[]
  */
 export function selectPlanLanes(state: RunState): PlanLane[] {
   const orchPlans = state.earlyOrchestration?.plans ?? [];
+  const artifactPlans = state.resumeArtifacts;
+  const sourcePlans = orchPlans.length > 0 ? orchPlans : artifactPlans;
+  const hasArtifactContext = (state.earlyOrchestration !== null && state.earlyOrchestration !== undefined) || artifactPlans.length > 0;
   const buildByPlan = new Map<string, BuildStageSpec[]>();
-  for (const plan of orchPlans) {
+  for (const plan of sourcePlans) {
     buildByPlan.set(plan.id, plan.build ?? []);
   }
 
@@ -229,20 +260,30 @@ export function selectPlanLanes(state: RunState): PlanLane[] {
     };
   };
 
-  if (orchPlans.length === 0) {
+  if (!hasArtifactContext) {
     return Array.from(selectAllPlanIds(state)).sort().map((id) => makeLane(id, id));
   }
 
-  const lanes = orchPlans.map((plan) => makeLane(plan.id, plan.name));
+  const lanes = sourcePlans.map((plan) => makeLane(plan.id, plan.name));
 
   // Append dynamically-added lanes (e.g. gap-close, validation, final-validation)
   // that have a status or live agents but were never part of the compiled
   // orchestration. Exclude 'planning' — it has its own dedicated row via
   // selectPlanningLane. Order by the lane registry instead of alphabetically.
-  const known = new Set(orchPlans.map((plan) => plan.id));
+  const known = new Set(sourcePlans.map((plan) => plan.id));
   const extras = new Set<string>();
-  for (const id of Object.keys(state.planStatuses)) if (!known.has(id)) extras.add(id);
-  for (const id of threadsByPlan.keys()) if (!known.has(id)) extras.add(id);
+  const validationCommandIds = validationCommandLaneIds(state);
+  const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.has(id);
+  for (const id of Object.keys(state.planStatuses)) {
+    if (known.has(id)) continue;
+    if (isRegisteredPhaseLane(id) && phaseLaneHasContent(id)) extras.add(id);
+  }
+  for (const id of threadsByPlan.keys()) {
+    if (!known.has(id) && isRegisteredPhaseLane(id)) extras.add(id);
+  }
+  for (const id of validationCommandIds) {
+    if (!known.has(id) && isRegisteredPhaseLane(id)) extras.add(id);
+  }
   extras.delete('planning');
   for (const id of Array.from(extras).sort((a, b) => laneOrder(a) - laneOrder(b) || a.localeCompare(b))) {
     lanes.push(makeLane(id, laneLabel(id)));

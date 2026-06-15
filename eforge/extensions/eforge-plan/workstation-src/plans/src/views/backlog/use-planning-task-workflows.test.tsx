@@ -31,6 +31,30 @@ const item: PlanningAgentTaskListItem = {
   task,
 };
 
+const creationTask: PlanningAgentTaskRecord = {
+  taskId: 'task-creation',
+  kind: 'eforge-plan.planning-draft',
+  status: 'completed',
+  createdAt: 'now',
+  updatedAt: 'later',
+  completedAt: 'later',
+  result: { summary: 'Ready.', assumptionsOpenQuestions: [], sessionPlanCreationDraft: { session: 'created-session', topic: 'Topic', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Scope.' }] } },
+};
+
+const creationItem: PlanningAgentTaskListItem = {
+  entry: {
+    taskId: creationTask.taskId,
+    originalRequest: '',
+    derivedRequest: 'Draft a session plan.',
+    selection: {},
+    requestedOutputSections: ['sessionPlanCreationDraft'],
+    createdAt: 'now',
+  },
+  available: true,
+  status: 'completed',
+  task: creationTask,
+};
+
 async function loadHookWithWrapper() {
   const [{ usePlanningTaskWorkflows }, { ToastProvider }] = await Promise.all([
     import('./use-planning-task-workflows'),
@@ -106,6 +130,30 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     await act(async () => { await result.current.apply(task.taskId, { applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }); });
 
     expect(invokeAction).toHaveBeenCalledWith('apply-planning-agent-task-result', { taskId: task.taskId, applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } });
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
+  });
+
+  it('removes a consumed creation task from local state after successful apply and reloads', async () => {
+    const onRefresh = vi.fn(async () => undefined);
+    let listCalls = 0;
+    const invokeAction = vi.fn(async (actionId: string) => {
+      if (actionId === 'list-planning-agent-tasks') {
+        listCalls += 1;
+        return { tasks: listCalls === 1 ? [creationItem] : [] };
+      }
+      if (actionId === 'apply-planning-agent-task-result') return { schemaVersion: 1, taskId: creationTask.taskId, applied: { recommendations: false, handoffDrafts: 0, sessionPlanSections: 0 }, sessionPlanCreationDraft: { session: 'created-session', relativePath: '.eforge/session-plans/created-session.md', readiness: { ready: true, missingDimensions: [] } } };
+      throw new Error(`unexpected ${actionId}`);
+    });
+    setBridge({ invokeAction: invokeAction as EforgeBridge['invokeAction'] });
+
+    const { usePlanningTaskWorkflows, wrapper } = await loadHookWithWrapper();
+    const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
+    await waitFor(() => expect(result.current.items.map((entry) => entry.entry.taskId)).toEqual(['task-creation']));
+
+    await act(async () => { await result.current.apply(creationTask.taskId, { applySessionPlanCreationDraft: {} }); });
+
+    expect(result.current.items.map((entry) => entry.entry.taskId)).toEqual([]);
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
   });

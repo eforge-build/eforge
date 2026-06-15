@@ -2,7 +2,7 @@
  * Tests for the lane registry: labels, ordering, and plan-NN fallback.
  */
 import { describe, it, expect } from 'vitest';
-import { laneLabel, laneOrder, LANE_REGISTRY } from '../lane-registry';
+import { isRegisteredPhaseLane, laneLabel, laneOrder, LANE_REGISTRY } from '../lane-registry';
 
 describe('laneLabel', () => {
   it('returns "Planning" for planning', () => {
@@ -56,6 +56,19 @@ describe('laneOrder', () => {
 
   it('returns 1 (plan tier) for unknown lane keys', () => {
     expect(laneOrder('unknown')).toBe(1);
+  });
+});
+
+describe('isRegisteredPhaseLane', () => {
+  it('returns true for registered phase lanes', () => {
+    expect(isRegisteredPhaseLane('validation')).toBe(true);
+    expect(isRegisteredPhaseLane('gap-close')).toBe(true);
+    expect(isRegisteredPhaseLane('final-validation')).toBe(true);
+  });
+
+  it('returns false for plan and unknown lane ids', () => {
+    expect(isRegisteredPhaseLane('plan-01')).toBe(false);
+    expect(isRegisteredPhaseLane('acceptance-validation')).toBe(false);
   });
 });
 

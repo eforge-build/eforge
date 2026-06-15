@@ -5,7 +5,7 @@ import type { AgentThread, StoredEvent, DecisionPoint, Decision } from '@/lib/ru
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/run-state';
 import { decisionDetail, decisionSummary } from '@/lib/decision-format';
 import { EMPTY_THREADS } from './pipeline-colors';
-import { laneOrder } from '@/lib/run-state/lane-registry';
+import { isRegisteredPhaseLane, laneOrder } from '@/lib/run-state/lane-registry';
 import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -139,16 +139,27 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
       seen.add(id);
       ids.push(id);
     };
+    const realPlanIds = new Set<string>();
+    for (const plan of orchestration?.plans ?? []) realPlanIds.add(plan.id);
+    for (const plan of planArtifacts ?? []) realPlanIds.add(plan.id);
+    const hasArtifactContext = (orchestration !== null && orchestration !== undefined) || (planArtifacts?.length ?? 0) > 0;
+    const validationCommandIds = validationCommandLaneIds(validationCommands, events);
+    const phaseLaneHasContent = (id: string) => threadsByPlan.has(id) || validationCommandIds.includes(id);
+    const addPlanStatusLane = (id: string) => {
+      if (!hasArtifactContext || realPlanIds.has(id) || (isRegisteredPhaseLane(id) && phaseLaneHasContent(id))) {
+        add(id);
+      }
+    };
 
     // Seed from orchestration (preserves declared plan order), then artifacts,
-    // then planStatuses, then thread-only lane keys (phase lanes that have no
-    // planStatuses entry but do have live agent threads), then validation-command
-    // phase lanes (commands are emitted without planId but belong to validation).
+    // then planStatuses defensively filtered against recovered artifacts, then
+    // thread-backed lane keys, then validation-command phase lanes (commands are
+    // emitted without planId but belong to validation).
     for (const plan of orchestration?.plans ?? []) add(plan.id);
     for (const plan of planArtifacts ?? []) add(plan.id);
-    for (const id of Object.keys(planStatuses)) add(id);
-    for (const id of threadsByPlan.keys()) add(id);
-    for (const id of validationCommandLaneIds(validationCommands, events)) add(id);
+    for (const id of Object.keys(planStatuses)) addPlanStatusLane(id);
+    for (const id of threadsByPlan.keys()) addPlanStatusLane(id);
+    for (const id of validationCommandIds) addPlanStatusLane(id);
 
     // Sort the full set by lane registry order. Within the same order tier,
     // preserve the insertion order (orchestration-declared plans first).

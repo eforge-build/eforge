@@ -38,6 +38,8 @@ export const initialRunState: RunState = {
   events: [],
   startTime: null,
   planStatuses: {},
+  resumeSeededMerged: [],
+  resumeSeededPending: [],
   tokensIn: 0,
   tokensOut: 0,
   cacheRead: 0,
@@ -76,7 +78,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {} };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, resumeArtifacts: [], resumeSource: null, resumeSeededMerged: [], resumeSeededPending: [], profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {} };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.
@@ -87,6 +89,8 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         fileChanges: new Map(),
         resumeArtifacts: [],
         resumeSource: null,
+        resumeSeededMerged: [],
+        resumeSeededPending: [],
         events: [],
       };
 
@@ -137,6 +141,8 @@ export function createInitialRunState(): RunState {
     earlyOrchestration: null,
     resumeArtifacts: [],
     resumeSource: null,
+    resumeSeededMerged: [],
+    resumeSeededPending: [],
     profile: null,
     mergeCommits: {},
     liveAgentUsage: {},
