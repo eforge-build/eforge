@@ -226,18 +226,8 @@ function resolveSessionPlanCreationDraft(result: Record<string, unknown>, select
   return { draft: { ...draft, topic }, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
 }
 
-// The planner is given the verbose request as its planning goal and is asked to
-// author a concise title. Deterministic safety net so the seed prompt ("Draft a
-// session plan for ...") is never persisted as a plan topic even if the agent
-// echoes it: fall back to a humanized session slug so the Plans tab and
-// downstream commit/handoff text stay readable.
-//
-// INVARIANT: this mirrors the display-time fallback in the workstation bundle
-// (`workstation-src/plans/src/lib/plan-title.ts` - `isGeneratedPlannerPrompt` +
-// `humanizeSlug`). The seed-prompt regex and slug humanization MUST stay
-// identical across both: this is the durable persist-time fix, that is the
-// render-time fallback. They live in separate bundles and cannot share a module,
-// so change them together.
+// Keep generated seed prompts out of persisted plan topics; mirror
+// workstation-src/plans/src/lib/plan-title.ts when changing this fallback.
 function conciseTopic(topic: string, sessionSlug: string): string {
   const trimmed = topic.trim();
   if (trimmed.length > 0 && !/^draft a session plan for /i.test(trimmed)) return trimmed;
