@@ -286,6 +286,7 @@ describe('buildFailureSummary', () => {
     expect(summary.failedAt).toBe(new Date('2024-02-01T11:30:00.000Z').toISOString());
     expect(summary.terminalFailure).toBeDefined();
     expect(summary.terminalFailure!.stage).toBe('acceptance-validation');
+    expect(summary.terminalFailure!.scope).toBe('acceptance-validation');
     expect(summary.terminalFailure!.eventType).toBe('acceptance_validation:complete');
     expect(summary.acceptanceValidation).toBeDefined();
     expect(summary.acceptanceValidation!.passed).toBe(false);

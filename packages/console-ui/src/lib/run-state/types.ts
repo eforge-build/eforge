@@ -141,6 +141,8 @@ export interface RunState {
   events: StoredEvent[];
   startTime: number | null;
   planStatuses: Record<string, PipelineStage>;
+  resumeSeededMerged: string[];
+  resumeSeededPending: string[];
   tokensIn: number;
   tokensOut: number;
   cacheRead: number;

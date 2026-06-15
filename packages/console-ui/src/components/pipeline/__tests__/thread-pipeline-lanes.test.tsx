@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { PlanPreviewProvider } from '@/components/preview';
 import { ThreadPipeline } from '../thread-pipeline';
-import type { AgentThread, ValidationCommandSpan } from '@/lib/run-state';
+import type { AgentThread, StoredEvent, ValidationCommandSpan } from '@/lib/run-state';
 
 const review = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
 const orchestration = {
@@ -108,6 +108,102 @@ describe('ThreadPipeline lane ordering', () => {
     expect(screen.getByText('Validation')).toBeTruthy();
     expect(screen.getByText(/pnpm type-check/)).toBeTruthy();
     expect(screen.queryByText('Compile')).toBeNull();
+  });
+
+  it('does not render an unbacked raw acceptance-validation row when artifacts are present', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'complete', 'acceptance-validation': 'plan' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+    });
+
+    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.queryByText('acceptance-validation')).toBeNull();
+  });
+
+  it('does not render thread-only synthetic acceptance-validation rows while backed phase lanes render', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'complete' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      agentThreads: [
+        makeThread({ planId: 'acceptance-validation', agent: 'builder', startedAt: '2025-01-01T00:04:00.000Z' }),
+        makeThread({ planId: 'validation', agent: 'validation-fixer', startedAt: '2025-01-01T00:05:00.000Z' }),
+      ],
+    });
+
+    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.getByText('Validation')).toBeTruthy();
+    expect(screen.queryByText('acceptance-validation')).toBeNull();
+  });
+
+  it('does not render stale plan status rows when orchestration is present but empty', () => {
+    renderPipeline({
+      orchestration: { ...orchestration, plans: [] },
+      planStatuses: { 'acceptance-validation': 'plan' },
+    });
+
+    expect(screen.queryByText('acceptance-validation')).toBeNull();
+  });
+
+  it('does not render unbacked registered phase rows when artifacts are present', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: {
+        'plan-01': 'complete',
+        validation: 'implement',
+        'gap-close': 'implement',
+        'final-validation': 'implement',
+      },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+    });
+
+    expect(screen.getByText('Plan 01')).toBeTruthy();
+    expect(screen.queryByText('Validation')).toBeNull();
+    expect(screen.queryByText('Gap Close')).toBeNull();
+    expect(screen.queryByText('Final Validation')).toBeNull();
+  });
+
+  it('renders the Gap Close lane when backed by gap-close agent threads', () => {
+    renderPipeline({
+      orchestration,
+      planStatuses: { 'plan-01': 'complete', 'gap-close': 'implement' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      agentThreads: [makeThread({ planId: 'gap-close', agent: 'builder', startedAt: '2025-01-01T00:06:00.000Z' })],
+    });
+
+    expect(screen.getByText('Gap Close')).toBeTruthy();
+  });
+
+  it('renders the Final Validation lane when validation commands run after gap close completes', () => {
+    const events: StoredEvent[] = [
+      {
+        eventId: 'gap-close-complete',
+        event: { type: 'gap_close:complete', timestamp: '2025-01-01T00:06:00.000Z', passed: true } as StoredEvent['event'],
+      },
+    ];
+    const validationCommands: ValidationCommandSpan[] = [
+      {
+        command: 'pnpm test',
+        startedAt: '2025-01-01T00:07:00.000Z',
+        endedAt: '2025-01-01T00:07:20.000Z',
+        status: 'passed',
+        exitCode: 0,
+      },
+    ];
+
+    renderPipeline({
+      orchestration,
+      startTime: Date.parse('2025-01-01T00:07:00.000Z'),
+      endTime: Date.parse('2025-01-01T00:07:20.000Z'),
+      planStatuses: { 'plan-01': 'complete', 'final-validation': 'implement' },
+      planArtifacts: [{ id: 'plan-01', name: 'Plan 01', body: '# Plan 01' }],
+      events,
+      validationCommands,
+    });
+
+    expect(screen.getByText('Final Validation')).toBeTruthy();
+    expect(screen.getByText(/pnpm test/)).toBeTruthy();
   });
 
   it('does not group planning or validation threads under __global__/Compile', () => {

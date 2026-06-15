@@ -75,8 +75,22 @@ function initRepo(): string {
   return cwd;
 }
 
-function writeCompiledPlanSet(cwd: string, setName: string, opts: { validate?: string[] } = {}): void {
+function writeCompiledPlanSet(cwd: string, setName: string, opts: { validate?: string[]; includePlan02?: boolean } = {}): void {
   const validate = opts.validate ?? [];
+  const plan02Yaml = opts.includePlan02 ? `  - id: plan-02
+    name: Plan 02
+    depends_on:
+      - plan-01
+    branch: ${setName}/plan-02
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+` : '';
   const validateYaml = validate.length > 0
     ? `validate:\n${validate.map((cmd) => `  - ${cmd}`).join('\n')}\n`
     : 'validate: []\n';
@@ -97,7 +111,7 @@ ${validateYaml}plans:
         - code
       maxRounds: 1
       evaluatorStrictness: standard
-pipeline:
+${plan02Yaml}pipeline:
   scope: excursion
   compile: []
   defaultBuild: []
@@ -116,6 +130,15 @@ name: Plan 01
 
 # Plan 01
 `);
+  if (opts.includePlan02) {
+    writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'plan-02.md'), `---
+id: plan-02
+name: Plan 02
+---
+
+# Plan 02
+`);
+  }
 }
 
 function seedFailedRunEvidence(cwd: string, setName: string): string {
@@ -129,6 +152,22 @@ function seedFailedRunEvidence(cwd: string, setName: string): string {
   db.insertEvent({ runId, type: 'plan:build:failed', planId: 'plan-02', data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-02', error: 'prior failure', timestamp: ts }), timestamp: ts });
   db.insertEvent({ runId, type: 'phase:end', data: JSON.stringify({ type: 'phase:end', runId, result: { status: 'failed', summary: 'failed' }, timestamp: ts }), timestamp: ts });
   db.updateRunStatus(runId, 'failed', ts);
+  db.close();
+  return dbPath;
+}
+
+function seedFailedRunEvidenceWithSyntheticAcceptance(cwd: string, setName: string, opts: { merged?: boolean } = {}): string {
+  const dbPath = seedFailedRunEvidence(cwd, setName);
+  const db = openDatabase(dbPath);
+  const runId = `run-${setName}`;
+  const ts = '2026-01-01T00:01:00.000Z';
+  if (opts.merged) {
+    db.insertEvent({ runId, type: 'plan:status:change', planId: 'acceptance-validation', data: JSON.stringify({ type: 'plan:status:change', planId: 'acceptance-validation', status: 'completed', timestamp: ts }), timestamp: ts });
+    db.insertEvent({ runId, type: 'plan:merge:complete', planId: 'acceptance-validation', data: JSON.stringify({ type: 'plan:merge:complete', planId: 'acceptance-validation', commitSha: 'def456', timestamp: ts }), timestamp: ts });
+  } else {
+    db.insertEvent({ runId, type: 'plan:status:change', planId: 'acceptance-validation', data: JSON.stringify({ type: 'plan:status:change', planId: 'acceptance-validation', status: 'failed', timestamp: ts }), timestamp: ts });
+    db.insertEvent({ runId, type: 'plan:build:failed', planId: 'acceptance-validation', data: JSON.stringify({ type: 'plan:build:failed', planId: 'acceptance-validation', error: 'acceptance validation failed', timestamp: ts }), timestamp: ts });
+  }
   db.close();
   return dbPath;
 }
@@ -201,16 +240,18 @@ function recoveryAnalystManualXml(planId: string): string {
 
 class RoleRecordingStubHarness extends StubHarness {
   readonly roles: AgentRole[] = [];
+  readonly planIds: (string | undefined)[] = [];
 
   override async *run(options: Parameters<StubHarness['run']>[0], agent: AgentRole, planId?: string): ReturnType<StubHarness['run']> {
     this.roles.push(agent);
+    this.planIds.push(planId);
     yield* super.run(options, agent, planId);
   }
 }
 
-function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { removeArtifactsAtTip?: boolean } = {}): void {
+function createFeatureBranchWithArtifacts(cwd: string, setName: string, opts: { removeArtifactsAtTip?: boolean; includePlan02?: boolean } = {}): void {
   git(cwd, ['switch', '-c', `eforge/${setName}`]);
-  writeCompiledPlanSet(cwd, setName);
+  writeCompiledPlanSet(cwd, setName, { includePlan02: opts.includePlan02 });
   git(cwd, ['add', 'eforge']);
   git(cwd, ['commit', '-m', 'plan: compiled artifacts']);
   if (opts.removeArtifactsAtTip) {
@@ -261,6 +302,85 @@ describe('EforgeEngine.resumeBuild — compile-free execution', () => {
     const firstBuildIndex = events.findIndex((event) => event.type === 'plan:build:start');
     if (firstBuildIndex !== -1) expect(artifactIndex).toBeLessThan(firstBuildIndex);
     expect(events.some((event) => event.type === 'build:resume:state')).toBe(true);
+  });
+
+  it('filters synthetic acceptance-validation evidence from emitted resume state and artifacts', async () => {
+    const cwd = initRepo();
+    const setName = 'synthetic-acceptance-resume';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedFailedRunEvidenceWithSyntheticAcceptance(cwd, setName);
+
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: new StubHarness([]),
+      config: {
+        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
+        build: {
+          ...DEFAULT_CONFIG.build,
+          postMergeCommands: [],
+          cleanupPlanFiles: false,
+          validation: {
+            ...DEFAULT_CONFIG.build.validation,
+            allowNoCommands: true,
+            noCommandsReason: 'synthetic resume lane filter unit test',
+          },
+        },
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.resumeBuild(setName, { cwd })) {
+      events.push(event);
+    }
+
+    const resumeState = events.find((event): event is Extract<EforgeEvent, { type: 'build:resume:state' }> => event.type === 'build:resume:state');
+    expect(resumeState).toBeDefined();
+    expect(resumeState!.seededMerged).toEqual(['plan-01']);
+    expect(resumeState!.seededPending).toEqual([]);
+
+    const artifacts = events.find((event): event is Extract<EforgeEvent, { type: 'build:resume:artifacts' }> => event.type === 'build:resume:artifacts');
+    expect(artifacts).toBeDefined();
+    expect(artifacts!.plans.map((plan) => plan.id)).toEqual(['plan-01']);
+  });
+
+  it('builds resume context only for filtered real pending plan ids', async () => {
+    const cwd = initRepo();
+    const setName = 'real-pending-synthetic-acceptance-resume';
+    createFeatureBranchWithArtifacts(cwd, setName, { includePlan02: true });
+    seedFailedRunEvidenceWithSyntheticAcceptance(cwd, setName, { merged: true });
+
+    const harness = new RoleRecordingStubHarness([{ error: new Error('stop after builder prompt') }]);
+    const engine = await EforgeEngine.create({
+      cwd,
+      agentRuntimes: harness,
+      config: {
+        landing: { ...DEFAULT_CONFIG.landing, action: 'leave' },
+        build: {
+          ...DEFAULT_CONFIG.build,
+          postMergeCommands: [],
+          cleanupPlanFiles: false,
+          validation: {
+            ...DEFAULT_CONFIG.build.validation,
+            allowNoCommands: true,
+            noCommandsReason: 'resume context filtering unit test',
+          },
+        },
+      },
+    });
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.resumeBuild(setName, { cwd })) {
+      events.push(event);
+    }
+
+    const resumeState = events.find((event): event is Extract<EforgeEvent, { type: 'build:resume:state' }> => event.type === 'build:resume:state');
+    expect(resumeState?.seededMerged).toEqual(['plan-01']);
+    expect(resumeState?.seededPending).toEqual(['plan-02']);
+    expect(harness.roles).toEqual(['builder']);
+    expect(harness.planIds).toEqual(['plan-02']);
+    expect(harness.prompts).toHaveLength(1);
+    expect(harness.prompts[0]).toContain('plan-02');
+    expect(harness.prompts[0]).not.toContain('acceptance-validation');
   });
 
   it('records the resumed artifact against the original queued PRD id and finalizes queued resume state before completion', async () => {

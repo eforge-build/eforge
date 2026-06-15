@@ -41,11 +41,15 @@ export interface ResumeSeedState {
  *
  * Returns lists of planIds in each bucket for the build:resume:state event.
  */
-export function deriveResumeSeedState(plans: PlanSummaryEntry[]): ResumeSeedState {
+export function deriveResumeSeedState(plans: PlanSummaryEntry[], allowedPlanIds?: ReadonlySet<string>): ResumeSeedState {
   const seededMerged: string[] = [];
   const seededPending: string[] = [];
 
   for (const plan of plans) {
+    if (allowedPlanIds !== undefined && !allowedPlanIds.has(plan.planId)) {
+      continue;
+    }
+
     // mergedAt is the canonical merge-complete evidence.
     const hasMergeEvidence = typeof plan.mergedAt === 'string' && plan.mergedAt.trim().length > 0;
     if (hasMergeEvidence) {

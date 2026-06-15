@@ -79,12 +79,12 @@ describe('getSummaryStats', () => {
     expect(stats.totalCost).toBeCloseTo(0.025, 8);
   });
 
-  it('counts seeded merged resume plans as completed after reducer processing', () => {
+  it('does not count unbacked resume seed ids before artifacts identify real plans', () => {
     const state = reduce(createInitialRunState(), {
       type: 'build:resume:state',
       timestamp: '2025-01-01T00:00:00.000Z',
       seededMerged: ['plan-01', 'plan-02'],
-      seededPending: ['plan-03'],
+      seededPending: ['acceptance-validation'],
       featureBranch: 'eforge/feature-x',
       landedCommitCount: 2,
       diffStat: '2 files changed',
@@ -92,9 +92,50 @@ describe('getSummaryStats', () => {
 
     const stats = getSummaryStats(state);
     const counts = selectPlanStatusCounts(state);
-    expect(stats.plansCompleted).toBe(2);
-    expect(counts.complete).toBe(2);
-    expect(counts.pending).toBe(1);
+    expect(stats.plansCompleted).toBe(0);
+    expect(counts.complete).toBe(0);
+    expect(counts.pending).toBe(0);
+  });
+
+  it('ignores stale synthetic statuses when orchestration identifies real plans', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', 'acceptance-validation': 'plan' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [{ id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } }],
+      },
+    });
+
+    expect(getSummaryStats(state).plansTotal).toBe(1);
+    expect(selectPlanStatusCounts(state)).toEqual({ pending: 0, running: 0, complete: 1, failed: 0, total: 1 });
+    expect(selectMiniGanttRows(state).map((row) => row.planId)).toEqual(['plan-01']);
+  });
+
+  it('ignores stale synthetic statuses when resume artifacts identify real plans', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', 'acceptance-validation': 'plan' },
+      resumeArtifacts: [{ id: 'plan-01', name: 'Plan One', body: '# Plan One' }],
+    });
+
+    expect(getSummaryStats(state).plansTotal).toBe(1);
+    expect(selectPlanStatusCounts(state)).toEqual({ pending: 0, running: 0, complete: 1, failed: 0, total: 1 });
+    expect(selectMiniGanttRows(state).map((row) => row.planId)).toEqual(['plan-01']);
+  });
+
+  it('does not fall back to stale statuses when orchestration context is present but empty', () => {
+    const state = makeRunState({
+      planStatuses: { 'acceptance-validation': 'plan' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [],
+      },
+    });
+
+    expect(getSummaryStats(state).plansTotal).toBe(0);
+    expect(selectPlanStatusCounts(state)).toEqual({ pending: 0, running: 0, complete: 0, failed: 0, total: 0 });
+    expect(selectMiniGanttRows(state)).toEqual([]);
   });
 });
 
@@ -490,7 +531,7 @@ describe('selectPlanLanes - lane registry', () => {
     expect(ids).toContain('final-validation');
   });
 
-  it('labels phase lanes via the lane registry', () => {
+  it('labels backed phase lanes via the lane registry', () => {
     const state = makeRunState({
       planStatuses: { 'plan-01': 'complete', 'gap-close': 'implement', 'validation': 'implement', 'final-validation': 'implement' },
       earlyOrchestration: {
@@ -500,6 +541,14 @@ describe('selectPlanLanes - lane registry', () => {
           { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
         ],
       },
+      events: [makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:08:00.000Z', passed: true })],
+      validationCommands: [
+        { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
+        { command: 'pnpm test', startedAt: '2026-05-24T11:10:00.000Z', endedAt: '2026-05-24T11:11:00.000Z', status: 'passed', exitCode: 0 },
+      ],
+      agentThreads: [
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
+      ] as RunState['agentThreads'],
     });
     const lanes = selectPlanLanes(state);
     const gapClose = lanes.find((l) => l.planId === 'gap-close');
@@ -508,6 +557,93 @@ describe('selectPlanLanes - lane registry', () => {
     expect(gapClose?.planName).toBe('Gap Close');
     expect(validation?.planName).toBe('Validation');
     expect(finalValidation?.planName).toBe('Final Validation');
+  });
+
+  it('excludes unbacked synthetic resume seed ids while retaining backed phase lanes', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', 'acceptance-validation': 'plan', 'gap-close': 'implement' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
+      ] as RunState['agentThreads'],
+    });
+    const ids = selectPlanLanes(state).map((lane) => lane.planId);
+    expect(ids).toEqual(['plan-01', 'gap-close']);
+    expect(ids).not.toContain('acceptance-validation');
+  });
+
+  it('excludes thread-only synthetic resume seed ids while retaining real plans and backed phase lanes', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      agentThreads: [
+        { planId: 'acceptance-validation', agent: 'builder', startedAt: '2026-05-24T11:00:00.000Z', endedAt: null, totalTokens: 50_000 },
+        { planId: 'gap-close', agent: 'builder', startedAt: '2026-05-24T11:05:00.000Z', endedAt: null, totalTokens: 60_000 },
+      ] as RunState['agentThreads'],
+    });
+    const ids = selectPlanLanes(state).map((lane) => lane.planId);
+    expect(ids).toEqual(['plan-01', 'gap-close']);
+    expect(ids).not.toContain('acceptance-validation');
+  });
+
+  it('excludes unbacked registered phase statuses', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete', validation: 'implement', 'gap-close': 'implement', 'final-validation': 'implement' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+    });
+
+    expect(selectPlanLanes(state).map((lane) => lane.planId)).toEqual(['plan-01']);
+  });
+
+  it('creates validation and final-validation lanes from validation command spans without plan statuses', () => {
+    const state = makeRunState({
+      planStatuses: { 'plan-01': 'complete' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [
+          { id: 'plan-01', name: 'Plan One', dependsOn: [], build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        ],
+      },
+      events: [makeStoredEvent({ type: 'gap_close:complete', timestamp: '2026-05-24T11:08:00.000Z', passed: true })],
+      validationCommands: [
+        { command: 'pnpm type-check', startedAt: '2026-05-24T11:00:00.000Z', endedAt: '2026-05-24T11:01:00.000Z', status: 'passed', exitCode: 0 },
+        { command: 'pnpm test', startedAt: '2026-05-24T11:10:00.000Z', endedAt: '2026-05-24T11:11:00.000Z', status: 'passed', exitCode: 0 },
+      ],
+    });
+
+    expect(selectPlanLanes(state).map((lane) => lane.planId)).toEqual(['plan-01', 'validation', 'final-validation']);
+  });
+
+  it('does not fall back to stale statuses when selecting lanes with empty orchestration context', () => {
+    const state = makeRunState({
+      planStatuses: { 'acceptance-validation': 'plan' },
+      earlyOrchestration: {
+        mode: 'compile',
+        pipeline: { scope: 'plan', build: [], review: { strategy: 'auto', maxRounds: 1 } },
+        plans: [],
+      },
+    });
+
+    expect(selectPlanLanes(state)).toEqual([]);
   });
 });
 

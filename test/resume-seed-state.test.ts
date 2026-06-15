@@ -225,6 +225,27 @@ describe('deriveResumeSeedState — plan-state derivation from failure summary',
     expect(result.seededPending).toHaveLength(2);
   });
 
+  it('filters synthetic acceptance-validation evidence when allowed plan ids are provided', () => {
+    const plans: PlanSummaryEntry[] = [
+      makePlanSummary('plan-01', { status: 'merged', mergedAt: '2026-01-01T00:00:00.000Z' }),
+      makePlanSummary('plan-02', { status: 'failed' }),
+      makePlanSummary('plan-03', { status: 'merged', mergedAt: '2026-01-01T00:01:00.000Z' }),
+      makePlanSummary('acceptance-validation', { status: 'merged', mergedAt: '2026-01-01T00:02:00.000Z' }),
+    ];
+    const result = deriveResumeSeedState(plans, new Set(['plan-01', 'plan-02', 'plan-03']));
+    expect(result.seededMerged).toEqual(['plan-01', 'plan-03']);
+    expect(result.seededPending).toEqual(['plan-02']);
+  });
+
+  it('keeps synthetic acceptance-validation evidence by default without an allowed plan filter', () => {
+    const plans: PlanSummaryEntry[] = [
+      makePlanSummary('acceptance-validation', { status: 'merged', mergedAt: '2026-01-01T00:02:00.000Z' }),
+    ];
+    const result = deriveResumeSeedState(plans);
+    expect(result.seededMerged).toEqual(['acceptance-validation']);
+    expect(result.seededPending).toEqual([]);
+  });
+
   it('treats a plan with a mergedAt of empty string as seededPending', () => {
 
     const plans: PlanSummaryEntry[] = [
