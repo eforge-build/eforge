@@ -62,6 +62,7 @@ import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
+import { inferStackParentFromDependencies } from './queue/stack-parent-inference.js';
 import { runQueuedPrdBuild } from './queue/build-single-prd.js';
 import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
@@ -559,6 +560,19 @@ export class EforgeEngine {
         }
       }
 
+      let stackParent = options.stack_parent;
+      if (this.config.stacking.enabled && stackParent === undefined && dependsOn.length > 0) {
+        const inferred = await inferStackParentFromDependencies({
+          cwd,
+          queueDir: this.config.prdQueue.dir,
+          dependsOn,
+        });
+        if (inferred.ambiguous) {
+          throw new Error(inferred.reason ?? 'Cannot infer stack_parent for queued stacked build.');
+        }
+        stackParent = inferred.stackParent;
+      }
+
       // Write to queue (filesystem-only — queue state is runtime, not tracked in git)
       const enqueueResult = await enqueuePrd({
         body: formattedBody,
@@ -572,7 +586,7 @@ export class EforgeEngine {
         ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
         ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
         ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
-        ...(options.stack_parent !== undefined && { stack_parent: options.stack_parent }),
+        ...(stackParent !== undefined && { stack_parent: stackParent }),
         ...(options.stack_provider !== undefined && { stack_provider: options.stack_provider }),
       });
 
