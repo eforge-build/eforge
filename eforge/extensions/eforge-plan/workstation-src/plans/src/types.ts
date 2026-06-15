@@ -107,6 +107,8 @@ export interface Artifact {
 export interface DependencyRef { id: string; title: string; status?: string; missing: boolean; blocking: boolean; }
 export interface EpicRef { id: string; title: string; status?: string; missing: boolean; }
 export interface CardNotes { claim: string; evidence: string; recheck: string; promotionPaths: string; }
+export interface BoardPagination { limit: number; offset: number; returned: number; hasMore: boolean; nextOffset?: number; }
+export interface BoardCounts { total: number; open: number; closed: number; }
 export interface BoardItem {
   id: string;
   title: string;
@@ -135,9 +137,40 @@ export interface BoardItem {
   lifecycleState?: string;
   epicProgress?: EpicProgress;
 }
-export interface BoardLane { lane: string; title: string; items: BoardItem[]; }
-export interface Epic { id: string; title?: string; status?: string; }
-export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; lifecycleLinks?: LifecycleLinkRow[]; epicProgress?: EpicProgress[]; }
+export interface BoardLane { lane: string; title: string; items: BoardItem[]; count?: number; openCount?: number; closedCount?: number; pagination?: BoardPagination; }
+export interface Epic { id: string; title?: string; status?: string; priority?: string; tags?: string[]; itemCount?: number; openItemCount?: number; }
+export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; lifecycleLinks?: LifecycleLinkRow[]; epicProgress?: EpicProgress[]; counts?: BoardCounts; pagination?: BoardPagination; }
+
+export interface CompactBoardItem {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  tags: string[];
+  lane: string;
+  reasons: string[];
+  dependsOn: string[];
+  unresolvedDependsOn: string[];
+  activeTraceReasons?: string[];
+  blocked: boolean;
+  ready: boolean;
+  reviewDue: boolean;
+  closed: boolean;
+  epic?: string;
+  lifecycleState?: string;
+}
+export interface CompactItemDetail extends CompactBoardItem {
+  path: string;
+  sections: Record<string, string>;
+  linkRows: LifecycleLinkRow[];
+  failureEvidence: LifecycleLinkRow[];
+  body?: string;
+}
+export interface CompactEpic extends Epic { tags: string[]; itemCount: number; openItemCount: number; sections?: Record<string, string>; path?: string; body?: string; }
+export interface CompactLaneSummary { lane: string; title: string; count: number; openCount: number; closedCount: number; pagination?: BoardPagination; }
+export interface CompactBoardResponse { schemaVersion: 1; items: CompactBoardItem[]; total: number; limit: number; offset: number; lanes: CompactLaneSummary[]; epics: CompactEpic[]; counts: BoardCounts; pagination: BoardPagination; }
+export interface CompactBoardDetailResponse { schemaVersion: 1; item: CompactItemDetail; epic?: CompactEpic; dependencies: CompactBoardItem[]; dependents: CompactBoardItem[]; }
+export type DetailLoadingState = { state: 'idle' } | { state: 'loading' } | { state: 'loaded'; item: BoardItem } | { state: 'error'; message: string };
 
 export interface RecommendationEntry { ref?: string; itemId: string; rationale?: string; title?: string; }
 export interface RecommendationGroup { ref: string; title?: string; itemIds: string[]; epicIds?: string[]; rationale?: string; recommendedProfile?: string; }

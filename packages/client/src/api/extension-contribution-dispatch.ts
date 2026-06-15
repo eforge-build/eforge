@@ -1,6 +1,7 @@
 import {
   type ExtensionActionInvokeResponse,
   type ExtensionActionManifestEntry,
+  type ExtensionActionOutputProfile,
   type ExtensionActionRequestedBy,
   type ExtensionActionSideEffect,
   type ExtensionContributionDiagnostic,
@@ -30,6 +31,7 @@ export interface ExtensionHostContributionEntry {
   urlTemplate?: string;
   actionBacked: boolean;
   sideEffects?: ExtensionActionSideEffect[];
+  outputProfile?: ExtensionActionOutputProfile;
   inputSchema?: ExtensionJsonObject;
   inputDefaults?: ExtensionJsonObject;
 }
@@ -56,6 +58,7 @@ export interface ExtensionHostContributionInvokeTarget {
   actionId: string;
   requestedBy: ExtensionActionRequestedBy;
   input: ExtensionJsonObject;
+  outputProfile?: ExtensionActionOutputProfile;
 }
 
 export interface ExtensionHostContributionInvokeResult {
@@ -104,8 +107,8 @@ function resolveExtensionContributionInvocationWithInput(
 ): ResolveResult {
   const kind = params.kind ?? inferKind(manifest, params.id);
   if (kind === 'action') return resolveAction(manifest.actions, params.id, input, params.requestedBy);
-  if (kind === 'command') return resolveCommand(manifest.integrationCommands, params.id, input, params.requestedBy);
-  return resolveDeepLink(manifest.deepLinks, params.id, input, params.requestedBy);
+  if (kind === 'command') return resolveCommand(manifest.integrationCommands, manifest.actions, params.id, input, params.requestedBy);
+  return resolveDeepLink(manifest.deepLinks, manifest.actions, params.id, input, params.requestedBy);
 }
 
 export async function listEforgeExtensionContributions(opts: {
@@ -161,6 +164,7 @@ function actionEntry(entry: ExtensionActionManifestEntry): ExtensionHostContribu
     actionId: entry.id,
     actionBacked: true,
     sideEffects: entry.sideEffects,
+    outputProfile: entry.outputProfile,
     inputSchema: entry.inputSchema,
   };
 }
@@ -176,6 +180,7 @@ function commandEntry(entry: IntegrationCommandManifestEntry, actionLookup: Acti
     extensionPath: entry.extensionPath,
     actionId: entry.action.actionId,
     actionBacked: true,
+    outputProfile: boundAction?.outputProfile,
     inputSchema: entry.inputSchema ?? boundAction?.inputSchema,
     inputDefaults: entry.action.inputDefaults,
   };
@@ -193,6 +198,7 @@ function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry, actionLookup: Acti
     actionId: entry.action?.actionId,
     urlTemplate: entry.urlTemplate,
     actionBacked: Boolean(entry.action),
+    outputProfile: boundAction?.outputProfile,
     inputSchema: boundAction?.inputSchema,
     inputDefaults: entry.action?.inputDefaults,
   };
@@ -232,18 +238,21 @@ function resolveAction(
       actionId: entry.id,
       requestedBy,
       input,
+      outputProfile: entry.outputProfile,
     },
   };
 }
 
 function resolveCommand(
   entries: IntegrationCommandManifestEntry[],
+  actions: ExtensionActionManifestEntry[],
   id: string,
   input: ExtensionJsonObject,
   requestedBy: ExtensionActionRequestedBy,
 ): ResolveResult {
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown extension integration command "${id}"`);
+  const boundAction = actions.find((candidate) => candidate.id === entry.action.actionId);
   return {
     target: {
       kind: 'command',
@@ -254,12 +263,14 @@ function resolveCommand(
       actionId: entry.action.actionId,
       requestedBy: { ...requestedBy, commandId: entry.id } as ExtensionActionRequestedBy,
       input: { ...(entry.action.inputDefaults ?? {}), ...input },
+      outputProfile: boundAction?.outputProfile,
     },
   };
 }
 
 function resolveDeepLink(
   entries: ExtensionDeepLinkManifestEntry[],
+  actions: ExtensionActionManifestEntry[],
   id: string,
   input: ExtensionJsonObject,
   requestedBy: ExtensionActionRequestedBy,
@@ -267,6 +278,7 @@ function resolveDeepLink(
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown extension deep link "${id}"`);
   if (!entry.action) throw new Error(`Deep link "${id}" is not action-backed`);
+  const boundAction = actions.find((candidate) => candidate.id === entry.action?.actionId);
   return {
     target: {
       kind: 'deep-link',
@@ -277,6 +289,7 @@ function resolveDeepLink(
       actionId: entry.action.actionId,
       requestedBy: { ...requestedBy, deepLinkId: entry.id } as ExtensionActionRequestedBy,
       input: { ...(entry.action.inputDefaults ?? {}), ...input },
+      outputProfile: boundAction?.outputProfile,
     },
   };
 }

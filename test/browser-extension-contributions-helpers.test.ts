@@ -4,6 +4,8 @@ import {
   API_ROUTES,
   EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
   fetchExtensionContributionManifest,
+  formatExtensionContributionOutput,
+  formatExtensionContributionOutputText,
   invokeExtensionAction,
   type ExtensionActionInvokeFailureResponse,
 } from '@eforge-build/client/browser';
@@ -35,6 +37,11 @@ describe('browser extension contribution helpers', () => {
     for (const forbidden of ['daemon-client', 'lockfile', './api-version.js', 'node:']) {
       expect(importLines).not.toContain(forbidden);
     }
+  });
+
+  it('exports browser-safe formatter helpers', () => {
+    expect(formatExtensionContributionOutput({ markdown: '# Hi' }).text).toBe('# Hi');
+    expect(formatExtensionContributionOutputText({ ok: true })).toContain('"ok": true');
   });
 
   it('fetches the contribution manifest from the route constant with GET', async () => {

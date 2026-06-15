@@ -1,4 +1,4 @@
-import { defineExtensionAction, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, type Static } from '../../../packages/extension-sdk/src/index.js';
 import { projectKanbanBoard } from './kanban.js';
 import { buildRecommendationIndex } from './recommendation-index.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
@@ -19,9 +19,10 @@ import {
 export const listBoard = defineExtensionAction({
   id: 'list-board',
   title: 'List eforge-plan board',
-  description: 'Read backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and trace summaries.',
+  description: 'Read compatibility/debug rich backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and trace summaries for hosts that explicitly need the full board payload.',
   inputSchema: BoardActionInputSchema,
   outputSchema: ListBoardOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.debugRich,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     // --- eforge:region recommendations ---
@@ -36,6 +37,7 @@ export const renderBoardMarkdown = defineExtensionAction({
   description: 'Render the derived kanban board as Markdown for hosts and Console, including recommendation freshness notes when available.',
   inputSchema: BoardActionInputSchema,
   outputSchema: MarkdownOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.markdown,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     // --- eforge:region recommendations ---

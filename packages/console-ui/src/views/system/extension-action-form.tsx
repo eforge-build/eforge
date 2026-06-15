@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
+import { SafeMarkdown } from '@/components/recovery/safe-markdown';
 import type { ExtensionActionBindingManifest, ExtensionActionManifestEntry, ExtensionJsonObject } from './system-types';
 import {
   coerceFormValues,
   defaultFieldValue,
-  formatJsonPreview,
+  formatInvocationOutputPreview,
   mergeInputDefaults,
   schemaEnumValues,
   schemaPropertyKind,
@@ -135,14 +136,18 @@ export function InvocationResult({ invocation }: { invocation: InvocationState }
       </p>
     );
   }
-  const preview = formatJsonPreview(invocation.output);
+  const preview = formatInvocationOutputPreview(invocation.output, invocation.outputProfile);
   return (
     <div className="text-xs text-emerald-600" aria-live="polite">
       <p>Action succeeded: {invocation.invocationId}</p>
       {preview && (
         <details className="mt-1">
           <summary className="cursor-pointer">Output preview</summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 text-xs text-foreground">{preview}</pre>
+          {preview.kind === 'markdown' ? (
+            <SafeMarkdown markdown={preview.text} className="mt-1 text-xs text-foreground" forbidResourceLoading />
+          ) : (
+            <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 text-xs text-foreground">{preview.text}</pre>
+          )}
         </details>
       )}
     </div>

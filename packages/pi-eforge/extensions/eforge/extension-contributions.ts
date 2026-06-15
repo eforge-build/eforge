@@ -4,6 +4,7 @@ import { Type } from '@sinclair/typebox';
 import type { SelectItem } from '@earendil-works/pi-tui';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
+  formatExtensionContributionOutputText,
   invokeEforgeExtensionContributionIfRunning,
   listEforgeExtensionContributionsIfRunning,
   type ExtensionHostContributionEntry,
@@ -45,7 +46,14 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
         requestedBy: { host: 'pi' },
       });
       if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-      return jsonResult(result);
+      if (!result.response.ok) return jsonResult(result);
+      return textResult([
+        `Invocation: ${result.response.invocationId}`,
+        `Target: ${result.target.kind}:${result.target.id}`,
+        `Action: ${result.target.actionId}`,
+        '',
+        formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
+      ].join('\n'));
     },
   });
 }
@@ -221,5 +229,9 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 }
 
 function jsonResult(data: unknown): { content: { type: 'text'; text: string }[] } {
-  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  return textResult(JSON.stringify(data, null, 2));
+}
+
+function textResult(text: string): { content: { type: 'text'; text: string }[] } {
+  return { content: [{ type: 'text', text }] };
 }

@@ -65,6 +65,7 @@ export type {
   ConsoleWorkstationRegistration,
   IntegrationCommandRegistration,
   DeepLinkRegistration,
+  ExtensionActionOutputProfile,
   ExtensionActionSpec,
   ConsoleContributionSpec,
   ConsoleWorkstationBaseSpec,

@@ -6,6 +6,7 @@ import type {
   ExtensionAgentTaskGetResponse,
   ExtensionAgentTaskStartRequest,
   ExtensionAgentTaskStartResponse,
+  ExtensionActionOutputProfile,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
   EnqueueRequest,
@@ -13,7 +14,7 @@ import type {
   ExtensionJsonValue,
 } from '@eforge-build/client';
 
-export type { ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
+export type { ExtensionActionOutputProfile, ExtensionActionRequestedBy, ExtensionActionRequestedByHost };
 
 export type ExtensionActionSideEffect =
   | 'none'
@@ -108,6 +109,7 @@ export interface ExtensionAction<
   description?: string;
   inputSchema: TInput;
   outputSchema?: TOutput;
+  outputProfile?: ExtensionActionOutputProfile;
   sideEffects?: ExtensionActionSideEffect[];
   handler: (
     input: Static<TInput>,

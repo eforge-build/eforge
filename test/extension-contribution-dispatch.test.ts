@@ -43,6 +43,7 @@ function manifest(): ExtensionContributionManifestResponse {
         title: 'Run action',
         description: 'Runs the extension action',
         inputSchema: boundActionSchema,
+        outputProfile: 'agent-compact',
         sideEffects: ['daemon-state'],
       },
       {
@@ -207,6 +208,7 @@ describe('extension contribution host dispatcher projection', () => {
       kind: 'command',
       actionId: 'ext.run',
       actionBacked: true,
+      outputProfile: 'agent-compact',
       inputDefaults: { fromDefault: true, override: 'default' },
     });
   });
@@ -219,6 +221,16 @@ describe('extension contribution host dispatcher projection', () => {
     expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.inputSchema).toEqual(commandSpecificSchema);
     expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.inputDefaults).toEqual({ fromDefault: true, override: 'default' });
     expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.url')?.inputSchema).toBeUndefined();
+  });
+
+  it('projects output profiles from underlying actions to host summaries', () => {
+    const summary = summarizeExtensionContributionManifest(manifest());
+
+    expect(summary.entries.find((entry) => entry.kind === 'action' && entry.id === 'ext.run')?.outputProfile).toBe('agent-compact');
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.outputProfile).toBe('agent-compact');
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.deep')?.outputProfile).toBe('agent-compact');
+    expect(summary.entries.find((entry) => entry.kind === 'action' && entry.id === 'shared')?.outputProfile).toBeUndefined();
+    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.url')?.outputProfile).toBeUndefined();
   });
 
   it('filters summary entries by requested kind', () => {

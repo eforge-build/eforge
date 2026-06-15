@@ -5,6 +5,8 @@ import {
   applyMockCreationDraft,
   cancelMockPlanningTask,
   getMockArtifacts,
+  getMockCompactBoard,
+  getMockCompactItemDetail,
   getMockRecommendationsResponse,
   listMockPlanningTasks,
   mockBoard,
@@ -82,6 +84,8 @@ function createMockBridge(): EforgeBridge {
       switch (actionId) {
         case 'list-planning-artifacts': return { artifacts: getMockArtifacts(), board: mockBoard } as TOutput;
         case 'list-board': return mockBoard as TOutput;
+        case 'list-board-compact': return getMockCompactBoard(input) as TOutput;
+        case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;
         case 'update-item': return updateMockItem(input) as TOutput;
         case 'get-recommendations': return getMockRecommendationsResponse() as TOutput;
         case 'analyze-all-backlog': return analyzeMockBacklog() as TOutput;

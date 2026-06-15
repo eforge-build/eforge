@@ -26,6 +26,7 @@ function manifest(overrides: Partial<ExtensionContributionManifestResponse> = {}
       extensionName: 'demo',
       extensionPath: '/demo.js',
       title: 'Echo',
+      outputProfile: 'debug-rich',
       inputSchema: {
         type: 'object',
         properties: {
@@ -141,6 +142,39 @@ describe('ExtensionContributionsSection', () => {
     invokeExtensionAction.mockRejectedValueOnce(new Error('network down'));
     fireEvent.click(screen.getByRole('button', { name: 'Run echo' }));
     expect(await screen.findByText(/network down/)).toBeDefined();
+  });
+
+  it('renders markdown invocation output through SafeMarkdown', async () => {
+    invokeExtensionAction.mockResolvedValueOnce({ ok: true, invocationId: 'inv-md', output: { markdown: '# Rendered output\n\n<script>alert(1)</script>' } });
+    render(<ExtensionContributionsSection manifest={{ status: 'success', updatedAt: 1, data: manifest() }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run echo' }));
+
+    expect(await screen.findByRole('heading', { name: 'Rendered output' })).toBeDefined();
+    expect(document.querySelector('script')).toBeNull();
+    expect(screen.queryByText(/"markdown"/)).toBeNull();
+  });
+
+  it('renders oversized JSON invocation output as a warning plus semantic summary preview', async () => {
+    invokeExtensionAction.mockResolvedValueOnce({
+      ok: true,
+      invocationId: 'inv-large',
+      output: {
+        items: Array.from({ length: 30 }, (_, index) => ({ id: `item-${index}`, title: `Item ${index}`, status: 'planned', body: 'x'.repeat(400) })),
+        total: 30,
+        nextOffset: 5,
+      },
+    });
+    render(<ExtensionContributionsSection manifest={{ status: 'success', updatedAt: 1, data: manifest() }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run echo' }));
+
+    expect(await screen.findByText(/Action succeeded: inv-large/)).toBeDefined();
+    expect(screen.getByText(/outputProfile "debug-rich"/)).toBeDefined();
+    expect(screen.getByText(/semantic summary/)).toBeDefined();
+    expect(screen.getByText(/"omitted": 25/)).toBeDefined();
+    expect(screen.getByText(/"nextOffset": 5/)).toBeDefined();
+    expect(screen.queryByText('x'.repeat(400))).toBeNull();
   });
 
   it('disables action buttons while invocation is pending', async () => {

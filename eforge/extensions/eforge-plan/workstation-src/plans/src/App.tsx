@@ -71,6 +71,8 @@ function Shell() {
               recommendationStatus={data.recommendationStatus}
               activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
               onRefresh={data.refresh}
+              onLoadMoreBoard={data.loadMoreBoard}
+              onLoadClosedLane={data.loadClosedLane}
             />}
       </main>
     </div>

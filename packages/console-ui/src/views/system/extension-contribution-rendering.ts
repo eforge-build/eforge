@@ -1,3 +1,4 @@
+import { formatExtensionContributionOutput } from '@eforge-build/client/browser';
 import type {
   ConsoleContributionBlock,
   ExtensionActionBindingManifest,
@@ -5,6 +6,8 @@ import type {
   ExtensionActionRequestedBy,
   ExtensionContributionManifestResponse,
   ExtensionJsonObject,
+  ExtensionActionOutputProfile,
+  FormattedExtensionContributionOutput,
   ExtensionJsonValue,
 } from './system-types';
 
@@ -14,7 +17,7 @@ export type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 
 export interface InvocationIdleState { status: 'idle' }
 export interface InvocationRunningState { status: 'running' }
-export interface InvocationSuccessState { status: 'success'; invocationId: string; output?: ExtensionJsonValue }
+export interface InvocationSuccessState { status: 'success'; invocationId: string; output?: ExtensionJsonValue; outputProfile?: ExtensionActionOutputProfile }
 export interface InvocationFailureState { status: 'failure'; invocationId?: string; code?: string; message: string }
 export type InvocationState = InvocationIdleState | InvocationRunningState | InvocationSuccessState | InvocationFailureState;
 
@@ -57,6 +60,15 @@ export function formatJsonPreview(value: ExtensionJsonValue | undefined, limit =
   if (value === undefined) return '';
   const text = JSON.stringify(value, null, 2);
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+export function formatInvocationOutputPreview(
+  value: ExtensionJsonValue | undefined,
+  outputProfile?: ExtensionActionOutputProfile,
+  limit = JSON_PREVIEW_LIMIT,
+): FormattedExtensionContributionOutput | null {
+  if (value === undefined) return null;
+  return formatExtensionContributionOutput(value, { maxChars: limit, outputProfile });
 }
 
 export function manifestHasEntries(manifest: ExtensionContributionManifestResponse): boolean {

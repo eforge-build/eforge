@@ -1,4 +1,5 @@
 import {
+  collectActionSpecWarnings,
   validateActionBindingJson,
   validateActionSpec,
   validateConsoleContributionSpec,
@@ -195,7 +196,11 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         addDiagnostic(result.message ?? 'registerAction registration is invalid', 'extension:invalid-registration', result.id);
         return;
       }
-      state.actions.push({ kind: 'action', extensionName, extensionPath, localId: result.id, id: resolveExtensionContributionId(extensionName, result.id), value: result.value });
+      const id = resolveExtensionContributionId(extensionName, result.id);
+      state.actions.push({ kind: 'action', extensionName, extensionPath, localId: result.id, id, value: result.value });
+      for (const warning of collectActionSpecWarnings(result.value, { localId: result.id, effectiveId: id })) {
+        addDiagnostic(warning.message, warning.code, warning.name, 'warning');
+      }
     },
     registerConsoleContribution(contribution: unknown): void {
       const result = validateConsoleContributionSpec(contribution);
@@ -239,15 +244,26 @@ export function mergeRecorderState(target: NativeExtensionRecorderState, source:
   target.eventHooks.push(...source.eventHooks);
   target.agentRunHooks.push(...source.agentRunHooks);
   target.policyGates.push(...source.policyGates);
-  target.diagnostics.push(...source.diagnostics);
-  diagnostics.push(...source.diagnostics);
+  const immediateDiagnostics = source.diagnostics.filter((diagnostic) => !isActionSpecWarningDiagnostic(diagnostic));
+  target.diagnostics.push(...immediateDiagnostics);
+  diagnostics.push(...immediateDiagnostics);
 
   mergeNamedRegistrations(target.profileRouters, source.profileRouters, 'profile router', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.inputSources, source.inputSources, 'input source', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.prdEnrichers, source.prdEnrichers, 'PRD enricher', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.reviewerPerspectives, source.reviewerPerspectives, 'reviewer perspective', diagnostics, target.diagnostics);
   mergeNamedRegistrations(target.validationProviders, source.validationProviders, 'validation provider', diagnostics, target.diagnostics);
-  mergeIdRegistrations(target.actions, source.actions, 'action', diagnostics, target.diagnostics);
+  const acceptedActionRegistrations = mergeIdRegistrations(target.actions, source.actions, 'action', diagnostics, target.diagnostics);
+  const acceptedActionWarnings = acceptedActionRegistrations.flatMap((registration) => collectActionSpecWarnings(registration.value, { localId: registration.localId, effectiveId: registration.id }).map((warning) => ({
+    severity: 'warning' as const,
+    code: warning.code,
+    message: warning.message,
+    name: warning.name,
+    path: registration.extensionPath,
+    extensionName: registration.extensionName,
+  })));
+  target.diagnostics.push(...acceptedActionWarnings);
+  diagnostics.push(...acceptedActionWarnings);
   const acceptedActions = new Set(target.actions.map(actionLookupKey));
   mergeBoundIdRegistrations(target.consoleContributions, source.consoleContributions, 'Console contribution', acceptedActions, diagnostics, target.diagnostics);
   mergeConsoleWorkstationRegistrations(target.consoleWorkstations, source.consoleWorkstations, acceptedActions, diagnostics, target.diagnostics);
@@ -264,7 +280,8 @@ function mergeIdRegistrations<T extends { id: string; extensionName: string; ext
   label: string,
   diagnostics: NativeExtensionDiagnostic[],
   allDiagnostics: NativeExtensionDiagnostic[],
-): void {
+): T[] {
+  const accepted: T[] = [];
   const existing = new Map(target.map((entry) => [entry.id, entry]));
   for (const registration of source) {
     const duplicate = existing.get(registration.id);
@@ -275,8 +292,14 @@ function mergeIdRegistrations<T extends { id: string; extensionName: string; ext
       continue;
     }
     target.push(registration);
+    accepted.push(registration);
     existing.set(registration.id, registration);
   }
+  return accepted;
+}
+
+function isActionSpecWarningDiagnostic(diagnostic: NativeExtensionDiagnostic): boolean {
+  return diagnostic.severity === 'warning' && diagnostic.code.startsWith('extension:action-');
 }
 
 function mergeConsoleWorkstationRegistrations(

@@ -135,7 +135,7 @@ export {
   apiDemoteExtensionIfRunning,
 } from './api/extensions.js';
 
-export * from './extension-contributions.js';
+export * from './extension-contributions.js'; export * from './extension-contribution-output-formatting.js';
 export * from './api/extension-contributions.js';
 export * from './api/extension-contribution-dispatch.js';
 export * from './extension-agent-tasks.js';

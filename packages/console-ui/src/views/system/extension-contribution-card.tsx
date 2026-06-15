@@ -35,7 +35,15 @@ export function ExtensionContributionCard({ contribution, actionLookup }: Extens
         requestedBy: buildRequestedBy(contribution.id),
       });
       if (response.ok) {
-        setInvocations((prev) => ({ ...prev, [key]: { status: 'success', invocationId: response.invocationId, output: response.output } }));
+        setInvocations((prev) => ({
+          ...prev,
+          [key]: {
+            status: 'success',
+            invocationId: response.invocationId,
+            output: response.output,
+            outputProfile: actionLookup.get(actionId)?.outputProfile,
+          },
+        }));
       } else {
         setInvocations((prev) => ({
           ...prev,

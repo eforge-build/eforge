@@ -35,6 +35,8 @@ describe('host contribution CLI surface', () => {
 
     expect(source).toContain('listEforgeExtensionContributions');
     expect(source).toContain('invokeEforgeExtensionContribution');
+    expect(source).toContain('formatExtensionContributionOutputText');
+    expect(source).toContain('JSON.stringify(result, null, 2)');
     expect(source).toContain('--input-json <json>');
     expect(source).toContain('--input-file <path>');
     expect(source).toContain("requestedBy: { host: 'cli' }");
@@ -81,6 +83,8 @@ describe('host contribution MCP surface', () => {
     expect(source).toContain('createDaemonTool');
     expect(source).toContain('listEforgeExtensionContributions');
     expect(source).toContain('invokeEforgeExtensionContribution');
+    expect(source).toContain('formatExtensionContributionOutputText');
+    expect(source).toContain('formatResponse');
     expect(source).toContain("host: 'mcp'");
     expect(source).toContain('McpUserError');
     expect(source).toContain('list');
@@ -110,6 +114,8 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain("host: 'pi'");
     expect(source).toContain('listEforgeExtensionContributionsIfRunning');
     expect(source).toContain('invokeEforgeExtensionContributionIfRunning');
+    expect(source).toContain('formatExtensionContributionOutputText');
+    expect(uxSource).toContain('formatExtensionContributionOutputText');
     expect(source).toContain('DAEMON_NOT_RUNNING_GUIDANCE');
     expect(source).toContain('prepareContributionInput');
     expect(source).toContain('formatInvocationPanel');
@@ -155,6 +161,8 @@ describe('host contribution client exports and source discipline', () => {
       'listEforgeExtensionContributionsIfRunning',
       'invokeEforgeExtensionContribution',
       'invokeEforgeExtensionContributionIfRunning',
+      'formatExtensionContributionOutput',
+      'formatExtensionContributionOutputText',
     ] as const) {
       expect(client[name], name).toBeTypeOf('function');
     }

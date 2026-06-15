@@ -120,6 +120,7 @@ export type {
   ExtensionBuildQueueApi,
   // --- eforge:endregion extension-build-queue-context ---
   ExtensionActionOutput,
+  ExtensionActionOutputProfile,
   ExtensionActionUserErrorDetail,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
@@ -135,6 +136,8 @@ export type {
   ResolvedContributionPagination,
 } from './bounded-contributions.js';
 export {
+  CONTRIBUTION_OUTPUT_PROFILES,
+  contributionOutputProfile,
   DEFAULT_CONTRIBUTION_MAX_LIMIT,
   DEFAULT_CONTRIBUTION_PAGE_LIMIT,
   createContributionPageOutputSchema,

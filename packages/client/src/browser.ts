@@ -148,6 +148,15 @@ export {
   fetchExtensionContributionManifest,
   invokeExtensionAction,
 } from './browser-extension-contributions.js';
+export {
+  formatExtensionContributionOutput,
+  formatExtensionContributionOutputText,
+} from './extension-contribution-output-formatting.js';
+export type {
+  ExtensionContributionFormattedOutputKind,
+  FormatExtensionContributionOutputOptions,
+  FormattedExtensionContributionOutput,
+} from './extension-contribution-output-formatting.js';
 // --- eforge:region extension-agent-task-contracts ---
 export * from './extension-agent-tasks.js';
 export {
@@ -177,6 +186,7 @@ export {
   ExtensionActionInvokeSuccessResponseSchema,
   ExtensionActionValidationErrorSchema,
   ExtensionActionManifestEntrySchema,
+  ExtensionActionOutputProfileSchema,
   ExtensionActionRequestedByHostSchema,
   ExtensionActionRequestedBySchema,
   ExtensionActionSideEffectSchema,
@@ -218,6 +228,7 @@ export type {
   ExtensionActionInvokeSuccessResponse,
   ExtensionActionValidationError,
   ExtensionActionManifestEntry,
+  ExtensionActionOutputProfile,
   ExtensionActionRequestedBy,
   ExtensionActionRequestedByHost,
   ExtensionActionSideEffect,

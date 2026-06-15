@@ -1,9 +1,12 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
-import type { Artifact, Board, BoardItem, GetRecommendationsResponse, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
+import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
+import type { Artifact, Board, CompactBoardResponse, GetRecommendationsResponse, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 
 const bridge = getBridge();
-const emptyBoard: Board = { lanes: [], items: [], epics: [] };
+const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
+const INITIAL_BOARD_LIMIT = 50;
+const CLOSED_LANE_LIMIT = 50;
 
 export interface WorkstationDataState {
   board: Board;
@@ -14,6 +17,8 @@ export interface WorkstationDataState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  loadMoreBoard: () => Promise<void>;
+  loadClosedLane: (lane: string) => Promise<void>;
   bridgeVersion?: number;
 }
 
@@ -31,22 +36,18 @@ export function useWorkstationData(): WorkstationDataState {
     // Each source is loaded independently: a failure in one (e.g. optional
     // recommendations) must not blank the board or the artifact list.
     const [boardResult, artifactsResult, recommendationsResult] = await Promise.allSettled([
-      bridge.invokeAction<Board>('list-board', {}),
+      bridge.invokeAction<CompactBoardResponse>('list-board-compact', { limit: INITIAL_BOARD_LIMIT, includeArchive: true }),
       bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', {}),
       bridge.invokeAction<GetRecommendationsResponse>('get-recommendations', {}),
     ]);
     const failures: string[] = [];
-    if (boardResult.status === 'fulfilled') {
-      // The engine returns raw backlog items in `items`; the enriched kanban
-      // cards live inside `lanes[].items`. Flatten the lanes for card rendering.
-      const lanes = boardResult.value.lanes ?? [];
-      const normalizedLanes = lanes.map((lane) => ({ ...lane, items: (lane.items ?? []).map(normalizeBoardItemLifecycle) }));
-      setBoard({ lanes: normalizedLanes, items: normalizedLanes.flatMap((lane) => lane.items ?? []), epics: boardResult.value.epics ?? [], lifecycleLinks: boardResult.value.lifecycleLinks ?? [], epicProgress: boardResult.value.epicProgress ?? [] });
-    } else failures.push(reason('board', boardResult.reason));
+    const recommendationModel = recommendationsResult.status === 'fulfilled' ? recommendationsResult.value.recommendations ?? null : null;
+    if (boardResult.status === 'fulfilled') setBoard(boardFromCompact(boardResult.value, recommendationModel));
+    else failures.push(reason('board', boardResult.reason));
     if (artifactsResult.status === 'fulfilled') setArtifacts(artifactsResult.value.artifacts ?? []);
     else failures.push(reason('plans', artifactsResult.reason));
     if (recommendationsResult.status === 'fulfilled') {
-      setRecommendations(recommendationsResult.value.recommendations ?? null);
+      setRecommendations(recommendationModel);
       setRecommendationStatus(recommendationsResult.value.status ?? null);
       setActiveRecommendationRefreshTask(recommendationsResult.value.activeRefreshTask ?? null);
     } else failures.push(reason('recommendations', recommendationsResult.reason));
@@ -54,13 +55,43 @@ export function useWorkstationData(): WorkstationDataState {
     setLoading(false);
   }, []);
 
+  const loadMoreBoard = React.useCallback(async () => {
+    const pagination = board.pagination;
+    if (!pagination?.hasMore || pagination.nextOffset === undefined) return;
+    try {
+      const response = await bridge.invokeAction<CompactBoardResponse>('list-board-compact', {
+        limit: INITIAL_BOARD_LIMIT,
+        includeArchive: true,
+        offset: pagination.nextOffset,
+      });
+      setBoard((current) => mergeCompactLanePage(current, response, recommendations));
+      setError(null);
+    } catch (caught) {
+      setError(reason('board page', caught));
+    }
+  }, [board.pagination, recommendations]);
+
+  const loadClosedLane = React.useCallback(async (lane: string) => {
+    const pagination = board.lanes.find((entry) => entry.lane === lane)?.pagination;
+    if (pagination && !pagination.hasMore) return;
+    try {
+      const response = await bridge.invokeAction<CompactBoardResponse>('list-board-compact', {
+        lane,
+        includeClosed: true,
+        includeArchive: true,
+        limit: CLOSED_LANE_LIMIT,
+        offset: pagination?.nextOffset ?? 0,
+      });
+      setBoard((current) => mergeCompactLanePage(current, response, recommendations));
+      setError(null);
+    } catch (caught) {
+      setError(reason(`closed ${lane}`, caught));
+    }
+  }, [board.lanes, recommendations]);
+
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, bridgeVersion: bridge.version };
-}
-
-function normalizeBoardItemLifecycle(item: BoardItem): BoardItem {
-  return item.lifecycleLinks === undefined && item.linkRows !== undefined ? { ...item, lifecycleLinks: item.linkRows } : item;
+  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

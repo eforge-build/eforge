@@ -70,6 +70,14 @@ export const ExtensionActionSideEffectSchema = Type.Union([
   Type.Literal('build-queue'),
 ]);
 
+export const ExtensionActionOutputProfileSchema = Type.Union([
+  Type.Literal('agent-compact'),
+  Type.Literal('agent-paginated'),
+  Type.Literal('markdown'),
+  Type.Literal('ui-rich'),
+  Type.Literal('debug-rich'),
+]);
+
 export const ExtensionActionBindingManifestSchema = Type.Object({
   actionId: Type.String(),
   inputDefaults: Type.Optional(ExtensionJsonObjectSchema),
@@ -136,6 +144,7 @@ export const ExtensionActionManifestEntrySchema = Type.Object({
   description: Type.Optional(Type.String()),
   inputSchema: TypeBoxObjectWireSchema,
   outputSchema: Type.Optional(TypeBoxSchemaDocumentSchema),
+  outputProfile: Type.Optional(ExtensionActionOutputProfileSchema),
   sideEffects: Type.Optional(Type.Array(ExtensionActionSideEffectSchema)),
 }, { additionalProperties: false });
 
@@ -286,6 +295,7 @@ export type ExtensionJsonObject = Static<typeof ExtensionJsonObjectSchema>;
 export type ExtensionActionRequestedByHost = Static<typeof ExtensionActionRequestedByHostSchema>;
 export type ExtensionActionRequestedBy = Static<typeof ExtensionActionRequestedBySchema>;
 export type ExtensionActionSideEffect = Static<typeof ExtensionActionSideEffectSchema>;
+export type ExtensionActionOutputProfile = Static<typeof ExtensionActionOutputProfileSchema>;
 export type ExtensionActionBindingManifest = Static<typeof ExtensionActionBindingManifestSchema>;
 export type ConsoleContributionRendererId = Static<typeof ConsoleContributionRendererIdSchema>;
 export type ConsoleContributionBlock = Static<typeof ConsoleContributionBlockSchema>;

@@ -1,6 +1,7 @@
-import type {
-  ExtensionHostContributionEntry,
-  ExtensionHostContributionInvokeResult,
+import {
+  formatExtensionContributionOutputText,
+  type ExtensionHostContributionEntry,
+  type ExtensionHostContributionInvokeResult,
 } from '@eforge-build/client';
 
 type JsonObject = Record<string, unknown>;
@@ -61,7 +62,10 @@ export function formatInvocationPanel(result: ExtensionHostContributionInvokeRes
   if (result.response.ok) {
     return {
       title: 'eforge extensions - Success',
-      content: [...header, formatSuccessOutput(result.response.output)].join('\n'),
+      content: [
+        ...header,
+        formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
+      ].join('\n'),
     };
   }
   return {
@@ -115,11 +119,6 @@ function firstSingleEnumValue(schema: JsonObject): unknown {
   return Array.isArray(schema.enum) && schema.enum.length === 1 ? schema.enum[0] : undefined;
 }
 
-function formatSuccessOutput(output: unknown): string {
-  if (isMarkdownOutput(output)) return output.markdown;
-  return fencedJson(output);
-}
-
 function formatFailureOutput(error: { code: string; message: string; details?: unknown }): string {
   const lines = [`${error.code}: ${error.message}`];
   if (Object.prototype.hasOwnProperty.call(error, 'details')) lines.push('', fencedJson(error.details));
@@ -128,10 +127,6 @@ function formatFailureOutput(error: { code: string; message: string; details?: u
 
 function fencedJson(value: unknown): string {
   return ['```json', JSON.stringify(value, null, 2), '```'].join('\n');
-}
-
-function isMarkdownOutput(value: unknown): value is { markdown: string } {
-  return isRecord(value) && Object.keys(value).length === 1 && typeof value.markdown === 'string';
 }
 
 function jsonSafeValue(value: unknown): unknown {

@@ -132,12 +132,12 @@ describe('Pi extension contribution invocation panel formatting', () => {
     expect(panel.content).not.toContain('\\n');
   });
 
-  it('renders non-markdown object and array success outputs as fenced JSON', () => {
+  it('renders non-markdown object and array success outputs through the shared JSON formatter', () => {
     const objectPanel = formatInvocationPanel(result({ ok: true, invocationId: 'invoke-object', output: { value: true } }));
     const arrayPanel = formatInvocationPanel(result({ ok: true, invocationId: 'invoke-array', output: [1, 2] }));
 
-    expect(objectPanel.content).toContain('```json\n{\n  "value": true\n}\n```');
-    expect(arrayPanel.content).toContain('```json\n[\n  1,\n  2\n]\n```');
+    expect(objectPanel.content).toContain('{\n  "value": true\n}');
+    expect(arrayPanel.content).toContain('[\n  1,\n  2\n]');
   });
 
   it('renders failure code, message, and details as fenced JSON', () => {
