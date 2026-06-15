@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CONTRIBUTION_OUTPUT_PROFILES,
   Type,
+  contributionOutputProfile,
   createContributionPageOutputSchema,
   createContributionPaginationInputFields,
   paginateContributionItems,
@@ -8,6 +10,18 @@ import {
 } from '@eforge-build/extension-sdk';
 
 describe('extension SDK bounded contribution helpers', () => {
+  it('exports JSON-safe contribution output profile helpers', () => {
+    expect(CONTRIBUTION_OUTPUT_PROFILES).toEqual({
+      agentCompact: 'agent-compact',
+      agentPaginated: 'agent-paginated',
+      markdown: 'markdown',
+      uiRich: 'ui-rich',
+      debugRich: 'debug-rich',
+    });
+    expect(contributionOutputProfile(CONTRIBUTION_OUTPUT_PROFILES.agentCompact)).toBe('agent-compact');
+    expect(JSON.parse(JSON.stringify(CONTRIBUTION_OUTPUT_PROFILES))).toEqual(CONTRIBUTION_OUTPUT_PROFILES);
+  });
+
   it('creates reusable pagination input fields with a max limit cap', () => {
     const fields = createContributionPaginationInputFields({ maxLimit: 50 });
 

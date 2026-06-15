@@ -45,7 +45,7 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
     setPriority(item.priority);
     setEpic(item.epic ?? NO_EPIC);
     setDetail(null);
-  }, [item.id]);
+  }, [item.id, item.status, item.priority, item.epic]);
 
   React.useEffect(() => {
     let cancelled = false;

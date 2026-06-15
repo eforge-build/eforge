@@ -1,4 +1,17 @@
 import { Type, type TSchema, type Static } from './schema.js';
+import type { ExtensionActionOutputProfile } from './contributions.js';
+
+export const CONTRIBUTION_OUTPUT_PROFILES = {
+  agentCompact: 'agent-compact',
+  agentPaginated: 'agent-paginated',
+  markdown: 'markdown',
+  uiRich: 'ui-rich',
+  debugRich: 'debug-rich',
+} as const satisfies Record<string, ExtensionActionOutputProfile>;
+
+export function contributionOutputProfile(profile: ExtensionActionOutputProfile): ExtensionActionOutputProfile {
+  return profile;
+}
 
 export const DEFAULT_CONTRIBUTION_PAGE_LIMIT = 20;
 export const DEFAULT_CONTRIBUTION_MAX_LIMIT = 100;

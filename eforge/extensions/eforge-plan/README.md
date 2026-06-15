@@ -122,7 +122,7 @@ Statuses are `candidate`, `planned`, `active`, `shipped`, `stale`, and `supersed
 
 ## Actions
 
-The extension registers backlog, board, recommendation, planner-orchestration, plan-revision, and planning-workstation actions:
+The extension registers backlog, board, recommendation, planner-orchestration, plan-revision, and planning-workstation actions. Agent-facing compact reads declare output profiles (`get-item` as `agent-compact`; `get-epic`, `search-items`, and `list-board-compact` as `agent-paginated`), `render-board-markdown` declares `markdown`, and the compatibility full-board payload declares `debug-rich`.
 
 | Action | Purpose | Side effects |
 | --- | --- | --- |

@@ -22,7 +22,7 @@ async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 function loadState(): NativeExtensionRecorderState {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
   eforgePlanExtension(api as never);
-  expect(state.diagnostics).toEqual([]);
+  expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
   return state;
 }
 

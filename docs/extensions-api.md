@@ -305,7 +305,7 @@ The SDK also exposes registration methods for extension-authored actions and hos
 
 #### `registerAction(action)`
 
-Registers an extension-authored action handler. Action handlers run as trusted unsandboxed Node code. Action inputs require object-root TypeBox input schemas (`Type.Object(...)`). Action handlers must return JSON-safe outputs; optional output schemas are validated before eforge reports a successful invocation.
+Registers an extension-authored action handler. Action handlers run as trusted unsandboxed Node code. Action inputs require object-root TypeBox input schemas (`Type.Object(...)`). Action handlers must return JSON-safe outputs; optional output schemas are validated before eforge reports a successful invocation. Actions may declare an optional `outputProfile` (`agent-compact`, `agent-paginated`, `markdown`, `ui-rich`, or `debug-rich`) as manifest metadata so hosts can choose safe formatting without changing invocation success/failure response shapes. Broad list/search/board-style action registrations remain valid, but validation emits warning diagnostics when they lack limit, cursor/page, projection controls, or an explicit profile for array-shaped output.
 
 Action contexts include daemon-owned APIs. `ctx.agentTasks` starts, reads, and cancels supported single-shot agent tasks; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events, and extensions never import provider SDKs or `AgentHarness`. `ctx.buildQueue.enqueue({ source, ... })` submits a normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. The MVP task runner resolves the `planner` role and enforces read-only tools. Its planning-draft results can include `planRevisionTurn` as an output section for first-party eforge-plan revision sessions, but those sessions keep transcript storage and preview/apply semantics in eforge-plan rather than in the daemon task API. Extensions cannot provide arbitrary raw prompt templates, register custom task kinds, or implement multi-turn chat through this API.
 
@@ -319,13 +319,18 @@ Registers declarative Console metadata rendered under `/console/system`. Blocks 
 Registers a sandboxed Console workstation rendered under `/console/workstations`. The source SDK shape is trusted extension UI delivered as exactly one source: iframe `srcDoc` or `frameBundle` bundle metadata. Bundle roots must be `workstation-assets` or a child directory under `workstation-assets/`; `entrypoint`, `styles`, and `assets` paths are relative to that root. Bundle entries are projected as sandboxed iframe `src` navigations to the manifest `frameBundle.frameUrl` with the bridge token in the URL fragment, not in the daemon route query string. Declared `frameBundle` assets are supported and served only through eforge-owned frame/asset routes. The daemon serves bundle workstations through a generated frame shell with no-cache semantics and a `Content-Security-Policy` header plus declared, immutable, content-addressed asset URLs; the browser never supplies filesystem-relative asset paths. Workstation UI is isolated by the Console-owned iframe sandbox and bridge checks, but the `srcDoc` HTML or bundle metadata/code is not sanitized declarative content and should be reviewed like the extension source that produced it.
 
 ```ts
-import { Type, defineConsoleWorkstation, defineExtensionAction } from "@eforge-build/extension-sdk";
+import { CONTRIBUTION_OUTPUT_PROFILES, Type, defineConsoleWorkstation, defineExtensionAction } from "@eforge-build/extension-sdk";
 
 const listPlanningArtifacts = defineExtensionAction({
   id: "list-planning-artifacts",
   title: "List planning artifacts",
-  inputSchema: Type.Object({}),
+  inputSchema: Type.Object({
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+    offset: Type.Optional(Type.Integer({ minimum: 0 })),
+    fields: Type.Optional(Type.Array(Type.String())),
+  }),
   outputSchema: Type.Object({ artifacts: Type.Array(Type.Unknown()) }),
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ["local-read"],
   handler: () => ({ artifacts: [] }),
 });
@@ -411,6 +416,7 @@ const sayHi = defineExtensionAction({
   title: "Say hi",
   inputSchema: Type.Object({ name: Type.String() }),
   outputSchema: Type.Object({ greeting: Type.String() }),
+  outputProfile: "agent-compact",
   sideEffects: ["none"],
   handler: (input) => ({ greeting: `Hello ${input.name}` }),
 });
@@ -433,7 +439,7 @@ const result = await invokeAction("render-board-markdown", {});
 
 `EFORGE_WORKSTATION_BROWSER_SDK_VERSION` is the helper package's current browser SDK version. `getEforgeConsoleBridge()` returns the injected `window.eforge` bridge and throws if it is unavailable. `assertEforgeConsoleBridgeVersion(expected)` verifies the injected bridge major version before app code depends on it. `invokeAction(actionId, input)` is a convenience wrapper around the bridge's action invocation. These helpers are for code running inside the workstation iframe only; browser bundles must not import private Console React/components/CSS modules, parent Console context, or parent-Console plugins. Private Console React/components/CSS imports are unsupported outside the parent Console codebase, parent Console context imports are unsupported, and parent-Console plugins are unsupported.
 
-Exported contribution types include `ExtensionAction`, `ExtensionActionContext`, `ExtensionAgentTasksApi`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `ConsoleWorkstation`, `ConsoleWorkstationBase`, `ConsoleWorkstationFrameBundle`, `ConsoleWorkstationFrameBundleWorkstation`, `ConsoleWorkstationSrcDoc`, `EforgeConsoleBridge`, `IntegrationCommand`, and `ExtensionDeepLink`. `EforgeConsoleBridge` is the browser-side shape for `window.eforge`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
+Exported contribution types include `ExtensionAction`, `ExtensionActionOutputProfile`, `ExtensionActionContext`, `ExtensionAgentTasksApi`, `ExtensionActionBinding`, `ConsoleContribution`, `ConsoleContributionBlock`, `ConsoleWorkstation`, `ConsoleWorkstationBase`, `ConsoleWorkstationFrameBundle`, `ConsoleWorkstationFrameBundleWorkstation`, `ConsoleWorkstationSrcDoc`, `EforgeConsoleBridge`, `IntegrationCommand`, and `ExtensionDeepLink`. `EforgeConsoleBridge` is the browser-side shape for `window.eforge`. `ExtensionActionContext.requestedBy` uses the client-owned `ExtensionActionRequestedBy` provenance type.
 
 **Runtime status:** engine registry/runtime support plus daemon manifest/action routes, Console System rendering for declarative contributions, Console workstation rendering under `/console/workstations`, and CLI, MCP/Claude, and Pi host dispatch for action-backed contributions, plus sandboxed iframe workstation rendering. Registrations are captured at load time, local IDs are namespaced as `<extensionName>:<localId>`, invalid or duplicate registrations produce extension diagnostics, manifest/management projection omits handlers, and action dispatch validates object-root TypeBox input schemas plus JSON-safe outputs. Action invocations reuse `extensions.eventHookTimeoutMs`, receive `ctx.agentTasks` for supported daemon-owned single-shot planner tasks and `ctx.buildQueue.enqueue` for trusted queue handoffs, and emit daemon-scoped `extension:action:start`, `extension:action:complete`, `extension:action:failed`, and `extension:action:timeout` events without raw input payloads or raw output payloads.
 

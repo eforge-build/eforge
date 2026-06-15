@@ -17,7 +17,7 @@ async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 function registry(): NativeExtensionRegistry {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
   eforgePlanExtension(api as never);
-  expect(state.diagnostics).toEqual([]);
+  expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
   return { ...(state as NativeExtensionRecorderState), extensions: [], candidates: [] };
 }
 
@@ -86,6 +86,18 @@ describe('eforge-plan compact backlog query actions', () => {
     });
   });
 
+  it('omits archived cards by default', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const output = await invoke(cwd, 'list-board-compact', { epic: 'epic-one', limit: 50 });
+
+      expect(output).toMatchObject({ total: 2, counts: { total: 4, open: 2, closed: 2 } });
+      expect(output.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 'archived' })]));
+      expect(output.lanes).not.toEqual(expect.arrayContaining([expect.objectContaining({ lane: 'archive' })]));
+    });
+  });
+
   it('lists workstation initial compact page without archived cards while preserving archive metadata', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
@@ -111,6 +123,13 @@ describe('eforge-plan compact backlog query actions', () => {
   it('loads explicit closed lane pages through compact board inputs', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
+
+      const hiddenDone = await invoke(cwd, 'list-board-compact', { lane: 'done', limit: 1, offset: 0 });
+      expect(hiddenDone).toMatchObject({ total: 0, limit: 1, offset: 0, pagination: expect.objectContaining({ returned: 0, hasMore: false }) });
+      expect(hiddenDone.items).toEqual([]);
+      expect(hiddenDone.lanes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ lane: 'done', pagination: expect.objectContaining({ returned: 0, hasMore: false }) }),
+      ]));
 
       const output = await invoke(cwd, 'list-board-compact', { lane: 'done', includeClosed: true, limit: 1, offset: 0 });
 

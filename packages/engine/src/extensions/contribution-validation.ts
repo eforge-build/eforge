@@ -9,6 +9,7 @@ import type {
   ConsoleWorkstationSpec,
   ExtensionActionBindingSpec,
   ExtensionActionSpec,
+  ExtensionActionOutputProfile,
   ExtensionDeepLinkSpec,
   IntegrationCommandSpec,
 } from './types.js';
@@ -21,6 +22,17 @@ const SIDE_EFFECTS = new Set<ExtensionActionSideEffect>([
   'daemon-state',
   'build-queue',
 ]);
+const OUTPUT_PROFILES = new Set<ExtensionActionOutputProfile>([
+  'agent-compact',
+  'agent-paginated',
+  'markdown',
+  'ui-rich',
+  'debug-rich',
+]);
+const BROAD_ACTION_TERMS = ['list', 'search', 'board'];
+const LIMIT_CONTROL_NAMES = new Set(['limit', 'maxlimit', 'maxresults', 'pagesize', 'perpage', 'first', 'take']);
+const CURSOR_CONTROL_NAMES = new Set(['cursor', 'offset', 'page', 'pagetoken', 'nexttoken', 'after', 'before']);
+const PROJECTION_CONTROL_TERMS = ['field', 'projection', 'select', 'include', 'exclude', 'summary', 'compact', 'detail', 'body', 'raw', 'format'];
 const RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
 const ACTION_RENDERERS = new Set(['action-button', 'action-form']);
 const SAFE_CONSOLE_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
@@ -62,6 +74,9 @@ export function validateActionSpec(value: unknown): RegistrationValidationResult
   }
   if (spec.sideEffects !== undefined && (!Array.isArray(spec.sideEffects) || !spec.sideEffects.every((item) => typeof item === 'string' && SIDE_EFFECTS.has(item as ExtensionActionSideEffect)))) {
     return fail(base.id, 'registerAction sideEffects must be an array of supported side-effect values');
+  }
+  if (spec.outputProfile !== undefined && (typeof spec.outputProfile !== 'string' || !OUTPUT_PROFILES.has(spec.outputProfile as ExtensionActionOutputProfile))) {
+    return fail(base.id, 'registerAction outputProfile must be one of agent-compact, agent-paginated, markdown, ui-rich, or debug-rich');
   }
   if (typeof spec.handler !== 'function') return fail(base.id, 'registerAction requires a handler function');
   return { ok: true, id: base.id, value: value as ExtensionActionSpec };
@@ -236,6 +251,79 @@ function isValidActionBindingSpec(value: unknown): value is ExtensionActionBindi
   if (value.inputDefaults !== undefined && !isNonArrayObject(value.inputDefaults)) return false;
   if (value.inputDefaults !== undefined && !validateJsonSafeValue(value.inputDefaults, { requireObjectRoot: true, rejectSymbolKeys: true }).ok) return false;
   return true;
+}
+
+export interface ActionSpecWarningContext {
+  localId: string;
+  effectiveId: string;
+}
+
+export interface ActionSpecWarning {
+  code: string;
+  message: string;
+  name: string;
+}
+
+export function collectActionSpecWarnings(spec: ExtensionActionSpec, context: ActionSpecWarningContext): ActionSpecWarning[] {
+  if (!isBroadContributionAction(spec, context)) return [];
+  return [
+    ...collectBroadActionControlWarnings(spec, context),
+    ...collectLargeOutputProfileWarnings(spec, context),
+  ];
+}
+
+function collectBroadActionControlWarnings(spec: ExtensionActionSpec, context: ActionSpecWarningContext): ActionSpecWarning[] {
+  const propertyNames = collectSchemaPropertyNames(spec.inputSchema).map(normalizeControlName);
+  return [
+    ...(!hasControlName(propertyNames, LIMIT_CONTROL_NAMES) ? [warning(context, 'extension:action-missing-limit-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose a limit control.`)] : []),
+    ...(!hasControlName(propertyNames, CURSOR_CONTROL_NAMES) ? [warning(context, 'extension:action-missing-cursor-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose a cursor, offset, or page control.`)] : []),
+    ...(!hasProjectionControl(propertyNames) ? [warning(context, 'extension:action-missing-projection-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose projection controls such as fields, include/exclude, or compact/detail options.`)] : []),
+  ];
+}
+
+function collectLargeOutputProfileWarnings(spec: ExtensionActionSpec, context: ActionSpecWarningContext): ActionSpecWarning[] {
+  if (spec.outputProfile !== undefined || !schemaContainsArray(spec.outputSchema)) return [];
+  return [warning(context, 'extension:action-output-profile-missing', `Action "${context.effectiveId}" looks like a broad large-output action but does not declare an outputProfile.`)];
+}
+
+function warning(context: ActionSpecWarningContext, code: string, message: string): ActionSpecWarning {
+  return { code, message, name: context.effectiveId };
+}
+
+function isBroadContributionAction(spec: ExtensionActionSpec, context: ActionSpecWarningContext): boolean {
+  const searchable = [context.localId, context.effectiveId, spec.title, spec.description ?? ''].join(' ').toLowerCase();
+  return BROAD_ACTION_TERMS.some((term) => new RegExp(`(^|[^a-z0-9])${term}([^a-z0-9]|$)`, 'u').test(searchable));
+}
+
+function collectSchemaPropertyNames(schema: unknown): string[] {
+  if (!isNonArrayObject(schema)) return [];
+  const properties = isNonArrayObject(schema.properties) ? schema.properties : {};
+  const names = Object.keys(properties);
+  const nestedProperties = Object.values(properties).flatMap(collectSchemaPropertyNames);
+  const composed = ['allOf', 'anyOf', 'oneOf'].flatMap((key) => Array.isArray(schema[key]) ? schema[key].flatMap(collectSchemaPropertyNames) : []);
+  const nestedSchemas = ['items', 'additionalProperties', 'contains', 'not', 'if', 'then', 'else'].flatMap((key) => collectSchemaPropertyNames(schema[key]));
+  const dependentSchemas = isNonArrayObject(schema.dependentSchemas) ? Object.values(schema.dependentSchemas).flatMap(collectSchemaPropertyNames) : [];
+  return [...names, ...nestedProperties, ...composed, ...nestedSchemas, ...dependentSchemas];
+}
+
+function schemaContainsArray(schema: unknown): boolean {
+  if (!isNonArrayObject(schema)) return false;
+  if (schema.type === 'array') return true;
+  return Object.values(schema).some((value) => Array.isArray(value)
+    ? value.some(schemaContainsArray)
+    : schemaContainsArray(value));
+}
+
+function normalizeControlName(value: string): string {
+  return value.replace(/[^a-z0-9]/giu, '').toLowerCase();
+}
+
+function hasControlName(propertyNames: string[], controls: Set<string>): boolean {
+  return propertyNames.some((name) => controls.has(name));
+}
+
+function hasProjectionControl(propertyNames: string[]): boolean {
+  return propertyNames.some((name) => PROJECTION_CONTROL_TERMS.some((term) => name.includes(term)));
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

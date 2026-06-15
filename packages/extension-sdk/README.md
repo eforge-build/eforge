@@ -159,7 +159,7 @@ export default defineEforgeExtension((eforge) => {
 });
 ```
 
-Action inputs require object-root TypeBox input schemas, action handlers must return JSON-safe outputs, and optional output schemas are enforced when present. Action handlers run as trusted unsandboxed Node code and reuse `extensions.eventHookTimeoutMs`; lifecycle events include provenance/duration/error metadata but omit raw input payloads and raw output payloads. Throw `ExtensionActionInputValidationError` for schema-like field issues or `ExtensionActionUserError` for user-fixable domain/precondition failures; both surface as `invalid-input` with sanitized message/details, while unexpected exceptions remain generic `handler-error` responses. Agent-task events likewise expose only sanitized metadata, never raw task input or result payloads. Console contributions render inside `/console/system` using closed renderer IDs only; Console workstations render under `/console/workstations` as sandboxed iframe documents with `window.eforge.invokeAction` or bundle iframe code using `@eforge-build/extension-sdk/browser`. Raw HTTP routes are unsupported, and arbitrary Console JavaScript outside workstations, arbitrary asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, parent-Console plugins, or independently loaded frontend plugins are deferred/unsupported. Extension-owned AI planning/chat APIs outside `ctx.agentTasks` are unsupported. The built-in playbook and session-planning adapters are not extension action/contribution surfaces; `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored session-plan extraction, and user-authored playbook extraction remain deferred. See [`examples/extensions/action-contribution.ts`](../../examples/extensions/action-contribution.ts) for a complete safe sample with a command and deep link.
+Action inputs require object-root TypeBox input schemas, action handlers must return JSON-safe outputs, and optional output schemas are enforced when present. Actions may declare an optional `outputProfile` (`agent-compact`, `agent-paginated`, `markdown`, `ui-rich`, or `debug-rich`) so hosts can choose safe formatting without changing invocation success/failure response shapes. Action handlers run as trusted unsandboxed Node code and reuse `extensions.eventHookTimeoutMs`; lifecycle events include provenance/duration/error metadata but omit raw input payloads and raw output payloads. Throw `ExtensionActionInputValidationError` for schema-like field issues or `ExtensionActionUserError` for user-fixable domain/precondition failures; both surface as `invalid-input` with sanitized message/details, while unexpected exceptions remain generic `handler-error` responses. Agent-task events likewise expose only sanitized metadata, never raw task input or result payloads. Console contributions render inside `/console/system` using closed renderer IDs only; Console workstations render under `/console/workstations` as sandboxed iframe documents with `window.eforge.invokeAction` or bundle iframe code using `@eforge-build/extension-sdk/browser`. Raw HTTP routes are unsupported, and arbitrary Console JavaScript outside workstations, arbitrary asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, parent-Console plugins, or independently loaded frontend plugins are deferred/unsupported. Extension-owned AI planning/chat APIs outside `ctx.agentTasks` are unsupported. The built-in playbook and session-planning adapters are not extension action/contribution surfaces; `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored session-plan extraction, and user-authored playbook extraction remain deferred. See [`examples/extensions/action-contribution.ts`](../../examples/extensions/action-contribution.ts) for a complete safe sample with a command and deep link.
 
 ### Bounded action design
 
@@ -169,6 +169,7 @@ The SDK exports helpers for the common list-page shape:
 
 ```ts
 import {
+  CONTRIBUTION_OUTPUT_PROFILES,
   Type,
   createContributionPageOutputSchema,
   createContributionPaginationInputFields,
@@ -187,6 +188,7 @@ const searchItems = defineExtensionAction({
   title: "Search items",
   inputSchema: SearchInput,
   outputSchema: createContributionPageOutputSchema(Summary),
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ["local-read"],
   async handler(input) {
     const matches = [{ id: "item-1", title: input.query ?? "Untitled" }];
@@ -195,7 +197,7 @@ const searchItems = defineExtensionAction({
 });
 ```
 
-Use `createContributionPaginationInputFields()` in object-root input schemas, `createContributionPageOutputSchema(itemSchema)` for the standard `{ items, total, limit, offset }` output shape, and `paginateContributionItems()` / `resolveContributionPagination()` in handlers. These helpers are deliberately small: they establish bounded defaults and caps, while each extension still owns domain-specific filters, projections, and detail actions.
+Use `createContributionPaginationInputFields()` in object-root input schemas, `createContributionPageOutputSchema(itemSchema)` for the standard `{ items, total, limit, offset }` output shape, `paginateContributionItems()` / `resolveContributionPagination()` in handlers, and `CONTRIBUTION_OUTPUT_PROFILES` / `contributionOutputProfile()` for typed JSON-safe profile strings. These helpers are deliberately small: they establish bounded defaults and caps, while each extension still owns domain-specific filters, projections, and detail actions. Broad list/search/board-style actions stay valid, but validation emits warning diagnostics when they lack limit, cursor/page, projection controls, or an explicit profile for array-shaped output.
 
 
 ### Console workstations

@@ -1,6 +1,7 @@
 import {
   type ExtensionActionInvokeResponse,
   type ExtensionActionManifestEntry,
+  type ExtensionActionOutputProfile,
   type ExtensionActionRequestedBy,
   type ExtensionActionSideEffect,
   type ExtensionContributionDiagnostic,
@@ -30,6 +31,7 @@ export interface ExtensionHostContributionEntry {
   urlTemplate?: string;
   actionBacked: boolean;
   sideEffects?: ExtensionActionSideEffect[];
+  outputProfile?: ExtensionActionOutputProfile;
   inputSchema?: ExtensionJsonObject;
   inputDefaults?: ExtensionJsonObject;
 }
@@ -161,6 +163,7 @@ function actionEntry(entry: ExtensionActionManifestEntry): ExtensionHostContribu
     actionId: entry.id,
     actionBacked: true,
     sideEffects: entry.sideEffects,
+    outputProfile: entry.outputProfile,
     inputSchema: entry.inputSchema,
   };
 }
@@ -176,6 +179,7 @@ function commandEntry(entry: IntegrationCommandManifestEntry, actionLookup: Acti
     extensionPath: entry.extensionPath,
     actionId: entry.action.actionId,
     actionBacked: true,
+    outputProfile: boundAction?.outputProfile,
     inputSchema: entry.inputSchema ?? boundAction?.inputSchema,
     inputDefaults: entry.action.inputDefaults,
   };
@@ -193,6 +197,7 @@ function deepLinkEntry(entry: ExtensionDeepLinkManifestEntry, actionLookup: Acti
     actionId: entry.action?.actionId,
     urlTemplate: entry.urlTemplate,
     actionBacked: Boolean(entry.action),
+    outputProfile: boundAction?.outputProfile,
     inputSchema: boundAction?.inputSchema,
     inputDefaults: entry.action?.inputDefaults,
   };

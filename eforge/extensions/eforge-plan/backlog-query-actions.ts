@@ -1,4 +1,5 @@
 import {
+  CONTRIBUTION_OUTPUT_PROFILES,
   createContributionPaginationInputFields,
   defineExtensionAction,
   paginateContributionItems,
@@ -162,6 +163,7 @@ export const backlogQueryActions = [
     description: 'Read one backlog item with compact dependency/dependent summaries, lifecycle rows, and Markdown sections without listing the whole board.',
     inputSchema: GetItemInputSchema,
     outputSchema: GetItemOutputSchema,
+    outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact,
     sideEffects: ['local-read'],
     async handler(input, ctx) {
       return toJsonSafeObject(await getItemDetail(ctx.cwd, input));
@@ -173,6 +175,7 @@ export const backlogQueryActions = [
     description: 'Read one backlog epic and a paginated compact item list without returning board-wide payloads.',
     inputSchema: GetEpicInputSchema,
     outputSchema: GetEpicOutputSchema,
+    outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
     sideEffects: ['local-read'],
     async handler(input, ctx) {
       return toJsonSafeObject(await getEpicDetail(ctx.cwd, input));
@@ -184,6 +187,7 @@ export const backlogQueryActions = [
     description: 'Search backlog items by text, epic, status, lane, or tags with bounded compact output for agent contexts.',
     inputSchema: SearchItemsInputSchema,
     outputSchema: SearchItemsOutputSchema,
+    outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
     sideEffects: ['local-read'],
     async handler(input, ctx) {
       return toJsonSafeObject(await searchItems(ctx.cwd, input));
@@ -195,6 +199,7 @@ export const backlogQueryActions = [
     description: 'Return bounded open-first kanban item summaries with lane counts, total/open/closed counts, pagination metadata, and epic counts without full item bodies or rich board payloads.',
     inputSchema: ListBoardCompactInputSchema,
     outputSchema: ListBoardCompactOutputSchema,
+    outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
     sideEffects: ['local-read'],
     async handler(input, ctx) {
       return toJsonSafeObject(await listBoardCompact(ctx.cwd, input));
@@ -264,8 +269,8 @@ async function searchItems(cwd: string, input: SearchItemsInput) {
 }
 
 async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
-  const [items, epics, cards] = await loadBoardCards(cwd, true, input.epic);
-  const scopedCards = cards.all.filter((card) => input.includeArchive !== false || card.lane !== 'archive' || input.lane === 'archive');
+  const [items, epics, cards] = await loadBoardCards(cwd, input.includeArchive === true, input.epic);
+  const scopedCards = cards.all;
   const scopedIds = new Set(scopedCards.map((card) => card.id));
   const scopedLanes = cards.lanes.map((lane) => ({ ...lane, items: lane.items.filter((card) => scopedIds.has(card.id)) }));
   const filtered = scopedCards.filter((card) => {
@@ -273,6 +278,7 @@ async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
     if (!input.includeClosed && card.closed) return false;
     return true;
   });
+  const selectedLaneFilteredTotal = input.lane === undefined ? undefined : filtered.length;
   const page = paginate(filtered, input);
   const pagination = pageMetadata(page, filtered.length);
   return {
@@ -281,7 +287,7 @@ async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
     total: filtered.length,
     limit: page.limit,
     offset: page.offset,
-    lanes: scopedLanes.map((lane) => laneSummary(lane, page, input.lane)),
+    lanes: scopedLanes.map((lane) => laneSummary(lane, page, input.lane, selectedLaneFilteredTotal)),
     epics: epics.filter((epic) => input.epic === undefined || epic.id === input.epic).map((epic) => compactEpic(epic, items)),
     counts: {
       total: scopedCards.length,
@@ -365,7 +371,7 @@ function pageMetadata(page: { entries: readonly unknown[]; limit: number; offset
   };
 }
 
-function laneSummary(lane: { lane: KanbanLane; title: string; items: KanbanCard[] }, page: { entries: KanbanCard[]; limit: number; offset: number }, selectedLane: KanbanLane | undefined) {
+function laneSummary(lane: { lane: KanbanLane; title: string; items: KanbanCard[] }, page: { entries: KanbanCard[]; limit: number; offset: number }, selectedLane: KanbanLane | undefined, selectedLaneFilteredTotal: number | undefined) {
   const count = lane.items.length;
   return {
     lane: lane.lane,
@@ -373,7 +379,7 @@ function laneSummary(lane: { lane: KanbanLane; title: string; items: KanbanCard[
     count,
     openCount: lane.items.filter((item) => !item.closed).length,
     closedCount: lane.items.filter((item) => item.closed).length,
-    ...(selectedLane === lane.lane ? { pagination: pageMetadata(page, count) } : {}),
+    ...(selectedLane === lane.lane ? { pagination: pageMetadata(page, selectedLaneFilteredTotal ?? count) } : {}),
   };
 }
 // --- eforge:endregion compact-query-projection ---

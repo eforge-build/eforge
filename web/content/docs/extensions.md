@@ -337,7 +337,11 @@ Action lifecycle diagnostics/events include provenance, duration, status, and er
 
 Contribution actions should be bounded by default because the same action may be invoked from a rich Console UI, a CLI, an MCP/Pi tool call, or a coding-agent context window. Prefer separate contracts for list, detail, and search operations: use compact `search-*` or `list-*` actions for summaries, targeted `get-*` actions for one record, and explicit opt-in flags for raw Markdown bodies, long evidence, trace rows, lifecycle links, recommendations, or other UI-only fields. Keep workstation-rich payloads separate from agent-safe payloads rather than making every host pay for the full UI projection.
 
-The extension SDK exports small helpers for paginated actions: `createContributionPaginationInputFields()`, `createContributionPageOutputSchema(itemSchema)`, `resolveContributionPagination()`, and `paginateContributionItems()`. They standardize `limit`/`offset`, cap excessive limits, and return the common `{ items, total, limit, offset }` shape while leaving domain filters and projection fields to the extension.
+Actions may also declare an optional `outputProfile` so hosts can choose safe formatting without re-inferring payload shape. Supported profiles are `agent-compact`, `agent-paginated`, `markdown`, `ui-rich`, and `debug-rich`. Use agent profiles for coding-agent-safe summary/detail payloads, `markdown` for Markdown strings, `ui-rich` for workstation-oriented rich payloads, and `debug-rich` for compatibility/debug surfaces that intentionally remain large. The engine treats output profiles as manifest metadata only; they do not change action invocation success/failure response shapes.
+
+The extension SDK exports small helpers for paginated actions: `createContributionPaginationInputFields()`, `createContributionPageOutputSchema(itemSchema)`, `resolveContributionPagination()`, `paginateContributionItems()`, `CONTRIBUTION_OUTPUT_PROFILES`, and `contributionOutputProfile()`. They standardize `limit`/`offset`, cap excessive limits, return the common `{ items, total, limit, offset }` shape, and keep profile strings typed and JSON-safe while leaving domain filters and projection fields to the extension.
+
+Broad list/search/board-style action registrations remain valid, but validation emits warning diagnostics when their input schemas lack limit controls, cursor/page controls, projection controls, or when broad array-shaped output omits an explicit output profile. These warnings are advisory for extension ergonomics; invalid registration shapes still use error diagnostics and are not recorded.
 
 ```ts
 const Summary = Type.Object({ id: Type.String(), title: Type.String() }, { additionalProperties: false });
@@ -351,6 +355,7 @@ const searchItems = defineExtensionAction({
   title: "Search items",
   inputSchema: SearchInput,
   outputSchema: createContributionPageOutputSchema(Summary),
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ["local-read"],
   handler: (input) => paginateContributionItems(findMatches(input.query), input, { defaultLimit: 20, maxLimit: 50 }),
 });

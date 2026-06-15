@@ -12,6 +12,7 @@ import {
   ExtensionActionInvokeErrorCodeSchema,
   ExtensionActionInvokeRequestSchema,
   ExtensionActionInvokeResponseSchema,
+  ExtensionActionOutputProfileSchema,
   safeParseExtensionContributionManifest,
   safeParseExtensionActionInvokeRequest,
   safeParseExtensionActionInvokeResponse,
@@ -22,6 +23,7 @@ import {
   CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN as BROWSER_CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN,
   CONSOLE_WORKSTATION_FRAME_URL_PATTERN as BROWSER_CONSOLE_WORKSTATION_FRAME_URL_PATTERN,
   ConsoleWorkstationFrameBundleManifestSchema as BrowserConsoleWorkstationFrameBundleManifestSchema,
+  ExtensionActionOutputProfileSchema as BrowserExtensionActionOutputProfileSchema,
 } from '../browser.js';
 import { Value } from '@sinclair/typebox/value';
 import { API_ROUTES, buildPath } from '../routes.js';
@@ -53,6 +55,7 @@ function manifest() {
       localId: 'say-hi',
       title: 'Say hi',
       inputSchema: Type.Object({ name: Type.String() }),
+      outputProfile: 'agent-compact',
       sideEffects: ['none'],
     }],
     consoleContributions: [{
@@ -113,6 +116,7 @@ describe('extension contribution schemas', () => {
     expect(BROWSER_CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN).toBe(CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN);
     expect(BROWSER_CONSOLE_WORKSTATION_FRAME_URL_PATTERN).toBe(CONSOLE_WORKSTATION_FRAME_URL_PATTERN);
     expect(BrowserConsoleWorkstationFrameBundleManifestSchema.type).toBe('object');
+    expect(BrowserExtensionActionOutputProfileSchema).toBe(ExtensionActionOutputProfileSchema);
   });
 
   it('keeps the browser extension contribution exports free of forbidden Node-only sources', () => {
@@ -150,6 +154,20 @@ describe('extension contribution schemas', () => {
       allowedActions: ['example.say-hi'],
     } as never;
     expect(safeParseExtensionContributionManifest(value).success).toBe(true);
+  });
+
+  it('accepts valid action output profiles and rejects invalid profiles', () => {
+    for (const profile of ['agent-compact', 'agent-paginated', 'markdown', 'ui-rich', 'debug-rich']) {
+      const value = manifest();
+      value.actions[0].outputProfile = profile as never;
+      expect(safeParseExtensionContributionManifest(value).success).toBe(true);
+      expect(Value.Check(ExtensionActionOutputProfileSchema, profile)).toBe(true);
+    }
+
+    const invalidProfile = manifest();
+    invalidProfile.actions[0].outputProfile = 'raw-html' as never;
+    expect(safeParseExtensionContributionManifest(invalidProfile).success).toBe(false);
+    expect(Value.Check(ExtensionActionOutputProfileSchema, 'raw-html')).toBe(false);
   });
 
   it('rejects handler-like unsafe action manifest fields', () => {

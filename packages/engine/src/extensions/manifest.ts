@@ -55,8 +55,9 @@ export function buildActionManifestEntry(reg: ActionRegistration): ExtensionActi
     description: reg.value.description,
     inputSchema: cloneSchema(reg.value.inputSchema),
     outputSchema: reg.value.outputSchema === undefined ? undefined : cloneSchema(reg.value.outputSchema),
+    outputProfile: reg.value.outputProfile,
     sideEffects: reg.value.sideEffects === undefined ? undefined : [...reg.value.sideEffects],
-  }) as ExtensionActionManifestEntry;
+  }) as unknown as ExtensionActionManifestEntry;
 }
 
 export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRegistration): ConsoleContributionManifestEntry {

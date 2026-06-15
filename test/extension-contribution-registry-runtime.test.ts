@@ -180,12 +180,38 @@ describe('extension contribution registry runtime', () => {
     });
   });
 
+  it('projects warning diagnostics in manifests without blocking valid warned actions', async () => {
+    const result = await loadFixture(makeTempDir(), {
+      'warned.js': `import { Type } from '@eforge-build/extension-sdk';
+      export default function extension(eforge) {
+        eforge.registerAction({
+          id: 'list-board',
+          title: 'List board',
+          inputSchema: Type.Object({}),
+          outputSchema: Type.Object({ items: Type.Array(Type.Object({ id: Type.String() })) }),
+          handler: () => ({ items: [] }),
+        });
+      }`,
+    });
+
+    expect(result.registry.actions.map((action) => action.id)).toEqual(['warned:list-board']);
+    const manifest = buildExtensionContributionManifest(result.registry);
+    expect(manifest.actions.map((action) => action.id)).toEqual(['warned:list-board']);
+    expect(manifest.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', code: 'extension:action-missing-limit-control', name: 'warned:list-board' }),
+      expect.objectContaining({ severity: 'warning', code: 'extension:action-missing-cursor-control', name: 'warned:list-board' }),
+      expect.objectContaining({ severity: 'warning', code: 'extension:action-missing-projection-control', name: 'warned:list-board' }),
+      expect.objectContaining({ severity: 'warning', code: 'extension:action-output-profile-missing', name: 'warned:list-board' }),
+    ]));
+    expect(manifest.diagnostics?.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
+  });
+
   it('emits invalid and duplicate diagnostics for unsafe contribution registrations', async () => {
     const result = await loadFixture(makeTempDir(), {
       'first.js': `import { Type } from '@eforge-build/extension-sdk';
       export default function extension(eforge) {
-        eforge.registerAction({ id: 'dup', title: 'First', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
-        eforge.registerAction({ id: 'dup', title: 'Second', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'list-board', title: 'First board list', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'list-board', title: 'Second board list', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
       }`,
       'bad.js': `export default function extension(eforge) {
         eforge.registerAction({ id: 'bad-schema', title: 'Bad', inputSchema: { type: 'string' }, handler: () => ({}) });
@@ -197,8 +223,9 @@ describe('extension contribution registry runtime', () => {
     });
 
     expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration').length).toBeGreaterThanOrEqual(4);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:duplicate-registration', name: 'first:dup' }));
-    expect(result.registry.actions.map((action) => action.id)).toEqual(['first:dup']);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:duplicate-registration', name: 'first:list-board' }));
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning' && diagnostic.name === 'first:list-board' && diagnostic.code === 'extension:action-missing-limit-control')).toHaveLength(1);
+    expect(result.registry.actions.map((action) => action.id)).toEqual(['first:list-board']);
   });
 
   it('separates symbol-keyed user data rejection from TypeBox schema metadata tolerance', async () => {

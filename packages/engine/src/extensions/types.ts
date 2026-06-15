@@ -106,12 +106,14 @@ export interface ExtensionActionContextShape {
   buildQueue: ExtensionBuildQueueApiShape;
   // --- eforge:endregion extension-build-queue-context ---
 }
+export type ExtensionActionOutputProfile = 'agent-compact' | 'agent-paginated' | 'markdown' | 'ui-rich' | 'debug-rich';
 export interface ExtensionActionSpec {
   id: string;
   title: string;
   description?: string;
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  outputProfile?: ExtensionActionOutputProfile;
   sideEffects?: ExtensionActionSideEffect[];
   handler: (input: Record<string, unknown>, ctx: ExtensionActionContextShape) => ExtensionJsonValue | Promise<ExtensionJsonValue> | unknown;
 }

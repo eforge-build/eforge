@@ -26,7 +26,8 @@ async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 function load() {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
   eforgePlanExtension(api as never);
-  expect(state.diagnostics).toEqual([]);
+  expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
+  expect(state.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toEqual([]);
   return state;
 }
 
@@ -129,6 +130,14 @@ describe('eforge-plan extension registration', () => {
         expect(action.sideEffects).not.toContain('build-queue');
       }
     }
+    expect(Object.fromEntries(actions.map((action) => [action.id, action.outputProfile]).filter(([, profile]) => profile !== undefined))).toMatchObject({
+      'list-board': 'debug-rich',
+      'render-board-markdown': 'markdown',
+      'get-item': 'agent-compact',
+      'get-epic': 'agent-paginated',
+      'search-items': 'agent-paginated',
+      'list-board-compact': 'agent-paginated',
+    });
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
