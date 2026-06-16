@@ -1,0 +1,52 @@
+name: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging
+description: Mature eforge-plan with durable annotation-driven AI revisions,
+  local-first roadmap steering, and installable first-party extension packaging.
+created: 2026-06-16
+status: draft
+mode: expedition
+validate:
+  - pnpm build
+  - pnpm type-check
+  - pnpm test
+  - pnpm maintainability:check
+  - pnpm docs:check
+architecture:
+  status: complete
+modules:
+  package-foundation:
+    description: Convert eforge-plan into a buildable first-party package and
+      replace runtime source-path imports with public package imports.
+    depends_on: []
+    status: pending
+  annotation-backend:
+    description: Persist annotation state, snapshot annotations into revision turns,
+      include them in source context, and auto-resolve after successful patch
+      applies.
+    depends_on:
+      - package-foundation
+    status: pending
+  annotation-workstation:
+    description: Add rendered plan annotation capture, fallback controls, unresolved
+      annotation management, and sticky annotation-driven revision UX.
+    depends_on:
+      - annotation-backend
+    status: pending
+  roadmap-backend:
+    description: Implement local-first roadmap state/actions and replace hardcoded
+      roadmap evidence in planner, curation, refresh, and freshness flows.
+    depends_on:
+      - package-foundation
+    status: pending
+  roadmap-workstation:
+    description: Add workstation roadmap source status, local focus editing, and
+      recommendation refresh paths after roadmap changes.
+    depends_on:
+      - roadmap-backend
+    status: pending
+  packaging-docs-validation:
+    description: Finalize package artifact contents, install/update/trust/reload
+      tests, release wiring, asset serving checks, and documentation.
+    depends_on:
+      - annotation-workstation
+      - roadmap-workstation
+    status: pending
