@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { createSessionPlanningWorkflowAdapter, getReadinessDetail, selectDimensions, setSessionPlanSection, writeSessionPlan, type SessionPlan } from '../../../packages/input/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, parseEforgePlanPlanningDraftResult, type EforgePlanPlanningPlanRevisionTurn, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
+import { createSessionPlanningWorkflowAdapter, getReadinessDetail, selectDimensions, setSessionPlanSection, writeSessionPlan, type SessionPlan } from '@eforge-build/input';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, parseEforgePlanPlanningDraftResult, type EforgePlanPlanningPlanRevisionTurn, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';

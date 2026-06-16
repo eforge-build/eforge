@@ -16,8 +16,8 @@ Codebase exploration found these gaps against the source:
 - The plan detail UI renders flat sections in `plan-detail.tsx` with `SafeMarkdown` and no selection/block/section/whole-plan annotation affordances.
 - Roadmap context is hardcoded as `docs/roadmap.md` in `schema.ts`, `planner-orchestration.ts`, `backlog-curation-source.ts`, and `recommendation-status.ts`. `roadmapEvidence` is a single `{ path: 'docs/roadmap.md', exists, headings, excerpts }` object.
 - Recommendation refresh uses `preparePlannerContext({ includeRoadmap: true })` plus `computeRecommendationSourceFingerprint`, so the hardcoded roadmap evidence also affects refresh source text and freshness.
-- `eforge/extensions/eforge-plan/package.json` is private, named `@eforge-build/eforge-plan-extension`, and declares `entrypoint: index.ts`. Runtime files import monorepo source paths such as `../../../packages/extension-sdk/src/index.js`, `../../../packages/client/src/extension-agent-tasks.js`, and `../../../packages/input/src/index.js`.
-- Workstation assets are generated into `eforge/extensions/eforge-plan/workstation-assets/` and are gitignored. Package artifacts must build and include them.
+- `eforge/extensions/eforge-plan/package.json` is a public workspace package named `@eforge-build/eforge-plan`, declares `eforge.extension.entrypoint: ./dist/index.js`, and participates in lockstep version propagation. Runtime files import public package entrypoints such as `@eforge-build/extension-sdk`, `@eforge-build/client`, and `@eforge-build/input` instead of monorepo-relative package source paths.
+- Workstation assets are generated into `eforge/extensions/eforge-plan/workstation-assets/` and are gitignored. Package artifacts build and include them alongside the compiled runtime in `dist/`.
 
 ## Core architectural principles
 
@@ -246,7 +246,7 @@ Payloads must distinguish `localSteering` from `sharedContextSources` and `disco
 - Package-foundation performs a runtime import audit. Any API currently reached through a monorepo-relative `packages/*/src` path must either be replaced with an existing public package export or promoted through the owning package's public entrypoint/export map before eforge-plan imports it.
 - `eforge extension install ./eforge/extensions/eforge-plan` and `eforge extension install <packed .tgz>` both validate through the existing extension management path.
 - Packaging validation must verify that a freshly installed package registers extension actions, its input source, deep links, integration commands, and the workstation bundle; workstation assets must be served correctly after install.
-- Publish scripts include the package in lockstep or document and test independent release semantics. Prefer lockstep inclusion unless the implementation proves a reason not to.
+- Publish scripts include the package in lockstep.
 - Update tests cover npm/local package updates through `eforge extension update eforge-plan`, preserved trust semantics, and version-pinned updates where the existing extension manager supports them.
 
 ### Module dependency graph

@@ -5,7 +5,7 @@ export const RECOMMENDATION_STALE_REASON_LIMIT = 20;
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseWithSchema } from '@eforge-build/client';
-import { ExtensionActionInputValidationError, createEforgeProjectPaths, type EforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
+import { ExtensionActionInputValidationError, createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk';
 import {
   blockerRiskProjection,
   dependencyProjection,

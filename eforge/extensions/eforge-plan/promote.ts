@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, relative } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { resolveProjectLocalStoragePath, type InputTransformContext } from '../../../packages/extension-sdk/src/index.js';
-import { normalizeBuildSource } from '../../../packages/input/src/index.js';
+import { resolveProjectLocalStoragePath, type InputTransformContext } from '@eforge-build/extension-sdk';
+import { normalizeBuildSource } from '@eforge-build/input';
 import {
   blockerRiskProjection,
   dependencyProjection,

@@ -84,6 +84,34 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  eforge/extensions/eforge-plan:
+    dependencies:
+      '@eforge-build/client':
+        specifier: workspace:*
+        version: link:../../../packages/client
+      '@eforge-build/extension-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/extension-sdk
+      '@eforge-build/input':
+        specifier: workspace:*
+        version: link:../../../packages/input
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@eforge-build/eforge-plan-workstation':
+        specifier: workspace:*
+        version: link:workstation-src/plans
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   eforge/extensions/eforge-plan/workstation-src/plans:
     dependencies:
       '@eforge-build/client':

@@ -1,5 +1,5 @@
-import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
+import { defineExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { toJsonSafeObject } from './json-safe.js';
 import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
 import {
@@ -11,7 +11,7 @@ import {
 import type { PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
 
 const ANALYZE_ALL_TOPIC = 'Analyze and curate all open eforge-plan backlog records.';
-const ANALYZE_ALL_SOURCE_PROVIDER = { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } as const;
+const ANALYZE_ALL_SOURCE_PROVIDER = { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } as const;
 export const BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS = ['backlogCurationDraft', 'recommendations'] as const;
 const analyzeStartChains = new Map<string, Promise<unknown>>();
 

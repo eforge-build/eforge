@@ -1,4 +1,4 @@
-import { loadSessionPlan, writeSessionPlan, type PlanningProfile, type SessionPlan } from '../../../packages/input/src/index.js';
+import { loadSessionPlan, writeSessionPlan, type PlanningProfile, type SessionPlan } from '@eforge-build/input';
 
 export interface SessionPlanSourceMetadata {
   sourceItemIds: string[];

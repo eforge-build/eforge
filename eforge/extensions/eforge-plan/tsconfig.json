@@ -3,8 +3,19 @@
   "compilerOptions": {
     "noEmit": true,
     "declaration": false,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__", "workstation-src", "workstation-assets"]
+  "include": [
+    "*.ts",
+    "tsup.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "__tests__",
+    "workstation-src",
+    "workstation-assets"
+  ]
 }

@@ -1,5 +1,5 @@
-import { ExtensionAgentTaskRecordSchema } from '../../../packages/client/src/extension-agent-tasks.js';
-import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { ExtensionAgentTaskRecordSchema } from '@eforge-build/client';
+import { Type, type Static } from '@eforge-build/extension-sdk';
 
 // --- eforge:region backlog-schemas ---
 export const BACKLOG_STATUSES = ['candidate', 'planned', 'active', 'shipped', 'stale', 'superseded'] as const;

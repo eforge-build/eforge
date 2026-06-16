@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
-import { buildExtensionContributionManifest } from '../../../../packages/engine/src/extensions/manifest.js';
-import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
-import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../../../../packages/engine/src/extensions/types.js';
-import type { EforgeEvent, EventHookContext } from '../../../../packages/extension-sdk/src/index.js';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { buildExtensionContributionManifest } from '@eforge-build/engine/extensions/manifest.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
+import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
+import type { EforgeEvent, EventHookContext } from '@eforge-build/extension-sdk';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, writeRecommendations } from '../recommendations-store.js';
@@ -59,8 +59,11 @@ function markdownSection(markdown: string, heading: string): string {
 
 describe('eforge-plan extension registration', () => {
   it('declares stable planning capabilities in package metadata', async () => {
-    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8')) as { eforge?: { extension?: { name?: string; entrypoint?: string; capabilities?: Array<{ name: string; version?: string }> } } };
-    expect(pkg.eforge?.extension).toMatchObject({ name: 'eforge-plan', entrypoint: 'index.ts' });
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8')) as { name?: string; private?: boolean; publishConfig?: { access?: string }; eforge?: { extension?: { name?: string; entrypoint?: string; capabilities?: Array<{ name: string; version?: string }> } } };
+    expect(pkg.name).toBe('@eforge-build/eforge-plan');
+    expect(pkg.private).not.toBe(true);
+    expect(pkg.publishConfig).toMatchObject({ access: 'public' });
+    expect(pkg.eforge?.extension).toMatchObject({ name: 'eforge-plan', entrypoint: './dist/index.js' });
     expect(pkg.eforge?.extension?.capabilities).toEqual(expect.arrayContaining([
       { name: 'eforge.plan.planning-workstation', version: '1.0.0' },
       { name: 'eforge.plan.planning-mode-playbook', version: '1.0.0' },

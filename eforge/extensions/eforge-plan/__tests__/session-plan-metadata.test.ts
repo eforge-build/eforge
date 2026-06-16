@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createSessionPlanningWorkflowAdapter, loadSessionPlan, writeSessionPlan } from '../../../../packages/input/src/index.js';
+import { createSessionPlanningWorkflowAdapter, loadSessionPlan, writeSessionPlan } from '@eforge-build/input';
 import { readSessionPlanSourceMetadata, updateSessionPlanSourceMetadata } from '../session-plan-metadata.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {

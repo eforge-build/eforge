@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
-import { safeParseWithSchema } from '../../../packages/client/src/index.js';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanRevisionIndexSchema, type PlanRevisionIndex, type PlanRevisionSessionEntry, type PlanRevisionTurnEntry } from './planning-agent-task-schemas.js';
 
 const EXTENSION_NAME = 'eforge-plan';

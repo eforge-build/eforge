@@ -10,7 +10,7 @@ import {
   type ExtensionAction,
   type TObject,
   type TSchema,
-} from '../../../packages/extension-sdk/src/index.js';
+} from '@eforge-build/extension-sdk';
 import { extractMarkdownSections } from './backlog-domain.js';
 import { listBoard, renderBoardMarkdown } from './board-actions.js';
 import { backlogQueryActions } from './backlog-query-actions.js';

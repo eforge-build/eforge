@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
-import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
-import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '../../../../packages/client/src/extension-agent-tasks.js';
-import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../../../../packages/engine/src/extensions/types.js';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
+import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
 import eforgePlanExtension from '../index.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {

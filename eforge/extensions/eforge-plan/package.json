@@ -1,15 +1,73 @@
 {
-  "name": "@eforge-build/eforge-plan-extension",
-  "version": "0.1.0",
+  "name": "@eforge-build/eforge-plan",
+  "version": "0.7.21",
+  "description": "First-party eforge planning extension with backlog, session-plan, recommendation, and workstation contributions.",
+  "license": "Apache-2.0",
   "type": "module",
-  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/",
+    "workstation-assets/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eforge-build/eforge.git"
+  },
+  "homepage": "https://eforge.build",
+  "keywords": [
+    "eforge",
+    "extension",
+    "planning",
+    "backlog",
+    "workstation"
+  ],
+  "scripts": {
+    "build": "pnpm run build:workstation && pnpm run build:runtime",
+    "build:runtime": "pnpm --filter @eforge-build/scopes build && pnpm --filter @eforge-build/client build && pnpm --filter @eforge-build/extension-sdk build && pnpm --filter @eforge-build/input build && tsup",
+    "build:workstation": "pnpm --dir workstation-src/plans build",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eforge-build/client": "workspace:*",
+    "@eforge-build/extension-sdk": "workspace:*",
+    "@eforge-build/input": "workspace:*",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@eforge-build/eforge-plan-workstation": "workspace:*",
+    "@types/node": "^25.9.1",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "author": "Schaake Solutions LLC",
   "eforge": {
     "extension": {
       "name": "eforge-plan",
-      "entrypoint": "index.ts",
+      "entrypoint": "./dist/index.js",
       "capabilities": [
-        { "name": "eforge.plan.planning-workstation", "version": "1.0.0" },
-        { "name": "eforge.plan.planning-mode-playbook", "version": "1.0.0" }
+        {
+          "name": "eforge.plan.planning-workstation",
+          "version": "1.0.0"
+        },
+        {
+          "name": "eforge.plan.planning-mode-playbook",
+          "version": "1.0.0"
+        }
       ]
     }
   }

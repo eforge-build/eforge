@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '../../../packages/client/src/extension-agent-tasks.js';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '@eforge-build/client';
 import {
   createSessionPlan,
   createSessionPlanningWorkflowAdapter,
@@ -12,7 +12,7 @@ import {
   writeSessionPlan,
   type PlanningDepth,
   type PlanningType,
-} from '../../../packages/input/src/index.js';
+} from '@eforge-build/input';
 import {
   blockerRiskProjection,
   dependencyProjection,

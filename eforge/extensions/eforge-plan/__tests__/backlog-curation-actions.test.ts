@@ -37,7 +37,7 @@ describe('analyze-all-backlog action', () => {
       const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint?: string };
       expect(output.sourceFingerprint).toBeUndefined();
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } } });
+      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
       expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
     });
@@ -72,7 +72,7 @@ describe('analyze-all-backlog action', () => {
       };
 
       await analyzeAllBacklogAction.handler({}, ctx as never);
-      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } } });
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } } });
       const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal });
       const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
 

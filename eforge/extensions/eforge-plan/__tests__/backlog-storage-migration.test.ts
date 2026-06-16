@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
-import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
 import eforgePlanExtension from '../index.js';
 import {
   importLegacyBacklog,

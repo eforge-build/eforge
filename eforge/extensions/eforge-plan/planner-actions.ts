@@ -1,4 +1,4 @@
-import { defineExtensionAction } from '../../../packages/extension-sdk/src/index.js';
+import { defineExtensionAction, type ExtensionAction } from '@eforge-build/extension-sdk';
 import { toJsonSafeObject } from './json-safe.js';
 import { planningAgentTaskActions } from './agent-task-actions.js';
 import { applyPlannerResult, preparePlannerContext } from './planner-orchestration.js';
@@ -33,4 +33,4 @@ export const applyPlannerResultAction = defineExtensionAction({
   },
 });
 
-export const plannerActions = [preparePlannerContextAction, applyPlannerResultAction, ...planningAgentTaskActions] as const;
+export const plannerActions: readonly ExtensionAction<any, any>[] = [preparePlannerContextAction, applyPlannerResultAction, ...planningAgentTaskActions];

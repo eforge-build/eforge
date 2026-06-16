@@ -1,5 +1,5 @@
-import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
+import { defineExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { preparePlannerContext } from './planner-orchestration.js';
 import { computeRecommendationSourceFingerprint } from './recommendation-status.js';

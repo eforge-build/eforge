@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
-import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
-import { createEforgeProjectPaths } from '../../../../packages/extension-sdk/src/index.js';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogItem } from '../markdown-store.js';
 import {

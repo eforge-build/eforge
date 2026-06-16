@@ -1,4 +1,4 @@
-import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, type Static } from '@eforge-build/extension-sdk';
 import { projectKanbanBoard } from './kanban.js';
 import { buildRecommendationIndex } from './recommendation-index.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';

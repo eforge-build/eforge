@@ -1,4 +1,4 @@
-import type { SessionPlan } from '../../../packages/input/src/index.js';
+import type { SessionPlan } from '@eforge-build/input';
 import type {
   BacklogEpic,
   BacklogItem,

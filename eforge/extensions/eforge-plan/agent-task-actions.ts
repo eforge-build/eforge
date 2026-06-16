@@ -1,6 +1,6 @@
-import { defineExtensionAction, ExtensionActionInputValidationError, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness } from '../../../packages/client/src/extension-agent-tasks.js';
-import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '../../../packages/input/src/index.js';
+import { defineExtensionAction, ExtensionActionInputValidationError, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness } from '@eforge-build/client';
+import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '@eforge-build/input';
 import {
   applyCompletedPlanningAgentTaskResult,
   preparePlannerContext,
@@ -534,7 +534,7 @@ function assertApplySelection(input: { applyRecommendations?: boolean; applyHand
   throw new ExtensionActionInputValidationError('Applying a planning agent task result requires an apply selection.', [{ path: '', message: 'Select recommendations, handoff drafts, session-plan sections, a session-plan creation draft, or a backlog curation draft.' }]);
 }
 
-export const planningAgentTaskActions = [
+export const planningAgentTaskActions: readonly ExtensionAction<any, any>[] = [
   startPlanningAgentTaskAction,
   getPlanningAgentTaskAction,
   previewBacklogCurationTaskAction,
@@ -544,4 +544,4 @@ export const planningAgentTaskActions = [
   retryPlanningAgentTaskAction,
   redraftPlanningAgentTaskAction,
   applyPlanningAgentTaskResultAction,
-] as const;
+];

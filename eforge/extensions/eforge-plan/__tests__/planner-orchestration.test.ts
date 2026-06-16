@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile, readdir, readFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createSessionPlanningWorkflowAdapter } from '../../../../packages/input/src/index.js';
+import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { applyCompletedPlanningAgentTaskResult, applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
 import { parseMarkdownRecord, readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';

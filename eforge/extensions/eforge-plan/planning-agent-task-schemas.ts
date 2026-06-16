@@ -1,4 +1,4 @@
-import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { Type, type Static } from '@eforge-build/extension-sdk';
 import {
   EforgePlanPlanningRequestedOutputSectionSchema,
   ExtensionAgentTaskCancelResponseSchema,
@@ -7,7 +7,7 @@ import {
   ExtensionAgentTaskRecordSchema,
   ExtensionAgentTaskStartResponseSchema,
   ExtensionAgentTaskStatusSchema,
-} from '../../../packages/client/src/extension-agent-tasks.js';
+} from '@eforge-build/client';
 import {
   JsonValueSchema,
   PlanningProfileSchema,

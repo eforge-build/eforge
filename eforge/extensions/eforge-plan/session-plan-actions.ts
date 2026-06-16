@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
-import { defineExtensionAction } from '../../../packages/extension-sdk/src/index.js';
-import { createSessionPlanningWorkflowAdapter } from '../../../packages/input/src/index.js';
+import { defineExtensionAction } from '@eforge-build/extension-sdk';
+import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';

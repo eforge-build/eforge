@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '../../../packages/client/src/extension-agent-tasks.js';
+import { defineExtensionAction, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { toJsonSafeObject } from './json-safe.js';
 import {
   ApplyPlanRevisionTurnInputSchema,
@@ -182,7 +182,7 @@ export const applyPlanRevisionTurnAction = defineExtensionAction({
   },
 });
 
-export const planRevisionActions = [startPlanRevisionSessionAction, listPlanRevisionSessionsAction, getPlanRevisionSessionAction, startPlanRevisionTurnAction, retryPlanRevisionTurnAction, cancelPlanRevisionTurnAction, applyPlanRevisionTurnAction] as const;
+export const planRevisionActions: readonly ExtensionAction<any, any>[] = [startPlanRevisionSessionAction, listPlanRevisionSessionsAction, getPlanRevisionSessionAction, startPlanRevisionTurnAction, retryPlanRevisionTurnAction, cancelPlanRevisionTurnAction, applyPlanRevisionTurnAction];
 
 async function enqueueTurnExclusive<T>(ctx: ExtensionActionContext, session: string, task: () => Promise<T>): Promise<T> {
   const key = `${ctx.cwd}\0${session}`;

@@ -58,7 +58,7 @@ describe('eforge-plan planning workstation assets', () => {
   it('stays inside extension-owned browser assets without private Console imports', async () => {
     const source = await readFile(ASSET, 'utf-8');
 
-    expect(source).not.toContain('packages/console-ui/src');
+    expect(source).not.toMatch(/packages\/console-ui\/src/);
     expect(source).not.toMatch(/from\s+['"]@\//);
     expect(source).not.toMatch(/import\s+.*['"](?:\.\.\/)+\.\.\//);
   });

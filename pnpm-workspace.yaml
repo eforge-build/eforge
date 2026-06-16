@@ -1,4 +1,5 @@
 packages:
   - "packages/*"
   - "web"
+  - "eforge/extensions/eforge-plan"
   - "eforge/extensions/eforge-plan/workstation-src/plans"
