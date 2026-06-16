@@ -33,6 +33,9 @@ describe('eforge-plan Console workstation dogfood registration', () => {
         'search-items',
         'get-recommendations',
         'analyze-all-backlog',
+        'get-roadmap-state',
+        'update-roadmap-state',
+        'refresh-recommendations',
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',
@@ -55,7 +58,6 @@ describe('eforge-plan Console workstation dogfood registration', () => {
     // the workstation iframe action surface.
     expect(workstations[0]!.allowedActions).not.toContain('list-board');
     expect(workstations[0]!.allowedActions).not.toContain('promote-selection');
-    expect(workstations[0]!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstations[0]!).toBe(false);
     const effectiveWorkstationId = `eforge-plan:${workstations[0]!.id}`;
     expect(effectiveWorkstationId).toBe('eforge-plan:planning-workstation');

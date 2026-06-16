@@ -76,7 +76,7 @@ describe('recommendation refresh action', () => {
       expect(input.includeRoadmap).toBe(true);
       const sourceText = String(input.sourceText);
       expect(sourceText.length).toBeLessThanOrEqual(60000);
-      expect(sourceText).toMatch(/item-one|Epic One|Needs dependency|Roadmap|Current recommendation|run-one|sourceFingerprint/);
+      expect(sourceText).toMatch(/item-one|Epic One|Needs dependency|Roadmap|Current recommendation|run-one|sourceFingerprint|roadmapContext|localSteering|discoveredContextSources/);
 
       const index = await readPlanningTaskWorkflowIndex(cwd);
       expect(index.entries).toHaveLength(1);

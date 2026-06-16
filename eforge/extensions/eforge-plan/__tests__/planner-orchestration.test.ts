@@ -37,7 +37,7 @@ async function seed(cwd: string) {
 }
 
 describe('planner orchestration', () => {
-  it('builds context packets with recommendations, dependencies, epics, roadmap evidence, and trace summaries', async () => {
+  it('builds context packets with recommendations, dependencies, epics, roadmap context, and trace summaries', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
       await writeTraceSidecar(cwd, {
@@ -55,8 +55,8 @@ describe('planner orchestration', () => {
       expect(packet.recommendations.exists).toBe(true);
       expect(packet.recommendationRationale).toEqual(['Prefer ready planning work.']);
       expect(packet.dependencies.find((entry) => entry.itemId === 'item-one')).toMatchObject({ blockers: ['Needs dependency.'], dependsOn: ['item-zero'] });
-      expect(packet.roadmapEvidence).toMatchObject({ path: 'docs/roadmap.md', exists: true });
-      expect(packet.roadmapEvidence.headings).toContain('Roadmap');
+      expect(packet.roadmapContext.discoveredContextSources[0]).toMatchObject({ path: 'docs/roadmap.md', exists: true, kind: 'discovered-conventional' });
+      expect(packet.roadmapContext.discoveredContextSources[0]?.headings).toContain('Roadmap');
       expect(packet.traceSummaries).toEqual([expect.objectContaining({
         itemId: 'item-one',
         epicId: 'epic-one',
@@ -79,13 +79,15 @@ describe('planner orchestration', () => {
     });
   });
 
-  it('resolves recommendation refs and can omit roadmap evidence on request', async () => {
+  it('resolves recommendation refs and can omit roadmap context on request', async () => {
     await withTempProject(async (cwd) => {
       await seed(cwd);
       const packet = await preparePlannerContext(cwd, { recommendationRef: 'next-one', includeRoadmap: false });
       expect(packet.selection).toMatchObject({ kind: 'recommendationRef', itemIds: ['item-one'], epicIds: ['epic-one'], recommendationRef: 'next-one' });
       expect(packet.items.map((item) => item.id)).toEqual(['item-one']);
-      expect(packet.roadmapEvidence).toEqual({ path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] });
+      expect(packet.roadmapContext.sharedContextSources).toEqual([]);
+      expect(packet.roadmapContext.discoveredContextSources).toEqual([]);
+      expect(packet.roadmapContext.assumptions.join('\n')).toMatch(/includeRoadmap was false/);
     });
   });
 

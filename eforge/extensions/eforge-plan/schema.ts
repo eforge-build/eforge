@@ -1,5 +1,6 @@
 import { ExtensionAgentTaskRecordSchema } from '@eforge-build/client';
 import { Type, type Static } from '@eforge-build/extension-sdk';
+import { RoadmapContextSchema } from './roadmap-schemas.js';
 
 // --- eforge:region backlog-schemas ---
 export const BACKLOG_STATUSES = ['candidate', 'planned', 'active', 'shipped', 'stale', 'superseded'] as const;
@@ -203,12 +204,7 @@ export const PromotionSelectionOutputSchema = Type.Object({
 }, { additionalProperties: false });
 // --- eforge:endregion promotion-selection ---
 
-export const PlannerRoadmapEvidenceSchema = Type.Object({
-  path: Type.Literal('docs/roadmap.md'),
-  exists: Type.Boolean(),
-  headings: Type.Array(Type.String()),
-  excerpts: Type.Array(Type.String()),
-}, { additionalProperties: false });
+export const PlannerRoadmapContextSchema = RoadmapContextSchema;
 export const PlannerDependencyContextSchema = Type.Object({
   itemId: Type.String(),
   dependsOn: Type.Array(Type.String()),
@@ -270,7 +266,7 @@ export const PreparePlannerContextOutputSchema = Type.Object({
   recommendations: PlannerRecommendationsPacketSchema,
   recommendationRationale: Type.Array(Type.String()),
   dependencies: Type.Array(PlannerDependencyContextSchema),
-  roadmapEvidence: PlannerRoadmapEvidenceSchema,
+  roadmapContext: PlannerRoadmapContextSchema,
   traceSummaries: Type.Array(Type.Unknown()),
 }, { additionalProperties: false });
 export const PlannerHandoffDraftSchema = Type.Object({
@@ -546,7 +542,7 @@ export type PromotionSelectionSourceEpic = Static<typeof PromotionSelectionSourc
 export type PromotionSelectionInput = Static<typeof PromotionSelectionInputSchema>;
 export type PromotionSelectionOutput = Static<typeof PromotionSelectionOutputSchema>;
 // --- eforge:endregion promotion-selection ---
-export type PlannerRoadmapEvidence = Static<typeof PlannerRoadmapEvidenceSchema>;
+export type PlannerRoadmapContext = Static<typeof PlannerRoadmapContextSchema>;
 export type PlannerDependencyContext = Static<typeof PlannerDependencyContextSchema>;
 export type PlannerContextInput = Static<typeof PreparePlannerContextInputSchema>;
 export type PlannerContextOutput = Static<typeof PreparePlannerContextOutputSchema>;

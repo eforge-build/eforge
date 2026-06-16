@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 
 export const RECOMMENDATION_STALE_REASON_LIMIT = 20;
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { parseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError, createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk';
 import {
@@ -18,6 +18,7 @@ import {
   type LifecycleLinkRow,
 } from './backlog-domain.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
+import { buildRoadmapContext } from './roadmap-context.js';
 import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import type { RecommendationReferenceValidationIssue, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
 import { compactLifecycleRowsForFingerprint } from './lifecycle-projection.js';
@@ -164,7 +165,7 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
     epics: epics.map(projectSourceEpic),
     dependencies: dependencyProjection(items).sort(byItemId),
     blockers: blockerRiskProjection(items).sort(byItemId),
-    roadmapEvidence: await readRoadmapFingerprintEvidence(cwd),
+    roadmapContext: await buildRoadmapContext(cwd),
     traceSummaries,
   };
 }
@@ -340,16 +341,6 @@ function projectSourceEpic(epic: BacklogEpic): Record<string, unknown> {
     tags: [...epic.tags].sort(),
     sections: Object.fromEntries([...extractMarkdownSections(epic.body).entries()].sort(([left], [right]) => left.localeCompare(right))),
   };
-}
-
-async function readRoadmapFingerprintEvidence(cwd: string): Promise<Record<string, unknown>> {
-  const path = 'docs/roadmap.md';
-  const absolute = join(cwd, path);
-  if (!existsSync(absolute)) return { path, exists: false, headings: [], excerpts: [] };
-  const markdown = await readFile(absolute, 'utf-8');
-  const headings = markdown.split(/\r?\n/).map((line) => /^#{1,6}\s+(.+)$/.exec(line)?.[1]?.trim()).filter((line): line is string => Boolean(line));
-  const excerpts = markdown.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean).slice(0, 5);
-  return { path, exists: true, headings, excerpts };
 }
 
 function compactTraceSummaries(summaries: Array<{ itemId: string; epicId?: string; hasActiveSessionPlan: boolean; hasActiveQueuePrd: boolean; hasActiveBuildRun: boolean; hasActiveBuildSession: boolean; hasActiveTrace: boolean; activeReasons: string[]; lastEvent?: Record<string, unknown>; lifecycleState?: string; linkRows?: LifecycleLinkRow[] }>): Array<Record<string, unknown>> {

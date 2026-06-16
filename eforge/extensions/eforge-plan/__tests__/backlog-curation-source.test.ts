@@ -79,7 +79,7 @@ describe('backlog curation source', () => {
     });
   });
 
-  it('changes the source fingerprint when item bodies or roadmap evidence changes', async () => {
+  it('changes the source fingerprint when item bodies or roadmap context changes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       const first = await buildBacklogCurationSource(cwd);
@@ -91,6 +91,7 @@ describe('backlog curation source', () => {
 
       expect(afterBodyChange.sourceFingerprint).not.toBe(first.sourceFingerprint);
       expect(afterRoadmapChange.sourceFingerprint).not.toBe(afterBodyChange.sourceFingerprint);
+      expect(afterRoadmapChange.sourceText).toContain('roadmapContext');
     });
   });
 

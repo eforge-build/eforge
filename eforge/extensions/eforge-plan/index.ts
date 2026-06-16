@@ -33,6 +33,7 @@ import { markRecommendationsStaleForBacklogMutation } from './recommendation-sta
 import { plannerActions } from './planner-actions.js';
 import { backlogCurationActions } from './backlog-curation-actions.js';
 import { planRevisionActions } from './plan-revision-actions.js';
+import { roadmapActions } from './roadmap-actions.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
@@ -225,6 +226,7 @@ export default defineEforgeExtension((eforge) => {
   registerActions(eforge, backlogCurationActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, sessionPlanActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, planRevisionActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, roadmapActions as unknown as readonly RegistrableAction[]);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',
@@ -242,6 +244,9 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Get backlog epic', content: 'Read one compact backlog epic detail and paginated item summaries.', action: { actionId: 'get-epic' } },
       { rendererId: 'action-form', title: 'Search backlog items', content: 'Search compact backlog item summaries with bounded output.', action: { actionId: 'search-items' } },
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
+      { rendererId: 'action-button', title: 'Get roadmap state', content: 'Read local focus and shared/discovered roadmap context.', action: { actionId: 'get-roadmap-state' } },
+      { rendererId: 'action-form', title: 'Update roadmap state', content: 'Update private local focus roadmap and shared source configuration.', action: { actionId: 'update-roadmap-state' } },
+      { rendererId: 'action-button', title: 'Refresh recommendations', content: 'Start or reuse a bounded recommendation refresh task.', action: { actionId: 'refresh-recommendations' } },
       { rendererId: 'action-form', title: 'Apply planner result', content: 'Apply structured recommendation updates or handoff drafts.', action: { actionId: 'apply-planner-result' } },
       { rendererId: 'action-form', title: 'Start planning agent task', content: 'Prepare bounded context and start a daemon-owned planning draft task.', action: { actionId: 'start-planning-agent-task', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-form', title: 'Get planning agent task', content: 'Read daemon-owned planning task status and result preview data.', action: { actionId: 'get-planning-agent-task' } },
@@ -269,6 +274,9 @@ export default defineEforgeExtension((eforge) => {
       'get-recommendations',
       'put-recommendations',
       'analyze-all-backlog',
+      'get-roadmap-state',
+      'update-roadmap-state',
+      'refresh-recommendations',
       'prepare-planner-context',
       'apply-planner-result',
       'start-planning-agent-task',

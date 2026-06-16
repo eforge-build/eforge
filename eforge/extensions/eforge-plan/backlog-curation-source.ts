@@ -1,10 +1,8 @@
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { blockerRiskProjection, dependencyStateProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection } from './recommendation-status.js';
+import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
@@ -24,7 +22,6 @@ export interface BacklogCurationSourceBuild {
 const SOURCE_TEXT_TARGET = 180_000;
 const SECTION_LIMIT = 4000;
 const TRACE_LIMIT = 2000;
-const ROADMAP_EXCERPT_LIMIT = 2000;
 // --- eforge:region shipped-evidence-context ---
 export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
   candidateCount: 12,
@@ -55,8 +52,8 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const itemIds = openItemSnapshots.map((snapshot) => snapshot.id);
   const recommendationHash = recommendations === null ? null : sha256(canonicalJson(recommendations));
   const truncation = { sectionStrings: 0, roadmapExcerpts: 0, traceDetails: 0, shippedEvidenceCandidates: 0, shippedEvidencePaths: 0, shippedEvidenceExcerpts: 0, shippedEvidenceDiagnostics: 0 };
-  const [roadmapEvidence, rawTraceSummaries] = await Promise.all([
-    readRoadmapEvidence(cwd, truncation),
+  const [roadmapContext, rawTraceSummaries] = await Promise.all([
+    buildRoadmapContext(cwd),
     readRawTraceSummaries(cwd, itemIds),
   ]);
   throwIfAborted(options.signal);
@@ -67,7 +64,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const fingerprintProjection = {
     schemaVersion: 1,
     recommendationSourceProjection: recommendationProjection,
-    roadmapEvidence,
+    roadmapContext,
     preconditions: {
       items: openItemSnapshots.map(projectPrecondition),
       epics: openEpicSnapshots.map(projectPrecondition),
@@ -93,7 +90,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     shippedEvidenceCandidates: shippedEvidence.candidates,
     shippedEvidenceCandidateCounts: shippedEvidence.counts,
     shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
-    roadmapEvidence,
+    roadmapContext,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
     ...(redraft !== undefined && { redraft }),
@@ -357,16 +354,6 @@ function boundTraceSummaries(values: Array<Record<string, unknown>>, truncation:
   });
 }
 
-async function readRoadmapEvidence(cwd: string, truncation: { roadmapExcerpts: number }) {
-  const path = 'docs/roadmap.md';
-  const absolute = join(cwd, path);
-  if (!existsSync(absolute)) return { path, exists: false, headings: [], excerpts: [] };
-  const markdown = await readFile(absolute, 'utf-8');
-  const headings = markdown.split(/\r?\n/).map((line: string) => /^#{1,6}\s+(.+)$/.exec(line)?.[1]?.trim()).filter((line): line is string => Boolean(line));
-  const excerpts = markdown.split(/\n\s*\n/).map((block: string) => block.trim()).filter(Boolean).slice(0, 10).map((value: string) => boundString(value, ROADMAP_EXCERPT_LIMIT, () => { truncation.roadmapExcerpts += 1; }));
-  return { path, exists: true, headings, excerpts };
-}
-
 function boundString(value: string, limit: number, onTruncate: () => void): string {
   if (value.length <= limit) return value;
   onTruncate();
@@ -393,6 +380,7 @@ function buildSourceText(source: Record<string, unknown>): string {
     shippedEvidenceCandidates: source.shippedEvidenceCandidates,
     shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
     shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
+    roadmapContext: source.roadmapContext,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),
     truncation: { ...(source.truncation as Record<string, unknown>), fallback: 'minimal' },

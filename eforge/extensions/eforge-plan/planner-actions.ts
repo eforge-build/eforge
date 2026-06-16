@@ -12,7 +12,7 @@ import {
 export const preparePlannerContextAction = defineExtensionAction({
   id: 'prepare-planner-context',
   title: 'Prepare eforge-plan planner context',
-  description: 'Return JSON-safe backlog, recommendation, dependency, blocker, epic, and roadmap evidence for AI planning.',
+  description: 'Return JSON-safe backlog, recommendation, dependency, blocker, epic, and roadmap context for AI planning.',
   inputSchema: PreparePlannerContextInputSchema,
   outputSchema: PreparePlannerContextOutputSchema,
   sideEffects: ['local-read'],

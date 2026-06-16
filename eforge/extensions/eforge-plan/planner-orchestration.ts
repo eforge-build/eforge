@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { relative } from 'node:path';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT } from '@eforge-build/client';
 import {
   createSessionPlan,
@@ -25,6 +24,7 @@ import {
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { promoteBacklogSelection } from './promote.js';
 import { resolvePromotionSelection } from './promotion-selection.js';
+import { buildRoadmapContext } from './roadmap-context.js';
 import {
   createEmptyRecommendationModel,
   readRecommendations,
@@ -76,7 +76,7 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
     recommendations: { exists: recommendationModel !== null, model: recommendations, summary: summarizeRecommendations(recommendations) },
     recommendationRationale: recommendations.rationaleAndAssumptions,
     dependencies: dependencyContext(selected.items),
-    roadmapEvidence: includeRoadmap ? await readRoadmapEvidence(cwd) : { path: ROADMAP_EVIDENCE_PATH, exists: false, headings: [], excerpts: [] },
+    roadmapContext: await buildRoadmapContext(cwd, { includeRoadmap }),
     traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
   };
 }
@@ -578,16 +578,4 @@ function dependencyContext(items: readonly BacklogItem[]) {
     blockers: risks.get(entry.itemId)?.blockers ?? [],
     risks: risks.get(entry.itemId)?.risks ?? [],
   }));
-}
-
-const ROADMAP_EVIDENCE_PATH = 'docs/roadmap.md' as const;
-
-async function readRoadmapEvidence(cwd: string) {
-  const path = ROADMAP_EVIDENCE_PATH;
-  const absolute = join(cwd, path);
-  if (!existsSync(absolute)) return { path, exists: false, headings: [], excerpts: [] };
-  const markdown = await readFile(absolute, 'utf-8');
-  const headings = markdown.split(/\r?\n/).map((line) => /^#{1,6}\s+(.+)$/.exec(line)?.[1]?.trim()).filter((line): line is string => Boolean(line));
-  const excerpts = markdown.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean).slice(0, 5);
-  return { path, exists: true, headings, excerpts };
 }

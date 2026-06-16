@@ -809,14 +809,13 @@ describe('planning agent task actions', () => {
       expect(result.kind).toBe('success');
       if (result.kind !== 'success') throw new Error(result.message);
       expect(started?.input).toMatchObject({ topic: 'Draft a session plan for Item One.', session: 'session-x', planningType: 'feature', planningDepth: 'deep', requestedOutputSections: ['sessionPlanCreationDraft'] });
-      // Parse the serialized planner context to prove the preserved roadmap flag is honored:
-      // a regression that ignored includeRoadmap would surface roadmap evidence in both cases.
+      // Parse the serialized planner context to prove the preserved roadmap flag is honored.
       const source = JSON.parse(String(started?.input.sourceText));
-      expect(source.context.roadmapEvidence.exists).toBe(includeRoadmap);
+      expect(source.context.roadmapContext.discoveredContextSources.length).toBe(includeRoadmap ? 1 : 0);
       if (includeRoadmap) {
-        expect(source.context.roadmapEvidence.headings).toContain('Roadmap');
+        expect(source.context.roadmapContext.discoveredContextSources[0].headings).toContain('Roadmap');
       } else {
-        expect(source.context.roadmapEvidence).toMatchObject({ path: 'docs/roadmap.md', exists: false, headings: [], excerpts: [] });
+        expect(source.context.roadmapContext.assumptions.join('\n')).toMatch(/includeRoadmap was false/);
       }
       expect((result.output as { entry: { parentTaskId?: string; selection: { itemIds?: string[] } } }).entry).toMatchObject({ parentTaskId: 'task-original', selection: { itemIds: ['item-one'] } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
