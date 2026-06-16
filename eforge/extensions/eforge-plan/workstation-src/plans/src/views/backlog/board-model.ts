@@ -198,3 +198,13 @@ export function stats(items: BoardItem[], board?: Board): { open: number; ready:
 export function allEpicChips(items: BoardItem[], epics: Epic[]): EpicGroup[] {
   return epicGroups(items, epics);
 }
+
+// Epics with no items but authored body content are used as standalone "horizon"
+// containers - detailed future ideas parked outside the actionable backlog.
+// `epicGroups` drops them (count === 0), so they get their own surface instead of
+// vanishing. See backlog item add-horizon-items-to-eforge-plan.
+export function standaloneEpics(epics: Epic[] = []): Epic[] {
+  return epics
+    .filter((epic) => (epic.openItemCount ?? epic.itemCount ?? 0) === 0 && epic.hasBody === true)
+    .sort((a, b) => (a.title ?? a.id).localeCompare(b.title ?? b.id));
+}

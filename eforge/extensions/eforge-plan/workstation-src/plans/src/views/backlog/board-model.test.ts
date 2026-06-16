@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, BoardItem } from '@/types';
-import { buildColumns, matchesFilter } from './board-model';
+import { buildColumns, matchesFilter, standaloneEpics } from './board-model';
 
 function item(overrides: Partial<BoardItem>): BoardItem {
   return {
@@ -35,6 +35,24 @@ describe('matchesFilter', () => {
     expect(matchesFilter(item({ blocked: true, closed: false }), 'blocked')).toBe(true);
     // Closed items keep their blocked flag, but the filter means actionable blocked work.
     expect(matchesFilter(item({ blocked: true, closed: true }), 'blocked')).toBe(false);
+  });
+});
+
+describe('standaloneEpics', () => {
+  it('keeps only item-less epics that carry body content, sorted by title', () => {
+    const epics = [
+      { id: 'has-items', title: 'Has items', itemCount: 2, openItemCount: 1, hasBody: true },
+      { id: 'empty-shell', title: 'Empty shell', itemCount: 0, openItemCount: 0, hasBody: false },
+      { id: 'zeta-horizon', title: 'Zeta horizon', itemCount: 0, openItemCount: 0, hasBody: true },
+      { id: 'alpha-horizon', title: 'Alpha horizon', itemCount: 0, openItemCount: 0, hasBody: true },
+    ];
+    expect(standaloneEpics(epics).map((epic) => epic.id)).toEqual(['alpha-horizon', 'zeta-horizon']);
+  });
+
+  it('treats closed-only epics with body as standalone when no items remain open', () => {
+    const epics = [{ id: 'closed-out', title: 'Closed out', itemCount: 3, openItemCount: 0, hasBody: true }];
+    // openItemCount wins over itemCount: a fully-closed epic with notes still reads as horizon.
+    expect(standaloneEpics(epics).map((epic) => epic.id)).toEqual(['closed-out']);
   });
 });
 

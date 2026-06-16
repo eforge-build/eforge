@@ -86,6 +86,23 @@ describe('eforge-plan compact backlog query actions', () => {
     });
   });
 
+  it('flags epics with authored body content via hasBody so standalone horizon epics stay discoverable', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      // A heading-only epic is the writeBacklogEpic default - no authored content.
+      await writeBacklogEpic(cwd, { id: 'empty-shell', status: 'candidate', body: '# Empty Shell\n' });
+      // An item-less epic with a real section is a parked horizon idea.
+      await writeBacklogEpic(cwd, { id: 'horizon-note', status: 'candidate', body: '# Horizon Note\n\n## Summary\n\nA future idea.\n' });
+
+      const output = await invoke(cwd, 'list-board-compact', { includeClosed: true, limit: 100 });
+      const byId = new Map((output.epics as Array<{ id: string; hasBody: boolean }>).map((epic) => [epic.id, epic]));
+
+      expect(byId.get('epic-one')?.hasBody).toBe(true);
+      expect(byId.get('horizon-note')).toMatchObject({ itemCount: 0, openItemCount: 0, hasBody: true });
+      expect(byId.get('empty-shell')).toMatchObject({ itemCount: 0, openItemCount: 0, hasBody: false });
+    });
+  });
+
   it('omits archived cards by default', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);

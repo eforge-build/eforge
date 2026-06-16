@@ -4,6 +4,7 @@ import { useRouter } from '@/router';
 import type { Board as BoardData, BoardItem, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
 import { Board } from './backlog/board';
 import { ItemDrawer } from './backlog/item-drawer';
+import { EpicDrawer } from './backlog/epic-drawer';
 import { RecommendationsPanel } from './backlog/recommendations-panel';
 import type { GroupMode, StatusFilter } from './backlog/board-model';
 import { PlanWithAiPanel } from './backlog/plan-with-ai-panel';
@@ -27,6 +28,7 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [detailItemId, setDetailItemId] = React.useState<string | null>(null);
+  const [detailEpicId, setDetailEpicId] = React.useState<string | null>(null);
   const workflows = usePlanningTaskWorkflows(onRefresh);
   const detailItem = React.useMemo(
     () => (detailItemId ? (board.items ?? []).find((item) => item.id === detailItemId) ?? null : null),
@@ -145,7 +147,8 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
         onEpicFilter={(value) => setParam('epic', value, '')}
         selected={selected}
         onToggle={toggle}
-        onOpenDetail={(item) => setDetailItemId(item.id)}
+        onOpenDetail={(item) => { setDetailEpicId(null); setDetailItemId(item.id); }}
+        onOpenEpic={(epicId) => { setDetailItemId(null); setDetailEpicId(epicId); }}
         onLoadMoreBoard={onLoadMoreBoard}
         onLoadClosedLane={onLoadClosedLane}
       />
@@ -156,6 +159,12 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
           onClose={() => setDetailItemId(null)}
           onRefresh={onRefresh}
           selectedItemIds={selectedIds}
+        />
+      )}
+      {detailEpicId && (
+        <EpicDrawer
+          epicId={detailEpicId}
+          onClose={() => setDetailEpicId(null)}
         />
       )}
       {selectedIds.length > 0 && (

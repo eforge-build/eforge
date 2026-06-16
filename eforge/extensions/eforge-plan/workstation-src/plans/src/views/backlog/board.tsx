@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, FileText } from 'lucide-react';
 import type { Board as BoardData, BoardItem } from '@/types';
 import { ItemCard, type CardRelation } from './item-card';
 import {
@@ -8,6 +8,7 @@ import {
   filterItems,
   findDependencyCycles,
   shortId,
+  standaloneEpics,
   stats,
   type BoardColumn,
   type GroupMode,
@@ -27,6 +28,7 @@ interface BoardProps {
   selected: Set<string>;
   onToggle: (item: BoardItem) => void;
   onOpenDetail: (item: BoardItem) => void;
+  onOpenEpic: (epicId: string) => void;
   onLoadMoreBoard?: () => Promise<void>;
   onLoadClosedLane?: (lane: string) => Promise<void>;
 }
@@ -48,7 +50,7 @@ function readExpandedColumns(): Set<string> {
   }
 }
 
-export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
+export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onOpenEpic, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
   const allItems = board.items ?? [];
   const [hoverId, setHoverId] = React.useState<string | null>(null);
   const [expandedClosed, setExpandedClosed] = React.useState<Set<string>>(() => readExpandedColumns());
@@ -69,6 +71,7 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
   }, [board, filtered, group, filter]);
   const cycles = React.useMemo(() => findDependencyCycles(allItems), [allItems]);
   const chips = React.useMemo(() => allEpicChips(allItems, board.epics ?? []), [allItems, board.epics]);
+  const horizonEpics = React.useMemo(() => standaloneEpics(board.epics ?? []), [board.epics]);
   const counts = React.useMemo(() => stats(allItems, board), [allItems, board]);
 
   // Hovering a card outlines its dependency neighborhood across all columns:
@@ -181,6 +184,23 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
               className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors ${epicFilter === chip.id ? 'border-primary text-text-bright' : 'border-border text-muted-foreground hover:border-muted-foreground/50'} ${chip.missing ? 'border-dashed text-[color:var(--lane-blocked)]' : ''}`}
             >
               {chip.title}<span className="rounded-full border border-border px-1 text-2xs">{chip.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {horizonEpics.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground">Horizon</span>
+          {horizonEpics.map((epic) => (
+            <button
+              key={epic.id}
+              type="button"
+              title={`Open horizon epic ${epic.title ?? epic.id}`}
+              onClick={() => onOpenEpic(epic.id)}
+              className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+            >
+              <FileText className="h-3 w-3" />{epic.title ?? epic.id}
             </button>
           ))}
         </div>

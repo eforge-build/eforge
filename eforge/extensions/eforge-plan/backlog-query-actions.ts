@@ -49,6 +49,7 @@ const CompactEpicSchema = Type.Object({
   tags: Type.Array(Type.String()),
   itemCount: Type.Integer({ minimum: 0 }),
   openItemCount: Type.Integer({ minimum: 0 }),
+  hasBody: Type.Boolean(),
 }, { additionalProperties: false });
 
 const PageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
@@ -342,7 +343,19 @@ function compactEpic(epic: BacklogEpic, items: readonly BacklogItem[]) {
     tags: epic.tags,
     itemCount: epicItems.length,
     openItemCount: epicItems.filter((item) => !isClosedStatus(item.status)).length,
+    hasBody: hasMeaningfulBody(epic.body),
   };
+}
+
+// An epic written purely as a heading (the `writeBacklogEpic` default) carries no
+// authored content. Strip H1 title lines and report whether anything else remains,
+// so standalone "horizon" epics with real notes can be told apart from empty shells.
+function hasMeaningfulBody(body: string): boolean {
+  return body
+    .split(/\r?\n/)
+    .filter((line) => !/^#\s+/.test(line))
+    .join('\n')
+    .trim().length > 0;
 }
 
 function cardForRequiredItem(id: string, items: readonly BacklogItem[], epics: readonly BacklogEpic[]): KanbanCard {
