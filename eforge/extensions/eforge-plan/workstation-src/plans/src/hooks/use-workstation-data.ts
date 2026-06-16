@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
-import type { Artifact, Board, CompactBoardResponse, GetRecommendationsResponse, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
+import type { Artifact, Board, CompactBoardResponse, GetRecommendationsResponse, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
@@ -14,6 +14,11 @@ export interface WorkstationDataState {
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
+  // --- eforge:region plan-05-roadmap-workstation ---
+  roadmapState: RoadmapStateResponse | null;
+  saveRoadmapState: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
+  refreshRecommendations: () => Promise<RefreshRecommendationsResponse>;
+  // --- eforge:endregion plan-05-roadmap-workstation ---
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -28,6 +33,9 @@ export function useWorkstationData(): WorkstationDataState {
   const [recommendations, setRecommendations] = React.useState<RecommendationModel | null>(null);
   const [recommendationStatus, setRecommendationStatus] = React.useState<RecommendationStatus | null>(null);
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
+  // --- eforge:region plan-05-roadmap-workstation ---
+  const [roadmapState, setRoadmapState] = React.useState<RoadmapStateResponse | null>(null);
+  // --- eforge:endregion plan-05-roadmap-workstation ---
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -35,11 +43,14 @@ export function useWorkstationData(): WorkstationDataState {
     setLoading(true);
     // Each source is loaded independently: a failure in one (e.g. optional
     // recommendations) must not blank the board or the artifact list.
-    const [boardResult, artifactsResult, recommendationsResult] = await Promise.allSettled([
+    // --- eforge:region plan-05-roadmap-workstation ---
+    const [boardResult, artifactsResult, recommendationsResult, roadmapResult] = await Promise.allSettled([
       bridge.invokeAction<CompactBoardResponse>('list-board-compact', { limit: INITIAL_BOARD_LIMIT, includeArchive: true }),
       bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', {}),
       bridge.invokeAction<GetRecommendationsResponse>('get-recommendations', {}),
+      bridge.invokeAction<RoadmapStateResponse>('get-roadmap-state', { includeLocalFocusContent: true }),
     ]);
+    // --- eforge:endregion plan-05-roadmap-workstation ---
     const failures: string[] = [];
     const recommendationModel = recommendationsResult.status === 'fulfilled' ? recommendationsResult.value.recommendations ?? null : null;
     if (boardResult.status === 'fulfilled') setBoard(boardFromCompact(boardResult.value, recommendationModel));
@@ -51,6 +62,10 @@ export function useWorkstationData(): WorkstationDataState {
       setRecommendationStatus(recommendationsResult.value.status ?? null);
       setActiveRecommendationRefreshTask(recommendationsResult.value.activeRefreshTask ?? null);
     } else failures.push(reason('recommendations', recommendationsResult.reason));
+    // --- eforge:region plan-05-roadmap-workstation ---
+    if (roadmapResult.status === 'fulfilled') setRoadmapState(roadmapResult.value);
+    else failures.push(reason('roadmap', roadmapResult.reason));
+    // --- eforge:endregion plan-05-roadmap-workstation ---
     setError(failures.length > 0 ? failures.join(' · ') : null);
     setLoading(false);
   }, []);
@@ -89,9 +104,25 @@ export function useWorkstationData(): WorkstationDataState {
     }
   }, [board.lanes, recommendations]);
 
+  // --- eforge:region plan-05-roadmap-workstation ---
+  const saveRoadmapState = React.useCallback(async (input: UpdateRoadmapStateRequest) => {
+    const response = await bridge.invokeAction<RoadmapStateResponse>('update-roadmap-state', input as unknown as JsonObject);
+    setRoadmapState(response);
+    await refresh();
+    return response;
+  }, [refresh]);
+
+  const refreshRecommendations = React.useCallback(async () => {
+    const response = await bridge.invokeAction<RefreshRecommendationsResponse>('refresh-recommendations', {});
+    setActiveRecommendationRefreshTask(response.task);
+    await refresh();
+    return response;
+  }, [refresh]);
+  // --- eforge:endregion plan-05-roadmap-workstation ---
+
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, roadmapState, saveRoadmapState, refreshRecommendations, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

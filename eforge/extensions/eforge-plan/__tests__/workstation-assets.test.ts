@@ -141,7 +141,9 @@ describe('eforge-plan planning workstation assets', () => {
     expect(hook).not.toContain("'refresh-recommendations'");
     expect(panel).not.toContain('onRefreshRecommendations');
     expect(panel).not.toContain('Refresh recommendations');
-    expect(bridge).not.toContain("case 'refresh-recommendations'");
+    // Roadmap workstation owns the manual refresh action; keep it out of the
+    // recommendation-only/backlog primary surfaces covered by this regression.
+    expect(bridge).toContain("case 'refresh-recommendations'");
     expect(backlogView).not.toContain('refreshRecommendations');
     expect(`${hook}\n${panel}\n${bridge}\n${backlogView}`).not.toMatch(/build-queue/);
   });

@@ -408,6 +408,59 @@ export interface GetRecommendationsResponse {
   status: RecommendationStatus;
   activeRefreshTask?: PlanningAgentTaskRecord;
 }
+
+// --- eforge:region plan-05-roadmap-workstation ---
+export type RoadmapSourceKind = 'local-focus' | 'configured-shared' | 'discovered-conventional';
+export type RoadmapSourceRole = 'local-steering' | 'shared-context';
+export interface ConfiguredRoadmapSource { id: string; path: string; label?: string; enabled?: boolean; }
+export interface RoadmapConfig { schemaVersion: 1; sharedSources: ConfiguredRoadmapSource[]; }
+export interface RoadmapSourceProjection {
+  kind: RoadmapSourceKind;
+  role: RoadmapSourceRole;
+  path: string;
+  id?: string;
+  label?: string;
+  configured: boolean;
+  editable: boolean;
+  exists: boolean;
+  sha256?: string;
+  headings: string[];
+  excerpts: string[];
+  content?: string;
+  contentTruncated?: boolean;
+  readError?: string;
+  updatedAt?: string;
+  maxContentBytes?: number;
+}
+export interface RoadmapConflict { code: 'configured-source-missing' | 'duplicate-source' | 'source-read-error' | 'invalid-config' | string; message: string; path?: string; sourceId?: string; }
+export interface RoadmapContext {
+  schemaVersion: 1;
+  localSteering: RoadmapSourceProjection;
+  sharedContextSources: RoadmapSourceProjection[];
+  discoveredContextSources: RoadmapSourceProjection[];
+  assumptions: string[];
+  conflicts: RoadmapConflict[];
+  truncation: { sourceExcerpts: number; sourceContent: number };
+}
+export interface RoadmapStateResponse {
+  schemaVersion: 1;
+  config: RoadmapConfig;
+  context: RoadmapContext;
+  storagePaths: { localFocus: string; config: string };
+}
+export interface UpdateRoadmapStateRequest {
+  localFocusContent?: string;
+  expectedLocalFocusSha256?: string;
+  sharedSources?: ConfiguredRoadmapSource[];
+}
+export interface RefreshRecommendationsResponse {
+  task: PlanningAgentTaskRecord;
+  entry: PlanningTaskWorkflowEntry;
+  sourceFingerprint: string;
+  reused?: boolean;
+}
+// --- eforge:endregion plan-05-roadmap-workstation ---
+
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
   entry: PlanningTaskWorkflowEntry;
@@ -523,4 +576,7 @@ export interface WorkstationData {
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
+  // --- eforge:region plan-05-roadmap-workstation ---
+  roadmapState: RoadmapStateResponse | null;
+  // --- eforge:endregion plan-05-roadmap-workstation ---
 }

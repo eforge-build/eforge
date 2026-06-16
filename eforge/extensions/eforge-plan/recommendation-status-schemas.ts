@@ -7,6 +7,7 @@ import {
   RecommendationStatusSidecarSchema,
 } from './schema.js';
 import { PlanningTaskWorkflowEntrySchema } from './planning-agent-task-schemas.js';
+import { SourceFingerprintSchema } from './backlog-curation-schemas.js';
 
 export {
   RecommendationDerivedStatusSchema,
@@ -21,7 +22,7 @@ export const RefreshRecommendationsInputSchema = Type.Object({}, { additionalPro
 export const RefreshRecommendationsOutputSchema = Type.Object({
   task: ExtensionAgentTaskRecordSchema,
   entry: PlanningTaskWorkflowEntrySchema,
-  sourceFingerprint: Type.String(),
+  sourceFingerprint: SourceFingerprintSchema,
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 

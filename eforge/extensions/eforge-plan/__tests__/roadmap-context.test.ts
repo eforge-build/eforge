@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readRoadmapState, updateRoadmapState } from '../roadmap-context.js';
+import { MAX_ROADMAP_CONTEXT_CONTENT_BYTES, MAX_ROADMAP_LOCAL_FOCUS_BYTES } from '../roadmap-schemas.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-roadmap-context-'));
@@ -17,6 +18,8 @@ describe('roadmap context backend', () => {
       expect(existsSync(join(cwd, '.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md'))).toBe(true);
       expect(state.context.localSteering).toMatchObject({ path: '.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md', kind: 'local-focus', role: 'local-steering', configured: true, editable: true, exists: true });
       expect(state.context.localSteering.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(state.context.localSteering.updatedAt).toEqual(expect.any(String));
+      expect(state.context.localSteering.maxContentBytes).toBe(MAX_ROADMAP_LOCAL_FOCUS_BYTES);
       expect((await readRoadmapState(cwd, { includeLocalFocusContent: true })).context.localSteering.content).toContain('Ship local roadmaps');
     });
   });
@@ -63,6 +66,23 @@ describe('roadmap context backend', () => {
       expect(state.context.truncation.sourceExcerpts).toBeGreaterThan(0);
       expect(state.context.truncation.sourceContent).toBeGreaterThan(0);
       expect(await readFile(join(cwd, 'docs/shared.md'), 'utf-8')).toContain('Long paragraph');
+    });
+  });
+
+  it('returns local focus editor content up to the local-focus byte limit', async () => {
+    await withTempProject(async (cwd) => {
+      const content = 'x'.repeat(MAX_ROADMAP_CONTEXT_CONTENT_BYTES + 1024);
+      const state = await updateRoadmapState(cwd, { localFocusContent: content });
+      expect(state.context.localSteering.content).toBe(content);
+      expect(state.context.localSteering.contentTruncated).toBeUndefined();
+    });
+  });
+
+  it('validates shared sources before writing local focus content', async () => {
+    await withTempProject(async (cwd) => {
+      await updateRoadmapState(cwd, { localFocusContent: 'original' });
+      await expect(updateRoadmapState(cwd, { localFocusContent: 'mutated', sharedSources: [{ id: 'bad', path: '../roadmap.md' }] })).rejects.toThrow(/path/);
+      expect(await readFile(join(cwd, '.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md'), 'utf-8')).toBe('original');
     });
   });
 

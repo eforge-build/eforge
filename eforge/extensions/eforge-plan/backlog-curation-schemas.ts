@@ -10,7 +10,7 @@ import { BacklogStatusSchema, RecommendationDerivedStatusSchema, RecommendationS
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({}, { additionalProperties: false });
 
-const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
+export const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
 
 const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,

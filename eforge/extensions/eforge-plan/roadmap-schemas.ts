@@ -41,7 +41,10 @@ export const RoadmapSourceProjectionSchema = Type.Object({
   sha256: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$', maxLength: 64 })),
   headings: Type.Array(Type.String({ maxLength: MAX_ROADMAP_HEADING_LENGTH }), { maxItems: MAX_ROADMAP_HEADINGS }),
   excerpts: Type.Array(Type.String({ maxLength: MAX_ROADMAP_EXCERPT_BYTES }), { maxItems: MAX_ROADMAP_EXCERPTS }),
-  content: Type.Optional(Type.String({ maxLength: MAX_ROADMAP_CONTEXT_CONTENT_BYTES })),
+  content: Type.Optional(Type.String({ maxLength: MAX_ROADMAP_LOCAL_FOCUS_BYTES })),
+  contentTruncated: Type.Optional(Type.Boolean()),
+  updatedAt: Type.Optional(Type.String()),
+  maxContentBytes: Type.Optional(Type.Number()),
   readError: Type.Optional(Type.String({ maxLength: MAX_ROADMAP_CONTEXT_CONTENT_BYTES })),
 }, { additionalProperties: false });
 export const RoadmapConflictSchema = Type.Object({

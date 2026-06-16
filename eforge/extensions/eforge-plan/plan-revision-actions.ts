@@ -197,9 +197,9 @@ export const retryPlanRevisionTurnAction = defineExtensionAction({
   async handler(input, ctx) {
     return toJsonSafeObject(await enqueueTurnExclusive(ctx, input.session, async () => {
       const session = findPlanRevisionSession(await readPlanRevisionIndex(ctx.cwd), { session: input.session });
-      if (session === undefined) throw new Error(`No plan revision session found for ${input.session}.`);
+      if (session === undefined) throw userActionError(`No plan revision session found for ${input.session}.`, { path: 'session', details: { session: input.session } });
       const parent = findPlanRevisionTurn(session, input);
-      if (parent === undefined) throw new Error('No linked plan revision turn found.');
+      if (parent === undefined) throw userActionError('No linked plan revision turn found.', { path: input.turnId !== undefined ? 'turnId' : 'taskId', details: { session: input.session, ...(input.turnId !== undefined && { turnId: input.turnId }), ...(input.taskId !== undefined && { taskId: input.taskId }) } });
       const redraft = input.answers !== undefined || input.steering !== undefined;
       const priorQuestions = redraft ? await assertNeedsInputParent(ctx, parent.taskId) : undefined;
       if (!redraft) await assertRetriableParent(ctx, parent.taskId);
@@ -318,7 +318,7 @@ async function assertNoActiveTurn(ctx: ExtensionActionContext, session: PlanRevi
   for (const turn of session.turns) {
     try {
       const status = (await ctx.agentTasks.get(turn.taskId)).task.status;
-      if (status === 'queued' || status === 'running') throw new Error(`Revision task ${turn.taskId} is ${status}; wait for it to finish or cancel it before starting another turn.`);
+      if (status === 'queued' || status === 'running') throw userActionError(`Revision task ${turn.taskId} is ${status}; wait for it to finish or cancel it before starting another turn.`, { path: 'session', details: { session: session.targetSession, taskId: turn.taskId, status } });
     } catch (err) {
       if (err instanceof Error && err.message.includes('wait for it')) throw err;
       if (!isStaleTaskLookupError(err)) throw err;
@@ -330,7 +330,7 @@ async function assertNeedsInputParent(ctx: ExtensionActionContext, taskId: strin
   const task = (await ctx.agentTasks.get(taskId)).task as ExtensionAgentTaskRecord;
   const questions = (task as { result?: { clarificationQuestions?: unknown[]; decision?: unknown } }).result?.clarificationQuestions;
   if (task.status !== 'completed' || (task.result as { decision?: unknown }).decision !== 'needs-input' || !Array.isArray(questions) || questions.length === 0) {
-    throw new Error(`Revision task ${taskId} is not a completed needs-input clarification result.`);
+    throw userActionError(`Revision task ${taskId} is not a completed needs-input clarification result.`, { path: 'taskId', details: { taskId, status: task.status } });
   }
   return questions;
 }
@@ -338,13 +338,13 @@ async function assertNeedsInputParent(ctx: ExtensionActionContext, taskId: strin
 async function assertRetriableParent(ctx: ExtensionActionContext, taskId: string): Promise<void> {
   const task = (await ctx.agentTasks.get(taskId)).task as ExtensionAgentTaskRecord;
   if (task.status !== 'failed' && task.status !== 'cancelled') {
-    throw new Error(`Revision task ${taskId} is ${task.status}; only failed or cancelled revision turns can be retried without redraft answers.`);
+    throw userActionError(`Revision task ${taskId} is ${task.status}; only failed or cancelled revision turns can be retried without redraft answers.`, { path: 'taskId', details: { taskId, status: task.status } });
   }
 }
 
 async function projectSession(ctx: ExtensionActionContext, sessionId: string, options: { includePlan?: boolean; includeAnnotations?: boolean }) {
   const session = findPlanRevisionSession(await readPlanRevisionIndex(ctx.cwd), { session: sessionId });
-  if (session === undefined) throw new Error(`No plan revision session found for ${sessionId}.`);
+  if (session === undefined) throw userActionError(`No plan revision session found for ${sessionId}.`, { path: 'session', details: { session: sessionId } });
   return projectSessionEntry(ctx, session, options);
 }
 
@@ -388,7 +388,7 @@ async function requireTurn(cwd: string, sessionId: string, ref: { taskId?: strin
   const session = findPlanRevisionSession(await readPlanRevisionIndex(cwd), { session: sessionId });
   if (session === undefined) throw userActionError(`No plan revision session found for ${sessionId}.`, { path: 'session', details: { session: sessionId } });
   const turn = findPlanRevisionTurn(session, ref);
-  if (turn === undefined) throw new Error('No linked plan revision turn found.');
+  if (turn === undefined) throw userActionError('No linked plan revision turn found.', { path: ref.turnId !== undefined ? 'turnId' : 'taskId', details: { session: sessionId, ...(ref.turnId !== undefined && { turnId: ref.turnId }), ...(ref.taskId !== undefined && { taskId: ref.taskId }) } });
   return turn;
 }
 

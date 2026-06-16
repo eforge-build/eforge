@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { parseWithSchema } from '@eforge-build/client';
@@ -72,17 +72,18 @@ export async function updateRoadmapState(cwd: string, input: UpdateRoadmapStateI
       throw userActionError('Local focus roadmap changed before update.', { path: 'expectedLocalFocusSha256' });
     }
   }
-  if (input.localFocusContent !== undefined) {
-    if (Buffer.byteLength(input.localFocusContent, 'utf-8') > MAX_ROADMAP_LOCAL_FOCUS_BYTES) {
-      throw userActionError(`Local focus roadmap exceeds ${MAX_ROADMAP_LOCAL_FOCUS_BYTES} bytes.`, { path: 'localFocusContent' });
-    }
-    await mkdir(dirname(paths.localFocus), { recursive: true });
-    await writeFile(paths.localFocus, input.localFocusContent, 'utf-8');
+  const localFocusContent = input.localFocusContent;
+  if (localFocusContent !== undefined && Buffer.byteLength(localFocusContent, 'utf-8') > MAX_ROADMAP_LOCAL_FOCUS_BYTES) {
+    throw userActionError(`Local focus roadmap exceeds ${MAX_ROADMAP_LOCAL_FOCUS_BYTES} bytes.`, { path: 'localFocusContent' });
   }
-  if (input.sharedSources !== undefined) {
-    const config: RoadmapConfig = { schemaVersion: 1, sharedSources: input.sharedSources.map((source, index) => normalizeConfiguredSource(cwd, source, index)) };
-    await mkdir(dirname(paths.config), { recursive: true });
-    await writeFile(paths.config, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+  const config = input.sharedSources === undefined
+    ? undefined
+    : { schemaVersion: 1, sharedSources: input.sharedSources.map((source, index) => normalizeConfiguredSource(cwd, source, index)) } satisfies RoadmapConfig;
+  if (localFocusContent !== undefined) {
+    await writeTextAtomically(paths.localFocus, localFocusContent);
+  }
+  if (config !== undefined) {
+    await writeTextAtomically(paths.config, `${JSON.stringify(config, null, 2)}\n`);
   }
   return readRoadmapState(cwd, { includeLocalFocusContent: true });
 }
@@ -214,23 +215,28 @@ async function projectPathSource(
   },
 ): Promise<RoadmapSourceProjection> {
   const absolutePath = options.absolutePath ?? resolve(cwd, path);
-  const base = { kind: options.kind, role: options.role, path, ...(options.id !== undefined && { id: options.id }), ...(options.label !== undefined && { label: options.label }), configured: options.configured, editable: options.editable };
+  const base = { kind: options.kind, role: options.role, path, ...(options.id !== undefined && { id: options.id }), ...(options.label !== undefined && { label: options.label }), configured: options.configured, editable: options.editable, ...(options.kind === 'local-focus' && { maxContentBytes: MAX_ROADMAP_LOCAL_FOCUS_BYTES }) };
   if (!existsSync(absolutePath)) return { ...base, exists: false, headings: [], excerpts: [] };
   try {
     const raw = await readFile(absolutePath, 'utf-8');
-    const content = boundString(raw, MAX_ROADMAP_CONTEXT_CONTENT_BYTES, () => { options.truncation.sourceContent += 1; });
+    const fileStat = await stat(absolutePath);
+    const content = boundUtf8String(raw, MAX_ROADMAP_CONTEXT_CONTENT_BYTES, () => { options.truncation.sourceContent += 1; });
     const projected: RoadmapSourceProjection = {
       ...base,
       exists: true,
       sha256: sha256(raw),
+      updatedAt: fileStat.mtime.toISOString(),
       headings: extractHeadings(content),
       excerpts: extractExcerpts(content, options.truncation),
     };
-    if (options.includeContent === true) projected.content = content;
+    if (options.includeContent === true) {
+      const fullContent = boundUtf8String(raw, MAX_ROADMAP_LOCAL_FOCUS_BYTES, () => { projected.contentTruncated = true; });
+      projected.content = fullContent;
+    }
     return projected;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const readError = boundString(`Failed to read roadmap source "${path}": ${message}`, MAX_ROADMAP_CONTEXT_CONTENT_BYTES, () => { options.truncation.sourceContent += 1; });
+    const readError = boundUtf8String(`Failed to read roadmap source "${path}": ${message}`, MAX_ROADMAP_CONTEXT_CONTENT_BYTES, () => { options.truncation.sourceContent += 1; });
     return { ...base, exists: true, headings: [], excerpts: [], readError };
   }
 }
@@ -243,13 +249,29 @@ function extractHeadings(markdown: string): string[] {
 function extractExcerpts(markdown: string, truncation: ProjectionTruncation): string[] {
   const blocks = markdown.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
   truncation.sourceExcerpts += Math.max(0, blocks.length - MAX_ROADMAP_EXCERPTS);
-  return blocks.slice(0, MAX_ROADMAP_EXCERPTS).map((block) => boundString(block, MAX_ROADMAP_EXCERPT_BYTES, () => { truncation.sourceExcerpts += 1; }));
+  return blocks.slice(0, MAX_ROADMAP_EXCERPTS).map((block) => boundUtf8String(block, MAX_ROADMAP_EXCERPT_BYTES, () => { truncation.sourceExcerpts += 1; }));
 }
 
 function boundString(value: string, limit: number, onTruncate: () => void): string {
   if (value.length <= limit) return value;
   onTruncate();
   return `${value.slice(0, Math.max(0, limit - 16))}\n…[truncated]`;
+}
+
+function boundUtf8String(value: string, limit: number, onTruncate: () => void): string {
+  if (Buffer.byteLength(value, 'utf-8') <= limit) return value;
+  onTruncate();
+  const suffix = '\n…[truncated]';
+  const suffixBytes = Buffer.byteLength(suffix, 'utf-8');
+  let result = '';
+  let bytes = 0;
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, 'utf-8');
+    if (bytes + charBytes + suffixBytes > limit) break;
+    result += char;
+    bytes += charBytes;
+  }
+  return `${result}${suffix}`;
 }
 
 function boundSourceString(value: string, fallback: string): string {
@@ -260,6 +282,13 @@ function boundSourceString(value: string, fallback: string): string {
 async function readExistingText(path: string): Promise<string | null> {
   if (!existsSync(path)) return null;
   return readFile(path, 'utf-8');
+}
+
+async function writeTextAtomically(path: string, content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(tempPath, content, 'utf-8');
+  await rename(tempPath, path);
 }
 
 function sha256(value: string): string {

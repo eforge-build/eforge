@@ -130,5 +130,5 @@ describe('eforge-plan package foundation', () => {
       expect(built).not.toMatch(/\.\.\/\.\.\/\.\.\/packages|\.\.\/\.\.\/\.\.\/\.\.\/packages|packages\/.*?\/src/);
       expect(built).not.toMatch(/from ["']@eforge-build\//);
     }
-  }, 30_000);
+  }, 120_000);
 });

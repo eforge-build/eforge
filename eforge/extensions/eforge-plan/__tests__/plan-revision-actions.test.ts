@@ -139,7 +139,7 @@ describe('plan revision actions', () => {
       expect(turnOutput).toMatchObject({ turn: { taskId: 'task-1', userMessage: 'Tighten scope.', basePlanFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } });
 
       const blocked = await dispatchExtensionAction(registry(), { actionId: 'eforge-plan:start-plan-revision-turn', input: { session: 'revise-me', message: 'Again.' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks: () => ({ async start() { throw new Error('should not start'); }, async get(taskId) { return { task: tasks.get(taskId)! }; }, async cancel() { throw new Error('unexpected'); } }) });
-      expect(blocked).toMatchObject({ kind: 'handler-error' });
+      expect(blocked).toMatchObject({ kind: 'invalid-input' });
 
       tasks.delete('task-1');
       const missingProjection = await dispatch(cwd, 'get-plan-revision-session', { session: 'revise-me' }, tasks);

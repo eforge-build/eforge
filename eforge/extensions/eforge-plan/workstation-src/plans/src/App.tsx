@@ -7,6 +7,9 @@ import { RouterProvider, useRouter } from '@/router';
 import { useWorkstationData } from '@/hooks/use-workstation-data';
 import { BacklogView } from '@/views/backlog-view';
 import { PlansView } from '@/views/plans-view';
+// --- eforge:region plan-05-roadmap-workstation ---
+import { RoadmapPanel } from '@/views/roadmap/roadmap-panel';
+// --- eforge:endregion plan-05-roadmap-workstation ---
 
 type TabId = 'backlog' | 'plans';
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -63,6 +66,17 @@ function Shell() {
 
       <main className="p-4">
         {data.error && <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive-foreground">{data.error}</p>}
+        {/* --- eforge:region plan-05-roadmap-workstation --- */}
+        <RoadmapPanel
+          state={data.roadmapState}
+          loading={data.loading}
+          recommendationStatus={data.recommendationStatus}
+          activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+          onSaveLocalFocus={data.saveRoadmapState}
+          onRefreshRecommendations={data.refreshRecommendations}
+          onReloadRoadmap={data.refresh}
+        />
+        {/* --- eforge:endregion plan-05-roadmap-workstation --- */}
         {activeTab === 'plans'
           ? <PlansView artifacts={data.artifacts} onRefresh={data.refresh} />
           : <BacklogView

@@ -156,6 +156,8 @@ describe('eforge-plan extension registration', () => {
     expect(Object.fromEntries(actions.map((action) => [action.id, action.outputProfile]).filter(([, profile]) => profile !== undefined))).toMatchObject({
       'list-board': 'debug-rich',
       'render-board-markdown': 'markdown',
+      'get-roadmap-state': 'ui-rich',
+      'update-roadmap-state': 'ui-rich',
       'get-item': 'agent-compact',
       'get-epic': 'agent-paginated',
       'search-items': 'agent-paginated',
