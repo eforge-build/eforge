@@ -41,6 +41,7 @@ function renderBoard(board: BoardData, props: Partial<React.ComponentProps<typeo
     selected: new Set(),
     onToggle: () => {},
     onOpenDetail: () => {},
+    onOpenEpic: () => {},
   };
 
   return render(<Board {...defaults} {...props} />);
@@ -130,6 +131,7 @@ describe('Board compact closed-lane loading', () => {
       selected={new Set()}
       onToggle={() => {}}
       onOpenDetail={() => {}}
+      onOpenEpic={() => {}}
       onLoadClosedLane={onLoadClosedLane}
     />);
     expect(onLoadClosedLane).toHaveBeenCalledTimes(1);

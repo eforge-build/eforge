@@ -122,6 +122,7 @@ function compactEpics(response: Pick<CompactBoardResponse, 'epics'>): Epic[] {
     tags: epic.tags,
     itemCount: epic.itemCount,
     openItemCount: epic.openItemCount,
+    hasBody: epic.hasBody,
   }));
 }
 

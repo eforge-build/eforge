@@ -138,7 +138,7 @@ export interface BoardItem {
   epicProgress?: EpicProgress;
 }
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; count?: number; openCount?: number; closedCount?: number; pagination?: BoardPagination; }
-export interface Epic { id: string; title?: string; status?: string; priority?: string; tags?: string[]; itemCount?: number; openItemCount?: number; }
+export interface Epic { id: string; title?: string; status?: string; priority?: string; tags?: string[]; itemCount?: number; openItemCount?: number; hasBody?: boolean; }
 export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; lifecycleLinks?: LifecycleLinkRow[]; epicProgress?: EpicProgress[]; counts?: BoardCounts; pagination?: BoardPagination; }
 
 export interface CompactBoardItem {
