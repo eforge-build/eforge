@@ -14,7 +14,7 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
+const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation']);
 const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
 const NONE_ACTIONS = new Set(['open-planning-entry']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
@@ -91,8 +91,11 @@ describe('eforge-plan extension registration', () => {
       'cancel-planning-agent-task',
       'capture-item',
       'check-session-plan-readiness',
+      'create-plan-revision-annotation',
       'create-session-plan',
+      'delete-plan-revision-annotation',
       'delete-session-plan',
+      'dismiss-plan-revision-annotation',
       'get-epic',
       'get-item',
       'get-plan-revision-session',
@@ -115,6 +118,7 @@ describe('eforge-plan extension registration', () => {
       'refresh-recommendations',
       'remove-planning-agent-task',
       'render-board-markdown',
+      'resolve-plan-revision-annotation',
       'retry-plan-revision-turn',
       'retry-planning-agent-task',
       'search-items',
@@ -127,6 +131,7 @@ describe('eforge-plan extension registration', () => {
       'start-plan-revision-turn',
       'start-planning-agent-task',
       'update-item',
+      'update-plan-revision-annotation',
       'update-session-plan-metadata',
       'upsert-epic',
     ]);
@@ -172,6 +177,8 @@ describe('eforge-plan extension registration', () => {
     expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation/);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
+    const planRevisionOutput = actions.find((action) => action.id === 'get-plan-revision-session')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(planRevisionOutput)).toMatch(/annotations|annotationSnapshot|quoteContext|capturedText/);
     const planningEntryOutput = actions.find((action) => action.id === 'open-planning-entry')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(planningEntryOutput)).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
   });
@@ -421,6 +428,11 @@ describe('eforge-plan extension registration', () => {
         'start-plan-revision-session',
         'list-plan-revision-sessions',
         'get-plan-revision-session',
+        'create-plan-revision-annotation',
+        'update-plan-revision-annotation',
+        'delete-plan-revision-annotation',
+        'resolve-plan-revision-annotation',
+        'dismiss-plan-revision-annotation',
         'start-plan-revision-turn',
         'retry-plan-revision-turn',
         'cancel-plan-revision-turn',

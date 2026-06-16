@@ -7,7 +7,8 @@ import { listTraceSidecars, summarizeTrace } from './trace-store.js';
 import { projectSessionPlan, projectSessionPlanDetail } from './session-plan-view-model.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
-import type { PlanRevisionSessionEntry, PlanRevisionTurnEntry } from './planning-agent-task-schemas.js';
+import type { PlanRevisionSessionEntry, PlanRevisionTurnAnnotationSnapshot, PlanRevisionTurnEntry } from './planning-agent-task-schemas.js';
+import { projectAnnotationSnapshotForSource, summarizeAnnotationSnapshot } from './plan-revision-annotations.js';
 
 export async function loadFlatPlanRevisionTarget(cwd: string, session: string) {
   const planning = createSessionPlanningWorkflowAdapter();
@@ -24,7 +25,7 @@ export function computeFlatSectionHashes(plan: SessionPlan): Array<{ dimension: 
   return [...allowedDimensions(plan)].sort().map((dimension) => ({ dimension, sha256: sha256(sectionContentForDimension(plan, dimension)) }));
 }
 
-export function buildPlanRevisionSourceText(params: { targetSession: string; plan: SessionPlan; readiness: unknown; path: string; sourceRefs?: unknown; lifecycle?: unknown; basePlanFingerprint: string; baseSectionHashes: unknown[]; recentTurns: unknown[]; userMessage: string; redraft?: Record<string, unknown> }): string {
+export function buildPlanRevisionSourceText(params: { targetSession: string; plan: SessionPlan; readiness: unknown; path: string; sourceRefs?: unknown; lifecycle?: unknown; basePlanFingerprint: string; baseSectionHashes: unknown[]; recentTurns: unknown[]; userMessage: string; annotationSnapshot?: PlanRevisionTurnAnnotationSnapshot; redraft?: Record<string, unknown> }): string {
   return boundedSourceText(params.userMessage, {
     schemaVersion: 1,
     purpose: 'plan-revision-turn',
@@ -38,6 +39,7 @@ export function buildPlanRevisionSourceText(params: { targetSession: string; pla
     lifecycle: params.lifecycle,
     recentTurns: params.recentTurns,
     userMessage: params.userMessage,
+    ...(params.annotationSnapshot !== undefined && { annotationSnapshot: projectAnnotationSnapshotForSource(params.annotationSnapshot) }),
   }, params.redraft, revisionFallbackContext);
 }
 
@@ -56,6 +58,7 @@ export async function buildRecentRevisionTurnContext(ctx: { agentTasks: { get(ta
         ...(planRevisionTurn !== undefined && { assistantMessage: planRevisionTurn.assistantMessage }),
         ...(Array.isArray((result as { clarificationQuestions?: unknown[] } | undefined)?.clarificationQuestions) && { clarificationQuestions: (result as { clarificationQuestions: unknown[] }).clarificationQuestions }),
         ...(turn.appliedAt !== undefined && { appliedAt: turn.appliedAt, appliedSections: turn.appliedSections ?? [] }),
+        ...(turn.annotationSnapshot !== undefined && { annotationSnapshot: summarizeAnnotationSnapshot(turn.annotationSnapshot) }),
       };
     } catch (err) {
       return { turnId: turn.turnId, taskId: turn.taskId, userMessage: turn.userMessage, staleReason: err instanceof Error ? err.message : String(err) };
@@ -141,6 +144,7 @@ function revisionFallbackContext(bounded: Record<string, unknown>, metadata: Rec
     path: bounded.path,
     ...(plan !== undefined && { plan: pickDefined(plan, ['session', 'topic', 'status', 'planning_type', 'planning_depth']) }),
     ...(readiness !== undefined && { readiness: pickDefined(readiness, ['ready', 'status', 'missingRequiredDimensions', 'openQuestions']) }),
+    ...(bounded.annotationSnapshot !== undefined && { annotationSnapshot: summarizeFallbackAnnotationSnapshot(bounded.annotationSnapshot) }),
   };
 }
 
@@ -168,4 +172,22 @@ function parseResultIfPossible(task: ExtensionAgentTaskRecord): Record<string, u
   } catch {
     return undefined;
   }
+}
+
+
+function summarizeFallbackAnnotationSnapshot(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return undefined;
+  const snapshot = value as { steering?: unknown; selectedAnnotationIds?: unknown; openAnnotationIds?: unknown; annotations?: unknown };
+  const annotations = Array.isArray(snapshot.annotations) ? snapshot.annotations : [];
+  return {
+    ...(typeof snapshot.steering === 'string' && { steering: snapshot.steering }),
+    selectedAnnotationIds: Array.isArray(snapshot.selectedAnnotationIds) ? snapshot.selectedAnnotationIds : [],
+    openAnnotationIds: Array.isArray(snapshot.openAnnotationIds) ? snapshot.openAnnotationIds : [],
+    selectedCount: Array.isArray(snapshot.selectedAnnotationIds) ? snapshot.selectedAnnotationIds.length : 0,
+    openCount: Array.isArray(snapshot.openAnnotationIds) ? snapshot.openAnnotationIds.length : 0,
+    annotations: annotations.slice(0, 4).map((entry) => {
+      const annotation = entry !== null && typeof entry === 'object' ? entry as { annotationId?: unknown; target?: { kind?: unknown; dimension?: unknown; label?: unknown }; snapshotReason?: unknown } : {};
+      return { annotationId: annotation.annotationId, snapshotReason: annotation.snapshotReason, target: annotation.target };
+    }),
+  };
 }
