@@ -277,6 +277,40 @@ export interface PlanningTaskResult {
 }
 
 export interface PlanRevisionSectionHash { dimension: string; sha256: string; }
+export type PlanRevisionAnnotationTargetKind = 'selection' | 'block' | 'section' | 'whole-plan';
+export interface PlanRevisionAnnotationQuoteContext { exact: string; prefix?: string; suffix?: string; }
+export interface PlanRevisionAnnotationTarget {
+  kind: PlanRevisionAnnotationTargetKind;
+  dimension?: string;
+  label?: string;
+  capturedText: string;
+  quoteContext: PlanRevisionAnnotationQuoteContext;
+}
+export interface PlanRevisionAnnotation {
+  annotationId: string;
+  targetSession: string;
+  body?: string;
+  target: PlanRevisionAnnotationTarget;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  resolvedByTurnId?: string;
+  dismissedAt?: string;
+}
+export type PlanRevisionTurnSnapshotReason = 'selected' | 'open' | 'selected-and-open';
+export interface PlanRevisionTurnSnapshotAnnotation extends PlanRevisionAnnotation {
+  snapshotAt: string;
+  snapshotReason: PlanRevisionTurnSnapshotReason;
+}
+export interface PlanRevisionTurnAnnotationSnapshot {
+  steering?: string;
+  selectedAnnotationIds: string[];
+  openAnnotationIds: string[];
+  includeOpenAnnotations: boolean;
+  annotations: PlanRevisionTurnSnapshotAnnotation[];
+}
+export interface PlanRevisionAnnotationMutationInput { annotationId: string; body?: string; }
+export interface SubmitAnnotationRevisionInput { annotationIds?: string[]; includeOpenAnnotations?: boolean; steering?: string; }
 export interface PlanRevisionTurnProjection {
   turnId: string;
   taskId: string;
@@ -293,6 +327,7 @@ export interface PlanRevisionTurnProjection {
   available?: boolean;
   staleReason?: string;
   status?: AgentTaskStatus;
+  annotationSnapshot?: PlanRevisionTurnAnnotationSnapshot;
 }
 export interface PlanRevisionSessionProjection {
   threadId: string;
@@ -306,6 +341,7 @@ export interface PlanRevisionSessionProjection {
   readiness?: Readiness;
   sourceRefs?: PlanSourceRefs;
   lifecycle?: PlanLifecycleProjection;
+  annotations?: PlanRevisionAnnotation[];
   turns: PlanRevisionTurnProjection[];
 }
 export type PlanRevisionApplyOutput =

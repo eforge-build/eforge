@@ -295,7 +295,7 @@ async function startTurn(ctx: ExtensionActionContext, params: { session: string;
   const includeOpenAnnotations = params.parentAnnotationSnapshot === undefined ? params.includeOpenAnnotations ?? annotationDriven : params.parentAnnotationSnapshot.includeOpenAnnotations;
   const openCount = session.annotations.filter(isOpenPlanRevisionAnnotation).length;
   if (params.message === undefined && params.steering === undefined && (params.annotationIds?.length ?? 0) === 0 && params.includeOpenAnnotations === true && openCount === 0) throw userActionError('includeOpenAnnotations requested but no unresolved annotations exist.', { path: 'includeOpenAnnotations' });
-  assertAnnotationIdsExist(session, params.annotationIds);
+  if (params.parentAnnotationSnapshot === undefined) assertAnnotationIdsOpen(session, params.annotationIds);
   const snapshot = params.parentAnnotationSnapshot ?? buildPlanRevisionAnnotationSnapshot({ annotations: session.annotations, annotationIds: params.annotationIds, includeOpenAnnotations, steering: params.steering, now: new Date().toISOString() });
   const userMessage = derivePlanRevisionUserMessage({ message: params.message, annotationIds: params.annotationIds, includeOpenAnnotations, steering: params.steering, openCount, annotationCount: snapshot?.annotations.length });
   const basePlanFingerprint = computeFlatPlanFingerprint(loaded.plan);
@@ -373,10 +373,15 @@ async function requireAnnotation(cwd: string, sessionId: string, annotationId: s
   if (!session.annotations.some((annotation) => annotation.annotationId === annotationId)) throw userActionError(`No plan revision annotation found for ${sessionId}.`, { path: 'annotationId', details: { session: sessionId, annotationId } });
 }
 
-function assertAnnotationIdsExist(session: PlanRevisionSessionEntry, annotationIds: string[] = []): void {
-  const ids = new Set(session.annotations.map((annotation) => annotation.annotationId));
-  const missing = annotationIds.filter((id) => !ids.has(id));
+function assertAnnotationIdsOpen(session: PlanRevisionSessionEntry, annotationIds: string[] = []): void {
+  const annotationsById = new Map(session.annotations.map((annotation) => [annotation.annotationId, annotation]));
+  const missing = annotationIds.filter((id) => !annotationsById.has(id));
   if (missing.length > 0) throw userActionError(`Unknown plan revision annotation ids: ${missing.join(', ')}.`, { path: 'annotationIds', details: { session: session.targetSession, annotationIds: missing } });
+  const closed = annotationIds.filter((id) => {
+    const annotation = annotationsById.get(id);
+    return annotation !== undefined && !isOpenPlanRevisionAnnotation(annotation);
+  });
+  if (closed.length > 0) throw userActionError(`Plan revision annotation ids are no longer unresolved: ${closed.join(', ')}.`, { path: 'annotationIds', details: { session: session.targetSession, annotationIds: closed } });
 }
 
 async function requireTurn(cwd: string, sessionId: string, ref: { taskId?: string; turnId?: string }): Promise<PlanRevisionTurnEntry> {

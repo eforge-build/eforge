@@ -51,6 +51,17 @@ describe('eforge-plan Console workstation dogfood registration', () => {
         'retry-planning-agent-task',
         'redraft-planning-agent-task',
         'apply-planning-agent-task-result',
+        'start-plan-revision-session',
+        'get-plan-revision-session',
+        'create-plan-revision-annotation',
+        'update-plan-revision-annotation',
+        'delete-plan-revision-annotation',
+        'resolve-plan-revision-annotation',
+        'dismiss-plan-revision-annotation',
+        'start-plan-revision-turn',
+        'retry-plan-revision-turn',
+        'cancel-plan-revision-turn',
+        'apply-plan-revision-turn',
       ]),
     });
     // The AI-first workstation never starts deterministic promotion; promote-selection
