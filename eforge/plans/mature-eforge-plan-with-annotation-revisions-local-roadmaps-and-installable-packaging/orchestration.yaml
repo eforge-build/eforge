@@ -1,0 +1,97 @@
+name: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging
+description: Mature eforge-plan with durable annotation-driven AI revisions,
+  local-first roadmap steering, and installable first-party extension packaging.
+created: 2026-06-16
+compiled: 2026-06-16
+mode: expedition
+base_branch: main
+validate:
+  - pnpm build
+  - pnpm type-check
+  - pnpm test
+  - pnpm maintainability:check
+  - pnpm docs:check
+plans:
+  - id: plan-01-package-foundation
+    name: Convert eforge-plan into a buildable first-party package and replace
+      runtime source-path imports with public package imports.
+    depends_on: []
+    branch: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging/package-foundation
+    build: &a1
+      - - implement
+        - doc-author
+      - test-write
+      - doc-sync
+      - validate
+      - review-cycle
+      - test-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - api
+        - verify
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-annotation-backend
+    name: Persist annotation state, snapshot annotations into revision turns,
+      include them in source context, and auto-resolve after successful patch
+      applies.
+    depends_on:
+      - plan-01-package-foundation
+    branch: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging/annotation-backend
+    build: *a1
+    review: *a2
+  - id: plan-03-roadmap-backend
+    name: Implement local-first roadmap state/actions and replace hardcoded roadmap
+      evidence in planner, curation, refresh, and freshness flows.
+    depends_on:
+      - plan-01-package-foundation
+    branch: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging/roadmap-backend
+    build: *a1
+    review: *a2
+  - id: plan-04-annotation-workstation
+    name: Add rendered plan annotation capture, fallback controls, unresolved
+      annotation management, and sticky annotation-driven revision UX.
+    depends_on:
+      - plan-02-annotation-backend
+    branch: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging/annotation-workstation
+    build: *a1
+    review: *a2
+  - id: plan-05-roadmap-workstation
+    name: Add workstation roadmap source status, local focus editing, and
+      recommendation refresh paths after roadmap changes.
+    depends_on:
+      - plan-03-roadmap-backend
+    branch: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging/roadmap-workstation
+    build: *a1
+    review: *a2
+  - id: plan-06-packaging-docs-validation
+    name: Finalize package artifact contents, install/update/trust/reload tests,
+      release wiring, asset serving checks, and documentation.
+    depends_on:
+      - plan-04-annotation-workstation
+      - plan-05-roadmap-workstation
+    branch: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installable-packaging/packaging-docs-validation
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD spans several substantial subsystems: annotation-backed
+    revision storage and UI, roadmap context/recommendation workflows,
+    installable first-party packaging, public exports, docs, and extensive
+    regression coverage. Expedition is appropriate because delegated module
+    planning and cohesion checks reduce cross-subsystem drift. The build
+    pipeline runs docs in parallel with implementation, writes tests, syncs
+    docs, runs the registered maintainability validation gate before review,
+    then performs iterative review and test cycles. API and verify perspectives
+    target the highest risks: public package/export contracts, install/update
+    behavior, build metadata, and validation/test infrastructure."
+diff_base_ref: c401f9e224842dc60d7469b0eec6533c4d5a2c29

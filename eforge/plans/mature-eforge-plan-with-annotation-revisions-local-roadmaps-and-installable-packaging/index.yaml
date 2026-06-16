@@ -2,7 +2,8 @@ name: mature-eforge-plan-with-annotation-revisions-local-roadmaps-and-installabl
 description: Mature eforge-plan with durable annotation-driven AI revisions,
   local-first roadmap steering, and installable first-party extension packaging.
 created: 2026-06-16
-status: draft
+status: compiled
+compiled: "2026-06-16"
 mode: expedition
 validate:
   - pnpm build
