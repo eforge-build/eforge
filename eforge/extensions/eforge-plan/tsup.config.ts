@@ -1,4 +1,3 @@
-// --- eforge:region plan-01-package-foundation ---
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
@@ -24,4 +23,3 @@ export default defineConfig({
   ],
   external: [/^node:/],
 });
-// --- eforge:endregion plan-01-package-foundation ---

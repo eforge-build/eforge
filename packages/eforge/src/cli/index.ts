@@ -1250,18 +1250,14 @@ export function createProgram(abortController?: AbortController, version?: strin
   extension
     .command('update <name>')
     .description('Update an installed extension package to the latest version')
-    // --- eforge:region plan-06-packaging-docs-validation ---
     .option('--version <specifier>', 'Version specifier or dist-tag for npm-installed extensions')
-    // --- eforge:endregion plan-06-packaging-docs-validation ---
     .option('--trust', 'Trust the extension after update (project-team scope only)')
     .option('--trusted-by <identity>', 'Optional annotation identifying who is trusting the extension')
     .option('--json', 'Output JSON')
     .action(async (name: string, options: { version?: string; trust?: boolean; trustedBy?: string; json?: boolean }) => {
       try {
         const body: ExtensionUpdateRequest = { name };
-        // --- eforge:region plan-06-packaging-docs-validation ---
         if (options.version !== undefined) body.version = options.version;
-        // --- eforge:endregion plan-06-packaging-docs-validation ---
         if (options.trust !== undefined) body.trust = options.trust;
         if (options.trustedBy !== undefined) body.trustedBy = options.trustedBy;
         const { data }: { data: ExtensionUpdateResponse } = await apiUpdateExtension({ cwd: process.cwd(), body });

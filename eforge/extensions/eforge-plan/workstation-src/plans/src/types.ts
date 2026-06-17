@@ -409,7 +409,6 @@ export interface GetRecommendationsResponse {
   activeRefreshTask?: PlanningAgentTaskRecord;
 }
 
-// --- eforge:region plan-05-roadmap-workstation ---
 export type RoadmapSourceKind = 'local-focus' | 'configured-shared' | 'discovered-conventional';
 export type RoadmapSourceRole = 'local-steering' | 'shared-context';
 export interface ConfiguredRoadmapSource { id: string; path: string; label?: string; enabled?: boolean; }
@@ -459,7 +458,6 @@ export interface RefreshRecommendationsResponse {
   sourceFingerprint: string;
   reused?: boolean;
 }
-// --- eforge:endregion plan-05-roadmap-workstation ---
 
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
@@ -576,7 +574,5 @@ export interface WorkstationData {
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
-  // --- eforge:region plan-05-roadmap-workstation ---
   roadmapState: RoadmapStateResponse | null;
-  // --- eforge:endregion plan-05-roadmap-workstation ---
 }

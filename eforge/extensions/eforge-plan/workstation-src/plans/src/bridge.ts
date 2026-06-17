@@ -17,9 +17,7 @@ import {
   startMockPlanningTaskFromInput,
   updateMockItem,
 } from '@/fixtures/mock-data';
-// --- eforge:region plan-05-roadmap-workstation ---
 import { getMockRecommendationsWithRoadmapRefresh, getMockRoadmapState, refreshMockRecommendations, updateMockRoadmapState } from '@/fixtures/mock-roadmap';
-// --- eforge:endregion plan-05-roadmap-workstation ---
 import {
   applyMockPlanRevisionTurn,
   cancelMockPlanRevisionTurn,
@@ -94,12 +92,10 @@ function createMockBridge(): EforgeBridge {
         case 'list-board-compact': return getMockCompactBoard(input) as TOutput;
         case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;
         case 'update-item': return updateMockItem(input) as TOutput;
-        // --- eforge:region plan-05-roadmap-workstation ---
         case 'get-roadmap-state': return getMockRoadmapState() as TOutput;
         case 'update-roadmap-state': return updateMockRoadmapState(input) as TOutput;
         case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
         case 'get-recommendations': return getMockRecommendationsWithRoadmapRefresh() as TOutput;
-        // --- eforge:endregion plan-05-roadmap-workstation ---
         case 'analyze-all-backlog': return analyzeMockBacklog() as TOutput;
         case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
