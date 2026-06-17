@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "pnpm --filter @eforge-build/client build && vite build",
+    "build": "vite build",
     "test": "vitest run",
     "type-check": "tsc --noEmit"
   },
