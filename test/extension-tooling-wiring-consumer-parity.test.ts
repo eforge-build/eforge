@@ -180,6 +180,7 @@ describe('MCP/Pi eforge_extension parity', () => {
       trustedBy: 'tester',
       source: 'npm:@team/a',
       trust: true,
+      version: '2.0.0',
     } satisfies Omit<EforgeExtensionActionParams, 'action'>;
 
     function rejectedFieldCases(
@@ -199,6 +200,7 @@ describe('MCP/Pi eforge_extension parity', () => {
       { params: { action: 'list', fixture: 'fixture.json' }, message: '"list" does not accept fixture, run, or event' },
       { params: { action: 'list', trustedBy: 'tester' }, message: '"list" does not accept trustedBy' },
       { params: { action: 'list', source: 'npm:@team/a' }, message: '"list" does not accept source or trust' },
+      { params: { action: 'list', version: '2.0.0' }, message: '"list" does not accept version' },
       { params: { action: 'show' }, message: '"name" is required when action is "show"' },
       { params: { action: 'show', name: '' }, message: '"name" is required when action is "show"' },
       { params: { action: 'show', name: 'team/a', path: '.eforge/extensions/a' }, message: '"show" does not accept path, scope, template, or force' },
@@ -386,7 +388,7 @@ describe('MCP/Pi eforge_extension parity', () => {
       { params: { action: 'trust', path: '.eforge/extensions/a', trustedBy: 'tester' }, opts: { cwd: '/repo', body: { path: '.eforge/extensions/a', trustedBy: 'tester' } } },
       { params: { action: 'untrust', name: 'team/a' }, opts: { cwd: '/repo', body: { name: 'team/a' } } },
       { params: { action: 'install', source: 'npm:@team/a', name: 'team/a', scope: 'project', force: true, trust: true, trustedBy: 'tester' }, opts: { cwd: '/repo', body: { source: 'npm:@team/a', scope: 'project', name: 'team/a', force: true, trust: true, trustedBy: 'tester' } } },
-      { params: { action: 'update', name: 'team/a', trust: false, trustedBy: 'tester' }, opts: { cwd: '/repo', body: { name: 'team/a', trust: false, trustedBy: 'tester' } } },
+      { params: { action: 'update', name: 'team/a', trust: false, trustedBy: 'tester', version: '2.0.0' }, opts: { cwd: '/repo', body: { name: 'team/a', trust: false, trustedBy: 'tester', version: '2.0.0' } } },
       { params: { action: 'remove', path: '.eforge/extensions/a', force: true }, opts: { cwd: '/repo', body: { path: '.eforge/extensions/a', force: true } } },
       { params: { action: 'promote', name: 'team/a', force: true, trust: true, trustedBy: 'tester' }, opts: { cwd: '/repo', body: { name: 'team/a', force: true, trust: true, trustedBy: 'tester' } } },
       { params: { action: 'demote', name: 'team/a', force: true }, opts: { cwd: '/repo', body: { name: 'team/a', force: true } } },

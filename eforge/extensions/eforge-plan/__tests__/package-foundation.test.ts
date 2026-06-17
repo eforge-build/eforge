@@ -79,6 +79,27 @@ describe('eforge-plan package foundation', () => {
     expect(lockstep).toContain('eforge/extensions/eforge-plan/package.json');
   });
 
+  it('scopes package type-check inputs away from generated and browser-only assets', async () => {
+    const tsconfig = await readJson(join(extensionRoot, 'tsconfig.json'));
+    expect(tsconfig.compilerOptions).toMatchObject({ noEmit: true, declaration: false });
+    expect(tsconfig.include).toEqual(expect.arrayContaining(['*.ts', 'tsup.config.ts']));
+    expect(tsconfig.exclude).toEqual(expect.arrayContaining(['dist', 'workstation-assets', 'workstation-src', '__tests__']));
+  });
+
+  it('records the new package importer and public workspace dependencies in the lockfile', async () => {
+    const lockfile = await readFile(join(repoRoot, 'pnpm-lock.yaml'), 'utf-8');
+    const importerStart = lockfile.indexOf('  eforge/extensions/eforge-plan:');
+    const nextImporterStart = lockfile.indexOf('\n\n  ', importerStart + 1);
+    const importer = lockfile.slice(importerStart, nextImporterStart);
+    expect(importerStart).toBeGreaterThanOrEqual(0);
+    expect(importer).toContain("'@eforge-build/client':");
+    expect(importer).toContain("'@eforge-build/extension-sdk':");
+    expect(importer).toContain("'@eforge-build/input':");
+    expect(importer).toContain('yaml:');
+    expect(importer).toContain("'@eforge-build/eforge-plan-workstation':");
+    expect(importer).toContain('tsup:');
+  });
+
   it('builds stable runtime entrypoints with bundled public dependencies', async () => {
     const source = await readFile(join(extensionRoot, 'tsup.config.ts'), 'utf-8');
     expect(source).toContain("index: 'index.ts'");

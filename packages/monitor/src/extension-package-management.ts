@@ -661,6 +661,24 @@ function assertRegistryNpmPackageSpecForVersionOverride(spec: string): void {
   }
 }
 
+function assertRegistryNpmVersionSpecifierForOverride(version: string): void {
+  if (
+    version.length === 0 ||
+    version.includes('\0') ||
+    version.includes(':') ||
+    version.includes('/') ||
+    version.includes('\\') ||
+    version.endsWith('.tgz') ||
+    version.endsWith('.tar.gz') ||
+    isGitLikeInstallSource(version)
+  ) {
+    throw new ExtensionPackageError(
+      'Version overrides must be registry npm versions, ranges, or dist-tags; file, path, URL, tarball, alias, and git specifiers are not supported.',
+      400,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Git add (best-effort)
 // ---------------------------------------------------------------------------
@@ -886,9 +904,17 @@ export async function updateExtensionPackage(
 
   // Determine effective source spec (apply version override for registry npm sources)
   let effectiveSpec = sidecar.sourceSpec;
-  if (body.version !== undefined && sidecar.sourceKind === 'npm') {
+  if (body.version !== undefined) {
+    if (sidecar.sourceKind !== 'npm') {
+      throw new ExtensionPackageError(
+        'Version overrides are supported only for registry npm package specs. Reinstall path, tarball, URL, or git extensions from the desired source instead.',
+        400,
+      );
+    }
     assertRegistryNpmPackageSpecForVersionOverride(sidecar.sourceSpec);
+    assertRegistryNpmVersionSpecifierForOverride(body.version);
     effectiveSpec = updateNpmSpecVersion(sidecar.sourceSpec, body.version);
+    assertRegistryNpmPackageSpecForVersionOverride(effectiveSpec);
   }
 
   let tmpRoot: string | undefined;
@@ -914,11 +940,10 @@ export async function updateExtensionPackage(
       pkgDir = acquired.pkgDir;
     }
 
-    // Build the replacement and sidecar before swapping it into place so a failed copy does not delete the existing install.
     await replaceWithPackagedDirectory(pkgDir, targetPath, {
       sourceKind: sidecar.sourceKind === 'npm' ? 'npm'
         : sidecar.sourceKind === 'url' ? 'url' : 'path',
-      sourceSpec: sidecar.sourceSpec,
+      sourceSpec: effectiveSpec,
       ...(resolvedVersion !== undefined && { resolvedVersion }),
       ...(integrity !== undefined && { integrity }),
       targetScope: sidecar.targetScope,
