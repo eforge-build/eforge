@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanRevisionAnnotation } from '@/types';
-import { buildBlockAnnotationTarget, buildQuoteContext, buildSectionAnnotationTarget, buildSelectionAnnotationTarget, buildWholePlanAnnotationTarget, MAX_CAPTURED_TEXT, MAX_CONTEXT_TEXT } from './plan-revision-annotation-targets';
+import { buildBlockAnnotationTarget, buildQuoteContext, buildSectionAnnotationTarget, buildSelectionAnnotationTarget, buildWholePlanAnnotationTarget, MAX_CAPTURED_TEXT, MAX_CONTEXT_TEXT, MAX_STEERING_TEXT } from './plan-revision-annotation-targets';
 import { annotationSubmitDisabledReason, openAnnotations, syncSelectedAnnotationIds } from './plan-revision-annotation-view-model';
 
 function keys(value: unknown): string[] { return Object.keys(value as Record<string, unknown>); }
@@ -74,6 +74,7 @@ describe('plan revision annotation view model', () => {
   it('reports disabled reasons for sticky annotation revision submission', () => {
     expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: true, selectedCount: 1, includeOpenAnnotations: false, steering: '' })).toMatch(/already running/);
     expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, selectedCount: 0, includeOpenAnnotations: false, steering: '' })).toMatch(/Select annotations/);
+    expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, selectedCount: 1, includeOpenAnnotations: false, steering: 'x'.repeat(MAX_STEERING_TEXT + 1) })).toMatch(/too long/);
     expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, selectedCount: 0, includeOpenAnnotations: true, steering: '' })).toBeNull();
   });
 });

@@ -14,7 +14,7 @@ interface Props {
   onCreateAnnotation: (target: PlanRevisionAnnotationTarget, body?: string) => Promise<PlanRevisionSessionProjection | null>;
 }
 
-export function AnnotatablePlanSection({ dimension, content, disabled, onCreateAnnotation }: Props) {
+export function AnnotatablePlanSection({ plan: _plan, dimension, content, disabled, onCreateAnnotation }: Props) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedTarget, setSelectedTarget] = React.useState<PlanRevisionAnnotationTarget | null>(null);
   const [focusedBlock, setFocusedBlock] = React.useState<HTMLElement | null>(null);
@@ -76,7 +76,7 @@ export function AnnotatablePlanSection({ dimension, content, disabled, onCreateA
           <Button size="sm" variant="outline" disabled={disabled || !selectedTarget} onMouseDown={(event) => event.preventDefault()} onClick={() => void create(selectedTarget ?? (rootRef.current ? buildSelectionAnnotationTarget(window.getSelection(), rootRef.current, dimension, `${title} selection`) : null))}>
             <MessageSquarePlus className="h-4 w-4" /> Annotate selection in {title}
           </Button>
-          <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0} onClick={() => void create(currentBlockTarget())}>
+          <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0 || !focusedBlock} onClick={() => void create(currentBlockTarget())}>
             Annotate focused block in {title}
           </Button>
           <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0} onClick={() => void create(buildSectionAnnotationTarget(dimension, title, content))}>

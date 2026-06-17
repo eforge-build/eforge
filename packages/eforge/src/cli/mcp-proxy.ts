@@ -478,11 +478,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       trustedBy: z.string().min(1).optional().describe('Optional annotation identifying who is trusting the extension ("trust", "install", "update", and "promote" only).'),
       source: z.string().min(1).optional().describe('Package source for "install": npm package name, local path, or local tarball path.'),
       trust: z.boolean().optional().describe('Trust the extension after the operation ("install", "update", and "promote" only).'),
+      version: z.string().min(1).optional().describe('Version specifier or dist-tag for npm-installed extensions ("update" only).'),
     },
-    handler: async ({ action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust, version }, { cwd: toolCwd }) => {
       const result = await dispatchEforgeExtensionAction({
         cwd: toolCwd,
-        params: { action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust },
+        params: { action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust, version },
         helpers: mcpExtensionActionHelpers,
       });
       if (result === null) throw new Error('Daemon not running');

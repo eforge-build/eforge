@@ -126,6 +126,35 @@ describe('usePlanRevisionSession', () => {
     expect(invokeAction).toHaveBeenCalledWith('dismiss-plan-revision-annotation', { session: 's', annotationId: 'ann-1' });
   });
 
+  it('trims annotation create notes and omits blank body fields', async () => {
+    const annotated = { ...session, annotations: [annotation] };
+    const invokeAction = vi.fn(async () => annotated);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn() }), { wrapper });
+
+    await act(async () => { await result.current.createAnnotation(annotation.target, '  note  '); });
+    await act(async () => { await result.current.createAnnotation(annotation.target, '   '); });
+
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target, body: 'note' });
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target });
+  });
+
+  it('ignores stale annotation mutation projections for a different target session', async () => {
+    const stale: PlanRevisionSessionProjection = { ...session, threadId: 'stale-thread', targetSession: 'other', annotations: [{ ...annotation, annotationId: 'stale-ann', targetSession: 'other' }], turns: [] };
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'create-plan-revision-annotation' ? stale : session);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.ensureSession(); });
+    expect(result.current.revisionSession?.targetSession).toBe('s');
+
+    await act(async () => { await result.current.createAnnotation(annotation.target); });
+
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target });
+    expect(result.current.revisionSession?.targetSession).toBe('s');
+    expect(result.current.revisionSession?.threadId).toBe('thread');
+    expect(result.current.revisionSession?.annotations).toEqual([]);
+  });
+
   it('submits annotation-driven turn fields and keeps manual prompt payload exact', async () => {
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'start-plan-revision-turn' ? { session } : session);
     setBridge(invokeAction as EforgeBridge['invokeAction']);

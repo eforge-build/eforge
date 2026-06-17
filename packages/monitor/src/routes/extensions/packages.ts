@@ -28,6 +28,7 @@ export function createExtensionPackageRoutes(context: MonitorContext): RouteDefi
 }
 function validateInstall(body: Record<string, unknown>): string | undefined {
   if (typeof body.source !== 'string' || body.source.length === 0) return 'Missing required field: source';
+  if (body.version !== undefined) return 'Unsupported field: version';
   if (body.scope !== undefined && !['local', 'project', 'user'].includes(body.scope as string)) return 'Invalid scope. Supported: local, project, user';
   if (body.name !== undefined && (typeof body.name !== 'string' || !EXTENSION_NAME_RE.test(body.name))) return 'Invalid extension name';
   return validateBooleanField(body, 'force') ?? validateBooleanField(body, 'trust') ?? validateStringField(body, 'trustedBy');

@@ -127,7 +127,7 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(mcpSource).toContain("z.enum(['list', 'show', 'validate', 'test', 'new', 'reload', 'trust', 'untrust', 'install', 'update', 'remove', 'promote', 'demote'])");
     expect(mcpSource).toContain('dispatchEforgeExtensionAction');
     expect(block).toContain('dispatchEforgeExtensionAction');
-    expect(block).toContain('params: { action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust }');
+    expect(block).toContain('params: { action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust, version }');
     expect(block).toContain('helpers: mcpExtensionActionHelpers');
     expect(block).toContain('return result.data');
     expect(block).not.toContain("'/api/");
@@ -149,7 +149,7 @@ describe('MCP/Pi eforge_extension parity', () => {
   });
 
   it('MCP and Pi eforge_extension schemas expose the full shared parameter set', () => {
-    const requiredParams = ['name', 'path', 'fixture', 'run', 'event', 'scope', 'template', 'force', 'trustedBy', 'source', 'trust'];
+    const requiredParams = ['name', 'path', 'fixture', 'run', 'event', 'scope', 'template', 'force', 'trustedBy', 'source', 'trust', 'version'];
     for (const [label, block] of [['MCP', mcpExtensionBlock()], ['Pi', piExtensionBlock()]] as const) {
       for (const param of requiredParams) {
         expect(block, `${label} schema exposes ${param}`).toMatch(new RegExp(`\\b${param}\\s*:`));

@@ -107,7 +107,7 @@ describe('PlanDetailCard annotations', () => {
     await screen.findByRole('button', { name: /Annotate focused block in Scope/ });
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
     const block = await waitFor(() => decoratedBlockFor(/Annotate focused block in Scope/, 'Selected scope words for annotations.'));
-    fireEvent.click(block);
+    fireEvent.focus(block);
     await waitFor(() => expect((screen.getByRole('button', { name: /Annotate focused block in Scope/ }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: /Annotate focused block in Scope/ }));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', expect.objectContaining({ target: expect.objectContaining({ kind: 'block' }) })));
@@ -155,10 +155,10 @@ describe('PlanDetailCard annotations', () => {
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', message: 'revise' }));
   });
 
-  it('disables annotation revision submission when a turn is running', async () => {
-    const running = { ...session, turns: [{ turnId: 'run', taskId: 'task', userMessage: 'm', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: '', task: { taskId: 'task', kind: 'k', status: 'running' as const, createdAt: '', updatedAt: '' } }] };
-    const invokeAction = createBridge(running);
-    renderDetail(invokeAction as EforgeBridge['invokeAction'], running);
+  it.each(['queued', 'running'] as const)('disables annotation revision submission when a turn is %s', async (status) => {
+    const active = { ...session, turns: [{ turnId: status, taskId: 'task', userMessage: 'm', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: '', task: { taskId: 'task', kind: 'k', status, createdAt: '', updatedAt: '' } }] };
+    const invokeAction = createBridge(active);
+    renderDetail(invokeAction as EforgeBridge['invokeAction'], active);
     const button = await screen.findByRole('button', { name: /Revise with AI from annotations/ });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);

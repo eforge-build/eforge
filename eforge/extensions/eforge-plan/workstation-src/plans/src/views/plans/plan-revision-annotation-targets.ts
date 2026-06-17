@@ -48,7 +48,7 @@ export function buildSelectionAnnotationTarget(selection: Selection | null, sect
     : selectedArea.commonAncestorContainer.parentElement ?? selectedArea.commonAncestorContainer.parentNode;
   const selectedText = selection.toString();
   const selectedInsideRoot = owner && sectionRoot.contains(owner);
-  if (!selectedInsideRoot && !rootText(sectionRoot).includes(normalizeAnnotationWhitespace(selectedText))) return null;
+  if (!selectedInsideRoot) return null;
   return target('selection', dimension, label ?? `${titleCase(dimension)} selection`, selectedText, rootText(sectionRoot));
 }
 
