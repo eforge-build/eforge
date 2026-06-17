@@ -1,4 +1,9 @@
+// --- eforge:region extension-package-validation ---
+/** Request validation helpers for extension package management. */
+
 import { ExtensionPackageError } from './extension-package-errors.js';
+
+export { ExtensionPackageError };
 
 const VALID_EXT_NAME_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -44,3 +49,4 @@ export function validateSelector(body: { name?: unknown; path?: unknown }): asse
     assertValidExtensionName(body.name);
   }
 }
+// --- eforge:endregion extension-package-validation ---

@@ -6,6 +6,10 @@ import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { parseWithSchema } from '@eforge-build/client';
 import { userActionError } from './action-errors.js';
 import {
+  MAX_ROADMAP_ASSUMPTIONS,
+  MAX_ROADMAP_ASSUMPTION_LENGTH,
+  MAX_ROADMAP_CONFLICTS,
+  MAX_ROADMAP_CONFLICT_MESSAGE_LENGTH,
   MAX_ROADMAP_CONTEXT_CONTENT_BYTES,
   MAX_ROADMAP_EXCERPT_BYTES,
   MAX_ROADMAP_EXCERPTS,
@@ -90,6 +94,27 @@ export async function updateRoadmapState(cwd: string, input: UpdateRoadmapStateI
 
 export async function buildRoadmapContext(cwd: string, options: RoadmapBuildOptions = {}): Promise<RoadmapContext> {
   const truncation: ProjectionTruncation = { sourceExcerpts: 0, sourceContent: 0 };
+  if (options.includeRoadmap === false) {
+    return finalizeRoadmapContext({
+      schemaVersion: 1,
+      localSteering: {
+        kind: 'local-focus',
+        role: 'local-steering',
+        path: ROADMAP_LOCAL_FOCUS_RELATIVE_PATH,
+        configured: true,
+        editable: true,
+        exists: false,
+        headings: [],
+        excerpts: [],
+        maxContentBytes: MAX_ROADMAP_LOCAL_FOCUS_BYTES,
+      },
+      sharedContextSources: [],
+      discoveredContextSources: [],
+      assumptions: ['Roadmap context omitted because includeRoadmap was false.'],
+      conflicts: [],
+      truncation,
+    });
+  }
   const { config, conflicts } = await readRoadmapConfig(cwd);
   const localSteering = await projectPathSource(cwd, ROADMAP_LOCAL_FOCUS_RELATIVE_PATH, {
     absolutePath: roadmapStoragePaths(cwd).localFocus,
@@ -101,17 +126,6 @@ export async function buildRoadmapContext(cwd: string, options: RoadmapBuildOpti
     truncation,
   });
   appendSourceReadConflict(conflicts, localSteering);
-  if (options.includeRoadmap === false) {
-    return {
-      schemaVersion: 1,
-      localSteering,
-      sharedContextSources: [],
-      discoveredContextSources: [],
-      assumptions: ['Roadmap context omitted because includeRoadmap was false.'],
-      conflicts,
-      truncation,
-    };
-  }
   const enabledSources = collectEnabledConfiguredSources(config, conflicts);
   const sharedContextSources = await Promise.all(enabledSources.map((source) => projectConfiguredSource(cwd, source, truncation, conflicts)));
   const configuredPaths = new Set(enabledSources.map((source) => source.path));
@@ -123,7 +137,7 @@ export async function buildRoadmapContext(cwd: string, options: RoadmapBuildOpti
     'Local focus roadmap is private extension storage and may be edited by eforge-plan actions.',
     'Shared and discovered roadmap sources are read-only context for planning flows.',
   ];
-  return { schemaVersion: 1, localSteering, sharedContextSources, discoveredContextSources, assumptions, conflicts, truncation };
+  return finalizeRoadmapContext({ schemaVersion: 1, localSteering, sharedContextSources, discoveredContextSources, assumptions, conflicts, truncation });
 }
 
 async function readRoadmapConfig(cwd: string): Promise<RoadmapConfigLoad> {
@@ -192,6 +206,17 @@ async function projectConfiguredSource(cwd: string, source: ConfiguredRoadmapSou
   if (!projection.exists) conflicts.push({ code: 'configured-source-missing', message: `Configured roadmap source "${source.path}" does not exist.`, sourceId: source.id, path: source.path });
   appendSourceReadConflict(conflicts, projection);
   return projection;
+}
+
+function finalizeRoadmapContext(context: RoadmapContext): RoadmapContext {
+  return {
+    ...context,
+    assumptions: context.assumptions.slice(0, MAX_ROADMAP_ASSUMPTIONS).map((assumption) => boundString(assumption, MAX_ROADMAP_ASSUMPTION_LENGTH, () => {})),
+    conflicts: context.conflicts.slice(0, MAX_ROADMAP_CONFLICTS).map((conflict) => ({
+      ...conflict,
+      message: boundString(conflict.message, MAX_ROADMAP_CONFLICT_MESSAGE_LENGTH, () => {}),
+    })),
+  };
 }
 
 function appendSourceReadConflict(conflicts: RoadmapConflict[], projection: RoadmapSourceProjection): void {

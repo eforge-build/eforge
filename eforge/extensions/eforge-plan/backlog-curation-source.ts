@@ -1,7 +1,7 @@
 import { blockerRiskProjection, dependencyStateProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
-import { buildRecommendationSourceProjection } from './recommendation-status.js';
+import { buildRecommendationSourceProjection, projectRecommendationSourceForFingerprint, projectRoadmapContextForFingerprint } from './recommendation-status.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
 // --- eforge:region shipped-evidence-context ---
@@ -63,8 +63,8 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
     schemaVersion: 1,
-    recommendationSourceProjection: recommendationProjection,
-    roadmapContext,
+    recommendationSourceProjection: projectRecommendationSourceForFingerprint(recommendationProjection),
+    roadmapContext: projectRoadmapContextForFingerprint(roadmapContext),
     preconditions: {
       items: openItemSnapshots.map(projectPrecondition),
       epics: openEpicSnapshots.map(projectPrecondition),

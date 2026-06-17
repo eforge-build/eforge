@@ -9,6 +9,10 @@ export const MAX_ROADMAP_HEADINGS = 40;
 export const MAX_ROADMAP_HEADING_LENGTH = 200;
 export const MAX_ROADMAP_EXCERPTS = 5;
 export const MAX_ROADMAP_EXCERPT_BYTES = 2_000;
+export const MAX_ROADMAP_CONFLICTS = 40;
+export const MAX_ROADMAP_CONFLICT_MESSAGE_LENGTH = 1_000;
+export const MAX_ROADMAP_ASSUMPTIONS = 10;
+export const MAX_ROADMAP_ASSUMPTION_LENGTH = 500;
 
 export const RoadmapSourceKindSchema = Type.Union([
   Type.Literal('local-focus'),
@@ -54,17 +58,17 @@ export const RoadmapConflictSchema = Type.Object({
     Type.Literal('source-read-error'),
     Type.Literal('invalid-config'),
   ]),
-  message: Type.String(),
-  path: Type.Optional(Type.String()),
-  sourceId: Type.Optional(Type.String()),
+  message: Type.String({ maxLength: MAX_ROADMAP_CONFLICT_MESSAGE_LENGTH }),
+  path: Type.Optional(Type.String({ maxLength: MAX_ROADMAP_SOURCE_PATH_LENGTH })),
+  sourceId: Type.Optional(Type.String({ maxLength: MAX_ROADMAP_SOURCE_LABEL_LENGTH })),
 }, { additionalProperties: false });
 export const RoadmapContextSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   localSteering: RoadmapSourceProjectionSchema,
   sharedContextSources: Type.Array(RoadmapSourceProjectionSchema, { maxItems: MAX_ROADMAP_SHARED_SOURCES }),
   discoveredContextSources: Type.Array(RoadmapSourceProjectionSchema, { maxItems: 1 }),
-  assumptions: Type.Array(Type.String()),
-  conflicts: Type.Array(RoadmapConflictSchema),
+  assumptions: Type.Array(Type.String({ maxLength: MAX_ROADMAP_ASSUMPTION_LENGTH }), { maxItems: MAX_ROADMAP_ASSUMPTIONS }),
+  conflicts: Type.Array(RoadmapConflictSchema, { maxItems: MAX_ROADMAP_CONFLICTS }),
   truncation: Type.Object({ sourceExcerpts: Type.Number(), sourceContent: Type.Number() }, { additionalProperties: false }),
 }, { additionalProperties: false });
 export const GetRoadmapStateInputSchema = Type.Object({

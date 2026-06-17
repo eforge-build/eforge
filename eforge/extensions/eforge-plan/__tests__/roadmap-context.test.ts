@@ -38,6 +38,31 @@ describe('roadmap context backend', () => {
     });
   });
 
+  it('normalizes stored shared-source paths and ignores disabled sources during projection', async () => {
+    await withTempProject(async (cwd) => {
+      await mkdir(join(cwd, 'docs'), { recursive: true });
+      await writeFile(join(cwd, 'docs/roadmap.md'), '# Roadmap\n\nDiscovered because disabled configs are not active context.\n');
+      await writeFile(join(cwd, 'docs/shared.md'), '# Shared\n\nConfigured.\n');
+
+      const state = await updateRoadmapState(cwd, {
+        sharedSources: [
+          { id: 'shared', path: 'docs/../docs/shared.md', label: 'Shared source' },
+          { id: 'disabled-roadmap', path: 'docs/roadmap.md', enabled: false },
+        ],
+      });
+
+      expect(state.config.sharedSources).toEqual([
+        expect.objectContaining({ id: 'shared', path: 'docs/shared.md', label: 'Shared source' }),
+        expect.objectContaining({ id: 'disabled-roadmap', path: 'docs/roadmap.md', enabled: false }),
+      ]);
+      expect(state.context.sharedContextSources.map((source) => source.path)).toEqual(['docs/shared.md']);
+      expect(state.context.discoveredContextSources).toEqual([expect.objectContaining({ path: 'docs/roadmap.md', kind: 'discovered-conventional', configured: false })]);
+      expect(state.context.conflicts).toEqual([]);
+      const stored = JSON.parse(await readFile(join(cwd, '.eforge/storage/extensions/eforge-plan/roadmaps/config.json'), 'utf-8')) as { sharedSources: Array<{ path: string }> };
+      expect(stored.sharedSources.map((source) => source.path)).toEqual(['docs/shared.md', 'docs/roadmap.md']);
+    });
+  });
+
   it('surfaces missing, duplicate, and invalid config conflicts from manually edited config', async () => {
     await withTempProject(async (cwd) => {
       await mkdir(join(cwd, '.eforge/storage/extensions/eforge-plan/roadmaps'), { recursive: true });
