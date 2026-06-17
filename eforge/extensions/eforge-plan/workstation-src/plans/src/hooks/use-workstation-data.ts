@@ -71,7 +71,7 @@ export function useWorkstationData(): WorkstationDataState {
         includeArchive: true,
         offset: pagination.nextOffset,
       });
-      setBoard((current) => mergeCompactLanePage(current, response, recommendations));
+      setBoard((current) => mergeCompactLanePage(current, response, recommendations, { scope: 'board' }));
       setError(null);
     } catch (caught) {
       setError(reason('board page', caught));
@@ -89,7 +89,7 @@ export function useWorkstationData(): WorkstationDataState {
         limit: CLOSED_LANE_LIMIT,
         offset: pagination?.nextOffset ?? 0,
       });
-      setBoard((current) => mergeCompactLanePage(current, response, recommendations));
+      setBoard((current) => mergeCompactLanePage(current, response, recommendations, { scope: 'lane', lane }));
       setError(null);
     } catch (caught) {
       setError(reason(`closed ${lane}`, caught));
