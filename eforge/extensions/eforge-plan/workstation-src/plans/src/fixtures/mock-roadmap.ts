@@ -10,7 +10,7 @@ export function getMockRoadmapState(): RoadmapStateResponse {
   const now = '2026-06-07T00:30:00.000Z';
   return {
     schemaVersion: 1,
-    storagePaths: { localFocus: '.eforge/roadmaps/local-focus.md', config: '.eforge/roadmaps/config.json' },
+    storagePaths: { localFocus: '.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md', config: '.eforge/storage/extensions/eforge-plan/roadmaps/config.json' },
     config: { schemaVersion: 1, sharedSources: [{ id: 'shared-platform', path: 'docs/shared-roadmap.md', label: 'Shared platform roadmap' }] },
     context: {
       schemaVersion: 1,
@@ -58,7 +58,7 @@ function localSource(updatedAt: string) {
   return {
     kind: 'local-focus' as const,
     role: 'local-steering' as const,
-    path: '.eforge/roadmaps/local-focus.md',
+    path: '.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md',
     label: 'Local focus roadmap',
     configured: true,
     editable: true,

@@ -28,10 +28,10 @@ export function validateExtensionPackageTargetBody(
   if (hasName && hasPath) return 'Specify only one of name or path';
   if (hasName && (typeof body.name !== 'string' || !EXTENSION_NAME_RE.test(body.name))) return 'Invalid extension name';
   if (hasPath && (typeof body.path !== 'string' || body.path.length === 0)) return 'Invalid extension path';
-  if (body.force !== undefined && !options.allowForce) return 'Unsupported field: force';
-  if (body.trust !== undefined && !options.allowTrust) return 'Unsupported field: trust';
-  if (body.trustedBy !== undefined && !options.allowTrust) return 'Unsupported field: trustedBy';
-  if (body.version !== undefined && !options.allowVersion) return 'Unsupported field: version';
+  if (!options.allowForce && body.force !== undefined) return 'Unsupported field: force';
+  if (!options.allowTrust && body.trust !== undefined) return 'Unsupported field: trust';
+  if (!options.allowTrust && body.trustedBy !== undefined) return 'Unsupported field: trustedBy';
+  if (!options.allowVersion && body.version !== undefined) return 'Unsupported field: version';
   if (options.allowForce) {
     const forceError = validateBooleanField(body, 'force');
     if (forceError) return forceError;

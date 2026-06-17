@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/toast';
 import { getMockRoadmapState } from '@/fixtures/mock-roadmap';
@@ -24,16 +24,35 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof RoadmapPanel
 
 describe('RoadmapPanel', () => {
   it('renders separate source status sections, metadata, and docs/roadmap.md only in a discovered row', () => {
-    renderPanel();
+    const state = getMockRoadmapState();
+    const projectedLocalFocusPath = 'projected://local-focus-roadmap.md';
+    state.storagePaths.localFocus = projectedLocalFocusPath;
+    state.context.localSteering = { ...state.context.localSteering, path: projectedLocalFocusPath };
+    renderPanel({ state });
 
     expect(screen.getAllByText('Local focus').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Configured shared context').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Discovered context').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('.eforge/roadmaps/local-focus.md').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(projectedLocalFocusPath).length).toBeGreaterThan(0);
     expect(screen.getByText('Shared platform roadmap')).toBeTruthy();
     expect(screen.getByText('docs/shared-roadmap.md')).toBeTruthy();
-    expect(screen.getAllByText('docs/roadmap.md').length).toBeGreaterThan(0);
-    expect(screen.queryByText('docs/roadmap.md', { selector: 'h4,h3' })).toBeNull();
+    const sourceGroups = screen.getByText('Discovered context', { selector: 'h4' }).closest('section')!;
+    const sourceGroupByTitle = (title: string) => {
+      const group = Array.from(sourceGroups.querySelectorAll(':scope > div')).find((candidate) => within(candidate as HTMLElement).queryByText(title, { selector: 'h4' }));
+      expect(group).toBeTruthy();
+      return group as HTMLElement;
+    };
+    const localGroup = sourceGroupByTitle('Local focus');
+    const configuredGroup = sourceGroupByTitle('Configured shared context');
+    const discoveredGroup = sourceGroupByTitle('Discovered context');
+    const discoveredRoadmapRows = within(discoveredGroup).getAllByText('docs/roadmap.md').map((element) => element.closest('article'));
+    expect(new Set(discoveredRoadmapRows).size).toBe(1);
+    const discoveredRoadmapRow = discoveredRoadmapRows[0]!;
+    expect(within(discoveredRoadmapRow).getAllByText('docs/roadmap.md').length).toBeGreaterThan(0);
+    expect(within(discoveredRoadmapRow).getByText('discovered')).toBeTruthy();
+    expect(within(discoveredGroup).queryByText('docs/roadmap.md', { selector: 'h4,h3' })).toBeNull();
+    expect(within(localGroup).queryByText('docs/roadmap.md')).toBeNull();
+    expect(within(configuredGroup).queryByText('docs/roadmap.md')).toBeNull();
     expect(screen.getByText(/Optional configured roadmap is missing/i)).toBeTruthy();
     expect(screen.getByText(/Local focus is private extension storage/i)).toBeTruthy();
     expect(screen.getByText(/Truncation: 0 source content fields and 1 source excerpts/i)).toBeTruthy();
@@ -105,6 +124,41 @@ describe('RoadmapPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }));
 
     await waitFor(() => expect(onRefreshRecommendations).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps recommendation refresh disabled while a local focus save is in flight', async () => {
+    const state = getMockRoadmapState();
+    let resolveSave!: (value: RoadmapStateResponse) => void;
+    const onSaveLocalFocus = vi.fn(() => new Promise<RoadmapStateResponse>((resolve) => { resolveSave = resolve; }));
+    const onRefreshRecommendations = vi.fn(async () => ({ task: mockActiveRecommendationRefreshTask, entry: { taskId: mockActiveRecommendationRefreshTask.taskId, originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: mockActiveRecommendationRefreshTask.createdAt }, sourceFingerprint: 'fingerprint' }));
+    renderPanel({ state, onSaveLocalFocus, onRefreshRecommendations });
+
+    fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: '# Local focus\n\nSaving.\n' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save local focus/i }));
+
+    await waitFor(() => expect(onSaveLocalFocus).toHaveBeenCalledTimes(1));
+    expect((screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }));
+    expect(onRefreshRecommendations).not.toHaveBeenCalled();
+
+    resolveSave(state);
+  });
+
+  it('surfaces source read errors in source rows without treating them as editable shared files', () => {
+    const state = getMockRoadmapState();
+    state.context.sharedContextSources = [{
+      ...state.context.sharedContextSources[0]!,
+      exists: true,
+      readError: 'Failed to read roadmap source "docs/shared-roadmap.md": permission denied',
+      headings: [],
+      excerpts: [],
+    }];
+
+    renderPanel({ state });
+
+    expect(screen.getByText('read error')).toBeTruthy();
+    expect(screen.getByText(/permission denied/i)).toBeTruthy();
+    expect(screen.getAllByText('read-only').length).toBeGreaterThan(0);
   });
 
   it('disables recommendation refresh while an active task is queued or running and displays progress', () => {

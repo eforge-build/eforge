@@ -220,15 +220,27 @@ describe('extension tooling daemon routes: errors', () => {
     await setupProject(tmpDir);
     const srv = await start(tmpDir);
 
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionInstall, {}, { source: './pkg', version: '1.2.3' })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionUpdate, {}, { name: 'pkg', force: true })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionRemove, {}, { name: 'pkg', version: '1.2.3' })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionRemove, {}, { name: 'pkg', trust: true })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionRemove, {}, { name: 'pkg', trustedBy: 'tester' })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionPromote, {}, { name: 'pkg', version: '1.2.3' })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionDemote, {}, { name: 'pkg', version: '1.2.3' })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionDemote, {}, { name: 'pkg', trust: true })).resolves.toBe(400);
-    await expect(postTrustRaw(srv.port, API_ROUTES.extensionDemote, {}, { name: 'pkg', trustedBy: 'tester' })).resolves.toBe(400);
+    const rejectedCases: Array<{ route: string; body: Record<string, unknown> }> = [
+      { route: API_ROUTES.extensionInstall, body: { source: './pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionInstall, body: { source: './pkg', path: './pkg' } },
+      { route: API_ROUTES.extensionUpdate, body: { name: 'pkg', force: true } },
+      { route: API_ROUTES.extensionRemove, body: { name: 'pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionRemove, body: { name: 'pkg', trust: true } },
+      { route: API_ROUTES.extensionRemove, body: { name: 'pkg', trustedBy: 'tester' } },
+      { route: API_ROUTES.extensionPromote, body: { name: 'pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionDemote, body: { name: 'pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionDemote, body: { name: 'pkg', trust: true } },
+      { route: API_ROUTES.extensionDemote, body: { name: 'pkg', trustedBy: 'tester' } },
+    ];
+
+    for (const { route, body } of rejectedCases) {
+      const res = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, `${route} should reject ${JSON.stringify(body)}`).toBe(400);
+    }
   });
 
   it('POST extensionInstall rejects an existing target without force:true and replaces with force:true', async () => {

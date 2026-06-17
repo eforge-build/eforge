@@ -89,7 +89,9 @@ describe('eforge-plan planning workstation assets', () => {
     }
     expect(source).not.toMatch(/fetch\s*\(/);
     expect(source).not.toMatch(/XMLHttpRequest/);
-    expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
+    // Roadmap workstation fixtures intentionally include projected extension
+    // storage paths so the UI can render the backend-provided local focus path.
+    expect(source).toContain('.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md');
   });
 
   it('invokes durable planning task workflow actions through the shared bridge hook', async () => {
@@ -266,6 +268,8 @@ describe('eforge-plan planning workstation assets', () => {
     for (const source of [backlogPanel, evidencePanel, detail, bridge, asset]) {
       expect(source).not.toMatch(/fetch\s*\(/);
       expect(source).not.toMatch(/XMLHttpRequest/);
+    }
+    for (const source of [backlogPanel, evidencePanel, detail, bridge]) {
       expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
     }
   });
