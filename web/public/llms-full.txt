@@ -1672,14 +1672,20 @@ const listPlanningArtifacts = defineExtensionAction({
   id: "list-planning-artifacts",
   title: "List planning artifacts",
   inputSchema: Type.Object({
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
-    offset: Type.Optional(Type.Integer({ minimum: 0 })),
-    fields: Type.Optional(Type.Array(Type.String())),
+    includeSubmitted: Type.Optional(Type.Boolean()),
+    includeBoard: Type.Optional(Type.Boolean()),
+    includeArchive: Type.Optional(Type.Boolean()),
+    epic: Type.Optional(Type.String()),
   }),
-  outputSchema: Type.Object({ artifacts: Type.Array(Type.Unknown()) }),
+  outputSchema: Type.Object({
+    artifacts: Type.Array(Type.Unknown()),
+    plans: Type.Array(Type.Unknown()),
+    planSets: Type.Array(Type.Unknown()),
+    board: Type.Optional(Type.Unknown()),
+  }),
   outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ["local-read"],
-  handler: () => ({ artifacts: [] }),
+  handler: () => ({ artifacts: [], plans: [], planSets: [] }),
 });
 
 eforge.registerAction(listPlanningArtifacts);
