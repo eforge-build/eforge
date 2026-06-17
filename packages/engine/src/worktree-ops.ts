@@ -521,6 +521,7 @@ export async function editPullRequest(
   cwd: string,
   selector: string,
   metadata: PullRequestMetadata,
+  options: { env?: NodeJS.ProcessEnv } = {},
 ): Promise<void> {
   const tempDir = await mkdtemp(join(tmpdir(), 'eforge-gh-body-'));
   try {
@@ -529,7 +530,7 @@ export async function editPullRequest(
     await exec(
       'gh',
       ['pr', 'edit', selector, '--title', metadata.title, '--body-file', bodyFile],
-      { cwd },
+      { cwd, ...(options.env ? { env: options.env } : {}) },
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -579,8 +580,8 @@ export async function getExistingPullRequestUrl(
  * Non-fatal by design: callers should catch errors and emit a
  * `landing:auto-merge:skipped` event rather than failing the build.
  */
-export async function enablePullRequestAutoMerge(cwd: string, selector: string): Promise<void> {
-  await exec('gh', ['pr', 'merge', selector, '--auto', '--merge'], { cwd });
+export async function enablePullRequestAutoMerge(cwd: string, selector: string, options: { env?: NodeJS.ProcessEnv } = {}): Promise<void> {
+  await exec('gh', ['pr', 'merge', selector, '--auto', '--merge'], { cwd, ...(options.env ? { env: options.env } : {}) });
 }
 
 

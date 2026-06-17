@@ -43,9 +43,13 @@ function target(kind: PlanRevisionAnnotationTarget['kind'], dimension: string | 
 export function buildSelectionAnnotationTarget(selection: Selection | null, sectionRoot: HTMLElement, dimension: string, label?: string): PlanRevisionAnnotationTarget | null {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
   const selectedArea = selection.getRangeAt(0);
-  const owner = selectedArea.commonAncestorContainer.nodeType === Node.ELEMENT_NODE ? selectedArea.commonAncestorContainer : selectedArea.commonAncestorContainer.parentElement;
-  if (!owner || !sectionRoot.contains(owner)) return null;
-  return target('selection', dimension, label ?? `${titleCase(dimension)} selection`, selection.toString(), rootText(sectionRoot));
+  const owner = selectedArea.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? selectedArea.commonAncestorContainer
+    : selectedArea.commonAncestorContainer.parentElement ?? selectedArea.commonAncestorContainer.parentNode;
+  const selectedText = selection.toString();
+  const selectedInsideRoot = owner && sectionRoot.contains(owner);
+  if (!selectedInsideRoot && !rootText(sectionRoot).includes(normalizeAnnotationWhitespace(selectedText))) return null;
+  return target('selection', dimension, label ?? `${titleCase(dimension)} selection`, selectedText, rootText(sectionRoot));
 }
 
 export function buildBlockAnnotationTarget(blockElement: HTMLElement | null, sectionRoot: HTMLElement, dimension: string, label?: string): PlanRevisionAnnotationTarget | null {
