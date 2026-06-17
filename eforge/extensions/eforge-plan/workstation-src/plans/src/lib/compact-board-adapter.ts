@@ -34,20 +34,27 @@ export function boardFromCompact(response: CompactBoardResponse, recommendations
   };
 }
 
-export function mergeCompactLanePage(board: Board, response: CompactBoardResponse, recommendations?: RecommendationModel | null): Board {
+export type CompactPageMergeScope = { scope: 'board' } | { scope: 'lane'; lane: string };
+
+export function mergeCompactLanePage(board: Board, response: CompactBoardResponse, recommendations?: RecommendationModel | null, mergeScope?: CompactPageMergeScope): Board {
   const page = boardFromCompact(response, recommendations);
+  const selectedLane = mergeScope?.scope === 'lane' ? mergeScope.lane : undefined;
+  const lanePage = selectedLane !== undefined || (mergeScope === undefined && page.lanes.some((lane) => lane.pagination !== undefined));
   const incomingIds = new Set(page.items.map((item) => item.id));
   const mergedItems = [...(board.items ?? []).filter((item) => !incomingIds.has(item.id)), ...page.items];
   const pageLanesById = new Map(page.lanes.map((lane) => [lane.lane, lane]));
   const lanesById = new Map((board.lanes ?? []).map((lane) => [lane.lane, { ...lane, items: mergedItems.filter((item) => item.lane === lane.lane) }]));
   for (const lane of page.lanes) {
-    lanesById.set(lane.lane, { ...lane, items: mergedItems.filter((item) => item.lane === lane.lane) });
+    const existing = lanesById.get(lane.lane);
+    const lanePagination = lane.pagination ?? (selectedLane === lane.lane ? response.pagination : undefined) ?? existing?.pagination;
+    lanesById.set(lane.lane, { ...lane, pagination: lanePagination, items: mergedItems.filter((item) => item.lane === lane.lane) });
   }
   const lanes = [...lanesById.values()].map((lane) => {
     const fresh = pageLanesById.get(lane.lane);
-    return fresh ? { ...lane, count: fresh.count, openCount: fresh.openCount, closedCount: fresh.closedCount, pagination: fresh.pagination } : lane;
+    const freshPagination = fresh?.pagination ?? (selectedLane === lane.lane ? response.pagination : undefined) ?? lane.pagination;
+    return fresh ? { ...lane, count: fresh.count, openCount: fresh.openCount, closedCount: fresh.closedCount, pagination: freshPagination } : lane;
   });
-  return { ...board, items: mergedItems, lanes, counts: response.counts ?? board.counts, pagination: response.pagination ?? board.pagination };
+  return { ...board, items: mergedItems, lanes, counts: response.counts ?? board.counts, pagination: lanePage ? board.pagination : response.pagination ?? board.pagination };
 }
 
 export function mergeCompactItemDetail(summary: BoardItem, response: CompactBoardDetailResponse): BoardItem {

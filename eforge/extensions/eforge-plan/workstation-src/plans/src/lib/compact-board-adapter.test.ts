@@ -36,7 +36,7 @@ describe('compact board adapter', () => {
 
   it('merges closed lane pages and item detail fields', () => {
     const initial = boardFromCompact(getMockCompactBoard({ limit: 10 }), mockRecommendations);
-    const withClosed = mergeCompactLanePage(initial, getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 10 }), mockRecommendations);
+    const withClosed = mergeCompactLanePage(initial, getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 10 }), mockRecommendations, { scope: 'lane', lane: 'done' });
     const closed = withClosed.items.find((item) => item.id === 'legacy-cleanup');
 
     expect(closed).toBeDefined();
@@ -53,7 +53,7 @@ describe('compact board adapter', () => {
     }, mockRecommendations);
     const donePage = getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 1, offset: 0 });
 
-    const merged = mergeCompactLanePage(initial, donePage, mockRecommendations);
+    const merged = mergeCompactLanePage(initial, donePage, mockRecommendations, { scope: 'lane', lane: 'done' });
 
     expect(merged.pagination?.nextOffset).toBe(37);
     expect(merged.lanes.find((lane) => lane.lane === 'done')?.pagination?.nextOffset).toBeUndefined();
@@ -68,10 +68,10 @@ describe('compact board adapter', () => {
       ...donePage,
       pagination: donePagination,
       lanes: donePage.lanes.map((lane) => lane.lane === 'done' ? { ...lane, pagination: donePagination } : lane),
-    }, mockRecommendations);
+    }, mockRecommendations, { scope: 'lane', lane: 'done' });
 
     const globalPage = getMockCompactBoard({ limit: 2, offset: 2 });
-    const merged = mergeCompactLanePage(withDone, globalPage, mockRecommendations);
+    const merged = mergeCompactLanePage(withDone, globalPage, mockRecommendations, { scope: 'board' });
 
     expect(merged.pagination?.offset).toBe(2);
     expect(merged.lanes.find((lane) => lane.lane === 'done')?.pagination?.nextOffset).toBe(1);
