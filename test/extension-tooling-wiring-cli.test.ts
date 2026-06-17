@@ -110,6 +110,22 @@ describe('extension tooling route constants and helpers', () => {
     expect(source).toContain('apiDemoteExtensionIfRunning');
   });
 
+  it('CLI update command forwards --version into the update request body', () => {
+    const program = createProgram(undefined, '0.0.0-test');
+    const extension = program.commands.find((command) => command.name() === 'extension');
+    const update = extension?.commands.find((command) => command.name() === 'update');
+    expect(update?.helpInformation()).toContain('--version <specifier>');
+
+    const source = readRepoFile('packages/eforge/src/cli/index.ts');
+    const updateBlock = source.slice(
+      source.indexOf(".command('update <name>')"),
+      source.indexOf(".command('remove <name>')"),
+    );
+    expect(updateBlock).toContain(".option('--version <specifier>'");
+    expect(updateBlock).toContain('version?: string');
+    expect(updateBlock).toContain('if (options.version !== undefined) body.version = options.version;');
+  });
+
   it('client index exports package-operation helpers and request/response types', async () => {
     const client = await import('@eforge-build/client');
     const source = readRepoFile('packages/client/src/index.ts');

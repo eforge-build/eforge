@@ -164,6 +164,10 @@ eforge extension install acme-build-notifier --scope project --trust --trusted-b
 # Update an installed extension to the latest version
 eforge extension update build-notifier
 
+# Update an npm-installed extension to a version, range, or dist-tag
+eforge extension update build-notifier --version latest
+eforge extension update build-notifier --version 1.2.3
+
 # Remove an installed extension
 eforge extension remove build-notifier
 eforge extension remove build-notifier --force
@@ -171,7 +175,35 @@ eforge extension remove build-notifier --force
 
 Install scope follows the CLI scaffold labels: `local` targets `.eforge/extensions/`, `project` targets `eforge/extensions/`, and `user` targets `~/.config/eforge/extensions/`. The default scope is `local`. Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types.
 
+`eforge extension update <name> --version <specifier>` forwards the specifier to npm-installed extensions only. Use it for npm versions, ranges, or dist-tags. Local package directory and tarball installs update from their recorded sidecar source rather than resolving a registry version specifier.
+
 Non-JSON output prints concrete next steps after install. When the returned entry has `trustState: "untrusted"` or `"changed"`, the CLI prints a trust command (`eforge extension trust <name>`), a validate command, and a reload command. JSON output (`--json`) prints the daemon response directly.
+
+### First-party eforge-plan package
+
+`@eforge-build/eforge-plan` is the first-party installable planning package. It contributes the `eforge-plan` extension name, backlog and session-plan actions, the `eforge://input/eforge-plan/<itemId>` input source, integration commands, deep links, and the planning Console workstation.
+
+```bash
+# Install locally; local installs load without a project/team trust record
+eforge extension install @eforge-build/eforge-plan
+
+# Install for the team and trust the reviewed artifact
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+
+# Validate, trust when needed, and reload after install or update
+eforge extension validate eforge-plan
+eforge extension trust eforge-plan
+eforge extension reload
+
+# Update from npm, optionally pinned to a version or dist-tag
+eforge extension update eforge-plan
+eforge extension update eforge-plan --version latest
+
+# Remove the installed package
+eforge extension remove eforge-plan
+```
+
+The package artifact includes compiled runtime files in `dist/` and the generated planning workstation bundle in `workstation-assets/plans/`. The extension remains unsandboxed arbitrary code: local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading. Updating a project/team install changes the reviewed hash, so re-trust after inspection or update with `--trust`.
 
 ### Promote and demote
 
@@ -298,6 +330,7 @@ eforge extension untrust <nameOrPath>
 eforge extension install <source>
 eforge extension install <source> --scope project --trust
 eforge extension update <name>
+eforge extension update <name> --version <specifier>
 eforge extension remove <name>
 eforge extension promote <name>
 eforge extension demote <name>

@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { lstat, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiTestExtension, apiValidateExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionValidateResponse, type ExtensionTrustResponse, type ExtensionInstallResponse, type ExtensionUpdateResponse, type ExtensionRemoveResponse, type ExtensionPromoteResponse, type ExtensionDemoteResponse } from '@eforge-build/client';
+import { API_ROUTES, DAEMON_API_VERSION, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiTestExtension, apiValidateExtensions, apiTrustExtension, apiUntrustExtension, apiInstallExtension, apiUpdateExtension, apiRemoveExtension, apiPromoteExtension, apiDemoteExtension, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionValidateResponse, type ExtensionTrustResponse, type ExtensionInstallResponse, type ExtensionUpdateResponse, type ExtensionRemoveResponse, type ExtensionPromoteResponse, type ExtensionDemoteResponse } from '@eforge-build/client';
 import { AutoBuildSupervisor } from '@eforge-build/monitor/auto-build-supervisor';
 import { upsertTrustRecord } from '@eforge-build/engine/extensions';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
@@ -257,6 +257,48 @@ describe('extension tooling daemon routes: package management', () => {
       trustedBy: 'update-test',
       trustedHash: trustedUpdate.data.extension.currentHash,
     });
+  });
+
+  it('POST extensionUpdate applies version overrides only to npm sidecar sources', async () => {
+    const source = await readFile('packages/monitor/src/extension-package-management.ts', 'utf-8');
+    const updateBlock = source.slice(
+      source.indexOf('export async function updateExtensionPackage'),
+      source.indexOf('export interface RemoveExtensionResult'),
+    );
+    expect(updateBlock).toContain("assertOptionalString(body.version, 'version')");
+    expect(updateBlock).toContain("if (body.version !== undefined && sidecar.sourceKind === 'npm')");
+    expect(updateBlock).toContain('assertRegistryNpmPackageSpecForVersionOverride(sidecar.sourceSpec)');
+    expect(updateBlock).toContain('effectiveSpec = updateNpmSpecVersion(sidecar.sourceSpec, body.version)');
+    expect(updateBlock).toContain("if (sidecar.sourceKind === 'npm')");
+    expect(updateBlock).toContain('acquireFromNpm(effectiveSpec, cwd)');
+    expect(updateBlock).toContain('acquireFromTarball(sidecar.sourceSpec, cwd)');
+    expect(updateBlock).toContain('acquireFromLocalDir(sidecar.sourceSpec, cwd)');
+  });
+
+  it('POST extensionUpdate rejects version overrides for npm file sidecar sources', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+
+    const pkgDir = resolve(tmpDir, 'file-source-pkg');
+    await mkdir(pkgDir, { recursive: true });
+    await writeFile(resolve(pkgDir, 'package.json'), JSON.stringify({ name: 'file-source-pkg', version: '1.0.0' }), 'utf-8');
+    await writeFile(resolve(pkgDir, 'index.js'), 'export default function extension() {}', 'utf-8');
+
+    const srv = await start(tmpDir);
+    writeLockfile(tmpDir, { pid: process.pid, port: srv.port, startedAt: new Date().toISOString() });
+    await apiInstallExtension({ cwd: tmpDir, body: { source: 'file:./file-source-pkg' } });
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionUpdate}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'file-source-pkg', version: 'latest' }),
+    });
+    expect(res.status).toBe(400);
+    await expect(res.text()).resolves.toContain('Version overrides are supported only for registry npm package specs');
+  });
+
+  it('requires a daemon API version new enough for version-pinned extension updates', () => {
+    expect(DAEMON_API_VERSION).toBeGreaterThanOrEqual(70);
   });
 
   it('POST extensionUpdate returns 409 when the target has no eforge install sidecar', async () => {

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/toast';
 import type { EforgeBridge, PlanDetail, PlanRevisionAnnotation, PlanRevisionSessionProjection } from '@/types';
@@ -24,24 +24,31 @@ function createBridge(projected: PlanRevisionSessionProjection = { ...session, a
   });
 }
 
-function renderedBlockFor(buttonName: RegExp, text: string) {
+function renderedSectionFor(buttonName: RegExp) {
   const button = screen.getByRole('button', { name: buttonName });
   const section = button.closest('section');
   expect(section).toBeTruthy();
-  return within(section as HTMLElement).getByText(text);
+  return section as HTMLElement;
 }
 
 function decoratedBlockFor(buttonName: RegExp, text: string) {
-  const textNode = renderedBlockFor(buttonName, text);
-  const block = textNode.closest<HTMLElement>('[data-plan-annotation-block]');
+  const section = renderedSectionFor(buttonName);
+  const block = Array.from(section.querySelectorAll<HTMLElement>('[data-plan-annotation-block]')).find((element) => element.textContent?.includes(text));
   expect(block).toBeTruthy();
   return block as HTMLElement;
 }
 
-function selectSubstringInside(fullText: string, selectedText: string) {
-  const block = renderedBlockFor(/Annotate selection in Scope/, fullText);
-  const node = block.firstChild!;
-  const start = fullText.indexOf(selectedText);
+function firstTextNode(element: HTMLElement): Text {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const node = walker.nextNode();
+  expect(node).toBeTruthy();
+  return node as Text;
+}
+
+async function selectSubstringInside(fullText: string, selectedText: string) {
+  const block = decoratedBlockFor(/Annotate selection in Scope/, fullText);
+  const node = firstTextNode(block);
+  const start = (node.textContent ?? '').indexOf(selectedText);
   expect(start).toBeGreaterThanOrEqual(0);
   const area = document.createRange();
   area.setStart(node, start);
@@ -49,7 +56,7 @@ function selectSubstringInside(fullText: string, selectedText: string) {
   const selection = window.getSelection()!;
   selection.removeAllRanges();
   selection.addRange(area);
-  fireEvent(document, new Event('selectionchange'));
+  await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
 }
 
 function selectOutsideRenderedSections(text: string) {
@@ -61,8 +68,9 @@ function selectOutsideRenderedSections(text: string) {
   const selection = window.getSelection()!;
   selection.removeAllRanges();
   selection.addRange(area);
-  fireEvent(document, new Event('selectionchange'));
+  document.dispatchEvent(new Event('selectionchange'));
 }
+
 
 describe('PlanDetailCard annotations', () => {
   beforeEach(() => { cleanup(); document.body.innerHTML = ''; delete window.eforge; });
@@ -72,7 +80,7 @@ describe('PlanDetailCard annotations', () => {
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     await screen.findByRole('button', { name: /Annotate selection in Scope/ });
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
-    selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
+    await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
     await waitFor(() => {
       const button = screen.getByRole('button', { name: /Annotate selection in Scope/ }) as HTMLButtonElement;
       expect(button.disabled).toBe(false);

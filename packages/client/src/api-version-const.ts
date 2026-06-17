@@ -25,5 +25,7 @@
  * (v69 is a case 2 bump: extension contribution manifests expose dependency,
  * capability, and availability metadata, and action invocation can return an
  * unavailable failure response.)
+ * (v70 is a case 2 bump: extension update requests can carry npm registry
+ * version specifiers that stale daemons would otherwise ignore.)
  */
-export const DAEMON_API_VERSION = 69; // v69: extension dependency/capability availability metadata and unavailable action invoke failures.
+export const DAEMON_API_VERSION = 70; // v70: extension update version specifiers require daemon support.

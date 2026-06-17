@@ -8,11 +8,54 @@ The extension does not replace session plans, playbooks, or normalized build-sou
 
 Extensions run as project-team code. Install and enable `eforge-plan` only in repositories where you trust the extension source and the team-maintained backlog content.
 
-`eforge-plan` is not a sandbox boundary. Actions can read and write project-local files, and the lifecycle hooks update extension-owned sidecars. Review extension changes with the same care as build tooling, scripts, or other automation that runs in the repository.
+`eforge-plan` is not a sandbox boundary. Actions can read and write project-local files, and the lifecycle hooks update extension-owned sidecars. The Console workstation is served from packaged browser assets whose files are covered by the extension trust hash. Review extension changes with the same care as build tooling, scripts, or other automation that runs in the repository.
+
+Private planning state is stored under `.eforge/storage/extensions/eforge-plan/`. Treat that directory as local/private project metadata: it can include backlog records, recommendation models, roadmap steering, lifecycle traces, revision annotations, and AI task workflow indexes. Do not assume it is safe to publish without review.
+
+## Install and manage
+
+`eforge-plan` is published as the first-party npm package `@eforge-build/eforge-plan`. The package declares `eforge.extension.name: "eforge-plan"` and loads from the compiled runtime entrypoint `./dist/index.js`.
+
+```bash
+# Install from npm into the default local scope (.eforge/extensions/)
+eforge extension install @eforge-build/eforge-plan
+
+# Install from a local package directory or packed tarball after building
+eforge extension install ./eforge/extensions/eforge-plan
+eforge extension install ./eforge/extensions/eforge-plan/eforge-build-eforge-plan-<version>.tgz
+
+# Install into the project/team scope and trust the reviewed artifact
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+```
+
+Scope behavior follows normal extension management rules:
+
+- `local` (default) installs under `.eforge/extensions/` and loads without a project/team trust record.
+- `project` installs under `eforge/extensions/`; each user must inspect and run `eforge extension trust eforge-plan`, or install/update with `--trust`, before it loads.
+- `user` installs under the user eforge config directory and is trusted for that user.
+
+Common lifecycle commands:
+
+```bash
+eforge extension validate eforge-plan
+eforge extension trust eforge-plan
+eforge extension reload
+eforge extension show eforge-plan
+
+eforge extension update eforge-plan
+eforge extension update eforge-plan --version latest
+eforge extension update eforge-plan --version 0.9.0
+
+eforge extension remove eforge-plan
+```
+
+`--version <specifier>` is for npm-installed extensions and may be a version, range, or dist-tag understood by npm. Local directory and tarball installs update from their recorded sidecar source rather than from a registry version specifier. Updating a project/team install changes the reviewed hash; update with `--trust` after inspection or run `eforge extension trust eforge-plan` again before reloading.
+
+The npm artifact contains the compiled runtime in `dist/`, the generated workstation bundle in `workstation-assets/plans/`, `README.md`, `LICENSE`, and package metadata. Source-only workstation files, tests, and development config are not part of the runtime artifact.
 
 ## Enable
 
-After adding or changing the extension, trust and reload it from the repository root:
+After adding, installing, or changing the extension, validate, trust when required, and reload it from the repository root:
 
 ```bash
 eforge extension validate eforge-plan
@@ -221,6 +264,20 @@ eforge://input/eforge-plan/<itemId>
 The adapter compiles the backlog item into ordinary build-source Markdown using the same synthesis helper as promotion. The output includes the item claim, evidence, assumptions or missing-assumption guidance, and acceptance criteria or missing-criteria guidance.
 
 The adapter requires the input transform context to resolve visible eforge-plan backlog records from `ctx.cwd`. If invoked without context, it returns instructional Markdown explaining that `eforge-plan` requires an input-source context rather than reading from `process.cwd()`.
+
+## Annotation revision workflow
+
+Plan revision sessions let users improve existing flat session plans without replacing the underlying planning workflow. Start or resume a session with `start-plan-revision-session`, then capture annotations from selected text, a focused block, a section, or whole-plan content in the Plans tab. Selection annotations store bounded quote context and semantic target metadata so the revision turn can reason about the intended location even if nearby text changes; when exact targeting is not possible, the workstation exposes fallback controls for section-level or whole-plan annotations.
+
+Unresolved annotations remain visible in the plan detail view and can be edited, deleted, manually resolved, or dismissed. Annotation-driven revision turns snapshot the selected annotation IDs, optional open annotations, steering text, plan fingerprint, and relevant section hashes before the daemon-owned planning task starts. That snapshot is the context used for retry/redraft so later annotation edits do not silently change the historical turn.
+
+When a completed revision turn includes valid section patches, the workstation auto-applies every patch through the same adapter-backed section mutation path used by manual edits, refreshes readiness, and resolves only the referenced open annotations from the turn snapshot. Answer-only, mismatched, or invalid-patch turns do not write plan sections and do not auto-resolve annotations. Apply is idempotent, and revision apply never marks a plan ready, hands it off, enqueues a build, or mutates backlog state.
+
+## Roadmap steering workflow
+
+The Roadmap workstation combines private local focus with read-only shared roadmap context. Editable local steering lives at `.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md`; shared-source configuration lives at `.eforge/storage/extensions/eforge-plan/roadmaps/config.json`. Configured shared sources and discovered conventional files such as `docs/roadmap.md` are read as non-canonical context only. `eforge-plan` does not silently rewrite shared roadmap files.
+
+Planner context and recommendation freshness include the private local focus roadmap, configured shared sources, discovered conventional context, assumptions, conflicts, and truncation metadata. Changing local focus or configured roadmap context can make recommendations stale even when backlog items are unchanged. The workstation can save local-focus edits, start or reuse a roadmap-driven `refresh-recommendations` task, and reload derived freshness from the saved roadmap state.
 
 ## Console and host surfaces
 

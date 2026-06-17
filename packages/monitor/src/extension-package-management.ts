@@ -26,8 +26,10 @@ import {
   removeTrustRecord,
   hashExtensionDirectory,
   hashExtensionFile,
+  parsePackageManifest,
   type InstallTargetScope,
 } from '@eforge-build/engine/extensions/index';
+import { isRegistryNpmPackageSpec, updateNpmSpecVersion } from './npm-spec-version.js';
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
@@ -545,7 +547,11 @@ async function handleTrustAfterInstall(
     try {
       const info = await lstat(extensionPath);
       if (info.isDirectory()) {
-        hash = await hashExtensionDirectory(extensionPath);
+        const manifest = await parsePackageManifest(extensionPath);
+        const entrypoint = manifest.ok && manifest.metadata?.eforgeExtension?.entrypoint
+          ? resolve(extensionPath, manifest.metadata.eforgeExtension.entrypoint)
+          : undefined;
+        hash = await hashExtensionDirectory(extensionPath, entrypoint);
       } else {
         hash = await hashExtensionFile(extensionPath);
       }
@@ -643,22 +649,16 @@ async function replaceWithPackagedDirectory(
 }
 
 // ---------------------------------------------------------------------------
-// npm spec version updater
+// npm spec version validation
 // ---------------------------------------------------------------------------
 
-function updateNpmSpecVersion(spec: string, version: string): string {
-  // Handle scoped packages: @scope/name or @scope/name@existing
-  if (spec.startsWith('@')) {
-    const secondAt = spec.indexOf('@', 1);
-    return secondAt >= 0
-      ? `${spec.slice(0, secondAt)}@${version}`
-      : `${spec}@${version}`;
+function assertRegistryNpmPackageSpecForVersionOverride(spec: string): void {
+  if (!isRegistryNpmPackageSpec(spec)) {
+    throw new ExtensionPackageError(
+      `Version overrides are supported only for registry npm package specs. The recorded source "${spec}" cannot be safely rewritten; reinstall from the desired source instead.`,
+      400,
+    );
   }
-  // Regular: name or name@existing
-  const atIdx = spec.indexOf('@');
-  return atIdx >= 0
-    ? `${spec.slice(0, atIdx)}@${version}`
-    : `${spec}@${version}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -884,9 +884,10 @@ export async function updateExtensionPackage(
   const previousVersion = sidecar.resolvedVersion;
   const name = getExtensionName(targetPath);
 
-  // Determine effective source spec (apply version override for npm sources)
+  // Determine effective source spec (apply version override for registry npm sources)
   let effectiveSpec = sidecar.sourceSpec;
   if (body.version !== undefined && sidecar.sourceKind === 'npm') {
+    assertRegistryNpmPackageSpecForVersionOverride(sidecar.sourceSpec);
     effectiveSpec = updateNpmSpecVersion(sidecar.sourceSpec, body.version);
   }
 
