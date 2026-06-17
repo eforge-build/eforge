@@ -34,5 +34,6 @@ describe('App roadmap placement', () => {
     expect(screen.getAllByText('Discovered context').length).toBeGreaterThan(0);
     expect(screen.getByText('Backlog')).toBeTruthy();
     expect(calls.map((call) => call.actionId)).toEqual(expect.arrayContaining(['get-roadmap-state', 'get-recommendations', 'list-board-compact', 'list-planning-artifacts']));
+    expect(calls).toContainEqual({ actionId: 'list-planning-artifacts', input: { includeBoard: false } });
   });
 });

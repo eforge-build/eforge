@@ -41,7 +41,7 @@ export function useWorkstationData(): WorkstationDataState {
     // recommendations) must not blank the board or the artifact list.
     const [boardResult, artifactsResult, recommendationsResult, roadmapResult] = await Promise.allSettled([
       bridge.invokeAction<CompactBoardResponse>('list-board-compact', { limit: INITIAL_BOARD_LIMIT, includeArchive: true }),
-      bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', {}),
+      bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', { includeBoard: false }),
       bridge.invokeAction<GetRecommendationsResponse>('get-recommendations', {}),
       bridge.invokeAction<RoadmapStateResponse>('get-roadmap-state', { includeLocalFocusContent: true }),
     ]);

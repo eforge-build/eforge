@@ -84,7 +84,27 @@ describe('eforge-plan session-plan extension actions', () => {
 
       expect(collectUndefinedPaths(output)).toEqual([]);
       expect((output.artifacts as Array<{ key: string }>).map((artifact) => artifact.key).sort()).toEqual(['plan-set:set-one', 'plan:flat-one']);
+      expect('board' in output).toBe(false);
+      expect(JSON.stringify(output)).not.toContain('Plan it.');
+    });
+  });
+
+  it('returns the legacy rich board only when explicitly requested', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogEpic(cwd, { id: 'epic-one', status: 'active', body: '# Epic One\n' });
+      await writeBacklogEpic(cwd, { id: 'epic-two', status: 'active', body: '# Epic Two\n' });
+      await writeBacklogItem(cwd, { id: 'backlog-one', status: 'planned', epic: 'epic-one', body: '# Backlog One\n\n## Claim\n\nPlan it.\n' });
+      await writeBacklogItem(cwd, { id: 'backlog-two', status: 'planned', epic: 'epic-two', body: '# Backlog Two\n' });
+      await writeBacklogItem(cwd, { id: 'archived-one', status: 'stale', epic: 'epic-one', body: '# Archived One\n' });
+      await writeSessionPlanRaw(cwd, 'flat-one', readyBody());
+
+      const output = await dispatch(cwd, 'list-planning-artifacts', { includeArchive: false, includeBoard: true, epic: 'epic-one' });
+
+      expect(collectUndefinedPaths(output)).toEqual([]);
       expect(output.board).toEqual(expect.any(Object));
+      const board = output.board as { lanes: Array<{ lane: string; items: Array<{ id: string }> }> };
+      expect(board.lanes.map((lane) => lane.lane)).not.toContain('archive');
+      expect(board.lanes.flatMap((lane) => lane.items.map((item) => item.id))).toEqual(['backlog-one']);
     });
   });
 
