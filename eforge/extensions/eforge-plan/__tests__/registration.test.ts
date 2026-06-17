@@ -165,6 +165,11 @@ describe('eforge-plan extension registration', () => {
     });
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
+    const listPlanningArtifactsInput = actions.find((action) => action.id === 'list-planning-artifacts')?.inputSchema as Record<string, unknown>;
+    expect(Object.keys(listPlanningArtifactsInput.properties as Record<string, unknown>).sort()).toEqual(['epic', 'includeArchive', 'includeBoard', 'includeSubmitted']);
+    const listPlanningArtifactsOutput = actions.find((action) => action.id === 'list-planning-artifacts')?.outputSchema as Record<string, unknown>;
+    expect(Object.keys(listPlanningArtifactsOutput.properties as Record<string, unknown>).sort()).toEqual(['artifacts', 'board', 'planSets', 'plans']);
+    expect(listPlanningArtifactsOutput.required).toEqual(['artifacts', 'plans', 'planSets']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationSummary', 'recommendations', 'status']);
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);

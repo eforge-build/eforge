@@ -47,7 +47,7 @@ function adapter() {
 export const listPlanningArtifacts = defineExtensionAction({
   id: 'list-planning-artifacts',
   title: 'List planning artifacts',
-  description: 'List backlog-derived board data, flat session plans, and session plan sets for the planning workstation.',
+  description: 'List flat session plans and session plan sets for the planning workstation, with legacy board data available by explicit opt-in.',
   inputSchema: ListPlanningArtifactsInputSchema,
   outputSchema: ListPlanningArtifactsOutputSchema,
   sideEffects: ['local-read'],
@@ -57,12 +57,13 @@ export const listPlanningArtifacts = defineExtensionAction({
       planning.flat.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
       planning.planSets.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
     ]);
+    const lifecycleBySession = await buildLifecycleBySession(ctx.cwd, plans.map((plan) => plan.session));
+    if (input.includeBoard !== true) return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, lifecycleBySession }));
     try {
       const board = await buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive });
-      const lifecycleBySession = await buildLifecycleBySession(ctx.cwd, plans.map((plan) => plan.session));
       return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board), lifecycleBySession }));
     } catch {
-      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets }));
+      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, lifecycleBySession }));
     }
   },
 });

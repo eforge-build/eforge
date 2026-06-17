@@ -87,7 +87,7 @@ function createMockBridge(): EforgeBridge {
     async invokeAction<TOutput>(actionId: string, input: JsonObject = {}): Promise<TOutput> {
       await new Promise((resolve) => setTimeout(resolve, 120));
       switch (actionId) {
-        case 'list-planning-artifacts': return { artifacts: getMockArtifacts(), board: mockBoard } as TOutput;
+        case 'list-planning-artifacts': return { artifacts: getMockArtifacts(), ...(input.includeBoard === true ? { board: mockBoard } : {}) } as TOutput;
         case 'list-board': return mockBoard as TOutput;
         case 'list-board-compact': return getMockCompactBoard(input) as TOutput;
         case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;

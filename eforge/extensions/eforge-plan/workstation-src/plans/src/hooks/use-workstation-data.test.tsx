@@ -34,8 +34,10 @@ describe('useWorkstationData recommendations mapping', () => {
     await waitFor(() => expect(invokeActionSpy).toHaveBeenCalledWith('get-roadmap-state', { includeLocalFocusContent: true }));
     await waitFor(() => expect(result.current.recommendationStatus?.state).toBe('stale'));
     const compactBoardCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-board-compact');
+    const artifactsCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-planning-artifacts');
     const fullBoardCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-board');
     expect(compactBoardCalls).toEqual([['list-board-compact', { limit: 50, includeArchive: true }]]);
+    expect(artifactsCalls).toEqual([['list-planning-artifacts', { includeBoard: false }]]);
     expect(fullBoardCalls).toEqual([]);
 
     expect(result.current.recommendations?.recommendedNextSequence[0]?.itemId).toBe('recommend-next-work');

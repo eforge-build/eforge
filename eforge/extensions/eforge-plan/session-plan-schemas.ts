@@ -69,6 +69,7 @@ export const PlanningArtifactSchema = Type.Object({
 }, JsonObjectAdditionalProperties);
 export const ListPlanningArtifactsInputSchema = Type.Object({
   includeSubmitted: Type.Optional(Type.Boolean()),
+  includeBoard: Type.Optional(Type.Boolean()),
   includeArchive: Type.Optional(Type.Boolean()),
   epic: Type.Optional(Type.String()),
 });
