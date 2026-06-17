@@ -106,6 +106,39 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(result.current.board.items.filter((item) => item.id === 'legacy-cleanup-two')).toHaveLength(1);
   });
 
+  it('keeps the open-board load-more cursor after loading a closed lane page', async () => {
+    const calls: Array<{ actionId: string; input: unknown }> = [];
+    const initialPage = getMockCompactBoard({ limit: 50 });
+    const donePage = withDonePagination(getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 50, offset: 0 }), true);
+    const bridge = bridgeWithDefaults(async (actionId, input) => {
+      calls.push({ actionId, input: input ?? {} });
+      if (actionId === 'list-board') throw new Error('list-board must not be used');
+      if (actionId === 'list-board-compact') {
+        const request = (input ?? {}) as Record<string, unknown>;
+        if (request.lane === 'done') return donePage;
+        if (request.offset === undefined) return {
+          ...initialPage,
+          pagination: { limit: 50, offset: 0, returned: initialPage.items.length, hasMore: true, nextOffset: 37 },
+        };
+        return getMockCompactBoard(request as Parameters<typeof getMockCompactBoard>[0]);
+      }
+      return undefined;
+    });
+    setBridge(bridge);
+
+    const { useWorkstationData } = await import('./use-workstation-data');
+    const { result } = renderHook(() => useWorkstationData());
+
+    await waitFor(() => expect(result.current.board.pagination?.nextOffset).toBe(37));
+    await act(async () => { await result.current.loadClosedLane('done'); });
+    await act(async () => { await result.current.loadMoreBoard(); });
+
+    expect(calls.filter((call) => call.actionId === 'list-board')).toEqual([]);
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { lane: 'done', includeClosed: true, includeArchive: true, limit: 50, offset: 0 } });
+    expect(calls).toContainEqual({ actionId: 'list-board-compact', input: { limit: 50, includeArchive: true, offset: 37 } });
+    expect(calls).not.toContainEqual({ actionId: 'list-board-compact', input: expect.objectContaining({ lane: 'done', offset: 37 }) });
+  });
+
   it('keeps board and artifacts populated when roadmap loading fails', async () => {
     setBridge(bridgeWithDefaults(async (actionId) => actionId === 'get-roadmap-state' ? Promise.reject(new Error('roadmap unavailable')) : undefined));
 

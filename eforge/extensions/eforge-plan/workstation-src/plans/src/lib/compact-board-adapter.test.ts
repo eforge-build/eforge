@@ -44,4 +44,37 @@ describe('compact board adapter', () => {
     expect(detailed.notes.claim).toContain('Users want');
     expect(detailed.lifecycleLinks?.length).toBeGreaterThan(0);
   });
+
+  it('keeps global open-board pagination when merging a done lane page', () => {
+    const initialResponse = getMockCompactBoard({ limit: 2 });
+    const initial = boardFromCompact({
+      ...initialResponse,
+      pagination: { limit: 2, offset: 0, returned: initialResponse.items.length, hasMore: true, nextOffset: 37 },
+    }, mockRecommendations);
+    const donePage = getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 1, offset: 0 });
+
+    const merged = mergeCompactLanePage(initial, donePage, mockRecommendations);
+
+    expect(merged.pagination?.nextOffset).toBe(37);
+    expect(merged.lanes.find((lane) => lane.lane === 'done')?.pagination?.nextOffset).toBeUndefined();
+    expect(merged.items.filter((item) => item.id === 'legacy-cleanup')).toHaveLength(1);
+  });
+
+  it('preserves closed-lane pagination when merging a later global open page', () => {
+    const initial = boardFromCompact(getMockCompactBoard({ limit: 2 }), mockRecommendations);
+    const donePage = getMockCompactBoard({ lane: 'done', includeClosed: true, limit: 1, offset: 0 });
+    const donePagination = { limit: 1, offset: 0, returned: donePage.items.length, hasMore: true, nextOffset: 1 };
+    const withDone = mergeCompactLanePage(initial, {
+      ...donePage,
+      pagination: donePagination,
+      lanes: donePage.lanes.map((lane) => lane.lane === 'done' ? { ...lane, pagination: donePagination } : lane),
+    }, mockRecommendations);
+
+    const globalPage = getMockCompactBoard({ limit: 2, offset: 2 });
+    const merged = mergeCompactLanePage(withDone, globalPage, mockRecommendations);
+
+    expect(merged.pagination?.offset).toBe(2);
+    expect(merged.lanes.find((lane) => lane.lane === 'done')?.pagination?.nextOffset).toBe(1);
+    expect(merged.items.filter((item) => item.id === 'legacy-cleanup')).toHaveLength(1);
+  });
 });
