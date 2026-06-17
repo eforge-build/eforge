@@ -37,8 +37,8 @@
     "workstation"
   ],
   "scripts": {
-    "build": "pnpm --filter @eforge-build/client build && pnpm run build:workstation && pnpm run build:runtime",
-    "build:runtime": "pnpm --filter @eforge-build/scopes build && pnpm --filter @eforge-build/client build && pnpm --filter @eforge-build/extension-sdk build && pnpm --filter @eforge-build/input build && tsup",
+    "build": "pnpm run build:workstation && pnpm run build:runtime",
+    "build:runtime": "tsup",
     "build:workstation": "pnpm --dir workstation-src/plans build",
     "type-check": "tsc --noEmit"
   },
