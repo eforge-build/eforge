@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, relative, sep } from 'node:path';
-import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { assertSafeBacklogId } from './markdown-store.js';
 import type { TraceSummary } from './backlog-domain.js';
 import { projectTraceLifecycle } from './lifecycle-projection.js';

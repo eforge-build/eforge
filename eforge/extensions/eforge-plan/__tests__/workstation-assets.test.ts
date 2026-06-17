@@ -58,7 +58,7 @@ describe('eforge-plan planning workstation assets', () => {
   it('stays inside extension-owned browser assets without private Console imports', async () => {
     const source = await readFile(ASSET, 'utf-8');
 
-    expect(source).not.toContain('packages/console-ui/src');
+    expect(source).not.toMatch(/packages\/console-ui\/src/);
     expect(source).not.toMatch(/from\s+['"]@\//);
     expect(source).not.toMatch(/import\s+.*['"](?:\.\.\/)+\.\.\//);
   });
@@ -89,7 +89,9 @@ describe('eforge-plan planning workstation assets', () => {
     }
     expect(source).not.toMatch(/fetch\s*\(/);
     expect(source).not.toMatch(/XMLHttpRequest/);
-    expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
+    // Roadmap workstation fixtures intentionally include projected extension
+    // storage paths so the UI can render the backend-provided local focus path.
+    expect(source).toContain('.eforge/storage/extensions/eforge-plan/roadmaps/local-focus.md');
   });
 
   it('invokes durable planning task workflow actions through the shared bridge hook', async () => {
@@ -141,7 +143,9 @@ describe('eforge-plan planning workstation assets', () => {
     expect(hook).not.toContain("'refresh-recommendations'");
     expect(panel).not.toContain('onRefreshRecommendations');
     expect(panel).not.toContain('Refresh recommendations');
-    expect(bridge).not.toContain("case 'refresh-recommendations'");
+    // Roadmap workstation owns the manual refresh action; keep it out of the
+    // recommendation-only/backlog primary surfaces covered by this regression.
+    expect(bridge).toContain("case 'refresh-recommendations'");
     expect(backlogView).not.toContain('refreshRecommendations');
     expect(`${hook}\n${panel}\n${bridge}\n${backlogView}`).not.toMatch(/build-queue/);
   });
@@ -264,6 +268,8 @@ describe('eforge-plan planning workstation assets', () => {
     for (const source of [backlogPanel, evidencePanel, detail, bridge, asset]) {
       expect(source).not.toMatch(/fetch\s*\(/);
       expect(source).not.toMatch(/XMLHttpRequest/);
+    }
+    for (const source of [backlogPanel, evidencePanel, detail, bridge]) {
       expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
     }
   });

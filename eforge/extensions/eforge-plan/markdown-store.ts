@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { createEforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import {
   normalizeBacklogEpic,
   normalizeBacklogItem,

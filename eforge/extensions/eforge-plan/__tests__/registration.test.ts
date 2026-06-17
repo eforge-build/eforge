@@ -3,19 +3,19 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
-import { buildExtensionContributionManifest } from '../../../../packages/engine/src/extensions/manifest.js';
-import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
-import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '../../../../packages/engine/src/extensions/types.js';
-import type { EforgeEvent, EventHookContext } from '../../../../packages/extension-sdk/src/index.js';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { buildExtensionContributionManifest } from '@eforge-build/engine/extensions/manifest.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
+import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
+import type { EforgeEvent, EventHookContext } from '@eforge-build/extension-sdk';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, writeRecommendations } from '../recommendations-store.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
+const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'update-roadmap-state', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-roadmap-state', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session']);
 const NONE_ACTIONS = new Set(['open-planning-entry']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
@@ -59,8 +59,11 @@ function markdownSection(markdown: string, heading: string): string {
 
 describe('eforge-plan extension registration', () => {
   it('declares stable planning capabilities in package metadata', async () => {
-    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8')) as { eforge?: { extension?: { name?: string; entrypoint?: string; capabilities?: Array<{ name: string; version?: string }> } } };
-    expect(pkg.eforge?.extension).toMatchObject({ name: 'eforge-plan', entrypoint: 'index.ts' });
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8')) as { name?: string; private?: boolean; publishConfig?: { access?: string }; eforge?: { extension?: { name?: string; entrypoint?: string; capabilities?: Array<{ name: string; version?: string }> } } };
+    expect(pkg.name).toBe('@eforge-build/eforge-plan');
+    expect(pkg.private).not.toBe(true);
+    expect(pkg.publishConfig).toMatchObject({ access: 'public' });
+    expect(pkg.eforge?.extension).toMatchObject({ name: 'eforge-plan', entrypoint: './dist/index.js' });
     expect(pkg.eforge?.extension?.capabilities).toEqual(expect.arrayContaining([
       { name: 'eforge.plan.planning-workstation', version: '1.0.0' },
       { name: 'eforge.plan.planning-mode-playbook', version: '1.0.0' },
@@ -88,13 +91,17 @@ describe('eforge-plan extension registration', () => {
       'cancel-planning-agent-task',
       'capture-item',
       'check-session-plan-readiness',
+      'create-plan-revision-annotation',
       'create-session-plan',
+      'delete-plan-revision-annotation',
       'delete-session-plan',
+      'dismiss-plan-revision-annotation',
       'get-epic',
       'get-item',
       'get-plan-revision-session',
       'get-planning-agent-task',
       'get-recommendations',
+      'get-roadmap-state',
       'handoff-session-plan',
       'import-legacy-backlog',
       'list-board',
@@ -112,6 +119,7 @@ describe('eforge-plan extension registration', () => {
       'refresh-recommendations',
       'remove-planning-agent-task',
       'render-board-markdown',
+      'resolve-plan-revision-annotation',
       'retry-plan-revision-turn',
       'retry-planning-agent-task',
       'search-items',
@@ -124,6 +132,8 @@ describe('eforge-plan extension registration', () => {
       'start-plan-revision-turn',
       'start-planning-agent-task',
       'update-item',
+      'update-plan-revision-annotation',
+      'update-roadmap-state',
       'update-session-plan-metadata',
       'upsert-epic',
     ]);
@@ -136,7 +146,7 @@ describe('eforge-plan extension registration', () => {
       if (NONE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('none');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
       if (DAEMON_STATE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('daemon-state');
-      if (action.id === 'refresh-recommendations' || action.id === 'import-legacy-backlog' || action.id === 'analyze-all-backlog') expect(action.sideEffects).toContain('local-read');
+      if (action.id === 'refresh-recommendations' || action.id === 'update-roadmap-state' || action.id === 'import-legacy-backlog' || action.id === 'analyze-all-backlog') expect(action.sideEffects).toContain('local-read');
       if (READ_ACTIONS.has(action.id)) {
         expect(action.sideEffects).toContain('local-read');
         expect(action.sideEffects).not.toContain('local-write');
@@ -146,6 +156,8 @@ describe('eforge-plan extension registration', () => {
     expect(Object.fromEntries(actions.map((action) => [action.id, action.outputProfile]).filter(([, profile]) => profile !== undefined))).toMatchObject({
       'list-board': 'debug-rich',
       'render-board-markdown': 'markdown',
+      'get-roadmap-state': 'ui-rich',
+      'update-roadmap-state': 'ui-rich',
       'get-item': 'agent-compact',
       'get-epic': 'agent-paginated',
       'search-items': 'agent-paginated',
@@ -156,6 +168,8 @@ describe('eforge-plan extension registration', () => {
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationSummary', 'recommendations', 'status']);
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);
+    const roadmapOutput = actions.find((action) => action.id === 'get-roadmap-state')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(roadmapOutput)).toMatch(/context|localSteering|sharedContextSources|discoveredContextSources/);
     const refreshOutput = actions.find((action) => action.id === 'refresh-recommendations')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(refreshOutput)).toMatch(/task|entry|sourceFingerprint|recommendation-refresh/);
     const analyzeOutput = actions.find((action) => action.id === 'analyze-all-backlog')?.outputSchema as Record<string, unknown>;
@@ -169,6 +183,8 @@ describe('eforge-plan extension registration', () => {
     expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation/);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
+    const planRevisionOutput = actions.find((action) => action.id === 'get-plan-revision-session')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(planRevisionOutput)).toMatch(/annotations|annotationSnapshot|quoteContext|capturedText/);
     const planningEntryOutput = actions.find((action) => action.id === 'open-planning-entry')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(planningEntryOutput)).toContain('/console/workstations/eforge-plan%3Aplanning-workstation');
   });
@@ -378,10 +394,9 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'open-planning-entry', 'capture-item', 'update-item', 'import-legacy-backlog']) {
+    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'get-roadmap-state', 'update-roadmap-state', 'refresh-recommendations', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'open-planning-entry', 'capture-item', 'update-item', 'import-legacy-backlog']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
-    expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === 'refresh-recommendations')).toBe(false);
 
     expect(state.consoleWorkstations).toHaveLength(1);
     const workstation = state.consoleWorkstations[0]?.value;
@@ -408,6 +423,9 @@ describe('eforge-plan extension registration', () => {
         'apply-planner-result',
         'start-planning-agent-task',
         'analyze-all-backlog',
+        'get-roadmap-state',
+        'update-roadmap-state',
+        'refresh-recommendations',
         'get-planning-agent-task',
         'preview-backlog-curation-task',
         'cancel-planning-agent-task',
@@ -418,6 +436,11 @@ describe('eforge-plan extension registration', () => {
         'start-plan-revision-session',
         'list-plan-revision-sessions',
         'get-plan-revision-session',
+        'create-plan-revision-annotation',
+        'update-plan-revision-annotation',
+        'delete-plan-revision-annotation',
+        'resolve-plan-revision-annotation',
+        'dismiss-plan-revision-annotation',
         'start-plan-revision-turn',
         'retry-plan-revision-turn',
         'cancel-plan-revision-turn',
@@ -429,7 +452,6 @@ describe('eforge-plan extension registration', () => {
     // deep link, but the AI-first workstation no longer allows it in the iframe surface.
     expect(workstation!.allowedActions).not.toContain('list-board');
     expect(workstation!.allowedActions).not.toContain('promote-selection');
-    expect(workstation!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstation!).toBe(false);
     const manifest = buildExtensionContributionManifest(registryFromRecorderState(state));
     expect(manifest.actions.find((entry) => entry.localId === 'open-planning-entry')).toMatchObject({ id: 'eforge-plan:open-planning-entry' });

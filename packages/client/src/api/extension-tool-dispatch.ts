@@ -42,6 +42,7 @@ export interface EforgeExtensionActionParams {
   trustedBy?: string;
   source?: string;
   trust?: boolean;
+  version?: string;
 }
 
 type HelperResult<T> = Promise<{ data: T; port: number } | null> | { data: T; port: number } | null;
@@ -239,6 +240,7 @@ function buildUpdateBody(params: EforgeExtensionActionParams): ExtensionUpdateRe
   const body = addNamePath<ExtensionUpdateRequest>({}, params);
   if (params.trust !== undefined) body.trust = params.trust;
   if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
+  if (params.version !== undefined) body.version = params.version;
   return body;
 }
 
@@ -300,5 +302,6 @@ const ACTION_SPECS: Record<EforgeExtensionAction, ActionSpec> = {
 };
 
 export function dispatchEforgeExtensionAction(ctx: DispatchContext): Promise<DispatchResult> {
+  if (ctx.params.action !== 'update' && ctx.params.version !== undefined) return Promise.reject(new Error(`"${ctx.params.action}" does not accept version`));
   return ACTION_SPECS[ctx.params.action](ctx);
 }

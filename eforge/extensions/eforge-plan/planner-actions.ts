@@ -1,4 +1,4 @@
-import { defineExtensionAction } from '../../../packages/extension-sdk/src/index.js';
+import { defineExtensionAction, type ExtensionAction } from '@eforge-build/extension-sdk';
 import { toJsonSafeObject } from './json-safe.js';
 import { planningAgentTaskActions } from './agent-task-actions.js';
 import { applyPlannerResult, preparePlannerContext } from './planner-orchestration.js';
@@ -12,7 +12,7 @@ import {
 export const preparePlannerContextAction = defineExtensionAction({
   id: 'prepare-planner-context',
   title: 'Prepare eforge-plan planner context',
-  description: 'Return JSON-safe backlog, recommendation, dependency, blocker, epic, and roadmap evidence for AI planning.',
+  description: 'Return JSON-safe backlog, recommendation, dependency, blocker, epic, and roadmap context for AI planning.',
   inputSchema: PreparePlannerContextInputSchema,
   outputSchema: PreparePlannerContextOutputSchema,
   sideEffects: ['local-read'],
@@ -33,4 +33,4 @@ export const applyPlannerResultAction = defineExtensionAction({
   },
 });
 
-export const plannerActions = [preparePlannerContextAction, applyPlannerResultAction, ...planningAgentTaskActions] as const;
+export const plannerActions: readonly ExtensionAction<any, any>[] = [preparePlannerContextAction, applyPlannerResultAction, ...planningAgentTaskActions];

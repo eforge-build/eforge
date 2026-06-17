@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { parseWithSchema } from '@eforge-build/client';
-import { createEforgeProjectPaths, type EforgeProjectPaths } from '../../../packages/extension-sdk/src/index.js';
+import { createEforgeProjectPaths, type EforgeProjectPaths } from '@eforge-build/extension-sdk';
 import {
   BacklogRecommendationModelSchema,
   type BacklogRecommendationModel,

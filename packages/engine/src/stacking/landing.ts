@@ -113,12 +113,13 @@ async function discoverPrUrlViaGh(
   cwd: string,
   branch: string,
   isValidPrUrl: (url: string) => boolean,
+  commandEnv?: NodeJS.ProcessEnv,
 ): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync(
       'gh',
       ['pr', 'view', branch, '--json', 'url', '-q', '.url'],
-      { cwd },
+      { cwd, ...(commandEnv ? { env: commandEnv } : {}) },
     );
     const url = stdout.trim();
     return url && isValidPrUrl(url) ? url : undefined;
@@ -199,6 +200,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   const { prAutoMergePolicy = 'ask', landingAutoMerge } = opts;
   const { metadata } = opts;
   const { metadataFactory } = opts;
+  const commandEnv = { ...process.env };
   const { prdId, stackId, branch, baseBranch, provider: providerName } = stackContext;
   // Use provider-level helpers for redaction, PR URL parsing, and validation
   // to avoid direct git-spice imports in orchestration code.
@@ -445,7 +447,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   // Step 5: Discover PR URL — parse from submit output, then gh fallback
   const prUrl =
     provider.parsePrUrl(submitResult.stdout) ??
-    (await discoverPrUrlViaGh(mergeWorktreePath, branch, provider.isValidPrUrl.bind(provider)));
+    (await discoverPrUrlViaGh(mergeWorktreePath, branch, provider.isValidPrUrl.bind(provider), commandEnv));
 
   // Resolve metadata: prefer lazy factory (called after cleanup) over static metadata.
   let resolvedMetadata: PullRequestMetadata | undefined = metadata;
@@ -459,7 +461,7 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
   // Step 5a: Apply deterministic PR metadata via gh pr edit (non-fatal).
   if (prUrl !== undefined && resolvedMetadata !== undefined) {
     try {
-      await editPullRequest(mergeWorktreePath, prUrl, resolvedMetadata);
+      await editPullRequest(mergeWorktreePath, prUrl, resolvedMetadata, { env: commandEnv });
     } catch (editErr) {
       yield {
         timestamp: ts(),
@@ -501,5 +503,6 @@ export async function* executeStackLanding(opts: StackLandingOptions): AsyncGene
     prAutoMergePolicy,
     landingAutoMerge,
     timestamp: ts,
+    commandEnv,
   });
 }

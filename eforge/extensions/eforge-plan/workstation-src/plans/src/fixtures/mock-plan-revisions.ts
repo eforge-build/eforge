@@ -1,4 +1,4 @@
-import type { JsonObject, PlanData, PlanRevisionApplyOutput, PlanRevisionSessionProjection, PlanRevisionTurnProjection, PlanningAgentTaskRecord, Readiness } from '@/types';
+import type { JsonObject, PlanData, PlanRevisionAnnotation, PlanRevisionAnnotationTarget, PlanRevisionApplyOutput, PlanRevisionSessionProjection, PlanRevisionTurnProjection, PlanningAgentTaskRecord, Readiness } from '@/types';
 import { mockMutationResult } from './mock-data';
 
 const HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -17,6 +17,7 @@ const basePlan: PlanData = {
   },
 };
 const baseReadiness: Readiness = { ready: false, missingDimensions: [], coveredDimensions: ['scope', 'acceptance-criteria'], skippedDimensions: [] };
+const baseScopeContent = basePlan.sections?.scope ?? '';
 
 function completedTask(taskId: string, resultPatch: Partial<NonNullable<PlanningAgentTaskRecord['result']>>): PlanningAgentTaskRecord {
   return { taskId, kind: TASK_KIND, status: 'completed', createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:00:05.000Z', startedAt: '2026-06-07T00:00:01.000Z', completedAt: '2026-06-07T00:00:05.000Z', result: { summary: 'Revision complete.', assumptionsOpenQuestions: [], ...resultPatch } };
@@ -34,12 +35,21 @@ const appliedTurn = turn({ ...patchTurn, turnId: 'turn-applied', taskId: 'task-r
 
 const sessions = new Map<string, PlanRevisionSessionProjection>();
 
+function mockAnnotation(session: string): PlanRevisionAnnotation {
+  return { annotationId: 'ann-import-scope', targetSession: session, body: 'Clarify no-write behavior.', target: { kind: 'section', dimension: 'scope', label: 'Scope', capturedText: baseScopeContent, quoteContext: { exact: baseScopeContent } }, createdAt: '2026-06-07T00:00:30.000Z', updatedAt: '2026-06-07T00:00:30.000Z' };
+}
+
 function seed(session: string): PlanRevisionSessionProjection {
   const existing = sessions.get(session);
   if (existing) return existing;
-  const created: PlanRevisionSessionProjection = { threadId: `thread-${session}`, targetSession: session, createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:06:00.000Z', path: `.eforge/session-plans/${session}.md`, plan: basePlan, readiness: baseReadiness, turns: [appliedTurn, failedTurn, needsInputTurn, patchTurn, answerTurn] };
+  const created: PlanRevisionSessionProjection = { threadId: `thread-${session}`, targetSession: session, createdAt: '2026-06-07T00:00:00.000Z', updatedAt: '2026-06-07T00:06:00.000Z', path: `.eforge/session-plans/${session}.md`, plan: basePlan, readiness: baseReadiness, annotations: [mockAnnotation(session)], turns: [appliedTurn, failedTurn, needsInputTurn, patchTurn, answerTurn] };
   sessions.set(session, created);
   return created;
+}
+
+function updateSession(session: PlanRevisionSessionProjection): PlanRevisionSessionProjection {
+  session.updatedAt = new Date().toISOString();
+  return session;
 }
 
 export function startOrResumeMockPlanRevisionSession(input: JsonObject): PlanRevisionSessionProjection { return seed(String(input.session ?? TARGET_SESSION)); }
@@ -52,7 +62,13 @@ export function getMockPlanRevisionSession(input: JsonObject): PlanRevisionSessi
 export function startMockPlanRevisionTurn(input: JsonObject) {
   const session = seed(String(input.session ?? TARGET_SESSION));
   const now = new Date().toISOString();
-  const newTurn = turn({ turnId: `turn-dynamic-${session.turns.length}`, taskId: `task-dynamic-${session.turns.length}`, userMessage: String(input.message ?? ''), createdAt: now, task: completedTask(`task-dynamic-${session.turns.length}`, { planRevisionTurn: { schemaVersion: 1, targetSession: session.targetSession, assistantMessage: `Mock answer for: ${String(input.message ?? '')}`, basePlanFingerprint: HASH, noPatchReason: 'Mock dynamic answer-only turn.' } }) });
+  const annotationIds = Array.isArray(input.annotationIds) ? input.annotationIds.map(String) : [];
+  const includeOpenAnnotations = input.includeOpenAnnotations === true;
+  const message = String(input.message ?? input.steering ?? (annotationIds.length > 0 || includeOpenAnnotations ? 'Revise from annotations.' : ''));
+  const selected = new Set(annotationIds);
+  const open = (session.annotations ?? []).filter((annotation) => !annotation.resolvedAt && !annotation.dismissedAt);
+  const snapshotAnnotations = open.filter((annotation) => selected.has(annotation.annotationId) || includeOpenAnnotations).map((annotation) => ({ ...annotation, snapshotAt: now, snapshotReason: selected.has(annotation.annotationId) && includeOpenAnnotations ? 'selected-and-open' as const : selected.has(annotation.annotationId) ? 'selected' as const : 'open' as const }));
+  const newTurn = turn({ turnId: `turn-dynamic-${session.turns.length}`, taskId: `task-dynamic-${session.turns.length}`, userMessage: message, createdAt: now, annotationSnapshot: annotationIds.length > 0 || includeOpenAnnotations ? { steering: typeof input.steering === 'string' ? input.steering : undefined, selectedAnnotationIds: annotationIds, openAnnotationIds: open.map((annotation) => annotation.annotationId), includeOpenAnnotations, annotations: snapshotAnnotations } : undefined, task: completedTask(`task-dynamic-${session.turns.length}`, { planRevisionTurn: { schemaVersion: 1, targetSession: session.targetSession, assistantMessage: `Mock answer for: ${message}`, basePlanFingerprint: HASH, noPatchReason: 'Mock dynamic answer-only turn.' } }) });
   session.turns = [newTurn, ...session.turns];
   session.updatedAt = now;
   return { session, task: newTurn.task, turn: newTurn };
@@ -65,14 +81,49 @@ export function retryMockPlanRevisionTurn(input: JsonObject) {
 export function cancelMockPlanRevisionTurn(input: JsonObject): PlanRevisionSessionProjection {
   const session = seed(String(input.session ?? TARGET_SESSION));
   session.turns = session.turns.map((entry) => entry.turnId === input.turnId ? { ...entry, task: entry.task ? { ...entry.task, status: 'cancelled', errorMessage: 'Cancelled in mock bridge.' } : entry.task } : entry);
-  return session;
+  return updateSession(session);
+}
+
+export function createMockPlanRevisionAnnotation(input: JsonObject): PlanRevisionSessionProjection {
+  const session = seed(String(input.session ?? TARGET_SESSION));
+  const now = new Date().toISOString();
+  const annotation: PlanRevisionAnnotation = { annotationId: `ann-${Date.now()}`, targetSession: session.targetSession, body: typeof input.body === 'string' ? input.body : undefined, target: input.target as unknown as PlanRevisionAnnotationTarget, createdAt: now, updatedAt: now };
+  session.annotations = [annotation, ...(session.annotations ?? [])];
+  return updateSession(session);
+}
+
+export function updateMockPlanRevisionAnnotation(input: JsonObject): PlanRevisionSessionProjection {
+  const session = seed(String(input.session ?? TARGET_SESSION));
+  const now = new Date().toISOString();
+  session.annotations = (session.annotations ?? []).map((annotation) => annotation.annotationId === input.annotationId ? { ...annotation, body: typeof input.body === 'string' ? input.body : undefined, updatedAt: now } : annotation);
+  return updateSession(session);
+}
+
+export function deleteMockPlanRevisionAnnotation(input: JsonObject): PlanRevisionSessionProjection {
+  const session = seed(String(input.session ?? TARGET_SESSION));
+  session.annotations = (session.annotations ?? []).filter((annotation) => annotation.annotationId !== input.annotationId);
+  return updateSession(session);
+}
+
+export function resolveMockPlanRevisionAnnotation(input: JsonObject): PlanRevisionSessionProjection {
+  const session = seed(String(input.session ?? TARGET_SESSION));
+  const now = new Date().toISOString();
+  session.annotations = (session.annotations ?? []).map((annotation) => annotation.annotationId === input.annotationId ? { ...annotation, resolvedAt: now, updatedAt: now } : annotation);
+  return updateSession(session);
+}
+
+export function dismissMockPlanRevisionAnnotation(input: JsonObject): PlanRevisionSessionProjection {
+  const session = seed(String(input.session ?? TARGET_SESSION));
+  const now = new Date().toISOString();
+  session.annotations = (session.annotations ?? []).map((annotation) => annotation.annotationId === input.annotationId ? { ...annotation, dismissedAt: now, updatedAt: now } : annotation);
+  return updateSession(session);
 }
 
 export function applyMockPlanRevisionTurn(input: JsonObject): PlanRevisionApplyOutput {
   const session = seed(String(input.session ?? TARGET_SESSION));
   const target = session.turns.find((entry) => entry.turnId === input.turnId || entry.taskId === input.taskId);
   if (!target || target.turnId === 'turn-answer-only' || target.turnId === 'turn-needs-input') return { kind: 'not-applicable', session: session.targetSession, turnId: String(input.turnId ?? ''), message: 'This turn has no section patch.' };
-  const patchDimensions = (target.task?.result?.planRevisionTurn?.proposedPatch?.sections ?? []).map((section) => section.dimension);
+  const patchDimensions = (target.task?.result?.planRevisionTurn?.proposedPatch?.sections ?? []).map((section: { dimension: string }) => section.dimension);
   target.appliedSections = Array.from(new Set([...(target.appliedSections ?? []), ...patchDimensions])).sort();
   target.appliedAt = '2026-06-07T00:08:00.000Z';
   const mutation = mockMutationResult(session.targetSession) as { plan?: PlanData; readiness?: Readiness };

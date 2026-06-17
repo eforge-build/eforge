@@ -1250,12 +1250,14 @@ export function createProgram(abortController?: AbortController, version?: strin
   extension
     .command('update <name>')
     .description('Update an installed extension package to the latest version')
+    .option('--version <specifier>', 'Version specifier or dist-tag for npm-installed extensions')
     .option('--trust', 'Trust the extension after update (project-team scope only)')
     .option('--trusted-by <identity>', 'Optional annotation identifying who is trusting the extension')
     .option('--json', 'Output JSON')
-    .action(async (name: string, options: { trust?: boolean; trustedBy?: string; json?: boolean }) => {
+    .action(async (name: string, options: { version?: string; trust?: boolean; trustedBy?: string; json?: boolean }) => {
       try {
         const body: ExtensionUpdateRequest = { name };
+        if (options.version !== undefined) body.version = options.version;
         if (options.trust !== undefined) body.trust = options.trust;
         if (options.trustedBy !== undefined) body.trustedBy = options.trustedBy;
         const { data }: { data: ExtensionUpdateResponse } = await apiUpdateExtension({ cwd: process.cwd(), body });

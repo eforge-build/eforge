@@ -17,8 +17,8 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^@\/(.*)$/, replacement: resolve(root, 'src/$1') },
-      { find: '@eforge-build/client/browser', replacement: resolve(root, '../../../../../packages/client/src/browser.ts') },
-      { find: '@eforge-build/client', replacement: resolve(root, '../../../../../packages/client/src/index.ts') },
+      { find: '@eforge-build/client/browser', replacement: resolve(root, '../../../../../node_modules/@eforge-build/client/dist/browser.js') },
+      { find: '@eforge-build/client', replacement: resolve(root, '../../../../../node_modules/@eforge-build/client/dist/index.js') },
     ],
   },
 });

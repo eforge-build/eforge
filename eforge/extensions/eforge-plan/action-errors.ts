@@ -1,5 +1,5 @@
-import { ExtensionActionUserError } from '../../../packages/extension-sdk/src/index.js';
-import type { ExtensionJsonValue } from '../../../packages/client/src/index.js';
+import { ExtensionActionUserError } from '@eforge-build/extension-sdk';
+import type { ExtensionJsonValue } from '@eforge-build/client';
 
 interface UserActionErrorOptions {
   path?: string;

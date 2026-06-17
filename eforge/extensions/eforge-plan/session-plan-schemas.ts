@@ -1,4 +1,4 @@
-import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { Type, type Static } from '@eforge-build/extension-sdk';
 import {
   ItemLifecycleProjectionSchema,
   JsonValueSchema,

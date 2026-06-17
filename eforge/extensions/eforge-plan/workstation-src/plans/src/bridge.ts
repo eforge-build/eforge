@@ -7,7 +7,6 @@ import {
   getMockArtifacts,
   getMockCompactBoard,
   getMockCompactItemDetail,
-  getMockRecommendationsResponse,
   listMockPlanningTasks,
   mockBoard,
   mockDetail,
@@ -18,14 +17,20 @@ import {
   startMockPlanningTaskFromInput,
   updateMockItem,
 } from '@/fixtures/mock-data';
+import { getMockRecommendationsWithRoadmapRefresh, getMockRoadmapState, refreshMockRecommendations, updateMockRoadmapState } from '@/fixtures/mock-roadmap';
 import {
   applyMockPlanRevisionTurn,
   cancelMockPlanRevisionTurn,
+  createMockPlanRevisionAnnotation,
+  deleteMockPlanRevisionAnnotation,
+  dismissMockPlanRevisionAnnotation,
   getMockPlanRevisionSession,
   listMockPlanRevisionSessions,
+  resolveMockPlanRevisionAnnotation,
   retryMockPlanRevisionTurn,
   startMockPlanRevisionTurn,
   startOrResumeMockPlanRevisionSession,
+  updateMockPlanRevisionAnnotation,
 } from '@/fixtures/mock-plan-revisions';
 import type { EforgeBridge, JsonObject, PlanData } from '@/types';
 
@@ -87,7 +92,10 @@ function createMockBridge(): EforgeBridge {
         case 'list-board-compact': return getMockCompactBoard(input) as TOutput;
         case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;
         case 'update-item': return updateMockItem(input) as TOutput;
-        case 'get-recommendations': return getMockRecommendationsResponse() as TOutput;
+        case 'get-roadmap-state': return getMockRoadmapState() as TOutput;
+        case 'update-roadmap-state': return updateMockRoadmapState(input) as TOutput;
+        case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
+        case 'get-recommendations': return getMockRecommendationsWithRoadmapRefresh() as TOutput;
         case 'analyze-all-backlog': return analyzeMockBacklog() as TOutput;
         case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
@@ -103,6 +111,11 @@ function createMockBridge(): EforgeBridge {
         case 'start-plan-revision-session': return startOrResumeMockPlanRevisionSession(input) as TOutput;
         case 'list-plan-revision-sessions': return listMockPlanRevisionSessions() as TOutput;
         case 'get-plan-revision-session': return getMockPlanRevisionSession(input) as TOutput;
+        case 'create-plan-revision-annotation': return createMockPlanRevisionAnnotation(input) as TOutput;
+        case 'update-plan-revision-annotation': return updateMockPlanRevisionAnnotation(input) as TOutput;
+        case 'delete-plan-revision-annotation': return deleteMockPlanRevisionAnnotation(input) as TOutput;
+        case 'resolve-plan-revision-annotation': return resolveMockPlanRevisionAnnotation(input) as TOutput;
+        case 'dismiss-plan-revision-annotation': return dismissMockPlanRevisionAnnotation(input) as TOutput;
         case 'start-plan-revision-turn': return startMockPlanRevisionTurn(input) as TOutput;
         case 'retry-plan-revision-turn': return retryMockPlanRevisionTurn(input) as TOutput;
         case 'cancel-plan-revision-turn': return cancelMockPlanRevisionTurn(input) as TOutput;

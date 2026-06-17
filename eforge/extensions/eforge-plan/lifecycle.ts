@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
-import type { EforgeEvent } from '../../../packages/extension-sdk/src/index.js';
+import type { EforgeEvent } from '@eforge-build/extension-sdk';
 import { parseMarkdownRecord, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
 import {
   listTraceSidecars,

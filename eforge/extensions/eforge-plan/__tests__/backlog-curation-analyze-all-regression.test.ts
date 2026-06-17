@@ -45,7 +45,7 @@ describe('analyze-all shipped evidence regression', () => {
       };
 
       await analyzeAllBacklogAction.handler({}, ctx as never);
-      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './backlog-curation-source-provider.ts', exportName: 'buildSource' } } });
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } } });
       const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal });
       const source = JSON.parse(sourceText) as {
         openItems: Array<{ id: string; precondition: Record<string, unknown> }>;

@@ -7,7 +7,8 @@ import { usePlanRevisionSession } from './use-plan-revision-session';
 
 function setBridge(invokeAction: EforgeBridge['invokeAction']) { window.eforge = { invokeAction }; }
 const turn: PlanRevisionTurnProjection = { turnId: 'turn-1', taskId: 'task-1', userMessage: 'msg', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: 'now', task: { taskId: 'task-1', kind: 'k', status: 'completed', createdAt: 'now', updatedAt: 'now' } };
-const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: 'now', updatedAt: 'now', turns: [turn] };
+const annotation = { annotationId: 'ann-1', targetSession: 's', target: { kind: 'selection' as const, dimension: 'scope', capturedText: 'text', quoteContext: { exact: 'text' } }, createdAt: 'now', updatedAt: 'now' };
+const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: 'now', updatedAt: 'now', annotations: [], turns: [turn] };
 const wrapper = ({ children }: { children: React.ReactNode }) => <ToastProvider>{children}</ToastProvider>;
 
 describe('usePlanRevisionSession', () => {
@@ -93,5 +94,74 @@ describe('usePlanRevisionSession', () => {
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', { session: 's', turnId: 'turn-patch' }));
     expect(invokeAction.mock.calls.filter(([id]) => id === 'apply-plan-revision-turn')).toHaveLength(1);
     expect(onApply).toHaveBeenCalledWith({ plan: { session: 's', topic: 't', status: 'planning' }, readiness: { ready: true } });
+  });
+
+  it('silently loads existing sessions with annotations and ignores missing-session errors', async () => {
+    const annotated = { ...session, annotations: [annotation] };
+    const invokeAction = vi.fn(async () => annotated);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn(), autoLoadExisting: true }), { wrapper });
+    await waitFor(() => expect(result.current.revisionSession?.annotations).toHaveLength(1));
+    const missing = vi.fn(async () => { throw new Error('No revision session exists.'); });
+    setBridge(missing as EforgeBridge['invokeAction']);
+    const second = renderHook(() => usePlanRevisionSession({ session: 's2', onApply: vi.fn(), onRefresh: vi.fn(), autoLoadExisting: true }), { wrapper });
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.revisionSession).toBeNull();
+  });
+
+  it('invokes annotation mutation actions with session payloads', async () => {
+    const annotated = { ...session, annotations: [annotation] };
+    const invokeAction = vi.fn(async () => annotated);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.createAnnotation(annotation.target); });
+    await act(async () => { await result.current.updateAnnotation({ annotationId: 'ann-1', body: 'note' }); });
+    await act(async () => { await result.current.deleteAnnotation('ann-1'); });
+    await act(async () => { await result.current.resolveAnnotation('ann-1'); });
+    await act(async () => { await result.current.dismissAnnotation('ann-1'); });
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target });
+    expect(invokeAction).toHaveBeenCalledWith('update-plan-revision-annotation', { session: 's', annotationId: 'ann-1', body: 'note' });
+    expect(invokeAction).toHaveBeenCalledWith('delete-plan-revision-annotation', { session: 's', annotationId: 'ann-1' });
+    expect(invokeAction).toHaveBeenCalledWith('resolve-plan-revision-annotation', { session: 's', annotationId: 'ann-1' });
+    expect(invokeAction).toHaveBeenCalledWith('dismiss-plan-revision-annotation', { session: 's', annotationId: 'ann-1' });
+  });
+
+  it('trims annotation create notes and omits blank body fields', async () => {
+    const annotated = { ...session, annotations: [annotation] };
+    const invokeAction = vi.fn(async () => annotated);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn() }), { wrapper });
+
+    await act(async () => { await result.current.createAnnotation(annotation.target, '  note  '); });
+    await act(async () => { await result.current.createAnnotation(annotation.target, '   '); });
+
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target, body: 'note' });
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target });
+  });
+
+  it('ignores stale annotation mutation projections for a different target session', async () => {
+    const stale: PlanRevisionSessionProjection = { ...session, threadId: 'stale-thread', targetSession: 'other', annotations: [{ ...annotation, annotationId: 'stale-ann', targetSession: 'other' }], turns: [] };
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'create-plan-revision-annotation' ? stale : session);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.ensureSession(); });
+    expect(result.current.revisionSession?.targetSession).toBe('s');
+
+    await act(async () => { await result.current.createAnnotation(annotation.target); });
+
+    expect(invokeAction).toHaveBeenCalledWith('create-plan-revision-annotation', { session: 's', target: annotation.target });
+    expect(result.current.revisionSession?.targetSession).toBe('s');
+    expect(result.current.revisionSession?.threadId).toBe('thread');
+    expect(result.current.revisionSession?.annotations).toEqual([]);
+  });
+
+  it('submits annotation-driven turn fields and keeps manual prompt payload exact', async () => {
+    const invokeAction = vi.fn(async (actionId: string) => actionId === 'start-plan-revision-turn' ? { session } : session);
+    setBridge(invokeAction as EforgeBridge['invokeAction']);
+    const { result } = renderHook(() => usePlanRevisionSession({ session: 's', onApply: vi.fn(), onRefresh: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.submitAnnotationRevision({ annotationIds: ['ann-1'], includeOpenAnnotations: true, steering: ' steer ' }); });
+    await act(async () => { await result.current.submit('  revise  '); });
+    expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', annotationIds: ['ann-1'], includeOpenAnnotations: true, steering: 'steer' });
+    expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', message: 'revise' });
   });
 });

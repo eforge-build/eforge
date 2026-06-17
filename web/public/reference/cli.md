@@ -298,6 +298,7 @@ Update an installed extension package to the latest version
 
 | Flag | Description |
 |------|-------------|
+| `--version <specifier>` | Version specifier or dist-tag for npm-installed extensions |
 | `--trust` | Trust the extension after update (project-team scope only) |
 | `--trusted-by <identity>` | Optional annotation identifying who is trusting the extension |
 | `--json` | Output JSON |

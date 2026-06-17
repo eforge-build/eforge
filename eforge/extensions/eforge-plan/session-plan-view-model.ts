@@ -5,7 +5,7 @@ import type {
   SessionPlanSetListEntry,
   SessionPlanSetLoadResult,
   SessionPlanSetValidationResult,
-} from '../../../packages/input/src/index.js';
+} from '@eforge-build/input';
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 import type { ListBoardOutput } from './schema.js';
 import { toJsonSafeRecord } from './json-safe.js';

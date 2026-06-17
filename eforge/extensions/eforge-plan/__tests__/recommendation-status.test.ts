@@ -1,13 +1,14 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dispatchExtensionAction } from '../../../../packages/engine/src/extensions/action-runtime.js';
-import { createExtensionRecorder } from '../../../../packages/engine/src/extensions/recorder.js';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
 import eforgePlanExtension from '../index.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
+import { updateRoadmapState } from '../roadmap-context.js';
 import { RECOMMENDATION_STALE_REASON_LIMIT, buildRecommendationSourceProjection, computeRecommendationSourceFingerprint, markRecommendationsStaleForLifecycleUpdate } from '../recommendation-status.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
@@ -198,6 +199,42 @@ describe('recommendation freshness status', () => {
       const projection = await buildRecommendationSourceProjection(cwd);
       expect((projection.traceSummaries as Array<{ itemId: string }>).map((summary) => summary.itemId)).not.toContain('item-closed');
       expect(await computeRecommendationSourceFingerprint(cwd)).toBe(before);
+    });
+  });
+
+  it('reports source fingerprint drift as stale when local focus roadmap changes', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await updateRoadmapState(cwd, { localFocusContent: '# Focus\n\nInitial direction.\n' });
+      const put = await dispatchExtensionAction(registry(), { actionId: 'eforge-plan:put-recommendations', input: validModel(), requestedBy: { host: 'pi' }, cwd, timeoutMs: 1000 });
+      expect(put.kind).toBe('success');
+      const before = expectStatus((await getRecommendations(cwd)).status);
+
+      await updateRoadmapState(cwd, { localFocusContent: '# Focus\n\nChanged direction.\n' });
+
+      const after = expectStatus((await getRecommendations(cwd)).status);
+      expect(before.state).toBe('fresh');
+      expect(after.state).toBe('stale');
+      expect(after.sourceFingerprint).not.toBe(before.sourceFingerprint);
+    });
+  });
+
+  it('reports source fingerprint drift as stale when configured shared roadmap changes', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await mkdir(join(cwd, 'docs'), { recursive: true });
+      await writeFile(join(cwd, 'docs', 'shared-roadmap.md'), '# Shared\n\nInitial.\n');
+      await updateRoadmapState(cwd, { sharedSources: [{ id: 'shared', path: 'docs/shared-roadmap.md', label: 'Shared roadmap' }] });
+      const put = await dispatchExtensionAction(registry(), { actionId: 'eforge-plan:put-recommendations', input: validModel(), requestedBy: { host: 'pi' }, cwd, timeoutMs: 1000 });
+      expect(put.kind).toBe('success');
+      const before = expectStatus((await getRecommendations(cwd)).status);
+
+      await writeFile(join(cwd, 'docs', 'shared-roadmap.md'), '# Shared\n\nChanged.\n');
+
+      const after = expectStatus((await getRecommendations(cwd)).status);
+      expect(before.state).toBe('fresh');
+      expect(after.state).toBe('stale');
+      expect(after.sourceFingerprint).not.toBe(before.sourceFingerprint);
     });
   });
 

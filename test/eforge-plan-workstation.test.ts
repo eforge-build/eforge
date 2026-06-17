@@ -33,6 +33,9 @@ describe('eforge-plan Console workstation dogfood registration', () => {
         'search-items',
         'get-recommendations',
         'analyze-all-backlog',
+        'get-roadmap-state',
+        'update-roadmap-state',
+        'refresh-recommendations',
         'list-planning-artifacts',
         'show-session-plan',
         'show-session-plan-set',
@@ -48,6 +51,17 @@ describe('eforge-plan Console workstation dogfood registration', () => {
         'retry-planning-agent-task',
         'redraft-planning-agent-task',
         'apply-planning-agent-task-result',
+        'start-plan-revision-session',
+        'get-plan-revision-session',
+        'create-plan-revision-annotation',
+        'update-plan-revision-annotation',
+        'delete-plan-revision-annotation',
+        'resolve-plan-revision-annotation',
+        'dismiss-plan-revision-annotation',
+        'start-plan-revision-turn',
+        'retry-plan-revision-turn',
+        'cancel-plan-revision-turn',
+        'apply-plan-revision-turn',
       ]),
     });
     // The AI-first workstation never starts deterministic promotion; promote-selection
@@ -55,7 +69,6 @@ describe('eforge-plan Console workstation dogfood registration', () => {
     // the workstation iframe action surface.
     expect(workstations[0]!.allowedActions).not.toContain('list-board');
     expect(workstations[0]!.allowedActions).not.toContain('promote-selection');
-    expect(workstations[0]!.allowedActions).not.toContain('refresh-recommendations');
     expect('srcDoc' in workstations[0]!).toBe(false);
     const effectiveWorkstationId = `eforge-plan:${workstations[0]!.id}`;
     expect(effectiveWorkstationId).toBe('eforge-plan:planning-workstation');

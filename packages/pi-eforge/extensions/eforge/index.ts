@@ -988,6 +988,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       trust: Type.Optional(Type.Boolean({
         description: 'Trust the extension after the operation ("install", "update", and "promote" only).',
       })),
+      version: Type.Optional(Type.String({
+        minLength: 1,
+        description: 'Version specifier or dist-tag for npm-installed extensions ("update" only).',
+      })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const result = await dispatchEforgeExtensionAction({

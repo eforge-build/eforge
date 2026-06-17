@@ -157,7 +157,7 @@ All capabilities have full TypeScript type contracts. Loading, registration capt
 
 Use `registerAction` for daemon-invoked work and bind it to declarative surfaces with `registerConsoleContribution`, `registerIntegrationCommand`, and `registerDeepLink`. Local action IDs are resolved to effective namespaced manifest IDs by eforge, so author examples can bind to the local ID while hosts see stable manifest metadata. Contributions may declare dependency/capability `requirements`; manifest entries include `availability`, and unavailable actions are rejected with error code `unavailable`.
 
-Action handlers also receive immutable dependency/capability lookup plus narrow daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` report availability only and do not invoke another extension. `ctx.agentTasks` supports approved single-shot agent tasks; the daemon owns task storage under `.eforge/storage/agent-tasks`, profile/runtime resolution, cancellation, and lifecycle events. `ctx.buildQueue.enqueue({ source, ... })` submits a normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. Extensions do not import provider SDKs or `AgentHarness`, cannot supply arbitrary raw prompt templates, and cannot register custom task kinds through this API. The MVP resolves the existing planner role in read-only mode; planning-draft output can include `planRevisionTurn` for first-party eforge-plan revision sessions, but eforge-plan owns the revision thread storage and preview/apply semantics. Write-capable agent operation and multi-turn chat are not supported.
+Action handlers also receive immutable dependency/capability lookup plus narrow daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` report availability only and do not invoke another extension. `ctx.agentTasks` supports approved single-shot agent tasks; the daemon owns task storage under `.eforge/storage/agent-tasks`, profile/runtime resolution, cancellation, and lifecycle events. `ctx.buildQueue.enqueue({ source, ... })` submits a normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. Extensions do not import provider SDKs or `AgentHarness`, cannot supply arbitrary raw prompt templates, and cannot register custom task kinds through this API. The MVP resolves the existing planner role in read-only mode; planning-draft output can include `planRevisionTurn` for first-party eforge-plan revision sessions, but eforge-plan owns revision thread storage, annotations, annotation snapshots, and preview/apply semantics. Write-capable agent operation and multi-turn chat are not supported.
 
 ```ts
 import {
@@ -434,11 +434,15 @@ eforge extension install my-eforge-extension --scope project --trust --trusted-b
 # Update to the latest version
 eforge extension update my-extension
 
+# Update an npm-installed extension to a version, range, or dist-tag
+eforge extension update my-extension --version latest
+eforge extension update my-extension --version 1.2.3
+
 # Remove
 eforge extension remove my-extension
 ```
 
-Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types.
+Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types. `eforge extension update <name> --version <specifier>` forwards the specifier only for npm-installed extensions; local package directory and tarball installs update from their recorded sidecar source.
 
 Install sidecar files - package metadata, lockfile records, and other install-generated artifacts - are excluded from the trust hash. Reinstalling without changing the source files or trusted `workstation-assets/` browser assets does not invalidate an existing trust record.
 

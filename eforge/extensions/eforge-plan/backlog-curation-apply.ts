@@ -1,6 +1,6 @@
 import { safeParseWithSchema } from '@eforge-build/client';
-import { EforgePlanPlanningBacklogCurationDraftSchema } from '../../../packages/client/src/extension-agent-tasks.js';
-import { ExtensionActionInputValidationError } from '../../../packages/extension-sdk/src/index.js';
+import { EforgePlanPlanningBacklogCurationDraftSchema } from '@eforge-build/client';
+import { ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
 // --- eforge:region shipped-evidence-context ---
 import { filterRecommendationsForCurationDraftStatusOverlay } from './backlog-curation-recommendation-overlay.js';

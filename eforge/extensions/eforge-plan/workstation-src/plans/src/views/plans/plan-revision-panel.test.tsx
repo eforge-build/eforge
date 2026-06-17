@@ -51,10 +51,9 @@ describe('PlanDetailCard revision workstation', () => {
   });
 
   it('shows running turn progress, disables submit and plan edits, and can cancel the turn', async () => {
-    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [runningTurn()] };
+    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, annotations: [], turns: [runningTurn()] };
     const invokeAction = vi.fn(async () => session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
-    fireEvent.click(screen.getByRole('button', { name: 'Start or resume revision session' }));
     await waitFor(() => expect(screen.getByText(/Drafting revision · Current section: scope/)).toBeTruthy());
     expect(screen.getByText(/The AI is revising this plan/)).toBeTruthy();
     expect((screen.getByRole('button', { name: /Send to AI/ }) as HTMLButtonElement).disabled).toBe(true);
@@ -65,22 +64,28 @@ describe('PlanDetailCard revision workstation', () => {
   });
 
   it('renders answer-only turns without apply actions', async () => {
-    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [turn('answer')] };
+    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, annotations: [], turns: [turn('answer')] };
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'start-plan-revision-turn' ? { session } : session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
     expect(screen.getByText('Revise with AI')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Ask the AI for plan revisions or answers'), { target: { value: 'Why?' } });
-    fireEvent.click(screen.getByRole('button', { name: /Send to AI/ }));
-    await waitFor(() => expect(screen.getByText('Answer only')).toBeTruthy());
+    const send = screen.getByRole('button', { name: /Send to AI/ });
+    await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(send);
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', message: 'Why?' }));
+    expect(screen.getByText('Answer only')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Apply selected/ })).toBeNull();
+    const manualPayload = (invokeAction.mock.calls.find(([id]) => id === 'start-plan-revision-turn') as unknown as [string, Record<string, unknown>] | undefined)?.[1] ?? {};
+    expect(manualPayload).not.toHaveProperty('annotationIds');
+    expect(manualPayload).not.toHaveProperty('includeOpenAnnotations');
+    expect(manualPayload).not.toHaveProperty('steering');
     expect(invokeAction.mock.calls.map(([id]) => id)).not.toContain('set-session-plan-section');
   });
 
   it('auto-applies a completed patch turn and refreshes parent callbacks without apply controls', async () => {
-    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [turn('patch')] };
+    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, annotations: [], turns: [turn('patch')] };
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'apply-plan-revision-turn' ? { kind: 'applied', session: 's', turnId: 'turn-patch', taskId: 'task-patch', appliedSections: ['scope', 'acceptance-criteria'], plan, readiness: { ready: true }, message: 'Applied plan revision sections.' } : session);
     const { onApply, onRefresh } = renderDetail(invokeAction as EforgeBridge['invokeAction']);
-    fireEvent.click(screen.getByRole('button', { name: 'Start or resume revision session' }));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('apply-plan-revision-turn', { session: 's', turnId: 'turn-patch' }));
     expect(invokeAction.mock.calls.filter(([id]) => id === 'apply-plan-revision-turn')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: /Apply selected/ })).toBeNull();
@@ -89,10 +94,9 @@ describe('PlanDetailCard revision workstation', () => {
   });
 
   it('redrafts clarification answers and retries failed turns without build or handoff actions', async () => {
-    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, turns: [turn('failed'), turn('needs')] };
+    const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, annotations: [], turns: [turn('failed'), turn('needs')] };
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'retry-plan-revision-turn' ? { session } : session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
-    fireEvent.click(screen.getByRole('button', { name: 'Start or resume revision session' }));
     await waitFor(() => expect(screen.getByText('What section?')).toBeTruthy());
     fireEvent.change(screen.getAllByRole('textbox')[1], { target: { value: 'Scope' } });
     fireEvent.click(screen.getByRole('button', { name: 'Answer and redraft' }));

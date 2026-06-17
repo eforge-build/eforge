@@ -1,16 +1,16 @@
-import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { Type, type Static } from '@eforge-build/extension-sdk';
 import {
   EforgePlanPlanningBacklogCurationNeedsInputSchema,
   EforgePlanPlanningBacklogCurationSkippedSchema,
   EforgePlanPlanningRequestedOutputSectionSchema,
   ExtensionAgentTaskIdSchema,
   ExtensionAgentTaskStatusSchema,
-} from '../../../packages/client/src/extension-agent-tasks.js';
+} from '@eforge-build/client';
 import { BacklogStatusSchema, RecommendationDerivedStatusSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({}, { additionalProperties: false });
 
-const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
+export const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
 
 const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,

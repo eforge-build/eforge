@@ -5,7 +5,7 @@ import {
   paginateContributionItems,
   Type,
   type Static,
-} from '../../../packages/extension-sdk/src/index.js';
+} from '@eforge-build/extension-sdk';
 import { extractMarkdownSections, isClosedStatus, type BacklogEpic, type BacklogItem, type KanbanLane } from './backlog-domain.js';
 import { projectKanbanBoard, type KanbanCard } from './kanban.js';
 import {

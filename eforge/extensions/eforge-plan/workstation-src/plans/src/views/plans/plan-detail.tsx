@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
-import { SafeMarkdown } from '@/components/safe-markdown';
 import { useToast } from '@/components/toast';
 import type { PlanData, PlanDetail, Readiness } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
@@ -16,6 +15,9 @@ import { titleCase } from './dimensions';
 import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
 import { PlanRevisionPanel } from './plan-revision-panel';
 import { usePlanRevisionSession } from './use-plan-revision-session';
+import { AnnotatablePlanSection } from './plan-annotatable-section';
+import { PlanRevisionAnnotationsPanel } from './plan-revision-annotations-panel';
+import { buildWholePlanAnnotationTarget } from './plan-revision-annotation-targets';
 
 const bridge = getBridge();
 
@@ -36,7 +38,7 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
   const readiness = detail.readiness ?? {};
   const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
-  const revision = usePlanRevisionSession({ session: plan.session, onApply, onRefresh });
+  const revision = usePlanRevisionSession({ session: plan.session, onApply, onRefresh, autoLoadExisting: true });
   // While an AI revision turn is running it auto-applies on completion, so the
   // rest of the plan is locked to avoid concurrent edits and competing turns.
   const locked = revision.hasRunningTurn;
@@ -139,16 +141,17 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
 
         {sectionEntries.length > 0 && (
           <div className="grid gap-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sections</h4>
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sections</h4>
+              <Button className="ml-auto" size="sm" variant="outline" disabled={locked || revision.busy || revision.loading} onClick={() => { const target = buildWholePlanAnnotationTarget(plan); if (target) void revision.createAnnotation(target); }}>Annotate whole plan</Button>
+            </div>
             {sectionEntries.map(([key, content]) => (
-              <section key={key} className="rounded-md border bg-background/50 p-3">
-                <h5 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titleCase(key)}</h5>
-                <SafeMarkdown markdown={content} />
-              </section>
+              <AnnotatablePlanSection key={key} plan={plan} dimension={key} content={content} disabled={locked || revision.busy || revision.loading} onCreateAnnotation={revision.createAnnotation} />
             ))}
           </div>
         )}
 
+        <PlanRevisionAnnotationsPanel plan={plan} api={revision} disabled={locked} />
         <PlanRevisionPanel plan={plan} api={revision} />
 
         <CollapsiblePanel storageKey={`eforge-plan.provenance.${plan.session}`} title="Provenance & metadata">

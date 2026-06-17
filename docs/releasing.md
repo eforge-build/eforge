@@ -50,12 +50,14 @@ If Pi exits before the PR merges, run:
 /dev release-finalize vX.Y.Z
 ```
 
-Pushing the `v*` tag triggers the **Publish to npm** GitHub Actions workflow. The workflow runs `pnpm publish-all`, which propagates the lockstep version, builds, type-checks, tests, and publishes public packages with npm trusted publishing.
+Pushing the `v*` tag triggers the **Publish to npm** GitHub Actions workflow. The workflow runs `pnpm publish-all`, which propagates the lockstep version, builds, type-checks, tests, and publishes public packages with npm trusted publishing. `@eforge-build/eforge-plan` is part of this lockstep public npm release and is published from the workspace package under `eforge/extensions/eforge-plan`.
+
+Before tagging, ensure the first-party planning package passed its package install smoke checks: the package builds, packs with compiled `dist/` runtime files and `workstation-assets/plans/` browser assets, installs into a fresh project, validates, reloads, and serves its workstation frame/assets through the extension management APIs.
 
 Afterward, verify the release:
 
 - confirm the GitHub Actions workflow passed
-- confirm npm shows the expected package versions
+- confirm npm shows the expected package versions, including `@eforge-build/eforge-plan`
 - confirm the GitHub Release exists
 - sanity-check installation with `npx @eforge-build/eforge --help` or an equivalent smoke test
 

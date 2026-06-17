@@ -1,5 +1,5 @@
-import { ExtensionAgentTaskRecordSchema } from '../../../packages/client/src/extension-agent-tasks.js';
-import { Type, type Static } from '../../../packages/extension-sdk/src/index.js';
+import { ExtensionAgentTaskRecordSchema } from '@eforge-build/client';
+import { Type, type Static } from '@eforge-build/extension-sdk';
 import {
   GetRecommendationsOutputSchema,
   RecommendationDerivedStatusSchema,
@@ -7,6 +7,7 @@ import {
   RecommendationStatusSidecarSchema,
 } from './schema.js';
 import { PlanningTaskWorkflowEntrySchema } from './planning-agent-task-schemas.js';
+import { SourceFingerprintSchema } from './backlog-curation-schemas.js';
 
 export {
   RecommendationDerivedStatusSchema,
@@ -21,7 +22,7 @@ export const RefreshRecommendationsInputSchema = Type.Object({}, { additionalPro
 export const RefreshRecommendationsOutputSchema = Type.Object({
   task: ExtensionAgentTaskRecordSchema,
   entry: PlanningTaskWorkflowEntrySchema,
-  sourceFingerprint: Type.String(),
+  sourceFingerprint: SourceFingerprintSchema,
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 

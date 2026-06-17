@@ -14,6 +14,7 @@ export const SOURCE_OF_TRUTH = "packages/eforge/package.json";
 export const LOCKSTEP_PACKAGE_PATHS = [
   "packages/client/package.json",
   "packages/engine/package.json",
+  "eforge/extensions/eforge-plan/package.json",
   "packages/extension-sdk/package.json",
   "packages/input/package.json",
   "packages/monitor/package.json",

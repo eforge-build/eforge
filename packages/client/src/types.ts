@@ -369,7 +369,7 @@ export interface ExtensionUpdateRequest {
   name?: string;
   /** Extension path to update. Mutually exclusive with name. */
   path?: string;
-  /** Version specifier or channel to update to (e.g., `latest`, `^2.0.0`). Defaults to latest. */
+  /** Version specifier or channel for registry npm-installed extensions (e.g., `latest`, `^2.0.0`). Unsupported for recorded npm file/tarball/alias specs. */
   version?: string;
   /** Trust the updated extension after install (project-team scope only). */
   trust?: boolean;

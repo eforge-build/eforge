@@ -26,23 +26,22 @@ import {
   removeTrustRecord,
   hashExtensionDirectory,
   hashExtensionFile,
+  parsePackageManifest,
   type InstallTargetScope,
 } from '@eforge-build/engine/extensions/index';
+import { isRegistryNpmPackageSpec, updateNpmSpecVersion } from './npm-spec-version.js';
+import { ExtensionPackageError } from './extension-package-errors.js';
+import {
+  assertOptionalBoolean,
+  assertOptionalString,
+  assertString,
+  assertValidExtensionName,
+  validateSelector,
+} from './extension-package-validation.js';
+
+export { ExtensionPackageError } from './extension-package-errors.js';
+
 const execFileAsync = promisify(execFile);
-
-// ---------------------------------------------------------------------------
-// Public error class
-// ---------------------------------------------------------------------------
-
-export class ExtensionPackageError extends Error {
-  public readonly statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.name = 'ExtensionPackageError';
-    this.statusCode = statusCode;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Source classification
@@ -424,19 +423,6 @@ async function acquireFromLocalDir(source: string, cwd: string): Promise<PathAcq
 // Extension name resolution
 // ---------------------------------------------------------------------------
 
-const VALID_EXT_NAME_RE = /^[A-Za-z0-9._-]+$/;
-
-function assertValidExtensionName(name: unknown): asserts name is string {
-  if (
-    typeof name !== 'string' ||
-    !VALID_EXT_NAME_RE.test(name) ||
-    name === '.' ||
-    name === '..'
-  ) {
-    throw new ExtensionPackageError(`Extension name "${String(name)}" is invalid`, 400);
-  }
-}
-
 async function resolveExtensionName(
   pkgDir: string,
   requestedName: string | undefined,
@@ -545,7 +531,11 @@ async function handleTrustAfterInstall(
     try {
       const info = await lstat(extensionPath);
       if (info.isDirectory()) {
-        hash = await hashExtensionDirectory(extensionPath);
+        const manifest = await parsePackageManifest(extensionPath);
+        const entrypoint = manifest.ok && manifest.metadata?.eforgeExtension?.entrypoint
+          ? resolve(extensionPath, manifest.metadata.eforgeExtension.entrypoint)
+          : undefined;
+        hash = await hashExtensionDirectory(extensionPath, entrypoint);
       } else {
         hash = await hashExtensionFile(extensionPath);
       }
@@ -643,22 +633,34 @@ async function replaceWithPackagedDirectory(
 }
 
 // ---------------------------------------------------------------------------
-// npm spec version updater
+// npm spec version validation
 // ---------------------------------------------------------------------------
 
-function updateNpmSpecVersion(spec: string, version: string): string {
-  // Handle scoped packages: @scope/name or @scope/name@existing
-  if (spec.startsWith('@')) {
-    const secondAt = spec.indexOf('@', 1);
-    return secondAt >= 0
-      ? `${spec.slice(0, secondAt)}@${version}`
-      : `${spec}@${version}`;
+function assertRegistryNpmPackageSpecForVersionOverride(spec: string): void {
+  if (!isRegistryNpmPackageSpec(spec)) {
+    throw new ExtensionPackageError(
+      `Version overrides are supported only for registry npm package specs. The recorded source "${spec}" cannot be safely rewritten; reinstall from the desired source instead.`,
+      400,
+    );
   }
-  // Regular: name or name@existing
-  const atIdx = spec.indexOf('@');
-  return atIdx >= 0
-    ? `${spec.slice(0, atIdx)}@${version}`
-    : `${spec}@${version}`;
+}
+
+function assertRegistryNpmVersionSpecifierForOverride(version: string): void {
+  if (
+    version.length === 0 ||
+    version.includes('\0') ||
+    version.includes(':') ||
+    version.includes('/') ||
+    version.includes('\\') ||
+    version.endsWith('.tgz') ||
+    version.endsWith('.tar.gz') ||
+    isGitLikeInstallSource(version)
+  ) {
+    throw new ExtensionPackageError(
+      'Version overrides must be registry npm versions, ranges, or dist-tags; file, path, URL, tarball, alias, and git specifiers are not supported.',
+      400,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -669,42 +671,6 @@ async function gitAdd(filePath: string, cwd: string): Promise<void> {
   try {
     await execFileAsync('git', ['add', filePath], { cwd, timeout: 10_000 });
   } catch { /* best-effort; git may not be available */ }
-}
-
-// ---------------------------------------------------------------------------
-// Request validation
-// ---------------------------------------------------------------------------
-
-function assertString(value: unknown, field: string): asserts value is string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new ExtensionPackageError(`Missing or invalid required field: ${field}`, 400);
-  }
-}
-
-function assertOptionalString(value: unknown, field: string): asserts value is string | undefined {
-  if (value !== undefined && typeof value !== 'string') {
-    throw new ExtensionPackageError(`Invalid field: ${field}`, 400);
-  }
-}
-
-function assertOptionalBoolean(value: unknown, field: string): asserts value is boolean | undefined {
-  if (value !== undefined && typeof value !== 'boolean') {
-    throw new ExtensionPackageError(`Invalid field: ${field}`, 400);
-  }
-}
-
-function validateSelector(body: { name?: unknown; path?: unknown }): asserts body is { name?: string; path?: string } {
-  assertOptionalString(body.name, 'name');
-  assertOptionalString(body.path, 'path');
-  if (body.name === undefined && body.path === undefined) {
-    throw new ExtensionPackageError('Missing required field: name or path', 400);
-  }
-  if (body.name !== undefined && body.path !== undefined) {
-    throw new ExtensionPackageError('Specify only one of name or path', 400);
-  }
-  if (body.name !== undefined) {
-    assertValidExtensionName(body.name);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -884,10 +850,19 @@ export async function updateExtensionPackage(
   const previousVersion = sidecar.resolvedVersion;
   const name = getExtensionName(targetPath);
 
-  // Determine effective source spec (apply version override for npm sources)
+  // Determine effective source spec (apply version override for registry npm sources)
   let effectiveSpec = sidecar.sourceSpec;
-  if (body.version !== undefined && sidecar.sourceKind === 'npm') {
+  if (body.version !== undefined) {
+    if (sidecar.sourceKind !== 'npm') {
+      throw new ExtensionPackageError(
+        'Version overrides are supported only for registry npm package specs. Reinstall path, tarball, URL, or git extensions from the desired source instead.',
+        400,
+      );
+    }
+    assertRegistryNpmPackageSpecForVersionOverride(sidecar.sourceSpec);
+    assertRegistryNpmVersionSpecifierForOverride(body.version);
     effectiveSpec = updateNpmSpecVersion(sidecar.sourceSpec, body.version);
+    assertRegistryNpmPackageSpecForVersionOverride(effectiveSpec);
   }
 
   let tmpRoot: string | undefined;
@@ -913,11 +888,10 @@ export async function updateExtensionPackage(
       pkgDir = acquired.pkgDir;
     }
 
-    // Build the replacement and sidecar before swapping it into place so a failed copy does not delete the existing install.
     await replaceWithPackagedDirectory(pkgDir, targetPath, {
       sourceKind: sidecar.sourceKind === 'npm' ? 'npm'
         : sidecar.sourceKind === 'url' ? 'url' : 'path',
-      sourceSpec: sidecar.sourceSpec,
+      sourceSpec: effectiveSpec,
       ...(resolvedVersion !== undefined && { resolvedVersion }),
       ...(integrity !== undefined && { integrity }),
       targetScope: sidecar.targetScope,

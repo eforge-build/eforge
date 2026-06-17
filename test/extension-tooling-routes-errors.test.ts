@@ -215,6 +215,34 @@ describe('extension tooling daemon routes: errors', () => {
     }
   });
 
+  it('package mutation routes reject fields unsupported by that endpoint', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+
+    const rejectedCases: Array<{ route: string; body: Record<string, unknown> }> = [
+      { route: API_ROUTES.extensionInstall, body: { source: './pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionInstall, body: { source: './pkg', path: './pkg' } },
+      { route: API_ROUTES.extensionUpdate, body: { name: 'pkg', force: true } },
+      { route: API_ROUTES.extensionRemove, body: { name: 'pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionRemove, body: { name: 'pkg', trust: true } },
+      { route: API_ROUTES.extensionRemove, body: { name: 'pkg', trustedBy: 'tester' } },
+      { route: API_ROUTES.extensionPromote, body: { name: 'pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionDemote, body: { name: 'pkg', version: 'latest' } },
+      { route: API_ROUTES.extensionDemote, body: { name: 'pkg', trust: true } },
+      { route: API_ROUTES.extensionDemote, body: { name: 'pkg', trustedBy: 'tester' } },
+    ];
+
+    for (const { route, body } of rejectedCases) {
+      const res = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, `${route} should reject ${JSON.stringify(body)}`).toBe(400);
+    }
+  });
+
   it('POST extensionInstall rejects an existing target without force:true and replaces with force:true', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);

@@ -164,6 +164,10 @@ eforge extension install acme-build-notifier --scope project --trust --trusted-b
 # Update an installed extension to the latest version
 eforge extension update build-notifier
 
+# Update an npm-installed extension to a version, range, or dist-tag
+eforge extension update build-notifier --version latest
+eforge extension update build-notifier --version 1.2.3
+
 # Remove an installed extension
 eforge extension remove build-notifier
 eforge extension remove build-notifier --force
@@ -171,7 +175,35 @@ eforge extension remove build-notifier --force
 
 Install scope follows the CLI scaffold labels: `local` targets `.eforge/extensions/`, `project` targets `eforge/extensions/`, and `user` targets `~/.config/eforge/extensions/`. The default scope is `local`. Package acquisition uses the local `npm` CLI for npm specs/tarball URLs and the system `tar` command for tarball extraction, so ensure those commands are on `PATH` when using those source types.
 
+`eforge extension update <name> --version <specifier>` forwards the specifier to npm-installed extensions only. Use it for npm versions, ranges, or dist-tags. Local package directory and tarball installs update from their recorded sidecar source rather than resolving a registry version specifier.
+
 Non-JSON output prints concrete next steps after install. When the returned entry has `trustState: "untrusted"` or `"changed"`, the CLI prints a trust command (`eforge extension trust <name>`), a validate command, and a reload command. JSON output (`--json`) prints the daemon response directly.
+
+### First-party eforge-plan package
+
+`@eforge-build/eforge-plan` is the first-party installable planning package. It contributes the `eforge-plan` extension name, backlog and session-plan actions, the `eforge://input/eforge-plan/<itemId>` input source, integration commands, deep links, and the planning Console workstation.
+
+```bash
+# Install locally; local installs load without a project/team trust record
+eforge extension install @eforge-build/eforge-plan
+
+# Install for the team and trust the reviewed artifact
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+
+# Validate, trust when needed, and reload after install or update
+eforge extension validate eforge-plan
+eforge extension trust eforge-plan
+eforge extension reload
+
+# Update from npm, optionally pinned to a version or dist-tag
+eforge extension update eforge-plan
+eforge extension update eforge-plan --version latest
+
+# Remove the installed package
+eforge extension remove eforge-plan
+```
+
+The package artifact includes compiled runtime files in `dist/` and the generated planning workstation bundle in `workstation-assets/plans/`. The extension remains unsandboxed arbitrary code: local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading. Updating a project/team install changes the reviewed hash, so re-trust after inspection or update with `--trust`.
 
 ### Promote and demote
 
@@ -298,6 +330,7 @@ eforge extension untrust <nameOrPath>
 eforge extension install <source>
 eforge extension install <source> --scope project --trust
 eforge extension update <name>
+eforge extension update <name> --version <specifier>
 eforge extension remove <name>
 eforge extension promote <name>
 eforge extension demote <name>
@@ -382,7 +415,7 @@ Action handlers can inspect immutable dependency and capability availability thr
 
 The MVP task runner is intentionally narrow. It resolves the existing `planner` role and enforces read-only agent tools for the run. Extensions cannot supply arbitrary raw prompt templates, register custom task kinds, expose multi-turn chat, or bypass the daemon-owned task lifecycle. The first supported task kind is a single-shot planning-draft task; extension-specific UI and higher-level eforge-plan actions can build on this boundary without owning the agent runtime directly.
 
-A planning-draft result is either a ready result that carries at least one applicable output section (including optional `sessionPlanCreationDraft` when a session plan is requested, structured `backlogCurationDraft` when backlog curation is requested, or `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan) or a `needs-input` decision that carries structured clarification questions and a rationale instead of output sections. Answer-only revision turns remain output-bearing because the assistant narrative lives in `planRevisionTurn` even when no patch is proposed. Curation-specific unresolved cases live inside `backlogCurationDraft.needsInput`; the top-level `needs-input` variant remains output-free. First-party eforge-plan revision sessions are an application-level pattern surfaced in the Console workstation as **Revise with AI** and built from extension actions plus daemon-owned single-shot tasks: eforge-plan stores transcript/index state in its private extension storage, links turns to daemon task ids, owns preview/apply semantics, and keeps the daemon responsible only for task records, status, result, and error. While a task runs, the agent may report telemetry-only `sectionProgress` (current, covered, and remaining sections) through a read-only progress tool. The daemon sanitizes and length-caps that progress before persisting it on the running record and emitting it on sanitized progress events; section progress is advisory telemetry only and never determines readiness or apply eligibility.
+A planning-draft result is either a ready result that carries at least one applicable output section (including optional `sessionPlanCreationDraft` when a session plan is requested, structured `backlogCurationDraft` when backlog curation is requested, or `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan) or a `needs-input` decision that carries structured clarification questions and a rationale instead of output sections. Answer-only revision turns remain output-bearing because the assistant narrative lives in `planRevisionTurn` even when no patch is proposed. Curation-specific unresolved cases live inside `backlogCurationDraft.needsInput`; the top-level `needs-input` variant remains output-free. First-party eforge-plan revision sessions are an application-level pattern surfaced in the Console workstation as **Revise with AI** and built from extension actions plus daemon-owned single-shot tasks: eforge-plan stores transcript/index state, revision annotations, and turn annotation snapshots in its private extension storage, links turns to daemon task ids, owns preview/apply semantics, and keeps the daemon responsible only for task records, status, result, and error. While a task runs, the agent may report telemetry-only `sectionProgress` (current, covered, and remaining sections) through a read-only progress tool. The daemon sanitizes and length-caps that progress before persisting it on the running record and emitting it on sanitized progress events; section progress is advisory telemetry only and never determines readiness or apply eligibility.
 
 ### Console workstations
 

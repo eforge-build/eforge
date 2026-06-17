@@ -10,12 +10,13 @@ export interface StackLandingAutoMergeOptions {
   prAutoMergePolicy: 'ask' | 'always' | 'never';
   landingAutoMerge?: boolean;
   timestamp: () => string;
+  commandEnv?: NodeJS.ProcessEnv;
 }
 
 export async function* emitStackLandingAutoMergeEvents(
   options: StackLandingAutoMergeOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { mergeWorktreePath, branch, baseBranch, prUrl, prAutoMergePolicy, landingAutoMerge, timestamp } = options;
+  const { mergeWorktreePath, branch, baseBranch, prUrl, prAutoMergePolicy, landingAutoMerge, timestamp, commandEnv } = options;
   const shouldAutoMerge = resolvePrAutoMergeIntent(prAutoMergePolicy, landingAutoMerge);
   if (shouldAutoMerge) {
     if (prUrl === undefined) {
@@ -37,7 +38,7 @@ export async function* emitStackLandingAutoMergeEvents(
       prUrl,
     } as unknown as EforgeEvent;
     try {
-      await enablePullRequestAutoMerge(mergeWorktreePath, prUrl);
+      await enablePullRequestAutoMerge(mergeWorktreePath, prUrl, { env: commandEnv });
       yield {
         timestamp: timestamp(),
         type: 'landing:auto-merge:complete',

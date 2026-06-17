@@ -1,4 +1,4 @@
-import { defineExtensionAction, type ExtensionActionContext } from '../../../packages/extension-sdk/src/index.js';
+import { defineExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
 import { toJsonSafeObject } from './json-safe.js';
 import {
   GetRecommendationsInputSchema,

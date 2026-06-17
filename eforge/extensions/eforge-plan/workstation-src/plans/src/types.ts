@@ -277,6 +277,40 @@ export interface PlanningTaskResult {
 }
 
 export interface PlanRevisionSectionHash { dimension: string; sha256: string; }
+export type PlanRevisionAnnotationTargetKind = 'selection' | 'block' | 'section' | 'whole-plan';
+export interface PlanRevisionAnnotationQuoteContext { exact: string; prefix?: string; suffix?: string; }
+export interface PlanRevisionAnnotationTarget {
+  kind: PlanRevisionAnnotationTargetKind;
+  dimension?: string;
+  label?: string;
+  capturedText: string;
+  quoteContext: PlanRevisionAnnotationQuoteContext;
+}
+export interface PlanRevisionAnnotation {
+  annotationId: string;
+  targetSession: string;
+  body?: string;
+  target: PlanRevisionAnnotationTarget;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  resolvedByTurnId?: string;
+  dismissedAt?: string;
+}
+export type PlanRevisionTurnSnapshotReason = 'selected' | 'open' | 'selected-and-open';
+export interface PlanRevisionTurnSnapshotAnnotation extends PlanRevisionAnnotation {
+  snapshotAt: string;
+  snapshotReason: PlanRevisionTurnSnapshotReason;
+}
+export interface PlanRevisionTurnAnnotationSnapshot {
+  steering?: string;
+  selectedAnnotationIds: string[];
+  openAnnotationIds: string[];
+  includeOpenAnnotations: boolean;
+  annotations: PlanRevisionTurnSnapshotAnnotation[];
+}
+export interface PlanRevisionAnnotationMutationInput { annotationId: string; body?: string; }
+export interface SubmitAnnotationRevisionInput { annotationIds?: string[]; includeOpenAnnotations?: boolean; steering?: string; }
 export interface PlanRevisionTurnProjection {
   turnId: string;
   taskId: string;
@@ -293,6 +327,7 @@ export interface PlanRevisionTurnProjection {
   available?: boolean;
   staleReason?: string;
   status?: AgentTaskStatus;
+  annotationSnapshot?: PlanRevisionTurnAnnotationSnapshot;
 }
 export interface PlanRevisionSessionProjection {
   threadId: string;
@@ -306,6 +341,7 @@ export interface PlanRevisionSessionProjection {
   readiness?: Readiness;
   sourceRefs?: PlanSourceRefs;
   lifecycle?: PlanLifecycleProjection;
+  annotations?: PlanRevisionAnnotation[];
   turns: PlanRevisionTurnProjection[];
 }
 export type PlanRevisionApplyOutput =
@@ -372,6 +408,57 @@ export interface GetRecommendationsResponse {
   status: RecommendationStatus;
   activeRefreshTask?: PlanningAgentTaskRecord;
 }
+
+export type RoadmapSourceKind = 'local-focus' | 'configured-shared' | 'discovered-conventional';
+export type RoadmapSourceRole = 'local-steering' | 'shared-context';
+export interface ConfiguredRoadmapSource { id: string; path: string; label?: string; enabled?: boolean; }
+export interface RoadmapConfig { schemaVersion: 1; sharedSources: ConfiguredRoadmapSource[]; }
+export interface RoadmapSourceProjection {
+  kind: RoadmapSourceKind;
+  role: RoadmapSourceRole;
+  path: string;
+  id?: string;
+  label?: string;
+  configured: boolean;
+  editable: boolean;
+  exists: boolean;
+  sha256?: string;
+  headings: string[];
+  excerpts: string[];
+  content?: string;
+  contentTruncated?: boolean;
+  readError?: string;
+  updatedAt?: string;
+  maxContentBytes?: number;
+}
+export interface RoadmapConflict { code: 'configured-source-missing' | 'duplicate-source' | 'source-read-error' | 'invalid-config' | string; message: string; path?: string; sourceId?: string; }
+export interface RoadmapContext {
+  schemaVersion: 1;
+  localSteering: RoadmapSourceProjection;
+  sharedContextSources: RoadmapSourceProjection[];
+  discoveredContextSources: RoadmapSourceProjection[];
+  assumptions: string[];
+  conflicts: RoadmapConflict[];
+  truncation: { sourceExcerpts: number; sourceContent: number };
+}
+export interface RoadmapStateResponse {
+  schemaVersion: 1;
+  config: RoadmapConfig;
+  context: RoadmapContext;
+  storagePaths: { localFocus: string; config: string };
+}
+export interface UpdateRoadmapStateRequest {
+  localFocusContent?: string;
+  expectedLocalFocusSha256?: string;
+  sharedSources?: ConfiguredRoadmapSource[];
+}
+export interface RefreshRecommendationsResponse {
+  task: PlanningAgentTaskRecord;
+  entry: PlanningTaskWorkflowEntry;
+  sourceFingerprint: string;
+  reused?: boolean;
+}
+
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
   entry: PlanningTaskWorkflowEntry;
@@ -487,4 +574,5 @@ export interface WorkstationData {
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
+  roadmapState: RoadmapStateResponse | null;
 }
