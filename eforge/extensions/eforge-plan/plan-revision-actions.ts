@@ -244,6 +244,10 @@ export const applyPlanRevisionTurnAction = defineExtensionAction({
     } catch (err) {
       return toJsonSafeObject(notApplicable(input.session, input, errorMessage(err)));
     }
+    if (storedTurn.appliedAt !== undefined) {
+      const loaded = await loadFlatPlanRevisionTarget(ctx.cwd, input.session);
+      return toJsonSafeObject({ kind: 'applied', turnId: storedTurn.turnId, taskId: storedTurn.taskId, appliedSections: storedTurn.appliedSections ?? [], message: 'Plan revision sections were already applied.', ...projectRevisionPlanResult(ctx.cwd, input.session, loaded.plan) });
+    }
     let task: ExtensionAgentTaskRecord;
     try {
       task = (await ctx.agentTasks.get(storedTurn.taskId)).task;
@@ -260,12 +264,6 @@ export const applyPlanRevisionTurnAction = defineExtensionAction({
     const validated = validateRevisionPatchSections(loaded.plan, turnResult);
     if (!validated.ok) return toJsonSafeObject(notApplicable(input.session, { taskId: storedTurn.taskId }, validated.message));
     const sections = validated.sections.map((section) => section.dimension);
-    // A revision turn applies all of its proposed sections exactly once. Re-apply
-    // requests (e.g. a duplicate auto-apply) return the already-applied result
-    // without rewriting the plan.
-    if (storedTurn.appliedAt !== undefined) {
-      return toJsonSafeObject({ kind: 'applied', turnId: storedTurn.turnId, taskId: storedTurn.taskId, appliedSections: storedTurn.appliedSections ?? sections, message: 'Plan revision sections were already applied.', ...projectRevisionPlanResult(ctx.cwd, input.session, loaded.plan) });
-    }
     const applied = await applyRevisionPatchSections(ctx.cwd, input.session, turnResult, sections);
     const appliedAt = new Date().toISOString();
     await markPlanRevisionTurnApplied(ctx.cwd, input.session, { taskId: storedTurn.taskId }, appliedAt, sections, { resolveReferencedAnnotations: true });

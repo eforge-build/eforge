@@ -30,21 +30,18 @@ import {
   type InstallTargetScope,
 } from '@eforge-build/engine/extensions/index';
 import { isRegistryNpmPackageSpec, updateNpmSpecVersion } from './npm-spec-version.js';
+import { ExtensionPackageError } from './extension-package-errors.js';
+import {
+  assertOptionalBoolean,
+  assertOptionalString,
+  assertString,
+  assertValidExtensionName,
+  validateSelector,
+} from './extension-package-validation.js';
+
+export { ExtensionPackageError } from './extension-package-errors.js';
+
 const execFileAsync = promisify(execFile);
-
-// ---------------------------------------------------------------------------
-// Public error class
-// ---------------------------------------------------------------------------
-
-export class ExtensionPackageError extends Error {
-  public readonly statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.name = 'ExtensionPackageError';
-    this.statusCode = statusCode;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Source classification
@@ -426,19 +423,6 @@ async function acquireFromLocalDir(source: string, cwd: string): Promise<PathAcq
 // Extension name resolution
 // ---------------------------------------------------------------------------
 
-const VALID_EXT_NAME_RE = /^[A-Za-z0-9._-]+$/;
-
-function assertValidExtensionName(name: unknown): asserts name is string {
-  if (
-    typeof name !== 'string' ||
-    !VALID_EXT_NAME_RE.test(name) ||
-    name === '.' ||
-    name === '..'
-  ) {
-    throw new ExtensionPackageError(`Extension name "${String(name)}" is invalid`, 400);
-  }
-}
-
 async function resolveExtensionName(
   pkgDir: string,
   requestedName: string | undefined,
@@ -687,42 +671,6 @@ async function gitAdd(filePath: string, cwd: string): Promise<void> {
   try {
     await execFileAsync('git', ['add', filePath], { cwd, timeout: 10_000 });
   } catch { /* best-effort; git may not be available */ }
-}
-
-// ---------------------------------------------------------------------------
-// Request validation
-// ---------------------------------------------------------------------------
-
-function assertString(value: unknown, field: string): asserts value is string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new ExtensionPackageError(`Missing or invalid required field: ${field}`, 400);
-  }
-}
-
-function assertOptionalString(value: unknown, field: string): asserts value is string | undefined {
-  if (value !== undefined && typeof value !== 'string') {
-    throw new ExtensionPackageError(`Invalid field: ${field}`, 400);
-  }
-}
-
-function assertOptionalBoolean(value: unknown, field: string): asserts value is boolean | undefined {
-  if (value !== undefined && typeof value !== 'boolean') {
-    throw new ExtensionPackageError(`Invalid field: ${field}`, 400);
-  }
-}
-
-function validateSelector(body: { name?: unknown; path?: unknown }): asserts body is { name?: string; path?: string } {
-  assertOptionalString(body.name, 'name');
-  assertOptionalString(body.path, 'path');
-  if (body.name === undefined && body.path === undefined) {
-    throw new ExtensionPackageError('Missing required field: name or path', 400);
-  }
-  if (body.name !== undefined && body.path !== undefined) {
-    throw new ExtensionPackageError('Specify only one of name or path', 400);
-  }
-  if (body.name !== undefined) {
-    assertValidExtensionName(body.name);
-  }
 }
 
 // ---------------------------------------------------------------------------

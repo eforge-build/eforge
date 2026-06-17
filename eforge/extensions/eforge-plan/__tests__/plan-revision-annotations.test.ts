@@ -105,13 +105,52 @@ describe('plan revision annotations', () => {
   });
 
   it('builds selected/open snapshots without mutating historical copies', () => {
-    const annotations = [{ annotationId: 'a1', targetSession: 's', body: 'Original', target, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }, { annotationId: 'a2', targetSession: 's', body: 'Resolved', target, resolvedAt: '2026-01-01T00:00:00.000Z', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }];
+    const annotations = [{ annotationId: 'a1', targetSession: 's', body: 'Original', target, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }, { annotationId: 'a2', targetSession: 's', body: 'Resolved', target, resolvedAt: '2026-01-01T00:00:00.000Z', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }, { annotationId: 'a3', targetSession: 's', body: 'Dismissed', target, dismissedAt: '2026-01-01T00:00:00.000Z', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }];
     const snapshot = buildPlanRevisionAnnotationSnapshot({ annotations, annotationIds: ['a1'], includeOpenAnnotations: true, steering: 'Use these.', now: '2026-01-02T00:00:00.000Z' });
     expect(snapshot).toMatchObject({ steering: 'Use these.', selectedAnnotationIds: ['a1'], openAnnotationIds: ['a1'], annotations: [{ annotationId: 'a1', body: 'Original', snapshotReason: 'selected-and-open' }] });
+    expect(snapshot?.openAnnotationIds).not.toEqual(expect.arrayContaining(['a2', 'a3']));
+    const openOnly = buildPlanRevisionAnnotationSnapshot({ annotations, includeOpenAnnotations: true, now: '2026-01-02T00:00:00.000Z' });
+    expect(openOnly).toMatchObject({ selectedAnnotationIds: [], openAnnotationIds: ['a1'], annotations: [{ annotationId: 'a1', snapshotReason: 'open' }] });
+    const selectedOnly = buildPlanRevisionAnnotationSnapshot({ annotations, annotationIds: ['a1'], includeOpenAnnotations: false, now: '2026-01-02T00:00:00.000Z' });
+    expect(selectedOnly).toMatchObject({ selectedAnnotationIds: ['a1'], openAnnotationIds: [], annotations: [{ annotationId: 'a1', snapshotReason: 'selected' }] });
     annotations[0].body = 'Edited later';
     expect(snapshot?.annotations[0].body).toBe('Original');
     expect(() => buildPlanRevisionAnnotationSnapshot({ annotations, annotationIds: ['missing'], now: '2026-01-02T00:00:00.000Z' })).toThrow(/Unknown/);
     expect(derivePlanRevisionUserMessage({ annotationIds: ['a1'] })).toBe('Revise from 1 plan annotation.');
+  });
+
+  it('rejects DOM-offset-only targets and closed selected annotations through action dispatch', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlan(cwd, 'validate-targets');
+      const tasks = new Map<string, ExtensionAgentTaskRecord>();
+      const offsetOnly = await dispatchRaw(cwd, 'create-plan-revision-annotation', { session: 'validate-targets', target: { kind: 'selection', startOffset: 10, endOffset: 20 } }, tasks);
+      expect(offsetOnly).toMatchObject({ kind: 'invalid-input' });
+      expect(JSON.stringify(offsetOnly)).toMatch(/capturedText|quoteContext/);
+
+      const created = await dispatch(cwd, 'create-plan-revision-annotation', { session: 'validate-targets', body: 'Already handled.', target }, tasks);
+      const annotationId = (created.annotations as Array<{ annotationId: string }>)[0].annotationId;
+      await dispatch(cwd, 'resolve-plan-revision-annotation', { session: 'validate-targets', annotationId }, tasks);
+      const closedStart = await dispatchRaw(cwd, 'start-plan-revision-turn', { session: 'validate-targets', annotationIds: [annotationId] }, tasks);
+      expect(closedStart).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('no longer unresolved') });
+    });
+  });
+
+  it('starts open-annotation-only turns with derived messages and rejects empty open-only requests', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlan(cwd, 'open-only');
+      const tasks = new Map<string, ExtensionAgentTaskRecord>();
+      const starts: unknown[] = [];
+      const noOpen = await dispatchRaw(cwd, 'start-plan-revision-turn', { session: 'open-only', includeOpenAnnotations: true }, tasks, starts);
+      expect(noOpen).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('no unresolved annotations') });
+      expect(starts).toHaveLength(0);
+
+      const created = await dispatch(cwd, 'create-plan-revision-annotation', { session: 'open-only', body: 'Use open annotation context.', target }, tasks);
+      const annotationId = (created.annotations as Array<{ annotationId: string }>)[0].annotationId;
+      const output = await dispatch(cwd, 'start-plan-revision-turn', { session: 'open-only', includeOpenAnnotations: true }, tasks, starts);
+      expect(output.turn).toMatchObject({ userMessage: 'Revise from 1 plan annotation.', annotationSnapshot: { selectedAnnotationIds: [], openAnnotationIds: [annotationId], annotations: [{ annotationId, snapshotReason: 'open' }] } });
+      const source = JSON.parse(String((starts[0] as { input: { sourceText: string } }).input.sourceText));
+      expect(source.context).toMatchObject({ userMessage: 'Revise from 1 plan annotation.', annotationSnapshot: { includeOpenAnnotations: true, openAnnotationIds: [annotationId] } });
+    });
   });
 
   it('dispatches annotation actions, snapshots source context, and resolves on successful apply', async () => {
@@ -173,6 +212,21 @@ describe('plan revision annotations', () => {
     });
   });
 
+  it('lists annotations only on plan-including session list projections', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlan(cwd, 'projection');
+      const tasks = new Map<string, ExtensionAgentTaskRecord>();
+      await dispatch(cwd, 'create-plan-revision-annotation', { session: 'projection', body: 'Projected when plan included.', target }, tasks);
+
+      const withoutPlan = await dispatch(cwd, 'list-plan-revision-sessions', { includePlan: false }, tasks);
+      expect((withoutPlan.sessions as Array<Record<string, unknown>>)[0]).not.toHaveProperty('annotations');
+      expect((withoutPlan.sessions as Array<Record<string, unknown>>)[0]).not.toHaveProperty('plan');
+
+      const withPlan = await dispatch(cwd, 'list-plan-revision-sessions', { includePlan: true }, tasks);
+      expect((withPlan.sessions as Array<Record<string, unknown>>)[0]).toMatchObject({ annotations: [expect.objectContaining({ body: 'Projected when plan included.' })], plan: expect.any(Object) });
+    });
+  });
+
   it('keeps manual message-only turns compatible without annotation snapshots', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlan(cwd, 'manual');
@@ -186,6 +240,33 @@ describe('plan revision annotations', () => {
       const source = JSON.parse(String((starts[0] as { input: { sourceText: string } }).input.sourceText));
       expect(source.context).not.toHaveProperty('annotationSnapshot');
       expect(source.context).toMatchObject({ userMessage: 'Manual edit request.' });
+    });
+  });
+
+  it('preserves parent annotation snapshots across retry and redraft turns', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlan(cwd, 'retry-snapshot');
+      await writeSessionPlan(cwd, 'redraft-snapshot');
+      const tasks = new Map<string, ExtensionAgentTaskRecord>();
+      const starts: unknown[] = [];
+
+      const retryCreated = await dispatch(cwd, 'create-plan-revision-annotation', { session: 'retry-snapshot', body: 'Original retry body.', target }, tasks);
+      const retryAnnotationId = (retryCreated.annotations as Array<{ annotationId: string }>)[0].annotationId;
+      const retryParent = await dispatch(cwd, 'start-plan-revision-turn', { session: 'retry-snapshot', annotationIds: [retryAnnotationId], includeOpenAnnotations: true }, tasks, starts);
+      const retryParentTurn = retryParent.turn as { taskId: string; turnId: string };
+      tasks.set(retryParentTurn.taskId, failedTask(retryParentTurn.taskId));
+      await dispatch(cwd, 'update-plan-revision-annotation', { session: 'retry-snapshot', annotationId: retryAnnotationId, body: 'Edited before retry.' }, tasks);
+      const retryChild = await dispatch(cwd, 'retry-plan-revision-turn', { session: 'retry-snapshot', turnId: retryParentTurn.turnId }, tasks, starts);
+      expect(retryChild.turn).toMatchObject({ retryOfTaskId: retryParentTurn.taskId, annotationSnapshot: { annotations: [expect.objectContaining({ annotationId: retryAnnotationId, body: 'Original retry body.' })] } });
+
+      const redraftCreated = await dispatch(cwd, 'create-plan-revision-annotation', { session: 'redraft-snapshot', body: 'Original redraft body.', target }, tasks);
+      const redraftAnnotationId = (redraftCreated.annotations as Array<{ annotationId: string }>)[0].annotationId;
+      const redraftParent = await dispatch(cwd, 'start-plan-revision-turn', { session: 'redraft-snapshot', annotationIds: [redraftAnnotationId], includeOpenAnnotations: true }, tasks, starts);
+      const redraftParentTurn = redraftParent.turn as { taskId: string; turnId: string };
+      tasks.set(redraftParentTurn.taskId, completedNeedsInputTask(redraftParentTurn.taskId));
+      await dispatch(cwd, 'update-plan-revision-annotation', { session: 'redraft-snapshot', annotationId: redraftAnnotationId, body: 'Edited before redraft.' }, tasks);
+      const redraftChild = await dispatch(cwd, 'retry-plan-revision-turn', { session: 'redraft-snapshot', turnId: redraftParentTurn.turnId, answers: [{ answer: 'Revise the scope section.' }], steering: 'Keep the same annotation context.' }, tasks, starts);
+      expect(redraftChild.turn).toMatchObject({ redraftOfTaskId: redraftParentTurn.taskId, annotationSnapshot: { annotations: [expect.objectContaining({ annotationId: redraftAnnotationId, body: 'Original redraft body.' })] } });
     });
   });
 

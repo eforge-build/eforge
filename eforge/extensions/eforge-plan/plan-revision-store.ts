@@ -5,6 +5,7 @@ import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION, PlanRevisionIndexSchema, type PlanRevisionAnnotation, type PlanRevisionAnnotationTarget, type PlanRevisionIndex, type PlanRevisionSessionEntry, type PlanRevisionTurnEntry } from './planning-agent-task-schemas.js';
 import { referencedAnnotationIds } from './plan-revision-annotations.js';
+import { userActionError } from './action-errors.js';
 
 const EXTENSION_NAME = 'eforge-plan';
 const INDEX_SEGMENTS = ['plan-revisions', 'index.json'] as const;
@@ -103,7 +104,7 @@ export async function createPlanRevisionAnnotation(cwd: string, targetSession: s
     const index = await readPlanRevisionIndex(cwd);
     const session = index.sessions.find((candidate) => candidate.targetSession === targetSession);
     if (session === undefined) throw new Error(`No plan revision session found for ${targetSession}.`);
-    if (session.annotations.length >= MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION) throw new Error(`Plan revision session ${targetSession} already has the maximum ${MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION} annotations.`);
+    if (session.annotations.length >= MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION) throw userActionError(`Plan revision session ${targetSession} already has the maximum ${MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION} annotations.`, { path: 'session', details: { session: targetSession, max: MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION } });
     const annotation: PlanRevisionAnnotation = { annotationId: randomUUID(), targetSession, ...(input.body !== undefined && { body: input.body }), target: input.target, createdAt: now, updatedAt: now };
     const updated = { ...session, annotations: orderAnnotations([...session.annotations, annotation]), updatedAt: now };
     await writePlanRevisionIndex(cwd, { schemaVersion: 1, sessions: index.sessions.map((candidate) => candidate.threadId === session.threadId ? updated : candidate) });
