@@ -135,7 +135,10 @@ describe('eforge-plan package foundation', () => {
       expect(existsSync(join(extensionRoot, rel)), rel).toBe(true);
     }
 
-    const mod = await import(pathToFileURL(join(extensionRoot, 'dist/index.js')).href) as { default?: unknown };
+    const indexUrl = pathToFileURL(join(extensionRoot, 'dist/index.js')).href;
+    await execFileAsync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(indexUrl)});`], { cwd: repoRoot, timeout: 30_000 });
+
+    const mod = await import(indexUrl) as { default?: unknown };
     expect(typeof mod.default).toBe('function');
 
     const { api, state } = createExtensionRecorder('eforge-plan', join(extensionRoot, 'dist/index.js'));
