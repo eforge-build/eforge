@@ -15,7 +15,18 @@ export {
   RecommendationStatusSidecarSchema,
 };
 
-export const GetRecommendationsWithStatusOutputSchema = GetRecommendationsOutputSchema;
+export const RecommendationFreshnessViewSchema = Type.Object({
+  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]),
+  reason: Type.String(),
+  storedSourceFingerprint: Type.Optional(Type.String()),
+  comparedSourceFingerprint: Type.String(),
+  baselineTaskId: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const GetRecommendationsWithStatusOutputSchema = Type.Object({
+  ...GetRecommendationsOutputSchema.properties,
+  recommendationFreshness: RecommendationFreshnessViewSchema,
+}, { additionalProperties: false });
 
 export const RefreshRecommendationsInputSchema = Type.Object({}, { additionalProperties: false });
 
@@ -25,16 +36,6 @@ export const RefreshRecommendationsOutputSchema = Type.Object({
   sourceFingerprint: SourceFingerprintSchema,
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
-
-// --- eforge:region plan-02-plan-04-trace-lifecycle-freshness ---
-export const RecommendationFreshnessViewSchema = Type.Object({
-  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]),
-  reason: Type.String(),
-  storedSourceFingerprint: Type.Optional(Type.String()),
-  comparedSourceFingerprint: Type.String(),
-  baselineTaskId: Type.Optional(Type.String()),
-}, { additionalProperties: false });
-// --- eforge:endregion plan-02-plan-04-trace-lifecycle-freshness ---
 
 export type RecommendationStaleReason = Static<typeof RecommendationStaleReasonSchema>;
 export type RecommendationStatusSidecar = Static<typeof RecommendationStatusSidecarSchema>;

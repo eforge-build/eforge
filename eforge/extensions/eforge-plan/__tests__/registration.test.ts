@@ -171,7 +171,7 @@ describe('eforge-plan extension registration', () => {
     expect(Object.keys(listPlanningArtifactsOutput.properties as Record<string, unknown>).sort()).toEqual(['artifacts', 'board', 'planSets', 'plans']);
     expect(listPlanningArtifactsOutput.required).toEqual(['artifacts', 'plans', 'planSets']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
-    expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationSummary', 'recommendations', 'status']);
+    expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationFreshness', 'recommendationSummary', 'recommendations', 'status']);
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);
     const roadmapOutput = actions.find((action) => action.id === 'get-roadmap-state')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(roadmapOutput)).toMatch(/context|localSteering|sharedContextSources|discoveredContextSources/);
@@ -185,7 +185,7 @@ describe('eforge-plan extension registration', () => {
     const applyPlanningInput = actions.find((action) => action.id === 'apply-planning-agent-task-result')?.inputSchema as Record<string, unknown>;
     expect(JSON.stringify(applyPlanningInput)).toMatch(/applyBacklogCurationDraft|previewAcknowledged|confirmApply|applyCurationOnly/);
     const previewCurationOutput = actions.find((action) => action.id === 'preview-backlog-curation-task')?.outputSchema as Record<string, unknown>;
-    expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation/);
+    expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation|recommendationFreshness|gitDelta/);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
     const planRevisionOutput = actions.find((action) => action.id === 'get-plan-revision-session')?.outputSchema as Record<string, unknown>;

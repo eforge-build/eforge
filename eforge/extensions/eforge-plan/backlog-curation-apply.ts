@@ -21,11 +21,12 @@ import {
   type BacklogRecordSnapshot,
 } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
-import { computeRecommendationSourceFingerprint, markRecommendationsStaleForBacklogMutation, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
+import { computeRecommendationSourceFingerprint, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
 import type { ApplyPlanningAgentTaskResultInput, PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
 import type { BacklogCurationApplyDetails, BacklogCurationPreviewDetails, BacklogCurationRecommendationProjection, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
+import { readBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { RecommendationBlockedChainSchema, RecommendationItemRefSchema, RecommendationProfileSchema } from './schema.js';
 import type { BacklogRecommendationModel } from './schema.js';
 
@@ -106,13 +107,19 @@ export async function applyBacklogCurationDraftFromTask(
 
 export async function previewBacklogCurationDraftFromTask(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined): Promise<BacklogCurationPreviewDetails> {
   try {
-    const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry);
+    const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: true });
+    const [recommendationFreshness, sourceMetadata] = await Promise.all([
+      readRecommendationFreshnessView(cwd),
+      readBacklogCurationSourcePreviewMetadata(cwd, prepared.draft.sourceFingerprint),
+    ]);
     return {
       valid: prepared.generatedRecommendationValidation.valid,
       itemChanges: prepared.draft.itemChanges.length,
       epicChanges: prepared.draft.epicChanges.length,
       noOpRechecks: prepared.effectiveRechecks.length,
-      ...(prepared.generatedRecommendations !== undefined && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
+      recommendationFreshness,
+      ...(sourceMetadata?.gitDelta !== undefined && { gitDelta: sourceMetadata.gitDelta }),
+      ...(prepared.generatedRecommendationsPresent && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
       ...(prepared.generatedRecommendationsPresent && { recommendationProjection: prepared.recommendationProjection }),
     };
   } catch (err) {

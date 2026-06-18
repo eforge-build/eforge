@@ -13,7 +13,7 @@ import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown
 import { createEmptyRecommendationModel, readRecommendations, writeRecommendations } from '../recommendations-store.js';
 import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { ApplyPlanningAgentTaskResultInputSchema } from '../planning-agent-task-schemas.js';
-import { buildBacklogCurationSource } from '../backlog-curation-source.js';
+import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-agent-task-'));
@@ -678,6 +678,7 @@ describe('planning agent task actions', () => {
       await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
       const source = await buildBacklogCurationSource(cwd);
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
       const base = { originalRequest: '', derivedRequest: 'Analyze and curate all open eforge-plan backlog records.', selection: {}, requestedOutputSections: ['backlogCurationDraft' as const, 'recommendations' as const], includeRoadmap: true, purpose: 'backlog-curation' as const, sourceFingerprint: source.sourceFingerprint };
       await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-curation-valid-preview', createdAt: '2026-01-01T00:00:00.000Z', ...base });
       await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-curation-malformed-preview', createdAt: '2026-01-02T00:00:00.000Z', ...base });
@@ -743,7 +744,7 @@ describe('planning agent task actions', () => {
         timeoutMs: 1000,
         agentTasks,
       });
-      expect(validPreview).toMatchObject({ kind: 'success', output: { valid: false, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] }, recommendationProjection: { effectiveRecommendations: expect.objectContaining({ blockedChains: [{ ref: 'closed-chain', itemIds: ['item-one'], blockedBy: ['closed-dep'], rationale: 'Historical dependency.' }] }), validation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } } } });
+      expect(validPreview).toMatchObject({ kind: 'success', output: { valid: false, recommendationFreshness: { comparedSourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) }, gitDelta: { baseline: expect.any(Object) }, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] }, recommendationProjection: { effectiveRecommendations: expect.objectContaining({ blockedChains: [{ ref: 'closed-chain', itemIds: ['item-one'], blockedBy: ['closed-dep'], rationale: 'Historical dependency.' }] }), validation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } } } });
       expect(malformedPreview).toMatchObject({ kind: 'success', output: { valid: false, errors: expect.any(Array) } });
     });
   });

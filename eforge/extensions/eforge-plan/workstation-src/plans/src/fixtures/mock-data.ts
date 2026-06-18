@@ -1,4 +1,4 @@
-import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationModel, RecommendationStatus } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -127,6 +127,10 @@ export const mockRecommendations: RecommendationModel = {
   rationaleAndAssumptions: ['Favor extension-owned workflow UX over engine changes.', 'Keep recommendations in private extension storage.'],
 };
 
+export const mockRecommendationFreshnessMissing: RecommendationFreshnessView = { state: 'missing', reason: 'No recommendation model has been generated for the current source.', comparedSourceFingerprint: 'fresh-source-fingerprint' };
+export const mockRecommendationFreshnessFresh: RecommendationFreshnessView = { state: 'fresh', reason: 'Recommendation model matches the current source fingerprint.', storedSourceFingerprint: 'fresh-source-fingerprint', comparedSourceFingerprint: 'fresh-source-fingerprint', baselineTaskId: 'task-refresh-recommendations' };
+export const mockRecommendationFreshnessStale: RecommendationFreshnessView = { state: 'stale', reason: 'Recommendation source fingerprint drifted since the model was last applied.', storedSourceFingerprint: 'old-source-fingerprint', comparedSourceFingerprint: 'current-source-fingerprint', baselineTaskId: 'task-backlog-curation-ready' };
+
 export const mockRecommendationStatusMissing: RecommendationStatus = {
   state: 'missing',
   currentPath: 'mock://recommendations/current.json',
@@ -206,18 +210,21 @@ export const mockGetRecommendationsFreshResponse: GetRecommendationsResponse = {
   recommendationSummary: { recommendedNextItemIds: ['recommend-next-work', 'add-import-preview'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['add-import-preview', 'recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockRecommendations.rationaleAndAssumptions ?? [] },
   path: 'mock://recommendations/current.json',
   status: mockRecommendationStatusFresh,
+  recommendationFreshness: mockRecommendationFreshnessFresh,
 };
 
 export const mockGetRecommendationsMissingResponse: GetRecommendationsResponse = {
   recommendations: null,
   path: 'mock://recommendations/current.json',
   status: mockRecommendationStatusMissing,
+  recommendationFreshness: mockRecommendationFreshnessMissing,
 };
 
 export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = {
   recommendations: mockRecommendations,
   path: 'mock://recommendations/current.json',
   status: mockRecommendationStatusStale,
+  recommendationFreshness: mockRecommendationFreshnessStale,
   activeRefreshTask: mockActiveRecommendationRefreshTask,
 };
 
@@ -393,26 +400,18 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
   }],
   noOpRechecks: [{ kind: 'item', id: 'traceability', precondition: { kind: 'item', id: 'traceability', bodySha256: 'traceability-body' }, last_checked: '2026-06-07', stale_after: '2026-07-07', rationale: 'Traceability remains accurate and ready.' }],
   skipped: [{ kind: 'item', id: 'legacy-cleanup', reason: 'Legacy shipped record is ambiguous and should not be rewritten by curation.' }],
-  needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'Ambiguous shipped candidate: needs input — git history mentions stale-idea but lacks a confirmed merge or lifecycle landing.' }],
+  needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'Ambiguous shipped candidate: needs input — git history mentions stale-idea but lacks a confirmed merge or lifecycle landing.' }, { kind: 'item', id: 'legacy-cleanup', question: 'Should legacy cleanup be marked superseded instead of shipped?', reason: 'Ambiguous superseded candidate: needs input — git history mentions replacement but lacks confirmed superseded lifecycle evidence.' }],
 };
-
+export const mockEffectiveCurationRecommendations: RecommendationModel = { ...mockRecommendations, readyCandidates: [{ ref: 'ready-traceability', itemId: 'traceability', rationale: 'Still ready after server projection.' }], recommendedNextSequence: [{ ref: 'next-recommendations', itemId: 'recommend-next-work', rationale: 'Still effective after server projection.' }], safeParallelizableGroups: [{ ref: 'planning-foundations', title: 'Planning foundations', itemIds: ['recommend-next-work'], rationale: 'Server projection removed shipped same-draft targets.', recommendedProfile: 'excursion' }] };
 export const mockBacklogCurationPreview = {
-  valid: false,
-  itemChanges: mockBacklogCurationDraft.itemChanges.length,
-  epicChanges: mockBacklogCurationDraft.epicChanges.length,
-  noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length,
-  generatedRecommendationValidation: {
-    valid: false,
-    issues: [{
-      path: 'blockedChains.closed-chain.blockedBy',
-      id: 'closed-dep',
-      kind: 'item' as const,
-      reason: 'closed' as const,
-      status: 'shipped',
-      title: 'Closed dependency',
-      message: 'Generated recommendation references closed item closed-dep.',
-    }],
+  valid: false, itemChanges: mockBacklogCurationDraft.itemChanges.length, epicChanges: mockBacklogCurationDraft.epicChanges.length, noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length, recommendationFreshness: mockRecommendationFreshnessStale,
+  gitDelta: {
+    baseline: { source: 'accepted-analysis-sidecar', commit: '1111111111111111111111111111111111111111', sourceFingerprint: 'old-source-fingerprint', time: '2026-06-06T00:00:00.000Z', taskId: 'task-baseline' }, currentHead: { commit: '2222222222222222222222222222222222222222', sourceFingerprint: 'current-source-fingerprint', time: '2026-06-07T00:30:00.000Z' }, coverage: { kind: 'fallback' as const, message: 'coverage fallback after baseline scan diagnostics' }, caps: { commitScanCount: 200, changedPathCount: 500 }, scannedCommitCount: 42, scannedCommits: [{ hash: '2222222222222222222222222222222222222222' }],
+    diagnostics: [{ severity: 'info' as const, code: 'baseline-missing', message: 'Baseline sidecar was missing; using fallback scan.' }, { severity: 'warning' as const, code: 'baseline-unreachable', message: 'Baseline commit was not reachable from HEAD.', commit: '1111111111111111111111111111111111111111' }],
+    affectedItemCandidates: [{ itemId: 'add-import-preview', intent: 'affected', confidence: 'medium', commit: { hash: '2222222222222222222222222222222222222222' } }, { itemId: 'stale-idea', intent: 'ambiguous-shipped', confidence: 'ambiguous', evidence: 'Ambiguous shipped candidate: needs input' }, { itemId: 'legacy-cleanup', intent: 'ambiguous-superseded', confidence: 'ambiguous', evidence: 'Ambiguous superseded candidate: needs input' }],
   },
+  recommendationProjection: { effectiveRecommendations: mockEffectiveCurationRecommendations, recommendationSummary: { recommendedNextItemIds: ['recommend-next-work'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockEffectiveCurationRecommendations.rationaleAndAssumptions ?? [] }, removed: { itemIds: ['add-import-preview'], epicIds: ['planning'] }, repositioned: [{ itemId: 'recommend-next-work', from: 'readyCandidates', to: 'recommendedNextSequence' }], validation: { valid: false, issues: [{ path: 'safeParallelizableGroups.planning-foundations.itemIds[0]', id: 'recommend-next-work', kind: 'item' as const, reason: 'wrong-lane' as const, status: 'planned', title: 'Maintain next-work recommendations', message: 'Generated recommendation references an item in the wrong lane for this section.' }] } },
+  generatedRecommendationValidation: { valid: false, issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', kind: 'item' as const, reason: 'closed' as const, status: 'shipped', title: 'Closed dependency', message: 'Generated recommendation references closed item closed-dep.' }] },
 };
 
 export const mockBacklogCurationTask: PlanningAgentTaskRecord = {

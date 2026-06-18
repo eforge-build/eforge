@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
-import type { Artifact, Board, CompactBoardResponse, GetRecommendationsResponse, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
+import type { Artifact, Board, CompactBoardResponse, GetRecommendationsResponse, JsonObject, PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
@@ -13,6 +13,7 @@ export interface WorkstationDataState {
   artifacts: Artifact[];
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
+  recommendationFreshness: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   roadmapState: RoadmapStateResponse | null;
   saveRoadmapState: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
@@ -30,6 +31,7 @@ export function useWorkstationData(): WorkstationDataState {
   const [artifacts, setArtifacts] = React.useState<Artifact[]>([]);
   const [recommendations, setRecommendations] = React.useState<RecommendationModel | null>(null);
   const [recommendationStatus, setRecommendationStatus] = React.useState<RecommendationStatus | null>(null);
+  const [recommendationFreshness, setRecommendationFreshness] = React.useState<RecommendationFreshnessView | null>(null);
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
   const [roadmapState, setRoadmapState] = React.useState<RoadmapStateResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -54,6 +56,7 @@ export function useWorkstationData(): WorkstationDataState {
     if (recommendationsResult.status === 'fulfilled') {
       setRecommendations(recommendationModel);
       setRecommendationStatus(recommendationsResult.value.status ?? null);
+      setRecommendationFreshness(recommendationsResult.value.recommendationFreshness ?? null);
       setActiveRecommendationRefreshTask(recommendationsResult.value.activeRefreshTask ?? null);
     } else failures.push(reason('recommendations', recommendationsResult.reason));
     if (roadmapResult.status === 'fulfilled') setRoadmapState(roadmapResult.value);
@@ -112,7 +115,7 @@ export function useWorkstationData(): WorkstationDataState {
 
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, activeRecommendationRefreshTask, roadmapState, saveRoadmapState, refreshRecommendations, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, saveRoadmapState, refreshRecommendations, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

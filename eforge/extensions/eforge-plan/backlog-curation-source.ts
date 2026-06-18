@@ -1,3 +1,7 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { safeParseWithSchema } from '@eforge-build/client';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { blockerRiskProjection, dependencyStateProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
@@ -19,11 +23,18 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
+import { BacklogCurationGitDeltaPreviewSchema, type BacklogCurationGitDeltaPreview } from './backlog-curation-schemas.js';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
   sourceText: string;
   source: Record<string, unknown>;
+}
+
+export interface BacklogCurationSourcePreviewMetadata {
+  sourceFingerprint: string;
+  generatedAt?: string;
+  gitDelta?: BacklogCurationGitDeltaPreview;
 }
 
 const SOURCE_TEXT_TARGET = 180_000;
@@ -48,6 +59,35 @@ interface BacklogCurationSourceBuildOptions {
   // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 }
 // --- eforge:endregion shipped-evidence-context ---
+
+export async function writeBacklogCurationSourcePreviewMetadata(cwd: string, source: BacklogCurationSourceBuild): Promise<void> {
+  const metadata = previewMetadataFromSource(source);
+  const path = resolveBacklogCurationSourcePreviewMetadataPath(cwd, metadata.sourceFingerprint);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
+}
+
+export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sourceFingerprint: string): Promise<BacklogCurationSourcePreviewMetadata | null> {
+  let raw: string;
+  try {
+    raw = await readFile(resolveBacklogCurationSourcePreviewMetadataPath(cwd, sourceFingerprint), 'utf-8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
+  return {
+    sourceFingerprint,
+    ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
+    ...(gitDelta?.success && { gitDelta: gitDelta.data }),
+  };
+}
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
@@ -387,6 +427,19 @@ function projectPrecondition(snapshot: BacklogRecordSnapshot<BacklogItem | Backl
     updated: snapshot.updated,
     bodySha256: snapshot.bodySha256,
     recordSha256: snapshot.recordSha256,
+  };
+}
+
+function resolveBacklogCurationSourcePreviewMetadataPath(cwd: string, sourceFingerprint: string): string {
+  return createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' }).extensionStoragePath('project-local', ['backlog-curation-sources', `${sourceFingerprint}.json`]);
+}
+
+function previewMetadataFromSource(source: BacklogCurationSourceBuild): BacklogCurationSourcePreviewMetadata {
+  const gitDelta = safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, source.source.gitDelta);
+  return {
+    sourceFingerprint: source.sourceFingerprint,
+    ...(typeof source.source.generatedAt === 'string' && { generatedAt: source.source.generatedAt }),
+    ...(gitDelta.success && { gitDelta: gitDelta.data }),
   };
 }
 

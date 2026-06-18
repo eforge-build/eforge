@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from '@/router';
-import type { Board as BoardData, BoardItem, JsonObject, PlanningAgentTaskRecord, RecommendationModel, RecommendationStatus } from '@/types';
+import type { Board as BoardData, BoardItem, JsonObject, PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 import { Board } from './backlog/board';
 import { ItemDrawer } from './backlog/item-drawer';
 import { EpicDrawer } from './backlog/epic-drawer';
@@ -18,13 +18,14 @@ interface BacklogViewProps {
   board: BoardData;
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
+  recommendationFreshness: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   onRefresh: () => Promise<void>;
   onLoadMoreBoard?: () => Promise<void>;
   onLoadClosedLane?: (lane: string) => Promise<void>;
 }
 
-export function BacklogView({ board, recommendations, recommendationStatus, activeRecommendationRefreshTask, onRefresh, onLoadMoreBoard, onLoadClosedLane }: BacklogViewProps) {
+export function BacklogView({ board, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, onRefresh, onLoadMoreBoard, onLoadClosedLane }: BacklogViewProps) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [detailItemId, setDetailItemId] = React.useState<string | null>(null);
@@ -126,6 +127,7 @@ export function BacklogView({ board, recommendations, recommendationStatus, acti
       <RecommendationsPanel
         recommendations={recommendations}
         status={recommendationStatus}
+        freshness={recommendationFreshness}
         activeRefreshTask={activeRecommendationRefreshTask}
         titles={titles}
         selected={selected}

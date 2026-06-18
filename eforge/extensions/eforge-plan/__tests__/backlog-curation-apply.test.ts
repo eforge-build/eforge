@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { applyBacklogCurationDraftFromTask, applySectionOperations, previewBacklogCurationDraftFromTask } from '../backlog-curation-apply.js';
 import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
-import { buildBacklogCurationSource } from '../backlog-curation-source.js';
+import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
 import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { readDerivedRecommendationStatus } from '../recommendation-status.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
@@ -296,6 +296,26 @@ describe('backlog curation apply', () => {
     });
   });
 
+  it('reports malformed generated recommendations as preview validation instead of preview errors', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Claim', action: 'replace', content: 'Curated claim.' }], rationale: 'Refresh claim.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, { schemaVersion: 1, activeWork: 'not-an-array' });
+
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+
+      expect(preview.errors).toBeUndefined();
+      expect(preview.valid).toBe(false);
+      expect(preview.generatedRecommendationValidation?.valid).toBe(false);
+      expect(preview.recommendationProjection?.validation.valid).toBe(false);
+    });
+  });
+
   it('writes generated recommendations and records freshness after successful curation writes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
@@ -336,10 +356,13 @@ describe('backlog curation apply', () => {
         noOpRechecks: [],
       }, recommendations);
 
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
       const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
       const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
       expect(preview.valid).toBe(true);
+      expect(preview.recommendationFreshness?.comparedSourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(preview.gitDelta).toMatchObject({ baseline: expect.any(Object) });
       expect(preview.recommendationProjection?.effectiveRecommendations).toEqual(apply.recommendations?.recommendations);
       expect(preview.recommendationProjection?.removed.itemIds).toEqual(['ship-me']);
       expect(apply.recommendations?.recommendations.readyCandidates).toEqual([{ itemId: 'keep-me', rationale: 'Keep open.' }]);

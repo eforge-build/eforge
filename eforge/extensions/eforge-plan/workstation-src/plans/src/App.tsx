@@ -68,6 +68,7 @@ function Shell() {
           state={data.roadmapState}
           loading={data.loading}
           recommendationStatus={data.recommendationStatus}
+          recommendationFreshness={data.recommendationFreshness}
           activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
           onSaveLocalFocus={data.saveRoadmapState}
           onRefreshRecommendations={data.refreshRecommendations}
@@ -79,6 +80,7 @@ function Shell() {
               board={data.board}
               recommendations={data.recommendations}
               recommendationStatus={data.recommendationStatus}
+              recommendationFreshness={data.recommendationFreshness}
               activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
               onRefresh={data.refresh}
               onLoadMoreBoard={data.loadMoreBoard}

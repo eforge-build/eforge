@@ -1,4 +1,4 @@
-import { mockGetRecommendationsFreshResponse, mockRecommendationStatusStale, mockRecommendations } from '@/fixtures/mock-data';
+import { mockGetRecommendationsFreshResponse, mockRecommendationFreshnessStale, mockRecommendationStatusStale, mockRecommendations } from '@/fixtures/mock-data';
 import type { GetRecommendationsResponse, JsonObject, PlanningAgentTaskRecord, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
 
 const MAX_CONTENT_BYTES = 40_000;
@@ -51,7 +51,7 @@ export function refreshMockRecommendations(): RefreshRecommendationsResponse {
 
 export function getMockRecommendationsWithRoadmapRefresh(): GetRecommendationsResponse {
   if (!activeRefreshTask) return mockGetRecommendationsFreshResponse;
-  return { recommendations: mockRecommendations, path: 'mock://recommendations/current.json', status: mockRecommendationStatusStale, activeRefreshTask };
+  return { recommendations: mockRecommendations, path: 'mock://recommendations/current.json', status: mockRecommendationStatusStale, recommendationFreshness: mockRecommendationFreshnessStale, activeRefreshTask };
 }
 
 function localSource(updatedAt: string) {

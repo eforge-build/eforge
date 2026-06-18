@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getMockArtifacts, getMockCompactBoard, mockGetRecommendationsStaleResponse } from '@/fixtures/mock-data';
+import { getMockArtifacts, getMockCompactBoard, mockGetRecommendationsFreshResponse, mockGetRecommendationsStaleResponse } from '@/fixtures/mock-data';
 import { getMockRoadmapState } from '@/fixtures/mock-roadmap';
 import type { CompactBoardResponse, EforgeBridge, RefreshRecommendationsResponse, RoadmapStateResponse } from '@/types';
 
@@ -33,6 +33,7 @@ describe('useWorkstationData recommendations mapping', () => {
     await waitFor(() => expect(invokeActionSpy).toHaveBeenCalledWith('get-recommendations', {}));
     await waitFor(() => expect(invokeActionSpy).toHaveBeenCalledWith('get-roadmap-state', { includeLocalFocusContent: true }));
     await waitFor(() => expect(result.current.recommendationStatus?.state).toBe('stale'));
+    await waitFor(() => expect(result.current.recommendationFreshness?.state).toBe('stale'));
     const compactBoardCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-board-compact');
     const artifactsCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-planning-artifacts');
     const fullBoardCalls = invokeActionSpy.mock.calls.filter(([actionId]) => actionId === 'list-board');
@@ -42,6 +43,8 @@ describe('useWorkstationData recommendations mapping', () => {
 
     expect(result.current.recommendations?.recommendedNextSequence[0]?.itemId).toBe('recommend-next-work');
     expect(result.current.recommendationStatus?.staleReasons.map((reason) => reason.code)).toContain('source-fingerprint-drift');
+    expect(result.current.recommendationFreshness?.storedSourceFingerprint).toBe('old-source-fingerprint');
+    expect(result.current.recommendationFreshness?.comparedSourceFingerprint).toBe('current-source-fingerprint');
     expect(result.current.activeRecommendationRefreshTask?.taskId).toBe('task-refresh-recommendations');
     expect(result.current.board.items.length).toBeGreaterThan(0);
     expect(result.current.board.counts?.closed).toBeGreaterThan(0);
@@ -175,12 +178,16 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(result.current.roadmapState?.context.localSteering.content).toContain('Prioritize workstation');
   });
 
-  it('starts recommendation refresh, seeds the active task, and reloads recommendations', async () => {
+  it('starts recommendation refresh, seeds the active task, and reloads recommendation freshness', async () => {
     const calls: Array<{ actionId: string; input: unknown }> = [];
     const response: RefreshRecommendationsResponse = { task: { taskId: 'task-refresh-from-test', kind: 'eforge-plan.planning-draft', status: 'running', createdAt: '', updatedAt: '' }, entry: { taskId: 'task-refresh-from-test', originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: '' }, sourceFingerprint: 'fingerprint' };
+    let getRecommendationsCalls = 0;
     const bridge = bridgeWithDefaults(async (actionId, input) => {
       calls.push({ actionId, input: input ?? {} });
-      if (actionId === 'get-recommendations') return { ...mockGetRecommendationsStaleResponse, activeRefreshTask: response.task };
+      if (actionId === 'get-recommendations') {
+        getRecommendationsCalls += 1;
+        return getRecommendationsCalls === 1 ? mockGetRecommendationsStaleResponse : { ...mockGetRecommendationsFreshResponse, activeRefreshTask: response.task };
+      }
       if (actionId === 'refresh-recommendations') return response;
       return undefined;
     });
@@ -195,6 +202,7 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(calls).toContainEqual({ actionId: 'refresh-recommendations', input: {} });
     expect(calls.filter((call) => call.actionId === 'get-recommendations').length).toBeGreaterThanOrEqual(2);
     expect(result.current.activeRecommendationRefreshTask?.taskId).toBe('task-refresh-from-test');
+    expect(result.current.recommendationFreshness?.state).toBe('fresh');
   });
 });
 

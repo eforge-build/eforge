@@ -227,9 +227,18 @@ function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLink
 function lifecycleRowsByItemId(summaries: readonly TraceSummary[]): Map<string, LifecycleLinkRow[]> {
   const rows = new Map<string, LifecycleLinkRow[]>();
   for (const summary of summaries) {
-    rows.set(summary.itemId, [...summary.landingRefs, ...summary.prRefs, ...summary.linkRows.filter(isLandingLikeRow)]);
+    rows.set(summary.itemId, dedupeLifecycleRows([...summary.landingRefs, ...summary.prRefs, ...summary.linkRows.filter(isLandingLikeRow)]));
   }
   return rows;
+}
+
+function dedupeLifecycleRows(rows: readonly LifecycleLinkRow[]): LifecycleLinkRow[] {
+  const byKey = new Map<string, LifecycleLinkRow>();
+  for (const row of rows) {
+    const key = [row.kind, row.stage, row.status, row.label, row.session, row.prdId, row.runId, row.sessionId, row.featureBranch, row.commitSha, row.prUrl, row.path, row.timestamp, row.completedAt, ...(row.affectedItemIds ?? [])].join('\u0000');
+    if (!byKey.has(key)) byKey.set(key, row);
+  }
+  return [...byKey.values()];
 }
 
 function isLandingLikeRow(row: LifecycleLinkRow): boolean {

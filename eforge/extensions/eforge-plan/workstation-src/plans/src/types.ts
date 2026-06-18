@@ -211,6 +211,11 @@ export interface RecommendationStatus {
   staleReasons: RecommendationStaleReason[];
 }
 
+// --- eforge:region plan-05-plan-05-workstation-ui ---
+export interface RecommendationFreshnessView { state: 'missing' | 'fresh' | 'stale'; reason: string; storedSourceFingerprint?: string; comparedSourceFingerprint: string; baselineTaskId?: string; }
+export interface RecommendationSummary { recommendedNextItemIds?: string[]; safeParallelizableGroups?: Array<{ ref: string; itemIds: string[]; epicIds?: string[] }>; blockedChainCount?: number; rationaleAndAssumptions?: string[]; }
+// --- eforge:endregion plan-05-plan-05-workstation-ui ---
+
 export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type PlanningTaskDecision = 'ready' | 'needs-input';
 export interface PlanningTaskPlanDraft { title: string; body: string; }
@@ -231,25 +236,25 @@ export interface PlanningTaskSessionPlanCreationDraft {
 export interface PlanningTaskClarificationQuestion { question: string; why?: string; options?: string[]; }
 export interface PlanningTaskHandoffDraft { selection: JsonObject; session?: string; title?: string; profile?: string; }
 export interface PlanningTaskSectionProgress { currentSection?: string; coveredSections?: string[]; remainingSections?: string[]; }
-export interface RecommendationReferenceValidationIssue {
-  path: string;
-  id: string;
-  kind: 'item' | 'epic';
-  reason: 'unknown' | 'closed' | 'empty';
-  status?: string;
-  title?: string;
-  message: string;
-}
-export interface RecommendationReferenceValidationResult {
-  valid: boolean;
-  issues: RecommendationReferenceValidationIssue[];
-}
+export interface RecommendationReferenceValidationIssue { path: string; id: string; kind: 'item' | 'epic'; reason: 'unknown' | 'closed' | 'empty' | 'wrong-lane'; status?: string; title?: string; message: string; }
+export interface RecommendationReferenceValidationResult { valid: boolean; issues: RecommendationReferenceValidationIssue[]; }
 export interface BacklogCurationPreviewValidationError { path: string; message: string; }
+// --- eforge:region plan-05-plan-05-workstation-ui ---
+export interface BacklogCurationRecommendationProjection { effectiveRecommendations?: RecommendationModel; recommendationSummary?: RecommendationSummary; removed: { itemIds: string[]; epicIds: string[] }; repositioned: Array<{ itemId: string; from: string; to: string }>; validation: RecommendationReferenceValidationResult; }
+export interface BacklogCurationGitDeltaDiagnostic { severity: 'warning' | 'info'; code: string; message?: string; commit?: string; }
+export interface BacklogCurationGitDeltaCandidate { itemId?: string; epicId?: string; commit?: unknown; evidence?: string; intent?: 'shipped' | 'superseded' | 'affected' | 'ambiguous-shipped' | 'ambiguous-superseded' | string; confidence?: 'strong' | 'medium' | 'ambiguous' | string; }
+export interface BacklogCurationGitDeltaPreview { baseline?: { source?: string; commit?: string | null; time?: string; taskId?: string; sourceFingerprint?: string; generatedAt?: string } | null; currentHead?: { commit?: string; time?: string; sourceFingerprint?: string; generatedAt?: string } | null; coverage?: { kind: 'complete' | 'bounded' | 'unavailable' | string; message?: string; reason?: string }; caps?: { commitScanCount?: number; changedPathCount?: number; excerptCount?: number; excerptBytes?: number; prEnrichmentCount?: number; subprocessTimeoutMs?: number }; scannedCommitCount?: number; scannedCommits?: unknown[]; diagnostics?: BacklogCurationGitDeltaDiagnostic[]; affectedItemCandidates?: BacklogCurationGitDeltaCandidate[]; }
+// --- eforge:endregion plan-05-plan-05-workstation-ui ---
 export interface BacklogCurationPreviewDetails {
   valid: boolean;
   itemChanges?: number;
   epicChanges?: number;
   noOpRechecks?: number;
+  // --- eforge:region plan-05-plan-05-workstation-ui ---
+  recommendationProjection?: BacklogCurationRecommendationProjection;
+  recommendationFreshness?: RecommendationFreshnessView;
+  gitDelta?: BacklogCurationGitDeltaPreview;
+  // --- eforge:endregion plan-05-plan-05-workstation-ui ---
   generatedRecommendationValidation?: RecommendationReferenceValidationResult;
   errors?: BacklogCurationPreviewValidationError[];
 }
@@ -403,9 +408,10 @@ export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListIt
 export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry; }
 export interface GetRecommendationsResponse {
   recommendations: RecommendationModel | null;
-  recommendationSummary?: unknown;
+  recommendationSummary?: RecommendationSummary;
   path: string;
   status: RecommendationStatus;
+  recommendationFreshness?: RecommendationFreshnessView;
   activeRefreshTask?: PlanningAgentTaskRecord;
 }
 
@@ -487,6 +493,7 @@ export interface ApplyPlanningTaskResponse {
     recommendationStatus?: unknown;
     generatedRecommendationValidation?: RecommendationReferenceValidationResult;
     recommendationsSkipped?: BacklogCurationRecommendationsSkipped;
+    recommendationProjection?: BacklogCurationRecommendationProjection;
   };
   handoffs?: unknown[];
   sessionPlanDrafts?: Array<{ session: string; sections: string[] }>;
@@ -573,6 +580,7 @@ export interface WorkstationData {
   board: Board;
   recommendations: RecommendationModel | null;
   recommendationStatus: RecommendationStatus | null;
+  recommendationFreshness: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   roadmapState: RoadmapStateResponse | null;
 }

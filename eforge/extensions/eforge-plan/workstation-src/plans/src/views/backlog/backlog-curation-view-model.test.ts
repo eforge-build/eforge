@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mockBacklogCurationDraft, mockRecommendations } from '@/fixtures/mock-data';
-import { curationEvidencePreview, displayRecommendationsForDraft, recommendationSummaryCounts } from './backlog-curation-view-model';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview } from '@/fixtures/mock-data';
+import { curationEvidencePreview, effectiveRecommendationsFromProjection, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
 
 describe('backlog curation view model', () => {
   it('extracts shipped evidence labels, PR identifiers, and commit identifiers', () => {
@@ -8,25 +8,35 @@ describe('backlog curation view model', () => {
       'Shipped evidence: lifecycle trace — merge commit 1234567890abcdef.',
       'Shipped evidence: inferred from git/PR history — commit abcdef1234567890 via PR #191 and https://host/repo/pull/192.',
       'Ambiguous shipped candidate: needs input — #193 needs review.',
+      'Superseded evidence: lifecycle trace — replaced by a newer plan.',
+      'Superseded evidence: inferred from git/PR history — PR #195 landed a replacement.',
+      'Ambiguous superseded candidate: needs input — replacement needs review.',
       'Shipped evidence: inferred from git/PR history — git deadbee / PR #194: land formatCitation-style evidence.',
     ]);
 
     expect(preview.labels).toEqual([
       'Shipped evidence: lifecycle trace',
       'Shipped evidence: inferred from git/PR history',
+      'Superseded evidence: lifecycle trace',
+      'Superseded evidence: inferred from git/PR history',
       'Ambiguous shipped candidate: needs input',
+      'Ambiguous superseded candidate: needs input',
     ]);
-    expect(preview.prIds).toEqual(['#191', '#192', '#193', '#194']);
+    expect(preview.prIds).toEqual(['#191', '#192', '#193', '#195', '#194']);
     expect(preview.commitIds).toEqual(['1234567890abcdef', 'abcdef1234567890', 'deadbee']);
   });
 
-  it('filters generated recommendation targets proposed shipped in the same draft', () => {
-    const display = displayRecommendationsForDraft(mockBacklogCurationDraft, mockRecommendations);
+  it('reads effective recommendation counts and metadata from server projection', () => {
+    const projection = mockBacklogCurationPreview.recommendationProjection;
+    const display = effectiveRecommendationsFromProjection(projection);
+    const metadata = projectionMetadataDisplay(projection);
 
-    expect(display?.removedTargetItemIds).toEqual(['add-import-preview', 'recommend-next-work']);
+    expect(mockBacklogCurationDraft.itemChanges.length).toBeGreaterThan(0);
+    expect(metadata.removedItemIds).toEqual(['add-import-preview']);
+    expect(metadata.removedEpicIds).toEqual(['planning']);
+    expect(metadata.repositioned).toEqual(['recommend-next-work: readyCandidates → recommendedNextSequence']);
     expect(display?.readyCandidates?.map((entry) => entry.itemId)).toEqual(['traceability']);
-    expect(display?.recommendedNextSequence.map((entry) => entry.itemId)).toEqual([]);
-    expect(display?.safeParallelizableGroups).toEqual([]);
-    expect(recommendationSummaryCounts(display)).toMatchObject({ readyCandidates: 1, nextSequence: 0, safeParallelGroups: 0 });
+    expect(display?.recommendedNextSequence.map((entry) => entry.itemId)).toEqual(['recommend-next-work']);
+    expect(recommendationSummaryCounts(display)).toMatchObject({ readyCandidates: 1, nextSequence: 1, safeParallelGroups: 1 });
   });
 });

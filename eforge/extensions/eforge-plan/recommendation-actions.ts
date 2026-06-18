@@ -9,6 +9,7 @@ import { GetRecommendationsWithStatusOutputSchema } from './recommendation-statu
 import {
   computeRecommendationSourceFingerprint,
   readDerivedRecommendationStatus,
+  readRecommendationFreshnessView,
   recordRecommendationPutApplied,
 } from './recommendation-status.js';
 import { findActiveRecommendationRefreshTask, refreshRecommendationsAction } from './recommendation-refresh.js';
@@ -31,11 +32,13 @@ export const getRecommendations = defineExtensionAction({
     const recommendations = await readRecommendationsFromPath(path);
     const status = await readDerivedRecommendationStatus(ctx.cwd, path);
     const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
+    const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd, status.sourceFingerprint);
     return toJsonSafeObject({
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
       path,
       status,
+      recommendationFreshness,
       ...(activeRefresh !== undefined && { activeRefreshTask: activeRefresh.task }),
     });
   },

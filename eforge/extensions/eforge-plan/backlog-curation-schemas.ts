@@ -6,7 +6,7 @@ import {
   ExtensionAgentTaskIdSchema,
   ExtensionAgentTaskStatusSchema,
 } from '@eforge-build/client';
-import { BacklogStatusSchema, RecommendationDerivedStatusSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
+import { BacklogStatusSchema, JsonValueSchema, RecommendationBlockedChainSchema, RecommendationDerivedStatusSchema, RecommendationItemRefSchema, RecommendationProfileSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({}, { additionalProperties: false });
 
@@ -79,9 +79,37 @@ export const RecommendationRepositionedTargetSchema = Type.Object({
   to: Type.String(),
 }, { additionalProperties: false });
 
+const BacklogCurationPreviewRecommendationGroupSchema = Type.Object({
+  ref: Type.String(),
+  title: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String()),
+  epicIds: Type.Optional(Type.Array(Type.String())),
+  safeToPlanTogether: Type.Optional(Type.Boolean()),
+  rationale: Type.Optional(Type.String()),
+  recommendedProfile: Type.Optional(RecommendationProfileSchema),
+}, { additionalProperties: false });
+
+const BacklogCurationPreviewRecommendationModelSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  updatedAt: Type.Optional(Type.String()),
+  activeWork: Type.Array(RecommendationItemRefSchema),
+  readyCandidates: Type.Array(RecommendationItemRefSchema),
+  recommendedNextSequence: Type.Array(RecommendationItemRefSchema),
+  safeParallelizableGroups: Type.Array(BacklogCurationPreviewRecommendationGroupSchema),
+  blockedChains: Type.Array(RecommendationBlockedChainSchema),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
+const BacklogCurationPreviewRecommendationSummarySchema = Type.Object({
+  recommendedNextItemIds: Type.Array(Type.String()),
+  safeParallelizableGroups: Type.Array(BacklogCurationPreviewRecommendationGroupSchema),
+  blockedChainCount: Type.Number(),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
 export const BacklogCurationRecommendationProjectionSchema = Type.Object({
-  effectiveRecommendations: Type.Optional(BacklogRecommendationModelSchema),
-  recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  effectiveRecommendations: Type.Optional(BacklogCurationPreviewRecommendationModelSchema),
+  recommendationSummary: Type.Optional(BacklogCurationPreviewRecommendationSummarySchema),
   removed: Type.Object({
     itemIds: Type.Array(Type.String()),
     epicIds: Type.Array(Type.String()),
@@ -96,12 +124,47 @@ export const BacklogCurationPreviewValidationErrorSchema = Type.Object({
   message: Type.String(),
 }, { additionalProperties: false });
 
+export const BacklogCurationPreviewRecommendationFreshnessSchema = Type.Object({
+  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]),
+  reason: Type.String(),
+  storedSourceFingerprint: Type.Optional(Type.String()),
+  comparedSourceFingerprint: Type.String(),
+  baselineTaskId: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+const BacklogCurationGitDeltaCapsSchema = Type.Object({
+  commitScanCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  changedPathCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  excerptCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  excerptBytes: Type.Optional(Type.Integer({ minimum: 0 })),
+  prEnrichmentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  subprocessTimeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
+}, { additionalProperties: true });
+
+export const BacklogCurationGitDeltaPreviewSchema = Type.Object({
+  baseline: Type.Optional(Type.Union([Type.Object({}, { additionalProperties: JsonValueSchema }), Type.Null()])),
+  currentHead: Type.Optional(Type.Union([Type.Object({}, { additionalProperties: JsonValueSchema }), Type.Null()])),
+  coverage: Type.Optional(Type.Object({}, { additionalProperties: JsonValueSchema })),
+  caps: Type.Optional(BacklogCurationGitDeltaCapsSchema),
+  scannedCommitCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  scannedCommits: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: JsonValueSchema }))),
+  diagnostics: Type.Optional(Type.Array(Type.Object({
+    code: Type.String(),
+    severity: Type.Union([Type.Literal('info'), Type.Literal('warning')]),
+    message: Type.Optional(Type.String()),
+    commit: Type.Optional(Type.String()),
+  }, { additionalProperties: true }))),
+  affectedItemCandidates: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: JsonValueSchema }))),
+}, { additionalProperties: false });
+
 export const BacklogCurationPreviewDetailsSchema = Type.Object({
   valid: Type.Boolean(),
   itemChanges: Type.Optional(Type.Integer({ minimum: 0 })),
   epicChanges: Type.Optional(Type.Integer({ minimum: 0 })),
   noOpRechecks: Type.Optional(Type.Integer({ minimum: 0 })),
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
+  recommendationFreshness: Type.Optional(BacklogCurationPreviewRecommendationFreshnessSchema),
+  gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
   // --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
   recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
   // --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
@@ -150,6 +213,7 @@ export type RecommendationReferenceValidationResult = Static<typeof Recommendati
 export type RecommendationRepositionedTarget = Static<typeof RecommendationRepositionedTargetSchema>;
 export type BacklogCurationRecommendationProjection = Static<typeof BacklogCurationRecommendationProjectionSchema>;
 // --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
+export type BacklogCurationGitDeltaPreview = Static<typeof BacklogCurationGitDeltaPreviewSchema>;
 export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;
 export type BacklogCurationRecommendationsSkipped = Static<typeof BacklogCurationRecommendationsSkippedSchema>;
 export type BacklogCurationApplyDetails = Static<typeof BacklogCurationApplyDetailsSchema>;

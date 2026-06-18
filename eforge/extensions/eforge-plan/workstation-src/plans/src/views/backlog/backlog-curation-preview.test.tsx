@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockRecommendations } from '@/fixtures/mock-data';
-import type { PlanningTaskWorkflowEntry } from '@/types';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockEffectiveCurationRecommendations, mockRecommendations } from '@/fixtures/mock-data';
+import type { BacklogCurationPreviewDetails, PlanningTaskWorkflowEntry } from '@/types';
 import { BacklogCurationPreview } from './backlog-curation-preview';
 
 const entry: PlanningTaskWorkflowEntry = {
@@ -16,6 +16,16 @@ const entry: PlanningTaskWorkflowEntry = {
   createdAt: '2026-06-07T00:30:00.000Z',
 };
 
+const validProjectionPreview: BacklogCurationPreviewDetails = {
+  ...mockBacklogCurationPreview,
+  valid: true,
+  recommendationProjection: {
+    ...mockBacklogCurationPreview.recommendationProjection,
+    validation: { valid: true, issues: [] },
+  },
+  generatedRecommendationValidation: { valid: true, issues: [] },
+};
+
 function renderPreview(input: Partial<React.ComponentProps<typeof BacklogCurationPreview>> = {}) {
   return render(
     <BacklogCurationPreview
@@ -23,7 +33,7 @@ function renderPreview(input: Partial<React.ComponentProps<typeof BacklogCuratio
       entry={entry}
       draft={mockBacklogCurationDraft}
       recommendations={mockRecommendations}
-      curationPreview={{ valid: true, generatedRecommendationValidation: { valid: true, issues: [] } }}
+      curationPreview={validProjectionPreview}
       busy={false}
       onApply={vi.fn(async () => undefined)}
       onRedraft={vi.fn(async () => undefined)}
@@ -33,7 +43,7 @@ function renderPreview(input: Partial<React.ComponentProps<typeof BacklogCuratio
 }
 
 describe('BacklogCurationPreview', () => {
-  it('renders curation groups and generated recommendations', () => {
+  it('renders curation groups, freshness, git-delta diagnostics, and effective generated recommendations', () => {
     renderPreview();
 
     expect(screen.getByText('Backlog curation preview')).toBeTruthy();
@@ -42,23 +52,35 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('No-op rechecks')).toBeTruthy();
     expect(screen.getByText('Skipped cases')).toBeTruthy();
     expect(screen.getByText('Needs-input cases')).toBeTruthy();
-    expect(screen.getByText('Generated recommendations (read-only)')).toBeTruthy();
-    expect(screen.getByText('0 active work items · 1 ready candidates · 0 next-sequence items · 0 safe-parallel groups · 1 blocked chains')).toBeTruthy();
+    expect(screen.getByText('recommendations stale')).toBeTruthy();
+    expect(screen.getByText(/Recommendation source fingerprint drifted/i)).toBeTruthy();
+    expect(screen.getByText('Git delta diagnostics')).toBeTruthy();
+    expect(screen.getByText('baseline-missing')).toBeTruthy();
+    expect(screen.getByText('baseline-unreachable')).toBeTruthy();
+    expect(screen.getByText(/coverage fallback/i)).toBeTruthy();
+    expect(screen.getByText(/Scanned commits: 42/)).toBeTruthy();
+    expect(screen.getByText(/Affected candidates: 3/)).toBeTruthy();
+    expect(screen.getByText('Effective generated recommendations (read-only)')).toBeTruthy();
+    expect(screen.getByText('0 active work items · 1 ready candidates · 1 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeTruthy();
+    expect(screen.queryByText('0 active work items · 2 ready candidates · 2 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeNull();
+    expect(screen.getByText('Removed item ids: add-import-preview')).toBeTruthy();
+    expect(screen.getByText('Removed epic ids: planning')).toBeTruthy();
+    expect(screen.getByText('Repositioned item ids: recommend-next-work: readyCandidates → recommendedNextSequence')).toBeTruthy();
     expect(screen.getByText('Shipped evidence: lifecycle trace')).toBeTruthy();
     expect(screen.getByText('Shipped evidence: inferred from git/PR history')).toBeTruthy();
     expect(screen.getByText(/PR identifiers: #191/)).toBeTruthy();
     expect(screen.getByText(/Commit identifiers: abcdef1234567890/)).toBeTruthy();
     expect(screen.getByText('recommend-next-work has git and PR evidence from the merged recommendation workflow.')).toBeTruthy();
     expect(screen.getByText('Ambiguous shipped candidate: needs input')).toBeTruthy();
-    expect(screen.getAllByText('Proposed shipped metadata evidence in this draft:').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Applied shipped metadata evidence/)).toBeNull();
-    expect(screen.getByText('Removed proposed-shipped recommendation targets from this draft preview: add-import-preview, recommend-next-work')).toBeTruthy();
+    expect(screen.getByText('Ambiguous superseded candidate: needs input')).toBeTruthy();
+    expect(screen.getAllByText('Proposed closure metadata evidence in this draft:').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Applied closure metadata evidence/)).toBeNull();
     expect(screen.getAllByText(/auto-mode/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/planning/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/traceability/).length).toBeGreaterThan(0);
   });
 
-  it('counts generated recommendations from all recommendation categories', () => {
+  it('counts generated recommendations from the server projection instead of raw recommendations', () => {
     renderPreview({
       recommendations: {
         schemaVersion: 1,
@@ -68,18 +90,27 @@ describe('BacklogCurationPreview', () => {
         safeParallelizableGroups: [],
         blockedChains: [],
       },
+      curationPreview: {
+        ...validProjectionPreview,
+        recommendationProjection: {
+          ...validProjectionPreview.recommendationProjection!,
+          effectiveRecommendations: mockEffectiveCurationRecommendations,
+        },
+      },
     });
 
-    expect(screen.getByText('2 generated recommendations')).toBeTruthy();
-    expect(screen.getByText('1 active work items · 1 ready candidates · 0 next-sequence items · 0 safe-parallel groups · 0 blocked chains')).toBeTruthy();
+    expect(screen.getByText('4 generated recommendations')).toBeTruthy();
+    expect(screen.getByText('0 active work items · 1 ready candidates · 1 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeTruthy();
+    expect(screen.queryByText('2 generated recommendations')).toBeNull();
   });
 
   it('renders invalid generated recommendation references and disables normal confirm', () => {
     renderPreview({ curationPreview: mockBacklogCurationPreview });
 
     expect(screen.getByText('Invalid generated recommendation references')).toBeTruthy();
-    expect(screen.getByText(/blockedChains\.closed-chain\.blockedBy: Item closed-dep/)).toBeTruthy();
-    expect(screen.getByText(/Generated recommendation references closed item closed-dep/)).toBeTruthy();
+    expect(screen.getByText(/safeParallelizableGroups\.planning-foundations\.itemIds\[0\]: Item recommend-next-work/)).toBeTruthy();
+    expect(screen.getByText(/wrong-lane/)).toBeTruthy();
+    expect(screen.getByText(/Generated recommendation references an item in the wrong lane/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
     expect(screen.getByRole('button', { name: 'Confirm apply curation' })).toHaveProperty('disabled', true);
@@ -113,7 +144,7 @@ describe('BacklogCurationPreview', () => {
 
   it('keeps normal confirmation enabled when validation is valid', () => {
     const onApply = vi.fn(async () => undefined);
-    renderPreview({ curationPreview: { valid: true, generatedRecommendationValidation: { valid: true, issues: [] } }, onApply });
+    renderPreview({ curationPreview: validProjectionPreview, onApply });
 
     fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm apply curation' }));

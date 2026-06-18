@@ -64,7 +64,8 @@ describe('PlanningTaskCard curation behavior', () => {
     renderCard(curationItem('completed', { invalidPreview: true }));
 
     expect(screen.getByText('Invalid generated recommendation references')).toBeTruthy();
-    expect(screen.getByText(/blockedChains\.closed-chain\.blockedBy: Item closed-dep/)).toBeTruthy();
+    expect(screen.getByText(/safeParallelizableGroups\.planning-foundations\.itemIds\[0\]: Item recommend-next-work/)).toBeTruthy();
+    expect(screen.getByText(/wrong-lane/)).toBeTruthy();
   });
 
   it('shows a curation-specific unavailable preview without generic apply when a curation draft is missing', () => {
