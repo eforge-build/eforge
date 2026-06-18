@@ -61,8 +61,9 @@ describe('planner orchestration', () => {
         itemId: 'item-one',
         epicId: 'epic-one',
         hasActiveTrace: true,
-        activeReasons: expect.arrayContaining(['active session-plan trace session-one', 'active build run trace run-one']),
+        activeReasons: expect.arrayContaining(['active build run trace run-one']),
       })]);
+      expect(packet.traceSummaries[0]?.activeReasons).not.toContain('active session-plan trace session-one');
       expect(JSON.stringify(packet.traceSummaries).length).toBeLessThan(2000);
     });
   });

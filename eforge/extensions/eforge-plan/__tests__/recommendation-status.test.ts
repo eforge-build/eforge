@@ -238,6 +238,22 @@ describe('recommendation freshness status', () => {
     });
   });
 
+  it('keeps submitted-only session-plan trace summaries historical in source fingerprints', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await writeTraceSidecar(cwd, { ...createTraceSidecar('item-one'), promotedSessionPlans: [{ session: 'session-one', status: 'submitted' }] });
+      const projection = await buildRecommendationSourceProjection(cwd);
+      const summaries = projection.traceSummaries as Array<{ itemId: string; hasActiveTrace: boolean; hasActiveSessionPlan: boolean; lifecycleState: string; activeReasons: string[] }>;
+      expect(summaries.find((summary) => summary.itemId === 'item-one')).toMatchObject({
+        hasActiveTrace: false,
+        hasActiveSessionPlan: false,
+        lifecycleState: 'none',
+        activeReasons: [],
+      });
+      expect(JSON.stringify(summaries)).toContain('session-one');
+    });
+  });
+
   it('reports source fingerprint drift as stale without rewriting current.json', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);

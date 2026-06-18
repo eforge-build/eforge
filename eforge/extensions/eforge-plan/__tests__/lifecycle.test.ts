@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readBacklogItem, writeBacklogItem } from '../markdown-store.js';
 import { applyLifecycleEvent, correlateLifecycleEvent, decideLifecycleUpdate } from '../lifecycle.js';
+import { projectTraceLifecycle } from '../lifecycle-projection.js';
 import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -24,6 +25,24 @@ function trace(itemId: string) {
 }
 
 describe('eforge-plan lifecycle correlation', () => {
+  it('projects submitted and completed trace rows as historical unless active evidence exists', () => {
+    const historical = createTraceSidecar('item-one');
+    historical.promotedSessionPlans.push({ session: 'session-one', status: 'submitted' });
+    historical.queuePrds.push({ prdId: 'prd-one', status: 'completed' });
+    historical.buildRuns.push({ runId: 'run-one', sessionId: 'session-one', status: 'completed', completedAt: '2026-01-01T00:00:00.000Z' });
+    expect(projectTraceLifecycle(historical, { liveEditableSessionIds: new Set(['session-one']) }).lifecycleState).toBe('none');
+
+    const active = createTraceSidecar('item-two');
+    active.promotedSessionPlans.push({ session: 'session-two', status: 'ready' });
+    expect(projectTraceLifecycle(active, { liveEditableSessionIds: new Set(['session-two']) }).lifecycleState).toBe('planned');
+    active.queuePrds.push({ prdId: 'prd-two', status: 'queued' });
+    expect(projectTraceLifecycle(active, { liveEditableSessionIds: new Set(['session-two']) }).lifecycleState).toBe('queue');
+    active.buildRuns.push({ runId: 'run-two', sessionId: 'session-two', status: 'running' });
+    expect(projectTraceLifecycle(active, { liveEditableSessionIds: new Set(['session-two']) }).lifecycleState).toBe('build');
+    active.landingResults.push({ featureBranch: 'feature/two', status: 'pr-open', prUrl: 'https://example.com/pr/2' });
+    expect(projectTraceLifecycle(active, { liveEditableSessionIds: new Set(['session-two']) }).lifecycleState).toBe('pr-open');
+  });
+
   it('correlates by promoted paths, input ids, PRD ids, sessionId, runId, and landing evidence', () => {
     const traces = [trace('item-one')];
     for (const event of [

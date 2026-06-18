@@ -26,9 +26,20 @@ export const RefreshRecommendationsOutputSchema = Type.Object({
   reused: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
+// --- eforge:region plan-02-plan-04-trace-lifecycle-freshness ---
+export const RecommendationFreshnessViewSchema = Type.Object({
+  state: Type.Union([Type.Literal('missing'), Type.Literal('fresh'), Type.Literal('stale')]),
+  reason: Type.String(),
+  storedSourceFingerprint: Type.Optional(Type.String()),
+  comparedSourceFingerprint: Type.String(),
+  baselineTaskId: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+// --- eforge:endregion plan-02-plan-04-trace-lifecycle-freshness ---
+
 export type RecommendationStaleReason = Static<typeof RecommendationStaleReasonSchema>;
 export type RecommendationStatusSidecar = Static<typeof RecommendationStatusSidecarSchema>;
 export type RecommendationDerivedStatus = Static<typeof RecommendationDerivedStatusSchema>;
+export type RecommendationFreshnessView = Static<typeof RecommendationFreshnessViewSchema>;
 export type GetRecommendationsWithStatusOutput = Static<typeof GetRecommendationsWithStatusOutputSchema>;
 export type RefreshRecommendationsInput = Static<typeof RefreshRecommendationsInputSchema>;
 export type RefreshRecommendationsOutput = Static<typeof RefreshRecommendationsOutputSchema>;

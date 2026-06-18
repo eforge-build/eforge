@@ -149,7 +149,7 @@ The extension never reads or writes legacy `.backlog/recommendations.json`; reco
 
 Backlog item and epic files are Markdown documents with frontmatter. Legacy `.backlog` item and epic files remain readable compatibility input when no private record has the same ID, and private records take precedence over same-ID legacy records. Writes from capture, update, upsert, and promotion helpers target private backlog storage only; legacy item and epic files are not deleted or rewritten by default. The `import-legacy-backlog` action is an explicit copy/import operation that skips IDs already present in private storage and leaves legacy files in place. The existing safe-id and path-containment checks apply to private backlog reads/writes and legacy compatibility/import reads. The item body remains the durable human-authored planning record; update actions preserve body content while changing supported frontmatter fields, including `evidence_notes` and `recheck_notes`.
 
-Recommendation freshness is derived from `current.json`, `status.json`, and a fingerprint of open backlog items, epics, dependency/blocker context, roadmap context, and trace summaries for current open backlog items:
+Recommendation freshness is derived from `current.json`, `status.json`, and a fingerprint of open backlog items, epics, dependency/blocker context, roadmap context, and trace summaries for current open backlog items. Trace summaries preserve historical sidecar rows, but their active fields are projected from current editable plan evidence plus live queue/run/build/PR evidence rather than from durable sidecar rows alone:
 
 | State | Meaning |
 | --- | --- |
@@ -172,7 +172,7 @@ The board is derived from backlog status, dependency state, and trace evidence. 
 | `inbox` | Candidate items that need triage or refinement. |
 | `ready` | Planned items without unresolved blockers. |
 | `blocked` | Items with unresolved dependencies or other blocking evidence. |
-| `in-progress` | Active items or items with active trace evidence. |
+| `in-progress` | Active items or items with active trace evidence from current editable plans, live queue/run/build rows, or active PR/landing rows. Historical submitted session-plan rows do not move a candidate item into this lane by themselves. |
 | `done` | Shipped items. |
 | `archive` | Stale or superseded items. |
 
@@ -336,7 +336,7 @@ Trace-owned data includes:
 - landing results keyed by feature branch or commit SHA;
 - last observed lifecycle event metadata.
 
-Sidecar updates are idempotent and use stable keys such as `session`, `prdId`, `sessionId`, `runId`, `featureBranch`, and `commitSha`.
+Sidecar updates are idempotent and use stable keys such as `session`, `prdId`, `sessionId`, `runId`, `featureBranch`, and `commitSha`. Sidecar rows are durable audit evidence, not authoritative activity state: session-plan rows are active only when the row status is nonterminal and the current editable flat session-plan list still contains that session, so submitted session-plan rows are historical. Completed queue/build rows and terminal landing rows remain visible evidence but do not produce active trace reasons or nonterminal lifecycle states.
 
 ## Lifecycle linkage
 
@@ -353,7 +353,7 @@ The extension registers hooks for enqueue, queue PRD, session, landing, and auto
 
 Correlation can use promoted session-plan paths, input-source ids, `enqueue:complete.id`, `queue:prd:complete.prdId`, and event envelope `sessionId` or `runId` values. Shared promoted-plan evidence can correlate one lifecycle event to multiple source item traces when those items were promoted together into the same session plan, PRD, build, or landing flow.
 
-The supported linkage chain is backlog item or epic selection → generated `.eforge/session-plans/<session>.md` → explicit handoff to the build queue → queue PRD and run/session evidence → PR or landing evidence → correlated item and epic progress. The trace sidecars are the durable private join records for this chain, while workstation actions project compact public rows for the Backlog and Plans tabs.
+The supported linkage chain is backlog item or epic selection → generated `.eforge/session-plans/<session>.md` → explicit handoff to the build queue → queue PRD and run/session evidence → PR or landing evidence → correlated item and epic progress. The trace sidecars are the durable private join records for this chain, while workstation actions project compact public rows for the Backlog and Plans tabs. Those projections keep historical rows in `linkRows`, PR refs, landing refs, and source fingerprints, but derive active reasons and nonterminal lifecycle states from current editable session plans and live queue/run/build/PR evidence.
 
 Lifecycle status mutation is conservative:
 

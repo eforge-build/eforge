@@ -16,7 +16,8 @@ import {
   resolveBacklogItemRelativePath,
 } from './markdown-store.js';
 import { toJsonSafeObject } from './json-safe.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 import { BacklogStatusSchema, KanbanLaneSchema, LifecycleStateSchema } from './schema.js';
 
 // --- eforge:region compact-query-schemas ---
@@ -306,7 +307,7 @@ async function loadEpicProjection(cwd: string, epicId: string): Promise<[Backlog
 
 async function loadBoardCards(cwd: string, includeArchive = false, epic?: string): Promise<[BacklogItem[], BacklogEpic[], { all: KanbanCard[]; byId: Map<string, KanbanCard>; lanes: Array<{ lane: KanbanLane; title: string; items: KanbanCard[] }> }]> {
   const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
-  const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
+  const traceSummaries = await summarizeProjectTraces(cwd, traces);
   const board = projectKanbanBoard(items, traceSummaries, { includeArchive, epic, epics });
   const visibleCards = includeArchive === false ? board.items.filter((card) => card.lane !== 'archive') : board.items;
   return [items, epics, { all: visibleCards, byId: new Map(board.items.map((card) => [card.id, card])), lanes: board.lanes }];

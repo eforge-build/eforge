@@ -20,16 +20,19 @@ import {
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import type { RoadmapContext } from './roadmap-schemas.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 import type { RecommendationReferenceValidationIssue, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
 import { compactLifecycleRowsForFingerprint } from './lifecycle-projection.js';
 import type { BacklogRecommendationModel } from './schema.js';
 import {
   RecommendationStatusSidecarSchema,
   type RecommendationDerivedStatus,
+  type RecommendationFreshnessView,
   type RecommendationStaleReason,
   type RecommendationStatusSidecar,
 } from './recommendation-status-schemas.js';
+import { deriveRecommendationFreshnessView } from './recommendation-freshness.js';
 
 export function resolveRecommendationStatusPath(paths: EforgeProjectPaths): string {
   return paths.extensionStoragePath('project-local', ['recommendations', 'status.json']);
@@ -60,11 +63,13 @@ export async function readDerivedRecommendationStatus(cwd: string, currentPath =
 
   const persistedReasons = sidecarReasons(sidecar).filter((reason) => reason.code !== 'source-fingerprint-drift');
   const staleReasons = [...persistedReasons];
+  const freshnessSidecar = sidecarWithReasons(sidecar, persistedReasons);
+  const freshnessView = deriveRecommendationFreshnessView({ storedStatus: { currentExists: existsSync(currentPath), sidecar: freshnessSidecar }, comparedSourceFingerprint: sourceFingerprint });
   if (sidecar.lastAppliedSourceFingerprint !== undefined && sidecar.lastAppliedSourceFingerprint !== sourceFingerprint) {
     staleReasons.push(sourceDriftReason(sourceFingerprint, sidecar.lastAppliedSourceFingerprint));
   }
   return statusFromParts({
-    state: staleReasons.length > 0 || !existsSync(currentPath) ? 'stale' : 'fresh',
+    state: freshnessView.state === 'fresh' && staleReasons.length === 0 ? 'fresh' : 'stale',
     currentPath,
     statusPath,
     sourceFingerprint,
@@ -74,6 +79,23 @@ export async function readDerivedRecommendationStatus(cwd: string, currentPath =
     lastRefreshedBy: sidecar.lastRefreshedBy,
     reasons: staleReasons,
   });
+}
+
+export async function readRecommendationFreshnessView(cwd: string, comparedSourceFingerprint?: string): Promise<RecommendationFreshnessView> {
+  const currentPath = resolveCurrentPath(cwd);
+  const statusPath = resolveRecommendationStatusPathForCwd(cwd);
+  const fingerprint = comparedSourceFingerprint ?? await computeRecommendationSourceFingerprint(cwd);
+  try {
+    return deriveRecommendationFreshnessView({
+      storedStatus: { currentExists: existsSync(currentPath), sidecar: await readRecommendationStatusSidecar(statusPath) },
+      comparedSourceFingerprint: fingerprint,
+    });
+  } catch (err) {
+    return deriveRecommendationFreshnessView({
+      storedStatus: { currentExists: existsSync(currentPath), sidecar: null, invalidReason: invalidStatusSidecarReason(err) },
+      comparedSourceFingerprint: fingerprint,
+    });
+  }
 }
 
 export async function recordRecommendationPutApplied(cwd: string): Promise<RecommendationDerivedStatus> {
@@ -159,7 +181,7 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
   const items = allItems.filter((item) => isOpenStatus(item.status)).sort(byId);
   const epics = allEpics.filter((epic) => isOpenStatus(epic.status)).sort(byId);
   const openItemIds = new Set(items.map((item) => item.id));
-  const traceSummaries = compactTraceSummaries(traceSidecars.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => openItemIds.has(summary.itemId)));
+  const traceSummaries = compactTraceSummaries((await summarizeProjectTraces(cwd, traceSidecars)).filter((summary) => openItemIds.has(summary.itemId)));
   return {
     schemaVersion: 1,
     items: items.map(projectSourceItem),
@@ -196,7 +218,7 @@ function stripRoadmapFingerprintVolatileFields(value: unknown): unknown {
 export async function readPlannerTraceSummaries(cwd: string, itemIds?: readonly string[]): Promise<Array<Record<string, unknown>>> {
   const traces = await listTraceSidecars(cwd);
   const relevantItemIds = itemIds === undefined ? undefined : new Set(itemIds);
-  const summaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => relevantItemIds === undefined || relevantItemIds.has(summary.itemId));
+  const summaries = (await summarizeProjectTraces(cwd, traces)).filter((summary) => relevantItemIds === undefined || relevantItemIds.has(summary.itemId));
   return compactTraceSummaries(summaries);
 }
 
@@ -314,6 +336,10 @@ function invalidFreshnessSidecarReason(sidecar: RecommendationStatusSidecar): Re
     code: 'invalid-status-sidecar',
     message: 'Recommendation status metadata sidecar is invalid: freshness metadata requires lastAppliedAt and lastAppliedSourceFingerprint.',
   };
+}
+
+function sidecarWithReasons(sidecar: RecommendationStatusSidecar, reasons: RecommendationStaleReason[]): RecommendationStatusSidecar {
+  return { ...sidecar, reasons, staleReasons: reasons };
 }
 
 function sourceDriftReason(sourceFingerprint: string, lastAppliedSourceFingerprint: string): RecommendationStaleReason {

@@ -387,6 +387,7 @@ export const LifecycleLinkRowSchema = Type.Object({
   prUrl: Type.Optional(Type.String()),
   path: Type.Optional(Type.String()),
   timestamp: Type.Optional(Type.String()),
+  completedAt: Type.Optional(Type.String()),
   affectedItemIds: Type.Array(Type.String()),
 }, { additionalProperties: false });
 export const PlanSourceRefsSchema = Type.Object({

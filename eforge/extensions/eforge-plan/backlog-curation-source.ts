@@ -9,7 +9,8 @@ import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 import { shouldOmitWeakCandidate } from './shipped-evidence-matching.js';
 import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidenceResult } from './shipped-evidence-types.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
 
@@ -114,7 +115,7 @@ export function buildBacklogCurationRedraftContext(parentTaskId: string, result:
 async function readRawTraceSummaries(cwd: string, itemIds: readonly string[]): Promise<TraceSummary[]> {
   const relevantItemIds = new Set(itemIds);
   const traces = await listTraceSidecars(cwd);
-  return traces.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => relevantItemIds.has(summary.itemId));
+  return (await summarizeProjectTraces(cwd, traces)).filter((summary) => relevantItemIds.has(summary.itemId));
 }
 
 async function buildShippedEvidenceContext(
