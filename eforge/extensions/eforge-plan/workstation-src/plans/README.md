@@ -1,0 +1,44 @@
+# eforge-plan workstation developer contract
+
+The planning workstation is an extension-owned Vite iframe. It talks to the host only through `window.eforge.invokeAction` and the manifest `allowedActions`; it does not read private extension storage, run local `git` commands, call `gh`, scan daemon routes, recompute the recommendation overlay, or infer recommendation freshness from the presence of a recommendation model.
+
+## Server-authoritative curation preview
+
+Backlog curation preview and apply data is server-authoritative. The iframe renders preview payloads from `preview-backlog-curation-task`, task list metadata from `list-planning-agent-tasks`, and apply results from `apply-planning-agent-task-result`.
+
+Required preview payload fields for curation UI and fixtures are:
+
+- `gitDelta` — baseline/head git-delta coverage, diagnostics, scanned commit counts, caps, and affected item candidates.
+- `recommendationProjection` — the prospective overlay used by both preview and apply validation.
+- `recommendationProjection.effectiveRecommendations` / `effectiveRecommendations` display counts — the generated recommendations after closed targets are removed and active/planned targets are repositioned or excluded by the server.
+- `recommendationFreshness` — server labels and fingerprint comparison state for `missing`, `fresh`, or `stale`.
+- `generatedRecommendationValidation` — validation issues for unknown, closed, empty, or `wrong-lane` references.
+- Draft rows for item changes, epic changes, no-op rechecks, skipped rows, and needs-input rows.
+
+Render `gitDelta.baseline`, `gitDelta.baseline.commit`, `gitDelta.baseline.time`, `gitDelta.baseline.source`, `gitDelta.currentHead`, `gitDelta.coverage.kind`, diagnostics, scan caps, `gitDelta.scannedCommitCount`, scanned commits, and affected candidates directly. Missing, invalid, unreachable, shallow, and no-git baselines are fallback or unavailable diagnostic coverage states, not complete git-delta coverage. Expected diagnostics include `baseline-missing`, `baseline-invalid-sidecar`, `baseline-unreachable`, `baseline-shallow`, `git-unavailable`, `git-command-failed`, `scan-cap-truncated`, and `pr-enrichment-unavailable`. Optional PR enrichment is represented by server diagnostics such as `pr-enrichment-unavailable`; the workstation must not call `gh` itself.
+
+Render removed targets, repositioned targets, effective recommendation counts, and validation details from `recommendationProjection`. Do not locally replay backlog mutations or locally filter generated recommendations. Normal curation+recommendations apply writes the server-provided effective projection; curation-only apply remains visible as a path that applies backlog records, discards generated recommendations, and leaves those discarded recommendations unfresh.
+
+Needs-input evidence labels must preserve the server wording, including `Ambiguous shipped candidate: needs input — ` and `Ambiguous superseded candidate: needs input — `. Strong closure evidence labels likewise remain display-only until accepted by apply: `Shipped evidence: lifecycle trace — `, `Shipped evidence: inferred from git/PR history — `, `Superseded evidence: lifecycle trace — `, and `Superseded evidence: inferred from git/PR history — `.
+
+## Freshness labels
+
+Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness state.
+
+## Mock bridge and fixtures
+
+Local Vite development uses the mock bridge in `src/bridge.ts` and fixtures in `src/fixtures/mock-data.ts`. Fixtures that exercise curation preview must include server-shaped `gitDelta`, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped/superseded needs-input labels. Mock behavior should model the server contract rather than adding local git scanning, `gh` enrichment, overlay recomputation, or freshness inference.
+
+## Targeted checks
+
+Useful focused commands while changing this area:
+
+```bash
+pnpm dev:eforge-plan-workstation          # mock bridge / fixture data
+pnpm dev:eforge-plan-workstation:daemon   # live daemon data through the Vite proxy
+pnpm build:eforge-plan-workstation
+pnpm test -- eforge/extensions/eforge-plan/__tests__/workstation-docs.test.ts eforge/extensions/eforge-plan/__tests__/workstation-assets.test.ts
+pnpm --filter @eforge-build/eforge-plan-workstation test
+pnpm --filter @eforge-build/eforge-plan-workstation build
+pnpm type-check
+```

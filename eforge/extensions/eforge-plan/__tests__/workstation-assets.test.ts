@@ -31,6 +31,7 @@ const BOARD_MODEL = `${SRC}/views/backlog/board-model.ts`;
 const LIFECYCLE_PANEL = `${SRC}/views/backlog/lifecycle-panel.tsx`;
 const LIFECYCLE_EVIDENCE_PANEL = `${SRC}/views/plans/lifecycle-evidence-panel.tsx`;
 const README = 'eforge/extensions/eforge-plan/README.md';
+const WORKSTATION_README = 'eforge/extensions/eforge-plan/workstation-src/plans/README.md';
 const PLAN_SET_DETAIL = `${SRC}/views/plans/plan-set-detail.tsx`;
 
 const TASK_WORKFLOW_ACTIONS = [
@@ -274,8 +275,9 @@ describe('eforge-plan planning workstation assets', () => {
     }
   });
 
-  it('documents lifecycle linkage, partial completion, and recommendation freshness rules', async () => {
+  it('documents lifecycle linkage, partial completion, recommendation freshness, and curation preview display rules', async () => {
     const source = await readFile(README, 'utf-8');
+    const workstationDocs = await readFile(WORKSTATION_README, 'utf-8');
 
     expect(source).toContain('.eforge/storage/extensions/eforge-plan/traces/');
     expect(source).toContain('.eforge/storage/extensions/eforge-plan/recommendations/');
@@ -286,6 +288,18 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('may mark only correlated item ids `shipped`');
     expect(source).toContain('partial');
     expect(source).toContain('Freshness is restored only through explicit recommendation apply or refresh paths');
+    expect(source).toContain('git-delta baseline/head coverage and diagnostics');
+    expect(source).toContain('server-provided prospective `recommendationProjection`');
+    expect(source).toContain('effective counts come from `effectiveRecommendations`');
+    expect(source).toContain('Ambiguous shipped candidate: needs input');
+    expect(source).toContain('Ambiguous superseded candidate: needs input');
+    expect(workstationDocs).toContain('server-authoritative');
+    expect(workstationDocs).toContain('gitDelta');
+    expect(workstationDocs).toContain('recommendationProjection');
+    expect(workstationDocs).toContain('recommendationFreshness');
+    expect(workstationDocs).toContain('wrong-lane');
+    expect(workstationDocs).toMatch(/does not .*run local `git` commands/i);
+    expect(workstationDocs).toMatch(/does not .*call `gh`/i);
   });
 
   it('turns readiness diagnostics into actionable section and dimension mutations', async () => {

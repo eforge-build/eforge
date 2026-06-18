@@ -120,11 +120,77 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/Invalid generated recommendations block normal curation apply/);
     expect(readme).toMatch(/apply curation only while discarding generated recommendations/);
     expect(readme).toMatch(/bounded git\/PR (shipped or superseded|history shipped) evidence/);
-    expect(readme).toMatch(/optional PR enrichment is fail-closed/);
+    expect(readme).toMatch(/optional PR enrichment (is fail-closed|through `gh` is fail-closed and not required)/);
     expect(readme).toContain('Shipped evidence: lifecycle trace');
     expect(readme).toContain('Shipped evidence: inferred from git/PR history');
-    expect(readme).toContain('Ambiguous shipped candidate: needs input');
+    expect(readme).toContain('Shipped evidence: lifecycle trace — ');
+    expect(readme).toContain('Shipped evidence: inferred from git/PR history — ');
+    expect(readme).toContain('Superseded evidence: lifecycle trace — ');
+    expect(readme).toContain('Superseded evidence: inferred from git/PR history — ');
+    expect(readme).toContain('Ambiguous shipped candidate: needs input — ');
+    expect(readme).toContain('Ambiguous superseded candidate: needs input — ');
+    expect(readme).toMatch(/Ambiguous closure evidence is routed to skipped or needs-input rather than status changes/);
     expect(readme).toMatch(/prospective recommendation projection metadata/);
+  });
+
+  it('documents accepted analysis baselines, git-delta diagnostics, overlay projection, and freshness semantics', async () => {
+    const readme = await readFile(README, 'utf-8');
+
+    expect(readme).toContain('.eforge/storage/extensions/eforge-plan/analysis-baseline/current.json');
+    for (const field of ['acceptedAt', 'taskId', 'passKind', 'sourceFingerprint', 'git.headCommit', 'git.headCommittedAt', 'coverage', 'diagnostics']) {
+      expect(readme).toContain(field);
+    }
+    expect(readme).toMatch(/not encoded into backlog item or epic bodies, recommendation model JSON, or legacy `\.backlog\/recommendations\.json`/);
+    expect(readme).toMatch(/put-recommendations.*do not create an accepted-analysis git baseline/s);
+
+    for (const field of [
+      'gitDelta.baseline.commit',
+      'gitDelta.baseline.time',
+      'gitDelta.baseline.source',
+      'gitDelta.currentHead',
+      'gitDelta.scannedCommitCount',
+      'scanned commits',
+      'scan caps',
+      'affected item candidates',
+    ]) {
+      expect(readme).toContain(field);
+    }
+    for (const code of [
+      'baseline-missing',
+      'baseline-invalid-sidecar',
+      'baseline-unreachable',
+      'baseline-shallow',
+      'git-unavailable',
+      'git-command-failed',
+      'scan-cap-truncated',
+      'pr-enrichment-unavailable',
+    ]) {
+      expect(readme).toContain(code);
+    }
+    expect(readme).toMatch(/missing, invalid, unreachable, shallow, (and|or) no-git baseline states.*(fallback or unavailable coverage|produce fallback or unavailable coverage labels)/s);
+    expect(readme).toMatch(/optional PR enrichment through `gh`.*not required/s);
+    expect(readme).toMatch(/Deterministic git-delta matching considers item ids, titles, slugs, changed paths, branch hints, PR numbers\/titles\/bodies\/files, merge subjects, and bounded excerpts/);
+
+    expect(readme).toMatch(/Preview and apply use the same prospective `recommendationProjection`/);
+    expect(readme).toContain('recommendationProjection.effectiveRecommendations');
+    expect(readme).toMatch(/removed\/repositioned targets/);
+    expect(readme).toContain('wrong-lane');
+    expect(readme).toMatch(/raw task result preservation|Raw generated task output remains preserved/i);
+    expect(readme).not.toMatch(/same-draft recommendation filtering/i);
+    expect(readme).not.toMatch(/Proposed-shipped item ids from the same draft are removed/i);
+    expect(readme).toMatch(/Normal curation apply writes only `recommendationProjection\.effectiveRecommendations`/);
+    expect(readme).toMatch(/Curation-only apply.*records the accepted backlog-curation baseline.*leaves discarded generated recommendations unfresh/s);
+    expect(readme).toMatch(/comparing stored recommendation\/source fingerprint data.*current or prospective source fingerprint/s);
+  });
+
+  it('documents active-versus-historical trace semantics', async () => {
+    const readme = await readFile(README, 'utf-8');
+
+    expect(readme).toMatch(/Sidecar rows are durable audit evidence, not authoritative activity state/);
+    expect(readme).toMatch(/submitted session-plan rows are historical/);
+    expect(readme).toMatch(/submitted session-plan traces alone do not mark items active or planned/);
+    expect(readme).toMatch(/current editable session plan, live queue\/run\/build evidence, current PR-open\/landing evidence, or explicit `active` backlog status/);
+    expect(readme).toMatch(/Completed queue\/build rows and terminal landing rows remain visible evidence/);
   });
 
   it('keeps action table side effects aligned with planning boundaries', async () => {

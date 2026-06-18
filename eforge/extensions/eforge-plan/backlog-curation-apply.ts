@@ -21,7 +21,7 @@ import {
   type BacklogRecordSnapshot,
 } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
-import { computeRecommendationSourceFingerprint, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
+import { computeRecommendationSourceFingerprint, computeRecommendationSourceFingerprintForRecords, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
 import type { ApplyPlanningAgentTaskResultInput, PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
@@ -109,7 +109,7 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
   try {
     const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: true });
     const [recommendationFreshness, sourceMetadata] = await Promise.all([
-      readRecommendationFreshnessView(cwd),
+      readRecommendationFreshnessView(cwd, prepared.prospectiveRecommendationSourceFingerprint),
       readBacklogCurationSourcePreviewMetadata(cwd, prepared.draft.sourceFingerprint),
     ]);
     return {
@@ -181,6 +181,7 @@ interface PreparedBacklogCurationApply {
   generatedRecommendationsPresent: boolean;
   generatedRecommendationValidation: RecommendationReferenceValidationResult;
   recommendationProjection: BacklogCurationRecommendationProjection;
+  prospectiveRecommendationSourceFingerprint: string;
 }
 
 async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined, options: { skipGeneratedRecommendationErrors?: boolean } = {}): Promise<PreparedBacklogCurationApply> {
@@ -224,6 +225,11 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
     ? recommendationProjectionForSkipped(rawResult?.recommendations, generatedRecommendationsPresent, currentItems, currentEpics, draft)
     : serializeProjection(buildProspectiveCurationProjection({ currentItems, currentEpics, draft, generatedRecommendations: parsedGeneratedRecommendations }));
   const generatedRecommendationValidation = recommendationProjection.validation;
+  const prospectiveRecommendationSourceFingerprint = await computeRecommendationSourceFingerprintForRecords(
+    cwd,
+    [...prospectiveItems.values()].map((entry) => normalizeBacklogItem({ ...entry.frontmatter }, entry.body)),
+    [...prospectiveEpics.values()].map((entry) => normalizeBacklogEpic({ ...entry.frontmatter }, entry.body)),
+  );
 
   return {
     draft,
@@ -234,6 +240,7 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
     generatedRecommendationsPresent,
     generatedRecommendationValidation,
     recommendationProjection,
+    prospectiveRecommendationSourceFingerprint,
   };
 }
 

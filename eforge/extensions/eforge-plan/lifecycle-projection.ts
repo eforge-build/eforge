@@ -261,6 +261,7 @@ function stateFromRows(rows: readonly LifecycleLinkRow[], context?: TraceActivit
   if (statuses.some((status) => MERGED_STATUSES.has(status))) return 'merged';
   if (statuses.some((status) => PR_OPEN_STATUSES.has(status))) return 'pr-open';
   if (statuses.some((status) => FAILURE_STATUSES.has(status))) return 'failed';
+  if (rows.some((row) => row.stage === 'landing' && isActiveLandingTraceEntry(row))) return 'active';
   if (rows.some((row) => row.stage === 'build' && isActiveQueueOrBuildTraceEntry(row))) return 'build';
   if (rows.some((row) => row.stage === 'queue' && isActiveQueueOrBuildTraceEntry(row))) return 'queue';
   if (rows.some((row) => row.stage === 'planned' && isActiveSessionPlanTraceEntry(row, context))) return 'planned';

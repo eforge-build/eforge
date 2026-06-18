@@ -59,7 +59,7 @@ When curation starts, it should identify the previous accepted curation/recommen
 
 ### Documentation updates
 
-- Update `eforge/extensions/eforge-plan/README.md` for baseline storage, git-delta diagnostics, overlay-first apply behavior, baseline sidecar semantics, same-draft overlay behavior, and active-versus-historical trace evidence.
+- Update `eforge/extensions/eforge-plan/README.md` for baseline storage, git-delta diagnostics, overlay-first apply behavior, baseline sidecar semantics, prospective recommendation projection behavior, and active-versus-historical trace evidence.
 - Update workstation docs for baseline storage, git-delta diagnostics, and overlay-first apply behavior.
 
 ### Assumptions

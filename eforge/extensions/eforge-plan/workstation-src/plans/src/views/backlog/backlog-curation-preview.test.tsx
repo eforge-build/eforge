@@ -154,6 +154,18 @@ describe('BacklogCurationPreview', () => {
     });
   });
 
+  it('keeps normal confirmation enabled for a valid curation draft without generated recommendations', () => {
+    const onApply = vi.fn(async () => undefined);
+    renderPreview({ curationPreview: { valid: true, itemChanges: 1, epicChanges: 0, noOpRechecks: 0 }, recommendations: undefined, onApply });
+
+    fireEvent.click(screen.getByRole('button', { name: 'I reviewed this curation preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm apply curation' }));
+
+    expect(onApply).toHaveBeenCalledWith('task-backlog-curation-ready', {
+      applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true },
+    });
+  });
+
   it('redrafts only after non-empty steering', () => {
     const onRedraft = vi.fn(async () => undefined);
     renderPreview({ onRedraft });

@@ -173,11 +173,20 @@ export async function markRecommendationsStaleForLifecycleUpdate(cwd: string, in
 }
 
 export async function computeRecommendationSourceFingerprint(cwd: string): Promise<string> {
-  return sha256(canonicalJson(projectRecommendationSourceForFingerprint(await buildRecommendationSourceProjection(cwd))));
+  return fingerprintRecommendationSourceProjection(await buildRecommendationSourceProjection(cwd));
+}
+
+export async function computeRecommendationSourceFingerprintForRecords(cwd: string, allItems: readonly BacklogItem[], allEpics: readonly BacklogEpic[]): Promise<string> {
+  return fingerprintRecommendationSourceProjection(await buildRecommendationSourceProjectionFromRecords(cwd, allItems, allEpics));
 }
 
 export async function buildRecommendationSourceProjection(cwd: string): Promise<Record<string, unknown>> {
-  const [allItems, allEpics, traceSidecars] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
+  const [allItems, allEpics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
+  return buildRecommendationSourceProjectionFromRecords(cwd, allItems, allEpics);
+}
+
+async function buildRecommendationSourceProjectionFromRecords(cwd: string, allItems: readonly BacklogItem[], allEpics: readonly BacklogEpic[]): Promise<Record<string, unknown>> {
+  const traceSidecars = await listTraceSidecars(cwd);
   const items = allItems.filter((item) => isOpenStatus(item.status)).sort(byId);
   const epics = allEpics.filter((epic) => isOpenStatus(epic.status)).sort(byId);
   const openItemIds = new Set(items.map((item) => item.id));
@@ -191,6 +200,10 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
     roadmapContext: await buildRoadmapContext(cwd),
     traceSummaries,
   };
+}
+
+function fingerprintRecommendationSourceProjection(projection: Record<string, unknown>): string {
+  return sha256(canonicalJson(projectRecommendationSourceForFingerprint(projection)));
 }
 
 export function projectRecommendationSourceForFingerprint(projection: Record<string, unknown>): Record<string, unknown> {

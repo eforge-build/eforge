@@ -125,6 +125,20 @@ describe('trace lifecycle freshness', () => {
     });
   });
 
+  it('reports active lifecycle state for started and running landing evidence', async () => {
+    await withTempProject(async (cwd) => {
+      for (const status of ['started', 'running'] as const) {
+        const trace = createTraceSidecar(`item-${status}`);
+        trace.landingResults.push({ featureBranch: `feature/${status}`, status });
+
+        const [summary] = await summarizeProjectTraces(cwd, [trace]);
+
+        expect(summary).toMatchObject({ hasActiveTrace: true, hasActiveSessionPlan: false, lifecycleState: 'active' });
+        expect(summary.activeReasons).toEqual([`active landing trace feature/${status}`]);
+      }
+    });
+  });
+
   it('reports only the active PR reason when submitted plan history is paired with PR evidence', async () => {
     await withTempProject(async (cwd) => {
       const trace = createTraceSidecar('item-one');

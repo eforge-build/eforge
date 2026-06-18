@@ -40,8 +40,7 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
   const hasInvalidGeneratedRecommendations = recommendationValidation?.valid === false;
   const previewErrors = effectivePreview?.errors ?? [];
   const previewReady = effectivePreview !== undefined;
-  const hasRecommendationValidation = recommendationValidation !== undefined;
-  const canApplyNormally = previewReady && effectivePreview.valid && hasRecommendationValidation && !hasInvalidGeneratedRecommendations;
+  const canApplyNormally = previewReady && effectivePreview.valid && previewErrors.length === 0 && !hasInvalidGeneratedRecommendations;
   const canApplyCurationOnly = previewReady && hasInvalidGeneratedRecommendations && previewErrors.length === 0;
 
   React.useEffect(() => {

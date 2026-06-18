@@ -8,7 +8,7 @@ import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
 import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
-import { readDerivedRecommendationStatus } from '../recommendation-status.js';
+import { readDerivedRecommendationStatus, recordPlannerRecommendationApplied } from '../recommendation-status.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
 import { readBacklogItem, readBacklogItemSnapshot, resolveBacklogItemPath, resolveLegacyBacklogItemPath, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 
@@ -445,6 +445,30 @@ describe('backlog curation apply', () => {
       const status = await readDerivedRecommendationStatus(cwd);
       expect(status.state).toBe('stale');
       expect(status.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'backlog-mutation:backlog-curation', message: expect.stringContaining('item-1') })]));
+    });
+  });
+
+  it('previews existing recommendations as stale against a prospective curation-only status change', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      await writeRecommendations(cwd, { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-1', rationale: 'Previously ready.' }] });
+      await recordPlannerRecommendationApplied(cwd, 'test');
+      const freshStatus = await readDerivedRecommendationStatus(cwd);
+      expect(freshStatus.state).toBe('fresh');
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Substantive status change.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+
+      expect(preview.valid).toBe(true);
+      expect(preview.recommendationFreshness?.state).toBe('stale');
+      expect(preview.recommendationFreshness?.storedSourceFingerprint).toBe(freshStatus.lastAppliedSourceFingerprint);
+      expect(preview.recommendationFreshness?.comparedSourceFingerprint).not.toBe(freshStatus.lastAppliedSourceFingerprint);
     });
   });
 
