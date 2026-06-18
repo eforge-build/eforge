@@ -16,9 +16,7 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
     const diagnostics: ShippedEvidenceDiagnostic[] = [];
     const traceRowsByItemId = lifecycleRowsByItemId(input.traceSummaries ?? []);
     throwIfAborted(input.signal);
-    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
     const git = input.gitHistory === undefined ? await collectGitHistoryRecords(input.cwd, caps, input.signal) : capPreCollectedGitHistory(input.gitHistory, caps);
-    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     diagnostics.push(...git.diagnostics);
 
     const candidates: ShippedEvidenceCandidate[] = [];
@@ -34,10 +32,8 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
 
     if (input.enrichPullRequests !== false) {
       throwIfAborted(input.signal);
-      // --- eforge:region plan-01-plan-01-git-delta-baseline ---
       const prNumbers = git.records.flatMap((record) => record.prNumbers);
       const enrichment = input.pullRequestEnrichment === undefined ? await enrichPullRequests({ cwd: input.cwd, numbers: prNumbers, caps, signal: input.signal }) : capPreCollectedPullRequests(input.pullRequestEnrichment, caps);
-      // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
       throwIfAborted(input.signal);
       diagnostics.push(...enrichment.diagnostics);
       mergePullRequestMetadata(candidates, enrichment.pullRequests, git.records, input.items, caps);
@@ -71,11 +67,9 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
   const excerpts = await collectGitFileExcerpts({ cwd, record, queryText: `${item.id} ${item.title}`, caps, diagnostics, signal });
   const excerptText = excerpts.map((excerpt) => excerpt.text).join('\n');
   const signals = analyzeEvidenceMatch({ item, record, excerptText });
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   const closureIntent = detectClosureIntent(`${record.subject}\n${record.body ?? ''}`);
   const confidence = closureIntent === undefined ? 'weak' : classifyConfidence({ source: 'git-history', reachableLanding: hasLocalLandingSignal(record) || closureIntent === 'superseded', signals });
   const intent = classifyEvidenceIntent({ closureIntent, confidence, signals });
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
   const candidate: ShippedEvidenceCandidate = {
     itemId: item.id,
     itemTitle: item.title,
@@ -96,15 +90,11 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
     changedPaths: boundChangedPaths(record.changedPaths, caps),
     branchHints: record.branchHints.slice(0, caps.branchHintCount),
     excerpts: excerpts.slice(0, caps.excerptCount),
-    // --- eforge:region plan-03-plan-02-evidence-classification ---
     intent,
     matchedBy: signals.matchedBy,
-    // --- eforge:endregion plan-03-plan-02-evidence-classification ---
   };
   candidate.citation = formatCitation(candidate);
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   return projectPreclassifiedCandidate(candidate);
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRequests: readonly ShippedEvidencePrMetadata[], records: readonly GitHistoryRecord[], items: readonly BacklogItem[], caps: ShippedEvidenceCaps): void {
@@ -149,10 +139,8 @@ function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRe
         changedPaths: boundChangedPaths(uniqueStrings([...record.changedPaths, ...pr.changedPaths]), caps),
         branchHints: uniqueStrings([...record.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount),
         excerpts: [],
-        // --- eforge:region plan-03-plan-02-evidence-classification ---
         intent: classifyEvidenceIntent({ closureIntent, confidence, signals }),
         matchedBy: signals.matchedBy,
-        // --- eforge:endregion plan-03-plan-02-evidence-classification ---
       };
       candidate.citation = formatCitation(candidate);
       candidates.push(projectPreclassifiedCandidate(candidate));
@@ -179,13 +167,11 @@ function mergePullRequestIntoCandidate(candidate: ShippedEvidenceCandidate, item
   candidate.confidence = hasLifecycleEvidence ? strongerConfidence(candidate.confidence, enrichedConfidence) : enrichedConfidence;
   candidate.score += signalScore(signals);
   candidate.citation = formatCitation(candidate);
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   const closureIntent = reachablePrMerge && pullRequestIsMerged(pr) ? 'shipped' : detectClosureIntent(`${record.subject}\n${record.body ?? ''}\n${pr.title ?? ''}\n${pr.body ?? ''}`, candidate.lifecycleRows[0]?.status);
   candidate.intent = classifyEvidenceIntent({ closureIntent, confidence: candidate.confidence, signals });
   candidate.matchedBy = signals.matchedBy;
   const evidence = formatCandidateEvidence(candidate);
   if (evidence !== undefined) candidate.evidence = evidence;
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 function hasCandidateForRecordOrPr(candidates: readonly ShippedEvidenceCandidate[], itemId: string, record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
@@ -214,10 +200,8 @@ function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLink
       changedPaths: row.path ? boundChangedPaths([row.path], caps) : [],
       branchHints: row.featureBranch ? [row.featureBranch] : [],
       excerpts: [{ evidenceSource: 'lifecycle', text: boundString(rowToText(row), caps.excerptBytes), ...(row.path && { path: boundString(row.path, caps.changedPathBytes) }) }],
-      // --- eforge:region plan-03-plan-02-evidence-classification ---
       intent: classifyEvidenceIntent({ closureIntent, confidence, signals }),
       matchedBy: signals.matchedBy,
-      // --- eforge:endregion plan-03-plan-02-evidence-classification ---
     };
     candidate.citation = formatCitation(candidate);
     return projectPreclassifiedCandidate(candidate);

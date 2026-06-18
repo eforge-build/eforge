@@ -1,6 +1,5 @@
 import { collectBacklogCurationGitDelta, writeAcceptedAnalysisBaseline } from './backlog-curation-git-delta.js';
 
-// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
 export async function recordAcceptedAnalysisBaselineForApply(cwd: string, input: {
   taskId: string;
   passKind: 'backlog-curation' | 'recommendation-refresh';
@@ -22,4 +21,3 @@ export async function recordAcceptedAnalysisBaselineForApply(cwd: string, input:
     diagnostics: gitDelta.diagnostics,
   });
 }
-// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---

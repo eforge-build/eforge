@@ -17,9 +17,7 @@ export interface MatchSignals {
   broadOnly: boolean;
   titleScore: number;
   reasons: string[];
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   matchedBy: EvidenceMatchedBy[];
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 export function normalizeSlug(value: string): string {
@@ -82,13 +80,11 @@ export function analyzeEvidenceMatch(input: {
   const titleScore = titleTokenScore(input.item.title, text);
   const nearTitle = titleScore >= 0.72;
   const branchName = branchNameMatches(input.item, [...(input.record?.branchHints ?? []), input.pr?.headRefName ?? '']);
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   const prTitleMatch = input.pr?.title !== undefined && (exactItemIdMatch(input.pr.title, input.item.id) || containsSlug(input.pr.title, itemSlug) || titleTokenScore(input.item.title, input.pr.title) >= 0.72);
   const prBodyMatch = input.pr?.body !== undefined && (exactItemIdMatch(input.pr.body, input.item.id) || containsSlug(input.pr.body, itemSlug) || titleTokenScore(input.item.title, input.pr.body) >= 0.72);
   const prFileMatch = hasPathOrExcerptSignal(input.item, input.pr?.changedPaths ?? [], '');
   const mergeSubjectMatch = input.record?.isMerge === true && input.record.subject.length > 0 && (exactItemIdMatch(input.record.subject, input.item.id) || containsSlug(input.record.subject, itemSlug) || titleTokenScore(input.item.title, input.record.subject) >= 0.72);
   const boundedExcerptMatch = input.excerptText !== undefined && input.excerptText.length > 0 && hasPathOrExcerptSignal(input.item, [], input.excerptText);
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
   const prText = [input.pr?.title, input.pr?.body, input.pr?.headRefName, ...(input.pr?.changedPaths ?? [])]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
     .join('\n');
@@ -105,7 +101,6 @@ export function analyzeEvidenceMatch(input: {
   const changedPathsPresent = changedPaths.length > 0;
   const unrelatedChangedPaths = changedPathsPresent && !pathOrExcerpt;
   const broadOnly = !itemId && !branchName && titleScore > 0 && tokenizeTitle(input.item.title).every((token) => BROAD_WORDS.has(token));
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   const matchedBy = uniqueStrings([
     ...(itemId ? ['item-id'] : []),
     ...(nearTitle ? ['item-title'] : []),
@@ -119,7 +114,6 @@ export function analyzeEvidenceMatch(input: {
     ...(mergeSubjectMatch ? ['merge-subject'] : []),
     ...(boundedExcerptMatch ? ['bounded-excerpt'] : []),
   ] as EvidenceMatchedBy[]);
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
   const reasons = [
     ...(itemId ? [`exact item id ${input.item.id}`] : []),
     ...(slug ? ['item slug/title slug match'] : []),
@@ -134,7 +128,6 @@ export function analyzeEvidenceMatch(input: {
   return { itemId, slug, nearTitle, branchName, prMetadata, prExplicitItem, pathOrExcerpt, changedPathsPresent, unrelatedChangedPaths, broadOnly, titleScore, reasons, matchedBy: matchedBy as EvidenceMatchedBy[] };
 }
 
-// --- eforge:region plan-03-plan-02-evidence-classification ---
 export function detectClosureIntent(text: string, lifecycleStatus?: string): 'shipped' | 'superseded' | undefined {
   const normalized = text.toLowerCase();
   const tokenStart = '(?:^|[^A-Za-z0-9_/-])';
@@ -155,7 +148,6 @@ export function classifyEvidenceIntent(input: { closureIntent?: 'shipped' | 'sup
 export function candidateMostRecentTime(candidate: ShippedEvidenceCandidate): string {
   return candidate.commit?.committedAt ?? candidate.pr?.mergedAt ?? candidate.lifecycleRows[0]?.timestamp ?? '';
 }
-// --- eforge:endregion plan-03-plan-02-evidence-classification ---
 
 export function classifyConfidence(input: {
   source: ShippedEvidenceSource;

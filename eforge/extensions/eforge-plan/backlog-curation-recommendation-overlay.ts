@@ -3,7 +3,6 @@ import { summarizeRecommendations } from './recommendations-store.js';
 import type { RecommendationReferenceValidationIssue, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
 import type { BacklogRecommendationModel, RecommendationSummary } from './schema.js';
 
-// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
 export interface RecommendationReferenceRecord {
   id: string;
   kind: 'item' | 'epic';
@@ -360,4 +359,3 @@ function isClosedStatusString(status: string | undefined): boolean {
 function byRepositionedTarget(left: RecommendationRepositionedTarget, right: RecommendationRepositionedTarget): number {
   return left.itemId.localeCompare(right.itemId) || left.from.localeCompare(right.from) || left.to.localeCompare(right.to);
 }
-// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---

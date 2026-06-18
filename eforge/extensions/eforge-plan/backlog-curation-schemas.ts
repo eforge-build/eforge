@@ -72,7 +72,6 @@ export const RecommendationReferenceValidationResultSchema = Type.Object({
   issues: Type.Array(RecommendationReferenceValidationIssueSchema),
 }, { additionalProperties: false });
 
-// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
 export const RecommendationRepositionedTargetSchema = Type.Object({
   itemId: Type.String(),
   from: Type.String(),
@@ -117,7 +116,6 @@ export const BacklogCurationRecommendationProjectionSchema = Type.Object({
   repositioned: Type.Array(RecommendationRepositionedTargetSchema),
   validation: RecommendationReferenceValidationResultSchema,
 }, { additionalProperties: false });
-// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
 
 export const BacklogCurationPreviewValidationErrorSchema = Type.Object({
   path: Type.String(),
@@ -165,9 +163,7 @@ export const BacklogCurationPreviewDetailsSchema = Type.Object({
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
   recommendationFreshness: Type.Optional(BacklogCurationPreviewRecommendationFreshnessSchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
-  // --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
   recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
-  // --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
   errors: Type.Optional(Type.Array(BacklogCurationPreviewValidationErrorSchema)),
 }, { additionalProperties: false });
 
@@ -198,9 +194,7 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
   // --- eforge:region recommendation-validation ---
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
   recommendationsSkipped: Type.Optional(BacklogCurationRecommendationsSkippedSchema),
-  // --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
   recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
-  // --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
   // --- eforge:endregion recommendation-validation ---
 }, { additionalProperties: false });
 
@@ -209,10 +203,8 @@ export type AnalyzeAllBacklogOutput = Static<typeof AnalyzeAllBacklogOutputSchem
 export type AnalyzeAllBacklogTaskSummary = Static<typeof AnalyzeAllBacklogTaskSummarySchema>;
 export type RecommendationReferenceValidationIssue = Static<typeof RecommendationReferenceValidationIssueSchema>;
 export type RecommendationReferenceValidationResult = Static<typeof RecommendationReferenceValidationResultSchema>;
-// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
 export type RecommendationRepositionedTarget = Static<typeof RecommendationRepositionedTargetSchema>;
 export type BacklogCurationRecommendationProjection = Static<typeof BacklogCurationRecommendationProjectionSchema>;
-// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
 export type BacklogCurationGitDeltaPreview = Static<typeof BacklogCurationGitDeltaPreviewSchema>;
 export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;
 export type BacklogCurationRecommendationsSkipped = Static<typeof BacklogCurationRecommendationsSkippedSchema>;

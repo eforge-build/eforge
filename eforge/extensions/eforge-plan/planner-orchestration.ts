@@ -35,9 +35,7 @@ import {
 import { updateSessionPlanMetadata, updateSessionPlanSourceMetadata, type SessionPlanSourceMetadata } from './session-plan-metadata.js';
 import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, recordPlannerRecommendationApplied, recordPlannerRecommendationAppliedForSourceFingerprint } from './recommendation-status.js';
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
-// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
-// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
 import { userActionError } from './action-errors.js';
 import { upsertPromotedSessionPlan } from './trace-store.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';

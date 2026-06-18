@@ -18,7 +18,6 @@ export async function collectGitHistoryRecords(cwd: string, caps: Partial<Shippe
   return collection;
 }
 
-// --- eforge:region plan-01-plan-01-git-delta-baseline ---
 export async function collectGitHistoryRecordsForRange(cwd: string, range: GitHistoryRangeInput = {}, caps: Partial<ShippedEvidenceCaps> = {}, signal?: AbortSignal): Promise<GitHistoryCollection> {
   const limits = normalizeShippedEvidenceCaps(caps);
   const diagnostics: ShippedEvidenceDiagnostic[] = [];
@@ -71,7 +70,6 @@ export async function collectGitHistoryRecordsForRange(cwd: string, range: GitHi
   }
   return { records, diagnostics: diagnostics.slice(0, limits.diagnosticCount) };
 }
-// --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 
 export async function collectGitFileExcerpts(input: {
   cwd: string;

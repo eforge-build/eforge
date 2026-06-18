@@ -2,7 +2,6 @@ import type { BacklogItem, LifecycleLinkRow, TraceSummary } from './backlog-doma
 
 export type ShippedEvidenceSource = 'lifecycle' | 'git-history' | 'pr-history' | 'combined';
 export type ShippedEvidenceConfidence = 'strong' | 'ambiguous' | 'weak';
-// --- eforge:region plan-03-plan-02-evidence-classification ---
 export type ShippedEvidenceIntent = 'shipped' | 'superseded' | 'affected' | 'ambiguous-shipped' | 'ambiguous-superseded';
 export type GitDeltaAffectedConfidence = 'strong' | 'medium' | 'ambiguous';
 export type EvidenceMatchedBy = 'item-id' | 'item-title' | 'item-slug' | 'changed-path' | 'branch-hint' | 'pr-number' | 'pr-title' | 'pr-body' | 'pr-file' | 'merge-subject' | 'bounded-excerpt';
@@ -22,7 +21,6 @@ export interface GitDeltaAffectedItemCandidate {
   branchHints: string[];
   excerpts: ShippedEvidenceExcerpt[];
 }
-// --- eforge:endregion plan-03-plan-02-evidence-classification ---
 
 export interface ShippedEvidenceCaps {
   candidateCount: number;
@@ -86,7 +84,6 @@ export interface GitHistoryCollection {
   diagnostics: ShippedEvidenceDiagnostic[];
 }
 
-// --- eforge:region plan-01-plan-01-git-delta-baseline ---
 export interface GitHistoryRangeInput {
   revisionRange?: string;
   maxCount?: number;
@@ -97,7 +94,6 @@ export interface PreCollectedPullRequestEnrichment {
   pullRequests: ShippedEvidencePrMetadata[];
   diagnostics: ShippedEvidenceDiagnostic[];
 }
-// --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 
 export interface ShippedEvidenceExcerpt {
   evidenceSource: ShippedEvidenceSource;
@@ -140,13 +136,11 @@ export interface ShippedEvidenceCandidate {
   changedPaths: string[];
   branchHints: string[];
   excerpts: ShippedEvidenceExcerpt[];
-  // --- eforge:region plan-03-plan-02-evidence-classification ---
   intent?: ShippedEvidenceIntent;
   matchedBy?: EvidenceMatchedBy[];
   evidence?: string;
   sourceLabel?: string;
   supersededReason?: string;
-  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 export interface ShippedEvidenceResult {
@@ -161,10 +155,8 @@ export interface CollectShippedEvidenceInput {
   traceSummaries?: readonly TraceSummary[];
   caps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
-  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
   gitHistory?: GitHistoryCollection;
   pullRequestEnrichment?: PreCollectedPullRequestEnrichment;
-  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
   signal?: AbortSignal;
 }
 

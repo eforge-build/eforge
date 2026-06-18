@@ -18,7 +18,6 @@ const SHIPPED_STATUSES = new Set(['shipped', 'landed', 'auto-merged']);
 const MERGED_STATUSES = new Set(['merged']);
 const PR_OPEN_STATUSES = new Set(['pr-open']);
 
-// --- eforge:region plan-02-plan-04-trace-lifecycle-freshness ---
 const TERMINAL_TRACE_STATUSES = new Set(['submitted', 'abandoned', 'completed', 'cancelled', 'canceled', 'failed', 'landed', 'shipped', 'skipped', 'superseded', 'stale', 'merged', 'auto-merged']);
 const ACTIVE_LANDING_STATUSES = new Set(['pr-open', 'started', 'running']);
 
@@ -43,7 +42,6 @@ export function isActiveQueueOrBuildTraceEntry(entry: { status?: string; complet
 export function isActiveLandingTraceEntry(entry: { status?: string; prUrl?: string }): boolean {
   return entry.status !== undefined && ACTIVE_LANDING_STATUSES.has(entry.status);
 }
-// --- eforge:endregion plan-02-plan-04-trace-lifecycle-freshness ---
 
 export interface TraceLifecycleProjection {
   lifecycleState: LifecycleState;

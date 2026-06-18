@@ -8,12 +8,8 @@ import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection, projectRecommendationSourceForFingerprint, projectRoadmapContextForFingerprint } from './recommendation-status.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
-// --- eforge:region plan-01-plan-01-git-delta-baseline ---
 import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
-// --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
-// --- eforge:region plan-03-plan-02-evidence-classification ---
 import { classifyBacklogCurationEvidence, type EvidenceClassificationResult } from './backlog-curation-evidence-classification.js';
-// --- eforge:endregion plan-03-plan-02-evidence-classification ---
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -54,9 +50,7 @@ interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
-  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
   gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
-  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 }
 // --- eforge:endregion shipped-evidence-context ---
 
@@ -108,12 +102,10 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   ]);
   throwIfAborted(options.signal);
   const traceSummaries = boundTraceSummaries(rawTraceSummaries as unknown as Array<Record<string, unknown>>, truncation);
-  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
   const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
   const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
   gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
   const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification);
-  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
@@ -126,9 +118,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     },
     dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
     shippedEvidenceCandidates: shippedEvidence.fingerprintCandidates,
-    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
     gitDelta: projectGitDeltaForFingerprint(gitDelta.gitDelta),
-    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
@@ -148,9 +138,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     shippedEvidenceCandidates: shippedEvidence.candidates,
     shippedEvidenceCandidateCounts: shippedEvidence.counts,
     shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
-    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
     gitDelta: gitDelta.gitDelta,
-    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     roadmapContext,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
@@ -184,9 +172,7 @@ async function buildShippedEvidenceContext(
   traceSummaries: readonly TraceSummary[],
   truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
   options: BacklogCurationSourceBuildOptions,
-  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
   classification?: EvidenceClassificationResult,
-  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 ): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
   const lifecycleResult = await collectShippedEvidence({
     cwd,
@@ -194,9 +180,7 @@ async function buildShippedEvidenceContext(
     traceSummaries,
     caps: collectCaps(options.shippedEvidenceCaps),
     enrichPullRequests: false,
-    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
     gitHistory: { records: [], diagnostics: [] },
-    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     signal: options.signal,
   });
   const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: [...(classification?.shippedEvidenceCandidates ?? []), ...lifecycleResult.candidates] };
@@ -486,9 +470,7 @@ function buildSourceText(source: Record<string, unknown>): string {
     shippedEvidenceCandidates: source.shippedEvidenceCandidates,
     shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
     shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
-    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
     gitDelta: source.gitDelta,
-    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     roadmapContext: source.roadmapContext,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),
