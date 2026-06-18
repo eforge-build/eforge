@@ -4,6 +4,9 @@ import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection, projectRecommendationSourceForFingerprint, projectRoadmapContextForFingerprint } from './recommendation-status.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
+// --- eforge:region plan-01-plan-01-git-delta-baseline ---
+import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
+// --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -37,6 +40,9 @@ interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
+  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+  gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
+  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 }
 // --- eforge:endregion shipped-evidence-context ---
 
@@ -59,7 +65,10 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   ]);
   throwIfAborted(options.signal);
   const traceSummaries = boundTraceSummaries(rawTraceSummaries as unknown as Array<Record<string, unknown>>, truncation);
-  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options);
+  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+  const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, gitDelta);
+  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
@@ -72,6 +81,9 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     },
     dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
     shippedEvidenceCandidates: shippedEvidence.fingerprintCandidates,
+    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+    gitDelta: projectGitDeltaForFingerprint(gitDelta.gitDelta),
+    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
@@ -91,6 +103,9 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     shippedEvidenceCandidates: shippedEvidence.candidates,
     shippedEvidenceCandidateCounts: shippedEvidence.counts,
     shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
+    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+    gitDelta: gitDelta.gitDelta,
+    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     roadmapContext,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
@@ -124,6 +139,9 @@ async function buildShippedEvidenceContext(
   traceSummaries: readonly TraceSummary[],
   truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
   options: BacklogCurationSourceBuildOptions,
+  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+  gitDelta?: Awaited<ReturnType<typeof collectBacklogCurationGitDeltaWithHistory>>,
+  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 ): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
   const result = await collectShippedEvidence({
     cwd,
@@ -131,6 +149,10 @@ async function buildShippedEvidenceContext(
     traceSummaries,
     caps: collectCaps(options.shippedEvidenceCaps),
     enrichPullRequests: options.enrichPullRequests,
+    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+    gitHistory: gitDelta?.gitHistory,
+    pullRequestEnrichment: gitDelta?.pullRequestEnrichment,
+    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     signal: options.signal,
   });
   const eligible = result.candidates.filter((candidate) => !shouldOmitWeakCandidate(candidate)).sort(byEvidenceRank);
@@ -154,6 +176,19 @@ function collectCaps(overrides: Partial<ShippedEvidenceCaps> | undefined): Parti
     diagnosticCount: BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.diagnosticCount + 12,
     ...overrides,
   });
+}
+
+function collectGitDeltaCaps(options: BacklogCurationSourceBuildOptions): Partial<BacklogCurationGitDeltaCaps> {
+  const shippedCaps = collectCaps(options.shippedEvidenceCaps) as ShippedEvidenceCaps;
+  return {
+    commitScanCount: shippedCaps.gitCommitScanCount,
+    changedPathCount: shippedCaps.changedPathCount,
+    excerptCount: shippedCaps.excerptCount,
+    excerptBytes: shippedCaps.excerptBytes,
+    prEnrichmentCount: shippedCaps.prEnrichmentCount,
+    subprocessTimeoutMs: shippedCaps.subprocessTimeoutMs,
+    ...options.gitDeltaCaps,
+  };
 }
 
 function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate, truncation: { shippedEvidencePaths: number; shippedEvidenceExcerpts: number }): Record<string, unknown> {
@@ -381,6 +416,9 @@ function buildSourceText(source: Record<string, unknown>): string {
     shippedEvidenceCandidates: source.shippedEvidenceCandidates,
     shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
     shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
+    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+    gitDelta: source.gitDelta,
+    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     roadmapContext: source.roadmapContext,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),

@@ -2,7 +2,7 @@ import type { BacklogItem, LifecycleLinkRow, TraceSummary } from './backlog-doma
 import { collectGitFileExcerpts, collectGitHistoryRecords } from './shipped-evidence-git.js';
 import { analyzeEvidenceMatch, classifyConfidence, formatCitation, rankCandidates, signalScore } from './shipped-evidence-matching.js';
 import { enrichPullRequests } from './shipped-evidence-pr.js';
-import type { CollectShippedEvidenceInput, GitHistoryRecord, ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidencePrMetadata, ShippedEvidenceProvider, ShippedEvidenceResult } from './shipped-evidence-types.js';
+import type { CollectShippedEvidenceInput, GitHistoryCollection, GitHistoryRecord, PreCollectedPullRequestEnrichment, ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidencePrMetadata, ShippedEvidenceProvider, ShippedEvidenceResult } from './shipped-evidence-types.js';
 import { boundChangedPaths, boundString, normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 
 export async function collectShippedEvidence(input: CollectShippedEvidenceInput): Promise<ShippedEvidenceResult> {
@@ -15,7 +15,9 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
     const diagnostics: ShippedEvidenceDiagnostic[] = [];
     const traceRowsByItemId = lifecycleRowsByItemId(input.traceSummaries ?? []);
     throwIfAborted(input.signal);
-    const git = await collectGitHistoryRecords(input.cwd, caps, input.signal);
+    // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+    const git = input.gitHistory === undefined ? await collectGitHistoryRecords(input.cwd, caps, input.signal) : capPreCollectedGitHistory(input.gitHistory, caps);
+    // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     diagnostics.push(...git.diagnostics);
 
     const candidates: ShippedEvidenceCandidate[] = [];
@@ -31,8 +33,10 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
 
     if (input.enrichPullRequests !== false) {
       throwIfAborted(input.signal);
+      // --- eforge:region plan-01-plan-01-git-delta-baseline ---
       const prNumbers = git.records.flatMap((record) => record.prNumbers);
-      const enrichment = await enrichPullRequests({ cwd: input.cwd, numbers: prNumbers, caps, signal: input.signal });
+      const enrichment = input.pullRequestEnrichment === undefined ? await enrichPullRequests({ cwd: input.cwd, numbers: prNumbers, caps, signal: input.signal }) : capPreCollectedPullRequests(input.pullRequestEnrichment, caps);
+      // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
       throwIfAborted(input.signal);
       diagnostics.push(...enrichment.diagnostics);
       mergePullRequestMetadata(candidates, enrichment.pullRequests, git.records, input.items, caps);
@@ -43,6 +47,20 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
     return { candidates: ranked, diagnostics: diagnostics.slice(0, caps.diagnosticCount), caps };
   },
 };
+
+function capPreCollectedGitHistory(gitHistory: GitHistoryCollection, caps: ShippedEvidenceCaps): GitHistoryCollection {
+  const records = gitHistory.records.slice(0, caps.gitCommitScanCount);
+  const diagnostics = [...gitHistory.diagnostics];
+  if (gitHistory.records.length > records.length) diagnostics.push({ code: 'capExceeded', message: `Pre-collected git history capped at ${caps.gitCommitScanCount} commits.` });
+  return { records, diagnostics: diagnostics.slice(0, caps.diagnosticCount) };
+}
+
+function capPreCollectedPullRequests(enrichment: PreCollectedPullRequestEnrichment, caps: ShippedEvidenceCaps): PreCollectedPullRequestEnrichment {
+  const pullRequests = enrichment.pullRequests.slice(0, caps.prEnrichmentCount);
+  const diagnostics = [...enrichment.diagnostics];
+  if (enrichment.pullRequests.length > pullRequests.length) diagnostics.push({ code: 'capExceeded', message: `Pre-collected pull request metadata capped at ${caps.prEnrichmentCount} pull requests.` });
+  return { pullRequests, diagnostics: diagnostics.slice(0, caps.diagnosticCount) };
+}
 
 async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: GitHistoryRecord, lifecycleRows: LifecycleLinkRow[], caps: ShippedEvidenceCaps, diagnostics: ShippedEvidenceDiagnostic[], signal: AbortSignal | undefined): Promise<ShippedEvidenceCandidate | undefined> {
   const preliminary = analyzeEvidenceMatch({ item, record });

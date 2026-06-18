@@ -65,6 +65,19 @@ export interface GitHistoryCollection {
   diagnostics: ShippedEvidenceDiagnostic[];
 }
 
+// --- eforge:region plan-01-plan-01-git-delta-baseline ---
+export interface GitHistoryRangeInput {
+  revisionRange?: string;
+  maxCount?: number;
+  allowOverflowProbe?: boolean;
+}
+
+export interface PreCollectedPullRequestEnrichment {
+  pullRequests: ShippedEvidencePrMetadata[];
+  diagnostics: ShippedEvidenceDiagnostic[];
+}
+// --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
+
 export interface ShippedEvidenceExcerpt {
   evidenceSource: ShippedEvidenceSource;
   text: string;
@@ -120,6 +133,10 @@ export interface CollectShippedEvidenceInput {
   traceSummaries?: readonly TraceSummary[];
   caps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
+  // --- eforge:region plan-01-plan-01-git-delta-baseline ---
+  gitHistory?: GitHistoryCollection;
+  pullRequestEnrichment?: PreCollectedPullRequestEnrichment;
+  // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
   signal?: AbortSignal;
 }
 

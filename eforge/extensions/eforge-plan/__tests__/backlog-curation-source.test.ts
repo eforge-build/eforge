@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import { writeAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS, buildBacklogCurationSource } from '../backlog-curation-source.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
@@ -316,6 +317,33 @@ describe('backlog curation source', () => {
       expect(third.sourceFingerprint).toBe(second.sourceFingerprint);
     });
   });
+
+  it('includes gitDelta in source, source text, fingerprint, and minimal fallback', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      const baseline = await gitOutput(cwd, ['rev-parse', 'HEAD']);
+      await writeAcceptedAnalysisBaseline(cwd, { taskId: 'task-git-delta', passKind: 'analyze-all', sourceFingerprint: 'baseline-fingerprint', acceptedAt: '2026-01-01T00:00:00.000Z', git: { headCommit: baseline, headCommittedAt: '2026-01-01T00:00:00.000Z' }, coverage: {}, diagnostics: [] });
+      await writeBacklogItem(cwd, { id: 'git-delta-source', status: 'candidate', evidence_notes: 'Large evidence note. '.repeat(12000), body: `# Git Delta Source\n\n${'Large claim. '.repeat(20000)}\n` });
+      const before = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      await writeFile(join(cwd, 'delta.ts'), 'delta\n');
+      await git(cwd, ['add', 'delta.ts']);
+      await git(cwd, ['commit', '-m', 'feat: delta source fingerprint']);
+      const after = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const packet = after.source as { gitDelta: Record<string, unknown> };
+      const parsed = JSON.parse(after.sourceText) as { gitDelta: Record<string, unknown>; truncation: { fallback?: string } };
+
+      expect(packet.gitDelta).toMatchObject({ baseline: { commit: baseline, source: 'accepted-analysis-sidecar', taskId: 'task-git-delta' }, coverage: { kind: 'complete' }, affectedItemCandidates: [], caps: expect.any(Object) });
+      expect(packet.gitDelta).toHaveProperty('currentHead');
+      expect(packet.gitDelta).toHaveProperty('scannedCommits');
+      expect(packet.gitDelta).toHaveProperty('diagnostics');
+      expect(parsed.gitDelta).toBeDefined();
+      expect(parsed.truncation.fallback).toBe('minimal');
+      expect(after.sourceFingerprint).not.toBe(before.sourceFingerprint);
+    });
+  });
 });
 
 async function writeCappedLifecycleEvidence(cwd: string, options: { itemCount: number; bodyRepeat: number; evidenceNoteRepeat?: number }): Promise<void> {
@@ -347,4 +375,9 @@ async function initRepo(cwd: string): Promise<void> {
 
 async function git(cwd: string, args: readonly string[]): Promise<void> {
   await execFile('git', [...args], { cwd });
+}
+
+async function gitOutput(cwd: string, args: readonly string[]): Promise<string> {
+  const { stdout } = await execFile('git', [...args], { cwd });
+  return String(stdout).trim();
 }

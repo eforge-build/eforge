@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem, TraceSummary } from '../backlog-domain.js';
 import { collectShippedEvidence } from '../shipped-evidence.js';
-import { extractBranchHints, extractPullRequestNumbers } from '../shipped-evidence-git.js';
+import { collectGitHistoryRecordsForRange, extractBranchHints, extractPullRequestNumbers } from '../shipped-evidence-git.js';
 import { analyzeEvidenceMatch, classifyConfidence, normalizeSlug, shouldOmitWeakCandidate, tokenizeTitle } from '../shipped-evidence-matching.js';
 import { enrichPullRequests, parseGitHubRemote } from '../shipped-evidence-pr.js';
 import type { GitHistoryRecord, ShippedEvidenceCandidate } from '../shipped-evidence-types.js';
@@ -167,6 +167,26 @@ describe('shipped evidence lifecycle and git diagnostics', () => {
       expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'gitUnavailable' })]));
     });
   });
+
+  it('uses supplied pre-collected git history and preserves recent HEAD fallback when absent', async () => {
+    await withTempDir(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      const base = await gitOutput(cwd, ['rev-parse', 'HEAD']);
+      await writeFile(join(cwd, 'range-item.ts'), 'Range Item range-item\n');
+      await git(cwd, ['add', 'range-item.ts']);
+      await git(cwd, ['commit', '-m', 'ship range item']);
+      const ranged = await collectGitHistoryRecordsForRange(cwd, { revisionRange: `${base}..HEAD`, maxCount: 5 });
+
+      const supplied = await collectShippedEvidence({ cwd, items: [backlogItem('range-item', 'Range Item')], gitHistory: ranged, enrichPullRequests: false });
+      const fallback = await collectShippedEvidence({ cwd, items: [backlogItem('range-item', 'Range Item')], enrichPullRequests: false });
+
+      expect(supplied.candidates.some((candidate) => candidate.itemId === 'range-item')).toBe(true);
+      expect(fallback.candidates.some((candidate) => candidate.itemId === 'range-item')).toBe(true);
+    });
+  });
 });
 
 describe('shipped evidence PR fallback', () => {
@@ -259,4 +279,9 @@ async function initRepo(cwd: string): Promise<void> {
 
 async function git(cwd: string, args: readonly string[]): Promise<void> {
   await execFile('git', [...args], { cwd });
+}
+
+async function gitOutput(cwd: string, args: readonly string[]): Promise<string> {
+  const { stdout } = await execFile('git', [...args], { cwd });
+  return String(stdout).trim();
 }

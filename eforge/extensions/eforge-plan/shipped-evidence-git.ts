@@ -1,6 +1,6 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { GitHistoryCollection, GitHistoryRecord, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidenceExcerpt } from './shipped-evidence-types.js';
+import type { GitHistoryCollection, GitHistoryRangeInput, GitHistoryRecord, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidenceExcerpt } from './shipped-evidence-types.js';
 import { tokenizeTitle } from './shipped-evidence-matching.js';
 import { boundChangedPaths, boundString, normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 
@@ -9,6 +9,17 @@ const LOG_SEPARATOR = '\x1e';
 const FIELD_SEPARATOR = '\x1f';
 
 export async function collectGitHistoryRecords(cwd: string, caps: Partial<ShippedEvidenceCaps> = {}, signal?: AbortSignal): Promise<GitHistoryCollection> {
+  const limits = normalizeShippedEvidenceCaps(caps);
+  const collection = await collectGitHistoryRecordsForRange(cwd, {}, caps, signal);
+  if (collection.records.length >= limits.gitCommitScanCount) {
+    const capDiagnostic: ShippedEvidenceDiagnostic = { code: 'capExceeded', message: `Git history scan capped at ${limits.gitCommitScanCount} commits.` };
+    return { records: collection.records, diagnostics: [...collection.diagnostics, capDiagnostic].slice(0, limits.diagnosticCount) };
+  }
+  return collection;
+}
+
+// --- eforge:region plan-01-plan-01-git-delta-baseline ---
+export async function collectGitHistoryRecordsForRange(cwd: string, range: GitHistoryRangeInput = {}, caps: Partial<ShippedEvidenceCaps> = {}, signal?: AbortSignal): Promise<GitHistoryCollection> {
   const limits = normalizeShippedEvidenceCaps(caps);
   const diagnostics: ShippedEvidenceDiagnostic[] = [];
   throwIfAborted(signal);
@@ -20,12 +31,16 @@ export async function collectGitHistoryRecords(cwd: string, caps: Partial<Shippe
     return { records: [], diagnostics: [{ code: 'gitUnavailable', message: 'Git history is unavailable for shipped-evidence collection.' }] };
   }
 
+  const maxCount = normalizeRangeMaxCount(range.maxCount, limits.gitCommitScanCount, range.allowOverflowProbe === true);
+  if (maxCount === 0) return { records: [], diagnostics: [] };
   throwIfAborted(signal);
+  const revisionArgs = range.revisionRange === undefined ? [] : [range.revisionRange];
   const log = await runGit(cwd, [
     'log',
     '--date-order',
-    `--max-count=${limits.gitCommitScanCount}`,
+    `--max-count=${maxCount}`,
     `--format=${LOG_SEPARATOR}%H${FIELD_SEPARATOR}%h${FIELD_SEPARATOR}%P${FIELD_SEPARATOR}%cI${FIELD_SEPARATOR}%s${FIELD_SEPARATOR}%b`,
+    ...revisionArgs,
   ], limits, undefined, signal);
   if (!log.ok) {
     return { records: [], diagnostics: [{ code: 'gitCommandFailed', message: 'Unable to read reachable git log.', detail: log.detail }] };
@@ -54,11 +69,9 @@ export async function collectGitHistoryRecords(cwd: string, caps: Partial<Shippe
       changedPaths,
     });
   }
-  if (records.length >= limits.gitCommitScanCount) {
-    diagnostics.push({ code: 'capExceeded', message: `Git history scan capped at ${limits.gitCommitScanCount} commits.` });
-  }
   return { records, diagnostics: diagnostics.slice(0, limits.diagnosticCount) };
 }
+// --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 
 export async function collectGitFileExcerpts(input: {
   cwd: string;
@@ -125,6 +138,13 @@ async function runGit(cwd: string, args: readonly string[], caps: ShippedEvidenc
     throwIfAborted(signal);
     return { ok: false, detail: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function normalizeRangeMaxCount(value: unknown, limit: number, allowOverflowProbe: boolean): number {
+  const fallback = limit;
+  const requested = typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
+  const bounded = Math.min(requested, limit);
+  return bounded === 0 ? 0 : bounded + (allowOverflowProbe ? 1 : 0);
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

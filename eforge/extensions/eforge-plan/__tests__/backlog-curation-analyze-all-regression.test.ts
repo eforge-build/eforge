@@ -50,6 +50,7 @@ describe('analyze-all shipped evidence regression', () => {
       const source = JSON.parse(sourceText) as {
         openItems: Array<{ id: string; precondition: Record<string, unknown> }>;
         shippedEvidenceCandidates: Array<{ itemId: string; confidence: string; citations?: string[] }>;
+        gitDelta?: { currentHead: unknown; scannedCommitCount: number; diagnostics: Array<Record<string, unknown>> };
       };
       const evidence = source.shippedEvidenceCandidates.find((candidate) => candidate.itemId === 'analyze-shipped-item' && candidate.confidence === 'strong');
       const item = source.openItems.find((entry) => entry.id === 'analyze-shipped-item');
@@ -58,6 +59,7 @@ describe('analyze-all shipped evidence regression', () => {
       expect(itemChanges).toEqual([
         expect.objectContaining({ id: 'analyze-shipped-item', metadata: { status: 'shipped' }, evidence: [expect.stringContaining('Merge pull request #515')] }),
       ]);
+      expect(source.gitDelta).toMatchObject({ currentHead: expect.any(Object), scannedCommitCount: expect.any(Number), diagnostics: expect.any(Array) });
     });
   });
 });
