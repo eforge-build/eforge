@@ -6,10 +6,10 @@ import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem, TraceSummary } from '../backlog-domain.js';
 import { collectShippedEvidence } from '../shipped-evidence.js';
-import { extractBranchHints, extractPullRequestNumbers } from '../shipped-evidence-git.js';
-import { analyzeEvidenceMatch, classifyConfidence, normalizeSlug, shouldOmitWeakCandidate, tokenizeTitle } from '../shipped-evidence-matching.js';
+import { collectGitHistoryRecordsForRange, extractBranchHints, extractPullRequestNumbers } from '../shipped-evidence-git.js';
+import { analyzeEvidenceMatch, classifyConfidence, detectClosureIntent, normalizeSlug, shouldOmitWeakCandidate, tokenizeTitle } from '../shipped-evidence-matching.js';
 import { enrichPullRequests, parseGitHubRemote } from '../shipped-evidence-pr.js';
-import type { GitHistoryRecord, ShippedEvidenceCandidate } from '../shipped-evidence-types.js';
+import type { GitHistoryRecord, ShippedEvidenceCandidate, ShippedEvidencePrMetadata } from '../shipped-evidence-types.js';
 
 const execFile = promisify(execFileCallback);
 
@@ -64,6 +64,14 @@ describe('shipped evidence matching', () => {
     const item = backlogItem('stale-pr', 'Stale PR Record');
     const signals = analyzeEvidenceMatch({ item, lifecycleText: 'PR https://github.com/acme/repo/pull/44 stale-pr pr-open' });
     expect(classifyConfidence({ source: 'lifecycle', reachableLanding: false, staleOrUnreachablePr: true, signals })).toBe('weak');
+  });
+
+  it('does not detect closure intent from lifecycle verbs embedded in hyphenated item slugs', () => {
+    expect(detectClosureIntent('refactor ship-widget internals')).toBeUndefined();
+    expect(detectClosureIntent('update release-notes examples')).toBeUndefined();
+    expect(detectClosureIntent('refactor merge-tool internals')).toBeUndefined();
+    expect(detectClosureIntent('ship range item')).toBe('shipped');
+    expect(detectClosureIntent('Merge pull request #12 from owner/feature/widget')).toBe('shipped');
   });
 });
 
@@ -167,9 +175,56 @@ describe('shipped evidence lifecycle and git diagnostics', () => {
       expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'gitUnavailable' })]));
     });
   });
+
+  it('uses supplied pre-collected git history and preserves recent HEAD fallback when absent', async () => {
+    await withTempDir(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      const base = await gitOutput(cwd, ['rev-parse', 'HEAD']);
+      await writeFile(join(cwd, 'range-item.ts'), 'Range Item range-item\n');
+      await git(cwd, ['add', 'range-item.ts']);
+      await git(cwd, ['commit', '-m', 'ship range item']);
+      const ranged = await collectGitHistoryRecordsForRange(cwd, { revisionRange: `${base}..HEAD`, maxCount: 5 });
+
+      const supplied = await collectShippedEvidence({ cwd, items: [backlogItem('range-item', 'Range Item')], gitHistory: ranged, enrichPullRequests: false });
+      const fallback = await collectShippedEvidence({ cwd, items: [backlogItem('range-item', 'Range Item')], enrichPullRequests: false });
+
+      expect(supplied.candidates.some((candidate) => candidate.itemId === 'range-item')).toBe(true);
+      expect(fallback.candidates.some((candidate) => candidate.itemId === 'range-item')).toBe(true);
+    });
+  });
 });
 
 describe('shipped evidence PR fallback', () => {
+  it('classifies reachable squash-merged PR metadata as shipped evidence', async () => {
+    const record = historyRecord({ hash: 'f'.repeat(40), subject: 'implement squash-pr-item internals', prNumbers: [77], changedPaths: ['src/squash-pr-item.ts'] });
+    const pullRequest: ShippedEvidencePrMetadata = { source: 'pr-history', number: 77, title: 'Squash PR Item', state: 'MERGED', mergedAt: '2026-01-01T00:00:00.000Z', mergeCommitOid: record.hash, changedPaths: ['src/squash-pr-item.ts'] };
+
+    const result = await collectShippedEvidence({ cwd: process.cwd(), items: [backlogItem('squash-pr-item', 'Squash PR Item')], gitHistory: { records: [record], diagnostics: [] }, pullRequestEnrichment: { pullRequests: [pullRequest], diagnostics: [] } });
+
+    expect(result.candidates[0]).toMatchObject({ itemId: 'squash-pr-item', intent: 'shipped', confidence: 'strong' });
+    expect(result.candidates[0]?.evidence).toMatch(/^Shipped evidence: inferred from git\/PR history — /);
+  });
+
+  it('downgrades equal-score git closure ties to ambiguous evidence', async () => {
+    const record = historyRecord({ subject: 'ship alpha-widget beta-widget', changedPaths: ['src/alpha-widget.ts', 'src/beta-widget.ts'] });
+
+    const result = await collectShippedEvidence({
+      cwd: process.cwd(),
+      items: [backlogItem('alpha-widget', 'Alpha Widget'), backlogItem('beta-widget', 'Beta Widget')],
+      gitHistory: { records: [record], diagnostics: [] },
+      caps: { excerptCount: 0 },
+      enrichPullRequests: false,
+    });
+
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates.map((candidate) => candidate.intent)).toEqual(['ambiguous-shipped', 'ambiguous-shipped']);
+    expect(result.candidates.every((candidate) => candidate.confidence === 'ambiguous')).toBe(true);
+    expect(result.candidates.every((candidate) => candidate.evidence?.startsWith('Ambiguous shipped candidate: needs input — '))).toBe(true);
+  });
+
   it('returns git-only candidates when PR enrichment fails closed', async () => {
     await withTempDir(async (cwd) => {
       await initRepo(cwd);
@@ -259,4 +314,9 @@ async function initRepo(cwd: string): Promise<void> {
 
 async function git(cwd: string, args: readonly string[]): Promise<void> {
   await execFile('git', [...args], { cwd });
+}
+
+async function gitOutput(cwd: string, args: readonly string[]): Promise<string> {
+  const { stdout } = await execFile('git', [...args], { cwd });
+  return String(stdout).trim();
 }

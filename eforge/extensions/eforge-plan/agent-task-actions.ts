@@ -16,7 +16,7 @@ import {
   removePlanningTaskWorkflowEntry,
 } from './planning-task-workflow-store.js';
 import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
-import { buildBacklogCurationSource, buildBacklogCurationRedraftContext } from './backlog-curation-source.js';
+import { buildBacklogCurationSource, buildBacklogCurationRedraftContext, writeBacklogCurationSourcePreviewMetadata, type BacklogCurationSourceBuild } from './backlog-curation-source.js';
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
@@ -206,6 +206,7 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
       : isBacklogCurationWorkflowEntry(parent)
         ? await buildBacklogCurationSource(ctx.cwd)
         : undefined;
+    if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
     const derivedGoal = workflowSource === undefined ? explicitOrPreservedGoal(input.userGoal, parent, context!) : parent.derivedRequest;
@@ -241,6 +242,7 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
       : isBacklogCurationWorkflowEntry(parent)
         ? await buildBacklogCurationSource(ctx.cwd, redraft)
         : undefined;
+    if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
     const derivedGoal = workflowSource === undefined ? explicitOrPreservedGoal(undefined, parent, context!) : parent.derivedRequest;

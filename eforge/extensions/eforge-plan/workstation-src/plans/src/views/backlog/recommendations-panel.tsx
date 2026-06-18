@@ -3,12 +3,14 @@ import { Lightbulb, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
-import type { PlanningAgentTaskRecord, RecommendationModel, RecommendationStaleReason, RecommendationStatus, RecommendationStatusState } from '@/types';
+import type { PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationModel, RecommendationStaleReason, RecommendationStatus, RecommendationStatusState } from '@/types';
+import { RecommendationFreshnessBadge, RecommendationFreshnessLine, recommendationFreshnessState } from '@/components/recommendation-freshness';
 import { shortId } from './board-model';
 
 interface RecommendationsPanelProps {
   recommendations: RecommendationModel | null;
   status: RecommendationStatus | null;
+  freshness?: RecommendationFreshnessView | null;
   activeRefreshTask?: PlanningAgentTaskRecord | null;
   titles: Map<string, string>;
   // Ids currently selected in the backlog; recommendation chips reflect this.
@@ -25,14 +27,14 @@ interface RecommendationsPanelProps {
   busy?: boolean;
 }
 
-export function RecommendationsPanel({ recommendations, status, activeRefreshTask, titles, selected, readyIds, onPickItem, onPickItems, onPlanItems, busy }: RecommendationsPanelProps) {
-  if (!recommendations && !status) return null;
+export function RecommendationsPanel({ recommendations, status, freshness, activeRefreshTask, titles, selected, readyIds, onPickItem, onPickItems, onPlanItems, busy }: RecommendationsPanelProps) {
+  if (!recommendations && !status && !freshness) return null;
   const next = recommendations?.recommendedNextSequence ?? [];
   const groups = recommendations?.safeParallelizableGroups ?? [];
   const chains = recommendations?.blockedChains ?? [];
   const rationale = recommendations?.rationaleAndAssumptions ?? [];
   const hasGuidance = next.length > 0 || groups.length > 0 || chains.length > 0 || rationale.length > 0;
-  const state = status?.state ?? (recommendations ? 'fresh' : 'missing');
+  const state = recommendationFreshnessState(freshness, status);
   const label = (id: string) => titles.get(id) ?? shortId(id);
   // The refresh task also appears in the Plan with AI task list; here we only
   // surface compact progress so the two panels never disagree.
@@ -41,7 +43,7 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
 
   const summary = (
     <>
-      <StatusBadge state={state} />
+      <RecommendationFreshnessBadge freshness={freshness} status={status} />
       {groups.length > 0 && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]">{groups.length} lanes</span>}
       {next.length > 0 && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]">{next.length} next</span>}
       {refreshing && (
@@ -61,8 +63,9 @@ export function RecommendationsPanel({ recommendations, status, activeRefreshTas
       summary={summary}
     >
       <div className="mb-2">
-        <p className="text-xs text-muted-foreground">{statusCopy(state, refreshing)}</p>
+        <p className="text-xs text-muted-foreground">{statusCopy(state, refreshing, Boolean(recommendations))}</p>
         <FreshnessLine status={status} />
+        <RecommendationFreshnessLine freshness={freshness} status={status} />
       </div>
 
       {refreshing && activeRefreshTask && (
@@ -233,22 +236,12 @@ function PlanningLaneCard({ group, label, selected, readyIds, busy, onPickItem, 
   );
 }
 
-const BADGE_TONE: Record<RecommendationStatusState, string> = {
-  missing: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-  fresh: 'border-[color:var(--lane-ready)]/40 text-[color:var(--lane-ready)] bg-[color:var(--lane-ready)]/10',
-  // Amber, not red: stale means "refresh before planning", not an error.
-  stale: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-};
-
-function StatusBadge({ state }: { state: RecommendationStatusState }) {
-  return <span className={`rounded border px-1.5 py-0.5 text-2xs uppercase tracking-wide ${BADGE_TONE[state]}`}>{state}</span>;
-}
-
-function statusCopy(state: RecommendationStatusState, refreshing: boolean): string {
+function statusCopy(state: RecommendationStatusState | null, refreshing: boolean, hasRecommendations: boolean): string {
   if (refreshing) return 'A refresh is running now - recommendations will update when it finishes.';
   if (state === 'missing') return 'No current recommendations are stored; run Analyze all backlog from Plan with AI to curate records and generate recommendations.';
   if (state === 'stale') return 'The backlog has changed since these recommendations were generated; run Analyze all backlog before planning from them.';
-  return 'Recommendations are up to date with the current backlog.';
+  if (state === 'fresh') return 'Recommendations are up to date with the current backlog.';
+  return hasRecommendations ? 'Recommendations are available; freshness status has not been provided by the server.' : 'No recommendation freshness status has been provided by the server.';
 }
 
 // Plain-language translations for machine reason codes. Unknown codes fall

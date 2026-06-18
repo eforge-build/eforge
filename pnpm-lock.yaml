@@ -95,6 +95,9 @@ importers:
       '@eforge-build/input':
         specifier: workspace:*
         version: link:../../../packages/input
+      '@sinclair/typebox':
+        specifier: 0.34.49
+        version: 0.34.49
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

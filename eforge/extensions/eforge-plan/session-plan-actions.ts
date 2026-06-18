@@ -6,7 +6,8 @@ import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import {
@@ -316,7 +317,7 @@ async function buildLifecycleBySession(cwd: string, sessions: readonly string[])
 
 async function buildLifecycleForPlan(cwd: string, plan: Parameters<typeof projectSessionPlanSourceRefs>[0]): Promise<SessionPlanLifecycleProjection> {
   const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
-  const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
+  const traceSummaries = await summarizeProjectTraces(cwd, traces);
   return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries });
 }
 

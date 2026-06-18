@@ -2,6 +2,25 @@ import type { BacklogItem, LifecycleLinkRow, TraceSummary } from './backlog-doma
 
 export type ShippedEvidenceSource = 'lifecycle' | 'git-history' | 'pr-history' | 'combined';
 export type ShippedEvidenceConfidence = 'strong' | 'ambiguous' | 'weak';
+export type ShippedEvidenceIntent = 'shipped' | 'superseded' | 'affected' | 'ambiguous-shipped' | 'ambiguous-superseded';
+export type GitDeltaAffectedConfidence = 'strong' | 'medium' | 'ambiguous';
+export type EvidenceMatchedBy = 'item-id' | 'item-title' | 'item-slug' | 'changed-path' | 'branch-hint' | 'pr-number' | 'pr-title' | 'pr-body' | 'pr-file' | 'merge-subject' | 'bounded-excerpt';
+
+export interface GitDeltaAffectedItemCandidate {
+  itemId: string;
+  itemTitle: string;
+  intent: ShippedEvidenceIntent;
+  confidence: GitDeltaAffectedConfidence;
+  score: number;
+  matchedBy: EvidenceMatchedBy[];
+  evidence: string;
+  sourceLabel: string;
+  commit?: { hash: string; shortHash: string; subject: string; committedAt?: string; isMerge: boolean };
+  pr?: { number: number; title?: string; url?: string; state?: string; mergedAt?: string; branch?: string };
+  changedPaths: string[];
+  branchHints: string[];
+  excerpts: ShippedEvidenceExcerpt[];
+}
 
 export interface ShippedEvidenceCaps {
   candidateCount: number;
@@ -65,6 +84,17 @@ export interface GitHistoryCollection {
   diagnostics: ShippedEvidenceDiagnostic[];
 }
 
+export interface GitHistoryRangeInput {
+  revisionRange?: string;
+  maxCount?: number;
+  allowOverflowProbe?: boolean;
+}
+
+export interface PreCollectedPullRequestEnrichment {
+  pullRequests: ShippedEvidencePrMetadata[];
+  diagnostics: ShippedEvidenceDiagnostic[];
+}
+
 export interface ShippedEvidenceExcerpt {
   evidenceSource: ShippedEvidenceSource;
   text: string;
@@ -106,6 +136,11 @@ export interface ShippedEvidenceCandidate {
   changedPaths: string[];
   branchHints: string[];
   excerpts: ShippedEvidenceExcerpt[];
+  intent?: ShippedEvidenceIntent;
+  matchedBy?: EvidenceMatchedBy[];
+  evidence?: string;
+  sourceLabel?: string;
+  supersededReason?: string;
 }
 
 export interface ShippedEvidenceResult {
@@ -120,6 +155,8 @@ export interface CollectShippedEvidenceInput {
   traceSummaries?: readonly TraceSummary[];
   caps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
+  gitHistory?: GitHistoryCollection;
+  pullRequestEnrichment?: PreCollectedPullRequestEnrichment;
   signal?: AbortSignal;
 }
 

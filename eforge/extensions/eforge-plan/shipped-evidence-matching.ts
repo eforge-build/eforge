@@ -1,5 +1,5 @@
 import type { BacklogItem } from './backlog-domain.js';
-import type { GitHistoryRecord, ShippedEvidenceCandidate, ShippedEvidenceConfidence, ShippedEvidencePrMetadata, ShippedEvidenceSource } from './shipped-evidence-types.js';
+import type { EvidenceMatchedBy, GitHistoryRecord, ShippedEvidenceCandidate, ShippedEvidenceConfidence, ShippedEvidenceIntent, ShippedEvidencePrMetadata, ShippedEvidenceSource } from './shipped-evidence-types.js';
 
 const STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'when', 'then', 'than', 'have', 'has', 'had', 'are', 'was', 'were', 'been', 'will', 'would', 'should', 'could', 'feature', 'task', 'item', 'plan']);
 const BROAD_WORDS = new Set(['api', 'ui', 'web', 'app', 'fix', 'bug', 'new', 'old', 'test', 'docs', 'plan', 'build', 'data']);
@@ -17,6 +17,7 @@ export interface MatchSignals {
   broadOnly: boolean;
   titleScore: number;
   reasons: string[];
+  matchedBy: EvidenceMatchedBy[];
 }
 
 export function normalizeSlug(value: string): string {
@@ -79,6 +80,11 @@ export function analyzeEvidenceMatch(input: {
   const titleScore = titleTokenScore(input.item.title, text);
   const nearTitle = titleScore >= 0.72;
   const branchName = branchNameMatches(input.item, [...(input.record?.branchHints ?? []), input.pr?.headRefName ?? '']);
+  const prTitleMatch = input.pr?.title !== undefined && (exactItemIdMatch(input.pr.title, input.item.id) || containsSlug(input.pr.title, itemSlug) || titleTokenScore(input.item.title, input.pr.title) >= 0.72);
+  const prBodyMatch = input.pr?.body !== undefined && (exactItemIdMatch(input.pr.body, input.item.id) || containsSlug(input.pr.body, itemSlug) || titleTokenScore(input.item.title, input.pr.body) >= 0.72);
+  const prFileMatch = hasPathOrExcerptSignal(input.item, input.pr?.changedPaths ?? [], '');
+  const mergeSubjectMatch = input.record?.isMerge === true && input.record.subject.length > 0 && (exactItemIdMatch(input.record.subject, input.item.id) || containsSlug(input.record.subject, itemSlug) || titleTokenScore(input.item.title, input.record.subject) >= 0.72);
+  const boundedExcerptMatch = input.excerptText !== undefined && input.excerptText.length > 0 && hasPathOrExcerptSignal(input.item, [], input.excerptText);
   const prText = [input.pr?.title, input.pr?.body, input.pr?.headRefName, ...(input.pr?.changedPaths ?? [])]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
     .join('\n');
@@ -90,10 +96,24 @@ export function analyzeEvidenceMatch(input: {
   const prExplicitItem = input.pr !== undefined && (prItemId || prSlug);
   const prMetadata = input.pr !== undefined && (prExplicitItem || prNearTitle || prBranchName || prPath);
   const changedPaths = [...(input.record?.changedPaths ?? []), ...(input.pr?.changedPaths ?? [])];
-  const pathOrExcerpt = hasPathOrExcerptSignal(input.item, changedPaths, input.excerptText ?? '');
+  const changedPathMatch = hasPathOrExcerptSignal(input.item, changedPaths, '');
+  const pathOrExcerpt = changedPathMatch || boundedExcerptMatch;
   const changedPathsPresent = changedPaths.length > 0;
   const unrelatedChangedPaths = changedPathsPresent && !pathOrExcerpt;
   const broadOnly = !itemId && !branchName && titleScore > 0 && tokenizeTitle(input.item.title).every((token) => BROAD_WORDS.has(token));
+  const matchedBy = uniqueStrings([
+    ...(itemId ? ['item-id'] : []),
+    ...(nearTitle ? ['item-title'] : []),
+    ...(slug ? ['item-slug'] : []),
+    ...(changedPathMatch ? ['changed-path'] : []),
+    ...(branchName ? ['branch-hint'] : []),
+    ...(input.pr !== undefined && input.record?.prNumbers.includes(input.pr.number) ? ['pr-number'] : []),
+    ...(prTitleMatch ? ['pr-title'] : []),
+    ...(prBodyMatch ? ['pr-body'] : []),
+    ...(prFileMatch ? ['pr-file'] : []),
+    ...(mergeSubjectMatch ? ['merge-subject'] : []),
+    ...(boundedExcerptMatch ? ['bounded-excerpt'] : []),
+  ] as EvidenceMatchedBy[]);
   const reasons = [
     ...(itemId ? [`exact item id ${input.item.id}`] : []),
     ...(slug ? ['item slug/title slug match'] : []),
@@ -105,7 +125,28 @@ export function analyzeEvidenceMatch(input: {
     ...(unrelatedChangedPaths ? ['changed paths present but not aligned'] : []),
     ...(broadOnly ? ['broad wording only'] : []),
   ];
-  return { itemId, slug, nearTitle, branchName, prMetadata, prExplicitItem, pathOrExcerpt, changedPathsPresent, unrelatedChangedPaths, broadOnly, titleScore, reasons };
+  return { itemId, slug, nearTitle, branchName, prMetadata, prExplicitItem, pathOrExcerpt, changedPathsPresent, unrelatedChangedPaths, broadOnly, titleScore, reasons, matchedBy: matchedBy as EvidenceMatchedBy[] };
+}
+
+export function detectClosureIntent(text: string, lifecycleStatus?: string): 'shipped' | 'superseded' | undefined {
+  const normalized = text.toLowerCase();
+  const tokenStart = '(?:^|[^A-Za-z0-9_/-])';
+  const tokenEnd = '(?=$|[^A-Za-z0-9_/-])';
+  if (lifecycleStatus === 'superseded' || new RegExp(`${tokenStart}(superseded|obsolete|obsoleted|replaced|deprecated|removed as obsolete|no longer needed)${tokenEnd}`, 'i').test(normalized)) return 'superseded';
+  const shippedPast = new RegExp(`${tokenStart}(ship|shipped|landed|merged|released|completed)${tokenEnd}`, 'i');
+  const shipPhrase = new RegExp(`${tokenStart}(ship|merge|release|complete)(?:[\\s:;,.#()\\[\\]]+[a-z0-9]+){0,4}[\\s:;,.#()\\[\\]]+(item|task|story|feature|work|implementation|release|change|changes|pr|pull request)${tokenEnd}`, 'i');
+  if (lifecycleStatus === 'shipped' || lifecycleStatus === 'merged' || shippedPast.test(normalized) || shipPhrase.test(normalized)) return 'shipped';
+  return undefined;
+}
+
+export function classifyEvidenceIntent(input: { closureIntent?: 'shipped' | 'superseded'; confidence: ShippedEvidenceConfidence; signals: MatchSignals }): ShippedEvidenceIntent {
+  if (input.closureIntent === 'superseded') return input.confidence === 'strong' ? 'superseded' : 'ambiguous-superseded';
+  if (input.closureIntent === 'shipped') return input.confidence === 'strong' ? 'shipped' : 'ambiguous-shipped';
+  return 'affected';
+}
+
+export function candidateMostRecentTime(candidate: ShippedEvidenceCandidate): string {
+  return candidate.commit?.committedAt ?? candidate.pr?.mergedAt ?? candidate.lifecycleRows[0]?.timestamp ?? '';
 }
 
 export function classifyConfidence(input: {

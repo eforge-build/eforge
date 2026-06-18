@@ -44,6 +44,7 @@ export interface LifecycleLinkRow {
   prUrl?: string;
   path?: string;
   timestamp?: string;
+  completedAt?: string;
   affectedItemIds: string[];
 }
 

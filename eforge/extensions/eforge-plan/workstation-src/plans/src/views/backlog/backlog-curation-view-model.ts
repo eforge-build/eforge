@@ -1,4 +1,4 @@
-import type { BacklogCurationDraft, RecommendationEntry, RecommendationGroup, RecommendationModel, RecommendationReferenceValidationIssue } from '@/types';
+import type { BacklogCurationDraft, BacklogCurationRecommendationProjection, RecommendationModel, RecommendationReferenceValidationIssue } from '@/types';
 
 export interface CurationCounts {
   itemChanges: number;
@@ -18,8 +18,10 @@ export interface CurationEvidencePreview {
   commitIds: string[];
 }
 
-export interface DisplayRecommendationModel extends RecommendationModel {
-  removedTargetItemIds: string[];
+export interface ProjectionMetadataDisplay {
+  removedItemIds: string[];
+  removedEpicIds: string[];
+  repositioned: string[];
 }
 // --- eforge:endregion curation-preview-metadata ---
 
@@ -33,14 +35,14 @@ const METADATA_LABELS: Record<string, string> = {
   stale_after: 'Stale after',
 };
 
-export function curationCounts(draft: BacklogCurationDraft, recommendations?: RecommendationModel): CurationCounts {
+export function curationCounts(draft: BacklogCurationDraft, projection?: BacklogCurationRecommendationProjection): CurationCounts {
   return {
     itemChanges: draft.itemChanges.length,
     epicChanges: draft.epicChanges.length,
     noOpRechecks: draft.noOpRechecks.length,
     skipped: draft.skipped.length,
     needsInput: draft.needsInput.length,
-    generatedRecommendations: recommendationSummaryCounts(displayRecommendationsForDraft(draft, recommendations)).total,
+    generatedRecommendations: recommendationSummaryCounts(projection?.effectiveRecommendations).total,
   };
 }
 
@@ -83,7 +85,10 @@ export function recommendationSummaryCounts(recommendations?: RecommendationMode
 // --- eforge:region curation-preview-metadata ---
 const LIFECYCLE_LABEL = 'Shipped evidence: lifecycle trace';
 const INFERRED_LABEL = 'Shipped evidence: inferred from git/PR history';
+const SUPERSEDED_LIFECYCLE_LABEL = 'Superseded evidence: lifecycle trace';
+const SUPERSEDED_INFERRED_LABEL = 'Superseded evidence: inferred from git/PR history';
 const AMBIGUOUS_LABEL = 'Ambiguous shipped candidate: needs input';
+const AMBIGUOUS_SUPERSEDED_LABEL = 'Ambiguous superseded candidate: needs input';
 const PR_PATTERNS = [/\bPR\s+#(\d{1,10})\b/gi, /(?:^|[^\w/])#(\d{1,10})\b/g, /\/pull\/(\d{1,10})\b/gi];
 const COMMIT_PATTERN = /\b(?:merge\s+commit|commit|git)\s+([a-f0-9]{7,40})\b/gi;
 
@@ -95,7 +100,10 @@ export function curationEvidencePreview(values: Array<string | undefined>): Cura
     if (!value) continue;
     if (value.includes(LIFECYCLE_LABEL)) labelSet.add(LIFECYCLE_LABEL);
     if (value.includes(INFERRED_LABEL)) labelSet.add(INFERRED_LABEL);
+    if (value.includes(SUPERSEDED_LIFECYCLE_LABEL)) labelSet.add(SUPERSEDED_LIFECYCLE_LABEL);
+    if (value.includes(SUPERSEDED_INFERRED_LABEL)) labelSet.add(SUPERSEDED_INFERRED_LABEL);
     if (value.includes(AMBIGUOUS_LABEL)) labelSet.add(AMBIGUOUS_LABEL);
+    if (value.includes(AMBIGUOUS_SUPERSEDED_LABEL)) labelSet.add(AMBIGUOUS_SUPERSEDED_LABEL);
     for (const pattern of PR_PATTERNS) {
       pattern.lastIndex = 0;
       for (const match of value.matchAll(pattern)) if (match[1]) prIds.add(`#${match[1]}`);
@@ -103,62 +111,22 @@ export function curationEvidencePreview(values: Array<string | undefined>): Cura
     COMMIT_PATTERN.lastIndex = 0;
     for (const match of value.matchAll(COMMIT_PATTERN)) if (match[1]) commitIds.add(match[1]);
   }
-  const labels = [LIFECYCLE_LABEL, INFERRED_LABEL, AMBIGUOUS_LABEL].filter((label) => labelSet.has(label));
+  const labels = [LIFECYCLE_LABEL, INFERRED_LABEL, SUPERSEDED_LIFECYCLE_LABEL, SUPERSEDED_INFERRED_LABEL, AMBIGUOUS_LABEL, AMBIGUOUS_SUPERSEDED_LABEL].filter((label) => labelSet.has(label));
   return { labels, prIds: [...prIds], commitIds: [...commitIds] };
 }
 
-export function proposedShippedItemIds(draft: BacklogCurationDraft): Set<string> {
-  return deriveClosedIds(draft.itemChanges);
+export function effectiveRecommendationsFromProjection(projection?: BacklogCurationRecommendationProjection): RecommendationModel | undefined {
+  return projection?.effectiveRecommendations;
 }
 
-export function displayRecommendationsForDraft(draft: BacklogCurationDraft, recommendations?: RecommendationModel): DisplayRecommendationModel | undefined {
-  if (!recommendations) return undefined;
-  const closedItemIds = deriveClosedIds(draft.itemChanges);
-  const closedEpicIds = deriveClosedIds(draft.epicChanges);
-  const removedItemIds = new Set<string>();
-  const displayRecommendations = {
-    ...recommendations,
-    activeWork: filterEntries(recommendations.activeWork, closedItemIds, removedItemIds),
-    readyCandidates: filterEntries(recommendations.readyCandidates, closedItemIds, removedItemIds),
-    recommendedNextSequence: filterEntries(recommendations.recommendedNextSequence, closedItemIds, removedItemIds),
-    safeParallelizableGroups: recommendations.safeParallelizableGroups.map((group) => filterGroup(group, closedItemIds, closedEpicIds, removedItemIds)).filter((group) => group.itemIds.length > 0),
-    blockedChains: recommendations.blockedChains?.map((chain) => ({
-      ...chain,
-      itemIds: filterIds(chain.itemIds, closedItemIds, removedItemIds),
-      blockedBy: filterIds(chain.blockedBy, closedItemIds, removedItemIds),
-    })).filter((chain) => chain.itemIds.length > 0),
-    removedTargetItemIds: [...removedItemIds].sort(),
+export function projectionMetadataDisplay(projection?: BacklogCurationRecommendationProjection): ProjectionMetadataDisplay {
+  return {
+    removedItemIds: [...(projection?.removed.itemIds ?? [])].sort(),
+    removedEpicIds: [...(projection?.removed.epicIds ?? [])].sort(),
+    repositioned: [...(projection?.repositioned ?? [])]
+      .sort((left, right) => left.itemId.localeCompare(right.itemId) || left.from.localeCompare(right.from) || left.to.localeCompare(right.to))
+      .map((entry) => `${entry.itemId}: ${entry.from} → ${entry.to}`),
   };
-  return displayRecommendations;
-}
-
-function deriveClosedIds(changes: readonly { id: string; metadata?: unknown }[]): Set<string> {
-  return new Set(changes.filter((patch) => metadataClosesRecord(patch.metadata)).map((patch) => patch.id));
-}
-
-function metadataClosesRecord(metadata: unknown): boolean {
-  if (metadata === null || typeof metadata !== 'object') return false;
-  const status = (metadata as Record<string, unknown>).status;
-  return status === 'shipped' || status === 'stale' || status === 'superseded';
-}
-
-function filterEntries(entries: RecommendationEntry[] | undefined, closedItemIds: Set<string>, removedItemIds: Set<string>): RecommendationEntry[] {
-  return (entries ?? []).filter((entry) => keepItemId(entry.itemId, closedItemIds, removedItemIds));
-}
-
-function filterGroup(group: RecommendationGroup, closedItemIds: Set<string>, closedEpicIds: Set<string>, removedItemIds: Set<string>): RecommendationGroup {
-  const epicIds = group.epicIds?.filter((id) => !closedEpicIds.has(id));
-  return { ...group, itemIds: filterIds(group.itemIds, closedItemIds, removedItemIds), ...(group.epicIds !== undefined && { epicIds }) };
-}
-
-function filterIds(ids: readonly string[], closedItemIds: Set<string>, removedItemIds: Set<string>): string[] {
-  return ids.filter((id) => keepItemId(id, closedItemIds, removedItemIds));
-}
-
-function keepItemId(id: string, closedItemIds: Set<string>, removedItemIds: Set<string>): boolean {
-  const keep = !closedItemIds.has(id);
-  if (!keep) removedItemIds.add(id);
-  return keep;
 }
 // --- eforge:endregion curation-preview-metadata ---
 

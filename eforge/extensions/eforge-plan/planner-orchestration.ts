@@ -35,6 +35,7 @@ import {
 import { updateSessionPlanMetadata, updateSessionPlanSourceMetadata, type SessionPlanSourceMetadata } from './session-plan-metadata.js';
 import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, recordPlannerRecommendationApplied, recordPlannerRecommendationAppliedForSourceFingerprint } from './recommendation-status.js';
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
+import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { userActionError } from './action-errors.js';
 import { upsertPromotedSessionPlan } from './trace-store.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
@@ -172,6 +173,10 @@ export async function applyCompletedPlanningAgentTaskResult(
       const applied = await applyPlannerResult(cwd, { recommendations: recommendations as BacklogRecommendationModel }, { recommendationSourceFingerprint, lastRefreshedBy: 'apply-planning-agent-task-result' });
       output.recommendations = applied.recommendations as ApplyPlanningAgentTaskResultOutput['recommendations'];
       output.applied.recommendations = true;
+      if (workflowEntry !== undefined && isRecommendationRefreshWorkflowEntry(workflowEntry) && workflowEntry.sourceFingerprint !== undefined) {
+        await recordAcceptedAnalysisBaselineForApply(cwd, { taskId: task.taskId, passKind: 'recommendation-refresh', sourceFingerprint: workflowEntry.sourceFingerprint });
+        await markPlanningTaskWorkflowEntryApplied(cwd, task.taskId, new Date().toISOString());
+      }
     }
     if (handoffDrafts !== undefined) {
       const handoffs: NonNullable<ApplyPlanningAgentTaskResultOutput['handoffs']> = [];

@@ -18,6 +18,31 @@ const SHIPPED_STATUSES = new Set(['shipped', 'landed', 'auto-merged']);
 const MERGED_STATUSES = new Set(['merged']);
 const PR_OPEN_STATUSES = new Set(['pr-open']);
 
+const TERMINAL_TRACE_STATUSES = new Set(['submitted', 'abandoned', 'completed', 'cancelled', 'canceled', 'failed', 'landed', 'shipped', 'skipped', 'superseded', 'stale', 'merged', 'auto-merged']);
+const ACTIVE_LANDING_STATUSES = new Set(['pr-open', 'started', 'running']);
+
+export interface TraceActivityContext {
+  liveEditableSessionIds?: ReadonlySet<string>;
+}
+
+export function isActiveSessionPlanTraceEntry(
+  entry: { session?: string; status?: string },
+  context?: TraceActivityContext,
+): boolean {
+  if (entry.session === undefined || entry.session.length === 0) return false;
+  if (entry.status !== undefined && TERMINAL_TRACE_STATUSES.has(entry.status)) return false;
+  return context?.liveEditableSessionIds?.has(entry.session) === true;
+}
+
+export function isActiveQueueOrBuildTraceEntry(entry: { status?: string; completedAt?: string }): boolean {
+  if (entry.completedAt !== undefined && entry.completedAt.length > 0) return false;
+  return entry.status === undefined || !TERMINAL_TRACE_STATUSES.has(entry.status);
+}
+
+export function isActiveLandingTraceEntry(entry: { status?: string; prUrl?: string }): boolean {
+  return entry.status !== undefined && ACTIVE_LANDING_STATUSES.has(entry.status);
+}
+
 export interface TraceLifecycleProjection {
   lifecycleState: LifecycleState;
   linkRows: LifecycleLinkRow[];
@@ -26,7 +51,7 @@ export interface TraceLifecycleProjection {
   failureEvidence: LifecycleLinkRow[];
 }
 
-export function projectTraceLifecycle(trace: TraceSidecar): TraceLifecycleProjection {
+export function projectTraceLifecycle(trace: TraceSidecar, context?: TraceActivityContext): TraceLifecycleProjection {
   const linkRows = [
     ...trace.promotedSessionPlans.map((entry) => compactRow({
       kind: 'session-plan',
@@ -56,6 +81,7 @@ export function projectTraceLifecycle(trace: TraceSidecar): TraceLifecycleProjec
       runId: entry.runId,
       sessionId: entry.sessionId,
       timestamp: entry.completedAt ?? entry.startedAt,
+      completedAt: entry.completedAt,
       affectedItemIds: [trace.itemId],
     })),
     ...trace.buildSessions.map((entry) => compactRow({
@@ -66,6 +92,7 @@ export function projectTraceLifecycle(trace: TraceSidecar): TraceLifecycleProjec
       sessionId: entry.sessionId,
       runId: entry.runId,
       timestamp: entry.completedAt ?? entry.startedAt,
+      completedAt: entry.completedAt,
       affectedItemIds: [trace.itemId],
     })),
     ...trace.landingResults.map((entry) => landingRow(trace.itemId, entry)),
@@ -84,7 +111,7 @@ export function projectTraceLifecycle(trace: TraceSidecar): TraceLifecycleProjec
   const landingRefs = linkRows.filter((row) => row.kind === 'landing');
   const prRefs = linkRows.filter((row) => row.prUrl !== undefined || row.kind === 'pr');
   return {
-    lifecycleState: stateFromRows(linkRows),
+    lifecycleState: stateFromRows(linkRows, context),
     linkRows,
     prRefs,
     landingRefs,
@@ -207,6 +234,7 @@ export function compactLifecycleRowsForFingerprint(rows: readonly LifecycleLinkR
     featureBranch: row.featureBranch,
     commitSha: row.commitSha,
     prUrl: row.prUrl,
+    completedAt: row.completedAt,
     affectedItemIds: [...row.affectedItemIds].sort(),
   })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 }
@@ -225,15 +253,16 @@ function landingRow(itemId: string, entry: TraceLandingResult): LifecycleLinkRow
   });
 }
 
-function stateFromRows(rows: readonly LifecycleLinkRow[]): LifecycleState {
+function stateFromRows(rows: readonly LifecycleLinkRow[], context?: TraceActivityContext): LifecycleState {
   const statuses = rows.map((row) => row.status);
   if (statuses.some((status) => SHIPPED_STATUSES.has(status))) return 'shipped';
   if (statuses.some((status) => MERGED_STATUSES.has(status))) return 'merged';
   if (statuses.some((status) => PR_OPEN_STATUSES.has(status))) return 'pr-open';
   if (statuses.some((status) => FAILURE_STATUSES.has(status))) return 'failed';
-  if (rows.some((row) => row.stage === 'build')) return 'build';
-  if (rows.some((row) => row.stage === 'queue')) return 'queue';
-  if (rows.some((row) => row.stage === 'planned')) return 'planned';
+  if (rows.some((row) => row.stage === 'landing' && isActiveLandingTraceEntry(row))) return 'active';
+  if (rows.some((row) => row.stage === 'build' && isActiveQueueOrBuildTraceEntry(row))) return 'build';
+  if (rows.some((row) => row.stage === 'queue' && isActiveQueueOrBuildTraceEntry(row))) return 'queue';
+  if (rows.some((row) => row.stage === 'planned' && isActiveSessionPlanTraceEntry(row, context))) return 'planned';
   return 'none';
 }
 

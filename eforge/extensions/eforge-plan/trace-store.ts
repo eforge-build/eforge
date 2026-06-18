@@ -4,7 +4,13 @@ import { dirname, isAbsolute, relative, sep } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { assertSafeBacklogId } from './markdown-store.js';
 import type { TraceSummary } from './backlog-domain.js';
-import { projectTraceLifecycle } from './lifecycle-projection.js';
+import {
+  isActiveLandingTraceEntry,
+  isActiveQueueOrBuildTraceEntry,
+  isActiveSessionPlanTraceEntry,
+  projectTraceLifecycle,
+  type TraceActivityContext,
+} from './lifecycle-projection.js';
 import type {
   TraceBuildRun,
   TraceBuildSession,
@@ -172,29 +178,35 @@ export async function updateLastEventMetadata(
 
 // --- eforge:region summary-helpers ---
 
-export function summarizeTrace(trace: TraceSidecar | null | undefined): TraceSummary | undefined {
+export function summarizeTrace(trace: TraceSidecar | null | undefined, context?: TraceActivityContext): TraceSummary | undefined {
   if (!trace) {
     return undefined;
   }
   const activeReasons = [
-    ...trace.promotedSessionPlans.filter(isActiveEntry).map((entry) => `active session-plan trace ${entry.session}`),
-    ...trace.queuePrds.filter(isActiveEntry).map((entry) => `active queue trace ${entry.prdId}`),
-    ...trace.buildRuns.filter(isActiveEntry).map((entry) => `active build run trace ${entry.runId}`),
-    ...trace.buildSessions.filter(isActiveEntry).map((entry) => `active build session trace ${entry.sessionId}`),
+    ...trace.promotedSessionPlans.filter((entry) => isActiveSessionPlanTraceEntry(entry, context)).map((entry) => `active session-plan trace ${entry.session}`),
+    ...trace.queuePrds.filter(isActiveQueueOrBuildTraceEntry).map((entry) => `active queue trace ${entry.prdId}`),
+    ...trace.buildRuns.filter(isActiveQueueOrBuildTraceEntry).map((entry) => `active build run trace ${entry.runId}`),
+    ...trace.buildSessions.filter(isActiveQueueOrBuildTraceEntry).map((entry) => `active build session trace ${entry.sessionId}`),
+    ...trace.landingResults.filter(isActiveLandingTraceEntry).map((entry) => activeLandingReason(entry)),
   ];
-  const lifecycle = projectTraceLifecycle(trace);
+  const lifecycle = projectTraceLifecycle(trace, context);
   return {
     itemId: trace.itemId,
     epicId: trace.epicId,
-    hasActiveSessionPlan: trace.promotedSessionPlans.some(isActiveEntry),
-    hasActiveQueuePrd: trace.queuePrds.some(isActiveEntry),
-    hasActiveBuildRun: trace.buildRuns.some(isActiveEntry),
-    hasActiveBuildSession: trace.buildSessions.some(isActiveEntry),
+    hasActiveSessionPlan: trace.promotedSessionPlans.some((entry) => isActiveSessionPlanTraceEntry(entry, context)),
+    hasActiveQueuePrd: trace.queuePrds.some(isActiveQueueOrBuildTraceEntry),
+    hasActiveBuildRun: trace.buildRuns.some(isActiveQueueOrBuildTraceEntry),
+    hasActiveBuildSession: trace.buildSessions.some(isActiveQueueOrBuildTraceEntry),
     hasActiveTrace: activeReasons.length > 0,
     activeReasons,
     lastEvent: trace.lastEvent,
     ...lifecycle,
   };
+}
+
+function activeLandingReason(entry: TraceLandingResult): string {
+  if (entry.prUrl !== undefined) return `active PR trace ${entry.prUrl}`;
+  return `active landing trace ${entry.featureBranch ?? entry.commitSha}`;
 }
 
 // --- eforge:endregion summary-helpers ---
@@ -322,16 +334,6 @@ function sameLandingResult(candidate: TraceLandingResult, entry: TraceLandingRes
     return true;
   }
   return Boolean(entry.commitSha && candidate.commitSha === entry.commitSha);
-}
-
-function isActiveEntry(entry: { status?: string; completedAt?: string }): boolean {
-  if (entry.completedAt) {
-    return false;
-  }
-  if (!entry.status) {
-    return true;
-  }
-  return !['completed', 'cancelled', 'canceled', 'failed', 'landed', 'shipped', 'skipped', 'superseded', 'stale'].includes(entry.status);
 }
 
 function assertContained(root: string, filePath: string): void {

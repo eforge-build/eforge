@@ -1,22 +1,36 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { safeParseWithSchema } from '@eforge-build/client';
+import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { blockerRiskProjection, dependencyStateProjection, extractMarkdownSections, isOpenStatus } from './backlog-domain.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
 import { buildRecommendationSourceProjection, projectRecommendationSourceForFingerprint, projectRoadmapContextForFingerprint } from './recommendation-status.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
+import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
+import { classifyBacklogCurationEvidence, type EvidenceClassificationResult } from './backlog-curation-evidence-classification.js';
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 import { shouldOmitWeakCandidate } from './shipped-evidence-matching.js';
 import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidenceResult } from './shipped-evidence-types.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
+import { BacklogCurationGitDeltaPreviewSchema, type BacklogCurationGitDeltaPreview } from './backlog-curation-schemas.js';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
   sourceText: string;
   source: Record<string, unknown>;
+}
+
+export interface BacklogCurationSourcePreviewMetadata {
+  sourceFingerprint: string;
+  generatedAt?: string;
+  gitDelta?: BacklogCurationGitDeltaPreview;
 }
 
 const SOURCE_TEXT_TARGET = 180_000;
@@ -36,8 +50,38 @@ interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
+  gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
 }
 // --- eforge:endregion shipped-evidence-context ---
+
+export async function writeBacklogCurationSourcePreviewMetadata(cwd: string, source: BacklogCurationSourceBuild): Promise<void> {
+  const metadata = previewMetadataFromSource(source);
+  const path = resolveBacklogCurationSourcePreviewMetadataPath(cwd, metadata.sourceFingerprint);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
+}
+
+export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sourceFingerprint: string): Promise<BacklogCurationSourcePreviewMetadata | null> {
+  let raw: string;
+  try {
+    raw = await readFile(resolveBacklogCurationSourcePreviewMetadataPath(cwd, sourceFingerprint), 'utf-8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
+  return {
+    sourceFingerprint,
+    ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
+    ...(gitDelta?.success && { gitDelta: gitDelta.data }),
+  };
+}
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
@@ -58,7 +102,10 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   ]);
   throwIfAborted(options.signal);
   const traceSummaries = boundTraceSummaries(rawTraceSummaries as unknown as Array<Record<string, unknown>>, truncation);
-  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options);
+  const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
+  const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
+  gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification);
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
@@ -71,6 +118,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     },
     dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
     shippedEvidenceCandidates: shippedEvidence.fingerprintCandidates,
+    gitDelta: projectGitDeltaForFingerprint(gitDelta.gitDelta),
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
@@ -90,6 +138,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     shippedEvidenceCandidates: shippedEvidence.candidates,
     shippedEvidenceCandidateCounts: shippedEvidence.counts,
     shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
+    gitDelta: gitDelta.gitDelta,
     roadmapContext,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
@@ -114,7 +163,7 @@ export function buildBacklogCurationRedraftContext(parentTaskId: string, result:
 async function readRawTraceSummaries(cwd: string, itemIds: readonly string[]): Promise<TraceSummary[]> {
   const relevantItemIds = new Set(itemIds);
   const traces = await listTraceSidecars(cwd);
-  return traces.flatMap((trace) => summarizeTrace(trace) ?? []).filter((summary) => relevantItemIds.has(summary.itemId));
+  return (await summarizeProjectTraces(cwd, traces)).filter((summary) => relevantItemIds.has(summary.itemId));
 }
 
 async function buildShippedEvidenceContext(
@@ -123,15 +172,18 @@ async function buildShippedEvidenceContext(
   traceSummaries: readonly TraceSummary[],
   truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
   options: BacklogCurationSourceBuildOptions,
+  classification?: EvidenceClassificationResult,
 ): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
-  const result = await collectShippedEvidence({
+  const lifecycleResult = await collectShippedEvidence({
     cwd,
     items,
     traceSummaries,
     caps: collectCaps(options.shippedEvidenceCaps),
-    enrichPullRequests: options.enrichPullRequests,
+    enrichPullRequests: false,
+    gitHistory: { records: [], diagnostics: [] },
     signal: options.signal,
   });
+  const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: [...(classification?.shippedEvidenceCandidates ?? []), ...lifecycleResult.candidates] };
   const eligible = result.candidates.filter((candidate) => !shouldOmitWeakCandidate(candidate)).sort(byEvidenceRank);
   const selected = eligible.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
   truncation.shippedEvidenceCandidates += Math.max(0, eligible.length - selected.length) + result.candidates.filter(shouldOmitWeakCandidate).length;
@@ -155,6 +207,19 @@ function collectCaps(overrides: Partial<ShippedEvidenceCaps> | undefined): Parti
   });
 }
 
+function collectGitDeltaCaps(options: BacklogCurationSourceBuildOptions): Partial<BacklogCurationGitDeltaCaps> {
+  const shippedCaps = collectCaps(options.shippedEvidenceCaps) as ShippedEvidenceCaps;
+  return {
+    commitScanCount: shippedCaps.gitCommitScanCount,
+    changedPathCount: shippedCaps.changedPathCount,
+    excerptCount: shippedCaps.excerptCount,
+    excerptBytes: shippedCaps.excerptBytes,
+    prEnrichmentCount: shippedCaps.prEnrichmentCount,
+    subprocessTimeoutMs: shippedCaps.subprocessTimeoutMs,
+    ...options.gitDeltaCaps,
+  };
+}
+
 function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate, truncation: { shippedEvidencePaths: number; shippedEvidenceExcerpts: number }): Record<string, unknown> {
   const changedPaths = candidate.changedPaths.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount);
   const excerpts = candidate.excerpts.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.excerptCount).map((excerpt) => ({
@@ -170,6 +235,9 @@ function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate,
     itemTitle: candidate.itemTitle,
     evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
+    intent: candidate.intent ?? 'shipped',
+    matchedBy: candidate.matchedBy ?? [],
+    evidence: candidate.evidence ?? evidenceLabel(candidate),
     evidenceLabel: evidenceLabel(candidate),
     reasons: candidate.reasons,
     citations: [candidate.citation].filter(Boolean).slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.citationCount),
@@ -187,6 +255,9 @@ function projectEvidenceCandidateForFingerprint(candidate: ShippedEvidenceCandid
     itemTitle: candidate.itemTitle,
     evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
+    intent: candidate.intent ?? 'shipped',
+    matchedBy: candidate.matchedBy ?? [],
+    evidence: candidate.evidence,
     ...(candidate.pr !== undefined && { pr: projectEvidencePr(candidate) }),
     ...(candidate.commit !== undefined && { commit: projectEvidenceCommit(candidate) }),
     changedPaths: candidate.changedPaths.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount),
@@ -224,6 +295,9 @@ function buildEvidenceCounts(result: ShippedEvidenceResult, selected: readonly S
     strong: result.candidates.filter((candidate) => candidate.confidence === 'strong').length,
     ambiguous: result.candidates.filter((candidate) => candidate.confidence === 'ambiguous').length,
     weakOmitted: result.candidates.filter(shouldOmitWeakCandidate).length,
+    affected: result.candidates.filter((candidate) => candidate.intent === 'affected').length,
+    superseded: result.candidates.filter((candidate) => candidate.intent === 'superseded').length,
+    ambiguousClosure: result.candidates.filter((candidate) => candidate.intent === 'ambiguous-shipped' || candidate.intent === 'ambiguous-superseded').length,
     lifecycle: result.candidates.filter((candidate) => candidate.evidenceSource === 'lifecycle').length,
     gitHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'git-history').length,
     prHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'pr-history').length,
@@ -232,8 +306,11 @@ function buildEvidenceCounts(result: ShippedEvidenceResult, selected: readonly S
 }
 
 function evidenceLabel(candidate: ShippedEvidenceCandidate): string {
+  if (candidate.evidence !== undefined) return candidate.evidence.split(' — ')[0] ?? candidate.evidence;
+  if (candidate.intent === 'superseded') return 'Superseded evidence: lifecycle trace';
+  if (candidate.intent === 'ambiguous-superseded') return 'Ambiguous superseded candidate: needs input';
+  if (candidate.intent === 'ambiguous-shipped' || candidate.confidence === 'ambiguous') return 'Ambiguous shipped candidate: needs input';
   if (candidate.evidenceSource === 'lifecycle') return 'Shipped evidence: lifecycle trace';
-  if (candidate.confidence === 'ambiguous') return 'Ambiguous shipped candidate: needs input';
   return 'Shipped evidence: inferred from git/PR history';
 }
 
@@ -337,6 +414,19 @@ function projectPrecondition(snapshot: BacklogRecordSnapshot<BacklogItem | Backl
   };
 }
 
+function resolveBacklogCurationSourcePreviewMetadataPath(cwd: string, sourceFingerprint: string): string {
+  return createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' }).extensionStoragePath('project-local', ['backlog-curation-sources', `${sourceFingerprint}.json`]);
+}
+
+function previewMetadataFromSource(source: BacklogCurationSourceBuild): BacklogCurationSourcePreviewMetadata {
+  const gitDelta = safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, source.source.gitDelta);
+  return {
+    sourceFingerprint: source.sourceFingerprint,
+    ...(typeof source.source.generatedAt === 'string' && { generatedAt: source.source.generatedAt }),
+    ...(gitDelta.success && { gitDelta: gitDelta.data }),
+  };
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
@@ -380,6 +470,7 @@ function buildSourceText(source: Record<string, unknown>): string {
     shippedEvidenceCandidates: source.shippedEvidenceCandidates,
     shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
     shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
+    gitDelta: source.gitDelta,
     roadmapContext: source.roadmapContext,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),

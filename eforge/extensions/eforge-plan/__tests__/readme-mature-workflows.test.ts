@@ -41,6 +41,9 @@ describe('eforge-plan README mature package and workflow contract', () => {
     expect(text).toMatch(/workstation.*assets.*trust hash|trust hash.*workstation.*assets/is);
     expect(text).toContain('.eforge/storage/extensions/eforge-plan/');
     expect(text).toMatch(/private.*storage|storage.*private/is);
+    expect(text).toContain('.eforge/storage/extensions/eforge-plan/analysis-baseline/current.json');
+    expect(text).toMatch(/Baseline metadata is not encoded into backlog item or epic bodies, recommendation model JSON, or legacy `\.backlog\/recommendations\.json`/);
+    expect(text).toMatch(/put-recommendations.*do not create an accepted-analysis git baseline/s);
   });
 
   it('documents annotation revision capture, snapshots, unresolved management, and apply semantics', async () => {
@@ -72,5 +75,16 @@ describe('eforge-plan README mature package and workflow contract', () => {
     expect(text).toMatch(/does not silently rewrite shared roadmap files/);
     expect(text).toMatch(/Changing local focus or configured roadmap context can make recommendations stale/);
     expect(text).not.toMatch(/roadmap evidence|canonical docs\/roadmap/);
+  });
+
+  it('documents mature curation dependencies without broad GitHub or active-trace assumptions', async () => {
+    const text = await readme();
+
+    expect(text).toMatch(/optional PR enrichment through `gh`.*not required/s);
+    expect(text).toMatch(/unavailable `gh`.*leave bounded git-only candidate evidence in place/s);
+    expect(text).not.toMatch(/requires GitHub|requires `gh`|GitHub dependency is required/i);
+    expect(text).toMatch(/Trace sidecars.*durable audit evidence/s);
+    expect(text).toMatch(/submitted session-plan traces alone do not mark items active or planned/);
+    expect(text).toMatch(/current editable session plan, live queue\/run\/build evidence, current PR-open\/landing evidence, or explicit `active` backlog status/);
   });
 });

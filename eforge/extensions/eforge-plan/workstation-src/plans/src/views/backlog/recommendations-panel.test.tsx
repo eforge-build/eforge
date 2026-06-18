@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   mockActiveRecommendationRefreshTask,
   mockPlanningTask,
+  mockRecommendationFreshnessFresh,
+  mockRecommendationFreshnessMissing,
+  mockRecommendationFreshnessStale,
   mockRecommendationStatusFresh,
   mockRecommendationStatusMissing,
   mockRecommendationStatusStale,
@@ -25,6 +28,7 @@ function renderPanel(input: Partial<React.ComponentProps<typeof RecommendationsP
     <RecommendationsPanel
       recommendations={mockRecommendations}
       status={mockRecommendationStatusFresh}
+      freshness={mockRecommendationFreshnessFresh}
       titles={titles}
       selected={new Set<string>()}
       readyIds={new Set(['add-import-preview', 'recommend-next-work'])}
@@ -38,9 +42,10 @@ function renderPanel(input: Partial<React.ComponentProps<typeof RecommendationsP
 
 describe('RecommendationsPanel freshness states', () => {
   it('renders the missing recommendation state without a recommendation-only refresh control', () => {
-    renderPanel({ recommendations: null, status: mockRecommendationStatusMissing });
+    renderPanel({ recommendations: null, status: mockRecommendationStatusMissing, freshness: mockRecommendationFreshnessMissing });
 
     expect(screen.getByText('missing')).toBeTruthy();
+    expect(screen.getByText(/No recommendation model has been generated/i)).toBeTruthy();
     expect(screen.getByText(/run Analyze all backlog/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Refresh recommendations/i })).toBeNull();
   });
@@ -49,6 +54,8 @@ describe('RecommendationsPanel freshness states', () => {
     renderPanel();
 
     expect(screen.getByText('fresh')).toBeTruthy();
+    expect(screen.getByText(/Recommendation model matches the current source fingerprint/i)).toBeTruthy();
+    expect(screen.getAllByTitle('fresh-source-fingerprint').length).toBeGreaterThan(0);
     expect(screen.getByText(/Recommendations are up to date/i)).toBeTruthy();
     expect(screen.getByText('Recommended next sequence')).toBeTruthy();
     expect(screen.queryByText('What changed')).toBeNull();
@@ -56,9 +63,12 @@ describe('RecommendationsPanel freshness states', () => {
   });
 
   it('renders stale recommendations with humanized reason metadata and analyze-all guidance', () => {
-    renderPanel({ status: mockRecommendationStatusStale });
+    renderPanel({ status: mockRecommendationStatusStale, freshness: mockRecommendationFreshnessStale });
 
     expect(screen.getByText('stale')).toBeTruthy();
+    expect(screen.getByText(/Recommendation source fingerprint drifted since the model was last applied/i)).toBeTruthy();
+    expect(screen.getAllByTitle('old-source-fingerprint').length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle('current-source-fingerprint').length).toBeGreaterThan(0);
     expect(screen.getByText(/run Analyze all backlog before planning/i)).toBeTruthy();
     // Machine codes stay visible but demoted to chips; the lead text is plain language.
     expect(screen.getByText('source-fingerprint-drift')).toBeTruthy();
@@ -75,7 +85,7 @@ describe('RecommendationsPanel freshness states', () => {
   });
 
   it('shows compact refresh progress instead of a duplicate task block while a refresh runs', () => {
-    renderPanel({ status: mockRecommendationStatusStale, activeRefreshTask: mockActiveRecommendationRefreshTask });
+    renderPanel({ status: mockRecommendationStatusStale, freshness: mockRecommendationFreshnessStale, activeRefreshTask: mockActiveRecommendationRefreshTask });
 
     // The full task record lives in the Plan with AI panel; here only progress shows.
     expect(screen.queryByText('Active refresh task')).toBeNull();
@@ -86,6 +96,13 @@ describe('RecommendationsPanel freshness states', () => {
     // No contradictory "refresh before planning" guidance or manual refresh control.
     expect(screen.queryByText('What changed')).toBeNull();
     expect(screen.queryByRole('button', { name: /Refresh recommendations/i })).toBeNull();
+  });
+
+  it('does not infer a fresh badge from recommendations when server freshness and status are absent', () => {
+    renderPanel({ status: null, freshness: null });
+
+    expect(screen.queryByText('fresh')).toBeNull();
+    expect(screen.getByText(/freshness status has not been provided by the server/i)).toBeTruthy();
   });
 
   it('adds a recommended next item to the selection instead of starting a plan', () => {

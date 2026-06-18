@@ -3,7 +3,8 @@ import { createSessionPlanningWorkflowAdapter, getReadinessDetail, selectDimensi
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, parseEforgePlanPlanningDraftResult, type EforgePlanPlanningPlanRevisionTurn, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { projectSessionPlanLifecycle, projectSessionPlanSourceRefs } from './lifecycle-projection.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 import { projectSessionPlan, projectSessionPlanDetail } from './session-plan-view-model.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { canonicalJson, sha256 } from './markdown-store-support.js';
@@ -163,7 +164,7 @@ function normalizeDimension(value: string): string {
 
 async function buildLifecycleForPlan(cwd: string, plan: SessionPlan) {
   const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
-  return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries: traces.flatMap((trace) => summarizeTrace(trace) ?? []) });
+  return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries: await summarizeProjectTraces(cwd, traces) });
 }
 
 function parseResultIfPossible(task: ExtensionAgentTaskRecord): Record<string, unknown> | undefined {

@@ -2,7 +2,8 @@ import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, type Static } from
 import { projectKanbanBoard } from './kanban.js';
 import { buildRecommendationIndex } from './recommendation-index.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
-import { listTraceSidecars, summarizeTrace } from './trace-store.js';
+import { listTraceSidecars } from './trace-store.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { aggregateLifecycleLinks, projectEpicProgress } from './lifecycle-projection.js';
 // --- eforge:region recommendations ---
@@ -57,7 +58,7 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
     readDerivedRecommendationStatus(cwd, resolvedRecommendationsPath),
     // --- eforge:endregion recommendations ---
   ]);
-  const traceSummaries = traces.flatMap((trace) => summarizeTrace(trace) ?? []);
+  const traceSummaries = await summarizeProjectTraces(cwd, traces);
   const recommendationIndex = buildRecommendationIndex(recommendations);
   const board = projectKanbanBoard(items, traceSummaries, {
     epic: input.epic,

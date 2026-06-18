@@ -4,13 +4,14 @@ import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { useToast } from '@/components/toast';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { PlanningAgentTaskRecord, RecommendationStatus, RefreshRecommendationsResponse, RoadmapSourceProjection, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
+import type { PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationStatus, RefreshRecommendationsResponse, RoadmapSourceProjection, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
 import { activeRefreshRunning, displayLabel, formatBytes, groupSources, localFocusEditState, refreshDisabledReason, sourceKindLabel, sourceStatusText, sourceSummary } from './roadmap-view-model';
 
 export interface RoadmapPanelProps {
   state: RoadmapStateResponse | null;
   loading: boolean;
   recommendationStatus: RecommendationStatus | null;
+  recommendationFreshness?: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   onSaveLocalFocus: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
   onRefreshRecommendations: () => Promise<RefreshRecommendationsResponse>;
@@ -19,7 +20,7 @@ export interface RoadmapPanelProps {
 
 const DEFAULT_LOCAL_FOCUS_MAX_BYTES = 40_000;
 
-export function RoadmapPanel({ state, loading, recommendationStatus, activeRecommendationRefreshTask, onSaveLocalFocus, onRefreshRecommendations, onReloadRoadmap }: RoadmapPanelProps) {
+export function RoadmapPanel({ state, loading, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, onSaveLocalFocus, onRefreshRecommendations, onReloadRoadmap }: RoadmapPanelProps) {
   const toast = useToast();
   const [draft, setDraft] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -29,7 +30,8 @@ export function RoadmapPanel({ state, loading, recommendationStatus, activeRecom
   const localContentTruncated = state?.context.localSteering.contentTruncated === true;
   const edit = localFocusEditState({ draft, saved, maxBytes }, saving);
   const summary = sourceSummary(state);
-  const disabledReason = refreshDisabledReason({ dirty: edit.dirty, saving, refreshing, activeTask: activeRecommendationRefreshTask, status: recommendationStatus });
+  const disabledReason = refreshDisabledReason({ dirty: edit.dirty, saving, refreshing, activeTask: activeRecommendationRefreshTask, status: recommendationStatus, freshness: recommendationFreshness });
+  const recommendationState = recommendationFreshness?.state ?? recommendationStatus?.state;
   const refreshRunning = activeRefreshRunning(activeRecommendationRefreshTask);
 
   React.useEffect(() => setDraft(saved), [saved]);
@@ -76,7 +78,7 @@ export function RoadmapPanel({ state, loading, recommendationStatus, activeRecom
           <Chip>{summary.configuredShared} configured shared</Chip>
           <Chip>{summary.discovered} discovered</Chip>
           {summary.conflicts > 0 && <Chip tone="warn">{summary.conflicts} conflicts</Chip>}
-          {recommendationStatus?.state && <Chip tone={recommendationStatus.state === 'fresh' ? 'good' : 'warn'}>recommendations {recommendationStatus.state}</Chip>}
+          {recommendationState && <Chip tone={recommendationState === 'fresh' ? 'good' : 'warn'}>recommendations {recommendationState}</Chip>}
           {refreshRunning && <Chip tone="good"><Loader2 className="h-3 w-3 animate-spin" /> refreshing</Chip>}
         </>
       )}

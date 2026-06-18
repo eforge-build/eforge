@@ -1,10 +1,13 @@
 import { safeParseWithSchema } from '@eforge-build/client';
 import { EforgePlanPlanningBacklogCurationDraftSchema } from '@eforge-build/client';
-import { ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
-import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
+import { ExtensionActionInputValidationError, Type } from '@eforge-build/extension-sdk';
+import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem, type TraceSummary } from './backlog-domain.js';
 // --- eforge:region shipped-evidence-context ---
-import { filterRecommendationsForCurationDraftStatusOverlay } from './backlog-curation-recommendation-overlay.js';
+import { buildProspectiveCurationProjection, type ProspectiveCurationProjection, type RecommendationReferenceRecord as ProjectionReferenceRecord } from './backlog-curation-recommendation-overlay.js';
 // --- eforge:endregion shipped-evidence-context ---
+import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
+import { validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
+import { summarizeProjectTraces } from './trace-activity.js';
 import {
   assertSafeBacklogId,
   listBacklogEpicSnapshots,
@@ -14,11 +17,13 @@ import {
   type BacklogRecordSnapshot,
 } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
-import { collectRecommendationReferenceValidationIssues, computeRecommendationSourceFingerprint, markRecommendationsStaleForBacklogMutation, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError, type RecommendationReferenceRecord } from './recommendation-status.js';
-import { parseRecommendationModel, resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
+import { computeRecommendationSourceFingerprint, computeRecommendationSourceFingerprintForRecords, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
+import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
 import type { ApplyPlanningAgentTaskResultInput, PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
-import type { BacklogCurationApplyDetails, BacklogCurationPreviewDetails, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
+import type { BacklogCurationApplyDetails, BacklogCurationPreviewDetails, BacklogCurationRecommendationProjection, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
+import { readBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
+import { RecommendationBlockedChainSchema, RecommendationItemRefSchema, RecommendationProfileSchema } from './schema.js';
 import type { BacklogRecommendationModel } from './schema.js';
 
 interface PlanningAgentTaskRecordLike {
@@ -49,8 +54,8 @@ export async function applyBacklogCurationDraftFromTask(
   }
   const applyCurationOnly = input.applyBacklogCurationDraft.applyCurationOnly === true;
   const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: applyCurationOnly });
-  if (prepared.generatedRecommendations !== undefined && !prepared.generatedRecommendationValidation.valid && !applyCurationOnly) {
-    throwRecommendationReferenceValidationError(prepared.generatedRecommendationValidation.issues);
+  if (prepared.generatedRecommendations !== undefined && !prepared.recommendationProjection.validation.valid && !applyCurationOnly) {
+    throwRecommendationReferenceValidationError(prepared.recommendationProjection.validation.issues);
   }
   const skipGeneratedRecommendations = prepared.generatedRecommendationsPresent && applyCurationOnly;
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
@@ -63,9 +68,9 @@ export async function applyBacklogCurationDraftFromTask(
   const changedIds = [...prepared.changedItems.map((entry) => entry.snapshot.id), ...prepared.changedEpics.map((entry) => entry.snapshot.id)];
   let recommendationBlock: BacklogCurationApplyDetails['recommendations'];
   let recommendationStatus: BacklogCurationApplyDetails['recommendationStatus'];
-  if (prepared.generatedRecommendations !== undefined && !skipGeneratedRecommendations) {
+  if (prepared.recommendationProjection.effectiveRecommendations !== undefined && !skipGeneratedRecommendations) {
     const postApplyFingerprint = await computeRecommendationSourceFingerprint(cwd);
-    const recommendations = await writeRecommendations(cwd, prepared.generatedRecommendations);
+    const recommendations = await writeRecommendations(cwd, prepared.recommendationProjection.effectiveRecommendations);
     const status = await recordPlannerRecommendationAppliedForSourceFingerprint(cwd, postApplyFingerprint, 'apply-backlog-curation-draft');
     recommendationBlock = { recommendations, recommendationSummary: summarizeRecommendations(recommendations)!, path: resolveRecommendationsPathForCwd(cwd), status };
     recommendationStatus = status;
@@ -75,6 +80,7 @@ export async function applyBacklogCurationDraftFromTask(
       recommendationStatus = await markRecommendationsStaleForBacklogMutation(cwd, 'backlog-curation', changedIds) ?? undefined;
     }
   }
+  await recordAcceptedAnalysisBaselineForApply(cwd, { taskId: task.taskId, passKind: 'backlog-curation', sourceFingerprint: prepared.draft.sourceFingerprint });
   await markPlanningTaskWorkflowEntryApplied(cwd, task.taskId, new Date().toISOString());
   return {
     itemChanges: prepared.draft.itemChanges.length,
@@ -90,19 +96,27 @@ export async function applyBacklogCurationDraftFromTask(
     ...(recommendationBlock !== undefined && { recommendations: recommendationBlock }),
     ...(recommendationStatus !== undefined && { recommendationStatus }),
     ...(prepared.generatedRecommendationsPresent && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
-    ...(skipGeneratedRecommendations && { recommendationsSkipped: { reason: prepared.generatedRecommendationValidation.valid ? 'apply-curation-only' : 'invalid-generated-recommendations', generatedRecommendationValidation: prepared.generatedRecommendationValidation } }),
+    ...(prepared.generatedRecommendationsPresent && { recommendationProjection: prepared.recommendationProjection }),
+    ...(skipGeneratedRecommendations && { recommendationsSkipped: { reason: 'apply-curation-only', generatedRecommendationValidation: prepared.generatedRecommendationValidation } }),
   };
 }
 
 export async function previewBacklogCurationDraftFromTask(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined): Promise<BacklogCurationPreviewDetails> {
   try {
-    const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry);
+    const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: true });
+    const [recommendationFreshness, sourceMetadata] = await Promise.all([
+      readRecommendationFreshnessView(cwd, prepared.prospectiveRecommendationSourceFingerprint),
+      readBacklogCurationSourcePreviewMetadata(cwd, prepared.draft.sourceFingerprint),
+    ]);
     return {
       valid: prepared.generatedRecommendationValidation.valid,
       itemChanges: prepared.draft.itemChanges.length,
       epicChanges: prepared.draft.epicChanges.length,
       noOpRechecks: prepared.effectiveRechecks.length,
-      ...(prepared.generatedRecommendations !== undefined && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
+      recommendationFreshness,
+      ...(sourceMetadata?.gitDelta !== undefined && { gitDelta: sourceMetadata.gitDelta }),
+      ...(prepared.generatedRecommendationsPresent && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
+      ...(prepared.generatedRecommendationsPresent && { recommendationProjection: prepared.recommendationProjection }),
     };
   } catch (err) {
     return { valid: false, errors: previewErrorsFromError(err) };
@@ -126,13 +140,31 @@ function parseDraft(value: unknown) {
   throw new ExtensionActionInputValidationError('Invalid backlog curation draft.', result.error.errors.map((error) => ({ path: fieldPath('backlogCurationDraft', error.path), message: error.message })));
 }
 
+const BacklogCurationGeneratedRecommendationGroupSchema = Type.Object({
+  ref: Type.String(),
+  title: Type.Optional(Type.String()),
+  itemIds: Type.Array(Type.String()),
+  epicIds: Type.Optional(Type.Array(Type.String())),
+  safeToPlanTogether: Type.Optional(Type.Boolean()),
+  rationale: Type.Optional(Type.String()),
+  recommendedProfile: Type.Optional(RecommendationProfileSchema),
+}, { additionalProperties: false });
+
+const BacklogCurationGeneratedRecommendationModelSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  updatedAt: Type.Optional(Type.String()),
+  activeWork: Type.Array(RecommendationItemRefSchema),
+  readyCandidates: Type.Array(RecommendationItemRefSchema),
+  recommendedNextSequence: Type.Array(RecommendationItemRefSchema),
+  safeParallelizableGroups: Type.Array(BacklogCurationGeneratedRecommendationGroupSchema),
+  blockedChains: Type.Array(RecommendationBlockedChainSchema),
+  rationaleAndAssumptions: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
 function parseGeneratedRecommendations(value: unknown): BacklogRecommendationModel {
-  try {
-    return parseRecommendationModel(value) as BacklogRecommendationModel;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid generated recommendations.';
-    throw validationError('result.recommendations', message);
-  }
+  const result = safeParseWithSchema(BacklogCurationGeneratedRecommendationModelSchema, value);
+  if (result.success) return result.data as BacklogRecommendationModel;
+  throw validationError('result.recommendations', result.error.errors.map((error) => `${fieldPath('result.recommendations', error.path)}: ${error.message}`).join('; '));
 }
 
 // --- eforge:region recommendation-validation ---
@@ -144,6 +176,8 @@ interface PreparedBacklogCurationApply {
   generatedRecommendations?: BacklogRecommendationModel;
   generatedRecommendationsPresent: boolean;
   generatedRecommendationValidation: RecommendationReferenceValidationResult;
+  recommendationProjection: BacklogCurationRecommendationProjection;
+  prospectiveRecommendationSourceFingerprint: string;
 }
 
 async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined, options: { skipGeneratedRecommendationErrors?: boolean } = {}): Promise<PreparedBacklogCurationApply> {
@@ -175,15 +209,23 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const visibleEpicIds = new Set(epicSnapshots.map((snapshot) => snapshot.id));
   validateProspectiveReferences(prospectiveItems, prospectiveEpics, visibleItemIds, visibleEpicIds);
 
-  const postApplyItems = buildPostApplyItemRecords(itemSnapshots, prospectiveItems);
-  const postApplyEpics = buildPostApplyEpicRecords(epicSnapshots, prospectiveEpics);
+  const traceSummaries = await summarizeProjectTraces(cwd);
+  const currentItems = buildCurrentItemRecords(itemSnapshots, traceSummaries);
+  const currentEpics = buildCurrentEpicRecords(epicSnapshots);
   const generatedRecommendationsPresent = rawResult?.recommendations !== undefined;
-  const generatedRecommendations = generatedRecommendationsPresent && !options.skipGeneratedRecommendationErrors
-    ? filterRecommendationsForCurationDraftStatusOverlay(parseGeneratedRecommendations(rawResult.recommendations), draft).recommendations
+  const parsedGeneratedRecommendations = generatedRecommendationsPresent && !options.skipGeneratedRecommendationErrors
+    ? parseGeneratedRecommendations(rawResult.recommendations)
     : undefined;
-  const generatedRecommendationValidation = generatedRecommendations === undefined
-    ? generatedRecommendationValidationForSkipped(rawResult?.recommendations, generatedRecommendationsPresent, postApplyItems, postApplyEpics, draft)
-    : collectRecommendationReferenceValidationIssues(generatedRecommendations, postApplyItems, postApplyEpics);
+  const generatedRecommendations = parsedGeneratedRecommendations;
+  const recommendationProjection = parsedGeneratedRecommendations === undefined
+    ? recommendationProjectionForSkipped(rawResult?.recommendations, generatedRecommendationsPresent, currentItems, currentEpics, draft)
+    : serializeProjection(buildProspectiveCurationProjection({ currentItems, currentEpics, draft, generatedRecommendations: parsedGeneratedRecommendations }));
+  const generatedRecommendationValidation = recommendationProjection.validation;
+  const prospectiveRecommendationSourceFingerprint = await computeRecommendationSourceFingerprintForRecords(
+    cwd,
+    [...prospectiveItems.values()].map((entry) => normalizeBacklogItem({ ...entry.frontmatter }, entry.body)),
+    [...prospectiveEpics.values()].map((entry) => normalizeBacklogEpic({ ...entry.frontmatter }, entry.body)),
+  );
 
   return {
     draft,
@@ -193,34 +235,44 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
     ...(generatedRecommendations !== undefined && { generatedRecommendations }),
     generatedRecommendationsPresent,
     generatedRecommendationValidation,
+    recommendationProjection,
+    prospectiveRecommendationSourceFingerprint,
   };
 }
 
-function generatedRecommendationValidationForSkipped(value: unknown, present: boolean, items: RecommendationReferenceRecord[], epics: RecommendationReferenceRecord[], draft: Draft): RecommendationReferenceValidationResult {
-  if (!present) return { valid: true, issues: [] };
+function recommendationProjectionForSkipped(value: unknown, present: boolean, items: ProjectionReferenceRecord[], epics: ProjectionReferenceRecord[], draft: Draft): BacklogCurationRecommendationProjection {
+  if (!present) return { removed: { itemIds: [], epicIds: [] }, repositioned: [], validation: { valid: true, issues: [] } };
   try {
-    const recommendations = filterRecommendationsForCurationDraftStatusOverlay(parseRecommendationModel(value) as BacklogRecommendationModel, draft).recommendations;
-    return collectRecommendationReferenceValidationIssues(recommendations, items, epics);
+    return serializeProjection(buildProspectiveCurationProjection({ currentItems: items, currentEpics: epics, draft, generatedRecommendations: parseGeneratedRecommendations(value) }));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid generated recommendations.';
-    return { valid: false, issues: [{ path: 'result.recommendations', id: '', kind: 'item', reason: 'unknown', message }] };
+    return { removed: { itemIds: [], epicIds: [] }, repositioned: [], validation: { valid: false, issues: [{ path: 'result.recommendations', id: '', kind: 'item', reason: 'unknown', message }] } };
   }
 }
 
-function buildPostApplyItemRecords(itemSnapshots: readonly BacklogRecordSnapshot<BacklogItem>[], prospectiveItems: Map<string, ProspectiveItem>): RecommendationReferenceRecord[] {
-  return itemSnapshots.map((snapshot) => {
-    const prospective = prospectiveItems.get(snapshot.id);
-    const record = prospective === undefined ? snapshot.record : normalizeBacklogItem({ ...prospective.frontmatter }, prospective.body);
-    return { id: record.id, title: record.title, status: record.status };
-  });
+function serializeProjection(projection: ProspectiveCurationProjection): BacklogCurationRecommendationProjection {
+  return {
+    ...(projection.effectiveRecommendations !== undefined && { effectiveRecommendations: projection.effectiveRecommendations }),
+    ...(projection.summary !== undefined && { recommendationSummary: projection.summary }),
+    removed: projection.removed,
+    repositioned: projection.repositioned,
+    validation: projection.validation,
+  };
 }
 
-function buildPostApplyEpicRecords(epicSnapshots: readonly BacklogRecordSnapshot<BacklogEpic>[], prospectiveEpics: Map<string, ProspectiveEpic>): RecommendationReferenceRecord[] {
-  return epicSnapshots.map((snapshot) => {
-    const prospective = prospectiveEpics.get(snapshot.id);
-    const record = prospective === undefined ? snapshot.record : normalizeBacklogEpic({ ...prospective.frontmatter }, prospective.body);
-    return { id: record.id, title: record.title, status: record.status };
-  });
+function buildCurrentItemRecords(itemSnapshots: readonly BacklogRecordSnapshot<BacklogItem>[], traceSummaries: readonly TraceSummary[]): ProjectionReferenceRecord[] {
+  const lifecycleByItemId = new Map(traceSummaries.map((summary) => [summary.itemId, summary.lifecycleState]));
+  return itemSnapshots.map((snapshot) => ({
+    id: snapshot.record.id,
+    kind: 'item',
+    title: snapshot.record.title,
+    status: snapshot.record.status,
+    ...(lifecycleByItemId.get(snapshot.record.id) !== undefined && { lifecycleState: lifecycleByItemId.get(snapshot.record.id) }),
+  }));
+}
+
+function buildCurrentEpicRecords(epicSnapshots: readonly BacklogRecordSnapshot<BacklogEpic>[]): ProjectionReferenceRecord[] {
+  return epicSnapshots.map((snapshot) => ({ id: snapshot.record.id, kind: 'epic', title: snapshot.record.title, status: snapshot.record.status }));
 }
 
 function previewErrorsFromError(err: unknown): Array<{ path: string; message: string }> {
@@ -264,6 +316,9 @@ function validatePatchBasics(patch: Patch, path: string): void {
   if (status !== undefined && !isBacklogStatus(status)) throw validationError(`${path}.metadata.status`, `Unknown backlog status "${status}".`);
   if ((status !== undefined && isBacklogStatus(status) && isClosedStatus(status)) || changesEvidence) {
     if ((patch.evidence ?? []).every((entry) => entry.trim().length === 0)) throw validationError(`${path}.evidence`, 'Closed-status transitions and Evidence section changes require durable evidence entries.');
+  }
+  if ((status === 'shipped' || status === 'superseded') && !validateClosedStatusEvidencePrefix(status, patch.evidence)) {
+    throw validationError(`${path}.evidence`, `${status} status changes require durable evidence with a matching ${status} evidence prefix.`);
   }
 }
 

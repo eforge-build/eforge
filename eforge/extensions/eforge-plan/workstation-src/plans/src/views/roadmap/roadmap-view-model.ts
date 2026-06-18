@@ -1,4 +1,4 @@
-import type { PlanningAgentTaskRecord, RecommendationStatus, RoadmapSourceKind, RoadmapSourceProjection, RoadmapStateResponse } from '@/types';
+import type { PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationStatus, RoadmapSourceKind, RoadmapSourceProjection, RoadmapStateResponse } from '@/types';
 
 export interface LocalFocusDraftState {
   draft: string;
@@ -80,12 +80,12 @@ export function activeRefreshRunning(task: PlanningAgentTaskRecord | null | unde
   return task?.status === 'queued' || task?.status === 'running';
 }
 
-export function refreshDisabledReason(input: { dirty: boolean; saving: boolean; refreshing: boolean; activeTask?: PlanningAgentTaskRecord | null; status?: RecommendationStatus | null }): string | null {
+export function refreshDisabledReason(input: { dirty: boolean; saving: boolean; refreshing: boolean; activeTask?: PlanningAgentTaskRecord | null; status?: RecommendationStatus | null; freshness?: RecommendationFreshnessView | null }): string | null {
   if (input.dirty) return 'Save the local focus roadmap before refreshing recommendations.';
   if (input.saving) return 'Wait for the local focus roadmap save to finish.';
   if (input.refreshing) return 'Recommendation refresh is starting.';
   if (activeRefreshRunning(input.activeTask)) return 'A recommendation refresh task is already queued or running.';
-  if (input.status?.state === 'fresh') return null;
+  if ((input.freshness?.state ?? input.status?.state) === 'fresh') return null;
   return null;
 }
 
