@@ -1,0 +1,59 @@
+name: git-delta-backlog-curation-overlays
+description: Add git-delta baselines, deterministic backlog evidence matching,
+  prospective recommendation overlays, trace freshness fixes, workstation
+  visibility, and documentation for eforge-plan backlog curation.
+created: 2026-06-18
+status: draft
+mode: expedition
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm maintainability:check
+architecture:
+  status: complete
+modules:
+  plan-01-git-delta-baseline:
+    description: Add accepted-analysis baseline sidecar, bounded git-delta scanning,
+      diagnostics, and source/fingerprint projection for analyze-all curation.
+    depends_on: []
+    status: pending
+  plan-02-evidence-classification:
+    description: Make shipped/affected evidence range-aware, add deterministic
+      commit-to-item matching and superseded/ambiguous evidence classification,
+      and enforce required evidence prefixes.
+    depends_on:
+      - plan-01-git-delta-baseline
+    status: pending
+  plan-03-prospective-overlay-apply:
+    description: Build the shared prospective backlog/recommendation overlay used by
+      preview and apply, add placement validation, and record accepted analysis
+      baselines after explicit applies.
+    depends_on:
+      - plan-01-git-delta-baseline
+      - plan-02-evidence-classification
+    status: pending
+  plan-04-trace-lifecycle-freshness:
+    description: Refine active versus historical trace classification and
+      recommendation freshness projection so stale submitted traces do not imply
+      active/planned work.
+    depends_on: []
+    status: pending
+  plan-05-workstation-ui:
+    description: Surface git-delta diagnostics, effective recommendation overlay
+      counts, ambiguous needs-input evidence, and truthful freshness labels in
+      the planning workstation.
+    depends_on:
+      - plan-03-prospective-overlay-apply
+      - plan-04-trace-lifecycle-freshness
+    status: pending
+  plan-06-docs-validation:
+    description: Update eforge-plan documentation for baseline storage, git-delta
+      diagnostics, overlay-first apply behavior, and active-versus-historical
+      trace semantics.
+    depends_on:
+      - plan-01-git-delta-baseline
+      - plan-02-evidence-classification
+      - plan-03-prospective-overlay-apply
+      - plan-04-trace-lifecycle-freshness
+      - plan-05-workstation-ui
+    status: pending
