@@ -3,7 +3,8 @@ description: Add git-delta baselines, deterministic backlog evidence matching,
   prospective recommendation overlays, trace freshness fixes, workstation
   visibility, and documentation for eforge-plan backlog curation.
 created: 2026-06-18
-status: draft
+status: compiled
+compiled: "2026-06-18"
 mode: expedition
 validate:
   - pnpm type-check
