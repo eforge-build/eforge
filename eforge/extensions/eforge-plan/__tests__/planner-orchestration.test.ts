@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
+import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { applyCompletedPlanningAgentTaskResult, applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
 import { parseMarkdownRecord, readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, resolveRecommendationsPathForCwd, writeRecommendations } from '../recommendations-store.js';
 import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from '../trace-store.js';
-import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
+import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import type { PlanningTaskWorkflowSelection } from '../planning-agent-task-schemas.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -116,6 +117,63 @@ describe('planner orchestration', () => {
       expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(true);
       expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [{ itemId: 'item-two' }] });
       expect(result.recommendations).toMatchObject({ path: resolveRecommendationsPathForCwd(cwd) });
+    });
+  });
+
+  it('does not record an accepted analysis baseline for direct planner recommendation applies', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      const model = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-two', rationale: 'Ready.' }] };
+
+      await applyPlannerResult(cwd, { recommendations: model });
+
+      expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [{ itemId: 'item-two' }] });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toBeNull();
+    });
+  });
+
+  it('records recommendation-refresh baselines only for preserved workflow entries with a source fingerprint', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await recordPlanningTaskWorkflowEntry(cwd, {
+        taskId: 'task-refresh',
+        originalRequest: '',
+        derivedRequest: 'Refresh recommendations',
+        selection: {},
+        requestedOutputSections: ['recommendations'],
+        includeRoadmap: true,
+        purpose: 'recommendation-refresh',
+        sourceFingerprint: 'refresh-fingerprint',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+
+      const applied = await applyCompletedPlanningAgentTaskResult(cwd, {
+        taskId: 'task-refresh',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        result: { summary: 'Refreshed.', assumptionsOpenQuestions: [], recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-two', rationale: 'Ready.' }] } },
+      }, { taskId: 'task-refresh', applyRecommendations: true });
+      const index = await readPlanningTaskWorkflowIndex(cwd);
+
+      expect(applied.applied.recommendations).toBe(true);
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-refresh', passKind: 'recommendation-refresh', sourceFingerprint: 'refresh-fingerprint' });
+      expect(index.entries.find((entry) => entry.taskId === 'task-refresh')?.appliedAt).toEqual(expect.any(String));
+    });
+  });
+
+  it('does not record a recommendation-refresh baseline for generic planning-agent recommendation applies', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+
+      await applyCompletedPlanningAgentTaskResult(cwd, {
+        taskId: 'task-generic',
+        kind: 'eforge-plan.planning-draft',
+        status: 'completed',
+        result: { summary: 'Generic.', assumptionsOpenQuestions: [], recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-two', rationale: 'Ready.' }] } },
+      }, { taskId: 'task-generic', applyRecommendations: true });
+
+      expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [{ itemId: 'item-two' }] });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toBeNull();
     });
   });
 

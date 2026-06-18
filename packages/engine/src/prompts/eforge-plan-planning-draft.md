@@ -100,8 +100,14 @@ When the requested output sections include `backlogCurationDraft`:
 
 When emitting `recommendations`:
 
+- Generate recommendations against the prospective post-curation backlog state: apply the status changes you propose in `backlogCurationDraft` mentally before choosing recommendation targets.
 - Recommendation target fields may reference only open item/epic ids. Treat closed dependencies as satisfied historical context, not active recommendation targets.
 - Specifically, `activeWork`, `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, `safeParallelizableGroups.epicIds`, `blockedChains.itemIds`, and `blockedChains.blockedBy` may reference only open targets.
 - Same-draft recommendation exclusion: when your `backlogCurationDraft` proposes closing an item or epic (for example with `metadata.status: "shipped"`), do not include that item or epic id anywhere in generated recommendation target arrays in the same result.
+- Generate recommendations against the prospective post-curation backlog state, not the pre-curation state. If the same result includes a `backlogCurationDraft`, first mentally apply its recommendation-relevant metadata changes, then place recommendation targets.
+- Same-draft active items belong only in `activeWork`; do not also list them in `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, or `blockedChains.itemIds`.
+- Same-draft planned or candidate items belong in ready/next/group lanes when recommended. Do not place draft-planned or draft-candidate items in `activeWork` unless lifecycle evidence in the source shows they are already active, queued, building, or PR-open.
+- Place items that your same draft proposes as `active` only in `activeWork`, not in ready/next/group/blocking target lanes.
+- Place items that your same draft proposes as `planned` or `candidate` in `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, or appropriate blocking context rather than `activeWork`.
 
 Submit exactly once. Do not finish with prose. The submission tool is the only accepted output channel.

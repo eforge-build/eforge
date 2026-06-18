@@ -112,7 +112,7 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/applyBacklogCurationDraft\.previewAcknowledged[\s\S]*applyBacklogCurationDraft\.confirmApply[\s\S]*true/);
     expect(readme).toMatch(/Analyze-all and curation apply do not enqueue builds/);
     expect(readme).toMatch(/(do not|does not)[^.]*mark (records|items|backlog items) shipped or superseded without durable status-specific evidence/);
-    expect(readme).toMatch(/Validation, reference, and curation precondition failures leave the existing `current\.json` and status sidecar unchanged/);
+    expect(readme).toMatch(/Validation, reference, and curation precondition failures leave the existing `current\.json`, status sidecar, and accepted-analysis baseline unchanged/);
     expect(readme).toMatch(/post-apply\/post-curation backlog fingerprint/);
     expect(readme).toContain('apply-backlog-curation-draft');
     expect(readme).toContain('applyCurationOnly');
@@ -124,7 +124,7 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toContain('Shipped evidence: lifecycle trace');
     expect(readme).toContain('Shipped evidence: inferred from git/PR history');
     expect(readme).toContain('Ambiguous shipped candidate: needs input');
-    expect(readme).toMatch(/same-draft recommendation filtering/);
+    expect(readme).toMatch(/prospective recommendation projection metadata/);
   });
 
   it('keeps action table side effects aligned with planning boundaries', async () => {

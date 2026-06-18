@@ -743,7 +743,7 @@ describe('planning agent task actions', () => {
         timeoutMs: 1000,
         agentTasks,
       });
-      expect(validPreview).toMatchObject({ kind: 'success', output: { valid: false, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } } });
+      expect(validPreview).toMatchObject({ kind: 'success', output: { valid: false, generatedRecommendationValidation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] }, recommendationProjection: { effectiveRecommendations: expect.objectContaining({ blockedChains: [{ ref: 'closed-chain', itemIds: ['item-one'], blockedBy: ['closed-dep'], rationale: 'Historical dependency.' }] }), validation: { issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', reason: 'closed', status: 'shipped' }] } } } });
       expect(malformedPreview).toMatchObject({ kind: 'success', output: { valid: false, errors: expect.any(Array) } });
     });
   });

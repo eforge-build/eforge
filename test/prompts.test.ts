@@ -72,6 +72,9 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('`Ambiguous shipped candidate: needs input — ...`');
     expect(prompt).toContain('`Ambiguous superseded candidate: needs input — ...`');
     expect(prompt).toContain('Same-draft recommendation exclusion: when your `backlogCurationDraft` proposes closing an item or epic');
+    expect(prompt).toContain('Generate recommendations against the prospective post-curation backlog state');
+    expect(prompt).toContain('Same-draft active items belong only in `activeWork`');
+    expect(prompt).toContain('Place items that your same draft proposes as `planned` or `candidate`');
   });
 
   it('includes exact-id and no-alias guidance for session-plan creation drafts', async () => {

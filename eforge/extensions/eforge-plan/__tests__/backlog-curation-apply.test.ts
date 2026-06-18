@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyBacklogCurationDraftFromTask, applySectionOperations } from '../backlog-curation-apply.js';
+import { applyBacklogCurationDraftFromTask, applySectionOperations, previewBacklogCurationDraftFromTask } from '../backlog-curation-apply.js';
+import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
 import { buildBacklogCurationSource } from '../backlog-curation-source.js';
 import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
@@ -243,7 +244,7 @@ describe('backlog curation apply', () => {
 
       expect(result.recommendations?.recommendations.readyCandidates).toEqual([]);
       expect(result.recommendations?.recommendations.recommendedNextSequence).toEqual([]);
-      expect(result.recommendations?.recommendations.rationaleAndAssumptions).toEqual([expect.stringContaining('Filtered recommendation targets')]);
+      expect(result.recommendations?.recommendations.rationaleAndAssumptions).toEqual([expect.stringContaining('Adjusted generated recommendations for the prospective curation state')]);
       expect(await readBacklogItem(cwd, 'item-1')).toMatchObject({ status: 'shipped' });
       expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [], recommendedNextSequence: [] });
     });
@@ -315,6 +316,92 @@ describe('backlog curation apply', () => {
       expect(status.state).toBe('fresh');
       expect(status.lastRefreshedBy).toBe('apply-backlog-curation-draft');
       expect(status.lastAppliedSourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    });
+  });
+
+  it('returns preview projection matching the effective recommendations later written by apply', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'ship-me', status: 'candidate', body: '# Ship Me\n\n## Evidence\n\n- Prior\n' });
+      await writeBacklogItem(cwd, { id: 'keep-me', status: 'candidate', body: '# Keep Me\n\n## Claim\n\nStill open.\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'ship-me');
+      const recommendations = {
+        ...createEmptyRecommendationModel(),
+        readyCandidates: [{ itemId: 'ship-me', rationale: 'Raw stale target.' }, { itemId: 'keep-me', rationale: 'Keep open.' }],
+        recommendedNextSequence: [{ itemId: 'ship-me', rationale: 'Raw next stale target.' }],
+      };
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'ship-me', precondition: { kind: 'item', id: 'ship-me', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed by durable evidence.', evidence: ['Shipped evidence: inferred from git/PR history — merged before this curation.'] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, recommendations);
+
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+      const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(preview.valid).toBe(true);
+      expect(preview.recommendationProjection?.effectiveRecommendations).toEqual(apply.recommendations?.recommendations);
+      expect(preview.recommendationProjection?.removed.itemIds).toEqual(['ship-me']);
+      expect(apply.recommendations?.recommendations.readyCandidates).toEqual([{ itemId: 'keep-me', rationale: 'Keep open.' }]);
+      expect(await readRecommendations(cwd)).toEqual(preview.recommendationProjection?.effectiveRecommendations);
+    });
+  });
+
+  it('rejects wrong-lane generated recommendations before backlog, recommendations, or baseline writes', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'candidate-item', status: 'candidate', body: '# Candidate\n\n## Claim\n\nNot active yet.\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'candidate-item');
+      const before = await readFile(resolveBacklogItemPath(cwd, 'candidate-item'), 'utf-8');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'candidate-item', precondition: { kind: 'item', id: 'candidate-item', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Claim', action: 'replace', content: 'Curated claim.' }], rationale: 'Refresh without activating.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, { ...createEmptyRecommendationModel(), activeWork: [{ itemId: 'candidate-item', rationale: 'Wrong lane.' }] });
+
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/wrong-lane|activeWork|candidate-item/);
+      expect(await readFile(resolveBacklogItemPath(cwd, 'candidate-item'), 'utf-8')).toBe(before);
+      expect(await readRecommendations(cwd)).toBeNull();
+      expect(await readAcceptedAnalysisBaseline(cwd)).toBeNull();
+    });
+  });
+
+  it('records a backlog-curation accepted baseline after normal generated-recommendation apply', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Ready to plan.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-1', rationale: 'Ready after curation.' }] });
+
+      await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
+    });
+  });
+
+  it('records a backlog-curation baseline while curation-only apply skips recommendation writes', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Ready to plan.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, { ...createEmptyRecommendationModel(), activeWork: [{ itemId: 'missing-item', rationale: 'Invalid if applied.' }] });
+
+      const result = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } }, entry);
+
+      expect(result.recommendations).toBeUndefined();
+      expect(result.recommendationsSkipped).toMatchObject({ reason: 'apply-curation-only' });
+      expect(result.recommendationProjection?.validation.valid).toBe(false);
+      expect(await readRecommendations(cwd)).toBeNull();
+      expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(false);
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
     });
   });
 

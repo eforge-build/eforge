@@ -61,7 +61,7 @@ export const RecommendationReferenceValidationIssueSchema = Type.Object({
   path: Type.String(),
   id: Type.String(),
   kind: Type.Union([Type.Literal('item'), Type.Literal('epic')]),
-  reason: Type.Union([Type.Literal('unknown'), Type.Literal('closed'), Type.Literal('empty')]),
+  reason: Type.Union([Type.Literal('unknown'), Type.Literal('closed'), Type.Literal('empty'), Type.Literal('wrong-lane')]),
   status: Type.Optional(BacklogStatusSchema),
   title: Type.Optional(Type.String()),
   message: Type.String(),
@@ -71,6 +71,25 @@ export const RecommendationReferenceValidationResultSchema = Type.Object({
   valid: Type.Boolean(),
   issues: Type.Array(RecommendationReferenceValidationIssueSchema),
 }, { additionalProperties: false });
+
+// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
+export const RecommendationRepositionedTargetSchema = Type.Object({
+  itemId: Type.String(),
+  from: Type.String(),
+  to: Type.String(),
+}, { additionalProperties: false });
+
+export const BacklogCurationRecommendationProjectionSchema = Type.Object({
+  effectiveRecommendations: Type.Optional(BacklogRecommendationModelSchema),
+  recommendationSummary: Type.Optional(RecommendationSummarySchema),
+  removed: Type.Object({
+    itemIds: Type.Array(Type.String()),
+    epicIds: Type.Array(Type.String()),
+  }, { additionalProperties: false }),
+  repositioned: Type.Array(RecommendationRepositionedTargetSchema),
+  validation: RecommendationReferenceValidationResultSchema,
+}, { additionalProperties: false });
+// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
 
 export const BacklogCurationPreviewValidationErrorSchema = Type.Object({
   path: Type.String(),
@@ -83,6 +102,9 @@ export const BacklogCurationPreviewDetailsSchema = Type.Object({
   epicChanges: Type.Optional(Type.Integer({ minimum: 0 })),
   noOpRechecks: Type.Optional(Type.Integer({ minimum: 0 })),
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
+  // --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
+  recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
+  // --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
   errors: Type.Optional(Type.Array(BacklogCurationPreviewValidationErrorSchema)),
 }, { additionalProperties: false });
 
@@ -113,6 +135,9 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
   // --- eforge:region recommendation-validation ---
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
   recommendationsSkipped: Type.Optional(BacklogCurationRecommendationsSkippedSchema),
+  // --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
+  recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
+  // --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
   // --- eforge:endregion recommendation-validation ---
 }, { additionalProperties: false });
 
@@ -121,6 +146,10 @@ export type AnalyzeAllBacklogOutput = Static<typeof AnalyzeAllBacklogOutputSchem
 export type AnalyzeAllBacklogTaskSummary = Static<typeof AnalyzeAllBacklogTaskSummarySchema>;
 export type RecommendationReferenceValidationIssue = Static<typeof RecommendationReferenceValidationIssueSchema>;
 export type RecommendationReferenceValidationResult = Static<typeof RecommendationReferenceValidationResultSchema>;
+// --- eforge:region plan-04-plan-03-prospective-overlay-apply ---
+export type RecommendationRepositionedTarget = Static<typeof RecommendationRepositionedTargetSchema>;
+export type BacklogCurationRecommendationProjection = Static<typeof BacklogCurationRecommendationProjectionSchema>;
+// --- eforge:endregion plan-04-plan-03-prospective-overlay-apply ---
 export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;
 export type BacklogCurationRecommendationsSkipped = Static<typeof BacklogCurationRecommendationsSkippedSchema>;
 export type BacklogCurationApplyDetails = Static<typeof BacklogCurationApplyDetailsSchema>;
