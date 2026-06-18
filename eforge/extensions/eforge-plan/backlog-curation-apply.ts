@@ -5,6 +5,9 @@ import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, no
 // --- eforge:region shipped-evidence-context ---
 import { filterRecommendationsForCurationDraftStatusOverlay } from './backlog-curation-recommendation-overlay.js';
 // --- eforge:endregion shipped-evidence-context ---
+// --- eforge:region plan-03-plan-02-evidence-classification ---
+import { validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
+// --- eforge:endregion plan-03-plan-02-evidence-classification ---
 import {
   assertSafeBacklogId,
   listBacklogEpicSnapshots,
@@ -265,6 +268,11 @@ function validatePatchBasics(patch: Patch, path: string): void {
   if ((status !== undefined && isBacklogStatus(status) && isClosedStatus(status)) || changesEvidence) {
     if ((patch.evidence ?? []).every((entry) => entry.trim().length === 0)) throw validationError(`${path}.evidence`, 'Closed-status transitions and Evidence section changes require durable evidence entries.');
   }
+  // --- eforge:region plan-03-plan-02-evidence-classification ---
+  if ((status === 'shipped' || status === 'superseded') && !validateClosedStatusEvidencePrefix(status, patch.evidence)) {
+    throw validationError(`${path}.evidence`, `${status} status changes require durable evidence with a matching ${status} evidence prefix.`);
+  }
+  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 function validateTarget(kind: string, id: string, seen: Set<string>, path: string): void {

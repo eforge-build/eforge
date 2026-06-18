@@ -1,6 +1,7 @@
 import type { BacklogItem, LifecycleLinkRow, TraceSummary } from './backlog-domain.js';
 import { collectGitFileExcerpts, collectGitHistoryRecords } from './shipped-evidence-git.js';
-import { analyzeEvidenceMatch, classifyConfidence, formatCitation, rankCandidates, signalScore } from './shipped-evidence-matching.js';
+import { analyzeEvidenceMatch, classifyConfidence, detectClosureIntent, formatCitation, rankCandidates, signalScore, classifyEvidenceIntent } from './shipped-evidence-matching.js';
+import { formatCandidateEvidence, markAmbiguousClosureTies, projectPreclassifiedCandidate } from './backlog-curation-evidence-classification.js';
 import { enrichPullRequests } from './shipped-evidence-pr.js';
 import type { CollectShippedEvidenceInput, GitHistoryCollection, GitHistoryRecord, PreCollectedPullRequestEnrichment, ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidencePrMetadata, ShippedEvidenceProvider, ShippedEvidenceResult } from './shipped-evidence-types.js';
 import { boundChangedPaths, boundString, normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -42,7 +43,8 @@ export const shippedEvidenceProvider: ShippedEvidenceProvider = {
       mergePullRequestMetadata(candidates, enrichment.pullRequests, git.records, input.items, caps);
     }
 
-    const ranked = rankCandidates(dedupeCandidates(candidates)).slice(0, caps.candidateCount);
+    markAmbiguousClosureTies(candidates);
+    const ranked = rankCandidates(dedupeCandidates(candidates.map(projectPreclassifiedCandidate))).slice(0, caps.candidateCount);
     if (candidates.length > ranked.length) diagnostics.push({ code: 'capExceeded', message: `Shipped evidence candidates capped at ${caps.candidateCount}.` });
     return { candidates: ranked, diagnostics: diagnostics.slice(0, caps.diagnosticCount), caps };
   },
@@ -69,7 +71,11 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
   const excerpts = await collectGitFileExcerpts({ cwd, record, queryText: `${item.id} ${item.title}`, caps, diagnostics, signal });
   const excerptText = excerpts.map((excerpt) => excerpt.text).join('\n');
   const signals = analyzeEvidenceMatch({ item, record, excerptText });
-  const confidence = classifyConfidence({ source: 'git-history', reachableLanding: hasLocalLandingSignal(record), signals });
+  // --- eforge:region plan-03-plan-02-evidence-classification ---
+  const closureIntent = detectClosureIntent(`${record.subject}\n${record.body ?? ''}`);
+  const confidence = closureIntent === undefined ? 'weak' : classifyConfidence({ source: 'git-history', reachableLanding: hasLocalLandingSignal(record) || closureIntent === 'superseded', signals });
+  const intent = classifyEvidenceIntent({ closureIntent, confidence, signals });
+  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
   const candidate: ShippedEvidenceCandidate = {
     itemId: item.id,
     itemTitle: item.title,
@@ -90,9 +96,15 @@ async function candidateFromGitRecord(cwd: string, item: BacklogItem, record: Gi
     changedPaths: boundChangedPaths(record.changedPaths, caps),
     branchHints: record.branchHints.slice(0, caps.branchHintCount),
     excerpts: excerpts.slice(0, caps.excerptCount),
+    // --- eforge:region plan-03-plan-02-evidence-classification ---
+    intent,
+    matchedBy: signals.matchedBy,
+    // --- eforge:endregion plan-03-plan-02-evidence-classification ---
   };
   candidate.citation = formatCitation(candidate);
-  return candidate;
+  // --- eforge:region plan-03-plan-02-evidence-classification ---
+  return projectPreclassifiedCandidate(candidate);
+  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRequests: readonly ShippedEvidencePrMetadata[], records: readonly GitHistoryRecord[], items: readonly BacklogItem[], caps: ShippedEvidenceCaps): void {
@@ -114,10 +126,13 @@ function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRe
       const signals = analyzeEvidenceMatch({ item, record, pr });
       if (!signals.prMetadata) continue;
       const localLanding = hasLocalLandingSignal(record);
+      const reachablePrMerge = hasReachablePullRequestMergeCommit(record, pr);
+      const confidence = classifyConfidence({ source: 'git-history', reachableLanding: localLanding || reachablePrMerge, staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals });
+      const closureIntent = reachablePrMerge && pullRequestIsMerged(pr) ? 'shipped' : detectClosureIntent(`${record.subject}\n${record.body ?? ''}\n${pr.title ?? ''}\n${pr.body ?? ''}`);
       const candidate: ShippedEvidenceCandidate = {
         itemId: item.id,
         itemTitle: item.title,
-        confidence: classifyConfidence({ source: 'git-history', reachableLanding: localLanding || hasReachablePullRequestMergeCommit(record, pr), staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals }),
+        confidence,
         evidenceSource: 'combined',
         score: signalScore(signals) + (record.isMerge ? 20 : 0),
         citation: '',
@@ -134,9 +149,13 @@ function mergePullRequestMetadata(candidates: ShippedEvidenceCandidate[], pullRe
         changedPaths: boundChangedPaths(uniqueStrings([...record.changedPaths, ...pr.changedPaths]), caps),
         branchHints: uniqueStrings([...record.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount),
         excerpts: [],
+        // --- eforge:region plan-03-plan-02-evidence-classification ---
+        intent: classifyEvidenceIntent({ closureIntent, confidence, signals }),
+        matchedBy: signals.matchedBy,
+        // --- eforge:endregion plan-03-plan-02-evidence-classification ---
       };
       candidate.citation = formatCitation(candidate);
-      candidates.push(candidate);
+      candidates.push(projectPreclassifiedCandidate(candidate));
     }
   }
 }
@@ -155,10 +174,18 @@ function mergePullRequestIntoCandidate(candidate: ShippedEvidenceCandidate, item
   candidate.branchHints = uniqueStrings([...candidate.branchHints, pr.headRefName ?? '']).filter(Boolean).slice(0, caps.branchHintCount);
   candidate.reasons = uniqueStrings([...candidate.reasons, ...signals.reasons]);
   const localLanding = hasLocalLandingSignal(record);
-  const enrichedConfidence = classifyConfidence({ source: 'git-history', reachableLanding: localLanding || hasReachablePullRequestMergeCommit(record, pr), staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals });
+  const reachablePrMerge = hasReachablePullRequestMergeCommit(record, pr);
+  const enrichedConfidence = classifyConfidence({ source: 'git-history', reachableLanding: localLanding || reachablePrMerge, staleOrUnreachablePr: !localLanding && isStaleOrUnreachablePullRequest(record, pr), signals });
   candidate.confidence = hasLifecycleEvidence ? strongerConfidence(candidate.confidence, enrichedConfidence) : enrichedConfidence;
   candidate.score += signalScore(signals);
   candidate.citation = formatCitation(candidate);
+  // --- eforge:region plan-03-plan-02-evidence-classification ---
+  const closureIntent = reachablePrMerge && pullRequestIsMerged(pr) ? 'shipped' : detectClosureIntent(`${record.subject}\n${record.body ?? ''}\n${pr.title ?? ''}\n${pr.body ?? ''}`, candidate.lifecycleRows[0]?.status);
+  candidate.intent = classifyEvidenceIntent({ closureIntent, confidence: candidate.confidence, signals });
+  candidate.matchedBy = signals.matchedBy;
+  const evidence = formatCandidateEvidence(candidate);
+  if (evidence !== undefined) candidate.evidence = evidence;
+  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 function hasCandidateForRecordOrPr(candidates: readonly ShippedEvidenceCandidate[], itemId: string, record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
@@ -170,7 +197,8 @@ function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLink
     const signals = analyzeEvidenceMatch({ item, lifecycleText: rowToText(row) });
     const staleOrUnreachablePr = row.stage === 'pr-open' || row.status === 'pr-open';
     const reachableLanding = row.stage === 'landing' || row.status === 'shipped' || row.status === 'merged';
-    const confidence = classifyConfidence({ source: 'lifecycle', reachableLanding, staleOrUnreachablePr, signals });
+    const closureIntent = detectClosureIntent(rowToText(row), row.status);
+    const confidence = classifyConfidence({ source: 'lifecycle', reachableLanding: reachableLanding || closureIntent === 'superseded', staleOrUnreachablePr, signals });
     const prNumber = row.prUrl ? extractPrNumberFromUrl(row.prUrl) : undefined;
     const candidate: ShippedEvidenceCandidate = {
       itemId: item.id,
@@ -186,9 +214,13 @@ function candidatesFromLifecycle(item: BacklogItem, rows: readonly LifecycleLink
       changedPaths: row.path ? boundChangedPaths([row.path], caps) : [],
       branchHints: row.featureBranch ? [row.featureBranch] : [],
       excerpts: [{ evidenceSource: 'lifecycle', text: boundString(rowToText(row), caps.excerptBytes), ...(row.path && { path: boundString(row.path, caps.changedPathBytes) }) }],
+      // --- eforge:region plan-03-plan-02-evidence-classification ---
+      intent: classifyEvidenceIntent({ closureIntent, confidence, signals }),
+      matchedBy: signals.matchedBy,
+      // --- eforge:endregion plan-03-plan-02-evidence-classification ---
     };
     candidate.citation = formatCitation(candidate);
-    return candidate;
+    return projectPreclassifiedCandidate(candidate);
   });
 }
 
@@ -201,7 +233,7 @@ function lifecycleRowsByItemId(summaries: readonly TraceSummary[]): Map<string, 
 }
 
 function isLandingLikeRow(row: LifecycleLinkRow): boolean {
-  return row.kind === 'landing' || row.kind === 'pr' || row.stage === 'landing' || row.stage === 'pr-open' || row.prUrl !== undefined || row.commitSha !== undefined;
+  return row.kind === 'landing' || row.kind === 'pr' || row.stage === 'landing' || row.stage === 'pr-open' || row.status === 'superseded' || row.prUrl !== undefined || row.commitSha !== undefined;
 }
 
 function dedupeCandidates(candidates: readonly ShippedEvidenceCandidate[]): ShippedEvidenceCandidate[] {
@@ -237,6 +269,10 @@ function hasLocalLandingSignal(record: GitHistoryRecord): boolean {
 
 function hasReachablePullRequestMergeCommit(record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {
   return pr.mergeCommitOid !== undefined && pr.mergeCommitOid === record.hash;
+}
+
+function pullRequestIsMerged(pr: ShippedEvidencePrMetadata): boolean {
+  return pr.mergedAt !== undefined || pr.state?.toUpperCase() === 'MERGED';
 }
 
 function isStaleOrUnreachablePullRequest(record: GitHistoryRecord, pr: ShippedEvidencePrMetadata): boolean {

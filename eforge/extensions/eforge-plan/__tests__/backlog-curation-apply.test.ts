@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyBacklogCurationDraftFromTask, applySectionOperations } from '../backlog-curation-apply.js';
+import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
 import { buildBacklogCurationSource } from '../backlog-curation-source.js';
 import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { readDerivedRecommendationStatus } from '../recommendation-status.js';
@@ -335,6 +336,59 @@ describe('backlog curation apply', () => {
       expect(status.state).toBe('stale');
       expect(status.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'backlog-mutation:backlog-curation', message: expect.stringContaining('item-1') })]));
     });
+  });
+
+  it('enforces status-specific shipped and superseded evidence prefixes before writing', async () => {
+    const cases = [
+      { status: 'shipped', evidence: undefined, rejected: /Closed-status transitions.*durable evidence entries/i },
+      { status: 'shipped', evidence: [`${SUPERSEDED_GIT_PR_EVIDENCE_PREFIX}wrong status`], rejected: /matching shipped evidence prefix/i },
+      { status: 'shipped', evidence: [`${AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX}ask human`], rejected: /matching shipped evidence prefix/i },
+      { status: 'superseded', evidence: [`${SHIPPED_GIT_PR_EVIDENCE_PREFIX}wrong status`], rejected: /matching superseded evidence prefix/i },
+      { status: 'superseded', evidence: [`${AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX}ask human`], rejected: /matching superseded evidence prefix/i },
+    ] as const;
+
+    for (const testCase of cases) {
+      await withTempProject(async (cwd) => {
+        await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Evidence\n\n- Prior\n' });
+        const { source, entry } = await workflowEntry(cwd);
+        const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+        const before = await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8');
+        const task = curationTask(source.sourceFingerprint, {
+          itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: testCase.status }, rationale: 'Attempt closed status without matching evidence.', ...(testCase.evidence !== undefined && { evidence: testCase.evidence }) }],
+          epicChanges: [],
+          noOpRechecks: [],
+        });
+
+        await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(testCase.rejected);
+        expect(await readFile(resolveBacklogItemPath(cwd, 'item-1'), 'utf-8')).toBe(before);
+      });
+    }
+  });
+
+  it('accepts matching shipped and superseded prefixes and leaves stale evidence prefix-free', async () => {
+    const cases = [
+      { id: 'shipped-lifecycle', status: 'shipped', evidence: `${SHIPPED_LIFECYCLE_EVIDENCE_PREFIX}trace row landed` },
+      { id: 'shipped-git', status: 'shipped', evidence: `${SHIPPED_GIT_PR_EVIDENCE_PREFIX}merge abc123` },
+      { id: 'superseded-lifecycle', status: 'superseded', evidence: `${SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX}trace row superseded` },
+      { id: 'superseded-git', status: 'superseded', evidence: `${SUPERSEDED_GIT_PR_EVIDENCE_PREFIX}obsolete merge abc123` },
+      { id: 'stale-freeform', status: 'stale', evidence: 'Manual stale evidence remains valid without a closure prefix.' },
+    ] as const;
+
+    for (const testCase of cases) {
+      await withTempProject(async (cwd) => {
+        await writeBacklogItem(cwd, { id: testCase.id, status: 'candidate', body: `# ${testCase.id}\n\n## Evidence\n\n- Prior\n` });
+        const { source, entry } = await workflowEntry(cwd);
+        const snapshot = await readBacklogItemSnapshot(cwd, testCase.id);
+        const task = curationTask(source.sourceFingerprint, {
+          itemChanges: [{ kind: 'item', id: testCase.id, precondition: { kind: 'item', id: testCase.id, bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: testCase.status }, rationale: 'Matching evidence supports status change.', evidence: [testCase.evidence] }],
+          epicChanges: [],
+          noOpRechecks: [],
+        });
+
+        await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+        expect((await readBacklogItem(cwd, testCase.id))?.status).toBe(testCase.status);
+      });
+    }
   });
 
   it('supports section replace and append semantics', () => {

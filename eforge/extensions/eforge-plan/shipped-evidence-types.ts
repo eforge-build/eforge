@@ -2,6 +2,27 @@ import type { BacklogItem, LifecycleLinkRow, TraceSummary } from './backlog-doma
 
 export type ShippedEvidenceSource = 'lifecycle' | 'git-history' | 'pr-history' | 'combined';
 export type ShippedEvidenceConfidence = 'strong' | 'ambiguous' | 'weak';
+// --- eforge:region plan-03-plan-02-evidence-classification ---
+export type ShippedEvidenceIntent = 'shipped' | 'superseded' | 'affected' | 'ambiguous-shipped' | 'ambiguous-superseded';
+export type GitDeltaAffectedConfidence = 'strong' | 'medium' | 'ambiguous';
+export type EvidenceMatchedBy = 'item-id' | 'item-title' | 'item-slug' | 'changed-path' | 'branch-hint' | 'pr-number' | 'pr-title' | 'pr-body' | 'pr-file' | 'merge-subject' | 'bounded-excerpt';
+
+export interface GitDeltaAffectedItemCandidate {
+  itemId: string;
+  itemTitle: string;
+  intent: ShippedEvidenceIntent;
+  confidence: GitDeltaAffectedConfidence;
+  score: number;
+  matchedBy: EvidenceMatchedBy[];
+  evidence: string;
+  sourceLabel: string;
+  commit?: { hash: string; shortHash: string; subject: string; committedAt?: string; isMerge: boolean };
+  pr?: { number: number; title?: string; url?: string; state?: string; mergedAt?: string; branch?: string };
+  changedPaths: string[];
+  branchHints: string[];
+  excerpts: ShippedEvidenceExcerpt[];
+}
+// --- eforge:endregion plan-03-plan-02-evidence-classification ---
 
 export interface ShippedEvidenceCaps {
   candidateCount: number;
@@ -119,6 +140,13 @@ export interface ShippedEvidenceCandidate {
   changedPaths: string[];
   branchHints: string[];
   excerpts: ShippedEvidenceExcerpt[];
+  // --- eforge:region plan-03-plan-02-evidence-classification ---
+  intent?: ShippedEvidenceIntent;
+  matchedBy?: EvidenceMatchedBy[];
+  evidence?: string;
+  sourceLabel?: string;
+  supersededReason?: string;
+  // --- eforge:endregion plan-03-plan-02-evidence-classification ---
 }
 
 export interface ShippedEvidenceResult {

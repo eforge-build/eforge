@@ -75,6 +75,7 @@ describe('backlog curation git delta', () => {
 
       const capped = await collectBacklogCurationGitDelta({ cwd, caps: { commitScanCount: 1 }, enrichPullRequests: false });
       expect(capped.scannedCommitCount).toBe(1);
+      expect(capped.coverage).toMatchObject({ kind: 'fallback', reason: 'scan-cap-truncated' });
       expect(capped.diagnostics.some((diagnostic) => diagnostic.code === 'scan-cap-truncated')).toBe(true);
     });
   });

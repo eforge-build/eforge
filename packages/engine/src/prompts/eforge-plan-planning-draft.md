@@ -85,11 +85,16 @@ When the requested output sections include `backlogCurationDraft`:
 - Use `skipped` for records that should not be changed for a specific reason, and `needsInput` for per-record questions that block a safe curation proposal.
 - Do not claim that backlog records were written or updated. This task only drafts structured output; the extension applies validated patches later.
 - Do not mark work shipped, superseded, or stale without durable evidence text in the relevant patch.
-- Strong shipped-status item patches must cite compact shipped evidence from `source.shippedEvidenceCandidates`; weak hints are intentionally omitted from the source context.
+- Treat `source.gitDelta.affectedItemCandidates` as deterministic range-aware context from the baseline git-delta scan. Use it to understand affected open items, matched signals, commit hashes, PR numbers, branch hints, changed paths, and bounded excerpts; do not invent evidence or infer a closed status from an affected candidate alone.
+- Strong shipped-status and superseded-status item patches must cite compact evidence from `source.shippedEvidenceCandidates`; weak hints are intentionally omitted from the source context.
 - `source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.
 - Evidence entries for lifecycle-derived shipped patches must start exactly with `Shipped evidence: lifecycle trace — ...`.
 - Evidence entries for strong git/PR-inferred shipped patches must start exactly with `Shipped evidence: inferred from git/PR history — ...`.
+- Evidence entries for lifecycle-derived superseded patches must start exactly with `Superseded evidence: lifecycle trace — ...`.
+- Evidence entries for strong git/PR-inferred superseded patches must start exactly with `Superseded evidence: inferred from git/PR history — ...`.
 - Ambiguous shipped candidates are not enough for a shipped-status patch; route them to `needsInput` or `skipped` with evidence text that starts exactly with `Ambiguous shipped candidate: needs input — ...`.
+- Ambiguous superseded candidates are not enough for a superseded-status patch; route them to `needsInput` or `skipped` with evidence text that starts exactly with `Ambiguous superseded candidate: needs input — ...`.
+- Never convert ambiguous shipped or ambiguous superseded evidence into a closed-status patch, and never substitute a shipped prefix for superseded evidence or a superseded prefix for shipped evidence.
 
 ## Recommendation guidance
 

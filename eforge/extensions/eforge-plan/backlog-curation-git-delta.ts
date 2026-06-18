@@ -8,7 +8,7 @@ import { canonicalJson } from './markdown-store-support.js';
 import { collectGitHistoryRecordsForRange } from './shipped-evidence-git.js';
 import { boundString, normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 import { enrichPullRequests, type PullRequestEnrichmentResult } from './shipped-evidence-pr.js';
-import type { GitHistoryCollection, GitHistoryRecord, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidencePrMetadata } from './shipped-evidence-types.js';
+import type { GitDeltaAffectedItemCandidate, GitHistoryCollection, GitHistoryRecord, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, ShippedEvidencePrMetadata } from './shipped-evidence-types.js';
 
 const execFile = promisify(execFileCallback);
 const BASELINE_RELATIVE_PATH = '.eforge/storage/extensions/eforge-plan/analysis-baseline/current.json';
@@ -55,7 +55,7 @@ export interface BacklogCurationGitDeltaSource {
   caps: BacklogCurationGitDeltaCaps;
   scannedCommitCount: number;
   scannedCommits: Array<Record<string, unknown>>;
-  affectedItemCandidates: [];
+  affectedItemCandidates: GitDeltaAffectedItemCandidate[];
   diagnostics: BacklogCurationGitDeltaDiagnostic[];
 }
 
@@ -152,7 +152,10 @@ export async function collectBacklogCurationGitDeltaWithHistory(input: { cwd: st
   const records = scan.records.slice(0, caps.commitScanCount);
   diagnostics.push(...mapShippedDiagnostics(primaryRangeDiagnostics), ...mapShippedDiagnostics(scan.diagnostics));
   if (rangeScanFailed) diagnostics.push({ code: 'git-command-failed', severity: 'warning', message: 'Complete git-delta range scan failed; scanning bounded recent history instead.' });
-  if (truncated) diagnostics.push({ code: 'scan-cap-truncated', severity: 'warning', message: `Git delta scan capped at ${caps.commitScanCount} commits.` });
+  if (truncated) {
+    diagnostics.push({ code: 'scan-cap-truncated', severity: 'warning', message: `Git delta scan capped at ${caps.commitScanCount} commits.` });
+    if (coverage.kind === 'complete') coverage = { kind: 'fallback', reason: 'scan-cap-truncated' };
+  }
   if (coverage.kind !== 'complete') coverage = { kind: 'fallback', reason: diagnostics.find((d) => d.code.startsWith('baseline-'))?.code ?? coverage.reason ?? 'fallback-recent-history' };
 
   let pullRequestEnrichment: PullRequestEnrichmentResult | undefined;

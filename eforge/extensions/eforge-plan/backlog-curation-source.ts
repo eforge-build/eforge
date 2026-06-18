@@ -7,6 +7,9 @@ import { readRecommendations, summarizeRecommendations } from './recommendations
 // --- eforge:region plan-01-plan-01-git-delta-baseline ---
 import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
 // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
+// --- eforge:region plan-03-plan-02-evidence-classification ---
+import { classifyBacklogCurationEvidence, type EvidenceClassificationResult } from './backlog-curation-evidence-classification.js';
+// --- eforge:endregion plan-03-plan-02-evidence-classification ---
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -67,7 +70,9 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const traceSummaries = boundTraceSummaries(rawTraceSummaries as unknown as Array<Record<string, unknown>>, truncation);
   // --- eforge:region plan-01-plan-01-git-delta-baseline ---
   const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
-  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, gitDelta);
+  const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
+  gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification);
   // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
@@ -140,21 +145,21 @@ async function buildShippedEvidenceContext(
   truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
   options: BacklogCurationSourceBuildOptions,
   // --- eforge:region plan-01-plan-01-git-delta-baseline ---
-  gitDelta?: Awaited<ReturnType<typeof collectBacklogCurationGitDeltaWithHistory>>,
+  classification?: EvidenceClassificationResult,
   // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
 ): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
-  const result = await collectShippedEvidence({
+  const lifecycleResult = await collectShippedEvidence({
     cwd,
     items,
     traceSummaries,
     caps: collectCaps(options.shippedEvidenceCaps),
-    enrichPullRequests: options.enrichPullRequests,
+    enrichPullRequests: false,
     // --- eforge:region plan-01-plan-01-git-delta-baseline ---
-    gitHistory: gitDelta?.gitHistory,
-    pullRequestEnrichment: gitDelta?.pullRequestEnrichment,
+    gitHistory: { records: [], diagnostics: [] },
     // --- eforge:endregion plan-01-plan-01-git-delta-baseline ---
     signal: options.signal,
   });
+  const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: [...(classification?.shippedEvidenceCandidates ?? []), ...lifecycleResult.candidates] };
   const eligible = result.candidates.filter((candidate) => !shouldOmitWeakCandidate(candidate)).sort(byEvidenceRank);
   const selected = eligible.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
   truncation.shippedEvidenceCandidates += Math.max(0, eligible.length - selected.length) + result.candidates.filter(shouldOmitWeakCandidate).length;
@@ -206,6 +211,9 @@ function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate,
     itemTitle: candidate.itemTitle,
     evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
+    intent: candidate.intent ?? 'shipped',
+    matchedBy: candidate.matchedBy ?? [],
+    evidence: candidate.evidence ?? evidenceLabel(candidate),
     evidenceLabel: evidenceLabel(candidate),
     reasons: candidate.reasons,
     citations: [candidate.citation].filter(Boolean).slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.citationCount),
@@ -223,6 +231,9 @@ function projectEvidenceCandidateForFingerprint(candidate: ShippedEvidenceCandid
     itemTitle: candidate.itemTitle,
     evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
+    intent: candidate.intent ?? 'shipped',
+    matchedBy: candidate.matchedBy ?? [],
+    evidence: candidate.evidence,
     ...(candidate.pr !== undefined && { pr: projectEvidencePr(candidate) }),
     ...(candidate.commit !== undefined && { commit: projectEvidenceCommit(candidate) }),
     changedPaths: candidate.changedPaths.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.changedPathCount),
@@ -260,6 +271,9 @@ function buildEvidenceCounts(result: ShippedEvidenceResult, selected: readonly S
     strong: result.candidates.filter((candidate) => candidate.confidence === 'strong').length,
     ambiguous: result.candidates.filter((candidate) => candidate.confidence === 'ambiguous').length,
     weakOmitted: result.candidates.filter(shouldOmitWeakCandidate).length,
+    affected: result.candidates.filter((candidate) => candidate.intent === 'affected').length,
+    superseded: result.candidates.filter((candidate) => candidate.intent === 'superseded').length,
+    ambiguousClosure: result.candidates.filter((candidate) => candidate.intent === 'ambiguous-shipped' || candidate.intent === 'ambiguous-superseded').length,
     lifecycle: result.candidates.filter((candidate) => candidate.evidenceSource === 'lifecycle').length,
     gitHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'git-history').length,
     prHistory: result.candidates.filter((candidate) => candidate.evidenceSource === 'pr-history').length,
@@ -268,8 +282,11 @@ function buildEvidenceCounts(result: ShippedEvidenceResult, selected: readonly S
 }
 
 function evidenceLabel(candidate: ShippedEvidenceCandidate): string {
+  if (candidate.evidence !== undefined) return candidate.evidence.split(' — ')[0] ?? candidate.evidence;
+  if (candidate.intent === 'superseded') return 'Superseded evidence: lifecycle trace';
+  if (candidate.intent === 'ambiguous-superseded') return 'Ambiguous superseded candidate: needs input';
+  if (candidate.intent === 'ambiguous-shipped' || candidate.confidence === 'ambiguous') return 'Ambiguous shipped candidate: needs input';
   if (candidate.evidenceSource === 'lifecycle') return 'Shipped evidence: lifecycle trace';
-  if (candidate.confidence === 'ambiguous') return 'Ambiguous shipped candidate: needs input';
   return 'Shipped evidence: inferred from git/PR history';
 }
 

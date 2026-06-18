@@ -214,10 +214,10 @@ describe('backlog curation source', () => {
       await git(cwd, ['commit', '-m', 'Merge pull request #999999 from owner/fallback-pr']);
 
       const source = await buildBacklogCurationSource(cwd, undefined, { shippedEvidenceCaps: { subprocessTimeoutMs: 1000, prEnrichmentCount: 1 } });
-      const packet = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceDiagnostics: Array<{ code: string }> };
+      const packet = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; gitDelta: { diagnostics: Array<{ code: string }> } };
 
       expect(packet.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'fallback-pr' && candidate.evidenceSource === 'git-history')).toBe(true);
-      expect(packet.shippedEvidenceDiagnostics.some((diagnostic) => diagnostic.code.startsWith('pr'))).toBe(true);
+      expect(packet.gitDelta.diagnostics.some((diagnostic) => diagnostic.code.startsWith('pr'))).toBe(true);
     });
   });
 
@@ -252,7 +252,7 @@ describe('backlog curation source', () => {
     });
   });
 
-  it('omits weak git-history shipped evidence candidates from source context and source text', async () => {
+  it('routes non-closing git-history matches to gitDelta affected candidates instead of shipped evidence context', async () => {
     await withTempProject(async (cwd) => {
       await initRepo(cwd);
       await writeFile(join(cwd, 'README.md'), 'base\n');
@@ -264,14 +264,13 @@ describe('backlog curation source', () => {
       await git(cwd, ['commit', '-m', 'update api ui tests']);
 
       const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
-      const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceCandidateCounts: { weakOmitted: number }; truncation: { shippedEvidenceCandidates: number } };
-      const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; shippedEvidenceCandidateCounts: { weakOmitted: number }; truncation: { shippedEvidenceCandidates: number } };
+      const packet = source.source as { shippedEvidenceCandidates: Array<Record<string, unknown>>; gitDelta: { affectedItemCandidates: Array<Record<string, unknown>> } };
+      const parsed = JSON.parse(source.sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>>; gitDelta: { affectedItemCandidates: Array<Record<string, unknown>> } };
 
       expect(packet.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'api-ui')).toBe(false);
       expect(parsed.shippedEvidenceCandidates.some((candidate) => candidate.itemId === 'api-ui')).toBe(false);
-      expect(packet.shippedEvidenceCandidateCounts.weakOmitted).toBeGreaterThan(0);
-      expect(parsed.shippedEvidenceCandidateCounts.weakOmitted).toBe(packet.shippedEvidenceCandidateCounts.weakOmitted);
-      expect(packet.truncation.shippedEvidenceCandidates).toBeGreaterThan(0);
+      expect(packet.gitDelta.affectedItemCandidates.find((candidate) => candidate.itemId === 'api-ui')).toMatchObject({ intent: 'affected', evidence: expect.stringMatching(/^Affected candidate: /) });
+      expect(parsed.gitDelta.affectedItemCandidates.find((candidate) => candidate.itemId === 'api-ui')).toMatchObject({ intent: 'affected', evidence: expect.stringMatching(/^Affected candidate: /) });
     });
   });
 
@@ -295,7 +294,7 @@ describe('backlog curation source', () => {
 
       expect(packet.shippedEvidenceCandidates[0]).toMatchObject({ itemId: 'lifecycle-first', evidenceSource: 'lifecycle', evidenceLabel: 'Shipped evidence: lifecycle trace' });
       expect(JSON.stringify(packet.shippedEvidenceCandidates[0])).not.toContain('lifecycle-trace');
-      expect(packet.shippedEvidenceCandidates.some((candidate, index) => index > 0 && candidate.itemId === 'lifecycle-first' && candidate.evidenceSource === 'combined')).toBe(true);
+      expect(packet.shippedEvidenceCandidates.some((candidate, index) => index > 0 && candidate.itemId === 'lifecycle-first' && candidate.evidenceSource === 'git-history')).toBe(true);
     });
   });
 
@@ -335,13 +334,50 @@ describe('backlog curation source', () => {
       const packet = after.source as { gitDelta: Record<string, unknown> };
       const parsed = JSON.parse(after.sourceText) as { gitDelta: Record<string, unknown>; truncation: { fallback?: string } };
 
-      expect(packet.gitDelta).toMatchObject({ baseline: { commit: baseline, source: 'accepted-analysis-sidecar', taskId: 'task-git-delta' }, coverage: { kind: 'complete' }, affectedItemCandidates: [], caps: expect.any(Object) });
+      expect(packet.gitDelta).toMatchObject({ baseline: { commit: baseline, source: 'accepted-analysis-sidecar', taskId: 'task-git-delta' }, coverage: { kind: 'complete' }, affectedItemCandidates: expect.arrayContaining([expect.objectContaining({ itemId: 'git-delta-source', intent: 'affected', matchedBy: expect.arrayContaining(['changed-path']) })]), caps: expect.any(Object) });
       expect(packet.gitDelta).toHaveProperty('currentHead');
       expect(packet.gitDelta).toHaveProperty('scannedCommits');
       expect(packet.gitDelta).toHaveProperty('diagnostics');
       expect(parsed.gitDelta).toBeDefined();
       expect(parsed.truncation.fallback).toBe('minimal');
       expect(after.sourceFingerprint).not.toBe(before.sourceFingerprint);
+    });
+  });
+
+  it('populates gitDelta affected item candidates from baseline-scanned commits', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      const baseline = await gitOutput(cwd, ['rev-parse', 'HEAD']);
+      await writeAcceptedAnalysisBaseline(cwd, { taskId: 'task-git-delta', passKind: 'analyze-all', sourceFingerprint: 'baseline-fingerprint', acceptedAt: '2026-01-01T00:00:00.000Z', git: { headCommit: baseline, headCommittedAt: '2026-01-01T00:00:00.000Z' }, coverage: {}, diagnostics: [] });
+      await writeBacklogItem(cwd, { id: 'git-delta-match', status: 'candidate', body: '# Git Delta Match\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src/git-delta-match.ts'), 'git-delta-match shipped implementation\n');
+      await git(cwd, ['add', 'src/git-delta-match.ts']);
+      await git(cwd, ['commit', '-m', 'ship git-delta-match from owner/feature/git-delta-match']);
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      type GitDeltaCandidatePacket = {
+        gitDelta: {
+          affectedItemCandidates: Array<{ itemId: string; matchedBy: string[]; commit: { hash: string }; evidence: string; changedPaths: string[] }>;
+          scannedCommits: Array<{ hash: string }>;
+        };
+        shippedEvidenceCandidates: Array<{ itemId: string; matchedBy: string[]; evidence: string }>;
+      };
+      const packet = source.source as GitDeltaCandidatePacket;
+      const parsed = JSON.parse(source.sourceText) as GitDeltaCandidatePacket;
+      const candidate = packet.gitDelta.affectedItemCandidates.find((entry) => entry.itemId === 'git-delta-match');
+
+      expect(candidate).toMatchObject({
+        itemId: 'git-delta-match',
+        matchedBy: expect.arrayContaining(['item-id', 'item-slug', 'changed-path']),
+        evidence: expect.stringMatching(/^Shipped evidence: inferred from git\/PR history — /),
+        changedPaths: ['src/git-delta-match.ts'],
+      });
+      expect(packet.gitDelta.scannedCommits.map((commit) => commit.hash)).toContain(candidate?.commit.hash);
+      expect(parsed.gitDelta.affectedItemCandidates.find((entry) => entry.itemId === 'git-delta-match')?.evidence).toBe(candidate?.evidence);
+      expect(packet.shippedEvidenceCandidates.find((entry) => entry.itemId === 'git-delta-match')).toMatchObject({ matchedBy: expect.arrayContaining(['item-id']), evidence: expect.stringMatching(/^Shipped evidence: inferred from git\/PR history — /) });
     });
   });
 });
