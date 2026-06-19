@@ -124,7 +124,6 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
     analysis
       && !loading
       && !applying
-      && blockers.filter((notice) => notice.code !== 'dispatch-preflight-blocked').length === 0
       && applyBlockers.length === 0
       && (repairState?.applyDisabledReasons.length ?? 0) === 0
       && !applyResult?.applied

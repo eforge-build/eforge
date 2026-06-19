@@ -13,7 +13,7 @@ export function createMonitorDataRoutes(context: MonitorContext): RouteDefinitio
     defineRoute({ routeKey: 'queue', method: 'GET', pattern: API_ROUTES.queue, security: readSecurity, async handler(ctx) {
       if (!context.cwd || !context.queuePaths) return sendJson(ctx.res, []);
       const queue = await loadQueueItems(context.queuePaths.queueDir, context.queuePaths.lockDir);
-      sendJson(ctx.res, overlayQueueDispatchFailures(queue, context.db.getDaemonEventsAfter(0)));
+      sendJson(ctx.res, overlayQueueDispatchFailures(queue, context.db.getQueueDispatchFailureEvents(queue.map((item) => item.id))));
     } }),
     defineRoute({ routeKey: 'sessionMetadata', method: 'GET', pattern: API_ROUTES.sessionMetadata, security: readSecurity, handler: (ctx) => sendJson(ctx.res, context.db.getSessionMetadataBatch()) }),
     defineRoute({ routeKey: 'runs', method: 'GET', pattern: API_ROUTES.runs, security: readSecurity, handler: (ctx) => sendJson(ctx.res, projectRunsForAcceptedSuccess(context.db.getRuns(), context.queuePaths?.queueDir)) }),

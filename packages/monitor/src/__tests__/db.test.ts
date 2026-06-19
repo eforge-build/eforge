@@ -217,6 +217,34 @@ describe('insertDaemonEvent — daemon-owned event rows', () => {
     db.close();
   });
 
+  it('getQueueDispatchFailureEvents returns only dispatch failure/clear rows for requested PRDs', () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const now = new Date().toISOString();
+
+    db.insertDaemonEvent({
+      type: 'queue:prd:dispatch-failed',
+      data: JSON.stringify({ type: 'queue:prd:dispatch-failed', prdId: 'prd-a', title: 'A', reason: 'blocked', stage: 'dispatch', timestamp: now }),
+      timestamp: now,
+    });
+    db.insertDaemonEvent({
+      type: 'queue:prd:discovered',
+      data: JSON.stringify({ type: 'queue:prd:discovered', prdId: 'prd-a', title: 'A', timestamp: now }),
+      timestamp: now,
+    });
+    db.insertDaemonEvent({
+      type: 'queue:prd:dispatch-failed',
+      data: JSON.stringify({ type: 'queue:prd:dispatch-failed', prdId: 'prd-b', title: 'B', reason: 'blocked', stage: 'dispatch', timestamp: now }),
+      timestamp: now,
+    });
+
+    const rows = db.getQueueDispatchFailureEvents(['prd-a']);
+    expect(rows.map((row) => row.type)).toEqual(['queue:prd:dispatch-failed', 'queue:prd:discovered']);
+    expect(rows.every((row) => JSON.parse(row.data).prdId === 'prd-a')).toBe(true);
+
+    db.close();
+  });
+
   it('getEvents(runId) does not return daemon-owned rows for any run', () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));

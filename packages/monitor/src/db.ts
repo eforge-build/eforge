@@ -151,6 +151,11 @@ export interface MonitorDB {
    */
   getDaemonEventsAfter(afterId: number): EventRecord[];
   /**
+   * Returns queue dispatch failure/clear events for the provided PRD ids,
+   * ordered by id ascending.
+   */
+  getQueueDispatchFailureEvents(prdIds: string[]): EventRecord[];
+  /**
    * Returns the highest event row id among daemon-wide events (those whose type
    * appears in the `DAEMON_EVENT_TYPES` allowlist), or 0 when no such events exist.
    *
@@ -454,6 +459,13 @@ export function openDatabase(dbPath: string): MonitorDB {
     getDaemonEventsAfter: db.prepare(
       `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
     ),
+    getQueueDispatchFailureEvents: db.prepare(
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp
+       FROM events
+       WHERE type IN ('queue:prd:dispatch-failed', 'queue:prd:discovered')
+         AND json_extract(data, '$.prdId') IN (SELECT value FROM json_each(?))
+       ORDER BY id`,
+    ),
     getMaxDaemonEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')})`,
     ),
@@ -641,6 +653,12 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getDaemonEventsAfter(afterId) {
       return (stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
+    },
+
+    getQueueDispatchFailureEvents(prdIds) {
+      const uniqueIds = [...new Set(prdIds.filter((id) => id.length > 0))];
+      if (uniqueIds.length === 0) return [];
+      return (stmts.getQueueDispatchFailureEvents.all(JSON.stringify(uniqueIds)) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getMaxDaemonEventId() {

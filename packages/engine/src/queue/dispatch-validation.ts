@@ -32,7 +32,7 @@ export function validateStackedDispatch(input: StackedDispatchValidationInput): 
         canDispatch: false,
         blockers: [`stack_parent '${input.stackParent}' is not listed in depends_on for PRD '${input.prdId}'.`],
         warnings: [],
-        requiresStackParentChoice: false,
+        requiresStackParentChoice: meaningfulDependencyIds.length > 0,
         meaningfulDependencyIds,
       };
     }

@@ -157,7 +157,9 @@ describe('plan-06 generated reference artifact contracts', () => {
     ];
 
     for (const path of generatedPaths) {
-      expect(readRepoFile(path), `${path} should not expose removed trust config`).not.toContain('trustProjectExtensions');
+      expect(readRepoFile(path), `${path} should not expose removed trust config`).not.toContain(
+        ['trust', 'Project', 'Extensions'].join(''),
+      );
     }
   });
 

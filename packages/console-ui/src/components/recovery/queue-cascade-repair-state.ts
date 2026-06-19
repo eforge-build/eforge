@@ -122,13 +122,18 @@ export function deriveCascadeRepairState(
 ): CascadeRepairState {
   const selectedRepairActions = deriveSelectedRepairActions(analysis, selectedRemovals, selectedStackParents);
   const stackParentChoices = deriveStackParentChoices(analysis);
+  const repairedStackParentTargets = new Set(selectedRepairActions
+    .filter((action): action is Extract<QueueRecoveryRepairAction, { kind: 'set-stack-parent' }> => action.kind === 'set-stack-parent')
+    .map((action) => action.targetPrdId));
   const unresolvedPreflightBlockers = stackParentChoices
     .filter((choice) => choice.required && !selectedStackParents[choice.targetPrdId])
     .map((choice) => `${choice.targetPrdId} requires an explicit stack_parent selection before queue-cascade apply.`);
   const requiresDependencyRemovalConfirmation = selectedRepairActions.some((action) => action.kind === 'remove-depends-on');
   const applyDisabledReasons = [
     ...unresolvedPreflightBlockers,
-    ...(analysis.blockers ?? []).filter((notice) => notice.code !== 'dispatch-preflight-blocked').map((notice) => notice.message),
+    ...(analysis.blockers ?? [])
+      .filter((notice) => notice.code !== 'dispatch-preflight-blocked' || !notice.prdId || !repairedStackParentTargets.has(notice.prdId))
+      .map((notice) => notice.message),
     ...(applyResult?.blockers ?? []).map((notice) => notice.message),
   ];
   return {

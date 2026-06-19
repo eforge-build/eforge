@@ -59,4 +59,19 @@ describe('queue cascade repair state', () => {
     expect(deriveCascadeRepairState(analysis(), {}, { a: 'done-2' }).requiresDependencyRemovalConfirmation).toBe(false);
     expect(deriveCascadeRepairState(analysis(), { [removalKey('a', 'done-1')]: true }, { a: 'done-2' }).requiresDependencyRemovalConfirmation).toBe(true);
   });
+
+  it('keeps unrepaired dispatch preflight blockers disabled while suppressing selected stack-parent repairs', () => {
+    const base = analysis();
+    const withPrdBlockers = {
+      ...base,
+      blockers: [
+        { code: 'dispatch-preflight-blocked', prdId: 'a', message: 'choose stack_parent for a' },
+        { code: 'dispatch-preflight-blocked', prdId: 'b', message: 'unrepairable dispatch blocker' },
+      ],
+    } satisfies QueueRecoveryAnalyzeResponse;
+
+    const state = deriveCascadeRepairState(withPrdBlockers, {}, { a: 'done-2' });
+    expect(state.applyDisabledReasons).not.toContain('choose stack_parent for a');
+    expect(state.applyDisabledReasons).toContain('unrepairable dispatch blocker');
+  });
 });

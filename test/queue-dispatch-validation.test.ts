@@ -23,6 +23,13 @@ describe('stacked dispatch validation', () => {
     expect(result.blockers[0]).toContain('multiple depends_on');
   });
 
+  it('requires a replacement stack_parent choice when the existing stack_parent is not a dependency', () => {
+    const result = validateStackedDispatch({ prdId: 'p', title: 'P', dependsOn: ['a', 'b'], stackParent: 'missing', stackingEnabled: true });
+    expect(result.canDispatch).toBe(false);
+    expect(result.requiresStackParentChoice).toBe(true);
+    expect(result.meaningfulDependencyIds).toEqual(['a', 'b']);
+  });
+
   it('constructs dispatch failure events', () => {
     expect(makeQueuePrdDispatchFailedEvent({ prdId: 'p', title: 'P', reason: 'blocked', stage: 'dispatch', timestamp: '2026-01-01T00:00:00.000Z' })).toEqual({
       type: 'queue:prd:dispatch-failed',

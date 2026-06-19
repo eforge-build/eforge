@@ -62,14 +62,15 @@ export function buildDaemonHello(
   const stackSyncStatusWire = stackSyncStatus.last !== undefined || stackSyncStatus.current !== undefined
     ? ({ last: stackSyncStatus.last, current: stackSyncStatus.current } as DaemonStreamSnapshot['stackSyncStatus'])
     : undefined;
+  const queueItems = context.cwd && context.queuePaths
+    ? loadQueueItemsSync(context.queuePaths.queueDir, context.queuePaths.lockDir)
+    : [];
   const snapshot: DaemonStreamSnapshot = {
     cursor,
     liveness: buildHeartbeatObject(context, options),
     recentActivity: hydrateRecentDaemonActivity(context.db.getDaemonEventsAfter(Math.max(0, cursor - 20)), cursor),
     runs: projectRunsForAcceptedSuccess(context.db.getRuns(), context.queuePaths?.queueDir),
-    queue: context.cwd && context.queuePaths
-      ? overlayQueueDispatchFailures(loadQueueItemsSync(context.queuePaths.queueDir, context.queuePaths.lockDir), context.db.getDaemonEventsAfter(0))
-      : [],
+    queue: overlayQueueDispatchFailures(queueItems, context.db.getQueueDispatchFailureEvents(queueItems.map((item) => item.id))),
     sessionMetadata: context.db.getSessionMetadataBatch(),
     autoBuild: autoBuildStateToWire({
       state: context.options.daemonState,
