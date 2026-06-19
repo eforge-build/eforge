@@ -51,7 +51,6 @@ describe('extension tooling daemon routes', () => {
     await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
       'extensions:',
       '  enabled: false',
-      '  trustProjectExtensions: false',
     ].join('\n'), 'utf-8');
     const srv = await start(tmpDir);
 
@@ -69,7 +68,7 @@ describe('extension tooling daemon routes', () => {
     await setupProject(tmpDir);
     await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
       'extensions:',
-      '  trustProjectExtensions: false',
+      '  enabled: true',
       '  include:',
       '    - loaded',
     ].join('\n'), 'utf-8');

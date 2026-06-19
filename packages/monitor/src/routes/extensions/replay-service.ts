@@ -32,7 +32,7 @@ export async function replayExtensionTest(ctx: MonitorContext, body: ExtensionTe
   const { config, warnings } = await loadConfig(cwd);
   for (const warning of warnings) process.stderr.write(`${warning}\n`);
   const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
-  const loaderConfig = extensionPath ? { enabled: true, trustProjectExtensions: config.extensions.trustProjectExtensions, include: ['__eforge_no_auto_extensions__'], paths: [extensionPath] } : config.extensions;
+  const loaderConfig = extensionPath ? { enabled: true, include: ['__eforge_no_auto_extensions__'], paths: [extensionPath] } : config.extensions;
   let events: EforgeEvent[] = [];
   const sourceDiagnostics: ExtensionDiagnostic[] = [];
   let source: ExtensionTestResponse['source'] = { kind: 'none', ...(body.event !== undefined && { event: body.event }) };

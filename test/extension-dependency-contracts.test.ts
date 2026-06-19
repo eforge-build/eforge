@@ -48,7 +48,7 @@ describe('extension dependency and capability contracts', () => {
     const dependentDir = resolve(getScopeDirectory('project-local', opts), 'extensions', 'dependent');
     await writeExtension(dependentDir, extensionManifest({ name: 'dependent', dependencies: { required: [{ name: 'missing-provider' }] } }), 'throw new Error("dependent must not import"); export default function extension() {}');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')).toMatchObject({ status: 'skipped' });
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:dependency-missing', name: 'dependent', dependencyName: 'missing-provider' }));
@@ -69,7 +69,7 @@ describe('extension dependency and capability contracts', () => {
       'throw new Error("dependent must not import"); export default function extension() {}',
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.find((candidate) => candidate.name === 'provider')).toMatchObject({ status: 'skipped', trustState: 'untrusted' });
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')).toMatchObject({ status: 'skipped' });
@@ -82,7 +82,7 @@ describe('extension dependency and capability contracts', () => {
     const opts = await makeTree(root);
     const providerDir = resolve(getScopeDirectory('project-team', opts), 'extensions', 'provider');
     await writeExtension(providerDir, extensionManifest({ name: 'provider' }), 'export default function extension() {}');
-    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const hash = discovery.candidates.find((candidate) => candidate.name === 'provider')?.currentHash;
     expect(hash).toBeDefined();
     await upsertTrustRecord(resolve(root, '.eforge'), 'provider', hash!);
@@ -93,7 +93,7 @@ describe('extension dependency and capability contracts', () => {
       'throw new Error("dependent must not import"); export default function extension() {}',
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'extension:dependency-changed',
@@ -110,7 +110,7 @@ describe('extension dependency and capability contracts', () => {
     await writeExtension(resolve(getScopeDirectory('project-local', opts), 'extensions', 'provider'), extensionManifest({ name: 'provider' }), 'export default function extension() { throw new Error("boom"); }');
     await writeExtension(resolve(getScopeDirectory('project-local', opts), 'extensions', 'dependent'), extensionManifest({ name: 'dependent', dependencies: { required: [{ name: 'provider' }] } }), 'throw new Error("dependent must not import"); export default function extension() {}');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.find((candidate) => candidate.name === 'provider')).toMatchObject({ status: 'error' });
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')).toMatchObject({ status: 'skipped' });
@@ -131,7 +131,7 @@ describe('extension dependency and capability contracts', () => {
       'export default function extension() {}',
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')).toMatchObject({ status: 'loaded' });
     expect(result.diagnostics.some((diagnostic) => diagnostic.code.startsWith('extension:dependency-'))).toBe(false);
@@ -151,7 +151,7 @@ describe('extension dependency and capability contracts', () => {
       'export default function extension() {}',
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.find((candidate) => candidate.name === 'provider')).toMatchObject({ status: 'loaded' });
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')).toMatchObject({ status: 'loaded' });
@@ -181,7 +181,7 @@ describe('extension dependency and capability contracts', () => {
       'export default function extension() {}',
     );
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:invalid-package-manifest', path: expect.stringContaining('bad-provider-version'), message: expect.stringContaining('eforge.extension.dependencies.required[0].version') }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:invalid-package-manifest', path: expect.stringContaining('bad-capability-version'), message: expect.stringContaining('eforge.extension.dependencies.required[0].capabilities[0].version') }));
@@ -224,7 +224,7 @@ describe('extension dependency and capability contracts', () => {
       'export default function extension() {}',
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:dependency-version-incompatible', name: 'version-dependent' }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:dependency-capability-incompatible', name: 'capability-dependent', capabilityName: 'demo.capability' }));
@@ -250,7 +250,7 @@ describe('extension dependency and capability contracts', () => {
       'export default function extension() {}',
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')).toMatchObject({ status: 'loaded' });
     expect(result.candidates.find((candidate) => candidate.name === 'dependent')?.resolvedDependencies?.required[0]).toMatchObject({ available: true, providerName: 'trusted-provider' });
@@ -268,7 +268,7 @@ describe('extension dependency and capability contracts', () => {
        }`,
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const manifest = buildExtensionContributionManifest(result.registry);
     const action = manifest.actions.find((entry) => entry.id === 'dependent:optional-action');
 
@@ -291,7 +291,7 @@ describe('extension dependency and capability contracts', () => {
        }`,
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const manifest = buildExtensionContributionManifest(result.registry);
 
     expect(manifest.integrationCommands.find((entry) => entry.id === 'dependent:optional-command')?.availability).toMatchObject({ available: false, message: expect.stringContaining('missing.capability') });
@@ -321,7 +321,7 @@ describe('extension dependency and capability contracts', () => {
        }`,
     );
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     await expect(dispatchExtensionAction(result.registry, { actionId: 'dependent:inspect', input: {}, requestedBy: { host: 'cli' }, cwd: root, configDir: opts.configDir, timeoutMs: 1000 })).resolves.toMatchObject({
       kind: 'success',
       output: { dependency: true, capability: true, providerCount: 1 },

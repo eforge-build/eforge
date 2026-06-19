@@ -80,7 +80,6 @@ export async function loadExtensionResponse(cwd: string | undefined, opts: { pat
   const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
   const extensionConfig = opts.path ? {
     enabled: true,
-    trustProjectExtensions: config.extensions.trustProjectExtensions,
     include: ['__eforge_no_auto_extensions__'],
     paths: [opts.path],
   } : config.extensions;

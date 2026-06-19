@@ -48,7 +48,7 @@ export async function setupProject(tmpDir: string): Promise<void> {
   await mkdir(resolve(tmpDir, '.eforge', 'extensions'), { recursive: true });
   await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
     'extensions:',
-    '  trustProjectExtensions: false',
+    '  enabled: true',
     '  exclude:',
     '    - excluded',
   ].join('\n'), 'utf-8');

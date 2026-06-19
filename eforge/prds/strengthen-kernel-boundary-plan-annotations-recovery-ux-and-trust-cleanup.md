@@ -9,11 +9,11 @@ created: 2026-06-19
 
 Eforge public docs blur the boundary between the core build-engine kernel and optional workflow/extension surfaces such as playbooks, session plans, `/eforge:plan`, backlog workflows, workstations, and authoring UX. This makes it harder to understand that core eforge accepts normalized build source and produces reviewed code, while extensions and hosts may own authoring workflows.
 
-The eforge-plan workstation also lacks annotation-driven plan revision UX, stale dependency and stacking-dispatch recovery UX does not surface pre-session dispatch blockers clearly enough, and the deprecated no-op `extensions.trustProjectExtensions` compatibility field continues to create trust-model confusion.
+The eforge-plan workstation also lacks annotation-driven plan revision UX, stale dependency and stacking-dispatch recovery UX does not surface pre-session dispatch blockers clearly enough, and the deprecated no-op extension trust compatibility field continues to create trust-model confusion.
 
 ## Goal
 
-Implement four independent but coordinated tracks: clarify the kernel/extension boundary in docs, add annotation-driven Revise with AI UX to eforge-plan, improve stale dependency and stacking-dispatch recovery, and remove `extensions.trustProjectExtensions`. The work should strengthen existing architecture without adding workflow ownership to the kernel.
+Implement four independent but coordinated tracks: clarify the kernel/extension boundary in docs, add annotation-driven Revise with AI UX to eforge-plan, improve stale dependency and stacking-dispatch recovery, and remove the extension trust compatibility field. The work should strengthen existing architecture without adding workflow ownership to the kernel.
 
 ## Approach
 
@@ -28,9 +28,9 @@ Implement four independent but coordinated tracks: clarify the kernel/extension 
 - Use shared `@eforge-build/client` event types, daemon wire shapes, API routes, and response contracts.
 - Do not redeclare recovery wire shapes in daemon or Console code.
 - Keep engine responsibility to emitting typed events and leave rendering to consumers.
-- Remove `extensions.trustProjectExtensions` compatibility plumbing and docs.
+- Remove extension trust compatibility plumbing and docs.
 - Treat local hash trust records as the only project/team extension trust authority.
-- Let existing config validation surface stale `extensions.trustProjectExtensions` fields as unsupported unless implementation discovers a stronger compatibility requirement.
+- Let existing config validation surface stale removed extension trust fields as unsupported unless implementation discovers a stronger compatibility requirement.
 - Use an allowlist-based docs boundary test so core docs can link to optional extension pages without embedding eforge-plan product semantics.
 - Make source doc and navigation changes first, then regenerate generated docs artifacts near the end.
 - Bound or summarize annotation context if many annotations risk exceeding existing no-output or oversized-output safeguards.
@@ -67,7 +67,7 @@ Expected implementation areas:
 - Daemon recovery preflight and repair actions
 - Console recovery and Needs attention UI
 - `packages/engine/src/config.ts`
-- Related config schema, types, tests, and docs that currently mention or accept `extensions.trustProjectExtensions`
+- Related config schema, types, tests, and docs that currently mention or accept the removed extension trust flag
 
 Risks and guardrails:
 
@@ -90,7 +90,7 @@ Assumptions to validate:
 Validation approach:
 
 - Start with bounded searches for eforge-plan product terms in core docs.
-- Start with bounded searches for `trustProjectExtensions` references.
+- Start with bounded searches for the removed trust flag references.
 - Start with bounded searches for plan revision storage and source-text code.
 - Start with bounded searches for queue-cascade and `stack_parent` recovery paths.
 - Add or update tests close to each changed unit.
@@ -110,8 +110,8 @@ In scope:
 - Preflight queue-cascade recovery.
 - Classify dependencies as blocking, satisfied, terminal failed/skipped, or stale/historical.
 - Offer explicit safe repair actions.
-- Remove the deprecated/no-op `extensions.trustProjectExtensions` compatibility field.
-- Remove related `extensions.trustProjectExtensions` docs and plumbing.
+- Remove the deprecated/no-op extension trust compatibility field.
+- Remove related extension trust compatibility docs and plumbing.
 
 Out of scope:
 
@@ -156,7 +156,7 @@ Out of scope:
 - Generated reference docs or adjacent guide text do not label playbook or session-plan tools as kernel capabilities.
 - A docs boundary test or equivalent check uses an allowlist for permitted core-doc references to optional extension pages.
 - A docs boundary test or equivalent check fails when eforge-plan-specific product terms appear in core public docs outside the allowlist.
-- Active docs contain no `extensions.trustProjectExtensions` references outside any intentionally preserved historical or changelog allowlist.
+- Active docs contain no removed extension trust flag references outside any intentionally preserved historical or changelog allowlist.
 - `pnpm docs:generate` exits 0.
 - `pnpm docs:check` exits 0.
 - Users can create annotations from selected text inside rendered flat session plan sections.
@@ -238,15 +238,15 @@ Out of scope:
 - Console exposes recovery UI for Needs attention cases.
 - A test asserts satisfied-dependency removal behavior.
 - A test asserts unresolved multiple-dependency explicit-choice behavior.
-- `extensions.trustProjectExtensions` is removed from `packages/engine/src/config.ts`.
-- `extensions.trustProjectExtensions` is removed from config schema definitions.
-- `extensions.trustProjectExtensions` is removed from config type definitions.
-- `extensions.trustProjectExtensions` is removed from compatibility warnings and handling.
-- `extensions.trustProjectExtensions` is removed from active docs.
-- Configs containing `extensions.trustProjectExtensions` surface the field as unsupported through config validation unless a stronger compatibility requirement is discovered during implementation.
+- The removed extension trust flag is removed from `packages/engine/src/config.ts`.
+- The removed extension trust flag is removed from config schema definitions.
+- The removed extension trust flag is removed from config type definitions.
+- The removed extension trust flag is removed from compatibility warnings and handling.
+- The removed extension trust flag is removed from active docs.
+- Configs containing the removed extension trust flag surface the field as unsupported through config validation unless a stronger compatibility requirement is discovered during implementation.
 - Local hash trust records remain documented as the authoritative project/team extension trust model.
 - Local hash trust records remain tested as the authoritative project/team extension trust model.
-- A targeted grep check finds no active `extensions.trustProjectExtensions` references outside any intentionally preserved historical or changelog allowlist.
+- A targeted grep check finds no active removed extension trust flag references outside any intentionally preserved historical or changelog allowlist.
 - `pnpm type-check` exits 0.
 - `pnpm test` exits 0, or the targeted vitest suites for changed areas exit 0 before handoff.
 - `pnpm maintainability:check` exits 0.

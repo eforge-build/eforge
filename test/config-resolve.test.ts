@@ -112,11 +112,10 @@ describe('resolveConfig', () => {
     expect(config.hooks).toEqual([]);
   });
 
-  it('extensions default to enabled without project trust and absent filters', () => {
+  it('extensions default to enabled with absent filters', () => {
     const config = resolveConfig({}, {});
     expect(config.extensions).toEqual({
       enabled: true,
-      trustProjectExtensions: false,
       eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       policyGateTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
@@ -300,7 +299,6 @@ describe('mergePartialConfigs', () => {
     const global: PartialEforgeConfig = {
       extensions: {
         enabled: false,
-        trustProjectExtensions: true,
         include: ['global'],
         exclude: ['old'],
         paths: ['./global.ts'],
@@ -316,7 +314,6 @@ describe('mergePartialConfigs', () => {
     };
     const merged = mergePartialConfigs(global, project);
     expect(merged.extensions?.enabled).toBe(false);
-    expect(merged.extensions?.trustProjectExtensions).toBe(true);
     expect(merged.extensions?.include).toEqual(['project']);
     expect(merged.extensions?.exclude).toEqual(['old']);
     expect(merged.extensions?.paths).toEqual(['./global.ts']);

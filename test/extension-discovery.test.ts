@@ -41,7 +41,7 @@ describe('native extension discovery', () => {
     await writeExtension(getScopeDirectory('project-team', opts), 'shared');
     await writeExtension(getScopeDirectory('project-local', opts), 'shared');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const winner = result.candidates.find((candidate) => candidate.name === 'shared' && candidate.status === 'pending')!;
 
     expect(winner.scope).toBe('project-local');
@@ -61,7 +61,7 @@ describe('native extension discovery', () => {
     const result = await discoverNativeExtensions({
       cwd: opts.cwd,
       configDir: opts.configDir,
-      config: { enabled: true, trustProjectExtensions: false, include: ['alpha', 'beta'], exclude: ['beta'], paths: [explicit] },
+      config: { enabled: true, include: ['alpha', 'beta'], exclude: ['beta'], paths: [explicit] },
     });
 
     expect(result.candidates.filter((candidate) => candidate.source === 'auto').map((candidate) => candidate.name)).toEqual(['alpha']);
@@ -82,7 +82,7 @@ describe('native extension discovery', () => {
     await writeFile(a, 'export default function extension() {}', 'utf-8');
     await writeFile(b, 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true, paths: [a, b] } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, paths: [a, b] } });
     const duplicateDiagnostics = result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:duplicate-explicit-name');
 
     expect(duplicateDiagnostics.map((diagnostic) => diagnostic.path).sort()).toEqual([a, b].sort());
@@ -97,7 +97,7 @@ describe('native extension discovery', () => {
     const explicit = resolve(root, 'dup.js');
     await writeFile(explicit, 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true, paths: [explicit] } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, paths: [explicit] } });
     const collisionDiagnostic = result.diagnostics.find((diagnostic) => diagnostic.code === 'extension:duplicate-explicit-name');
 
     expect(collisionDiagnostic).toMatchObject({
@@ -116,7 +116,7 @@ describe('native extension discovery', () => {
     await writeExtension(getScopeDirectory('project-team', opts), 'team');
     await writeExtension(getScopeDirectory('project-local', opts), 'local-ext');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const userExt = result.candidates.find((c) => c.name === 'user-ext');
     const teamExt = result.candidates.find((c) => c.name === 'team');
@@ -135,7 +135,7 @@ describe('native extension discovery', () => {
     const opts = await makeTree(root);
     await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const candidate = result.candidates.find((c) => c.name === 'team-ext');
 
     expect(candidate).toBeDefined();
@@ -145,12 +145,12 @@ describe('native extension discovery', () => {
     expect(candidate?.trustedHash).toBeUndefined();
   });
 
-  it('does not treat trustProjectExtensions: true as a project-team trust-all override', async () => {
+  it('keeps project-team extensions untrusted without a local trust record', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
     await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const candidate = result.candidates.find((c) => c.name === 'team-ext');
 
     expect(candidate).toMatchObject({
@@ -167,7 +167,7 @@ describe('native extension discovery', () => {
     await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
 
     // First discovery without trust record - get the current hash
-    const untrustedResult = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const untrustedResult = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const untrustedCandidate = untrustedResult.candidates.find((c) => c.name === 'team-ext');
     expect(untrustedCandidate?.trustState).toBe('untrusted');
     const currentHash = untrustedCandidate?.currentHash;
@@ -178,7 +178,7 @@ describe('native extension discovery', () => {
     await upsertTrustRecord(eforgeDir, 'team-ext', currentHash!);
 
     // Second discovery should return trusted
-    const trustedResult = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const trustedResult = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const trustedCandidate = trustedResult.candidates.find((c) => c.name === 'team-ext');
     expect(trustedCandidate?.trustState).toBe('trusted');
     expect(trustedCandidate?.trust).toBe('trusted');
@@ -192,7 +192,7 @@ describe('native extension discovery', () => {
     const extPath = await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
 
     // Discover and get initial hash
-    const initial = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const initial = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const initialHash = initial.candidates.find((c) => c.name === 'team-ext')?.currentHash;
     expect(initialHash).toBeDefined();
 
@@ -204,7 +204,7 @@ describe('native extension discovery', () => {
     await writeFile(extPath, 'export default function extension() { /* changed */ }', 'utf-8');
 
     // Discovery should now return changed
-    const changed = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const changed = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const changedCandidate = changed.candidates.find((c) => c.name === 'team-ext');
     expect(changedCandidate?.trustState).toBe('changed');
     expect(changedCandidate?.trust).toBe('untrusted');
@@ -229,7 +229,7 @@ describe('native extension discovery', () => {
     await mkdir(resolve(extensions, 'indexed'), { recursive: true });
     await writeFile(resolve(extensions, 'indexed', 'index.ts'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.map((candidate) => [candidate.name, candidate.layout]).sort()).toEqual([
       ['exported', 'directory'],
@@ -250,7 +250,7 @@ describe('native extension discovery', () => {
     await mkdir(resolve(extensions, 'symlinked'), { recursive: true });
     await symlink(outside, resolve(extensions, 'symlinked', 'index.js'));
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.map((candidate) => candidate.name)).not.toContain('symlinked');
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -269,7 +269,7 @@ describe('native extension discovery', () => {
     await mkdir(resolve(extensions, 'escaping'), { recursive: true });
     await writeFile(resolve(extensions, 'escaping', 'package.json'), JSON.stringify({ main: '../../../extensions/outside.js' }), 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates.map((candidate) => candidate.name)).not.toContain('escaping');
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -287,7 +287,7 @@ describe('native extension discovery', () => {
     await mkdir(resolve(unsupported, '..'), { recursive: true });
     await writeFile(unsupported, 'nope', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.candidates).toEqual([]);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -304,7 +304,7 @@ describe('native extension discovery', () => {
     const unsupported = resolve(root, 'readme.txt');
     await writeFile(unsupported, 'nope', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false, paths: [unsupported] } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, paths: [unsupported] } });
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       severity: 'error',
@@ -332,7 +332,7 @@ describe('native extension discovery', () => {
     }), 'utf-8');
     await writeFile(resolve(extensions, 'my-pkg', 'index.js'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const candidate = result.candidates.find((c) => c.name === 'custom-ext-name');
     expect(candidate).toBeDefined();
@@ -364,7 +364,7 @@ describe('native extension discovery', () => {
     // other.js should NOT be selected.
     await writeFile(resolve(extensions, 'pkg-with-ep', 'other.js'), 'export default function nope() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const candidate = result.candidates.find((c) => c.name === 'pkg-with-ep');
     expect(candidate).toBeDefined();
@@ -385,7 +385,7 @@ describe('native extension discovery', () => {
     // Provide an index fallback — it must NOT be used.
     await writeFile(resolve(extensions, 'bad-ep', 'index.js'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const invalidDiagnostic = result.diagnostics.find((d) => d.code === 'extension:invalid-package-manifest');
     expect(invalidDiagnostic).toBeDefined();
@@ -407,7 +407,7 @@ describe('native extension discovery', () => {
     }), 'utf-8');
     await writeFile(resolve(packageDir, 'index.js'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       severity: 'error',
@@ -441,7 +441,7 @@ describe('native extension discovery', () => {
     }), 'utf-8');
     await writeFile(resolve(extensions, 'full-pkg', 'index.js'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const candidate = result.candidates.find((c) => c.name === 'full-pkg');
     expect(candidate?.packageProvenance).toMatchObject({
@@ -473,7 +473,7 @@ describe('native extension discovery', () => {
       targetScope: 'project-local',
     });
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const candidate = result.candidates.find((c) => c.name === 'installed-pkg');
     expect(candidate?.installProvenance).toMatchObject({
@@ -494,7 +494,7 @@ describe('native extension discovery', () => {
     await mkdir(resolve(extensions, 'no-sidecar'), { recursive: true });
     await writeFile(resolve(extensions, 'no-sidecar', 'index.js'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const candidate = result.candidates.find((c) => c.name === 'no-sidecar');
     expect(candidate).toBeDefined();
@@ -510,7 +510,7 @@ describe('native extension discovery', () => {
     await writeFile(resolve(extensions, 'plain-pkg', 'package.json'), JSON.stringify({ name: 'plain-pkg', version: '1.0.0' }), 'utf-8');
     await writeFile(resolve(extensions, 'plain-pkg', 'index.ts'), 'export default function extension() {}', 'utf-8');
 
-    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const candidate = result.candidates.find((c) => c.name === 'plain-pkg');
     expect(candidate).toBeDefined();

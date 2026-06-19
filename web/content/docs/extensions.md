@@ -66,7 +66,6 @@ extensions:
   # exclude: [experimental]      # optional denylist by extension name
   # paths:                       # optional explicit extension modules/directories
   #   - ./tools/eforge-audit.ts
-  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Fields:
@@ -83,9 +82,10 @@ Fields:
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for policy-gate throws, timeouts, or invalid decisions. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
-| `extensions.trustProjectExtensions` | `false` | Deprecated compatibility field. It does not trust project/team extensions or bypass changed-hash blocking; explicit local trust records in `.eforge/extension-trust.json` control loading. User and project-local extensions are trusted when loading is enabled. |
 
-The compatibility trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently trust checked-in extensions, and `extensions.trustProjectExtensions` is stripped from committed project config/profile layers with a warning. Loading project/team extensions is controlled by explicit per-extension local trust records created with `eforge extension trust <name>`.
+Only the documented `extensions` keys are accepted in config files and profiles. Remove stale or obsolete project/team trust compatibility settings during upgrades; project/team extension loading now uses local trust records instead.
+
+Loading project/team extensions is controlled by explicit per-extension local trust records in `.eforge/extension-trust.json`, created with `eforge extension trust <name>` after inspecting the extension code. User and project-local extensions are trusted when loading is enabled.
 
 ## Discovery scopes and precedence
 

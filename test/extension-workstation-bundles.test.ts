@@ -32,7 +32,7 @@ async function writeExtension(root: string, name: string, body: string, files: R
     await mkdir(resolve(fullPath, '..'), { recursive: true });
     await writeFile(fullPath, content);
   }
-  return loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+  return loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 }
 
 const validBundle = {

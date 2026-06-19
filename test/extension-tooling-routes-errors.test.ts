@@ -155,7 +155,7 @@ describe('extension tooling daemon routes: errors', () => {
 
     await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
       'extensions:',
-      '  trustProjectExtensions: false',
+      '  enabled: true',
       '  paths:',
       '    - eforge/extensions/team.js',
     ].join('\n'), 'utf-8');

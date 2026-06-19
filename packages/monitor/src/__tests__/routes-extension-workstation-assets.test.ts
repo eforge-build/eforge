@@ -165,7 +165,6 @@ async function seedBundleExtension(harness: RouteHarness): Promise<void> {
   await writeFile(join(harness.cwd, '.eforge', 'config.yaml'), [
     'extensions:',
     '  enabled: true',
-    '  trustProjectExtensions: true',
     '',
   ].join('\n'));
   await writeFile(join(extensionDir(harness), 'index.mjs'), extensionSource());

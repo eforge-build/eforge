@@ -389,7 +389,6 @@ export interface NativeExtensionLoaderOptions {
   configDir: string;
   config: {
     enabled: boolean;
-    trustProjectExtensions: boolean;
     include?: string[];
     exclude?: string[];
     paths?: string[];

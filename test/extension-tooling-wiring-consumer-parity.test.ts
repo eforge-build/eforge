@@ -410,7 +410,7 @@ describe('MCP/Pi eforge_extension parity', () => {
   it('/eforge:config Pi TUI panel includes the resolved extensions config block', () => {
     const source = readRepoFile('packages/pi-eforge/extensions/eforge/config-command.ts');
     expect(source).toContain('## Extensions');
-    expect(source).toContain('trustProjectExtensions');
+    expect(source).not.toContain(['trust', 'Project', 'Extensions'].join(''));
   });
 });
 // --- eforge:endregion extension-tooling-wiring-consumer-parity ---

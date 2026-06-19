@@ -40,7 +40,7 @@ async function writeModule(path: string, body: string): Promise<void> {
 }
 
 function loaderOptions(opts: ScopeResolverOpts): NativeExtensionLoaderOptions {
-  return { cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } };
+  return { cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } };
 }
 
 describe('native extension replay harness', () => {

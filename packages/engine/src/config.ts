@@ -190,14 +190,13 @@ export const extensionConfigSchema = z.object({
   include: z.array(z.string()).optional().describe('Native extension names to include during auto-discovery'),
   exclude: z.array(z.string()).optional().describe('Native extension names to exclude during auto-discovery'),
   paths: z.array(z.string()).optional().describe('Explicit native extension module paths to load'),
-  trustProjectExtensions: z.boolean().optional().describe('Trust checked-in project-team native extensions'),
   eventHookTimeoutMs: z.number().int().positive().optional().describe('Default timeout in milliseconds for native extension event-hook handlers'),
   agentContextHookTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for agent-context hook handlers (defaults to eventHookTimeoutMs)'),
   policyGateTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for policy gate handlers (defaults to eventHookTimeoutMs)'),
   policyGateFailurePolicy: z.enum(['fail-open', 'fail-closed']).optional().describe('Failure policy for thrown, timed-out, or invalid policy gate handlers'),
   profileRouterTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)'),
   validationProviderTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for validation provider handlers and commands (defaults to eventHookTimeoutMs)'),
-}).describe('Native eforge extension configuration');
+}).strict().describe('Native eforge extension configuration');
 
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
@@ -483,7 +482,6 @@ export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
 export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
   enabled: boolean;
-  trustProjectExtensions: boolean;
   eventHookTimeoutMs: number;
   agentContextHookTimeoutMs: number;
   policyGateTimeoutMs: number;
@@ -856,7 +854,6 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   plugins: Object.freeze({ enabled: true }),
   extensions: Object.freeze({
     enabled: true,
-    trustProjectExtensions: false,
     eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     policyGateTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
@@ -992,7 +989,6 @@ export function resolveConfig(
     }),
     extensions: Object.freeze({
       enabled: fileConfig.extensions?.enabled ?? DEFAULT_CONFIG.extensions.enabled,
-      trustProjectExtensions: fileConfig.extensions?.trustProjectExtensions ?? DEFAULT_CONFIG.extensions.trustProjectExtensions,
       eventHookTimeoutMs: fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.eventHookTimeoutMs,
       agentContextHookTimeoutMs: fileConfig.extensions?.agentContextHookTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.agentContextHookTimeoutMs,
       policyGateTimeoutMs: fileConfig.extensions?.policyGateTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.policyGateTimeoutMs,
@@ -1159,28 +1155,6 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   return out as PartialEforgeConfig;
 }
 
-function dropUntrustedProjectExtensionTrust(config: PartialEforgeConfig, source: string): { config: PartialEforgeConfig; warnings: string[] } {
-  if (config.extensions?.trustProjectExtensions === undefined) {
-    return { config, warnings: [] };
-  }
-
-  const extensions = { ...config.extensions };
-  delete extensions.trustProjectExtensions;
-  const sanitized: PartialEforgeConfig = { ...config };
-  if (Object.keys(extensions).length > 0) {
-    sanitized.extensions = extensions;
-  } else {
-    delete sanitized.extensions;
-  }
-
-  return {
-    config: stripUndefinedSections(sanitized),
-    warnings: [
-      `[eforge] Ignoring extensions.trustProjectExtensions from ${source}. ` +
-      'Set it in ~/.config/eforge/config.yaml or .eforge/config.yaml to trust checked-in project-team extensions.',
-    ],
-  };
-}
 
 /**
  * Return the path to the user-level (global) config file.
@@ -1437,9 +1411,7 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
       const partial = parseRawConfig(data as Record<string, unknown>);
       if (scope === 'user') globalConfig = partial;
       else if (scope === 'project-team') {
-        const sanitized = dropUntrustedProjectExtensionTrust(partial, `project-team config ${path}`);
-        projectConfig = sanitized.config;
-        allWarnings.push(...sanitized.warnings);
+        projectConfig = partial;
       } else localConfig = partial;
     }
   }
@@ -1459,13 +1431,7 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
     }
     resolvedProfileName = overrideName;
     resolvedProfileSource = 'override';
-    if (result.scope === 'project') {
-      const sanitized = dropUntrustedProjectExtensionTrust(result.profile, `project-team profile "${overrideName}"`);
-      profileConfig = sanitized.config;
-      allWarnings.push(...sanitized.warnings);
-    } else {
-      profileConfig = result.profile;
-    }
+    profileConfig = result.profile;
     resolvedProfileScope = result.scope;
   } else {
     const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig, projectRoot);
@@ -1475,13 +1441,7 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
     if (name) {
       const result = await loadProfile(configDir, name, projectRoot);
       if (result) {
-        if (result.scope === 'project') {
-          const sanitized = dropUntrustedProjectExtensionTrust(result.profile, `project-team profile "${name}"`);
-          profileConfig = sanitized.config;
-          allWarnings.push(...sanitized.warnings);
-        } else {
-          profileConfig = result.profile;
-        }
+        profileConfig = result.profile;
         resolvedProfileScope = result.scope;
       }
     }
