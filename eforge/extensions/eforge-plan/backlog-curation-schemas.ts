@@ -156,8 +156,62 @@ const BacklogCurationGitDeltaCapsSchema = Type.Object({
   subprocessTimeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
 }, { additionalProperties: true });
 
+// --- eforge:region plan-02-full-audit-evidence ---
+const BacklogCurationFullImplementationAuditDiagnosticSchema = Type.Object({
+  code: Type.String(),
+  severity: Type.Union([Type.Literal('info'), Type.Literal('warning')]),
+  message: Type.Optional(Type.String()),
+  path: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+
+const BacklogCurationFullImplementationAuditCapsSchema = Type.Object({
+  fileScanCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  fileBytes: Type.Optional(Type.Integer({ minimum: 0 })),
+  evidencePerItem: Type.Optional(Type.Integer({ minimum: 0 })),
+  pathsPerCategory: Type.Optional(Type.Integer({ minimum: 0 })),
+  excerptBytes: Type.Optional(Type.Integer({ minimum: 0 })),
+  diagnosticCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  gitCommitScanCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  prEnrichmentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+}, { additionalProperties: true });
+
+const BacklogCurationFullImplementationAuditCoverageSchema = Type.Object({
+  auditedItemCount: Type.Integer({ minimum: 0 }),
+  currentStateFileCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  gitHistoryCommitCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  pullRequestCount: Type.Optional(Type.Integer({ minimum: 0 })),
+}, { additionalProperties: true });
+
+const BacklogCurationFullImplementationAuditEvidenceSummarySchema = Type.Object({
+  source: Type.String(),
+  confidence: Type.Optional(Type.String()),
+  matchedBy: Type.Optional(Type.Array(Type.String())),
+  path: Type.Optional(Type.String()),
+  excerpt: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+
+const BacklogCurationFullImplementationAuditItemSummarySchema = Type.Object({
+  itemId: Type.String(),
+  candidateIntent: Type.String(),
+  evidenceCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  confidence: Type.Optional(Type.String()),
+  evidence: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditEvidenceSummarySchema)),
+}, { additionalProperties: true });
+
+export const BacklogCurationFullImplementationAuditPreviewSchema = Type.Object({
+  scope: Type.Optional(Type.Object({
+    itemIds: Type.Array(Type.String()),
+    openItemCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  }, { additionalProperties: true })),
+  coverage: Type.Optional(BacklogCurationFullImplementationAuditCoverageSchema),
+  caps: Type.Optional(BacklogCurationFullImplementationAuditCapsSchema),
+  diagnostics: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditDiagnosticSchema)),
+  itemSummaries: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditItemSummarySchema)),
+}, { additionalProperties: true });
+// --- eforge:endregion plan-02-full-audit-evidence ---
+
 export const BacklogCurationGitDeltaPreviewSchema = Type.Object({
-  baseline: Type.Optional(Type.Union([Type.Object({}, { additionalProperties: JsonValueSchema }), Type.Null()])),
+  baseline: Type.Optional(Type.Union([Type.Object({}, { additionalProperties: JsonValueSchema }), Type.Null()])), 
   currentHead: Type.Optional(Type.Union([Type.Object({}, { additionalProperties: JsonValueSchema }), Type.Null()])),
   coverage: Type.Optional(Type.Object({}, { additionalProperties: JsonValueSchema })),
   caps: Type.Optional(BacklogCurationGitDeltaCapsSchema),
@@ -177,6 +231,9 @@ export const BacklogCurationSourcePreviewMetadataSchema = Type.Object({
   generatedAt: Type.Optional(Type.String()),
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
+  // --- eforge:region plan-02-full-audit-evidence ---
+  fullImplementationAudit: Type.Optional(BacklogCurationFullImplementationAuditPreviewSchema),
+  // --- eforge:endregion plan-02-full-audit-evidence ---
 }, { additionalProperties: false });
 
 export const BacklogCurationPreviewDetailsSchema = Type.Object({
@@ -188,6 +245,9 @@ export const BacklogCurationPreviewDetailsSchema = Type.Object({
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
   recommendationFreshness: Type.Optional(BacklogCurationPreviewRecommendationFreshnessSchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
+  // --- eforge:region plan-02-full-audit-evidence ---
+  fullImplementationAudit: Type.Optional(BacklogCurationFullImplementationAuditPreviewSchema),
+  // --- eforge:endregion plan-02-full-audit-evidence ---
   recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
   errors: Type.Optional(Type.Array(BacklogCurationPreviewValidationErrorSchema)),
 }, { additionalProperties: false });
@@ -232,6 +292,9 @@ export type RecommendationReferenceValidationResult = Static<typeof Recommendati
 export type RecommendationRepositionedTarget = Static<typeof RecommendationRepositionedTargetSchema>;
 export type BacklogCurationRecommendationProjection = Static<typeof BacklogCurationRecommendationProjectionSchema>;
 export type BacklogCurationGitDeltaPreview = Static<typeof BacklogCurationGitDeltaPreviewSchema>;
+// --- eforge:region plan-02-full-audit-evidence ---
+export type BacklogCurationFullImplementationAuditPreview = Static<typeof BacklogCurationFullImplementationAuditPreviewSchema>;
+// --- eforge:endregion plan-02-full-audit-evidence ---
 export type BacklogCurationSourcePreviewMetadata = Static<typeof BacklogCurationSourcePreviewMetadataSchema>;
 export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;
 export type BacklogCurationRecommendationsSkipped = Static<typeof BacklogCurationRecommendationsSkippedSchema>;

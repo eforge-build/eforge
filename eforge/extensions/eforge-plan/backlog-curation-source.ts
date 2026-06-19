@@ -10,6 +10,9 @@ import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
 import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
 import { classifyBacklogCurationEvidence, type EvidenceClassificationResult } from './backlog-curation-evidence-classification.js';
+// --- eforge:region plan-02-full-audit-evidence ---
+import { collectBacklogCurationFullImplementationAudit, projectFullImplementationAuditForFingerprint, type FullImplementationAuditResult } from './backlog-curation-full-audit.js';
+// --- eforge:endregion plan-02-full-audit-evidence ---
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -19,12 +22,13 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
-import { BacklogCurationGitDeltaPreviewSchema, BacklogCurationScanModeSchema, normalizeBacklogCurationScanMode, type BacklogCurationGitDeltaPreview, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
+import { BacklogCurationFullImplementationAuditPreviewSchema, BacklogCurationGitDeltaPreviewSchema, BacklogCurationScanModeSchema, normalizeBacklogCurationScanMode, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationGitDeltaPreview, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
   sourceText: string;
   source: Record<string, unknown>;
+  fullImplementationAuditPreview?: BacklogCurationFullImplementationAuditPreview;
 }
 
 export interface BacklogCurationSourcePreviewMetadata {
@@ -32,6 +36,9 @@ export interface BacklogCurationSourcePreviewMetadata {
   generatedAt?: string;
   scanMode?: BacklogCurationScanMode;
   gitDelta?: BacklogCurationGitDeltaPreview;
+  // --- eforge:region plan-02-full-audit-evidence ---
+  fullImplementationAudit?: BacklogCurationFullImplementationAuditPreview;
+  // --- eforge:endregion plan-02-full-audit-evidence ---
 }
 
 const SOURCE_TEXT_TARGET = 180_000;
@@ -53,6 +60,9 @@ interface BacklogCurationSourceBuildOptions {
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
   gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
+  // --- eforge:region plan-02-full-audit-evidence ---
+  fullImplementationAuditCaps?: Record<string, number>;
+  // --- eforge:endregion plan-02-full-audit-evidence ---
 }
 // --- eforge:endregion shipped-evidence-context ---
 
@@ -79,11 +89,17 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
   }
   const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
   const scanMode = parsed.scanMode === undefined ? undefined : safeParseWithSchema(BacklogCurationScanModeSchema, parsed.scanMode);
+  // --- eforge:region plan-02-full-audit-evidence ---
+  const fullImplementationAudit = parsed.fullImplementationAudit === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, parsed.fullImplementationAudit);
+  // --- eforge:endregion plan-02-full-audit-evidence ---
   return {
     sourceFingerprint,
     ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
     ...(scanMode?.success && { scanMode: scanMode.data }),
     ...(gitDelta?.success && { gitDelta: gitDelta.data }),
+    // --- eforge:region plan-02-full-audit-evidence ---
+    ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
+    // --- eforge:endregion plan-02-full-audit-evidence ---
   };
 }
 
@@ -110,7 +126,12 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
   const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
   gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
-  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification);
+  // --- eforge:region plan-02-full-audit-evidence ---
+  const fullImplementationAudit = scanMode === 'full-implementation-audit'
+    ? await collectBacklogCurationFullImplementationAudit({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, caps: { ...options.shippedEvidenceCaps, ...options.fullImplementationAuditCaps }, enrichPullRequests: options.enrichPullRequests, signal: options.signal })
+    : undefined;
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification, fullImplementationAudit?.shippedEvidenceCandidates);
+  // --- eforge:endregion plan-02-full-audit-evidence ---
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
@@ -125,6 +146,9 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
     shippedEvidenceCandidates: shippedEvidence.fingerprintCandidates,
     gitDelta: projectGitDeltaForFingerprint(gitDelta.gitDelta),
+    // --- eforge:region plan-02-full-audit-evidence ---
+    ...(fullImplementationAudit !== undefined && { fullImplementationAudit: projectFullImplementationAuditForFingerprint(fullImplementationAudit.context) }),
+    // --- eforge:endregion plan-02-full-audit-evidence ---
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
@@ -147,12 +171,13 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     shippedEvidenceCandidateCounts: shippedEvidence.counts,
     shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
     gitDelta: gitDelta.gitDelta,
+    ...(fullImplementationAudit !== undefined && { fullImplementationAudit: fullImplementationAudit.context }),
     roadmapContext,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
     ...(redraft !== undefined && { redraft }),
   };
-  return { sourceFingerprint, sourceText: buildSourceText(source), source };
+  return { sourceFingerprint, sourceText: buildSourceText(source), source, ...(fullImplementationAudit !== undefined && { fullImplementationAuditPreview: fullImplementationAudit.preview as BacklogCurationFullImplementationAuditPreview }) };
 }
 
 export function buildBacklogCurationRedraftContext(parentTaskId: string, result: Record<string, unknown> | undefined, input: { answers?: string[]; steering?: string }): Record<string, unknown> {
@@ -181,6 +206,9 @@ async function buildShippedEvidenceContext(
   truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
   options: BacklogCurationSourceBuildOptions,
   classification?: EvidenceClassificationResult,
+  // --- eforge:region plan-02-full-audit-evidence ---
+  fullAuditCandidates: readonly ShippedEvidenceCandidate[] = [],
+  // --- eforge:endregion plan-02-full-audit-evidence ---
 ): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
   const lifecycleResult = await collectShippedEvidence({
     cwd,
@@ -191,7 +219,7 @@ async function buildShippedEvidenceContext(
     gitHistory: { records: [], diagnostics: [] },
     signal: options.signal,
   });
-  const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: [...(classification?.shippedEvidenceCandidates ?? []), ...lifecycleResult.candidates] };
+  const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: dedupeEvidenceCandidates([...(classification?.shippedEvidenceCandidates ?? []), ...fullAuditCandidates, ...lifecycleResult.candidates]) };
   const eligible = result.candidates.filter((candidate) => !shouldOmitWeakCandidate(candidate)).sort(byEvidenceRank);
   const selected = eligible.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
   truncation.shippedEvidenceCandidates += Math.max(0, eligible.length - selected.length) + result.candidates.filter(shouldOmitWeakCandidate).length;
@@ -226,6 +254,16 @@ function collectGitDeltaCaps(options: BacklogCurationSourceBuildOptions): Partia
     subprocessTimeoutMs: shippedCaps.subprocessTimeoutMs,
     ...options.gitDeltaCaps,
   };
+}
+
+function dedupeEvidenceCandidates(candidates: readonly ShippedEvidenceCandidate[]): ShippedEvidenceCandidate[] {
+  const byKey = new Map<string, ShippedEvidenceCandidate>();
+  for (const candidate of candidates) if (!byKey.has(evidenceCandidateKey(candidate))) byKey.set(evidenceCandidateKey(candidate), candidate);
+  return [...byKey.values()];
+}
+
+function evidenceCandidateKey(candidate: ShippedEvidenceCandidate): string {
+  return `${candidate.itemId}:${candidate.intent ?? 'shipped'}:${candidate.commit?.hash ?? ''}:${candidate.pr?.number ?? ''}:${candidate.citation}`;
 }
 
 function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate, truncation: { shippedEvidencePaths: number; shippedEvidenceExcerpts: number }): Record<string, unknown> {
@@ -429,11 +467,13 @@ function resolveBacklogCurationSourcePreviewMetadataPath(cwd: string, sourceFing
 function previewMetadataFromSource(source: BacklogCurationSourceBuild): BacklogCurationSourcePreviewMetadata {
   const gitDelta = safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, source.source.gitDelta);
   const scanMode = normalizeBacklogCurationScanMode(source.source.scanMode);
+  const fullImplementationAudit = source.fullImplementationAuditPreview === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, source.fullImplementationAuditPreview);
   return {
     sourceFingerprint: source.sourceFingerprint,
     ...(typeof source.source.generatedAt === 'string' && { generatedAt: source.source.generatedAt }),
     scanMode,
     ...(gitDelta.success && { gitDelta: gitDelta.data }),
+    ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
   };
 }
 
@@ -464,7 +504,7 @@ function buildScanModeGuidance(scanMode: BacklogCurationScanMode): Record<string
   if (scanMode === 'full-implementation-audit') {
     return {
       mode: scanMode,
-      instruction: 'Audit backlog claims against implementation evidence as fully as the provided source allows. Full implementation evidence collection is not yet attached, so report uncertainty instead of inventing evidence.',
+      instruction: 'Audit every open backlog item against the bounded full implementation audit evidence. Cite only supplied repository evidence, evidence prefixes, confidence values, and source metadata; route unsupported or ambiguous closure claims to skipped or needs-input guidance instead of inventing evidence.',
     };
   }
   return {
@@ -496,6 +536,9 @@ function buildSourceText(source: Record<string, unknown>): string {
     shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
     shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
     gitDelta: source.gitDelta,
+    // --- eforge:region plan-02-full-audit-evidence ---
+    ...(source.fullImplementationAudit !== undefined && { fullImplementationAudit: source.fullImplementationAudit }),
+    // --- eforge:endregion plan-02-full-audit-evidence ---
     roadmapContext: source.roadmapContext,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),

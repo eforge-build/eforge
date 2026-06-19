@@ -371,6 +371,53 @@ describe('backlog curation apply', () => {
     });
   });
 
+  it('returns full-audit preview metadata in curation preview details', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'partial-widget', status: 'candidate', body: '# Partial Widget\n\n## Evidence\n\n- Prior\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'partial-widget.ts'), 'Partial Widget partial-widget is partly implemented.\n');
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const snapshot = await readBacklogItemSnapshot(cwd, 'partial-widget');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'partial-widget', precondition: { kind: 'item', id: 'partial-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Partial implementation evidence remains open.' }], rationale: 'Append partial evidence without closure.', evidence: ['Partial implementation evidence remains open.'] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+
+      expect(preview.scanMode).toBe('full-implementation-audit');
+      expect(preview.fullImplementationAudit).toMatchObject({ scope: { itemIds: ['partial-widget'], openItemCount: 1 }, coverage: { auditedItemCount: 1 }, itemSummaries: [expect.objectContaining({ itemId: 'partial-widget', candidateIntent: 'partial-implementation', evidenceCount: 1 })] });
+    });
+  });
+
+  it('keeps partial full-audit items in open recommendation lanes when curation only appends evidence', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'partial-widget', status: 'candidate', body: '# Partial Widget\n\n## Evidence\n\n- Prior\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'partial-widget.ts'), 'Partial Widget partial-widget is partly implemented.\n');
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const snapshot = await readBacklogItemSnapshot(cwd, 'partial-widget');
+      const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'partial-widget', rationale: 'Still open after partial evidence.' }] };
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'partial-widget', precondition: { kind: 'item', id: 'partial-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Partial implementation evidence remains open.' }], rationale: 'Append partial evidence without closure.', evidence: ['Partial implementation evidence remains open.'] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      }, recommendations);
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+      const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(preview.recommendationProjection?.removed.itemIds).toEqual([]);
+      expect(preview.recommendationProjection?.effectiveRecommendations?.readyCandidates).toEqual([{ itemId: 'partial-widget', rationale: 'Still open after partial evidence.' }]);
+      expect(apply.recommendations?.recommendations.readyCandidates).toEqual([{ itemId: 'partial-widget', rationale: 'Still open after partial evidence.' }]);
+    });
+  });
+
   it('rejects wrong-lane generated recommendations before backlog, recommendations, or baseline writes', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'candidate-item', status: 'candidate', body: '# Candidate\n\n## Claim\n\nNot active yet.\n' });

@@ -117,6 +117,7 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
       noOpRechecks: prepared.effectiveRechecks.length,
       recommendationFreshness,
       ...(sourceMetadata?.gitDelta !== undefined && { gitDelta: sourceMetadata.gitDelta }),
+      ...(sourceMetadata?.fullImplementationAudit !== undefined && { fullImplementationAudit: sourceMetadata.fullImplementationAudit }),
       ...(prepared.generatedRecommendationsPresent && { generatedRecommendationValidation: prepared.generatedRecommendationValidation }),
       ...(prepared.generatedRecommendationsPresent && { recommendationProjection: prepared.recommendationProjection }),
     };
