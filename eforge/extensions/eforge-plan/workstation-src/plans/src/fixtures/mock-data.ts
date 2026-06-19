@@ -370,34 +370,12 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
   sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000',
   generatedAt: '2026-06-07T00:30:00.000Z',
   summary: ['Found stale backlog metadata and generated a read-only curation draft.', 'Apply will patch backlog records and refresh recommendation outputs together.'],
-  itemChanges: [{
-    kind: 'item', id: 'auto-mode',
-    precondition: { kind: 'item', id: 'auto-mode', bodySha256: 'auto-mode-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { status: 'planned', priority: 'medium', depends_on: ['traceability'], last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Confirmed auto-mode remains blocked by traceability evidence.' }],
-    rationale: 'auto-mode has durable dependency evidence and should carry fresh recheck metadata.',
-    evidence: ['Trace sidecars still blocks auto-mode.'],
-  }, {
-    kind: 'item', id: 'add-import-preview',
-    precondition: { kind: 'item', id: 'add-import-preview', bodySha256: 'add-import-preview-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    rationale: 'add-import-preview has confirmed lifecycle landing evidence and should be proposed as shipped.',
-    evidence: ['Shipped evidence: lifecycle trace — landing row merge commit 1234567890abcdef for feature/add-import-preview.'],
-  }, {
-    kind: 'item', id: 'recommend-next-work',
-    precondition: { kind: 'item', id: 'recommend-next-work', bodySha256: 'recommend-next-work-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    rationale: 'recommend-next-work has git and PR evidence from the merged recommendation workflow.',
-    evidence: ['Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.'],
-  }],
-  epicChanges: [{
-    kind: 'epic', id: 'planning',
-    precondition: { kind: 'epic', id: 'planning', bodySha256: 'planning-epic-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    sectionOperations: [{ heading: 'Recheck', action: 'append', content: '- Planning workstation curation completed with partial progress evidence.' }],
-    rationale: 'Planning epic has new partial-progress evidence from active tasks.',
-    evidence: ['Import preview merged while recommendations remain active.'],
-  }],
+  itemChanges: [
+    { kind: 'item', id: 'auto-mode', precondition: { kind: 'item', id: 'auto-mode', bodySha256: 'auto-mode-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { status: 'planned', priority: 'medium', depends_on: ['traceability'], last_checked: '2026-06-07', stale_after: '2026-07-07' }, sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Confirmed auto-mode remains blocked by traceability evidence.' }], rationale: 'auto-mode has durable dependency evidence and should carry fresh recheck metadata.', evidence: ['Trace sidecars still blocks auto-mode.'] },
+    { kind: 'item', id: 'add-import-preview', precondition: { kind: 'item', id: 'add-import-preview', bodySha256: 'add-import-preview-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' }, rationale: 'add-import-preview has confirmed lifecycle landing evidence and should be proposed as shipped.', evidence: ['Shipped evidence: lifecycle trace — landing row merge commit 1234567890abcdef for feature/add-import-preview.'] },
+    { kind: 'item', id: 'recommend-next-work', precondition: { kind: 'item', id: 'recommend-next-work', bodySha256: 'recommend-next-work-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' }, rationale: 'recommend-next-work has git and PR evidence from the merged recommendation workflow.', evidence: ['Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.'] },
+  ],
+  epicChanges: [{ kind: 'epic', id: 'planning', precondition: { kind: 'epic', id: 'planning', bodySha256: 'planning-epic-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { last_checked: '2026-06-07', stale_after: '2026-07-07' }, sectionOperations: [{ heading: 'Recheck', action: 'append', content: '- Planning workstation curation completed with partial progress evidence.' }], rationale: 'Planning epic has new partial-progress evidence from active tasks.', evidence: ['Import preview merged while recommendations remain active.'] }],
   noOpRechecks: [{ kind: 'item', id: 'traceability', precondition: { kind: 'item', id: 'traceability', bodySha256: 'traceability-body' }, last_checked: '2026-06-07', stale_after: '2026-07-07', rationale: 'Traceability remains accurate and ready.' }],
   skipped: [{ kind: 'item', id: 'legacy-cleanup', reason: 'Legacy shipped record is ambiguous and should not be rewritten by curation.' }],
   needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'Ambiguous shipped candidate: needs input — git history mentions stale-idea but lacks a confirmed merge or lifecycle landing.' }, { kind: 'item', id: 'legacy-cleanup', question: 'Should legacy cleanup be marked superseded instead of shipped?', reason: 'Ambiguous superseded candidate: needs input — git history mentions replacement but lacks confirmed superseded lifecycle evidence.' }],
@@ -546,7 +524,6 @@ function parseMockScanMode(value: unknown): BacklogCurationScanMode {
   return value === 'full-implementation-audit' ? 'full-implementation-audit' : 'delta';
 }
 
-
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
   const parent = listMockPlanningTasks().find((item) => item.entry.taskId === parentTaskId)?.entry;
   const isCuration = parent?.purpose === 'backlog-curation';
@@ -573,9 +550,6 @@ export function getMockArtifacts(): Artifact[] {
   return [...mockArtifacts, ...appliedCreationDraftArtifacts];
 }
 
-// Mutates the shared card objects in place: the precomputed lane arrays hold
-// the same references, so the next list-board read reflects the edit. Lane
-// membership itself stays fixed in the mock - only the live extension derives lanes.
 export function updateMockItem(input: JsonObject): { itemId: string; status: string } {
   const id = String(input.id ?? '');
   const item = items.find((entry) => entry.id === id);
@@ -619,9 +593,5 @@ export function applyMockCreationDraft(session: string): AppliedSessionPlanCreat
   if (!appliedCreationDraftArtifacts.some((entry) => entry.session === session)) {
     appliedCreationDraftArtifacts.push({ key: `plan:${session}`, kind: 'plan', session, title: 'AI-promoted session plan', status: 'planning', ready: false });
   }
-  return {
-    session,
-    relativePath: `.eforge/session-plans/${session}.md`,
-    readiness: { ready: false, missingDimensions: [], coveredDimensions: ['scope', 'acceptance-criteria'], skippedDimensions: ['assumptions-and-validation'] },
-  };
+  return { session, relativePath: `.eforge/session-plans/${session}.md`, readiness: { ready: false, missingDimensions: [], coveredDimensions: ['scope', 'acceptance-criteria'], skippedDimensions: ['assumptions-and-validation'] } };
 }
