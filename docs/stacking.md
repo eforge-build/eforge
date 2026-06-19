@@ -22,7 +22,7 @@ graph TD
 PRD frontmatter carries two optional stacking fields:
 
 - **`stack_id`** - a logical stack name shared by all PRDs in the same stack (e.g. `auth-refactor`). If omitted, defaults to the first PRD id in the chain.
-- **`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets.
+- **`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets, and must name an entry from `depends_on` when stacking is enabled.
 
 These fields appear in PRD files under `.eforge/queue/`:
 
@@ -58,7 +58,7 @@ depends_on: [q-feature-a, q-feature-b]
 ---
 ```
 
-If `stack_parent` is missing and there are multiple `depends_on` entries, dispatch fails with a clear error message asking you to add `stack_parent`.
+If `stack_parent` is missing and there are multiple `depends_on` entries, dispatch fails before the build session starts with a durable `queue:prd:dispatch-failed` event asking you to add `stack_parent`. Dispatch also fails if `stack_parent` is set to an id that is not listed in `depends_on`.
 
 ## Configuration
 

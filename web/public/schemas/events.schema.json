@@ -11205,6 +11205,51 @@
             "type",
             "prdId",
             "title",
+            "reason",
+            "stage"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:dispatch-failed",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "stage": {
+              "anyOf": [
+                {
+                  "const": "stacking-validation",
+                  "type": "string"
+                },
+                {
+                  "const": "policy-gate",
+                  "type": "string"
+                },
+                {
+                  "const": "profile-routing",
+                  "type": "string"
+                },
+                {
+                  "const": "dispatch",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "title",
             "error"
           ],
           "properties": {

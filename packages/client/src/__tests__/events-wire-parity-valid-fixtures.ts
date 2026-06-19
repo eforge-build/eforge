@@ -169,6 +169,7 @@ export const validPayloads: EventWireParityFixture[] = [
   {label: 'queue:prd:dependency-overridden',payload: {type: 'queue:prd:dependency-overridden',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',removedDependency: 'parent-prd',previousDependsOn: ['parent-prd','other-prd'],currentDependsOn: ['other-prd'],reason: 'operator approved',},},
   {label: 'queue:prd:stale',payload: {type: 'queue:prd:stale',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',verdict: 'proceed',justification: 'still relevant',},},
   {label: 'queue:prd:skip',payload: {type: 'queue:prd:skip',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',reason: 'already completed',},},
+  {label: 'queue:prd:dispatch-failed',payload: {type: 'queue:prd:dispatch-failed',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',reason: 'stack_parent is required',stage: 'stacking-validation',},},
   {label: 'queue:prd:commit-failed',payload: {type: 'queue:prd:commit-failed',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',title: 'My PRD',error: 'git error',},},
   {label: 'queue:prd:complete',payload: {type: 'queue:prd:complete',timestamp: '2025-01-01T00:00:00.000Z',prdId: 'prd-1',status: 'completed',},},
   {label: 'queue:complete',payload: {type: 'queue:complete',timestamp: '2025-01-01T00:00:00.000Z',processed: 2,skipped: 0,},},

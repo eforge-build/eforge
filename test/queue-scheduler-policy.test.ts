@@ -51,6 +51,7 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     expect(profileRouter).not.toHaveBeenCalled();
     expect(events.some((event) => event.type === 'session:start')).toBe(false);
     expect(events.some((event) => event.type === 'queue:profile:selected')).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'queue:prd:dispatch-failed', prdId: 'blocked-prd', stage: 'policy-gate', reason: 'policy says no' }));
     const dequeuedIndex = events.findIndex((event) => event.type === 'daemon:scheduler:dequeued');
     const policyDecisionIndex = events.findIndex((event) => event.type === 'extension:policy:decision');
     expect(dequeuedIndex).toBeGreaterThanOrEqual(0);
@@ -58,6 +59,7 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
     expect(dequeuedIndex).toBeLessThan(policyDecisionIndex);
     expect(events).toContainEqual(expect.objectContaining({ type: 'extension:policy:decision', decision: 'block', reason: 'policy says no' }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'queue:prd:complete', prdId: 'blocked-prd', status: 'failed' }));
+    expect(events.findIndex((event) => event.type === 'queue:prd:dispatch-failed')).toBeLessThan(events.findIndex((event) => event.type === 'queue:prd:complete'));
     expect(existsSync(prdPath)).toBe(false);
     expect(existsSync(join(cwd, 'eforge', 'queue', 'failed', 'blocked-prd.md'))).toBe(true);
 

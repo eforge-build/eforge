@@ -65,6 +65,65 @@ export interface QueueRecoveryNotice {
   severity?: 'warning' | 'blocker';
 }
 
+export type QueueRecoveryDependencyStatus = 'blocking' | 'satisfied' | 'terminal' | 'stale-historical';
+
+export interface QueueRecoveryDependencyClassification {
+  targetPrdId: string;
+  dependentPrdId: string;
+  dependencyPrdId: string;
+  status: QueueRecoveryDependencyStatus;
+  reason: string;
+  terminalKind?: 'failed' | 'skipped' | 'completed';
+  queueStatus?: QueueRecoveryLocation;
+  artifactStatus?: 'usable' | 'missing' | 'unusable';
+  completedAt?: string;
+}
+
+export interface QueueRecoveryDispatchPreflightItem {
+  targetPrdId: string;
+  canDispatch: boolean;
+  blockers: string[];
+  warnings: string[];
+  stackingEnabled: boolean;
+  currentStackParent?: string;
+  meaningfulDependencyIds: string[];
+  requiresStackParentChoice: boolean;
+}
+
+export interface QueueRecoveryDispatchPreflightSummary {
+  canApply: boolean;
+  blockers: QueueRecoveryNotice[];
+  warnings: QueueRecoveryNotice[];
+  items: QueueRecoveryDispatchPreflightItem[];
+}
+
+export interface QueueRecoveryRemoveDependsOnRepairAction {
+  kind: 'remove-depends-on';
+  targetPrdId: string;
+  dependencyIds: string[];
+}
+
+export interface QueueRecoverySetStackParentRepairAction {
+  kind: 'set-stack-parent';
+  targetPrdId: string;
+  selectedParentId: string;
+}
+
+export type QueueRecoveryRepairAction = QueueRecoveryRemoveDependsOnRepairAction | QueueRecoverySetStackParentRepairAction;
+
+export interface QueueRecoveryFrontmatterMetadataSummary {
+  dependsOn?: string[];
+  stackParent?: string;
+}
+
+export interface QueueRecoveryRepairResult {
+  action: QueueRecoveryRepairAction;
+  status: 'applied' | 'blocked' | 'skipped' | 'failed';
+  message?: string;
+  before?: QueueRecoveryFrontmatterMetadataSummary;
+  after?: QueueRecoveryFrontmatterMetadataSummary;
+}
+
 export interface QueueRecoveryAnalyzeRequest {
   selectedPrdId: string;
   strategy?: QueueRecoveryStrategyWire;
@@ -79,12 +138,17 @@ export interface QueueRecoveryAnalyzeResponse {
   operations: QueueRecoveryOperation[];
   warnings: QueueRecoveryNotice[];
   blockers: QueueRecoveryNotice[];
+  dependencyClassifications?: QueueRecoveryDependencyClassification[];
+  dispatchPreflight?: QueueRecoveryDispatchPreflightSummary;
+  availableRepairActions?: QueueRecoveryRepairAction[];
 }
 
 export interface QueueRecoveryApplyRequest {
   selectedPrdId: string;
   strategy?: QueueRecoveryStrategyWire;
   expectedOperations: QueueRecoveryOperation[];
+  repairActions?: QueueRecoveryRepairAction[];
+  confirmDependencyRemoval?: boolean;
 }
 
 export interface QueueRecoveryApplyResponse {
@@ -94,6 +158,8 @@ export interface QueueRecoveryApplyResponse {
   operationResults: QueueRecoveryOperationResult[];
   warnings: QueueRecoveryNotice[];
   blockers: QueueRecoveryNotice[];
+  dispatchPreflight?: QueueRecoveryDispatchPreflightSummary;
+  repairResults?: QueueRecoveryRepairResult[];
 }
 
 export function isQueueRecoveryStrategy(value: unknown): value is QueueRecoveryStrategy {

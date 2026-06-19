@@ -37,6 +37,7 @@ export type {
   ReconciliationReport,
   EforgeStatus,
   QueueEvent,
+  QueueDispatchFailureStage,
   StalenessVerdict,
   RecoveryVerdict,
   ReviewPerspective,
@@ -101,6 +102,7 @@ export {
   BuildResumeArtifactSourceSchema,
   BuildResumeArtifactPlanSchema,
   BuildResumeArtifactsEventSchema,
+  QueueDispatchFailureStageSchema,
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

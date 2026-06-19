@@ -11,7 +11,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 226
+Total variants: 227
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -218,6 +218,7 @@ Total variants: 226
 | `queue:prd:dependency-overridden` | `currentDependsOn`, `prdId`, `previousDependsOn`, `reason`, `removedDependency`, `title` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
+| `queue:prd:dispatch-failed` | `prdId`, `reason`, `stage`, `title` |
 | `queue:prd:commit-failed` | `error`, `prdId`, `title` |
 | `queue:prd:complete` | `prdId`, `status` |
 | `queue:complete` | `processed`, `skipped` |

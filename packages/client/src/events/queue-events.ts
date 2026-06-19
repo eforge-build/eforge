@@ -1,6 +1,14 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { StalenessVerdictSchema } from './shared/schemas.js';
 
+export const QueueDispatchFailureStageSchema = Type.Union([
+  Type.Literal('stacking-validation'),
+  Type.Literal('policy-gate'),
+  Type.Literal('profile-routing'),
+  Type.Literal('dispatch'),
+]);
+export type QueueDispatchFailureStage = Static<typeof QueueDispatchFailureStageSchema>;
+
 export const queueEventVariants = [
   Type.Object({ type: Type.Literal('queue:start'), prdCount: Type.Number(), dir: Type.String() }),
   Type.Object({
@@ -35,6 +43,13 @@ export const queueEventVariants = [
     type: Type.Literal('queue:prd:skip'),
     prdId: Type.String(),
     reason: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:prd:dispatch-failed'),
+    prdId: Type.String(),
+    title: Type.String(),
+    reason: Type.String(),
+    stage: QueueDispatchFailureStageSchema,
   }),
   Type.Object({
     type: Type.Literal('queue:prd:commit-failed'),

@@ -21,9 +21,7 @@
  */
 
 import type { EforgeEvent, StackLayerWire } from './events.js';
-import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked,
-  projectQueueDependencyOverridden,
-} from './event-projections/queue.js';
+import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked, projectQueueDependencyOverridden, projectQueuePrdDispatchFailed } from './event-projections/queue.js';
 import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -1752,6 +1750,8 @@ const eventRegistry = {
       return { queue: filtered };
     },
   },
+
+  'queue:prd:dispatch-failed': { scope: 'daemon', persist: true, summary: (e) => `PRD ${e.prdId} dispatch failed (${e.stage}): ${e.reason}`, project: projectQueuePrdDispatchFailed },
 
   'queue:prd:commit-failed': {
     scope: 'daemon',
