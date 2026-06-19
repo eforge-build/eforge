@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { PanelRightOpen } from 'lucide-react';
+import { ClipboardList, PanelRightOpen } from 'lucide-react';
 import type { BoardItem } from '@/types';
+import type { PlanLink } from '@/lib/plan-links';
 import { shortId } from './board-model';
 import { summaryLifecycleChip } from './lifecycle-panel';
 
@@ -20,6 +21,11 @@ interface ItemCardProps {
   item: BoardItem;
   selected: boolean;
   relation?: CardRelation;
+  /** Active perspective tag; non-matching cards dim, the matching tag is accented. */
+  lensTag?: string;
+  /** Plans that converged on this item, for the "Planned" deep link. */
+  plannedIn?: PlanLink[];
+  onOpenPlan?: (key: string) => void;
   onToggle: (item: BoardItem) => void;
   onOpenDetail: (item: BoardItem) => void;
   onHoverChange?: (id: string | null) => void;
@@ -32,11 +38,16 @@ interface ItemCardProps {
  * opened from the corner affordance. Clicking the card body still toggles
  * selection for "Promote to a build plan".
  */
-export function ItemCard({ item, selected, relation = null, onToggle, onOpenDetail, onHoverChange }: ItemCardProps) {
+export function ItemCard({ item, selected, relation = null, lensTag = '', plannedIn, onOpenPlan, onToggle, onOpenDetail, onHoverChange }: ItemCardProps) {
   const accent = PRIORITY_COLOR[item.priority] ?? 'var(--prio-low)';
   const lifecycle = summaryLifecycleChip(item);
   // Selection ring wins over the hover-relation ring so promote flow state stays legible.
   const ring = selected ? 'ring-2 ring-primary' : relation ? RELATION_RING[relation] : '';
+  // A lens dims cards outside the active perspective; selection or a hover
+  // relation keeps a card lit so in-progress flows stay legible. Closed cards
+  // keep their own muting when no lens is active.
+  const outsideLens = Boolean(lensTag) && !item.tags.includes(lensTag);
+  const opacity = selected || relation ? '' : outsideLens ? 'opacity-40' : item.closed ? 'opacity-60' : '';
   return (
     <div
       id={`board-item-${item.id}`}
@@ -46,7 +57,7 @@ export function ItemCard({ item, selected, relation = null, onToggle, onOpenDeta
       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(item); } }}
       onMouseEnter={() => onHoverChange?.(item.id)}
       onMouseLeave={() => onHoverChange?.(null)}
-      className={`group cursor-pointer rounded-md border border-border/70 bg-card p-3 transition-colors hover:border-muted-foreground/40 ${ring} ${item.closed && !relation ? 'opacity-60' : ''}`}
+      className={`group cursor-pointer rounded-md border border-border/70 bg-card p-3 transition-colors hover:border-muted-foreground/40 ${ring} ${opacity}`}
     >
       <div className="flex items-start gap-2">
         <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: accent }} title={`${item.priority} priority`} />
@@ -64,7 +75,30 @@ export function ItemCard({ item, selected, relation = null, onToggle, onOpenDeta
       <code className="mt-0.5 block truncate pl-4 text-2xs text-muted-foreground/70" title={item.id}>{shortId(item.id)}</code>
 
       <MetaRow item={item} lifecycle={lifecycle} />
-      <ContextRow item={item} />
+      <PlannedLink plans={plannedIn} onOpen={onOpenPlan} />
+      <ContextRow item={item} lensTag={lensTag} />
+    </div>
+  );
+}
+
+// Reverse link to the plan(s) this card was folded into. A quiet affordance, not
+// a state badge - it jumps straight to the plan rather than describing the item.
+function PlannedLink({ plans, onOpen }: { plans?: PlanLink[]; onOpen?: (key: string) => void }) {
+  if (!plans || plans.length === 0) return null;
+  const primary = plans[0];
+  const label = plans.length === 1 ? primary.title : `${plans.length} plans`;
+  return (
+    <div className="mt-1.5 pl-4">
+      <button
+        type="button"
+        onClick={(event) => { event.stopPropagation(); onOpen?.(primary.key); }}
+        disabled={!onOpen}
+        title={plans.length === 1 ? `Open plan ${primary.title}` : plans.map((plan) => plan.title).join(', ')}
+        className="inline-flex max-w-full items-center gap-1 rounded border border-[color:var(--lane-progress)]/40 bg-[color:var(--lane-progress)]/10 px-1.5 py-0.5 text-2xs font-medium text-[color:var(--lane-progress)] transition-colors hover:border-[color:var(--lane-progress)] disabled:cursor-default"
+      >
+        <ClipboardList className="h-3 w-3 shrink-0" />
+        <span className="truncate">Planned · {label}</span>
+      </button>
     </div>
   );
 }
@@ -88,10 +122,15 @@ function MetaRow({ item, lifecycle }: { item: BoardItem; lifecycle: { label: str
   return <div className="mt-1.5 flex flex-wrap gap-1 pl-4">{chips}</div>;
 }
 
-// Quiet single line for epic and tags - metadata, not state, so no color.
-function ContextRow({ item }: { item: BoardItem }) {
-  const visibleTags = item.tags.slice(0, MAX_VISIBLE_TAGS);
-  const hiddenTagCount = item.tags.length - visibleTags.length;
+// Quiet single line for epic and tags - metadata, not state, so no color. When
+// a perspective lens is active, the matching tag is pulled to the front and
+// accented so a lit card shows why it belongs to the lens.
+function ContextRow({ item, lensTag }: { item: BoardItem; lensTag?: string }) {
+  const orderedTags = lensTag && item.tags.includes(lensTag)
+    ? [lensTag, ...item.tags.filter((tag) => tag !== lensTag)]
+    : item.tags;
+  const visibleTags = orderedTags.slice(0, MAX_VISIBLE_TAGS);
+  const hiddenTagCount = orderedTags.length - visibleTags.length;
   if (!item.epicRef && item.tags.length === 0) return null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 pl-4 text-2xs text-muted-foreground">
@@ -104,8 +143,10 @@ function ContextRow({ item }: { item: BoardItem }) {
         </span>
       )}
       {item.epicRef && visibleTags.length > 0 && <span className="text-muted-foreground/50">·</span>}
-      {visibleTags.map((tag) => <span key={tag} className="text-muted-foreground/80">{tag}</span>)}
-      {hiddenTagCount > 0 && <span className="text-muted-foreground/60" title={item.tags.slice(MAX_VISIBLE_TAGS).join(', ')}>+{hiddenTagCount}</span>}
+      {visibleTags.map((tag) => (
+        <span key={tag} className={tag === lensTag ? 'font-semibold text-[color:var(--lane-ready)]' : 'text-muted-foreground/80'}>{tag}</span>
+      ))}
+      {hiddenTagCount > 0 && <span className="text-muted-foreground/60" title={orderedTags.slice(MAX_VISIBLE_TAGS).join(', ')}>+{hiddenTagCount}</span>}
     </div>
   );
 }

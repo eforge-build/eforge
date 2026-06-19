@@ -24,10 +24,13 @@ interface RecommendationsPanelProps {
   onPickItems: (itemIds: string[]) => void;
   // Starts a planning task directly from a lane's ready items (one-click path).
   onPlanItems: (itemIds: string[], recommendationRef?: string) => Promise<void>;
+  // Active perspective lens: lanes touching it are flagged with their match count.
+  lensTag?: string;
+  lensItemIds?: Set<string>;
   busy?: boolean;
 }
 
-export function RecommendationsPanel({ recommendations, status, freshness, activeRefreshTask, titles, selected, readyIds, onPickItem, onPickItems, onPlanItems, busy }: RecommendationsPanelProps) {
+export function RecommendationsPanel({ recommendations, status, freshness, activeRefreshTask, titles, selected, readyIds, lensTag = '', lensItemIds, onPickItem, onPickItems, onPlanItems, busy }: RecommendationsPanelProps) {
   if (!recommendations && !status && !freshness) return null;
   const next = recommendations?.recommendedNextSequence ?? [];
   const groups = recommendations?.safeParallelizableGroups ?? [];
@@ -111,7 +114,7 @@ export function RecommendationsPanel({ recommendations, status, freshness, activ
           <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Planning lanes · safe to plan in parallel</span>
           <div className="grid gap-2 lg:grid-cols-2">
             {groups.map((group) => (
-              <PlanningLaneCard key={group.ref} group={group} label={label} selected={selected} readyIds={readyIds} busy={busy} onPickItem={onPickItem} onPickItems={onPickItems} onPlanItems={onPlanItems} />
+              <PlanningLaneCard key={group.ref} group={group} label={label} selected={selected} readyIds={readyIds} lensTag={lensTag} lensItemIds={lensItemIds} busy={busy} onPickItem={onPickItem} onPickItems={onPickItems} onPlanItems={onPlanItems} />
             ))}
           </div>
         </div>
@@ -178,6 +181,8 @@ interface PlanningLaneCardProps {
   label: (id: string) => string;
   selected: Set<string>;
   readyIds: Set<string>;
+  lensTag?: string;
+  lensItemIds?: Set<string>;
   busy?: boolean;
   onPickItem: (itemId: string) => void;
   onPickItems: (itemIds: string[]) => void;
@@ -191,13 +196,21 @@ interface PlanningLaneCardProps {
  * manual curation via "Promote to a build plan". Individual chips toggle
  * single items.
  */
-function PlanningLaneCard({ group, label, selected, readyIds, busy, onPickItem, onPickItems, onPlanItems }: PlanningLaneCardProps) {
+function PlanningLaneCard({ group, label, selected, readyIds, lensTag = '', lensItemIds, busy, onPickItem, onPickItems, onPlanItems }: PlanningLaneCardProps) {
   const title = group.title ?? group.ref;
   const allSelected = group.itemIds.length > 0 && group.itemIds.every((id) => selected.has(id));
   const readyCount = group.itemIds.filter((id) => readyIds.has(id)).length;
+  const lensCount = lensItemIds ? group.itemIds.filter((id) => lensItemIds.has(id)).length : 0;
   return (
-    <div className={`flex flex-col gap-1.5 rounded-md border bg-card p-2.5 ${allSelected ? 'border-primary ring-1 ring-primary' : 'border-border'}`}>
-      <span className="text-xs font-semibold text-text-bright">{title}</span>
+    <div className={`flex flex-col gap-1.5 rounded-md border bg-card p-2.5 ${allSelected ? 'border-primary ring-1 ring-primary' : lensTag && lensCount > 0 ? 'border-[color:var(--lane-ready)]/50' : 'border-border'}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-text-bright">{title}</span>
+        {lensTag && lensCount > 0 && (
+          <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]" title={`${lensCount} item${lensCount === 1 ? '' : 's'} in this lane are tagged “${lensTag}”`}>
+            {lensCount} in {lensTag}
+          </span>
+        )}
+      </div>
       <div className="flex flex-wrap gap-1">
         {group.itemIds.map((id) => (
           <button

@@ -10,6 +10,7 @@ import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
 import type { Artifact, Detail, PlanData, PlanDetail, PlanSetDetail, Readiness } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
+import { intersectsLens } from '@/lib/lens';
 import { PlanDetailCard } from './plans/plan-detail';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
 
@@ -18,12 +19,17 @@ const bridge = getBridge();
 interface PlansViewProps {
   artifacts: Artifact[];
   onRefresh: () => Promise<void>;
+  lensTag?: string;
+  lensItemIds?: Set<string>;
 }
 
-export function PlansView({ artifacts, onRefresh }: PlansViewProps) {
+export function PlansView({ artifacts, onRefresh, lensTag = '', lensItemIds }: PlansViewProps) {
   const router = useRouter();
   const toast = useToast();
-  const selectedKey = router.segments[1] ?? '';
+  const selectedKey = router.query.get('plan') ?? '';
+  const selectPlan = React.useCallback((key: string) => {
+    router.setQuery((params) => { if (key) params.set('plan', key); else params.delete('plan'); });
+  }, [router]);
   const [detail, setDetail] = React.useState<Detail>(null);
   const [creating, setCreating] = React.useState(false);
 
@@ -72,19 +78,26 @@ export function PlansView({ artifacts, onRefresh }: PlansViewProps) {
             {creating && <CreatePlanForm onClose={() => setCreating(false)} onCreated={onRefresh} />}
             {artifacts.length === 0
               ? <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No planning artifacts found.</p>
-              : artifacts.map((artifact) => (
+              : artifacts.map((artifact) => {
+                const inLens = Boolean(lensTag) && intersectsLens(artifact.sourceRefs?.sourceItemIds ?? artifact.sourceRefs?.itemIds, lensItemIds ?? new Set());
+                return (
                 <button
                   key={artifact.key}
-                  onClick={() => router.navigate(`plans/${artifact.key}`)}
-                  className={`rounded-md border p-3 text-left transition-colors hover:bg-accent ${selectedKey === artifact.key ? 'border-primary bg-accent' : 'border-border'}`}
+                  onClick={() => selectPlan(artifact.key)}
+                  className={`rounded-md border p-3 text-left transition-colors hover:bg-accent ${selectedKey === artifact.key ? 'border-primary bg-accent' : inLens ? 'border-[color:var(--lane-ready)]/50' : 'border-border'} ${lensTag && !inLens ? 'opacity-50' : ''}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium text-text-bright">{artifactTitle(artifact)}</span>
                     <Badge variant={artifact.ready ? 'default' : 'outline'}>{artifact.status ?? 'unknown'}</Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{artifact.kind === 'plan-set' ? `${artifact.childCount ?? 0} child plans` : artifact.session}</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground">{artifact.kind === 'plan-set' ? `${artifact.childCount ?? 0} child plans` : artifact.session}</p>
+                    <ArtifactBuildChip artifact={artifact} />
+                    {inLens && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]">in {lensTag}</span>}
+                  </div>
                 </button>
-              ))}
+                );
+              })}
           </CardContent>
         </Card>
       </aside>
@@ -93,7 +106,7 @@ export function PlansView({ artifacts, onRefresh }: PlansViewProps) {
         {isPlanDetail(detail) && detail.plan
           ? <PlanDetailCard detail={{ ...detail, plan: detail.plan }} onApply={applyResult} onRefresh={onRefresh} onDeleted={async () => {
             setDetail(null);
-            router.navigate('plans');
+            selectPlan('');
             await onRefresh();
           }} />
           : detail
@@ -138,6 +151,29 @@ function CreatePlanForm({ onClose, onCreated }: { onClose: () => void; onCreated
       </div>
     </form>
   );
+}
+
+// Build-lineage chip: a plan's own build status, derived from its lifecycle
+// projection. This is a per-artifact reference to global build state - clicking
+// into the plan shows the full evidence and links out to the run; the chip never
+// mirrors the global queue here.
+const BUILD_CHIP: Record<string, { label: string; className: string }> = {
+  queued: { label: 'Queued', className: 'border-[color:var(--lane-ready)]/40 text-[color:var(--lane-ready)] bg-[color:var(--lane-ready)]/10' },
+  building: { label: 'Building', className: 'border-[color:var(--lane-progress)]/40 text-[color:var(--lane-progress)] bg-[color:var(--lane-progress)]/10' },
+  active: { label: 'Building', className: 'border-[color:var(--lane-progress)]/40 text-[color:var(--lane-progress)] bg-[color:var(--lane-progress)]/10' },
+  'pr-open': { label: 'PR open', className: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10' },
+  partial: { label: 'Partial', className: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10' },
+  failed: { label: 'Failed', className: 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)] bg-[color:var(--lane-blocked)]/10' },
+  merged: { label: 'Shipped', className: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10' },
+  shipped: { label: 'Shipped', className: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10' },
+  landed: { label: 'Shipped', className: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10' },
+};
+
+function ArtifactBuildChip({ artifact }: { artifact: Artifact }) {
+  const state = (artifact.lifecycleState ?? '').toLowerCase();
+  const chip = BUILD_CHIP[state];
+  if (!chip) return null;
+  return <span className={`rounded border px-1.5 py-0.5 text-2xs font-semibold ${chip.className}`}>{chip.label}</span>;
 }
 
 function artifactTitle(artifact: Artifact) {

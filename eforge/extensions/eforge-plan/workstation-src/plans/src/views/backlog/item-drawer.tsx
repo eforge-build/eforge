@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { X } from 'lucide-react';
+import { ClipboardList, X } from 'lucide-react';
 import { getBridge } from '@/bridge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
 import { mergeCompactItemDetail } from '@/lib/compact-board-adapter';
+import type { PlanLink } from '@/lib/plan-links';
 import type { BoardItem, CompactBoardDetailResponse, DependencyRef, Epic } from '@/types';
 import { shortId } from './board-model';
 import { LifecyclePanel } from './lifecycle-panel';
@@ -16,6 +18,9 @@ const NO_EPIC = '';
 interface ItemDrawerProps {
   item: BoardItem;
   epics: Epic[];
+  /** Plans whose source refs name this item, for the reverse linkage. */
+  plans?: PlanLink[];
+  onOpenPlan?: (key: string) => void;
   onClose: () => void;
   onRefresh: () => Promise<void>;
   selectedItemIds?: string[];
@@ -28,7 +33,7 @@ interface ItemDrawerProps {
  * `update-item` action. Lanes stay derived from status, dependencies, and
  * trace activity, so the drawer explains when an edit will not move the card.
  */
-export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps) {
+export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRefresh }: ItemDrawerProps) {
   const toast = useToast();
   const [status, setStatus] = React.useState(item.status);
   const [priority, setPriority] = React.useState(item.priority);
@@ -129,6 +134,28 @@ export function ItemDrawer({ item, epics, onClose, onRefresh }: ItemDrawerProps)
             )}
           </div>
         </section>
+
+        {plans.length > 0 && (
+          <Section title={`Planned in ${plans.length === 1 ? 'plan' : `${plans.length} plans`}`}>
+            <ul className="grid gap-1">
+              {plans.map((plan) => (
+                <li key={plan.key}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenPlan?.(plan.key)}
+                    disabled={!onOpenPlan}
+                    title={`Open plan ${plan.title}`}
+                    className="flex w-full items-center gap-2 rounded border border-border bg-card p-2 text-left text-xs transition-colors hover:border-primary disabled:cursor-default disabled:hover:border-border"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-text-bright">{plan.title}</span>
+                    {plan.status && <Badge variant="outline" className="shrink-0">{plan.status}</Badge>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
 
         {detailLoading && <p className="mt-4 rounded border border-border bg-background p-2 text-xs text-muted-foreground">Loading item details…</p>}
         {detailError && <p className="mt-4 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive-foreground">{detailError}</p>}

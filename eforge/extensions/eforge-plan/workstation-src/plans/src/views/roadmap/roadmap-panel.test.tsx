@@ -5,33 +5,49 @@ import { ToastProvider } from '@/components/toast';
 import { getMockRoadmapState } from '@/fixtures/mock-roadmap';
 import { mockActiveRecommendationRefreshTask, mockRecommendationFreshnessFresh, mockRecommendationFreshnessMissing, mockRecommendationFreshnessStale, mockRecommendationStatusStale } from '@/fixtures/mock-data';
 import type { RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
-import { RoadmapPanel } from './roadmap-panel';
+import { RoadmapContextRail, RoadmapFocus } from './roadmap-panel';
 
-function renderPanel(overrides: Partial<React.ComponentProps<typeof RoadmapPanel>> = {}) {
+function mockRefresh() {
+  return { task: mockActiveRecommendationRefreshTask, entry: { taskId: mockActiveRecommendationRefreshTask.taskId, originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: mockActiveRecommendationRefreshTask.createdAt }, sourceFingerprint: 'fingerprint' };
+}
+
+function renderFocus(overrides: Partial<React.ComponentProps<typeof RoadmapFocus>> = {}) {
   const state = getMockRoadmapState();
-  const props: React.ComponentProps<typeof RoadmapPanel> = {
+  const props: React.ComponentProps<typeof RoadmapFocus> = {
+    state,
+    recommendationStatus: mockRecommendationStatusStale,
+    recommendationFreshness: mockRecommendationFreshnessStale,
+    activeRecommendationRefreshTask: null,
+    onSaveLocalFocus: vi.fn(async () => state),
+    onRefreshRecommendations: vi.fn(async () => mockRefresh()),
+    ...overrides,
+  };
+  return { ...render(<ToastProvider><RoadmapFocus {...props} /></ToastProvider>), props };
+}
+
+function renderRail(overrides: Partial<React.ComponentProps<typeof RoadmapContextRail>> = {}) {
+  const state = getMockRoadmapState();
+  const props: React.ComponentProps<typeof RoadmapContextRail> = {
     state,
     loading: false,
     recommendationStatus: mockRecommendationStatusStale,
     recommendationFreshness: mockRecommendationFreshnessStale,
     activeRecommendationRefreshTask: null,
-    onSaveLocalFocus: vi.fn(async () => state),
-    onRefreshRecommendations: vi.fn(async () => ({ task: mockActiveRecommendationRefreshTask, entry: { taskId: mockActiveRecommendationRefreshTask.taskId, originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: mockActiveRecommendationRefreshTask.createdAt }, sourceFingerprint: 'fingerprint' })),
     onReloadRoadmap: vi.fn(async () => undefined),
     ...overrides,
   };
-  return { ...render(<ToastProvider><RoadmapPanel {...props} /></ToastProvider>), props };
+  return { ...render(<RoadmapContextRail {...props} />), props };
 }
 
-describe('RoadmapPanel', () => {
+describe('RoadmapContextRail', () => {
   it('renders recommendation summary chips from server freshness states', () => {
-    const { rerender } = renderPanel({ recommendationFreshness: mockRecommendationFreshnessMissing });
+    const { rerender } = renderRail({ recommendationFreshness: mockRecommendationFreshnessMissing });
     expect(screen.getByText('recommendations missing')).toBeTruthy();
 
-    rerender(<ToastProvider><RoadmapPanel state={getMockRoadmapState()} loading={false} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessFresh} activeRecommendationRefreshTask={null} onSaveLocalFocus={vi.fn()} onRefreshRecommendations={vi.fn()} onReloadRoadmap={vi.fn()} /></ToastProvider>);
+    rerender(<RoadmapContextRail state={getMockRoadmapState()} loading={false} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessFresh} activeRecommendationRefreshTask={null} onReloadRoadmap={vi.fn()} />);
     expect(screen.getByText('recommendations fresh')).toBeTruthy();
 
-    rerender(<ToastProvider><RoadmapPanel state={getMockRoadmapState()} loading={false} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={vi.fn()} onRefreshRecommendations={vi.fn()} onReloadRoadmap={vi.fn()} /></ToastProvider>);
+    rerender(<RoadmapContextRail state={getMockRoadmapState()} loading={false} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onReloadRoadmap={vi.fn()} />);
     expect(screen.getByText('recommendations stale')).toBeTruthy();
   });
 
@@ -40,7 +56,7 @@ describe('RoadmapPanel', () => {
     const projectedLocalFocusPath = 'projected://local-focus-roadmap.md';
     state.storagePaths.localFocus = projectedLocalFocusPath;
     state.context.localSteering = { ...state.context.localSteering, path: projectedLocalFocusPath };
-    renderPanel({ state });
+    renderRail({ state });
 
     expect(screen.getAllByText('Local focus').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Configured shared context').length).toBeGreaterThan(0);
@@ -70,10 +86,36 @@ describe('RoadmapPanel', () => {
     expect(screen.getByText(/Truncation: 0 source content fields and 1 source excerpts/i)).toBeTruthy();
   });
 
+  it('surfaces source read errors in source rows without treating them as editable shared files', () => {
+    const state = getMockRoadmapState();
+    state.context.sharedContextSources = [{
+      ...state.context.sharedContextSources[0]!,
+      exists: true,
+      readError: 'Failed to read roadmap source "docs/shared-roadmap.md": permission denied',
+      headings: [],
+      excerpts: [],
+    }];
+
+    renderRail({ state });
+
+    expect(screen.getByText('read error')).toBeTruthy();
+    expect(screen.getByText(/permission denied/i)).toBeTruthy();
+    expect(screen.getAllByText('read-only').length).toBeGreaterThan(0);
+  });
+
+  it('disables reload while loading and invokes it otherwise', () => {
+    const onReloadRoadmap = vi.fn(async () => undefined);
+    renderRail({ onReloadRoadmap });
+    fireEvent.click(screen.getByRole('button', { name: /Reload/i }));
+    expect(onReloadRoadmap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RoadmapFocus', () => {
   it('saves local focus content with the current expected hash and no sharedSources key', async () => {
     const state = getMockRoadmapState();
     const onSaveLocalFocus = vi.fn(async (input: UpdateRoadmapStateRequest): Promise<RoadmapStateResponse> => ({ ...state, context: { ...state.context, localSteering: { ...state.context.localSteering, content: input.localFocusContent ?? '' } } }));
-    renderPanel({ state, onSaveLocalFocus });
+    renderFocus({ state, onSaveLocalFocus });
 
     fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: '# Local focus\n\nChanged.\n' } });
     fireEvent.click(screen.getByRole('button', { name: /Save local focus/i }));
@@ -86,7 +128,7 @@ describe('RoadmapPanel', () => {
   it('disables save for over-limit local focus content and displays byte feedback', () => {
     const state = getMockRoadmapState();
     state.context.localSteering = { ...state.context.localSteering, maxContentBytes: 3 };
-    renderPanel({ state });
+    renderFocus({ state });
 
     fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: 'abcd' } });
 
@@ -98,7 +140,7 @@ describe('RoadmapPanel', () => {
     const state = getMockRoadmapState();
     state.context.localSteering = { ...state.context.localSteering, contentTruncated: true };
     const onSaveLocalFocus = vi.fn(async () => state);
-    renderPanel({ state, onSaveLocalFocus });
+    renderFocus({ state, onSaveLocalFocus });
 
     fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: 'dirty truncated content' } });
 
@@ -109,7 +151,7 @@ describe('RoadmapPanel', () => {
 
   it('resets the draft to saved content and disables save', () => {
     const state = getMockRoadmapState();
-    renderPanel({ state });
+    renderFocus({ state });
     const textarea = screen.getByLabelText('Local focus roadmap') as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: 'dirty' } });
@@ -122,9 +164,9 @@ describe('RoadmapPanel', () => {
 
   it('disables recommendation refresh while dirty and only invokes after saved content matches', async () => {
     const state = getMockRoadmapState();
-    const onRefreshRecommendations = vi.fn(async () => ({ task: mockActiveRecommendationRefreshTask, entry: { taskId: mockActiveRecommendationRefreshTask.taskId, originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: mockActiveRecommendationRefreshTask.createdAt }, sourceFingerprint: 'fingerprint' }));
+    const onRefreshRecommendations = vi.fn(async () => mockRefresh());
     const onSaveLocalFocus = vi.fn(async (input: UpdateRoadmapStateRequest) => ({ ...state, context: { ...state.context, localSteering: { ...state.context.localSteering, content: input.localFocusContent ?? '' } } }));
-    const { rerender } = render(<ToastProvider><RoadmapPanel state={state} loading={false} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={onSaveLocalFocus} onRefreshRecommendations={onRefreshRecommendations} onReloadRoadmap={vi.fn()} /></ToastProvider>);
+    const { rerender } = render(<ToastProvider><RoadmapFocus state={state} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={onSaveLocalFocus} onRefreshRecommendations={onRefreshRecommendations} /></ToastProvider>);
 
     fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: 'dirty' } });
     expect((screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }) as HTMLButtonElement).disabled).toBe(true);
@@ -132,7 +174,7 @@ describe('RoadmapPanel', () => {
     expect(onRefreshRecommendations).not.toHaveBeenCalled();
 
     const savedState = { ...state, context: { ...state.context, localSteering: { ...state.context.localSteering, content: 'dirty' } } };
-    rerender(<ToastProvider><RoadmapPanel state={savedState} loading={false} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={onSaveLocalFocus} onRefreshRecommendations={onRefreshRecommendations} onReloadRoadmap={vi.fn()} /></ToastProvider>);
+    rerender(<ToastProvider><RoadmapFocus state={savedState} recommendationStatus={mockRecommendationStatusStale} recommendationFreshness={mockRecommendationFreshnessStale} activeRecommendationRefreshTask={null} onSaveLocalFocus={onSaveLocalFocus} onRefreshRecommendations={onRefreshRecommendations} /></ToastProvider>);
     fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }));
 
     await waitFor(() => expect(onRefreshRecommendations).toHaveBeenCalledTimes(1));
@@ -142,8 +184,8 @@ describe('RoadmapPanel', () => {
     const state = getMockRoadmapState();
     let resolveSave!: (value: RoadmapStateResponse) => void;
     const onSaveLocalFocus = vi.fn(() => new Promise<RoadmapStateResponse>((resolve) => { resolveSave = resolve; }));
-    const onRefreshRecommendations = vi.fn(async () => ({ task: mockActiveRecommendationRefreshTask, entry: { taskId: mockActiveRecommendationRefreshTask.taskId, originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: mockActiveRecommendationRefreshTask.createdAt }, sourceFingerprint: 'fingerprint' }));
-    renderPanel({ state, onSaveLocalFocus, onRefreshRecommendations });
+    const onRefreshRecommendations = vi.fn(async () => mockRefresh());
+    renderFocus({ state, onSaveLocalFocus, onRefreshRecommendations });
 
     fireEvent.change(screen.getByLabelText('Local focus roadmap'), { target: { value: '# Local focus\n\nSaving.\n' } });
     fireEvent.click(screen.getByRole('button', { name: /Save local focus/i }));
@@ -156,33 +198,16 @@ describe('RoadmapPanel', () => {
     resolveSave(state);
   });
 
-  it('surfaces source read errors in source rows without treating them as editable shared files', () => {
-    const state = getMockRoadmapState();
-    state.context.sharedContextSources = [{
-      ...state.context.sharedContextSources[0]!,
-      exists: true,
-      readError: 'Failed to read roadmap source "docs/shared-roadmap.md": permission denied',
-      headings: [],
-      excerpts: [],
-    }];
-
-    renderPanel({ state });
-
-    expect(screen.getByText('read error')).toBeTruthy();
-    expect(screen.getByText(/permission denied/i)).toBeTruthy();
-    expect(screen.getAllByText('read-only').length).toBeGreaterThan(0);
-  });
-
   it('disables recommendation refresh while an active task is queued or running and displays progress', () => {
-    renderPanel({ activeRecommendationRefreshTask: mockActiveRecommendationRefreshTask });
+    renderFocus({ activeRecommendationRefreshTask: mockActiveRecommendationRefreshTask });
 
     expect((screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Refreshing recommendations/i)).toBeTruthy();
   });
 
   it('invokes refresh action and shows a success toast containing the task id', async () => {
-    const onRefreshRecommendations = vi.fn(async () => ({ task: mockActiveRecommendationRefreshTask, entry: { taskId: mockActiveRecommendationRefreshTask.taskId, originalRequest: '', derivedRequest: '', selection: {}, requestedOutputSections: ['recommendations'], createdAt: mockActiveRecommendationRefreshTask.createdAt }, sourceFingerprint: 'fingerprint', reused: true }));
-    renderPanel({ onRefreshRecommendations });
+    const onRefreshRecommendations = vi.fn(async () => ({ ...mockRefresh(), reused: true }));
+    renderFocus({ onRefreshRecommendations });
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh recommendations from roadmap/i }));
 
