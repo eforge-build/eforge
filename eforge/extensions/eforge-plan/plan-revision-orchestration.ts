@@ -178,17 +178,44 @@ function parseResultIfPossible(task: ExtensionAgentTaskRecord): Record<string, u
 
 function summarizeFallbackAnnotationSnapshot(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return undefined;
-  const snapshot = value as { steering?: unknown; selectedAnnotationIds?: unknown; openAnnotationIds?: unknown; annotations?: unknown };
+  const snapshot = value as { steering?: unknown; selectedAnnotationIds?: unknown; openAnnotationIds?: unknown; includeOpenAnnotations?: unknown; annotations?: unknown };
+  const selectedAnnotationIds = Array.isArray(snapshot.selectedAnnotationIds) ? snapshot.selectedAnnotationIds : [];
+  const openAnnotationIds = Array.isArray(snapshot.openAnnotationIds) ? snapshot.openAnnotationIds : [];
   const annotations = Array.isArray(snapshot.annotations) ? snapshot.annotations : [];
   return {
-    ...(typeof snapshot.steering === 'string' && { steering: snapshot.steering }),
-    selectedAnnotationIds: Array.isArray(snapshot.selectedAnnotationIds) ? snapshot.selectedAnnotationIds : [],
-    openAnnotationIds: Array.isArray(snapshot.openAnnotationIds) ? snapshot.openAnnotationIds : [],
-    selectedCount: Array.isArray(snapshot.selectedAnnotationIds) ? snapshot.selectedAnnotationIds.length : 0,
-    openCount: Array.isArray(snapshot.openAnnotationIds) ? snapshot.openAnnotationIds.length : 0,
-    annotations: annotations.slice(0, 4).map((entry) => {
-      const annotation = entry !== null && typeof entry === 'object' ? entry as { annotationId?: unknown; target?: { kind?: unknown; dimension?: unknown; label?: unknown }; snapshotReason?: unknown } : {};
-      return { annotationId: annotation.annotationId, snapshotReason: annotation.snapshotReason, target: annotation.target };
-    }),
+    ...(typeof snapshot.steering === 'string' && { steering: boundFallbackText(snapshot.steering, 500) }),
+    includeOpenAnnotations: snapshot.includeOpenAnnotations === true,
+    selectedAnnotationIds,
+    openAnnotationIds,
+    selectedCount: selectedAnnotationIds.length,
+    openCount: openAnnotationIds.length,
+    annotationCount: annotations.length,
+    annotations: annotations.slice(0, 4).map(summarizeFallbackAnnotation),
   };
+}
+
+function summarizeFallbackAnnotation(entry: unknown): Record<string, unknown> {
+  const annotation = entry !== null && typeof entry === 'object' ? entry as { annotationId?: unknown; body?: unknown; target?: unknown; snapshotReason?: unknown } : {};
+  const target = annotation.target !== null && typeof annotation.target === 'object' ? annotation.target as { kind?: unknown; dimension?: unknown; label?: unknown; capturedText?: unknown; quoteContext?: unknown } : {};
+  const quoteContext = target.quoteContext !== null && typeof target.quoteContext === 'object' ? target.quoteContext as { exact?: unknown; prefix?: unknown; suffix?: unknown } : {};
+  return {
+    annotationId: annotation.annotationId,
+    snapshotReason: annotation.snapshotReason,
+    ...(typeof annotation.body === 'string' && { bodyPreview: boundFallbackText(annotation.body, 160) }),
+    target: {
+      kind: target.kind,
+      ...(typeof target.dimension === 'string' && { dimension: target.dimension }),
+      ...(typeof target.label === 'string' && { label: boundFallbackText(target.label, 120) }),
+      ...(typeof target.capturedText === 'string' && { capturedTextPreview: boundFallbackText(target.capturedText, 160) }),
+      quoteContext: {
+        ...(typeof quoteContext.exact === 'string' && { exactPreview: boundFallbackText(quoteContext.exact, 160) }),
+        ...(typeof quoteContext.prefix === 'string' && { prefixPreview: boundFallbackText(quoteContext.prefix, 120) }),
+        ...(typeof quoteContext.suffix === 'string' && { suffixPreview: boundFallbackText(quoteContext.suffix, 120) }),
+      },
+    },
+  };
+}
+
+function boundFallbackText(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 }
