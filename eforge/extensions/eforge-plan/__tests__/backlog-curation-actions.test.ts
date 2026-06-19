@@ -3,8 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { describe, expect, it } from 'vitest';
 import { analyzeAllBacklogAction } from '../backlog-curation-actions.js';
+import { AnalyzeAllBacklogInputSchema } from '../backlog-curation-schemas.js';
 import { buildSource as buildBacklogCurationTaskSource } from '../backlog-curation-source-provider.js';
 import { markPlanningTaskWorkflowEntryApplied, readPlanningTaskWorkflowIndex } from '../planning-task-workflow-store.js';
 import { writeBacklogItem } from '../markdown-store.js';
@@ -17,6 +19,13 @@ async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 }
 
 describe('analyze-all-backlog action', () => {
+  it('validates scan-mode input with delta as the backward-compatible default', () => {
+    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, {}).success).toBe(true);
+    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'delta' }).success).toBe(true);
+    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'full-implementation-audit' }).success).toBe(true);
+    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'invalid-mode' }).success).toBe(false);
+  });
+
   it('starts a curation planning task with workflow purpose and no build queue side effect', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
@@ -37,9 +46,32 @@ describe('analyze-all-backlog action', () => {
       const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint?: string };
       expect(output.sourceFingerprint).toBeUndefined();
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } } });
+      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'delta' } } } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
-      expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
+      expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', scanMode: 'delta', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
+    });
+  });
+
+  it.each(['delta', 'full-implementation-audit'] as const)('puts explicit %s scan mode into the deferred source-provider input and workflow entry', async (scanMode) => {
+    await withTempProject(async (cwd) => {
+      const starts: unknown[] = [];
+      const ctx = {
+        cwd,
+        signal: new AbortController().signal,
+        agentTasks: {
+          async start(request: unknown) {
+            starts.push(request);
+            return { task: { taskId: `task-${scanMode}`, kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' } };
+          },
+          async get() { throw new Error('not found'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        },
+      };
+
+      const output = await analyzeAllBacklogAction.handler({ scanMode }, ctx as never) as { entry: { scanMode?: string } };
+
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { scanMode } } } });
+      expect(output.entry.scanMode).toBe(scanMode);
     });
   });
 
@@ -72,8 +104,8 @@ describe('analyze-all-backlog action', () => {
       };
 
       await analyzeAllBacklogAction.handler({}, ctx as never);
-      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } } });
-      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal });
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'delta' } } } });
+      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: { scanMode: 'delta' } });
       const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
 
       expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', evidenceSource: 'git-history' })]);
@@ -105,6 +137,38 @@ describe('analyze-all-backlog action', () => {
       const second = await analyzeAllBacklogAction.handler({}, ctx as never) as { reused?: boolean };
       expect(second.reused).toBe(true);
       expect(started).toHaveLength(1);
+    });
+  });
+
+  it('reuses queued/running curation tasks only when the scan mode matches', async () => {
+    await withTempProject(async (cwd) => {
+      const started: unknown[] = [];
+      const tasks = new Map<string, { taskId: string; kind: string; status: string; createdAt: string; updatedAt: string }>();
+      const ctx = {
+        cwd,
+        signal: new AbortController().signal,
+        agentTasks: {
+          async start() {
+            const task = { taskId: `task-${started.length + 1}`, kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' };
+            started.push(task);
+            tasks.set(task.taskId, task);
+            return { task };
+          },
+          async get(taskId: string) { const task = tasks.get(taskId); if (!task) throw new Error('not found'); return { task }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        },
+      };
+
+      const delta = await analyzeAllBacklogAction.handler({ scanMode: 'delta' }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const deltaAgain = await analyzeAllBacklogAction.handler({}, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const full = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit' }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const fullAgain = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit' }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+
+      expect(deltaAgain).toMatchObject({ task: { taskId: delta.task.taskId }, reused: true });
+      expect(full.task.taskId).not.toBe(delta.task.taskId);
+      expect(full.reused).toBeUndefined();
+      expect(fullAgain).toMatchObject({ task: { taskId: full.task.taskId }, reused: true });
+      expect(started).toHaveLength(2);
     });
   });
 

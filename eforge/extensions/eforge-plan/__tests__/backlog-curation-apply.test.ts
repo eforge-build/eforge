@@ -361,6 +361,7 @@ describe('backlog curation apply', () => {
       const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
       expect(preview.valid).toBe(true);
+      expect(preview.scanMode).toBe('delta');
       expect(preview.recommendationFreshness?.comparedSourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
       expect(preview.gitDelta).toMatchObject({ baseline: expect.any(Object) });
       expect(preview.recommendationProjection?.effectiveRecommendations).toEqual(apply.recommendations?.recommendations);
@@ -402,7 +403,25 @@ describe('backlog curation apply', () => {
 
       await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
-      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation:delta', sourceFingerprint: source.sourceFingerprint });
+    });
+  });
+
+  it('records the accepted baseline using the workflow entry scan mode', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Ready to plan.' }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation:full-implementation-audit', sourceFingerprint: source.sourceFingerprint });
     });
   });
 
@@ -424,7 +443,7 @@ describe('backlog curation apply', () => {
       expect(result.recommendationProjection?.validation.valid).toBe(false);
       expect(await readRecommendations(cwd)).toBeNull();
       expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(false);
-      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation:delta', sourceFingerprint: source.sourceFingerprint });
     });
   });
 

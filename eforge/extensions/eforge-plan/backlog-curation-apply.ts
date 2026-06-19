@@ -21,7 +21,7 @@ import { computeRecommendationSourceFingerprint, computeRecommendationSourceFing
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
 import type { ApplyPlanningAgentTaskResultInput, PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
-import type { BacklogCurationApplyDetails, BacklogCurationPreviewDetails, BacklogCurationRecommendationProjection, RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
+import { DEFAULT_BACKLOG_CURATION_SCAN_MODE, type BacklogCurationApplyDetails, type BacklogCurationPreviewDetails, type BacklogCurationRecommendationProjection, type RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
 import { readBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { RecommendationBlockedChainSchema, RecommendationItemRefSchema, RecommendationProfileSchema } from './schema.js';
 import type { BacklogRecommendationModel } from './schema.js';
@@ -80,7 +80,7 @@ export async function applyBacklogCurationDraftFromTask(
       recommendationStatus = await markRecommendationsStaleForBacklogMutation(cwd, 'backlog-curation', changedIds) ?? undefined;
     }
   }
-  await recordAcceptedAnalysisBaselineForApply(cwd, { taskId: task.taskId, passKind: 'backlog-curation', sourceFingerprint: prepared.draft.sourceFingerprint });
+  await recordAcceptedAnalysisBaselineForApply(cwd, { taskId: task.taskId, passKind: 'backlog-curation', scanMode: entry?.scanMode ?? 'delta', sourceFingerprint: prepared.draft.sourceFingerprint });
   await markPlanningTaskWorkflowEntryApplied(cwd, task.taskId, new Date().toISOString());
   return {
     itemChanges: prepared.draft.itemChanges.length,
@@ -108,8 +108,10 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
       readRecommendationFreshnessView(cwd, prepared.prospectiveRecommendationSourceFingerprint),
       readBacklogCurationSourcePreviewMetadata(cwd, prepared.draft.sourceFingerprint),
     ]);
+    const previewScanMode = sourceMetadata?.scanMode ?? entry?.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE;
     return {
       valid: prepared.generatedRecommendationValidation.valid,
+      scanMode: previewScanMode,
       itemChanges: prepared.draft.itemChanges.length,
       epicChanges: prepared.draft.epicChanges.length,
       noOpRechecks: prepared.effectiveRechecks.length,

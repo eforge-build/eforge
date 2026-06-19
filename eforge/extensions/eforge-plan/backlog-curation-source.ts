@@ -19,7 +19,7 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
-import { BacklogCurationGitDeltaPreviewSchema, type BacklogCurationGitDeltaPreview } from './backlog-curation-schemas.js';
+import { BacklogCurationGitDeltaPreviewSchema, BacklogCurationScanModeSchema, normalizeBacklogCurationScanMode, type BacklogCurationGitDeltaPreview, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
@@ -30,6 +30,7 @@ export interface BacklogCurationSourceBuild {
 export interface BacklogCurationSourcePreviewMetadata {
   sourceFingerprint: string;
   generatedAt?: string;
+  scanMode?: BacklogCurationScanMode;
   gitDelta?: BacklogCurationGitDeltaPreview;
 }
 
@@ -48,6 +49,7 @@ export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
 
 interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
+  scanMode?: BacklogCurationScanMode;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
   gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
@@ -76,15 +78,18 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
     return null;
   }
   const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
+  const scanMode = parsed.scanMode === undefined ? undefined : safeParseWithSchema(BacklogCurationScanModeSchema, parsed.scanMode);
   return {
     sourceFingerprint,
     ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
+    ...(scanMode?.success && { scanMode: scanMode.data }),
     ...(gitDelta?.success && { gitDelta: gitDelta.data }),
   };
 }
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
+  const scanMode = normalizeBacklogCurationScanMode(options.scanMode);
   const [itemSnapshots, epicSnapshots, recommendationProjection, recommendations] = await Promise.all([
     listBacklogItemSnapshots(cwd),
     listBacklogEpicSnapshots(cwd),
@@ -110,6 +115,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
     schemaVersion: 1,
+    scanMode,
     recommendationSourceProjection: projectRecommendationSourceForFingerprint(recommendationProjection),
     roadmapContext: projectRoadmapContextForFingerprint(roadmapContext),
     preconditions: {
@@ -127,6 +133,8 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',
+    scanMode,
+    scanModeGuidance: buildScanModeGuidance(scanMode),
     sourceFingerprint,
     generatedAt: new Date().toISOString(),
     openItems,
@@ -420,9 +428,11 @@ function resolveBacklogCurationSourcePreviewMetadataPath(cwd: string, sourceFing
 
 function previewMetadataFromSource(source: BacklogCurationSourceBuild): BacklogCurationSourcePreviewMetadata {
   const gitDelta = safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, source.source.gitDelta);
+  const scanMode = normalizeBacklogCurationScanMode(source.source.scanMode);
   return {
     sourceFingerprint: source.sourceFingerprint,
     ...(typeof source.source.generatedAt === 'string' && { generatedAt: source.source.generatedAt }),
+    scanMode,
     ...(gitDelta.success && { gitDelta: gitDelta.data }),
   };
 }
@@ -450,6 +460,19 @@ function boundString(value: string, limit: number, onTruncate: () => void): stri
   return `${value.slice(0, Math.max(0, limit - 16))}\n…[truncated]`;
 }
 
+function buildScanModeGuidance(scanMode: BacklogCurationScanMode): Record<string, unknown> {
+  if (scanMode === 'full-implementation-audit') {
+    return {
+      mode: scanMode,
+      instruction: 'Audit backlog claims against implementation evidence as fully as the provided source allows. Full implementation evidence collection is not yet attached, so report uncertainty instead of inventing evidence.',
+    };
+  }
+  return {
+    mode: scanMode,
+    instruction: 'Use the accepted-analysis git delta, backlog records, recommendations, roadmap context, traces, and bounded shipped evidence to curate changed or stale backlog records conservatively.',
+  };
+}
+
 function buildSourceText(source: Record<string, unknown>): string {
   let text = JSON.stringify(source, null, 2);
   if (text.length <= SOURCE_TEXT_TARGET) return text;
@@ -460,6 +483,8 @@ function buildSourceText(source: Record<string, unknown>): string {
   const minimal = {
     schemaVersion: source.schemaVersion,
     purpose: source.purpose,
+    scanMode: source.scanMode,
+    scanModeGuidance: source.scanModeGuidance,
     sourceFingerprint: source.sourceFingerprint,
     generatedAt: source.generatedAt,
     openItems: (source.openItems as Array<Record<string, unknown>>).map(minimalRecord),

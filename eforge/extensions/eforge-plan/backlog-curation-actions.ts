@@ -1,7 +1,7 @@
 import { defineExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { toJsonSafeObject } from './json-safe.js';
-import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
+import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, normalizeBacklogCurationScanMode, type AnalyzeAllBacklogInput, type AnalyzeAllBacklogTaskSummary, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 import {
   BACKLOG_CURATION_WORKFLOW_PURPOSE,
   listBacklogCurationWorkflowEntries,
@@ -19,7 +19,7 @@ type AnalyzeAllStartRequest = {
   kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
   input: {
     topic: string;
-    sourceProvider: typeof ANALYZE_ALL_SOURCE_PROVIDER;
+    sourceProvider: typeof ANALYZE_ALL_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode } };
     requestedOutputSections: typeof BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS;
     includeRoadmap: true;
   };
@@ -32,14 +32,15 @@ export const analyzeAllBacklogAction = defineExtensionAction({
   inputSchema: AnalyzeAllBacklogInputSchema,
   outputSchema: AnalyzeAllBacklogOutputSchema,
   sideEffects: ['local-read', 'local-write', 'network', 'daemon-state'],
-  async handler(_input, ctx) {
+  async handler(input: AnalyzeAllBacklogInput, ctx) {
     throwIfAborted(ctx.signal);
-    return await runAnalyzeStartExclusive(ctx.cwd, async () => {
-      const active = await findActiveBacklogCurationTask(ctx);
+    const scanMode = normalizeBacklogCurationScanMode(input.scanMode);
+    return await runAnalyzeStartExclusive(ctx.cwd, scanMode, async () => {
+      const active = await findActiveBacklogCurationTask(ctx, scanMode);
       if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, ...(active.entry.sourceFingerprint !== undefined && { sourceFingerprint: active.entry.sourceFingerprint }), reused: true });
       throwIfAborted(ctx.signal);
-      const response = await startBacklogCurationTask(ctx);
-      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId));
+      const response = await startBacklogCurationTask(ctx, scanMode);
+      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, undefined, undefined, scanMode));
       return toJsonSafeObject({ task: compactTask(response.task), entry });
     });
   },
@@ -47,9 +48,10 @@ export const analyzeAllBacklogAction = defineExtensionAction({
 
 export async function findActiveBacklogCurationTask(
   ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>,
+  scanMode: BacklogCurationScanMode = 'delta',
 ): Promise<{ task: ExtensionAgentTaskRecord; entry: PlanningTaskWorkflowEntry } | undefined> {
   const index = await readPlanningTaskWorkflowIndex(ctx.cwd);
-  for (const entry of listBacklogCurationWorkflowEntries(index)) {
+  for (const entry of listBacklogCurationWorkflowEntries(index, undefined, scanMode)) {
     if (entry.appliedAt !== undefined) continue;
     try {
       const response = await ctx.agentTasks.get(entry.taskId);
@@ -62,27 +64,28 @@ export async function findActiveBacklogCurationTask(
   return undefined;
 }
 
-export function buildBacklogCurationEntry(taskId: string, sourceFingerprint?: string, parent?: PlanningTaskWorkflowEntry): PlanningTaskWorkflowEntry {
+export function buildBacklogCurationEntry(taskId: string, sourceFingerprint?: string, parent?: PlanningTaskWorkflowEntry, scanMode: BacklogCurationScanMode = normalizeBacklogCurationScanMode(parent?.scanMode)): PlanningTaskWorkflowEntry {
   return {
     taskId,
     ...(parent !== undefined && { parentTaskId: parent.taskId }),
     originalRequest: parent?.originalRequest ?? '',
-    derivedRequest: ANALYZE_ALL_TOPIC,
+    derivedRequest: analyzeAllTopicForScanMode(scanMode),
     selection: {},
     requestedOutputSections: [...BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS],
     includeRoadmap: true,
     purpose: BACKLOG_CURATION_WORKFLOW_PURPOSE,
+    scanMode,
     ...(sourceFingerprint !== undefined && { sourceFingerprint }),
     createdAt: new Date().toISOString(),
   };
 }
 
-async function startBacklogCurationTask(ctx: ExtensionActionContext): Promise<{ task: ExtensionAgentTaskRecord }> {
+async function startBacklogCurationTask(ctx: ExtensionActionContext, scanMode: BacklogCurationScanMode): Promise<{ task: ExtensionAgentTaskRecord }> {
   const request: AnalyzeAllStartRequest = {
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
-      topic: ANALYZE_ALL_TOPIC,
-      sourceProvider: ANALYZE_ALL_SOURCE_PROVIDER,
+      topic: analyzeAllTopicForScanMode(scanMode),
+      sourceProvider: { ...ANALYZE_ALL_SOURCE_PROVIDER, input: { scanMode } },
       requestedOutputSections: BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS,
       includeRoadmap: true,
     },
@@ -90,8 +93,8 @@ async function startBacklogCurationTask(ctx: ExtensionActionContext): Promise<{ 
   return await (ctx.agentTasks.start as unknown as (request: AnalyzeAllStartRequest) => Promise<{ task: ExtensionAgentTaskRecord }>)(request);
 }
 
-function runAnalyzeStartExclusive<T>(cwd: string, task: () => Promise<T>): Promise<T> {
-  const key = `${cwd}\0analyze-all-backlog`;
+function runAnalyzeStartExclusive<T>(cwd: string, scanMode: BacklogCurationScanMode, task: () => Promise<T>): Promise<T> {
+  const key = `${cwd}\0analyze-all-backlog\0${scanMode}`;
   const prior = analyzeStartChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
   let chain: Promise<unknown>;
@@ -113,6 +116,12 @@ async function recordEntryOrCancelTask(ctx: Pick<ExtensionActionContext, 'cwd' |
     }
     throw recordError;
   }
+}
+
+function analyzeAllTopicForScanMode(scanMode: BacklogCurationScanMode): string {
+  return scanMode === 'full-implementation-audit'
+    ? 'Analyze and curate all open eforge-plan backlog records using full implementation audit mode.'
+    : ANALYZE_ALL_TOPIC;
 }
 
 function compactTask(task: ExtensionAgentTaskRecord): AnalyzeAllBacklogTaskSummary {

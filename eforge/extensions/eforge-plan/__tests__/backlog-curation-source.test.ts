@@ -5,7 +5,7 @@ import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { writeAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
-import { BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS, buildBacklogCurationSource } from '../backlog-curation-source.js';
+import { BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS, buildBacklogCurationSource, readBacklogCurationSourcePreviewMetadata, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
@@ -93,6 +93,31 @@ describe('backlog curation source', () => {
       expect(afterBodyChange.sourceFingerprint).not.toBe(first.sourceFingerprint);
       expect(afterRoadmapChange.sourceFingerprint).not.toBe(afterBodyChange.sourceFingerprint);
       expect(afterRoadmapChange.sourceText).toContain('roadmapContext');
+    });
+  });
+
+  it('changes the source fingerprint and guidance when scan mode changes for the same backlog state', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
+      const delta = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'delta' });
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+      const deltaPacket = JSON.parse(delta.sourceText) as { scanMode: string; scanModeGuidance: Record<string, unknown> };
+      const fullPacket = JSON.parse(full.sourceText) as { scanMode: string; scanModeGuidance: Record<string, unknown> };
+
+      expect(full.sourceFingerprint).not.toBe(delta.sourceFingerprint);
+      expect(deltaPacket).toMatchObject({ scanMode: 'delta', scanModeGuidance: { mode: 'delta' } });
+      expect(fullPacket).toMatchObject({ scanMode: 'full-implementation-audit', scanModeGuidance: { mode: 'full-implementation-audit' } });
+    });
+  });
+
+  it('persists scan mode in source preview metadata', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+
+      await expect(readBacklogCurationSourcePreviewMetadata(cwd, source.sourceFingerprint)).resolves.toMatchObject({ sourceFingerprint: source.sourceFingerprint, scanMode: 'full-implementation-audit' });
     });
   });
 
