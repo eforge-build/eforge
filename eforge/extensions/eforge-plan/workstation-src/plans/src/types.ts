@@ -4,9 +4,7 @@ export type JsonObject = ExtensionJsonObject;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
 
-// --- eforge:region plan-03-workstation-docs ---
 export type BacklogCurationScanMode = 'delta' | 'full-implementation-audit';
-// --- eforge:endregion plan-03-workstation-docs ---
 
 export interface EforgeBridge {
   version?: number;
@@ -245,26 +243,20 @@ export interface BacklogCurationRecommendationProjection { effectiveRecommendati
 export interface BacklogCurationGitDeltaDiagnostic { severity: 'warning' | 'info'; code: string; message?: string; commit?: string; }
 export interface BacklogCurationGitDeltaCandidate { itemId?: string; epicId?: string; commit?: unknown; evidence?: string; intent?: 'shipped' | 'superseded' | 'affected' | 'ambiguous-shipped' | 'ambiguous-superseded' | string; confidence?: 'strong' | 'medium' | 'ambiguous' | string; }
 export interface BacklogCurationGitDeltaPreview { baseline?: { source?: string; commit?: string | null; time?: string; taskId?: string; sourceFingerprint?: string; generatedAt?: string } | null; currentHead?: { commit?: string; time?: string; sourceFingerprint?: string; generatedAt?: string } | null; coverage?: { kind: 'complete' | 'bounded' | 'unavailable' | string; message?: string; reason?: string }; caps?: { commitScanCount?: number; changedPathCount?: number; excerptCount?: number; excerptBytes?: number; prEnrichmentCount?: number; subprocessTimeoutMs?: number }; scannedCommitCount?: number; scannedCommits?: unknown[]; diagnostics?: BacklogCurationGitDeltaDiagnostic[]; affectedItemCandidates?: BacklogCurationGitDeltaCandidate[]; }
-// --- eforge:region plan-03-workstation-docs ---
 export interface BacklogCurationFullAuditDiagnostic { severity: 'warning' | 'info'; code: string; message?: string; path?: string; }
 export interface BacklogCurationFullAuditEvidenceSummary { source: string; confidence: string; matchedBy?: string[]; path?: string; excerpt?: string; evidence?: string; citation?: string; intent?: string; }
 export interface BacklogCurationFullAuditItemSummary { itemId: string; candidateIntent: string; evidenceCount?: number; confidence?: string; evidence?: BacklogCurationFullAuditEvidenceSummary[]; closureCandidates?: BacklogCurationFullAuditEvidenceSummary[]; }
 export interface BacklogCurationFullAuditPreview { scope?: { itemIds: string[]; openItemCount?: number }; coverage?: { auditedItemCount: number; currentStateFileCount?: number; gitHistoryCommitCount?: number; pullRequestCount?: number }; caps?: { fileScanCount?: number; fileBytes?: number; evidencePerItem?: number; pathsPerCategory?: number; excerptBytes?: number; diagnosticCount?: number; gitCommitScanCount?: number; prEnrichmentCount?: number }; diagnostics?: BacklogCurationFullAuditDiagnostic[]; itemSummaries?: BacklogCurationFullAuditItemSummary[]; }
-// --- eforge:endregion plan-03-workstation-docs ---
 export interface BacklogCurationPreviewDetails {
   valid: boolean;
-  // --- eforge:region plan-03-workstation-docs ---
   scanMode?: BacklogCurationScanMode;
-  // --- eforge:endregion plan-03-workstation-docs ---
   itemChanges?: number;
   epicChanges?: number;
   noOpRechecks?: number;
   recommendationProjection?: BacklogCurationRecommendationProjection;
   recommendationFreshness?: RecommendationFreshnessView;
   gitDelta?: BacklogCurationGitDeltaPreview;
-  // --- eforge:region plan-03-workstation-docs ---
   fullImplementationAudit?: BacklogCurationFullAuditPreview;
-  // --- eforge:endregion plan-03-workstation-docs ---
   generatedRecommendationValidation?: RecommendationReferenceValidationResult;
   errors?: BacklogCurationPreviewValidationError[];
 }
@@ -402,9 +394,7 @@ export interface PlanningTaskWorkflowEntry {
   planningDepth?: string;
   includeRoadmap?: boolean;
   purpose?: 'recommendation-refresh' | 'backlog-curation';
-  // --- eforge:region plan-03-workstation-docs ---
   scanMode?: BacklogCurationScanMode;
-  // --- eforge:endregion plan-03-workstation-docs ---
   sourceFingerprint?: string;
   appliedAt?: string;
   createdAt: string;

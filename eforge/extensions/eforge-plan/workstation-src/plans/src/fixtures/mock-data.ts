@@ -392,7 +392,6 @@ export const mockBacklogCurationPreview = {
   generatedRecommendationValidation: { valid: false, issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', kind: 'item' as const, reason: 'closed' as const, status: 'shipped', title: 'Closed dependency', message: 'Generated recommendation references closed item closed-dep.' }] },
 };
 
-// --- eforge:region plan-03-workstation-docs ---
 export const mockFullAuditBacklogCurationPreview = {
   ...mockBacklogCurationPreview,
   scanMode: 'full-implementation-audit' as const,
@@ -412,7 +411,6 @@ export const mockFullAuditBacklogCurationPreview = {
     ],
   },
 };
-// --- eforge:endregion plan-03-workstation-docs ---
 
 export const mockBacklogCurationTask: PlanningAgentTaskRecord = {
   taskId: 'task-backlog-curation-ready', kind: TASK_KIND, status: 'completed',

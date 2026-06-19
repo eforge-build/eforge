@@ -11,9 +11,7 @@ export interface CurationCounts {
 
 export interface DisplayRow { label: string; value: string; }
 
-// --- eforge:region plan-03-workstation-docs ---
 export interface FullAuditEvidenceMatch { source: string; confidence: string; path?: string; excerpt?: string; matchedBy: string[]; }
-// --- eforge:endregion plan-03-workstation-docs ---
 
 // --- eforge:region curation-preview-metadata ---
 export interface CurationEvidencePreview {
@@ -86,7 +84,6 @@ export function recommendationSummaryCounts(recommendations?: RecommendationMode
   return { activeWork, readyCandidates, nextSequence, safeParallelGroups, blockedChains, total: activeWork + readyCandidates + nextSequence + safeParallelGroups + blockedChains };
 }
 
-// --- eforge:region plan-03-workstation-docs ---
 export function normalizeCurationScanMode(value: BacklogCurationScanMode | undefined): BacklogCurationScanMode {
   return value === 'full-implementation-audit' ? 'full-implementation-audit' : 'delta';
 }
@@ -171,7 +168,6 @@ function bytesRow(label: string, value: number | undefined): DisplayRow | undefi
   if (value < 1024 * 1024) return { label, value: `${(value / 1024).toFixed(1)} KiB` };
   return { label, value: `${(value / (1024 * 1024)).toFixed(1)} MiB` };
 }
-// --- eforge:endregion plan-03-workstation-docs ---
 
 // --- eforge:region curation-preview-metadata ---
 const LIFECYCLE_LABEL = 'Shipped evidence: lifecycle trace';

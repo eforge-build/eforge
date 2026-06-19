@@ -8,7 +8,6 @@ import {
 } from '@eforge-build/client';
 import { BacklogStatusSchema, JsonValueSchema, RecommendationBlockedChainSchema, RecommendationDerivedStatusSchema, RecommendationItemRefSchema, RecommendationProfileSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
-// --- eforge:region plan-01-scan-mode-plumbing ---
 export const BACKLOG_CURATION_SCAN_MODES = ['delta', 'full-implementation-audit'] as const;
 export const DEFAULT_BACKLOG_CURATION_SCAN_MODE = 'delta' as const;
 export const BacklogCurationScanModeSchema = Type.Union(BACKLOG_CURATION_SCAN_MODES.map((value) => Type.Literal(value)) as [ReturnType<typeof Type.Literal>, ReturnType<typeof Type.Literal>]);
@@ -20,7 +19,6 @@ export function normalizeBacklogCurationScanMode(value: unknown): BacklogCuratio
 export function backlogCurationScanModeLabel(scanMode: BacklogCurationScanMode): string {
   return scanMode === 'full-implementation-audit' ? 'Full implementation audit' : 'Delta';
 }
-// --- eforge:endregion plan-01-scan-mode-plumbing ---
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
@@ -156,7 +154,6 @@ const BacklogCurationGitDeltaCapsSchema = Type.Object({
   subprocessTimeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
 }, { additionalProperties: true });
 
-// --- eforge:region plan-02-full-audit-evidence ---
 const BacklogCurationFullImplementationAuditDiagnosticSchema = Type.Object({
   code: Type.String(),
   severity: Type.Union([Type.Literal('info'), Type.Literal('warning')]),
@@ -209,7 +206,6 @@ export const BacklogCurationFullImplementationAuditPreviewSchema = Type.Object({
   diagnostics: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditDiagnosticSchema)),
   itemSummaries: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditItemSummarySchema)),
 }, { additionalProperties: true });
-// --- eforge:endregion plan-02-full-audit-evidence ---
 
 export const BacklogCurationGitDeltaPreviewSchema = Type.Object({
   baseline: Type.Optional(Type.Union([Type.Object({}, { additionalProperties: JsonValueSchema }), Type.Null()])), 
@@ -232,9 +228,7 @@ export const BacklogCurationSourcePreviewMetadataSchema = Type.Object({
   generatedAt: Type.Optional(Type.String()),
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
-  // --- eforge:region plan-02-full-audit-evidence ---
   fullImplementationAudit: Type.Optional(BacklogCurationFullImplementationAuditPreviewSchema),
-  // --- eforge:endregion plan-02-full-audit-evidence ---
 }, { additionalProperties: false });
 
 export const BacklogCurationPreviewDetailsSchema = Type.Object({
@@ -246,9 +240,7 @@ export const BacklogCurationPreviewDetailsSchema = Type.Object({
   generatedRecommendationValidation: Type.Optional(RecommendationReferenceValidationResultSchema),
   recommendationFreshness: Type.Optional(BacklogCurationPreviewRecommendationFreshnessSchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
-  // --- eforge:region plan-02-full-audit-evidence ---
   fullImplementationAudit: Type.Optional(BacklogCurationFullImplementationAuditPreviewSchema),
-  // --- eforge:endregion plan-02-full-audit-evidence ---
   recommendationProjection: Type.Optional(BacklogCurationRecommendationProjectionSchema),
   errors: Type.Optional(Type.Array(BacklogCurationPreviewValidationErrorSchema)),
 }, { additionalProperties: false });
@@ -293,9 +285,7 @@ export type RecommendationReferenceValidationResult = Static<typeof Recommendati
 export type RecommendationRepositionedTarget = Static<typeof RecommendationRepositionedTargetSchema>;
 export type BacklogCurationRecommendationProjection = Static<typeof BacklogCurationRecommendationProjectionSchema>;
 export type BacklogCurationGitDeltaPreview = Static<typeof BacklogCurationGitDeltaPreviewSchema>;
-// --- eforge:region plan-02-full-audit-evidence ---
 export type BacklogCurationFullImplementationAuditPreview = Static<typeof BacklogCurationFullImplementationAuditPreviewSchema>;
-// --- eforge:endregion plan-02-full-audit-evidence ---
 export type BacklogCurationSourcePreviewMetadata = Static<typeof BacklogCurationSourcePreviewMetadataSchema>;
 export type BacklogCurationPreviewDetails = Static<typeof BacklogCurationPreviewDetailsSchema>;
 export type BacklogCurationRecommendationsSkipped = Static<typeof BacklogCurationRecommendationsSkippedSchema>;

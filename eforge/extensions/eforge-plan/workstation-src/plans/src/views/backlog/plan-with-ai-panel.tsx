@@ -21,11 +21,9 @@ interface PlanWithAiPanelProps {
  */
 export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
   const { items, loading, busy, reload, analyzeAllBacklog, cancel, retry, redraft, remove, apply } = workflows;
-  // --- eforge:region plan-03-workstation-docs ---
   const [scanMode, setScanMode] = React.useState<BacklogCurationScanMode>('delta');
   const actionDisabled = busy || loading;
   const selectedModeLabel = curationScanModeLabel(scanMode);
-  // --- eforge:endregion plan-03-workstation-docs ---
   const statusOf = (item: (typeof items)[number]) => item.task?.status ?? item.status;
   const activeCount = items.filter((item) => statusOf(item) === 'queued' || statusOf(item) === 'running').length;
   const failedCount = items.filter((item) => statusOf(item) === 'failed').length;
@@ -58,7 +56,6 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
       actions={<div className="flex flex-wrap items-center gap-2"><button type="button" className="text-xs text-primary hover:text-foreground disabled:opacity-50" disabled={actionDisabled} onClick={() => void analyzeAllBacklog(scanMode)}>Analyze all backlog ({selectedModeLabel})</button><button type="button" className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50" disabled={actionDisabled} onClick={() => void reload()}>Refresh tasks</button></div>}
     >
       <p className="text-xs text-muted-foreground">Planning tasks start from backlog selections and recommendations. Generated drafts stay read-only until you apply them.</p>
-      {/* --- eforge:region plan-03-workstation-docs --- */}
       <fieldset className="mt-3 grid gap-2 rounded border border-border bg-card p-2 text-xs" disabled={actionDisabled}>
         <legend className="px-1 text-2xs uppercase tracking-wide text-muted-foreground">Backlog curation mode</legend>
         <label className="flex items-start gap-2">
@@ -71,7 +68,6 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
         </label>
         {scanMode === 'full-implementation-audit' && <p className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-amber-100">{FULL_AUDIT_WARNING}</p>}
       </fieldset>
-      {/* --- eforge:endregion plan-03-workstation-docs --- */}
 
       {loading && items.length === 0 && (
         <p className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading planning tasks…</p>

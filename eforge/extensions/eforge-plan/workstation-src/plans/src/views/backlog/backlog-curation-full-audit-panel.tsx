@@ -3,7 +3,6 @@ import type { BacklogCurationFullAuditPreview } from '@/types';
 import { evidenceSourceLabel, formatFullAuditCaps, formatFullAuditCoverage, FULL_AUDIT_WARNING } from './backlog-curation-view-model';
 import { SubBlock } from './sub-block';
 
-// --- eforge:region plan-03-workstation-docs ---
 export function BacklogCurationFullAuditPanel({ audit }: { audit?: BacklogCurationFullAuditPreview }) {
   if (!audit) return null;
   const coverage = formatFullAuditCoverage(audit);
@@ -64,4 +63,3 @@ function Rows({ title, rows }: { title: string; rows: Array<{ label: string; val
 function severityRank(severity: string): number {
   return severity === 'warning' ? 0 : 1;
 }
-// --- eforge:endregion plan-03-workstation-docs ---

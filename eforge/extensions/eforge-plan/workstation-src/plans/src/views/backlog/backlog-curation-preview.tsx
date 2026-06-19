@@ -31,9 +31,7 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
   const [previewLoading, setPreviewLoading] = React.useState(curationPreview === undefined);
   const effectivePreview = curationPreview ?? loadedPreview ?? undefined;
   const projection = effectivePreview?.recommendationProjection;
-  // --- eforge:region plan-03-workstation-docs ---
   const scanMode = normalizeCurationScanMode(effectivePreview?.scanMode ?? entry.scanMode);
-  // --- eforge:endregion plan-03-workstation-docs ---
   const displayRecommendations = effectiveRecommendationsFromProjection(projection);
   const projectionMetadata = projectionMetadataDisplay(projection);
   const counts = curationCounts(draft, projection);
@@ -73,9 +71,7 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-foreground">Backlog curation preview</h3>
-            {/* --- eforge:region plan-03-workstation-docs --- */}
             <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">{curationScanModeLabel(scanMode)}</span>
-            {/* --- eforge:endregion plan-03-workstation-docs --- */}
           </div>
           <p className="text-xs text-muted-foreground">Read-only draft from source {abbreviateFingerprint(draft.sourceFingerprint)}{draft.generatedAt ? ` · generated ${formatRelativeTime(draft.generatedAt)}` : ''}</p>
         </div>
@@ -95,13 +91,9 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           <RecommendationFreshnessLine freshness={effectivePreview.recommendationFreshness} />
         </div>
       )}
-      {/* --- eforge:region plan-03-workstation-docs --- */}
       {scanMode === 'full-implementation-audit' && <div className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-100">{FULL_AUDIT_WARNING}</div>}
-      {/* --- eforge:endregion plan-03-workstation-docs --- */}
       <BacklogCurationGitDeltaPanel gitDelta={effectivePreview?.gitDelta} />
-      {/* --- eforge:region plan-03-workstation-docs --- */}
       <BacklogCurationFullAuditPanel audit={effectivePreview?.fullImplementationAudit} />
-      {/* --- eforge:endregion plan-03-workstation-docs --- */}
       {previewLoading && <div className="rounded border border-border bg-card p-2 text-xs text-muted-foreground">Validating curation apply preconditions and effective recommendation projection…</div>}
       {!previewLoading && effectivePreview && !projection && recommendations && <div className="rounded border border-border bg-card p-2 text-xs text-muted-foreground">Effective recommendation projection unavailable; raw generated recommendations are available as provenance only and normal apply remains disabled.</div>}
       {recommendationValidation && <RecommendationValidationWarning validation={recommendationValidation} />}
@@ -223,9 +215,7 @@ function PatchSection({ title, patches, applied, fullAudit }: { title: string; p
 function PatchCard({ patch, applied, fullAudit }: { patch: Patch; applied: boolean; fullAudit?: BacklogCurationPreviewDetails['fullImplementationAudit'] }) {
   const rows = metadataRows(patch.metadata as Record<string, unknown> | undefined);
   const evidence = curationEvidencePreview(patch.evidence ?? []);
-  // --- eforge:region plan-03-workstation-docs ---
   const fullAuditEvidence = matchFullAuditEvidenceForPatch(fullAudit, patch);
-  // --- eforge:endregion plan-03-workstation-docs ---
   return (
     <article className="grid gap-2 rounded border border-border p-2">
       <div>
@@ -238,9 +228,7 @@ function PatchCard({ patch, applied, fullAudit }: { patch: Patch; applied: boole
         <div className="grid gap-1 rounded border border-primary/20 bg-primary/5 p-2 text-xs text-muted-foreground">
           {evidence.labels.length > 0 && <p>{applied ? 'Applied closure metadata evidence:' : 'Proposed closure metadata evidence in this draft:'}</p>}
           {evidence.labels.length > 0 && <div className="flex flex-wrap gap-1">{evidence.labels.map((label) => <span key={label} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{label}</span>)}</div>}
-          {/* --- eforge:region plan-03-workstation-docs --- */}
           {fullAuditEvidence.length > 0 && <FullAuditEvidenceChips evidence={fullAuditEvidence} />}
-          {/* --- eforge:endregion plan-03-workstation-docs --- */}
           {evidence.prIds.length > 0 && <p>PR identifiers: {evidence.prIds.join(', ')}</p>}
           {evidence.commitIds.length > 0 && <p>Commit identifiers: {evidence.commitIds.join(', ')}</p>}
         </div>
