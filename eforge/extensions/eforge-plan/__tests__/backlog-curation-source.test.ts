@@ -272,7 +272,10 @@ describe('backlog curation source', () => {
         expect(audit.items.find((entry) => entry.itemId === 'lifecycle-full')).toMatchObject({ lifecycleTrace: { lifecycleState: 'shipped', landingRefCount: 1 } });
 
         await writeBacklogCurationSourcePreviewMetadata(cwd, full);
-        await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { itemSummaries: expect.arrayContaining([expect.objectContaining({ itemId: 'enriched-full-pr', candidateIntent: 'shipped' }), expect.objectContaining({ itemId: 'lifecycle-full', candidateIntent: 'shipped' })]) } });
+        await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { itemSummaries: expect.arrayContaining([
+          expect.objectContaining({ itemId: 'enriched-full-pr', candidateIntent: 'shipped', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'combined', confidence: 'strong' })]) }),
+          expect.objectContaining({ itemId: 'lifecycle-full', candidateIntent: 'shipped', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'lifecycle', confidence: 'strong' })]) }),
+        ]) } });
       } finally {
         process.env.PATH = previousPath;
       }

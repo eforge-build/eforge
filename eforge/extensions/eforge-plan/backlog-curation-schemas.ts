@@ -183,8 +183,8 @@ const BacklogCurationFullImplementationAuditCoverageSchema = Type.Object({
 }, { additionalProperties: true });
 
 const BacklogCurationFullImplementationAuditEvidenceSummarySchema = Type.Object({
-  source: Type.String(),
-  confidence: Type.Optional(Type.String()),
+  source: Type.String({ minLength: 1 }),
+  confidence: Type.String({ minLength: 1 }),
   matchedBy: Type.Optional(Type.Array(Type.String())),
   path: Type.Optional(Type.String()),
   excerpt: Type.Optional(Type.String()),
@@ -196,6 +196,7 @@ const BacklogCurationFullImplementationAuditItemSummarySchema = Type.Object({
   evidenceCount: Type.Optional(Type.Integer({ minimum: 0 })),
   confidence: Type.Optional(Type.String()),
   evidence: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditEvidenceSummarySchema)),
+  closureCandidates: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditEvidenceSummarySchema)),
 }, { additionalProperties: true });
 
 export const BacklogCurationFullImplementationAuditPreviewSchema = Type.Object({

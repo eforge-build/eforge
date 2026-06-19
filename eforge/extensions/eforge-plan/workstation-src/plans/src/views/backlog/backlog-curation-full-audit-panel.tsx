@@ -41,11 +41,11 @@ export function BacklogCurationFullAuditPanel({ audit }: { audit?: BacklogCurati
   );
 }
 
-export function FullAuditEvidenceChips({ evidence }: { evidence: Array<{ source: string; confidence?: string }> }) {
+export function FullAuditEvidenceChips({ evidence }: { evidence: Array<{ source: string; confidence: string }> }) {
   if (evidence.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1">
-      {evidence.map((entry, index) => <span key={`${entry.source}:${entry.confidence ?? ''}:${index}`} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{evidenceSourceLabel(entry.source)}{entry.confidence ? ` · ${entry.confidence}` : ''}</span>)}
+      {evidence.map((entry, index) => <span key={`${entry.source}:${entry.confidence}:${index}`} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{evidenceSourceLabel(entry.source)} · {entry.confidence}</span>)}
     </div>
   );
 }

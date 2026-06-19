@@ -12,7 +12,7 @@ export interface CurationCounts {
 export interface DisplayRow { label: string; value: string; }
 
 // --- eforge:region plan-03-workstation-docs ---
-export interface FullAuditEvidenceMatch { source: string; confidence?: string; path?: string; excerpt?: string; matchedBy: string[]; }
+export interface FullAuditEvidenceMatch { source: string; confidence: string; path?: string; excerpt?: string; matchedBy: string[]; }
 // --- eforge:endregion plan-03-workstation-docs ---
 
 // --- eforge:region curation-preview-metadata ---
@@ -123,23 +123,32 @@ export function formatFullAuditCaps(audit: BacklogCurationFullAuditPreview | und
   ].filter((row): row is DisplayRow => Boolean(row));
 }
 
-export function matchFullAuditEvidenceForPatch(audit: BacklogCurationFullAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[] }): FullAuditEvidenceMatch[] {
+export function matchFullAuditEvidenceForPatch(audit: BacklogCurationFullAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }): FullAuditEvidenceMatch[] {
   if (patch.kind !== 'item' || !patch.id) return [];
   const summary = audit?.itemSummaries?.find((item) => item.itemId === patch.id);
-  const candidateEvidence = [...(summary?.evidence ?? []), ...(summary?.closureCandidates ?? [])];
+  const targetClosedStatus = patch.metadata?.status === 'shipped' || patch.metadata?.status === 'superseded' ? patch.metadata.status : undefined;
+  const candidateEvidence = targetClosedStatus === undefined ? summary?.evidence ?? [] : (summary?.closureCandidates ?? []).filter((entry) => isStrongClosureCandidateForStatus(entry, targetClosedStatus));
   if (candidateEvidence.length === 0) return [];
   const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
-  return candidateEvidence.filter((entry) => evidenceMatchesDraft(entry, draftEvidence)).map((entry) => ({
-    source: entry.source,
-    confidence: entry.confidence ?? summary?.confidence,
+  return candidateEvidence.filter(hasDisplayableSourceConfidence).filter((entry) => evidenceMatchesDraft(entry, draftEvidence)).map((entry) => ({
+    source: entry.source.trim(),
+    confidence: entry.confidence.trim(),
     path: entry.path,
     excerpt: entry.excerpt,
     matchedBy: entry.matchedBy ?? [],
   }));
 }
 
+function isStrongClosureCandidateForStatus(entry: BacklogCurationFullAuditEvidenceSummary, status: 'shipped' | 'superseded'): boolean {
+  return entry.intent === status && entry.confidence.trim().toLowerCase() === 'strong';
+}
+
 export function evidenceSourceLabel(source: string): string {
   return source.split('-').filter(Boolean).map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(' ');
+}
+
+function hasDisplayableSourceConfidence(entry: BacklogCurationFullAuditEvidenceSummary): boolean {
+  return entry.source.trim().length > 0 && entry.confidence.trim().length > 0;
 }
 
 function evidenceMatchesDraft(entry: BacklogCurationFullAuditEvidenceSummary, draftEvidence: string): boolean {

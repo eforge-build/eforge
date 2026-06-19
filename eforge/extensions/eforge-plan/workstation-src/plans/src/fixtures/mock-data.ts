@@ -407,7 +407,7 @@ export const mockFullAuditBacklogCurationPreview = {
     ],
     itemSummaries: [
       { itemId: 'add-import-preview', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'git-history', confidence: 'strong', matchedBy: ['item-id', 'path'], path: 'src/import-preview.ts', excerpt: 'landing row merge commit 1234567890abcdef' }] },
-      { itemId: 'recommend-next-work', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'combined', confidence: 'strong', matchedBy: ['item-id', 'pr'], path: 'src/recommendations.ts', excerpt: 'git commit abcdef1234567890 merged via PR #191' }] },
+      { itemId: 'recommend-next-work', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'combined', confidence: 'strong', matchedBy: ['item-id', 'pr'], path: 'src/recommendations.ts', excerpt: 'git commit abcdef1234567890 merged via PR #191' }], closureCandidates: [{ source: 'combined', confidence: 'strong', intent: 'shipped', matchedBy: ['item-id', 'pr'], evidence: 'Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.', citation: 'https://github.test/acme/repo/pull/191' }] },
       { itemId: 'stale-idea', candidateIntent: 'needs-input', evidenceCount: 1, confidence: 'ambiguous', evidence: [{ source: 'code-search', confidence: 'ambiguous', matchedBy: ['title-token'], path: 'docs/cron.md', excerpt: 'cron triggers need product confirmation' }] },
     ],
   },

@@ -205,8 +205,9 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
     const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
       ? await buildRecommendationRefreshSource(ctx.cwd)
       : isBacklogCurationWorkflowEntry(parent)
-        ? await buildBacklogCurationSource(ctx.cwd, undefined, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode) })
+        ? await buildBacklogCurationSource(ctx.cwd, undefined, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode), signal: ctx.signal })
         : undefined;
+    throwIfAborted(ctx.signal);
     if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
@@ -241,8 +242,9 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
       ? await buildRecommendationRefreshSource(ctx.cwd, redraft)
       : isBacklogCurationWorkflowEntry(parent)
-        ? await buildBacklogCurationSource(ctx.cwd, redraft, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode) })
+        ? await buildBacklogCurationSource(ctx.cwd, redraft, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode), signal: ctx.signal })
         : undefined;
+    throwIfAborted(ctx.signal);
     if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);

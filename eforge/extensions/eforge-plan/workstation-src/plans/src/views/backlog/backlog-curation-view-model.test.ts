@@ -53,6 +53,41 @@ describe('backlog curation view model', () => {
 
     const evidence = matchFullAuditEvidenceForPatch(mockFullAuditBacklogCurationPreview.fullImplementationAudit, patch!);
 
-    expect(evidence).toEqual([expect.objectContaining({ source: 'combined', confidence: 'strong', path: 'src/recommendations.ts' })]);
+    expect(evidence).toEqual([expect.objectContaining({ source: 'combined', confidence: 'strong' })]);
+  });
+
+  it('ignores full-audit evidence summaries without displayable source and confidence', () => {
+    const audit = {
+      itemSummaries: [{
+        itemId: 'recommend-next-work',
+        candidateIntent: 'shipped',
+        evidence: [
+          { source: 'combined', confidence: '', path: 'src/recommendations.ts' },
+          { source: ' ', confidence: 'strong', path: 'src/recommendations.ts' },
+        ],
+        closureCandidates: [{ source: 'git-history', confidence: 'strong', intent: 'shipped', citation: 'https://github.test/acme/repo/pull/191' }],
+      }],
+    } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
+    const patch = mockBacklogCurationDraft.itemChanges.find((entry) => entry.id === 'recommend-next-work');
+
+    const evidence = matchFullAuditEvidenceForPatch(audit, patch!);
+
+    expect(evidence).toEqual([{ source: 'git-history', confidence: 'strong', path: undefined, excerpt: undefined, matchedBy: [] }]);
+  });
+
+  it('does not match closed full-audit patches against current-state evidence', () => {
+    const audit = { itemSummaries: [{ itemId: 'item-1', candidateIntent: 'partial-implementation', evidence: [{ source: 'code-search', confidence: 'strong', path: 'src/item-1.ts', excerpt: 'item-1 is implemented' }] }] } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
+
+    const evidence = matchFullAuditEvidenceForPatch(audit, { kind: 'item', id: 'item-1', metadata: { status: 'shipped' }, evidence: ['Shipped evidence: inferred from git/PR history — src/item-1.ts'] });
+
+    expect(evidence).toEqual([]);
+  });
+
+  it('does not match closed full-audit patches against ambiguous closure candidates', () => {
+    const audit = { itemSummaries: [{ itemId: 'item-1', candidateIntent: 'needs-input', closureCandidates: [{ source: 'git-history', confidence: 'ambiguous', intent: 'ambiguous-shipped', evidence: 'Ambiguous shipped candidate: needs input' }] }] } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
+
+    const evidence = matchFullAuditEvidenceForPatch(audit, { kind: 'item', id: 'item-1', metadata: { status: 'shipped' }, evidence: ['Shipped evidence: inferred from git/PR history — Ambiguous shipped candidate: needs input'] });
+
+    expect(evidence).toEqual([]);
   });
 });
