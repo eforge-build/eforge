@@ -4,6 +4,7 @@ import { useToast } from '@/components/toast';
 import type {
   AnalyzeAllBacklogResponse,
   ApplyPlanningTaskResponse,
+  BacklogCurationScanMode,
   JsonObject,
   ListPlanningAgentTasksResponse,
   PlanningAgentTaskListItem,
@@ -24,7 +25,7 @@ export interface PlanningTaskWorkflowsApi {
   busy: boolean;
   reload: () => Promise<void>;
   start: (input: JsonObject) => Promise<PlanningAgentTaskRecord | null>;
-  analyzeAllBacklog: () => Promise<PlanningAgentTaskRecord | null>;
+  analyzeAllBacklog: (scanMode: BacklogCurationScanMode) => Promise<PlanningAgentTaskRecord | null>;
   retry: (taskId: string) => Promise<void>;
   redraft: (taskId: string, input: RedraftInput) => Promise<void>;
   cancel: (taskId: string) => Promise<void>;
@@ -121,11 +122,12 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [reload, reportError, toast]);
 
-  const analyzeAllBacklog = React.useCallback(async (): Promise<PlanningAgentTaskRecord | null> => {
+  const analyzeAllBacklog = React.useCallback(async (scanMode: BacklogCurationScanMode): Promise<PlanningAgentTaskRecord | null> => {
     setBusy(true);
     try {
-      const response = await bridge.invokeAction<AnalyzeAllBacklogResponse>('analyze-all-backlog', {});
-      toast.push(`${response.reused ? 'Reusing' : 'Started'} backlog curation task ${response.task.taskId}.`, 'success');
+      const response = await bridge.invokeAction<AnalyzeAllBacklogResponse>('analyze-all-backlog', { scanMode });
+      const modeLabel = scanMode === 'full-implementation-audit' ? 'full implementation audit' : 'delta curation';
+      toast.push(`${response.reused ? 'Reusing' : 'Started'} ${modeLabel} backlog curation task ${response.task.taskId}.`, 'success');
       await reload();
       return response.task;
     } catch (caught) {

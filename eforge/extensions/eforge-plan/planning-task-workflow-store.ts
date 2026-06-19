@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type PlanningTaskWorkflowIndex } from './planning-agent-task-schemas.js';
+import { DEFAULT_BACKLOG_CURATION_SCAN_MODE, normalizeBacklogCurationScanMode, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 
 const EXTENSION_NAME = 'eforge-plan';
 const INDEX_SEGMENTS = ['planning-tasks', 'index.json'] as const;
@@ -133,15 +134,16 @@ export function isBacklogCurationWorkflowEntry(entry: PlanningTaskWorkflowEntry)
   return entry.purpose === BACKLOG_CURATION_WORKFLOW_PURPOSE;
 }
 
-export function listBacklogCurationWorkflowEntries(index: PlanningTaskWorkflowIndex, sourceFingerprint?: string): PlanningTaskWorkflowEntry[] {
+export function listBacklogCurationWorkflowEntries(index: PlanningTaskWorkflowIndex, sourceFingerprint?: string, scanMode?: BacklogCurationScanMode): PlanningTaskWorkflowEntry[] {
   return listPlanningTaskWorkflowEntries(index).filter((entry) => (
     isBacklogCurationWorkflowEntry(entry)
     && (sourceFingerprint === undefined || entry.sourceFingerprint === sourceFingerprint)
+    && (scanMode === undefined || normalizeBacklogCurationScanMode(entry.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE) === scanMode)
   ));
 }
 
-export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string): PlanningTaskWorkflowEntry | undefined {
-  return listBacklogCurationWorkflowEntries(index, sourceFingerprint)[0];
+export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string, scanMode?: BacklogCurationScanMode): PlanningTaskWorkflowEntry | undefined {
+  return listBacklogCurationWorkflowEntries(index, sourceFingerprint, scanMode)[0];
 }
 
 async function writePlanningTaskWorkflowIndex(cwd: string, index: PlanningTaskWorkflowIndex): Promise<void> {

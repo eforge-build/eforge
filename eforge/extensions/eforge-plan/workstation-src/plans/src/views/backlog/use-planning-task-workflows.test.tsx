@@ -23,6 +23,7 @@ const item: PlanningAgentTaskListItem = {
     selection: {},
     requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
     purpose: 'backlog-curation',
+    scanMode: 'delta',
     sourceFingerprint: 'fingerprint',
     createdAt: 'now',
   },
@@ -88,12 +89,32 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
 
     let returnedTaskId: string | undefined;
-    await act(async () => { returnedTaskId = (await result.current.analyzeAllBacklog())?.taskId; });
+    await act(async () => { returnedTaskId = (await result.current.analyzeAllBacklog('delta'))?.taskId; });
 
     expect(returnedTaskId).toBe('task-curation');
-    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', {});
+    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'delta' });
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
     expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it('sends full implementation audit scan mode when selected', async () => {
+    const onRefresh = vi.fn(async () => undefined);
+    const fullEntry = { ...item.entry, scanMode: 'full-implementation-audit' as const, taskId: 'task-curation-full' };
+    const fullTask = { ...task, taskId: 'task-curation-full' };
+    const invokeAction = vi.fn(async (actionId: string) => {
+      if (actionId === 'list-planning-agent-tasks') return { tasks: [] };
+      if (actionId === 'analyze-all-backlog') return { task: fullTask, entry: fullEntry, sourceFingerprint: 'fingerprint', reused: false };
+      throw new Error(`unexpected ${actionId}`);
+    });
+    setBridge({ invokeAction: invokeAction as EforgeBridge['invokeAction'] });
+
+    const { usePlanningTaskWorkflows, wrapper } = await loadHookWithWrapper();
+    const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
+
+    await act(async () => { await result.current.analyzeAllBacklog('full-implementation-audit'); });
+
+    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'full-implementation-audit' });
   });
 
   it('reloads task list when polling observes terminal task status', async () => {

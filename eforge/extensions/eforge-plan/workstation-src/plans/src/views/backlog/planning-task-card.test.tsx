@@ -54,7 +54,7 @@ describe('PlanningTaskCard curation behavior', () => {
   it('labels backlog curation tasks and hides generic recommendation apply', () => {
     renderCard(curationItem('completed'));
 
-    expect(screen.getByText('Backlog curation')).toBeTruthy();
+    expect(screen.getAllByText('Delta curation').length).toBeGreaterThan(0);
     expect(screen.getByText('Backlog curation preview')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Apply recommendations' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();

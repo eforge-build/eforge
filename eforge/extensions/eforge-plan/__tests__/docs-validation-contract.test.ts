@@ -12,7 +12,7 @@ async function docs(): Promise<{ readme: string; workstation: string }> {
   return { readme, workstation };
 }
 
-describe('plan-06 docs validation contract', () => {
+describe('plan-03 workstation docs validation contract', () => {
   it('keeps accepted-analysis baseline documentation private and distinct from recommendations', async () => {
     const { readme } = await docs();
 
@@ -45,13 +45,19 @@ describe('plan-06 docs validation contract', () => {
   });
 
   it('keeps workstation documentation server-authoritative for overlay and freshness display', async () => {
-    const { workstation } = await docs();
+    const { readme, workstation } = await docs();
 
+    expect(readme).toContain('{ "scanMode": "delta" }');
+    expect(readme).toContain('{ "scanMode": "full-implementation-audit" }');
+    expect(readme).toMatch(/Full implementation audit.*may take longer and use more context/s);
+    expect(readme).toMatch(/bounded by caps and available git\/PR history/);
     expect(workstation).toMatch(/Backlog curation preview and apply data is server-authoritative/);
     expect(workstation).toMatch(/`recommendationProjection` — the prospective overlay used by both preview and apply validation/);
     expect(workstation).toMatch(/`recommendationProjection\.effectiveRecommendations` \/ `effectiveRecommendations` display counts/);
     expect(workstation).toMatch(/Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`/);
     expect(workstation).toMatch(/A recommendation model being present is not enough to show fresh/);
+    expect(workstation).toMatch(/Render the mode label and warning copy that the audit may take longer and use more context/);
+    expect(workstation).toMatch(/The browser must not run local git, PR, or source searches/);
     expect(workstation).not.toMatch(/same-draft recommendation filtering|infer fresh from recommendations/i);
   });
 });

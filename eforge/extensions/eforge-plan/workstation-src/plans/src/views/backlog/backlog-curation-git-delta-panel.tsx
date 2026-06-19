@@ -22,7 +22,7 @@ export function BacklogCurationGitDeltaPanel({ gitDelta }: { gitDelta?: BacklogC
   const candidateCounts = countAffectedCandidates(gitDelta.affectedItemCandidates);
   const caps = gitDelta.caps;
   return (
-    <SubBlock title="Git delta diagnostics" className="gap-1.5">
+    <SubBlock title="Delta git diagnostics" className="gap-1.5">
       <div className="grid gap-1 text-xs text-muted-foreground">
         <p>
           Baseline <Hash value={gitDelta.baseline?.commit ?? undefined} />{gitDelta.baseline?.time ? ` · ${gitDelta.baseline.time}` : gitDelta.baseline?.generatedAt ? ` · ${gitDelta.baseline.generatedAt}` : ''}{gitDelta.baseline?.sourceFingerprint ? <> · source <span title={gitDelta.baseline.sourceFingerprint}>{abbreviateSourceFingerprint(gitDelta.baseline.sourceFingerprint)}</span></> : null}
@@ -30,7 +30,7 @@ export function BacklogCurationGitDeltaPanel({ gitDelta }: { gitDelta?: BacklogC
         <p>
           Current HEAD <Hash value={gitDelta.currentHead?.commit} />{gitDelta.currentHead?.time ? ` · ${gitDelta.currentHead.time}` : gitDelta.currentHead?.generatedAt ? ` · ${gitDelta.currentHead.generatedAt}` : ''}{gitDelta.currentHead?.sourceFingerprint ? <> · source <span title={gitDelta.currentHead.sourceFingerprint}>{abbreviateSourceFingerprint(gitDelta.currentHead.sourceFingerprint)}</span></> : null}
         </p>
-        <p>coverage {gitDelta.coverage?.kind ?? 'unknown'}{gitDelta.coverage?.message ? ` · ${gitDelta.coverage.message}` : ''}</p>
+        <p>Delta coverage {gitDelta.coverage?.kind ?? 'unknown'}{gitDelta.coverage?.message ? ` · ${gitDelta.coverage.message}` : ''}</p>
         <p>Scanned commits: {gitDelta.scannedCommitCount ?? gitDelta.scannedCommits?.length ?? 0}{caps ? ` · caps ${formatCaps(caps)}` : ''}</p>
         {gitDelta.affectedItemCandidates && <p>Affected candidates: {candidateCounts.total}{candidateCounts.ambiguousShipped > 0 ? ` · ambiguous shipped ${candidateCounts.ambiguousShipped}` : ''}{candidateCounts.ambiguousSuperseded > 0 ? ` · ambiguous superseded ${candidateCounts.ambiguousSuperseded}` : ''}</p>}
       </div>

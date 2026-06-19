@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mockBacklogCurationDraft, mockBacklogCurationPreview } from '@/fixtures/mock-data';
-import { curationEvidencePreview, effectiveRecommendationsFromProjection, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockFullAuditBacklogCurationPreview } from '@/fixtures/mock-data';
+import { curationEvidencePreview, curationScanModeLabel, effectiveRecommendationsFromProjection, formatFullAuditCaps, formatFullAuditCoverage, matchFullAuditEvidenceForPatch, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
 
 describe('backlog curation view model', () => {
   it('extracts shipped evidence labels, PR identifiers, and commit identifiers', () => {
@@ -38,5 +38,56 @@ describe('backlog curation view model', () => {
     expect(display?.readyCandidates?.map((entry) => entry.itemId)).toEqual(['traceability']);
     expect(display?.recommendedNextSequence.map((entry) => entry.itemId)).toEqual(['recommend-next-work']);
     expect(recommendationSummaryCounts(display)).toMatchObject({ readyCandidates: 1, nextSequence: 1, safeParallelGroups: 1 });
+  });
+
+  it('formats scan modes and full-audit metadata from server preview details', () => {
+    expect(curationScanModeLabel(undefined)).toBe('Delta curation');
+    expect(curationScanModeLabel('full-implementation-audit')).toBe('Full implementation audit');
+    expect(formatFullAuditCoverage(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'Audited items', value: '6' });
+    expect(formatFullAuditCaps(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'File scan cap', value: '250' });
+  });
+
+  it('matches full-audit evidence summaries to proposed item evidence only from preview metadata', () => {
+    const patch = mockBacklogCurationDraft.itemChanges.find((entry) => entry.id === 'recommend-next-work');
+    expect(patch).toBeTruthy();
+
+    const evidence = matchFullAuditEvidenceForPatch(mockFullAuditBacklogCurationPreview.fullImplementationAudit, patch!);
+
+    expect(evidence).toEqual([expect.objectContaining({ source: 'combined', confidence: 'strong' })]);
+  });
+
+  it('ignores full-audit evidence summaries without displayable source and confidence', () => {
+    const audit = {
+      itemSummaries: [{
+        itemId: 'recommend-next-work',
+        candidateIntent: 'shipped',
+        evidence: [
+          { source: 'combined', confidence: '', path: 'src/recommendations.ts' },
+          { source: ' ', confidence: 'strong', path: 'src/recommendations.ts' },
+        ],
+        closureCandidates: [{ source: 'git-history', confidence: 'strong', intent: 'shipped', citation: 'https://github.test/acme/repo/pull/191' }],
+      }],
+    } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
+    const patch = mockBacklogCurationDraft.itemChanges.find((entry) => entry.id === 'recommend-next-work');
+
+    const evidence = matchFullAuditEvidenceForPatch(audit, patch!);
+
+    expect(evidence).toEqual([{ source: 'git-history', confidence: 'strong', path: undefined, excerpt: undefined, matchedBy: [] }]);
+  });
+
+  it('does not match closed full-audit patches against current-state evidence', () => {
+    const audit = { itemSummaries: [{ itemId: 'item-1', candidateIntent: 'partial-implementation', evidence: [{ source: 'code-search', confidence: 'strong', path: 'src/item-1.ts', excerpt: 'item-1 is implemented' }] }] } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
+
+    const evidence = matchFullAuditEvidenceForPatch(audit, { kind: 'item', id: 'item-1', metadata: { status: 'shipped' }, evidence: ['Shipped evidence: inferred from git/PR history — src/item-1.ts'] });
+
+    expect(evidence).toEqual([]);
+  });
+
+  it('does not match closed full-audit patches against ambiguous closure candidates', () => {
+    const audit = { itemSummaries: [{ itemId: 'item-1', candidateIntent: 'needs-input', closureCandidates: [{ source: 'git-history', confidence: 'ambiguous', intent: 'ambiguous-shipped', evidence: 'Ambiguous shipped candidate: needs input' }] }] } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
+
+    const evidence = matchFullAuditEvidenceForPatch(audit, { kind: 'item', id: 'item-1', metadata: { status: 'shipped' }, evidence: ['Shipped evidence: inferred from git/PR history — Ambiguous shipped candidate: needs input'] });
+
+    expect(evidence).toEqual([]);
   });
 });

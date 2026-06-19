@@ -105,6 +105,14 @@ describe('eforge-plan README planner contract', () => {
       expect(readme).toContain(required);
     }
 
+    expect(readme).toContain('{ "scanMode": "delta" }');
+    expect(readme).toContain('{ "scanMode": "full-implementation-audit" }');
+    expect(readme).toMatch(/`delta` is the normal workstation default/);
+    expect(readme).toMatch(/`full-implementation-audit` is an explicit opt-in mode/);
+    expect(readme).toMatch(/may take longer and use more context/);
+    expect(readme).toMatch(/comprehensive over open (backlog )?items/);
+    expect(readme).toMatch(/bounded by (configured )?caps (plus|and) available git\/PR history/);
+    expect(readme).toMatch(/Full-audit previews additionally expose server-provided audit coverage, caps, diagnostics, evidence source, and confidence metadata/);
     expect(readme).toMatch(/analyze-all-backlog[\s\S]*(starts or reuses|start or reuse)[\s\S]*daemon-owned[\s\S]*read-only/);
     expect(readme).toMatch(/Completed (backlog )?curation tasks? render(s)? a (read-only )?preview before mutation/i);
     expect(readme).toMatch(/item changes[\s\S]*epic changes[\s\S]*no-op rechecks[\s\S]*skipped cases[\s\S]*needs-input cases[\s\S]*generated recommendations/);

@@ -5,7 +5,7 @@ import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { writeAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
-import { BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS, buildBacklogCurationSource } from '../backlog-curation-source.js';
+import { BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS, buildBacklogCurationSource, readBacklogCurationSourcePreviewMetadata, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
 import { listBacklogEpicSnapshots, listBacklogItemSnapshots, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
@@ -93,6 +93,303 @@ describe('backlog curation source', () => {
       expect(afterBodyChange.sourceFingerprint).not.toBe(first.sourceFingerprint);
       expect(afterRoadmapChange.sourceFingerprint).not.toBe(afterBodyChange.sourceFingerprint);
       expect(afterRoadmapChange.sourceText).toContain('roadmapContext');
+    });
+  });
+
+  it('changes the source fingerprint and guidance when scan mode changes for the same backlog state', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
+      const delta = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'delta' });
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+      const repeatedFull = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+      const deltaPacket = JSON.parse(delta.sourceText) as { scanMode: string; scanModeGuidance: Record<string, unknown> };
+      const fullPacket = JSON.parse(full.sourceText) as { scanMode: string; scanModeGuidance: Record<string, unknown> };
+
+      expect(full.sourceFingerprint).not.toBe(delta.sourceFingerprint);
+      expect(repeatedFull.sourceFingerprint).toBe(full.sourceFingerprint);
+      expect(deltaPacket).toMatchObject({ scanMode: 'delta', scanModeGuidance: { mode: 'delta' } });
+      expect(fullPacket).toMatchObject({ scanMode: 'full-implementation-audit', scanModeGuidance: { mode: 'full-implementation-audit' } });
+    });
+  });
+
+  it('persists scan mode in source preview metadata', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+
+      await expect(readBacklogCurationSourcePreviewMetadata(cwd, source.sourceFingerprint)).resolves.toMatchObject({ sourceFingerprint: source.sourceFingerprint, scanMode: 'full-implementation-audit' });
+    });
+  });
+
+  it('attaches full-audit scope, current-state evidence classes, metadata, and conservative guidance only in full mode', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'alpha-crane-parser', status: 'candidate', body: '# Alpha Crane Parser\n' });
+      await writeBacklogItem(cwd, { id: 'beta-orbit-check', status: 'planned', body: '# Beta Orbit Check\n' });
+      await writeBacklogItem(cwd, { id: 'current-file-state', status: 'candidate', body: '# Current File State\n' });
+      await writeBacklogItem(cwd, { id: 'fresh-no-change', status: 'candidate', body: '# Fresh No Change\n' });
+      await writeBacklogItem(cwd, { id: 'gamma-doc-guide', status: 'candidate', body: '# Gamma Doc Guide\n' });
+      await writeBacklogItem(cwd, { id: 'stale-cleanup', status: 'candidate', tags: ['stale'], body: '# Stale Cleanup\n' });
+      await writeBacklogItem(cwd, { id: 'closed-item', status: 'shipped', body: '# Closed Item\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await mkdir(join(cwd, 'tests'), { recursive: true });
+      await mkdir(join(cwd, 'docs'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'implementation.ts'), 'Alpha Crane Parser alpha-crane-parser is implemented.\n');
+      await writeFile(join(cwd, 'tests', 'implementation.test.ts'), 'Beta Orbit Check beta-orbit-check is covered.\n');
+      await writeFile(join(cwd, 'docs', 'implementation.md'), 'Gamma Doc Guide gamma-doc-guide is documented.\n');
+      await writeFile(join(cwd, 'src', 'current-file-state.ts'), 'Current File State current-file-state exists.\n');
+
+      const delta = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'delta' });
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const audit = full.source.fullImplementationAudit as {
+        guidance: string[];
+        scope: { itemIds: string[]; openItemCount: number };
+        coverage: { auditedItemCount: number };
+        items: Array<{ itemId: string; candidateIntent: string; confidence: string; evidence: Array<{ source: string; path?: string }> }>;
+      };
+      const item = (id: string) => audit.items.find((entry) => entry.itemId === id);
+
+      expect(delta.source).not.toHaveProperty('fullImplementationAudit');
+      expect(audit.scope).toEqual({ itemIds: ['alpha-crane-parser', 'beta-orbit-check', 'current-file-state', 'fresh-no-change', 'gamma-doc-guide', 'stale-cleanup'], openItemCount: 6 });
+      expect(audit.coverage.auditedItemCount).toBe(6);
+      expect(audit.guidance.join(' ')).toMatch(/Cite only supplied repository evidence/i);
+      expect((full.source.scanModeGuidance as { instruction: string }).instruction).not.toMatch(/not yet attached/i);
+      expect(item('alpha-crane-parser')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'code-search', path: 'src/implementation.ts' })] });
+      expect(item('beta-orbit-check')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'test-search', path: 'tests/implementation.test.ts' })] });
+      expect(item('gamma-doc-guide')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'documentation-search', path: 'docs/implementation.md' })] });
+      expect(item('current-file-state')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'current-file-state', path: 'src/current-file-state.ts' })] });
+      expect(item('stale-cleanup')).toMatchObject({ candidateIntent: 'stale-invalid', confidence: 'ambiguous', evidence: [] });
+      expect(item('fresh-no-change')).toMatchObject({ candidateIntent: 'no-change', confidence: 'weak', evidence: [] });
+      expect((full.source.shippedEvidenceCandidates as Array<{ itemId: string }>).some((candidate) => candidate.itemId === 'alpha-crane-parser')).toBe(false);
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, full);
+      await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { scope: audit.scope, coverage: { auditedItemCount: 6 } } });
+    });
+  });
+
+  it('keeps full-audit scope, coverage, and item summaries in minimal source text fallback', async () => {
+    await withTempProject(async (cwd) => {
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      for (let index = 0; index < 220; index += 1) {
+        const id = `audit-fallback-${index}`;
+        await writeBacklogItem(cwd, { id, status: 'candidate', body: `# Backlog Packet ${index}\n\n## Claim\n\n${'Large full-audit claim. '.repeat(180)}\n` });
+        if (index < 3) await writeFile(join(cwd, 'src', `${id}.ts`), `${id} implemented.\n`);
+      }
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const packet = JSON.parse(source.sourceText) as {
+        fullImplementationAudit: {
+          scope: { itemIds: string[]; openItemCount: number };
+          coverage: { auditedItemCount: number; currentStateHitCount: number };
+          items: Array<{ itemId: string; candidateIntent: string; evidence: Array<{ path?: string }> }>;
+        };
+        truncation: { fallback?: string };
+      };
+
+      expect(packet.truncation.fallback).toBe('minimal');
+      expect(packet.fullImplementationAudit.scope.openItemCount).toBe(220);
+      expect(packet.fullImplementationAudit.scope.itemIds).toEqual(expect.arrayContaining(['audit-fallback-0', 'audit-fallback-1', 'audit-fallback-219']));
+      expect(packet.fullImplementationAudit.coverage).toMatchObject({ auditedItemCount: 220, currentStateHitCount: 3 });
+      expect(packet.fullImplementationAudit.items.find((item) => item.itemId === 'audit-fallback-0')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ path: 'src/audit-fallback-0.ts' })] });
+      expect(packet.fullImplementationAudit.items.find((item) => item.itemId === 'audit-fallback-219')).toMatchObject({ candidateIntent: 'no-change', evidence: [] });
+    });
+  });
+
+  it('reports missing git history as a full-audit diagnostic while preserving bounded coverage', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'no-git-full-audit', status: 'candidate', body: '# No Git Full Audit\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'no-git-full-audit.ts'), 'No Git Full Audit no-git-full-audit exists.\n');
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const packet = JSON.parse(source.sourceText) as { fullImplementationAudit: { coverage: Record<string, unknown>; diagnostics: Array<{ code: string }> } };
+
+      expect(packet.fullImplementationAudit.coverage).toMatchObject({ auditedItemCount: 1, currentStateHitCount: 1 });
+      expect(packet.fullImplementationAudit.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'git-history-unavailable' })]));
+    });
+  });
+
+  it('redacts current-state excerpts and excludes generated, dependency, private backlog, and secret-like files in full-audit mode', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'secure-widget', status: 'candidate', body: '# Secure Widget\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await mkdir(join(cwd, 'node_modules/pkg'), { recursive: true });
+      await mkdir(join(cwd, 'dist'), { recursive: true });
+      await mkdir(join(cwd, '.eforge/storage/extensions/eforge-plan/private'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'secure-widget.ts'), 'Secure Widget secure-widget password=super-secret-token\n');
+      await writeFile(join(cwd, 'node_modules/pkg', 'secure-widget.ts'), 'Secure Widget secure-widget node_modules evidence\n');
+      await writeFile(join(cwd, 'dist', 'secure-widget.ts'), 'Secure Widget secure-widget dist evidence\n');
+      await writeFile(join(cwd, '.eforge/storage/extensions/eforge-plan/private', 'secure-widget.md'), 'Secure Widget secure-widget private backlog evidence\n');
+      await writeFile(join(cwd, '.env'), 'SECURE_WIDGET=secure-widget secret\n');
+
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const audit = full.source.fullImplementationAudit as { items: Array<{ itemId: string; evidence: Array<{ path: string; excerpt: string }> }> };
+      const evidence = audit.items.find((entry) => entry.itemId === 'secure-widget')?.evidence ?? [];
+      const serialized = JSON.stringify(evidence);
+
+      expect(evidence).toEqual([expect.objectContaining({ path: 'src/secure-widget.ts', excerpt: expect.stringContaining('password=[REDACTED]') })]);
+      expect(serialized).not.toContain('super-secret-token');
+      expect(serialized).not.toContain('node_modules');
+      expect(serialized).not.toContain('dist evidence');
+      expect(serialized).not.toContain('private backlog evidence');
+      expect(serialized).not.toContain('SECURE_WIDGET');
+    });
+  });
+
+  it('projects full-audit PR-history and lifecycle closure evidence into item context and preview metadata', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'enriched-full-pr', status: 'candidate', body: '# Enriched Full PR\n' });
+      await writeBacklogItem(cwd, { id: 'lifecycle-full', status: 'candidate', body: '# Lifecycle Full\n' });
+      await git(cwd, ['checkout', '-b', 'feature/enriched-full-pr']);
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'enriched-full-pr.ts'), 'Enriched Full PR enriched-full-pr\n');
+      await git(cwd, ['add', 'src/enriched-full-pr.ts']);
+      await git(cwd, ['commit', '-m', 'feat: enriched full pr']);
+      await git(cwd, ['checkout', 'main']);
+      await git(cwd, ['merge', '--no-ff', 'feature/enriched-full-pr', '-m', 'Merge pull request #333 from owner/feature/enriched-full-pr']);
+      const trace = createTraceSidecar('lifecycle-full');
+      trace.landingResults.push({ featureBranch: 'feature/lifecycle-full', commitSha: 'abcdef1234567890', status: 'shipped', path: 'src/lifecycle-full.ts', landedAt: '2026-01-01T00:00:00.000Z' });
+      await writeTraceSidecar(cwd, trace);
+      const fakeBin = join(cwd, 'fake-bin');
+      await mkdir(fakeBin, { recursive: true });
+      await writeFile(join(fakeBin, 'gh'), '#!/usr/bin/env node\nconsole.log(JSON.stringify({ number: 333, title: "Ship enriched full PR", headRefName: "feature/enriched-full-pr", state: "MERGED", mergedAt: "2026-01-01T00:00:00Z", mergeCommit: {}, files: [{ path: "src/enriched-full-pr.ts" }] }));\n');
+      await chmod(join(fakeBin, 'gh'), 0o755);
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${fakeBin}${delimiter}${previousPath ?? ''}`;
+      try {
+        const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
+        const audit = full.source.fullImplementationAudit as { closureCandidates: Array<Record<string, unknown>>; items: Array<{ itemId: string; lifecycleTrace?: Record<string, unknown> }> };
+        const prCandidate = audit.closureCandidates.find((candidate) => candidate.itemId === 'enriched-full-pr');
+        const lifecycleCandidate = audit.closureCandidates.find((candidate) => candidate.itemId === 'lifecycle-full' && candidate.evidenceSource === 'lifecycle');
+
+        expect(prCandidate).toMatchObject({ itemId: 'enriched-full-pr', intent: 'shipped', confidence: 'strong', evidenceSource: 'combined', pr: { number: 333, title: 'Ship enriched full PR' } });
+        expect(lifecycleCandidate).toMatchObject({ itemId: 'lifecycle-full', intent: 'shipped', confidence: 'strong', evidenceSource: 'lifecycle' });
+        expect(audit.items.find((entry) => entry.itemId === 'lifecycle-full')).toMatchObject({ lifecycleTrace: { lifecycleState: 'shipped', landingRefCount: 1 } });
+
+        await writeBacklogCurationSourcePreviewMetadata(cwd, full);
+        await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { itemSummaries: expect.arrayContaining([
+          expect.objectContaining({ itemId: 'enriched-full-pr', candidateIntent: 'shipped', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'combined', confidence: 'strong' })]) }),
+          expect.objectContaining({ itemId: 'lifecycle-full', candidateIntent: 'shipped', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'lifecycle', confidence: 'strong' })]) }),
+        ]) } });
+      } finally {
+        process.env.PATH = previousPath;
+      }
+    });
+  });
+
+  it('surfaces full-audit evidence caps in source diagnostics and preview metadata', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'capped-widget', status: 'candidate', body: '# Capped Widget\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      for (let index = 0; index < 4; index += 1) await writeFile(join(cwd, 'src', `capped-widget-${index}.ts`), `Capped Widget capped-widget evidence ${index}\n`);
+
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false, fullImplementationAuditCaps: { evidencePerItem: 1, pathsPerCategory: 1, fileScanCount: 2, diagnosticCount: 10 } });
+      const audit = full.source.fullImplementationAudit as { coverage: { currentStateHitCount: number; currentStateEvidenceTruncatedCount: number }; diagnostics: Array<{ code: string }>; items: Array<{ itemId: string; evidence: unknown[]; currentStateEvidenceCount: number; currentStateEvidenceTruncatedCount: number }> };
+      const item = audit.items.find((entry) => entry.itemId === 'capped-widget');
+
+      expect(item?.evidence).toHaveLength(1);
+      expect(item).toMatchObject({ currentStateEvidenceCount: 2, currentStateEvidenceTruncatedCount: 1 });
+      expect(audit.coverage).toMatchObject({ currentStateHitCount: 2, currentStateEvidenceTruncatedCount: 1 });
+      expect(audit.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'file-scan-cap-truncated' }), expect.objectContaining({ code: 'evidence-cap-truncated' })]));
+      await writeBacklogCurationSourcePreviewMetadata(cwd, full);
+      await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { coverage: { currentStateEvidenceTruncatedCount: 1 }, caps: { pathsPerCategory: 1 }, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'file-scan-cap-truncated' }), expect.objectContaining({ code: 'evidence-cap-truncated' })]), itemSummaries: expect.arrayContaining([expect.objectContaining({ itemId: 'capped-widget', currentStateEvidenceTruncatedCount: 1 })]) } });
+    });
+  });
+
+  it('routes ambiguous shipped and superseded full-audit matches to needs-input guidance', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'review-flow-item', status: 'candidate', body: '# Review Flow Item\n' });
+      await writeBacklogItem(cwd, { id: 'cleanup-flow-item', status: 'candidate', body: '# Cleanup Flow Item\n' });
+      await writeFile(join(cwd, 'ambiguous.txt'), 'ambiguous history\n');
+      await git(cwd, ['add', 'ambiguous.txt']);
+      await git(cwd, ['commit', '-m', 'ship ambiguous review flow']);
+      await writeFile(join(cwd, 'ambiguous.txt'), 'ambiguous history updated\n');
+      await git(cwd, ['add', 'ambiguous.txt']);
+      await git(cwd, ['commit', '-m', 'obsolete ambiguous cleanup flow']);
+
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const audit = full.source.fullImplementationAudit as { closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidence: string }>; items: Array<{ itemId: string; candidateIntent: string; confidence: string; guidance: string }> };
+      const review = audit.items.find((entry) => entry.itemId === 'review-flow-item');
+      const cleanup = audit.items.find((entry) => entry.itemId === 'cleanup-flow-item');
+
+      expect(audit.closureCandidates.find((candidate) => candidate.itemId === 'review-flow-item' && candidate.intent === 'ambiguous-shipped')).toMatchObject({ intent: 'ambiguous-shipped', confidence: 'ambiguous', evidence: expect.stringMatching(/^Ambiguous shipped candidate: needs input/) });
+      expect(audit.closureCandidates.find((candidate) => candidate.itemId === 'cleanup-flow-item' && candidate.intent === 'ambiguous-superseded')).toMatchObject({ intent: 'ambiguous-superseded', confidence: 'ambiguous', evidence: expect.stringMatching(/^Ambiguous superseded candidate: needs input/) });
+      expect(review).toMatchObject({ candidateIntent: 'needs-input', confidence: 'ambiguous', guidance: expect.stringMatching(/skipped or needs-input/i) });
+      expect(cleanup).toMatchObject({ candidateIntent: 'needs-input', confidence: 'ambiguous', guidance: expect.stringMatching(/skipped or needs-input/i) });
+      expect(audit.closureCandidates.some((candidate) => candidate.confidence === 'strong' && (candidate.itemId === 'review-flow-item' || candidate.itemId === 'cleanup-flow-item'))).toBe(false);
+    });
+  });
+
+  it('returns full-audit source text and diagnostics when PR enrichment is unavailable', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'fallback-full-pr', status: 'candidate', body: '# Fallback Full PR\n' });
+      await writeFile(join(cwd, 'fallback-full-pr.ts'), 'Fallback Full PR fallback-full-pr\n');
+      await git(cwd, ['add', 'fallback-full-pr.ts']);
+      await git(cwd, ['commit', '-m', 'Merge pull request #999999 from owner/fallback-full-pr']);
+      const fakeBin = join(cwd, 'fake-bin');
+      await mkdir(fakeBin, { recursive: true });
+      await writeFile(join(fakeBin, 'gh'), '#!/usr/bin/env node\nconsole.error("deterministic gh failure");\nprocess.exit(1);\n');
+      await chmod(join(fakeBin, 'gh'), 0o755);
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${fakeBin}${delimiter}${previousPath ?? ''}`;
+      try {
+        const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', shippedEvidenceCaps: { subprocessTimeoutMs: 1000, prEnrichmentCount: 1 } });
+        const packet = JSON.parse(source.sourceText) as { fullImplementationAudit: { diagnostics: Array<{ code: string }> } };
+
+        expect(source.sourceText).toContain('fullImplementationAudit');
+        expect(packet.fullImplementationAudit.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'pr-enrichment-unavailable' })]));
+      } finally {
+        process.env.PATH = previousPath;
+      }
+    });
+  });
+
+  it('finds strong shipped and superseded evidence before the accepted delta baseline only in full-audit mode', async () => {
+    await withTempProject(async (cwd) => {
+      await initRepo(cwd);
+      await writeFile(join(cwd, 'README.md'), 'base\n');
+      await git(cwd, ['add', 'README.md']);
+      await git(cwd, ['commit', '-m', 'initial']);
+      await writeBacklogItem(cwd, { id: 'launch-widget', status: 'candidate', body: '# Launch Widget\n' });
+      await writeBacklogItem(cwd, { id: 'obsolete-panel', status: 'candidate', body: '# Obsolete Panel\n' });
+      await git(cwd, ['checkout', '-b', 'feature/launch-widget']);
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'launch-widget.ts'), 'Launch Widget launch-widget\n');
+      await git(cwd, ['add', 'src/launch-widget.ts']);
+      await git(cwd, ['commit', '-m', 'feat(launch-widget): implementation']);
+      await git(cwd, ['checkout', 'main']);
+      await git(cwd, ['merge', '--no-ff', 'feature/launch-widget', '-m', 'Merge pull request #616 from owner/feature/launch-widget']);
+      await writeFile(join(cwd, 'src', 'obsolete-panel.ts'), 'Obsolete Panel obsolete-panel replacement\n');
+      await git(cwd, ['add', 'src/obsolete-panel.ts']);
+      await git(cwd, ['commit', '-m', 'obsolete obsolete-panel because replacement is available']);
+      const baseline = await gitOutput(cwd, ['rev-parse', 'HEAD']);
+      await writeAcceptedAnalysisBaseline(cwd, { taskId: 'task-git-delta', passKind: 'analyze-all', sourceFingerprint: 'baseline-fingerprint', acceptedAt: '2026-01-01T00:00:00.000Z', git: { headCommit: baseline, headCommittedAt: '2026-01-01T00:00:00.000Z' }, coverage: {}, diagnostics: [] });
+
+      const delta = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'delta', enrichPullRequests: false });
+      const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const audit = full.source.fullImplementationAudit as { closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidence: string }> };
+      const closure = (id: string) => audit.closureCandidates.find((candidate) => candidate.itemId === id);
+
+      expect((delta.source.shippedEvidenceCandidates as Array<{ itemId: string }>).some((candidate) => candidate.itemId === 'launch-widget' || candidate.itemId === 'obsolete-panel')).toBe(false);
+      expect(closure('launch-widget')).toMatchObject({ intent: 'shipped', confidence: 'strong', evidence: expect.stringMatching(/^Shipped evidence: inferred from git\/PR history/) });
+      expect(closure('obsolete-panel')).toMatchObject({ intent: 'superseded', confidence: 'strong', evidence: expect.stringMatching(/^Superseded evidence: inferred from git\/PR history/) });
+      expect(full.source.shippedEvidenceCandidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ itemId: 'launch-widget', intent: 'shipped', confidence: 'strong' }),
+        expect.objectContaining({ itemId: 'obsolete-panel', intent: 'superseded', confidence: 'strong' }),
+      ]));
     });
   });
 

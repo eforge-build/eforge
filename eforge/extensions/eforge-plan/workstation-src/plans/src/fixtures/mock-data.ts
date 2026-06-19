@@ -1,4 +1,4 @@
-import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, BacklogCurationScanMode, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -370,41 +370,19 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
   sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000',
   generatedAt: '2026-06-07T00:30:00.000Z',
   summary: ['Found stale backlog metadata and generated a read-only curation draft.', 'Apply will patch backlog records and refresh recommendation outputs together.'],
-  itemChanges: [{
-    kind: 'item', id: 'auto-mode',
-    precondition: { kind: 'item', id: 'auto-mode', bodySha256: 'auto-mode-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { status: 'planned', priority: 'medium', depends_on: ['traceability'], last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Confirmed auto-mode remains blocked by traceability evidence.' }],
-    rationale: 'auto-mode has durable dependency evidence and should carry fresh recheck metadata.',
-    evidence: ['Trace sidecars still blocks auto-mode.'],
-  }, {
-    kind: 'item', id: 'add-import-preview',
-    precondition: { kind: 'item', id: 'add-import-preview', bodySha256: 'add-import-preview-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    rationale: 'add-import-preview has confirmed lifecycle landing evidence and should be proposed as shipped.',
-    evidence: ['Shipped evidence: lifecycle trace — landing row merge commit 1234567890abcdef for feature/add-import-preview.'],
-  }, {
-    kind: 'item', id: 'recommend-next-work',
-    precondition: { kind: 'item', id: 'recommend-next-work', bodySha256: 'recommend-next-work-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    rationale: 'recommend-next-work has git and PR evidence from the merged recommendation workflow.',
-    evidence: ['Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.'],
-  }],
-  epicChanges: [{
-    kind: 'epic', id: 'planning',
-    precondition: { kind: 'epic', id: 'planning', bodySha256: 'planning-epic-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' },
-    metadata: { last_checked: '2026-06-07', stale_after: '2026-07-07' },
-    sectionOperations: [{ heading: 'Recheck', action: 'append', content: '- Planning workstation curation completed with partial progress evidence.' }],
-    rationale: 'Planning epic has new partial-progress evidence from active tasks.',
-    evidence: ['Import preview merged while recommendations remain active.'],
-  }],
+  itemChanges: [
+    { kind: 'item', id: 'auto-mode', precondition: { kind: 'item', id: 'auto-mode', bodySha256: 'auto-mode-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { status: 'planned', priority: 'medium', depends_on: ['traceability'], last_checked: '2026-06-07', stale_after: '2026-07-07' }, sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Confirmed auto-mode remains blocked by traceability evidence.' }], rationale: 'auto-mode has durable dependency evidence and should carry fresh recheck metadata.', evidence: ['Trace sidecars still blocks auto-mode.'] },
+    { kind: 'item', id: 'add-import-preview', precondition: { kind: 'item', id: 'add-import-preview', bodySha256: 'add-import-preview-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' }, rationale: 'add-import-preview has confirmed lifecycle landing evidence and should be proposed as shipped.', evidence: ['Shipped evidence: lifecycle trace — landing row merge commit 1234567890abcdef for feature/add-import-preview.'] },
+    { kind: 'item', id: 'recommend-next-work', precondition: { kind: 'item', id: 'recommend-next-work', bodySha256: 'recommend-next-work-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { status: 'shipped', last_checked: '2026-06-07', stale_after: '2026-07-07' }, rationale: 'recommend-next-work has git and PR evidence from the merged recommendation workflow.', evidence: ['Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.'] },
+  ],
+  epicChanges: [{ kind: 'epic', id: 'planning', precondition: { kind: 'epic', id: 'planning', bodySha256: 'planning-epic-body', sourceFingerprint: 'curation-source-fingerprint-0000000000000000000000000000000000000000' }, metadata: { last_checked: '2026-06-07', stale_after: '2026-07-07' }, sectionOperations: [{ heading: 'Recheck', action: 'append', content: '- Planning workstation curation completed with partial progress evidence.' }], rationale: 'Planning epic has new partial-progress evidence from active tasks.', evidence: ['Import preview merged while recommendations remain active.'] }],
   noOpRechecks: [{ kind: 'item', id: 'traceability', precondition: { kind: 'item', id: 'traceability', bodySha256: 'traceability-body' }, last_checked: '2026-06-07', stale_after: '2026-07-07', rationale: 'Traceability remains accurate and ready.' }],
   skipped: [{ kind: 'item', id: 'legacy-cleanup', reason: 'Legacy shipped record is ambiguous and should not be rewritten by curation.' }],
   needsInput: [{ kind: 'item', id: 'stale-idea', question: 'Which durable evidence supports revisiting cron triggers?', reason: 'Ambiguous shipped candidate: needs input — git history mentions stale-idea but lacks a confirmed merge or lifecycle landing.' }, { kind: 'item', id: 'legacy-cleanup', question: 'Should legacy cleanup be marked superseded instead of shipped?', reason: 'Ambiguous superseded candidate: needs input — git history mentions replacement but lacks confirmed superseded lifecycle evidence.' }],
 };
 export const mockEffectiveCurationRecommendations: RecommendationModel = { ...mockRecommendations, readyCandidates: [{ ref: 'ready-traceability', itemId: 'traceability', rationale: 'Still ready after server projection.' }], recommendedNextSequence: [{ ref: 'next-recommendations', itemId: 'recommend-next-work', rationale: 'Still effective after server projection.' }], safeParallelizableGroups: [{ ref: 'planning-foundations', title: 'Planning foundations', itemIds: ['recommend-next-work'], rationale: 'Server projection removed shipped same-draft targets.', recommendedProfile: 'excursion' }] };
 export const mockBacklogCurationPreview = {
-  valid: false, itemChanges: mockBacklogCurationDraft.itemChanges.length, epicChanges: mockBacklogCurationDraft.epicChanges.length, noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length, recommendationFreshness: mockRecommendationFreshnessStale,
+  valid: false, scanMode: 'delta' as const, itemChanges: mockBacklogCurationDraft.itemChanges.length, epicChanges: mockBacklogCurationDraft.epicChanges.length, noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length, recommendationFreshness: mockRecommendationFreshnessStale,
   gitDelta: {
     baseline: { source: 'accepted-analysis-sidecar', commit: '1111111111111111111111111111111111111111', sourceFingerprint: 'old-source-fingerprint', time: '2026-06-06T00:00:00.000Z', taskId: 'task-baseline' }, currentHead: { commit: '2222222222222222222222222222222222222222', sourceFingerprint: 'current-source-fingerprint', time: '2026-06-07T00:30:00.000Z' }, coverage: { kind: 'fallback' as const, message: 'coverage fallback after baseline scan diagnostics' }, caps: { commitScanCount: 200, changedPathCount: 500 }, scannedCommitCount: 42, scannedCommits: [{ hash: '2222222222222222222222222222222222222222' }],
     diagnostics: [{ severity: 'info' as const, code: 'baseline-missing', message: 'Baseline sidecar was missing; using fallback scan.' }, { severity: 'warning' as const, code: 'baseline-unreachable', message: 'Baseline commit was not reachable from HEAD.', commit: '1111111111111111111111111111111111111111' }],
@@ -412,6 +390,26 @@ export const mockBacklogCurationPreview = {
   },
   recommendationProjection: { effectiveRecommendations: mockEffectiveCurationRecommendations, recommendationSummary: { recommendedNextItemIds: ['recommend-next-work'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockEffectiveCurationRecommendations.rationaleAndAssumptions ?? [] }, removed: { itemIds: ['add-import-preview'], epicIds: ['planning'] }, repositioned: [{ itemId: 'recommend-next-work', from: 'readyCandidates', to: 'recommendedNextSequence' }], validation: { valid: false, issues: [{ path: 'safeParallelizableGroups.planning-foundations.itemIds[0]', id: 'recommend-next-work', kind: 'item' as const, reason: 'wrong-lane' as const, status: 'planned', title: 'Maintain next-work recommendations', message: 'Generated recommendation references an item in the wrong lane for this section.' }] } },
   generatedRecommendationValidation: { valid: false, issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', kind: 'item' as const, reason: 'closed' as const, status: 'shipped', title: 'Closed dependency', message: 'Generated recommendation references closed item closed-dep.' }] },
+};
+
+export const mockFullAuditBacklogCurationPreview = {
+  ...mockBacklogCurationPreview,
+  scanMode: 'full-implementation-audit' as const,
+  valid: true,
+  fullImplementationAudit: {
+    scope: { itemIds: ['auto-mode', 'add-import-preview', 'recommend-next-work', 'stale-idea'], openItemCount: 6 },
+    coverage: { auditedItemCount: 6, currentStateFileCount: 128, gitHistoryCommitCount: 200, pullRequestCount: 12 },
+    caps: { fileScanCount: 250, fileBytes: 1048576, evidencePerItem: 3, pathsPerCategory: 8, excerptBytes: 1200, diagnosticCount: 10, gitCommitScanCount: 200, prEnrichmentCount: 12 },
+    diagnostics: [
+      { severity: 'warning' as const, code: 'pr-history-unavailable', message: 'Some pull request metadata was unavailable; preview uses available git and file evidence.' },
+      { severity: 'info' as const, code: 'source-search-bounded', message: 'Current-state source search stopped at configured caps.' },
+    ],
+    itemSummaries: [
+      { itemId: 'add-import-preview', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'git-history', confidence: 'strong', matchedBy: ['item-id', 'path'], path: 'src/import-preview.ts', excerpt: 'landing row merge commit 1234567890abcdef' }], closureCandidates: [{ source: 'git-history', confidence: 'strong', intent: 'shipped', matchedBy: ['item-id', 'path'], evidence: 'Shipped evidence: lifecycle trace — landing row merge commit 1234567890abcdef for feature/add-import-preview.' }] },
+      { itemId: 'recommend-next-work', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'combined', confidence: 'strong', matchedBy: ['item-id', 'pr'], path: 'src/recommendations.ts', excerpt: 'git commit abcdef1234567890 merged via PR #191' }], closureCandidates: [{ source: 'combined', confidence: 'strong', intent: 'shipped', matchedBy: ['item-id', 'pr'], evidence: 'Shipped evidence: inferred from git/PR history — git commit abcdef1234567890 merged via PR #191 at https://github.test/acme/repo/pull/191.', citation: 'https://github.test/acme/repo/pull/191' }] },
+      { itemId: 'stale-idea', candidateIntent: 'needs-input', evidenceCount: 1, confidence: 'ambiguous', evidence: [{ source: 'code-search', confidence: 'ambiguous', matchedBy: ['title-token'], path: 'docs/cron.md', excerpt: 'cron triggers need product confirmation' }] },
+    ],
+  },
 };
 
 export const mockBacklogCurationTask: PlanningAgentTaskRecord = {
@@ -447,7 +445,8 @@ export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
   { entry: workflowEntry({ taskId: mockRunningTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.' }), available: true, status: 'running', task: mockRunningTask },
   { entry: workflowEntry({ taskId: mockNeedsInputTask.taskId, derivedRequest: 'Draft a session plan for an ambiguous selection.' }), available: true, status: 'completed', task: mockNeedsInputTask },
   { entry: workflowEntry({ taskId: mockReadyCreationDraftTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.', session: MOCK_CREATION_DRAFT_SESSION }), available: true, status: 'completed', task: mockReadyCreationDraftTask },
-  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask, backlogCurationPreview: mockBacklogCurationPreview },
+  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode: 'delta', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask, backlogCurationPreview: mockBacklogCurationPreview },
+  { entry: workflowEntry({ taskId: 'task-backlog-curation-full-ready', derivedRequest: 'Run a full implementation audit for backlog curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: { ...mockBacklogCurationTask, taskId: 'task-backlog-curation-full-ready' }, backlogCurationPreview: mockFullAuditBacklogCurationPreview },
   { entry: workflowEntry({ taskId: mockFailedTask.taskId, derivedRequest: 'Draft a session plan that failed.' }), available: true, status: 'failed', task: mockFailedTask },
 ];
 
@@ -506,18 +505,22 @@ export function getMockRecommendationsResponse(): GetRecommendationsResponse {
   };
 }
 
-export function analyzeMockBacklog(): AnalyzeAllBacklogResponse {
-  const reusable = listMockPlanningTasks().find((item) => item.entry.purpose === 'backlog-curation' && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
+export function analyzeMockBacklog(input: JsonObject = {}): AnalyzeAllBacklogResponse {
+  const scanMode = parseMockScanMode(input.scanMode);
+  const reusable = listMockPlanningTasks().find((item) => item.entry.purpose === 'backlog-curation' && (item.entry.scanMode ?? 'delta') === scanMode && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
   if (reusable?.task) return { task: reusable.task, entry: reusable.entry, sourceFingerprint: reusable.entry.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint, reused: true };
   const response = pushDynamicTask({
     selection: {},
-    derivedRequest: 'Analyze all backlog records for curation.',
-    idPrefix: 'task-backlog-curation',
-    entryPatch: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint },
+    derivedRequest: scanMode === 'full-implementation-audit' ? 'Run a full implementation audit for backlog curation.' : 'Analyze all backlog records for curation.',
+    idPrefix: scanMode === 'full-implementation-audit' ? 'task-backlog-curation-full' : 'task-backlog-curation',
+    entryPatch: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode, sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint },
   });
   return { ...response, sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint };
 }
 
+function parseMockScanMode(value: unknown): BacklogCurationScanMode {
+  return value === 'full-implementation-audit' ? 'full-implementation-audit' : 'delta';
+}
 
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
   const parent = listMockPlanningTasks().find((item) => item.entry.taskId === parentTaskId)?.entry;
@@ -526,7 +529,7 @@ export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 're
     parentTaskId,
     derivedRequest: `${mode === 'retry' ? 'Retry' : 'Redraft'} of ${parentTaskId}`,
     idPrefix: `task-${mode}`,
-    entryPatch: isCuration ? { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: parent.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint } : undefined,
+    entryPatch: isCuration ? { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode: parent.scanMode ?? 'delta', sourceFingerprint: parent.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint } : undefined,
   });
 }
 
@@ -545,9 +548,6 @@ export function getMockArtifacts(): Artifact[] {
   return [...mockArtifacts, ...appliedCreationDraftArtifacts];
 }
 
-// Mutates the shared card objects in place: the precomputed lane arrays hold
-// the same references, so the next list-board read reflects the edit. Lane
-// membership itself stays fixed in the mock - only the live extension derives lanes.
 export function updateMockItem(input: JsonObject): { itemId: string; status: string } {
   const id = String(input.id ?? '');
   const item = items.find((entry) => entry.id === id);
@@ -591,9 +591,5 @@ export function applyMockCreationDraft(session: string): AppliedSessionPlanCreat
   if (!appliedCreationDraftArtifacts.some((entry) => entry.session === session)) {
     appliedCreationDraftArtifacts.push({ key: `plan:${session}`, kind: 'plan', session, title: 'AI-promoted session plan', status: 'planning', ready: false });
   }
-  return {
-    session,
-    relativePath: `.eforge/session-plans/${session}.md`,
-    readiness: { ready: false, missingDimensions: [], coveredDimensions: ['scope', 'acceptance-criteria'], skippedDimensions: ['assumptions-and-validation'] },
-  };
+  return { session, relativePath: `.eforge/session-plans/${session}.md`, readiness: { ready: false, missingDimensions: [], coveredDimensions: ['scope', 'acceptance-criteria'], skippedDimensions: ['assumptions-and-validation'] } };
 }

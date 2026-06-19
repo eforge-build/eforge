@@ -1,4 +1,4 @@
-import type { BacklogCurationDraft, BacklogCurationRecommendationProjection, RecommendationModel, RecommendationReferenceValidationIssue } from '@/types';
+import type { BacklogCurationDraft, BacklogCurationFullAuditEvidenceSummary, BacklogCurationFullAuditPreview, BacklogCurationRecommendationProjection, BacklogCurationScanMode, RecommendationModel, RecommendationReferenceValidationIssue } from '@/types';
 
 export interface CurationCounts {
   itemChanges: number;
@@ -10,6 +10,8 @@ export interface CurationCounts {
 }
 
 export interface DisplayRow { label: string; value: string; }
+
+export interface FullAuditEvidenceMatch { source: string; confidence: string; path?: string; excerpt?: string; matchedBy: string[]; }
 
 // --- eforge:region curation-preview-metadata ---
 export interface CurationEvidencePreview {
@@ -80,6 +82,91 @@ export function recommendationSummaryCounts(recommendations?: RecommendationMode
   const safeParallelGroups = recommendations?.safeParallelizableGroups.length ?? 0;
   const blockedChains = recommendations?.blockedChains?.length ?? 0;
   return { activeWork, readyCandidates, nextSequence, safeParallelGroups, blockedChains, total: activeWork + readyCandidates + nextSequence + safeParallelGroups + blockedChains };
+}
+
+export function normalizeCurationScanMode(value: BacklogCurationScanMode | undefined): BacklogCurationScanMode {
+  return value === 'full-implementation-audit' ? 'full-implementation-audit' : 'delta';
+}
+
+export function curationScanModeLabel(value: BacklogCurationScanMode | undefined): string {
+  return normalizeCurationScanMode(value) === 'full-implementation-audit' ? 'Full implementation audit' : 'Delta curation';
+}
+
+export const FULL_AUDIT_WARNING = 'Full implementation audit may take longer and use more context. It is comprehensive over open items but bounded by caps and available git/PR history.';
+
+export function formatFullAuditCoverage(audit: BacklogCurationFullAuditPreview | undefined): DisplayRow[] {
+  const coverage = audit?.coverage;
+  if (!coverage) return [];
+  return [
+    { label: 'Audited items', value: String(coverage.auditedItemCount) },
+    numberRow('Current-state files', coverage.currentStateFileCount),
+    numberRow('Git commits', coverage.gitHistoryCommitCount),
+    numberRow('Pull requests', coverage.pullRequestCount),
+  ].filter((row): row is DisplayRow => Boolean(row));
+}
+
+export function formatFullAuditCaps(audit: BacklogCurationFullAuditPreview | undefined): DisplayRow[] {
+  const caps = audit?.caps;
+  if (!caps) return [];
+  return [
+    numberRow('File scan cap', caps.fileScanCount),
+    bytesRow('File byte cap', caps.fileBytes),
+    numberRow('Evidence per item cap', caps.evidencePerItem),
+    numberRow('Paths per category cap', caps.pathsPerCategory),
+    bytesRow('Excerpt byte cap', caps.excerptBytes),
+    numberRow('Diagnostic cap', caps.diagnosticCount),
+    numberRow('Git commit scan cap', caps.gitCommitScanCount),
+    numberRow('PR enrichment cap', caps.prEnrichmentCount),
+  ].filter((row): row is DisplayRow => Boolean(row));
+}
+
+export function matchFullAuditEvidenceForPatch(audit: BacklogCurationFullAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }): FullAuditEvidenceMatch[] {
+  if (patch.kind !== 'item' || !patch.id) return [];
+  const summary = audit?.itemSummaries?.find((item) => item.itemId === patch.id);
+  const targetClosedStatus = patch.metadata?.status === 'shipped' || patch.metadata?.status === 'superseded' ? patch.metadata.status : undefined;
+  const candidateEvidence = targetClosedStatus === undefined ? summary?.evidence ?? [] : (summary?.closureCandidates ?? []).filter((entry) => isStrongClosureCandidateForStatus(entry, targetClosedStatus));
+  if (candidateEvidence.length === 0) return [];
+  const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
+  return candidateEvidence.filter(hasDisplayableSourceConfidence).filter((entry) => evidenceMatchesDraft(entry, draftEvidence)).map((entry) => ({
+    source: entry.source.trim(),
+    confidence: entry.confidence.trim(),
+    path: entry.path,
+    excerpt: entry.excerpt,
+    matchedBy: entry.matchedBy ?? [],
+  }));
+}
+
+function isStrongClosureCandidateForStatus(entry: BacklogCurationFullAuditEvidenceSummary, status: 'shipped' | 'superseded'): boolean {
+  return entry.intent === status && entry.confidence.trim().toLowerCase() === 'strong';
+}
+
+export function evidenceSourceLabel(source: string): string {
+  return source.split('-').filter(Boolean).map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(' ');
+}
+
+function hasDisplayableSourceConfidence(entry: BacklogCurationFullAuditEvidenceSummary): boolean {
+  return entry.source.trim().length > 0 && entry.confidence.trim().length > 0;
+}
+
+function evidenceMatchesDraft(entry: BacklogCurationFullAuditEvidenceSummary, draftEvidence: string): boolean {
+  if (draftEvidence.length === 0) return true;
+  const excerpt = entry.excerpt?.toLowerCase();
+  if (excerpt && draftEvidence.includes(excerpt.slice(0, Math.min(excerpt.length, 80)))) return true;
+  if (entry.path && draftEvidence.includes(entry.path.toLowerCase())) return true;
+  if (entry.evidence && draftEvidence.includes(entry.evidence.toLowerCase().slice(0, Math.min(entry.evidence.length, 80)))) return true;
+  if (entry.citation && draftEvidence.includes(entry.citation.toLowerCase())) return true;
+  return draftEvidence.includes(entry.source.toLowerCase());
+}
+
+function numberRow(label: string, value: number | undefined): DisplayRow | undefined {
+  return value === undefined ? undefined : { label, value: value.toLocaleString() };
+}
+
+function bytesRow(label: string, value: number | undefined): DisplayRow | undefined {
+  if (value === undefined) return undefined;
+  if (value < 1024) return { label, value: `${value} B` };
+  if (value < 1024 * 1024) return { label, value: `${(value / 1024).toFixed(1)} KiB` };
+  return { label, value: `${(value / (1024 * 1024)).toFixed(1)} MiB` };
 }
 
 // --- eforge:region curation-preview-metadata ---

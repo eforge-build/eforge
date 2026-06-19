@@ -4,6 +4,8 @@ export type JsonObject = ExtensionJsonObject;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
 
+export type BacklogCurationScanMode = 'delta' | 'full-implementation-audit';
+
 export interface EforgeBridge {
   version?: number;
   invokeAction<TOutput = unknown>(actionId: string, input?: JsonObject): Promise<TOutput>;
@@ -241,14 +243,20 @@ export interface BacklogCurationRecommendationProjection { effectiveRecommendati
 export interface BacklogCurationGitDeltaDiagnostic { severity: 'warning' | 'info'; code: string; message?: string; commit?: string; }
 export interface BacklogCurationGitDeltaCandidate { itemId?: string; epicId?: string; commit?: unknown; evidence?: string; intent?: 'shipped' | 'superseded' | 'affected' | 'ambiguous-shipped' | 'ambiguous-superseded' | string; confidence?: 'strong' | 'medium' | 'ambiguous' | string; }
 export interface BacklogCurationGitDeltaPreview { baseline?: { source?: string; commit?: string | null; time?: string; taskId?: string; sourceFingerprint?: string; generatedAt?: string } | null; currentHead?: { commit?: string; time?: string; sourceFingerprint?: string; generatedAt?: string } | null; coverage?: { kind: 'complete' | 'bounded' | 'unavailable' | string; message?: string; reason?: string }; caps?: { commitScanCount?: number; changedPathCount?: number; excerptCount?: number; excerptBytes?: number; prEnrichmentCount?: number; subprocessTimeoutMs?: number }; scannedCommitCount?: number; scannedCommits?: unknown[]; diagnostics?: BacklogCurationGitDeltaDiagnostic[]; affectedItemCandidates?: BacklogCurationGitDeltaCandidate[]; }
+export interface BacklogCurationFullAuditDiagnostic { severity: 'warning' | 'info'; code: string; message?: string; path?: string; }
+export interface BacklogCurationFullAuditEvidenceSummary { source: string; confidence: string; matchedBy?: string[]; path?: string; excerpt?: string; evidence?: string; citation?: string; intent?: string; }
+export interface BacklogCurationFullAuditItemSummary { itemId: string; candidateIntent: string; evidenceCount?: number; confidence?: string; evidence?: BacklogCurationFullAuditEvidenceSummary[]; closureCandidates?: BacklogCurationFullAuditEvidenceSummary[]; }
+export interface BacklogCurationFullAuditPreview { scope?: { itemIds: string[]; openItemCount?: number }; coverage?: { auditedItemCount: number; currentStateFileCount?: number; gitHistoryCommitCount?: number; pullRequestCount?: number }; caps?: { fileScanCount?: number; fileBytes?: number; evidencePerItem?: number; pathsPerCategory?: number; excerptBytes?: number; diagnosticCount?: number; gitCommitScanCount?: number; prEnrichmentCount?: number }; diagnostics?: BacklogCurationFullAuditDiagnostic[]; itemSummaries?: BacklogCurationFullAuditItemSummary[]; }
 export interface BacklogCurationPreviewDetails {
   valid: boolean;
+  scanMode?: BacklogCurationScanMode;
   itemChanges?: number;
   epicChanges?: number;
   noOpRechecks?: number;
   recommendationProjection?: BacklogCurationRecommendationProjection;
   recommendationFreshness?: RecommendationFreshnessView;
   gitDelta?: BacklogCurationGitDeltaPreview;
+  fullImplementationAudit?: BacklogCurationFullAuditPreview;
   generatedRecommendationValidation?: RecommendationReferenceValidationResult;
   errors?: BacklogCurationPreviewValidationError[];
 }
@@ -386,6 +394,7 @@ export interface PlanningTaskWorkflowEntry {
   planningDepth?: string;
   includeRoadmap?: boolean;
   purpose?: 'recommendation-refresh' | 'backlog-curation';
+  scanMode?: BacklogCurationScanMode;
   sourceFingerprint?: string;
   appliedAt?: string;
   createdAt: string;

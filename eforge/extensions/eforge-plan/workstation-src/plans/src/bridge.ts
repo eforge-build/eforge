@@ -12,6 +12,7 @@ import {
   mockDetail,
   mockMutationResult,
   mockBacklogCurationPreview,
+  mockFullAuditBacklogCurationPreview,
   mockPlanningTask,
   mockRecommendations,
   relinkMockPlanningTask,
@@ -97,14 +98,14 @@ function createMockBridge(): EforgeBridge {
         case 'update-roadmap-state': return updateMockRoadmapState(input) as TOutput;
         case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
         case 'get-recommendations': return getMockRecommendationsWithRoadmapRefresh() as TOutput;
-        case 'analyze-all-backlog': return analyzeMockBacklog() as TOutput;
+        case 'analyze-all-backlog': return analyzeMockBacklog(input) as TOutput;
         case 'show-session-plan': return mockDetail(`plan:${String(input.session ?? '')}`) as TOutput;
         case 'show-session-plan-set': return mockDetail(`plan-set:${String(input.planSetId ?? '')}`) as TOutput;
         case 'promote-selection': return { session: '2026-06-07-promoted-selection', sessionPlanPath: '.eforge/session-plans/2026-06-07-promoted-selection.md' } as TOutput;
         case 'prepare-planner-context': return { items: mockBoard.items, epics: mockBoard.epics, recommendations: { model: mockRecommendations } } as TOutput;
         case 'start-planning-agent-task': return { task: startMockPlanningTaskFromInput(input).task } as TOutput;
         case 'get-planning-agent-task': return { task: { ...mockPlanningTask, taskId: String(input.taskId ?? mockPlanningTask.taskId) } } as TOutput;
-        case 'preview-backlog-curation-task': return mockBacklogCurationPreview as TOutput;
+        case 'preview-backlog-curation-task': return String(input.taskId ?? '').includes('full') ? mockFullAuditBacklogCurationPreview as TOutput : mockBacklogCurationPreview as TOutput;
         case 'list-planning-agent-tasks': return { tasks: listMockPlanningTasks() } as TOutput;
         case 'retry-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'retry') as TOutput;
         case 'redraft-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'redraft') as TOutput;

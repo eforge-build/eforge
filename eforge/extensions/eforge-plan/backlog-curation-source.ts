@@ -10,6 +10,7 @@ import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
 import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
 import { classifyBacklogCurationEvidence, type EvidenceClassificationResult } from './backlog-curation-evidence-classification.js';
+import { collectBacklogCurationFullImplementationAudit, projectFullImplementationAuditForFingerprint, type FullImplementationAuditResult } from './backlog-curation-full-audit.js';
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -19,18 +20,21 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
-import { BacklogCurationGitDeltaPreviewSchema, type BacklogCurationGitDeltaPreview } from './backlog-curation-schemas.js';
+import { BacklogCurationFullImplementationAuditPreviewSchema, BacklogCurationGitDeltaPreviewSchema, BacklogCurationScanModeSchema, normalizeBacklogCurationScanMode, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationGitDeltaPreview, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
   sourceText: string;
   source: Record<string, unknown>;
+  fullImplementationAuditPreview?: BacklogCurationFullImplementationAuditPreview;
 }
 
 export interface BacklogCurationSourcePreviewMetadata {
   sourceFingerprint: string;
   generatedAt?: string;
+  scanMode?: BacklogCurationScanMode;
   gitDelta?: BacklogCurationGitDeltaPreview;
+  fullImplementationAudit?: BacklogCurationFullImplementationAuditPreview;
 }
 
 const SOURCE_TEXT_TARGET = 180_000;
@@ -48,9 +52,11 @@ export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
 
 interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
+  scanMode?: BacklogCurationScanMode;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
   gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
+  fullImplementationAuditCaps?: Record<string, number>;
 }
 // --- eforge:endregion shipped-evidence-context ---
 
@@ -76,15 +82,20 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
     return null;
   }
   const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
+  const scanMode = parsed.scanMode === undefined ? undefined : safeParseWithSchema(BacklogCurationScanModeSchema, parsed.scanMode);
+  const fullImplementationAudit = parsed.fullImplementationAudit === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, parsed.fullImplementationAudit);
   return {
     sourceFingerprint,
     ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
+    ...(scanMode?.success && { scanMode: scanMode.data }),
     ...(gitDelta?.success && { gitDelta: gitDelta.data }),
+    ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
   };
 }
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
+  const scanMode = normalizeBacklogCurationScanMode(options.scanMode);
   const [itemSnapshots, epicSnapshots, recommendationProjection, recommendations] = await Promise.all([
     listBacklogItemSnapshots(cwd),
     listBacklogEpicSnapshots(cwd),
@@ -105,11 +116,15 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
   const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
   gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
-  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification);
+  const fullImplementationAudit = scanMode === 'full-implementation-audit'
+    ? await collectBacklogCurationFullImplementationAudit({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, caps: { ...options.shippedEvidenceCaps, ...options.fullImplementationAuditCaps }, enrichPullRequests: options.enrichPullRequests, signal: options.signal })
+    : undefined;
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification, fullImplementationAudit?.shippedEvidenceCandidates);
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
     schemaVersion: 1,
+    scanMode,
     recommendationSourceProjection: projectRecommendationSourceForFingerprint(recommendationProjection),
     roadmapContext: projectRoadmapContextForFingerprint(roadmapContext),
     preconditions: {
@@ -119,6 +134,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     dependencyDetails: dependencyDetails.map(projectDependencyFingerprintDetail),
     shippedEvidenceCandidates: shippedEvidence.fingerprintCandidates,
     gitDelta: projectGitDeltaForFingerprint(gitDelta.gitDelta),
+    ...(fullImplementationAudit !== undefined && { fullImplementationAudit: projectFullImplementationAuditForFingerprint(fullImplementationAudit.context) }),
     recommendationModelHash: recommendationHash,
   };
   const sourceFingerprint = sha256(canonicalJson(fingerprintProjection));
@@ -127,6 +143,8 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',
+    scanMode,
+    scanModeGuidance: buildScanModeGuidance(scanMode),
     sourceFingerprint,
     generatedAt: new Date().toISOString(),
     openItems,
@@ -139,12 +157,13 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     shippedEvidenceCandidateCounts: shippedEvidence.counts,
     shippedEvidenceDiagnostics: shippedEvidence.diagnostics,
     gitDelta: gitDelta.gitDelta,
+    ...(fullImplementationAudit !== undefined && { fullImplementationAudit: fullImplementationAudit.context }),
     roadmapContext,
     recommendations: { exists: recommendations !== null, modelSummary: summarizeRecommendations(recommendations), modelHash: recommendationHash },
     truncation,
     ...(redraft !== undefined && { redraft }),
   };
-  return { sourceFingerprint, sourceText: buildSourceText(source), source };
+  return { sourceFingerprint, sourceText: buildSourceText(source), source, ...(fullImplementationAudit !== undefined && { fullImplementationAuditPreview: fullImplementationAudit.preview as BacklogCurationFullImplementationAuditPreview }) };
 }
 
 export function buildBacklogCurationRedraftContext(parentTaskId: string, result: Record<string, unknown> | undefined, input: { answers?: string[]; steering?: string }): Record<string, unknown> {
@@ -173,6 +192,7 @@ async function buildShippedEvidenceContext(
   truncation: { shippedEvidenceCandidates: number; shippedEvidencePaths: number; shippedEvidenceExcerpts: number; shippedEvidenceDiagnostics: number },
   options: BacklogCurationSourceBuildOptions,
   classification?: EvidenceClassificationResult,
+  fullAuditCandidates: readonly ShippedEvidenceCandidate[] = [],
 ): Promise<{ candidates: Array<Record<string, unknown>>; fingerprintCandidates: Array<Record<string, unknown>>; counts: Record<string, unknown>; diagnostics: Array<Record<string, unknown>> }> {
   const lifecycleResult = await collectShippedEvidence({
     cwd,
@@ -183,7 +203,7 @@ async function buildShippedEvidenceContext(
     gitHistory: { records: [], diagnostics: [] },
     signal: options.signal,
   });
-  const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: [...(classification?.shippedEvidenceCandidates ?? []), ...lifecycleResult.candidates] };
+  const result: ShippedEvidenceResult = { ...lifecycleResult, candidates: dedupeEvidenceCandidates([...(classification?.shippedEvidenceCandidates ?? []), ...fullAuditCandidates, ...lifecycleResult.candidates]) };
   const eligible = result.candidates.filter((candidate) => !shouldOmitWeakCandidate(candidate)).sort(byEvidenceRank);
   const selected = eligible.slice(0, BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS.candidateCount);
   truncation.shippedEvidenceCandidates += Math.max(0, eligible.length - selected.length) + result.candidates.filter(shouldOmitWeakCandidate).length;
@@ -218,6 +238,16 @@ function collectGitDeltaCaps(options: BacklogCurationSourceBuildOptions): Partia
     subprocessTimeoutMs: shippedCaps.subprocessTimeoutMs,
     ...options.gitDeltaCaps,
   };
+}
+
+function dedupeEvidenceCandidates(candidates: readonly ShippedEvidenceCandidate[]): ShippedEvidenceCandidate[] {
+  const byKey = new Map<string, ShippedEvidenceCandidate>();
+  for (const candidate of candidates) if (!byKey.has(evidenceCandidateKey(candidate))) byKey.set(evidenceCandidateKey(candidate), candidate);
+  return [...byKey.values()];
+}
+
+function evidenceCandidateKey(candidate: ShippedEvidenceCandidate): string {
+  return `${candidate.itemId}:${candidate.intent ?? 'shipped'}:${candidate.commit?.hash ?? ''}:${candidate.pr?.number ?? ''}:${candidate.citation}`;
 }
 
 function projectEvidenceCandidateForContext(candidate: ShippedEvidenceCandidate, truncation: { shippedEvidencePaths: number; shippedEvidenceExcerpts: number }): Record<string, unknown> {
@@ -420,10 +450,14 @@ function resolveBacklogCurationSourcePreviewMetadataPath(cwd: string, sourceFing
 
 function previewMetadataFromSource(source: BacklogCurationSourceBuild): BacklogCurationSourcePreviewMetadata {
   const gitDelta = safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, source.source.gitDelta);
+  const scanMode = normalizeBacklogCurationScanMode(source.source.scanMode);
+  const fullImplementationAudit = source.fullImplementationAuditPreview === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, source.fullImplementationAuditPreview);
   return {
     sourceFingerprint: source.sourceFingerprint,
     ...(typeof source.source.generatedAt === 'string' && { generatedAt: source.source.generatedAt }),
+    scanMode,
     ...(gitDelta.success && { gitDelta: gitDelta.data }),
+    ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
   };
 }
 
@@ -450,6 +484,19 @@ function boundString(value: string, limit: number, onTruncate: () => void): stri
   return `${value.slice(0, Math.max(0, limit - 16))}\n…[truncated]`;
 }
 
+function buildScanModeGuidance(scanMode: BacklogCurationScanMode): Record<string, unknown> {
+  if (scanMode === 'full-implementation-audit') {
+    return {
+      mode: scanMode,
+      instruction: 'Audit every open backlog item against the bounded full implementation audit evidence. Cite only supplied repository evidence, evidence prefixes, confidence values, and source metadata; route unsupported or ambiguous closure claims to skipped or needs-input guidance instead of inventing evidence.',
+    };
+  }
+  return {
+    mode: scanMode,
+    instruction: 'Use the accepted-analysis git delta, backlog records, recommendations, roadmap context, traces, and bounded shipped evidence to curate changed or stale backlog records conservatively.',
+  };
+}
+
 function buildSourceText(source: Record<string, unknown>): string {
   let text = JSON.stringify(source, null, 2);
   if (text.length <= SOURCE_TEXT_TARGET) return text;
@@ -460,6 +507,8 @@ function buildSourceText(source: Record<string, unknown>): string {
   const minimal = {
     schemaVersion: source.schemaVersion,
     purpose: source.purpose,
+    scanMode: source.scanMode,
+    scanModeGuidance: source.scanModeGuidance,
     sourceFingerprint: source.sourceFingerprint,
     generatedAt: source.generatedAt,
     openItems: (source.openItems as Array<Record<string, unknown>>).map(minimalRecord),
@@ -471,6 +520,7 @@ function buildSourceText(source: Record<string, unknown>): string {
     shippedEvidenceCandidateCounts: source.shippedEvidenceCandidateCounts,
     shippedEvidenceDiagnostics: source.shippedEvidenceDiagnostics,
     gitDelta: source.gitDelta,
+    ...(source.fullImplementationAudit !== undefined && { fullImplementationAudit: source.fullImplementationAudit }),
     roadmapContext: source.roadmapContext,
     recommendations: stripRecommendationSummary(source.recommendations),
     ...(redraft !== undefined && { redraft }),

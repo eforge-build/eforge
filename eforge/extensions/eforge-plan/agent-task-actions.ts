@@ -17,6 +17,7 @@ import {
 } from './planning-task-workflow-store.js';
 import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
 import { buildBacklogCurationSource, buildBacklogCurationRedraftContext, writeBacklogCurationSourcePreviewMetadata, type BacklogCurationSourceBuild } from './backlog-curation-source.js';
+import { normalizeBacklogCurationScanMode, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
@@ -204,8 +205,9 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
     const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
       ? await buildRecommendationRefreshSource(ctx.cwd)
       : isBacklogCurationWorkflowEntry(parent)
-        ? await buildBacklogCurationSource(ctx.cwd)
+        ? await buildBacklogCurationSource(ctx.cwd, undefined, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode), signal: ctx.signal })
         : undefined;
+    throwIfAborted(ctx.signal);
     if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
@@ -240,8 +242,9 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
       ? await buildRecommendationRefreshSource(ctx.cwd, redraft)
       : isBacklogCurationWorkflowEntry(parent)
-        ? await buildBacklogCurationSource(ctx.cwd, redraft)
+        ? await buildBacklogCurationSource(ctx.cwd, redraft, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode), signal: ctx.signal })
         : undefined;
+    throwIfAborted(ctx.signal);
     if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
@@ -309,6 +312,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     planningDepth: parent.planningDepth,
     includeRoadmap: parent.includeRoadmap,
     purpose: isRecommendationRefreshWorkflowEntry(parent) || isBacklogCurationWorkflowEntry(parent) ? parent.purpose : undefined,
+    scanMode: isBacklogCurationWorkflowEntry(parent) ? normalizeBacklogCurationScanMode(parent.scanMode) : undefined,
     sourceFingerprint: params.sourceFingerprint ?? parent.sourceFingerprint,
   }));
   return toJsonSafeObject({ task: response.task, entry });
@@ -347,6 +351,7 @@ interface BuildEntryParams {
   planningDepth?: string;
   includeRoadmap?: boolean;
   purpose?: PlanningTaskWorkflowEntry['purpose'];
+  scanMode?: BacklogCurationScanMode;
   sourceFingerprint?: string;
 }
 
@@ -363,6 +368,7 @@ function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
     ...(params.planningDepth !== undefined && { planningDepth: params.planningDepth }),
     ...(params.includeRoadmap !== undefined && { includeRoadmap: params.includeRoadmap }),
     ...(params.purpose !== undefined && { purpose: params.purpose }),
+    ...(params.scanMode !== undefined && { scanMode: params.scanMode }),
     ...(params.sourceFingerprint !== undefined && { sourceFingerprint: params.sourceFingerprint }),
     createdAt: new Date().toISOString(),
   };

@@ -863,6 +863,7 @@ describe('planning agent task actions', () => {
         requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
         includeRoadmap: true,
         purpose: 'backlog-curation',
+        scanMode: 'full-implementation-audit',
         sourceFingerprint: 'old-fingerprint',
       });
       let started: { input: Record<string, unknown> } | undefined;
@@ -879,10 +880,10 @@ describe('planning agent task actions', () => {
         }),
       });
 
-      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
+      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', scanMode: 'full-implementation-audit', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
       expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true });
       const source = JSON.parse(String(started?.input.sourceText));
-      expect(source).toMatchObject({ purpose: 'backlog-curation', openItems: [expect.objectContaining({ id: 'item-one' })] });
+      expect(source).toMatchObject({ purpose: 'backlog-curation', scanMode: 'full-implementation-audit', openItems: [expect.objectContaining({ id: 'item-one' })] });
     });
   });
 
@@ -898,6 +899,7 @@ describe('planning agent task actions', () => {
         requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
         includeRoadmap: true,
         purpose: 'backlog-curation',
+        scanMode: 'full-implementation-audit',
         sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       });
       let started: { input: Record<string, unknown> } | undefined;
@@ -914,11 +916,11 @@ describe('planning agent task actions', () => {
         }),
       });
 
-      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
+      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', scanMode: 'full-implementation-audit', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } } });
       const sourceText = String(started?.input.sourceText);
       expect(sourceText).toContain('Prefer conservative status changes.');
       expect(sourceText).toContain('previousBacklogCurationDraft');
-      expect(JSON.parse(sourceText)).toMatchObject({ purpose: 'backlog-curation', redraft: { parentTaskId: 'task-curation' } });
+      expect(JSON.parse(sourceText)).toMatchObject({ purpose: 'backlog-curation', scanMode: 'full-implementation-audit', redraft: { parentTaskId: 'task-curation' } });
     });
   });
 

@@ -2,6 +2,8 @@ import * as React from 'react';
 import { Bot, Loader2 } from 'lucide-react';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { PlanningTaskCard } from './planning-task-card';
+import type { BacklogCurationScanMode } from '@/types';
+import { curationScanModeLabel, FULL_AUDIT_WARNING } from './backlog-curation-view-model';
 import type { PlanningTaskWorkflowsApi } from './use-planning-task-workflows';
 
 interface PlanWithAiPanelProps {
@@ -19,6 +21,9 @@ interface PlanWithAiPanelProps {
  */
 export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
   const { items, loading, busy, reload, analyzeAllBacklog, cancel, retry, redraft, remove, apply } = workflows;
+  const [scanMode, setScanMode] = React.useState<BacklogCurationScanMode>('delta');
+  const actionDisabled = busy || loading;
+  const selectedModeLabel = curationScanModeLabel(scanMode);
   const statusOf = (item: (typeof items)[number]) => item.task?.status ?? item.status;
   const activeCount = items.filter((item) => statusOf(item) === 'queued' || statusOf(item) === 'running').length;
   const failedCount = items.filter((item) => statusOf(item) === 'failed').length;
@@ -48,9 +53,21 @@ export function PlanWithAiPanel({ workflows }: PlanWithAiPanelProps) {
       icon={<Bot className="h-4 w-4 text-primary" />}
       title="Plan with AI"
       summary={summary}
-      actions={<div className="flex flex-wrap items-center gap-2"><button type="button" className="text-xs text-primary hover:text-foreground disabled:opacity-50" disabled={busy || loading} onClick={() => void analyzeAllBacklog()}>Analyze all backlog</button><button type="button" className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50" disabled={busy || loading} onClick={() => void reload()}>Refresh tasks</button></div>}
+      actions={<div className="flex flex-wrap items-center gap-2"><button type="button" className="text-xs text-primary hover:text-foreground disabled:opacity-50" disabled={actionDisabled} onClick={() => void analyzeAllBacklog(scanMode)}>Analyze all backlog ({selectedModeLabel})</button><button type="button" className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50" disabled={actionDisabled} onClick={() => void reload()}>Refresh tasks</button></div>}
     >
       <p className="text-xs text-muted-foreground">Planning tasks start from backlog selections and recommendations. Generated drafts stay read-only until you apply them.</p>
+      <fieldset className="mt-3 grid gap-2 rounded border border-border bg-card p-2 text-xs" disabled={actionDisabled}>
+        <legend className="px-1 text-2xs uppercase tracking-wide text-muted-foreground">Backlog curation mode</legend>
+        <label className="flex items-start gap-2">
+          <input type="radio" name="backlog-curation-scan-mode" value="delta" checked={scanMode === 'delta'} onChange={() => setScanMode('delta')} />
+          <span><span className="font-medium text-foreground">Delta curation</span><span className="block text-muted-foreground">Default. Reviews changes since the accepted analysis baseline using server-provided git delta metadata.</span></span>
+        </label>
+        <label className="flex items-start gap-2">
+          <input type="radio" name="backlog-curation-scan-mode" value="full-implementation-audit" checked={scanMode === 'full-implementation-audit'} onChange={() => setScanMode('full-implementation-audit')} />
+          <span><span className="font-medium text-foreground">Full implementation audit</span><span className="block text-muted-foreground">Audits open backlog items against bounded server evidence from current files, git history, and PR history.</span></span>
+        </label>
+        {scanMode === 'full-implementation-audit' && <p className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-amber-100">{FULL_AUDIT_WARNING}</p>}
+      </fieldset>
 
       {loading && items.length === 0 && (
         <p className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading planning tasks…</p>
