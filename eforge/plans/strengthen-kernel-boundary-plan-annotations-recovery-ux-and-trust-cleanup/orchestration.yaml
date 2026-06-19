@@ -1,0 +1,104 @@
+name: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup
+description: Coordinate docs boundary cleanup, eforge-plan annotation revision
+  gap hardening, typed recovery UX, and removal of the deprecated
+  trustProjectExtensions config field while preserving the kernel/extension
+  boundary.
+created: 2026-06-19
+compiled: 2026-06-19
+mode: expedition
+base_branch: main
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm docs:generate
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-docs-boundary-and-eforge-plan-docs
+    name: Refocus public docs/nav/manifest on the kernel boundary, move eforge-plan
+      product semantics into optional first-party extension docs, and add
+      allowlist-based docs boundary tests without regenerating artifacts.
+    depends_on: []
+    branch: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup/docs-boundary-and-eforge-plan-docs
+    build: &a1
+      - - implement
+        - doc-author
+      - - doc-sync
+        - test-write
+      - test-cycle
+      - validate
+      - review-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - api
+        - docs
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-eforge-plan-annotation-revisions
+    name: Audit and close any remaining eforge-plan annotation-driven Revise with AI
+      gaps in private storage, actions, source-context snapshotting, workstation
+      UI, and tests while preserving existing extension-owned behavior.
+    depends_on: []
+    branch: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup/eforge-plan-annotation-revisions
+    build: *a1
+    review: *a2
+  - id: plan-03-recovery-contracts-and-engine
+    name: Add client-owned recovery/dispatch-failure contracts and engine recovery
+      preflight, dependency classification, explicit repair operations, and
+      durable pre-session dispatch failure events.
+    depends_on: []
+    branch: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup/recovery-contracts-and-engine
+    build: *a1
+    review: *a2
+  - id: plan-04-trust-cleanup
+    name: Remove the deprecated extensions.trustProjectExtensions field from config
+      schema/types/defaults/compatibility handling, extension loader options,
+      monitor/Pi consumers, tests, and active docs references.
+    depends_on: []
+    branch: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup/trust-cleanup
+    build: *a1
+    review: *a2
+  - id: plan-05-recovery-daemon-console
+    name: Project recovery contracts through daemon routes/SSE snapshots and render
+      failed queue blocker, dependency classification, repair confirmation, and
+      Needs attention UX in Console without local wire-shape redeclarations.
+    depends_on:
+      - plan-03-recovery-contracts-and-engine
+    branch: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup/recovery-daemon-console
+    build: *a1
+    review: *a2
+  - id: plan-06-generated-reference-artifacts
+    name: Regenerate and verify public docs mirrors, reference docs, JSON schemas,
+      and LLM artifacts after source docs, client contracts, and config schema
+      changes land.
+    depends_on:
+      - plan-01-docs-boundary-and-eforge-plan-docs
+      - plan-02-eforge-plan-annotation-revisions
+      - plan-03-recovery-contracts-and-engine
+      - plan-05-recovery-daemon-console
+      - plan-04-trust-cleanup
+    branch: strengthen-kernel-boundary-plan-annotations-recovery-ux-and-trust-cleanup/generated-reference-artifacts
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD spans several independently complex subsystems: public
+    docs/navigation/docs generation, eforge-plan annotation and revision UX,
+    typed recovery contracts across engine/client/daemon/Console, and config
+    trust cleanup. Expedition scope is appropriate because delegated module
+    planning can keep those tracks bounded while coordinating shared contracts.
+    The build pipeline authors and syncs docs, writes and runs tests, includes
+    the registered maintainability validation gate before review, and uses
+    iterative review for a high-risk cross-package change. API and docs
+    perspectives are prioritized because the work changes shared wire contracts,
+    routes, generated docs, and public boundary messaging."
+diff_base_ref: 0105ff062f130e22e8821535ccf1af801b4923d9

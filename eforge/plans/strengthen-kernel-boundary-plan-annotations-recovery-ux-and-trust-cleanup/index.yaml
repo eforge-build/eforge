@@ -4,7 +4,8 @@ description: Coordinate docs boundary cleanup, eforge-plan annotation revision
   trustProjectExtensions config field while preserving the kernel/extension
   boundary.
 created: 2026-06-19
-status: draft
+status: compiled
+compiled: "2026-06-19"
 mode: expedition
 validate:
   - pnpm maintainability:check
