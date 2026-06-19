@@ -170,11 +170,22 @@ Non-JSON output prints concrete next steps after install. When the returned entr
 `@eforge-build/eforge-plan` is the optional first-party planning package. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, and revision flows is documented in `/docs/eforge-plan` and the extension-owned README.
 
 ```bash
+# Local install (trusted by default)
 eforge extension install @eforge-build/eforge-plan
-eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension validate eforge-plan
+eforge extension reload
+
+# Project/team install with post-inspection trust
+eforge extension install @eforge-build/eforge-plan --scope project
 eforge extension validate eforge-plan
 eforge extension trust eforge-plan
 eforge extension reload
+
+# Project/team install with immediate trust
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension reload
+
+# Update or remove
 eforge extension update eforge-plan
 eforge extension update eforge-plan --version latest
 eforge extension remove eforge-plan

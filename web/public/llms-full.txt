@@ -219,7 +219,7 @@ A long-running **daemon** watches the queue and, when `prdQueue.autoBuild` is en
 
 At dispatch time, the daemon also writes a canonical copy of the PRD to `eforge/prds/{prdId}.md` - a committed provenance record that links the build session to its originating requirements independently of queue state. Queue files in `.eforge/queue/` are ephemeral; `eforge/prds/` files are committed to the artifact branch and survive queue cleanup. The hidden inventory is stripped from planner, validator, dependency, staleness, profile-router, and provenance prose, while the loaded stable IDs are passed to acceptance validation. When `build.cleanupPlanFiles: true` (the default), these artifacts are removed from `HEAD` during the `pr` or `merge` landing flows after a successful build, temporary plan-ID eforge region marker comment lines are stripped from tracked JavaScript/TypeScript-family source files, and artifacts remain recoverable from Git history via commit-pinned references. `landing.action: leave` preserves the artifact branch in place. See [Build Artifact Provenance](#build-artifact-provenance) above.
 
-The queue supports dependencies, priority, and runtime controls. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter, while failed and skipped items reject priority changes with a conflict until recovery or requeue makes them runnable. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files and deletes matching failed-build recovery sidecars. The daemon API also supports targeted dependency overrides for pending or waiting PRDs: one `depends_on` id is removed, remaining blockers keep the PRD in `waiting/`, and clearing the last blocker moves a waiting PRD back to the queue root. Running items reject priority, removal, and dependency override controls; cancel active work through the existing session-id cancel route instead. Removal fails closed when live pending/waiting dependents exist, lists dependent ids, and requires removing those dependents first; there is no cascade remove action. These are runtime filesystem mutations under `.eforge/queue/`, are gitignored, produce no git commits, and notify the scheduler so it re-reads queue files before dispatch. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build. The Console Now dashboard surfaces failed and skipped terminal rows in the Needs attention strip rather than the Queue card; the Queue card preview lists only forward pending and waiting rows, which expose set-priority and confirmed remove actions. Failed upstreams with skipped descendants can be inspected before applying daemon-planned recovery, including projected pre-session dispatch blockers and explicit queue-cascade metadata repair choices when available.
+The queue supports dependencies, priority, and runtime controls. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items, or to completed items with durable usable artifacts. Failed, skipped, unknown, or completed-without-artifact dependencies are rejected. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter, while failed and skipped items reject priority changes with a conflict until recovery or requeue makes them runnable. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files and deletes matching failed-build recovery sidecars. The daemon API also supports targeted dependency overrides for pending or waiting PRDs: one `depends_on` id is removed, remaining blockers keep the PRD in `waiting/`, and clearing the last blocker moves a waiting PRD back to the queue root. Running items reject priority, removal, and dependency override controls; cancel active work through the existing session-id cancel route instead. Removal fails closed when live pending/waiting dependents exist, lists dependent ids, and requires removing those dependents first; there is no cascade remove action. These are runtime filesystem mutations under `.eforge/queue/`, are gitignored, produce no git commits, and notify the scheduler so it re-reads queue files before dispatch. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build. The Console Now dashboard surfaces failed and skipped terminal rows in the Needs attention strip rather than the Queue card; the Queue card preview lists only forward pending and waiting rows, which expose set-priority and confirmed remove actions. Failed upstreams with skipped descendants can be inspected before applying daemon-planned recovery, including projected pre-session dispatch blockers and explicit queue-cascade metadata repair choices when available.
 
 The **Console dashboard** (`http://localhost:<port>/console/`) tracks cost, token usage, and pipeline progress in real time. Root UI requests redirect to Console, and the daemon keeps it available after the build completes so you can inspect results.
 
@@ -1010,11 +1010,22 @@ Non-JSON output prints concrete next steps after install. When the returned entr
 `@eforge-build/eforge-plan` is the optional first-party planning package. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, and revision flows is documented in [eforge-plan](/docs/eforge-plan) and the extension-owned README.
 
 ```bash
+# Local install (trusted by default)
 eforge extension install @eforge-build/eforge-plan
-eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension validate eforge-plan
+eforge extension reload
+
+# Project/team install with post-inspection trust
+eforge extension install @eforge-build/eforge-plan --scope project
 eforge extension validate eforge-plan
 eforge extension trust eforge-plan
 eforge extension reload
+
+# Project/team install with immediate trust
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension reload
+
+# Update or remove
 eforge extension update eforge-plan
 eforge extension update eforge-plan --version latest
 eforge extension remove eforge-plan
@@ -2690,7 +2701,7 @@ A `modify` variant (mutating the diff inline) is intentionally absent. `modify` 
 
 ## Event types and `EventPattern` glob semantics
 
-All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`.
+All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`. The lower-level `@eforge-build/client/events` subpath also exports `DaemonStreamSnapshotSchema` for validating the daemon `stream:hello` snapshot shape.
 
 Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 
@@ -3265,7 +3276,7 @@ PRD frontmatter carries two optional stacking fields:
 
 **`stack_id`** - a logical stack name shared by all PRDs in the same stack. If omitted, defaults to the first PRD id in the chain.
 
-**`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets.
+**`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets, and must name an entry from `depends_on` when stacking is enabled.
 
 ```yaml
 ---
@@ -3280,7 +3291,7 @@ depends_on: [q-abc123]
 
 When a PRD has exactly one `depends_on` entry and stacking is enabled, eforge automatically infers `stack_parent` from that dependency at dispatch time. For linear stacks you do not need to set `stack_parent` explicitly.
 
-When a PRD has multiple `depends_on` entries, eforge cannot infer the stack parent. You must set `stack_parent` explicitly to indicate which dependency is the direct parent layer. If `stack_parent` is missing and there are multiple `depends_on` entries, dispatch fails with a clear error.
+When a PRD has multiple `depends_on` entries, eforge cannot infer the stack parent. You must set `stack_parent` explicitly to indicate which dependency is the direct parent layer. If `stack_parent` is missing, or if it is set to an id that is not listed in `depends_on`, dispatch fails before `session:start` with a durable `queue:prd:dispatch-failed` event.
 
 ### Explicit handoff and stack parent
 
@@ -3460,7 +3471,8 @@ eforge extension reload
 For a team/project install, inspect the package and use the normal extension trust flow:
 
 ```bash
-eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension install @eforge-build/eforge-plan --scope project
+# Inspect the installed package, then trust and reload it.
 eforge extension trust eforge-plan
 eforge extension reload
 ```
@@ -4768,6 +4780,10 @@ union exposed by `packages/client/src/events.schemas.ts` and implemented under `
 
 Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected
 with one of the variant objects below. The `type` field discriminates the variant.
+
+The JSON Schema also includes a `DaemonStreamSnapshot` definition for the
+`stream:hello` snapshot; queue items in that snapshot expose the optional
+`dispatchFailure` projection populated from `queue:prd:dispatch-failed` events.
 
 ## Event Variants
 

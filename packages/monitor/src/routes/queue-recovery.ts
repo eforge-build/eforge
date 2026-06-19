@@ -112,7 +112,7 @@ function validateRepairActions(value: unknown, res: Parameters<RouteDefinition['
     if (!isPlainObject(raw)) { sendJsonError(res, 400, `${prefix}: must be an object`); return null; }
     if (raw.kind === 'remove-depends-on') {
       if (typeof raw.targetPrdId !== 'string' || !isValidPathSegment(raw.targetPrdId)) { sendJsonError(res, 400, `${prefix}: targetPrdId must be a safe string`); return null; }
-      if (!Array.isArray(raw.dependencyIds)) { sendJsonError(res, 400, `${prefix}: dependencyIds must be an array`); return null; }
+      if (!Array.isArray(raw.dependencyIds) || raw.dependencyIds.length === 0) { sendJsonError(res, 400, `${prefix}: dependencyIds must be a non-empty array`); return null; }
       const dependencyIds: string[] = [];
       for (const [depIndex, dep] of raw.dependencyIds.entries()) {
         if (typeof dep !== 'string' || !isValidPathSegment(dep)) { sendJsonError(res, 400, `${prefix}: dependencyIds[${depIndex}] must be a safe string`); return null; }

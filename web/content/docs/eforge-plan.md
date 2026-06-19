@@ -32,7 +32,8 @@ eforge extension reload
 For a team/project install, inspect the package and use the normal extension trust flow:
 
 ```bash
-eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension install @eforge-build/eforge-plan --scope project
+# Inspect the installed package, then trust and reload it.
 eforge extension trust eforge-plan
 eforge extension reload
 ```

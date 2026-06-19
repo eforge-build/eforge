@@ -293,7 +293,13 @@ describe('queue recovery cascade engine', () => {
 
     expect(applied.applied).toBe(false);
     expect((applied.dispatchPreflight?.blockers ?? []).map((notice) => notice.message).join('\n')).toContain('multiple depends_on');
-    expect(applied.repairResults).toContainEqual(expect.objectContaining({ status: 'applied', after: expect.objectContaining({ dependsOn: ['artifact-b', 'artifact-c'] }) }));
+    expect(applied.repairResults).toContainEqual(
+      expect.objectContaining({
+        status: 'blocked',
+        after: expect.objectContaining({ dependsOn: ['artifact-b', 'artifact-c'] }),
+        message: expect.stringContaining('Repair was only simulated'),
+      }),
+    );
     expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.md'))).toBe(true);
     expect(await exists(join(cwd, '.eforge', 'queue', 'parent.md'))).toBe(false);
   });

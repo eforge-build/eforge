@@ -912,7 +912,7 @@ Repair actions:
 | `{ kind: 'remove-depends-on', targetPrdId, dependencyIds }` | Remove satisfied dependencies from `depends_on`; apply requires `confirmDependencyRemoval: true`. |
 | `{ kind: 'set-stack-parent', targetPrdId, selectedParentId }` | Set `stack_parent` to a dependency selected by the caller. Construct this from the target PRD's `meaningfulDependencyIds` when `requiresStackParentChoice` is `true`. |
 
-`availableRepairActions` may include satisfied dependency removals and bounded `set-stack-parent` candidates. Operators must explicitly select any dependency removal or stack parent choice before those repair actions are sent on apply.
+`availableRepairActions` currently includes satisfied dependency removals. When `requiresStackParentChoice` is `true`, callers construct `set-stack-parent` actions from dispatch preflight fields such as `items[].meaningfulDependencyIds`. Operators must explicitly select any dependency removal or stack parent choice before those repair actions are sent on apply.
 
 Repair result statuses:
 

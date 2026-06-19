@@ -9,6 +9,10 @@ union exposed by `packages/client/src/events.schemas.ts` and implemented under `
 Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected
 with one of the variant objects below. The `type` field discriminates the variant.
 
+The JSON Schema also includes a `DaemonStreamSnapshot` definition for the
+`stream:hello` snapshot; queue items in that snapshot expose the optional
+`dispatchFailure` projection populated from `queue:prd:dispatch-failed` events.
+
 ## Event Variants
 
 Total variants: 227
