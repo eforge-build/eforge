@@ -5,7 +5,7 @@ description: Install eforge and run your first delegated build.
 
 # Getting Started
 
-eforge turns described work into reviewed, validated code changes. You describe what you want to build through a prompt, PRD, playbook, or session plan; eforge plans, implements, reviews, and validates the work through a multi-stage pipeline across isolated worktrees.
+eforge turns normalized build source into reviewed, validated code changes. For your first build, start directly from a prompt, PRD, or file path; optional workflow surfaces such as playbooks, session plans, and first-party planning extensions can prepare build source before it reaches the same kernel.
 
 ## Prerequisites
 
@@ -58,33 +58,30 @@ The CLI has no init command yet: run `/eforge:init` once in Pi or Claude Code to
 
 ## Your First Build
 
-Once eforge is installed and initialized, you can plan first through the generic eforge-plan planning entry when the eforge-plan extension is loaded/trusted. In Pi or Claude, discover and invoke the `eforge-plan:open-planning-entry` contribution with `eforge_extension_contribution`; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. You can also open the eforge-plan workstation deep link at `/console/workstations/eforge-plan%3Aplanning-workstation`. The workstation guides structured planning - exploring scope, architecture, risks, acceptance criteria, readiness, and assumptions - and writes a session-plan file under `.eforge/session-plans/` with planning type/depth, required/optional dimensions, skipped dimensions, open questions, and readiness status.
-
-When the session plan is ready to build:
-
-```
-/eforge:build
-```
-
-With no arguments, `/eforge:build` looks for active session plans. Ready session-plan files are submitted by file path as build source; eforge's bundled session-planning adapter converts the session plan into normalized build source, the daemon enqueues it, and the session plan is marked `submitted` with the resulting session ID.
-
-Or enqueue directly with a prompt:
+Once eforge is installed and initialized, enqueue directly with a prompt:
 
 ```
 /eforge:build Add a dark mode toggle to the settings page
 ```
-
-The daemon picks up the queued plan and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
 
 From the standalone CLI:
 
 ```bash
 eforge build "Add a dark mode toggle to the settings page"
 eforge build plans/my-feature-prd.md
+eforge build ./docs/my-feature.md
 eforge build --landing-action pr plans/my-feature-prd.md
 ```
 
+The daemon normalizes the prompt, PRD, or file into build source, queues it, and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
+
 Use `--profile <name>` for a one-off agent runtime profile override, and `--landing-action pr|merge|leave` when one build should use a different landing action from `eforge/config.yaml`.
+
+## Optional planning and workflow surfaces
+
+Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension is available. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
+
+When eforge-plan is loaded and trusted, hosts can discover and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
 
 ## What Happens Next
 
@@ -101,7 +98,8 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 - [Concepts](./concepts) - How the pipeline works, what blind review means, and what harnesses do
 - [Configuration](./configuration) - The most important config options and how to tune them
 - [Profiles](./profiles) - Create and switch agent runtime profiles that control harness, model, and effort
-- [Playbooks](./playbooks) - Build reusable workflow templates for recurring work
+- [Playbooks](./playbooks) - Optional workflow artifacts that prepare build source for recurring work
+- [eforge-plan](./eforge-plan) - Optional first-party extension behavior
 - [Integrations](./integrations) - How to use eforge from Claude Code, Pi, the CLI, and external issue trackers
 - [Troubleshooting](./troubleshooting) - Daemon startup, failed builds, and common error remedies
 - [Glossary](./glossary) - Definitions for eforge-specific terms such as profiles, worktrees, and playbooks

@@ -142,6 +142,8 @@ The standalone CLI can override the active profile for one build with `eforge bu
 
 ## Native Extensions
 
+Configuration is split between core build/daemon/profile settings and optional producer surfaces. The build-engine kernel consumes normalized build source; native extensions, playbooks, and session-plan compatibility adapters can prepare, route, or govern that source before enqueue without becoming kernel capabilities.
+
 Native eforge extensions are TypeScript/JavaScript modules discovered from three scopes:
 
 | Scope | Directory | Trust default |
@@ -294,7 +296,7 @@ For the complete field schema and validation behavior, see the [Toolbelts](/refe
 
 ## Playbook Profiles
 
-Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
+Playbooks are optional workflow artifacts that resolve outside the build-engine kernel before autonomous runs normalize to build source or planning runs route to an extension. Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
 
 ```yaml
 ---

@@ -274,6 +274,8 @@ export async function generateTools(opts: {
     '',
     'Both surfaces are kept in parity per `AGENTS.md`.',
     '',
+    'Playbook and session-plan host tools prepare or manage optional workflow artifacts around normalized build source. They are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities.',
+    '',
     '## MCP tools (Claude Code)',
     '',
     `Total tools: ${mcpTools.length}`,

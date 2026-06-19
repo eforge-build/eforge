@@ -29,13 +29,11 @@ Every eforge build runs two phases:
 
 The compile phase produces `orchestration.yaml` - a dependency graph over the plans. The orchestrator launches plans as soon as their dependencies have merged, not in fixed waves. Since agent execution is IO-bound, all ready plans run immediately in parallel.
 
-## Build Sources and Session Plans
+## Normalized build-source boundary
 
-A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, an autonomous playbook, a wrapper-app artifact, or a session-plan file, but the engine sees the normalized build source rather than the original authoring surface.
+A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, a wrapper-app artifact, an autonomous workflow artifact, or another host-provided file, but the build-engine kernel sees normalized build source rather than the original authoring surface.
 
-The generic eforge-plan planning entry creates session plans under `.eforge/session-plans/` through contribution/workstation/deep-link routing. A session plan is a driver-side planning artifact: it records the planning type and depth, required and optional dimensions, skipped dimensions with reasons, open questions, readiness, and any inherited `agent_profile` from a planning-mode playbook. When `/eforge:build` uses a ready session-plan file, eforge's bundled session-planning adapter converts that file into ordinary build source before writing the normalized PRD to the queue.
-
-**Session plans are local and private.** The `.eforge/session-plans/` directory is gitignored — session plans are never committed and are not the shared provenance mechanism. They exist only on the developer's machine.
+That boundary keeps producer UX optional. Hosts, wrapper apps, playbooks, session-plan compatibility adapters, and first-party extensions such as [eforge-plan](/docs/eforge-plan) may help collect intent, investigate scope, or format a handoff. They are producers around the kernel. Once a build is enqueued, the engine consumes the normalized source through the same compile/build/landing lifecycle.
 
 ## Build Artifact Provenance
 
@@ -98,7 +96,7 @@ A **profile** is a named YAML file that bundles tier recipes into a reusable uni
 
 The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models. See [Profiles](/docs/profiles) for a full walkthrough.
 
-**Playbooks** are a separate but related surface: a playbook is a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Playbooks run in either `autonomous` mode (enqueues a build directly) or `planning` mode (checks the eforge-plan planning capability and returns planning entry metadata before building). See [Playbooks](/docs/playbooks).
+**Playbooks** are an optional workflow surface: a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Autonomous playbooks normalize to build source before enqueue; planning playbooks route to optional eforge-plan planning when that extension capability is available. See [Playbooks](/docs/playbooks).
 
 ## The Queue and Daemon
 
@@ -140,7 +138,7 @@ eforge publishes machine-readable reference artifacts for use by AI coding assis
 
 - `/llms.txt` - Structured index of available documentation, getting-started guides, reference docs, packages, schemas, and optional context
 - `/llms-full.txt` - Full reference documentation bundle in a single file
-- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/profiles.md`, `/docs/playbooks.md`, `/docs/stacking.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/integrations.md`, `/docs/troubleshooting.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding, operations, and terminology
+- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/profiles.md`, `/docs/playbooks.md`, `/docs/eforge-plan.md`, `/docs/stacking.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/integrations.md`, `/docs/troubleshooting.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding, operations, optional workflows, first-party extensions, and terminology
 - `/reference/cli.md`, `/reference/api.md`, `/reference/events.md`, `/reference/config.md`, `/reference/tools.md` - Raw Markdown reference docs
 - `/schemas/events.schema.json`, `/schemas/config.schema.json` - JSON Schemas for wire types and config
 

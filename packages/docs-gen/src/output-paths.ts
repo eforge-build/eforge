@@ -57,6 +57,7 @@ export function getOutputPaths(repoRoot: string) {
     publicDocsConfiguration: join(webPublicDocs, 'configuration.md'),
     publicDocsExtensions: join(webPublicDocs, 'extensions.md'),
     publicDocsExtensionsApi: join(webPublicDocs, 'extensions-api.md'),
+    publicDocsEforgePlan: join(webPublicDocs, 'eforge-plan.md'),
     publicDocsGlossary: join(webPublicDocs, 'glossary.md'),
     publicDocsProfiles: join(webPublicDocs, 'profiles.md'),
     publicDocsPlaybooks: join(webPublicDocs, 'playbooks.md'),
