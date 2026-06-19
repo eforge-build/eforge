@@ -1,19 +1,41 @@
 # eforge
 
-> eforge turns prompts, plans, playbooks, or PRDs into reviewed code through a multi-agent build pipeline.
+> eforge is a build-engine kernel that turns normalized build source into reviewed, validated code.
 
-eforge is an autonomous build-and-review orchestration engine for code generation. It accepts build intent from CLI prompts, rough notes, session plans, playbooks, or PRD files; normalizes that input into build source; plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; and merges to the base branch. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
+eforge is an autonomous build-and-review kernel for code generation. It accepts normalized build source from direct prompts, PRD files, file inputs, or optional producer surfaces; plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; and merges to the base branch. Playbooks, session plans, and first-party planning extensions are optional workflow or host surfaces around the kernel. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
 
-## Getting started
+## Core kernel guides
 
-- [Getting Started](/docs/getting-started.md): Install eforge, initialize a project, and run your first build
-- [Configuration guide](/docs/configuration.md): Practical setup and tuning guidance before using the full config reference
-- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including srcDoc/frameBundle Console workstations, workstation-assets trust hashing, and the LLM-first authoring checklist
-- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, ConsoleWorkstation srcDoc/frameBundle APIs, @eforge-build/extension-sdk/browser bridge helpers, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries
+- [Getting Started](/docs/getting-started.md): Install eforge, initialize a project, and run your first direct prompt, PRD, or file build
+- [Core concepts](/docs/concepts.md): Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts
+- [Configuration guide](/docs/configuration.md): Configure the core daemon, builds, profiles, and optional workflow or extension surfaces
 - [Profiles guide](/docs/profiles.md): Create, activate, and route agent runtime profiles across project and user scopes
-- [Playbooks guide](/docs/playbooks.md): Create, manage, and run reusable workflow playbooks
+
+## Optional workflow guides
+
+- [Playbooks guide](/docs/playbooks.md): Create, manage, and run optional workflow playbooks that prepare or normalize build source
+- [Stacked PRs](/docs/stacking.md): Configure git-spice-backed artifact branch stacks and PR targeting
+
+## Extension platform guides
+
+- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, authored, and bounded without product-specific first-party workflow semantics
+- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, ConsoleWorkstation APIs, frameBundle workstations, browser bridge helpers, SDK stability, hook registration, context objects, runtime support, and unsupported boundaries
+
+## Optional first-party extension guides
+
+- [eforge-plan guide](/docs/eforge-plan.md): Optional first-party eforge-plan extension documentation for planning, backlog, recommendation, workstation, and revision workflows
+
+## Integration guides
+
 - [Integrations guide](/docs/integrations.md): Use Claude Code, Pi, the standalone CLI, shell hooks, input sources, Langfuse tracing, daemon APIs, and the Console dashboard
+
+## Operations guides
+
 - [Troubleshooting guide](/docs/troubleshooting.md): Recover from failed builds, docs drift, invalid profiles, and other common issues
+
+## Reference guides
+
+- [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
 
 ## Canonical reference
 
@@ -38,9 +60,6 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 
 - [Full LLM reference bundle](/llms-full.txt): Complete concatenated reference documentation for agents that need full context
 - [Why eforge](/why): Positioning and product thesis: asynchronous engineering for planned work
-- [Core concepts](/docs/concepts.md): Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts
 - [Extension authoring checklist](/docs/extensions.md#llm-first-extension-authoring-checklist): LLM-first scaffold, validate, test, trust, and reload checklist for native extension authors
 - [SDK stability and migration guidance](/docs/extensions-api.md#sdk-stability-and-migration-guidance): Canonical versioning and migration guidance for @eforge-build/extension-sdk authors
-- [Stacked PRs](/docs/stacking.md): Configure git-spice-backed artifact branch stacks and PR targeting
-- [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
 - [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples

@@ -15,6 +15,12 @@ export function normalizeExtensionDiagnostic(diagnostic: unknown): ExtensionDiag
   if (d.source !== undefined) result.source = d.source;
   if (d.currentHash !== undefined) result.currentHash = d.currentHash;
   if (d.trustedHash !== undefined) result.trustedHash = d.trustedHash;
+  if (d.dependencyName !== undefined) result.dependencyName = d.dependencyName;
+  if (d.providerName !== undefined) result.providerName = d.providerName;
+  if (d.capabilityName !== undefined) result.capabilityName = d.capabilityName;
+  if (d.requiredVersion !== undefined) result.requiredVersion = d.requiredVersion;
+  if (d.actualVersion !== undefined) result.actualVersion = d.actualVersion;
+  if (d.dependencyKind !== undefined) result.dependencyKind = d.dependencyKind;
   return result;
 }
 
@@ -39,7 +45,10 @@ function addFilteredCandidates(filteredCandidates: any[], allCandidates: any[]):
   return [...filteredCandidates, ...excluded];
 }
 
-function candidateToEntry(candidate: any, enabled: boolean, registrations?: ExtensionRegistrationSummary): ExtensionEntry {
+function candidateToEntry(candidate: any, enabled: boolean, registrations?: ExtensionRegistrationSummary, loaded?: any): ExtensionEntry {
+  const capabilities = loaded?.capabilities ?? candidate.capabilities;
+  const dependencies = loaded?.dependencies ?? candidate.dependencies;
+  const resolvedDependencies = loaded?.resolvedDependencies ?? candidate.resolvedDependencies;
   return {
     name: candidate.name,
     path: candidate.path,
@@ -66,6 +75,9 @@ function candidateToEntry(candidate: any, enabled: boolean, registrations?: Exte
     })),
     registrations: registrations ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
     diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
+    ...(capabilities !== undefined && { capabilities }),
+    ...(dependencies !== undefined && { dependencies }),
+    ...(resolvedDependencies !== undefined && { resolvedDependencies }),
     ...(candidate.packageProvenance !== undefined && { package: { ...candidate.packageProvenance } }),
     ...(candidate.installProvenance !== undefined && { install: { ...candidate.installProvenance } }),
   };
@@ -99,7 +111,7 @@ export async function loadExtensionResponse(cwd: string | undefined, opts: { pat
   const candidates = allDiscovery ? addFilteredCandidates(loadResult.candidates, allDiscovery.candidates) : loadResult.candidates;
   const extensions: ExtensionEntry[] = candidates.map((candidate: any) => {
     const loaded = loadedByKey.get(`${candidate.name}\0${candidate.path}`) as any;
-    return { ...candidateToEntry(candidate, extensionEntryEnabled(candidate.status, extensionConfig.enabled), loaded?.registrations),
+    return { ...candidateToEntry(candidate, extensionEntryEnabled(candidate.status, extensionConfig.enabled), loaded?.registrations, loaded),
       ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
       ...(loaded?.reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails: loaded.reviewerPerspectiveDetails }),
       ...(loaded?.validationProviderDetails !== undefined && { validationProviderDetails: loaded.validationProviderDetails }),

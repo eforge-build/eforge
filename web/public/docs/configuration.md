@@ -142,6 +142,8 @@ The standalone CLI can override the active profile for one build with `eforge bu
 
 ## Native Extensions
 
+Configuration is split between core build/daemon/profile settings and optional producer surfaces. The build-engine kernel consumes normalized build source; native extensions, playbooks, and session-plan compatibility adapters can prepare, route, or govern that source before enqueue without becoming kernel capabilities.
+
 Native eforge extensions are TypeScript/JavaScript modules discovered from three scopes:
 
 | Scope | Directory | Trust default |
@@ -150,7 +152,7 @@ Native eforge extensions are TypeScript/JavaScript modules discovered from three
 | Project/team | `eforge/extensions/` | skipped unless a matching local trust record exists |
 | Project-local | `.eforge/extensions/` | trusted |
 
-Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require a per-extension local trust record in `.eforge/extension-trust.json` created by `eforge extension trust <name>`. `extensions.trustProjectExtensions` is retained only as a deprecated compatibility field: it does not trust project/team code, and committed project config/profile layers that set it are stripped with a warning. Any code change invalidates the stored hash and blocks the extension until re-trusted. The content hash covers supported source files plus every regular file under `workstation-assets/`, so declared workstation bundle assets are covered; broad top-level `dist/` output, package sidecars, and files outside the extension unit remain outside the trust hash.
+Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require a per-extension local trust record in `.eforge/extension-trust.json` created by `eforge extension trust <name>` after inspecting the code. Any code change invalidates the stored hash and blocks the extension until re-trusted. The content hash covers supported source files plus every regular file under `workstation-assets/`, so declared workstation bundle assets are covered; broad top-level `dist/` output, package sidecars, and files outside the extension unit remain outside the trust hash.
 
 ```yaml
 extensions:
@@ -167,7 +169,6 @@ extensions:
     - experimental-policy        # optional denylist by name
   paths:
     - ./tools/eforge-audit.ts    # explicit file/directory paths
-  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Extension action handlers use `extensions.eventHookTimeoutMs`; `agentContextHookTimeoutMs`, `profileRouterTimeoutMs`, `policyGateTimeoutMs`, and `validationProviderTimeoutMs` remain scoped to their existing registration families.
@@ -295,7 +296,7 @@ For the complete field schema and validation behavior, see the [Toolbelts](/refe
 
 ## Playbook Profiles
 
-Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
+Playbooks are optional workflow artifacts that resolve outside the build-engine kernel before autonomous runs normalize to build source or planning runs route to an extension. Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
 
 ```yaml
 ---

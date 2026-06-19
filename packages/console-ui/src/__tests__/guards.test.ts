@@ -144,7 +144,7 @@ describe('Queue view architecture guards', () => {
   });
 
   it('console source does not declare local QueueRecovery request/response wire shapes', () => {
-    const recoveryShapePattern = /^\s*(?:export\s+)?(?:interface|type)\s+QueueRecovery\w*(?:Request|Response)\b\s*(?:=|\{|extends\b)/;
+    const recoveryShapePattern = /^\s*(?:export\s+)?(?:interface|type)\s+(?:QueueDispatchFailureProjection|QueueRecoveryDependencyInfo|QueueRecoveryDependencyStatus|QueueRecoveryDispatchPreflight\w*|QueueRecoveryRepairAction|QueueRecoveryRepairResult|QueueRecovery\w*(?:Request|Response))\b\s*(?:=|\{|extends\b)/;
     const violations: string[] = [];
     for (const filePath of allSourceFiles) {
       const content = readFileSync(filePath, 'utf8');

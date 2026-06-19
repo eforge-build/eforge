@@ -8,6 +8,7 @@ import {
   asConfidence,
 } from '@/components/recovery/verdict-chip';
 import type { NowAttentionItem } from '@/lib/selectors/now';
+import { formatQueueDispatchFailure } from '@/lib/selectors/queue-dispatch-failure';
 import { TrustConfirmDialog } from '@/components/extensions/trust-confirm-dialog';
 import { cn } from '@/lib/utils';
 
@@ -82,6 +83,7 @@ function RecoveryRow({
   // no color classes.
   const verdict = asVerdict(recovery.verdict);
   const confidence = asConfidence(recovery.confidence);
+  const dispatchDetail = formatQueueDispatchFailure(recovery.dispatchFailure);
   return (
     <li className="flex items-center gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
       <Badge
@@ -92,15 +94,16 @@ function RecoveryRow({
       </Badge>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-foreground">{recovery.prdTitle}</p>
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          {dispatchDetail && <span>{dispatchDetail}</span>}
           {verdict && confidence ? (
             <>
-              <span>Suggested</span>
+              <span>{dispatchDetail ? 'Suggested' : 'Suggested'}</span>
               <RecoveryVerdictChip verdict={verdict} confidence={confidence} />
             </>
-          ) : (
+          ) : !dispatchDetail ? (
             <span>Recovery analysis pending</span>
-          )}
+          ) : null}
         </div>
       </div>
       {onRecover && (

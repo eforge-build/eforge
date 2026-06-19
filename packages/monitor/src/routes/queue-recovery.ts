@@ -1,5 +1,10 @@
 import { resolve } from 'node:path';
-import { API_ROUTES, type QueueRecoveryOperation } from '@eforge-build/client';
+import {
+  API_ROUTES,
+  type QueueRecoveryApplyRequest,
+  type QueueRecoveryOperation,
+  type QueueRecoveryRepairAction,
+} from '@eforge-build/client';
 import { analyzeQueueRecovery, applyQueueRecovery } from '@eforge-build/engine/queue/recovery-cascade';
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
@@ -14,8 +19,15 @@ export function createQueueRecoveryRoutes(context: MonitorContext): RouteDefinit
       if (!validateSelected(body.selectedPrdId, ctx.res)) return;
       if (!validateStrategy(body.strategy, ctx.res)) return;
       if (!context.cwd) return sendJsonError(ctx.res, 503, 'Working directory not configured');
-      try { sendJson(ctx.res, await analyzeQueueRecovery({ cwd: context.cwd, selectedPrdId: body.selectedPrdId, strategy: body.strategy as string | undefined, queueDir: queueDir(context) })); }
-      catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to analyze queue recovery'); }
+      try {
+        sendJson(ctx.res, await analyzeQueueRecovery({
+          cwd: context.cwd,
+          selectedPrdId: body.selectedPrdId,
+          strategy: body.strategy as string | undefined,
+          queueDir: queueDir(context),
+          stackingEnabled: stackingEnabled(context),
+        }));
+      } catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to analyze queue recovery'); }
     } }),
     defineRoute({ routeKey: 'queueRecoveryApply', method: 'POST', pattern: API_ROUTES.queueRecoveryApply, security: [localMutation('Queue recovery mutations')], async handler(ctx) {
       if (!context.options.daemonState) return sendJsonError(ctx.res, 503, 'Daemon mode not active');
@@ -23,10 +35,21 @@ export function createQueueRecoveryRoutes(context: MonitorContext): RouteDefinit
       if (!validateSelected(body.selectedPrdId, ctx.res)) return;
       if (!validateStrategy(body.strategy, ctx.res)) return;
       const expectedOperations = validateExpectedOperations(body.expectedOperations, ctx.res); if (!expectedOperations) return;
+      const repairActions = validateRepairActions(body.repairActions, ctx.res); if (repairActions === null) return;
+      const confirmDependencyRemoval = validateDependencyRemovalConfirmation(body.confirmDependencyRemoval, ctx.res); if (confirmDependencyRemoval === null) return;
       if (!context.cwd) return sendJsonError(ctx.res, 503, 'Working directory not configured');
       try {
-        const result = await applyQueueRecovery({ cwd: context.cwd, selectedPrdId: body.selectedPrdId, strategy: body.strategy as string | undefined, expectedOperations, queueDir: queueDir(context) });
-        if (result.operationResults.some((op) => op.status === 'applied')) context.notifyQueueMutation('apply-recovery');
+        const result = await applyQueueRecovery({
+          cwd: context.cwd,
+          selectedPrdId: body.selectedPrdId,
+          strategy: body.strategy as string | undefined,
+          expectedOperations,
+          queueDir: queueDir(context),
+          stackingEnabled: stackingEnabled(context),
+          repairActions,
+          confirmDependencyRemoval,
+        });
+        if (result.operationResults.some((op) => op.status === 'applied') || result.repairResults?.some((repair) => repair.status === 'applied')) context.notifyQueueMutation('apply-recovery');
         sendJson(ctx.res, result);
       } catch (err) { sendJsonError(ctx.res, 500, err instanceof Error ? err.message : 'Failed to apply queue recovery'); }
     } }),
@@ -42,6 +65,10 @@ async function parseQueueRecoveryBody(req: Parameters<RouteDefinition['handler']
 
 function queueDir(context: MonitorContext): string {
   return context.queuePaths?.queueDir ?? resolve(context.cwd!, context.options.queueDir ?? context.options.config?.prdQueue?.dir ?? '.eforge/queue');
+}
+
+function stackingEnabled(context: MonitorContext): boolean {
+  return context.options.config?.stacking?.enabled === true;
 }
 
 function validateSelected(selectedPrdId: unknown, res: Parameters<RouteDefinition['handler']>[0]['res']): selectedPrdId is string {
@@ -74,6 +101,40 @@ function validateExpectedOperations(value: unknown, res: Parameters<RouteDefinit
     }
   }
   return operations;
+}
+
+function validateRepairActions(value: unknown, res: Parameters<RouteDefinition['handler']>[0]['res']): QueueRecoveryApplyRequest['repairActions'] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) { sendJsonError(res, 400, 'Invalid repairActions: must be an array when present'); return null; }
+  const actions: QueueRecoveryRepairAction[] = [];
+  for (const [index, raw] of value.entries()) {
+    const prefix = `Invalid repairActions[${index}]`;
+    if (!isPlainObject(raw)) { sendJsonError(res, 400, `${prefix}: must be an object`); return null; }
+    if (raw.kind === 'remove-depends-on') {
+      if (typeof raw.targetPrdId !== 'string' || !isValidPathSegment(raw.targetPrdId)) { sendJsonError(res, 400, `${prefix}: targetPrdId must be a safe string`); return null; }
+      if (!Array.isArray(raw.dependencyIds)) { sendJsonError(res, 400, `${prefix}: dependencyIds must be an array`); return null; }
+      const dependencyIds: string[] = [];
+      for (const [depIndex, dep] of raw.dependencyIds.entries()) {
+        if (typeof dep !== 'string' || !isValidPathSegment(dep)) { sendJsonError(res, 400, `${prefix}: dependencyIds[${depIndex}] must be a safe string`); return null; }
+        dependencyIds.push(dep);
+      }
+      actions.push({ kind: 'remove-depends-on', targetPrdId: raw.targetPrdId, dependencyIds });
+    } else if (raw.kind === 'set-stack-parent') {
+      if (typeof raw.targetPrdId !== 'string' || !isValidPathSegment(raw.targetPrdId)) { sendJsonError(res, 400, `${prefix}: targetPrdId must be a safe string`); return null; }
+      if (typeof raw.selectedParentId !== 'string' || !isValidPathSegment(raw.selectedParentId)) { sendJsonError(res, 400, `${prefix}: selectedParentId must be a safe string`); return null; }
+      actions.push({ kind: 'set-stack-parent', targetPrdId: raw.targetPrdId, selectedParentId: raw.selectedParentId });
+    } else {
+      sendJsonError(res, 400, `${prefix}: kind is invalid`);
+      return null;
+    }
+  }
+  return actions;
+}
+
+function validateDependencyRemovalConfirmation(value: unknown, res: Parameters<RouteDefinition['handler']>[0]['res']): QueueRecoveryApplyRequest['confirmDependencyRemoval'] | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') { sendJsonError(res, 400, 'Invalid confirmDependencyRemoval: must be a boolean when present'); return null; }
+  return value;
 }
 
 function isValidQueueRecoveryLocation(value: unknown): value is QueueRecoveryOperation['expectedSourceLocation'] {

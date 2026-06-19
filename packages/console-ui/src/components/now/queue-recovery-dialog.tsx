@@ -10,6 +10,7 @@ import {
   type AcceptSuccessPreviewResponse,
   type ReadSidecarResponse,
   type ContinueRepairEligibilityResponse,
+  type QueueItem,
 } from '@eforge-build/client/browser';
 import { SheetPanel } from '@/components/ui/sheet-panel';
 import {
@@ -35,6 +36,7 @@ interface QueueRecoveryDialogProps {
   verdict?: string;
   /** Recovery confidence from the queue row, used before the sidecar loads. */
   confidence?: string;
+  dispatchFailure?: QueueItem['dispatchFailure'];
   onOpenChange: (open: boolean) => void;
   refreshQueue: () => Promise<void> | void;
 }
@@ -81,6 +83,7 @@ export function QueueRecoveryDialog({
   prdTitle,
   verdict,
   confidence,
+  dispatchFailure,
   onOpenChange,
   refreshQueue,
 }: QueueRecoveryDialogProps) {
@@ -301,6 +304,7 @@ export function QueueRecoveryDialog({
           sidecarVerdict={sidecarVerdict}
           effectiveVerdict={effectiveVerdict}
           effectiveConfidence={effectiveConfidence}
+          dispatchFailure={dispatchFailure}
           appliedMetadata={appliedMetadata}
           eligibility={eligibility}
           eligibilityError={eligibilityError}

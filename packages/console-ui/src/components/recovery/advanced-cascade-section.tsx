@@ -12,6 +12,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmAction } from './confirm-action';
+import { QueueCascadeRepairPanel } from './queue-cascade-repair-panel';
+import { deriveCascadeRepairState, type RemovalSelection, type StackParentSelection } from './queue-cascade-repair-state';
 
 interface AdvancedCascadeSectionProps {
   prdId: string;
@@ -65,6 +67,8 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
   const [loading, setLoading] = React.useState(false);
   const [applying, setApplying] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [selectedRemovals, setSelectedRemovals] = React.useState<RemovalSelection>({});
+  const [selectedStackParents, setSelectedStackParents] = React.useState<StackParentSelection>({});
 
   React.useEffect(() => {
     if (!open) return;
@@ -92,6 +96,8 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
         if (!cancelled) {
           setAnalysis(response);
           setAnalyzedPrdId(requestPrdId);
+          setSelectedRemovals({});
+          setSelectedStackParents({});
         }
       })
       .catch((err: unknown) => {
@@ -112,13 +118,15 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
   const blockers = analysis?.blockers ?? [];
   const warnings = analysis?.warnings ?? [];
   const applyBlockers = applyResult?.blockers ?? [];
+  const repairState = analysis ? deriveCascadeRepairState(analysis, selectedRemovals, selectedStackParents, applyResult) : null;
   const skippedDescendants = analysis?.nodes.filter((node) => node.role === 'skipped-descendant') ?? [];
   const canApply = Boolean(
     analysis
       && !loading
       && !applying
-      && blockers.length === 0
+      && blockers.filter((notice) => notice.code !== 'dispatch-preflight-blocked').length === 0
       && applyBlockers.length === 0
+      && (repairState?.applyDisabledReasons.length ?? 0) === 0
       && !applyResult?.applied
       && analysis.operations.length > 0,
   );
@@ -133,6 +141,8 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
         selectedPrdId: prdId,
         strategy: analysis.strategy,
         expectedOperations: analysis.operations,
+        repairActions: repairState?.selectedRepairActions,
+        confirmDependencyRemoval: repairState?.requiresDependencyRemovalConfirmation === true,
       });
       setApplyResult(response);
       if (response.applied) {
@@ -218,6 +228,15 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
                 <NoticeList notices={[...blockers, ...applyBlockers]} empty="No blockers." />
               </div>
 
+              <QueueCascadeRepairPanel
+                analysis={analysis}
+                selectedRemovals={selectedRemovals}
+                selectedStackParents={selectedStackParents}
+                applyResult={applyResult}
+                onToggleRemoval={(key, checked) => setSelectedRemovals((prev) => ({ ...prev, [key]: checked }))}
+                onSelectStackParent={(targetPrdId, parentId) => setSelectedStackParents((prev) => ({ ...prev, [targetPrdId]: parentId }))}
+              />
+
               {warnings.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-foreground">Warnings</p>
@@ -228,7 +247,7 @@ export function AdvancedCascadeSection({ prdId, verdict, confidence, refreshQueu
               <ConfirmAction
                 triggerLabel={applying ? 'Applying…' : 'Apply queue-cascade recovery'}
                 title="Apply queue-cascade recovery?"
-                description="This moves the failed upstream back to the queue and may reactivate skipped descendants."
+                description="This requeues the existing PRD artifact and may reactivate skipped descendants. Frontmatter is preserved unless the selected repairs apply metadata changes."
                 confirmLabel="Apply"
                 onConfirm={handleApply}
                 disabled={!canApply}

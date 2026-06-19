@@ -78,7 +78,7 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Extensions API reference',
       url: '/docs/extensions-api.md',
-      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, browser bridge helpers, SDK stability, hook registration, context objects, runtime support, and unsupported boundaries',
+      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, frameBundle workstations, browser bridge helpers, SDK stability, hook registration, context objects, runtime support, and unsupported boundaries',
       category: 'extension-platform',
     },
     {

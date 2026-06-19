@@ -878,7 +878,7 @@ PRDs with `depends_on` frontmatter whose upstream builds are still active (pendi
 
 Queue controls mutate runtime filesystem state under `.eforge/queue/` (or the configured `prdQueue.dir`), which is gitignored and produces no git commits. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; failed and skipped items reject priority mutation with a conflict until recovery/requeue makes them runnable, and running items reject priority changes because cancellation uses the existing session-id cancel route. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal deletes matching `.recovery.md` and `.recovery.json` sidecars. Removal fails closed when live pending/waiting dependents exist, lists dependent ids, and requires removing dependents first until future cascade controls ship. After successful mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
 
-When an active upstream build completes, its waiting dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`. Failed upstream cascades can be inspected through the queue recovery analysis/preflight contract; analysis includes dependency classifications, dispatch preflight, and bounded metadata repair actions. Engine/client apply support for selected repair actions and dependency-removal confirmation exists now, while daemon apply route pass-through for those fields is part of the follow-up recovery-daemon-console work.
+When an active upstream build completes, its waiting dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`. Failed upstream cascades can be inspected through the queue recovery analysis/preflight contract; analysis includes dependency classifications, dispatch preflight, and bounded metadata repair actions. The daemon apply route passes selected repair actions and dependency-removal confirmation through to the engine, then returns repair results from the client-owned queue recovery contract.
 
 #### Queue recovery contract fields
 
@@ -912,7 +912,7 @@ Repair actions:
 | `{ kind: 'remove-depends-on', targetPrdId, dependencyIds }` | Remove satisfied dependencies from `depends_on`; apply requires `confirmDependencyRemoval: true`. |
 | `{ kind: 'set-stack-parent', targetPrdId, selectedParentId }` | Set `stack_parent` to a dependency selected by the caller. Construct this from the target PRD's `meaningfulDependencyIds` when `requiresStackParentChoice` is `true`. |
 
-`availableRepairActions` currently auto-offers only satisfied dependency removal. Stack parent choices are not auto-offered; operators must choose from dispatch preflight data.
+`availableRepairActions` may include satisfied dependency removals and bounded `set-stack-parent` candidates. Operators must explicitly select any dependency removal or stack parent choice before those repair actions are sent on apply.
 
 Repair result statuses:
 
@@ -920,8 +920,8 @@ Repair result statuses:
 | --- | --- |
 | `applied` | Repair was accepted in simulation and written during apply. |
 | `blocked` | Repair was rejected before metadata mutation; see `message`. |
-| `skipped` | Reserved for repairs skipped after an earlier failure. |
-| `failed` | Reserved for repairs that fail during execution. |
+| `skipped` | Repair was skipped after an earlier metadata write failure prevented durable application. |
+| `failed` | Repair was accepted in simulation but its metadata write failed during apply; see `message`. |
 
 CLI override: `--max-concurrent-builds <n>`
 

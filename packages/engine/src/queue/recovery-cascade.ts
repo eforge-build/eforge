@@ -166,15 +166,17 @@ export async function applyQueueRecovery(options: ApplyQueueRecoveryOptions): Pr
   const repairBlocker = preflight.repairResults.find((result) => result.status !== 'applied');
   if (repairBlocker) {
     const notice = blocker('repair-action-blocked', repairBlocker.message ?? 'Repair action blocked', repairBlocker.action.targetPrdId);
-    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: notice.message })), warnings: applyWarnings, blockers: [notice], dispatchPreflight: preflight.dispatchPreflight, repairResults: preflight.repairResults };
+    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: notice.message })), warnings: applyWarnings, blockers: [notice], dispatchPreflight: preflight.dispatchPreflight, repairResults: simulatedRepairsBlocked(preflight.repairResults, notice.message) };
   }
   if (!preflight.dispatchPreflight.canApply) {
-    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: firstBlockerMessage(preflight.dispatchPreflight.blockers) })), warnings: applyWarnings, blockers: preflight.dispatchPreflight.blockers, dispatchPreflight: preflight.dispatchPreflight, repairResults: preflight.repairResults };
+    const message = firstBlockerMessage(preflight.dispatchPreflight.blockers);
+    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message })), warnings: applyWarnings, blockers: preflight.dispatchPreflight.blockers, dispatchPreflight: preflight.dispatchPreflight, repairResults: simulatedRepairsBlocked(preflight.repairResults, message) };
   }
 
-  const metadataBlocker = await writeRepairMetadata(snapshot, preflight.repairResults);
-  if (metadataBlocker) {
-    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: metadataBlocker.message })), warnings: applyWarnings, blockers: [metadataBlocker], dispatchPreflight: preflight.dispatchPreflight, repairResults: preflight.repairResults };
+  const metadataWrite = await writeRepairMetadata(snapshot, preflight.repairResults);
+  if (metadataWrite.blocker) {
+    const { blocker: metadataBlocker } = metadataWrite;
+    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: metadataBlocker.message })), warnings: applyWarnings, blockers: [metadataBlocker], dispatchPreflight: preflight.dispatchPreflight, repairResults: repairResultsAfterMetadataFailure(preflight.repairResults, metadataWrite.appliedActionKeys, metadataBlocker) };
   }
 
   const queueDir = resolve(options.cwd, options.queueDir ?? '.eforge/queue');
@@ -393,11 +395,12 @@ async function preflightApply(options: ApplyQueueRecoveryOptions, currentOperati
   return null;
 }
 
-async function writeRepairMetadata(snapshot: QueueSnapshot, repairResults: QueueRecoveryRepairResult[]): Promise<QueueRecoveryNotice | null> {
+async function writeRepairMetadata(snapshot: QueueSnapshot, repairResults: QueueRecoveryRepairResult[]): Promise<{ blocker: QueueRecoveryNotice | null; appliedActionKeys: Set<string> }> {
+  const appliedActionKeys = new Set<string>();
   for (const result of repairResults) {
     if (result.status !== 'applied' || !result.after) continue;
     const record = snapshot.byId.get(result.action.targetPrdId);
-    if (!record) return blocker('repair-target-missing', `Repair target ${result.action.targetPrdId} is missing`, result.action.targetPrdId);
+    if (!record) return { blocker: blocker('repair-target-missing', `Repair target ${result.action.targetPrdId} is missing`, result.action.targetPrdId), appliedActionKeys };
     try {
       const fields: Record<string, string | string[]> = {};
       if (result.after.dependsOn !== undefined) fields.depends_on = result.after.dependsOn;
@@ -407,11 +410,34 @@ async function writeRepairMetadata(snapshot: QueueSnapshot, repairResults: Queue
       if (result.before?.stackParent !== undefined && result.after.stackParent === undefined) {
         await deleteQueuedPrdFrontmatterFieldsExistingOnly(updatedPrd, ['stack_parent']);
       }
+      appliedActionKeys.add(repairActionKey(result));
     } catch (err) {
-      return blocker('repair-metadata-write-failed', err instanceof Error ? err.message : String(err), result.action.targetPrdId);
+      return { blocker: blocker('repair-metadata-write-failed', err instanceof Error ? err.message : String(err), result.action.targetPrdId), appliedActionKeys };
     }
   }
-  return null;
+  return { blocker: null, appliedActionKeys };
+}
+
+function simulatedRepairsBlocked(repairResults: QueueRecoveryRepairResult[], reason: string): QueueRecoveryRepairResult[] {
+  return repairResults.map((result) => result.status === 'applied'
+    ? { ...result, status: 'blocked', message: `Repair was only simulated; metadata was not written because apply is blocked: ${reason}` }
+    : result);
+}
+
+function repairResultsAfterMetadataFailure(repairResults: QueueRecoveryRepairResult[], appliedActionKeys: Set<string>, failure: QueueRecoveryNotice): QueueRecoveryRepairResult[] {
+  let failedRecorded = false;
+  return repairResults.map((result) => {
+    if (result.status !== 'applied' || appliedActionKeys.has(repairActionKey(result))) return result;
+    if (!failedRecorded && result.action.targetPrdId === failure.prdId) {
+      failedRecorded = true;
+      return { ...result, status: 'failed', message: failure.message };
+    }
+    return { ...result, status: 'skipped', message: `Skipped because repair metadata was not durably written: ${failure.message}` };
+  });
+}
+
+function repairActionKey(result: QueueRecoveryRepairResult): string {
+  return JSON.stringify(result.action);
 }
 
 function sameOperations(a: QueueRecoveryOperation[], b: QueueRecoveryOperation[]): boolean {

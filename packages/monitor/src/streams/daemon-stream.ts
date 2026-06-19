@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { DaemonStreamSnapshot } from '@eforge-build/client';
 import type { MonitorContext } from '../context.js';
 import { autoBuildStateToWire, buildDaemonHeartbeatObject } from '../projections/auto-build-state.js';
+import { overlayQueueDispatchFailures } from '../projections/queue-dispatch-failures.js';
 import { countPendingQueueDepth, loadQueueItemsSync } from '../projections/queue-items.js';
 import { projectRunsForAcceptedSuccess } from '../projections/runs.js';
 import { stackLayersToWire } from '../projections/stack-layers.js';
@@ -66,7 +67,9 @@ export function buildDaemonHello(
     liveness: buildHeartbeatObject(context, options),
     recentActivity: hydrateRecentDaemonActivity(context.db.getDaemonEventsAfter(Math.max(0, cursor - 20)), cursor),
     runs: projectRunsForAcceptedSuccess(context.db.getRuns(), context.queuePaths?.queueDir),
-    queue: context.cwd && context.queuePaths ? loadQueueItemsSync(context.queuePaths.queueDir, context.queuePaths.lockDir) : [],
+    queue: context.cwd && context.queuePaths
+      ? overlayQueueDispatchFailures(loadQueueItemsSync(context.queuePaths.queueDir, context.queuePaths.lockDir), context.db.getDaemonEventsAfter(0))
+      : [],
     sessionMetadata: context.db.getSessionMetadataBatch(),
     autoBuild: autoBuildStateToWire({
       state: context.options.daemonState,

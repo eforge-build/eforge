@@ -185,11 +185,16 @@ Non-JSON output prints concrete next steps after install. When the returned entr
 
 ```bash
 eforge extension install @eforge-build/eforge-plan
+eforge extension install @eforge-build/eforge-plan --scope project --trust
 eforge extension validate eforge-plan
+eforge extension trust eforge-plan
 eforge extension reload
+eforge extension update eforge-plan
+eforge extension update eforge-plan --version latest
+eforge extension remove eforge-plan
 ```
 
-The package remains unsandboxed arbitrary code like any native extension. Local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading.
+The package remains unsandboxed arbitrary code like any native extension. It ships its runtime entrypoints in `dist/` and its planning workstation browser bundle in `workstation-assets/plans/`. Local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading.
 
 ### Promote and demote
 
