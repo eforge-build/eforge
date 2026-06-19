@@ -507,7 +507,7 @@ describe('extension CLI commands', () => {
       'export default function extension(eforge) { eforge.registerInputSource({ name: "team-input", description: "team", fetch: async () => "ok" }); }',
       'utf-8',
     );
-    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
     await start(tmpDir);
 
     const { stdout } = await runCli(tmpDir, ['extension', 'trust', 'team', '--json']);
@@ -534,7 +534,7 @@ describe('extension CLI commands', () => {
       'export default function extension() {}',
       'utf-8',
     );
-    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
     await start(tmpDir);
 
     // Trust first
@@ -559,7 +559,7 @@ describe('extension CLI commands', () => {
       'export default function extension() {}',
       'utf-8',
     );
-    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
     await start(tmpDir);
 
     const { stdout } = await runCli(tmpDir, ['extension', 'trust', 'team']);
@@ -578,7 +578,7 @@ describe('extension CLI commands', () => {
       'export default function extension() {}',
       'utf-8',
     );
-    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
     await start(tmpDir);
 
     const { stdout } = await runCli(tmpDir, ['extension', 'list']);
@@ -600,7 +600,7 @@ describe('extension CLI commands', () => {
       'export default function extension() {}',
       'utf-8',
     );
-    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
     await start(tmpDir);
 
     // Trust the extension first so show includes trusted hash and provenance.

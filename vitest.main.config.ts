@@ -34,6 +34,7 @@ export default defineConfig({
       { find: '@eforge-build/monitor', replacement: resolve(root, 'packages/monitor/src/index.ts') },
       { find: /^@eforge-build\/console-ui\/(.*)$/, replacement: resolve(root, 'packages/console-ui/src/$1') },
       { find: '@eforge-build/client/browser', replacement: resolve(root, 'packages/client/src/browser.ts') },
+      { find: '@eforge-build/client/events', replacement: resolve(root, 'packages/client/src/events.ts') },
       { find: '@eforge-build/client', replacement: resolve(root, 'packages/client/src/index.ts') },
       { find: /^@eforge-build\/scopes\/(.*)$/, replacement: resolve(root, 'packages/scopes/src/$1') },
       { find: '@eforge-build/scopes', replacement: resolve(root, 'packages/scopes/src/index.ts') },

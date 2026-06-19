@@ -7,6 +7,7 @@ type EnqueueCompleteEvent = Extract<EforgeEvent, { type: 'enqueue:complete' }>;
 type QueuePrdDiscoveredEvent = Extract<EforgeEvent, { type: 'queue:prd:discovered' }>;
 type SchedulerDependencyBlockedEvent = Extract<EforgeEvent, { type: 'daemon:scheduler:dependency-blocked' }>;
 type QueueDependencyOverriddenEvent = Extract<EforgeEvent, { type: 'queue:prd:dependency-overridden' }>;
+type QueuePrdDispatchFailedEvent = Extract<EforgeEvent, { type: 'queue:prd:dispatch-failed' }>;
 
 function dedupeDependsOn(dependsOn: string[]): string[] {
   const deduped: string[] = [];
@@ -37,7 +38,7 @@ function withDiscoveredDependsOn(item: QueueItem, incoming: string[] | undefined
 }
 
 function normalizeLiveQueueItem(item: QueueItem): QueueItem {
-  const { recoveryVerdict: _recoveryVerdict, recoveryApplied: _recoveryApplied, ...liveItem } = item;
+  const { recoveryVerdict: _recoveryVerdict, recoveryApplied: _recoveryApplied, dispatchFailure: _dispatchFailure, ...liveItem } = item;
   return liveItem;
 }
 
@@ -80,6 +81,17 @@ export function projectSchedulerDependencyBlocked(event: SchedulerDependencyBloc
   if (updatedItem === existing) return undefined;
   const updated = [...state.queue];
   updated[idx] = updatedItem;
+  return { queue: updated };
+}
+
+export function projectQueuePrdDispatchFailed(event: QueuePrdDispatchFailedEvent, state: QueueProjectState): Partial<ProjectableState> | undefined {
+  const dispatchFailure = { reason: event.reason, stage: event.stage, timestamp: event.timestamp };
+  const idx = state.queue.findIndex((item) => item.id === event.prdId);
+  if (idx === -1) {
+    return { queue: [...state.queue, { id: event.prdId, title: event.title, status: 'failed', dispatchFailure }] };
+  }
+  const updated = [...state.queue];
+  updated[idx] = { ...normalizeTerminalQueueItem(updated[idx], 'failed'), title: event.title, dispatchFailure };
   return { queue: updated };
 }
 

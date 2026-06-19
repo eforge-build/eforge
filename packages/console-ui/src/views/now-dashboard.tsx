@@ -194,6 +194,7 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
         prdTitle={recoveryItem?.prdTitle}
         verdict={recoveryItem?.verdict}
         confidence={recoveryItem?.confidence}
+        dispatchFailure={recoveryItem?.dispatchFailure}
         onOpenChange={(open) => {
           if (!open) setRecoveryItem(null);
         }}

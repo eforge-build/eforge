@@ -507,13 +507,14 @@ export interface ExtensionReloadResponse extends ExtensionListResponse, Extensio
 }
 
 // GET /api/queue (array of these)
+export interface QueueDispatchFailureProjection { reason: string; stage: 'stacking-validation' | 'policy-gate' | 'profile-routing' | 'dispatch'; timestamp: string }
+
 export interface QueueItem {
   id: string;
   title: string;
   status: string;
   priority?: number;
-  created?: string;
-  dependsOn?: string[];
+  created?: string; dependsOn?: string[]; dispatchFailure?: QueueDispatchFailureProjection;
   /**
    * Recovery verdict for failed items. Populated by the daemon when a
    * `<prdId>.recovery.json` sidecar exists in the `failed/` directory.

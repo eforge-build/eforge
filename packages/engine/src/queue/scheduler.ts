@@ -25,7 +25,6 @@ import {
   releasePrd,
   resolveQueueOrder,
   setQueuedPrdProfile,
-  setQueuedPrdStackParent,
   unblockWaiting,
 } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
@@ -41,6 +40,7 @@ import type { NativeExtensionRegistry } from '../extensions/types.js';
 import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
 import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
+import { applyStackedDispatchValidation } from './dispatch-validation.js';
 
 // ---------------------------------------------------------------------------
 // Scheduler child result type
@@ -541,7 +541,15 @@ export class QueueScheduler {
     this.orderedPrds = [...freshOrdered, ...preserved];
   }
 
-  private async failDispatch(prd: QueuedPrd, message: string): Promise<void> {
+  private async failDispatch(prd: QueuedPrd, message: string, stage: 'stacking-validation' | 'policy-gate' | 'profile-routing' | 'dispatch' = 'dispatch'): Promise<void> {
+    this.eventQueue.push({
+      timestamp: new Date().toISOString(),
+      type: 'queue:prd:dispatch-failed',
+      prdId: prd.id,
+      title: prd.frontmatter.title,
+      reason: message,
+      stage,
+    } as EforgeEvent);
     this.eventQueue.push({
       timestamp: new Date().toISOString(),
       type: 'plan:status:change',
@@ -576,30 +584,10 @@ export class QueueScheduler {
   }
 
   private async applyStackingDispatchValidation(prd: QueuedPrd): Promise<QueuedPrd | null> {
-    if (this.config.stacking?.enabled !== true) return prd;
-
-    const dependsOn = prd.frontmatter.depends_on ?? [];
-    if (prd.frontmatter.stack_parent) return prd;
-
-    if (dependsOn.length === 1) {
-      try {
-        return await setQueuedPrdStackParent(prd, dependsOn[0], this.cwd);
-      } catch (err) {
-        const message = `Failed to persist inferred stack_parent '${dependsOn[0]}' for PRD '${prd.id}': ${err instanceof Error ? err.message : String(err)}`;
-        await this.failDispatch(prd, message);
-        return null;
-      }
-    }
-
-    if (dependsOn.length > 1) {
-      await this.failDispatch(
-        prd,
-        `Cannot dispatch stacked PRD '${prd.id}' with multiple depends_on entries without explicit stack_parent. Add stack_parent to disambiguate the parent layer.`,
-      );
-      return null;
-    }
-
-    return prd;
+    const result = await applyStackedDispatchValidation({ prd, cwd: this.cwd, stackingEnabled: this.config.stacking?.enabled === true });
+    if ('prd' in result) return result.prd;
+    await this.failDispatch(prd, result.error, 'stacking-validation');
+    return null;
   }
 
   /**
@@ -710,6 +698,7 @@ export class QueueScheduler {
         let acquired = false;
         let status: QueueSchedulerChildStatus = 'failed';
         let routedProfileOverride: string | undefined;
+        let sessionStarted = false;
 
         try {
           // Early abort check — bail without emitting session:start.
@@ -757,12 +746,7 @@ export class QueueScheduler {
 
             if (policyResult.blocked) {
               this.launching.delete(currentPrd.id);
-              this.eventQueue.push({
-                timestamp: new Date().toISOString(),
-                type: 'queue:prd:complete',
-                prdId: currentPrd.id,
-                status: 'failed',
-              } as EforgeEvent);
+              await this.failDispatch(currentPrd, policyResult.decision.reason ?? 'Queue dispatch blocked by policy gate.', 'policy-gate');
               return;
             }
           }
@@ -856,6 +840,7 @@ export class QueueScheduler {
             sessionId: prdSessionId,
             timestamp: new Date().toISOString(),
           } as EforgeEvent);
+          sessionStarted = true;
           this.eventQueue.push({
             type: 'session:profile',
             sessionId: prdSessionId,
@@ -881,14 +866,18 @@ export class QueueScheduler {
               status,
             } as EforgeEvent);
           }
-        } catch {
+        } catch (err) {
           status = 'failed';
-          this.eventQueue.push({
-            timestamp: new Date().toISOString(),
-            type: 'queue:prd:complete',
-            prdId: currentPrd.id,
-            status: 'failed',
-          } as EforgeEvent);
+          if (!sessionStarted) {
+            await this.failDispatch(currentPrd, err instanceof Error ? err.message : String(err), 'dispatch');
+          } else {
+            this.eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: currentPrd.id,
+              status: 'failed',
+            } as EforgeEvent);
+          }
         } finally {
           this.launching.delete(currentPrd.id);
           if (acquired) this.semaphore.release();

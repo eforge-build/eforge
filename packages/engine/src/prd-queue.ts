@@ -747,6 +747,32 @@ export async function setQueuedPrdProfile(
 
 export type QueuedPrdFrontmatterFieldValue = string | number | boolean | string[];
 
+export async function deleteQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fieldNames: string[]): Promise<QueuedPrd> {
+  const content = prd.content;
+  const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)([\s\S]*)$/);
+  if (!fmMatch) {
+    throw new Error(`PRD file '${prd.filePath}' has no valid frontmatter block`);
+  }
+  const [, openDelim, fmBody, closeDelim, bodyPart] = fmMatch;
+  const deleteKeys = new Set(fieldNames);
+  const newFmBody = fmBody
+    .split('\n')
+    .filter((line) => {
+      const kvMatch = line.match(/^(\w[\w_]*)\s*:/);
+      return !kvMatch || !deleteKeys.has(kvMatch[1]);
+    })
+    .join('\n')
+    .trimEnd();
+  const newContent = `${openDelim}${newFmBody}${closeDelim}${bodyPart}`;
+  const rawFrontmatter = parseFrontmatter(newContent);
+  const parseResult = validatePrdFrontmatter(rawFrontmatter);
+  if (!parseResult.success) {
+    throw new Error(`Invalid PRD frontmatter after update: ${z.prettifyError(parseResult.error)}`);
+  }
+  await writeExistingFile(prd.filePath, newContent);
+  return { ...prd, content: newContent, frontmatter: parseResult.data };
+}
+
 export async function setQueuedPrdFrontmatterFields(
   prd: QueuedPrd,
   fields: Record<string, QueuedPrdFrontmatterFieldValue>,

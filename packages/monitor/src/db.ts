@@ -151,6 +151,11 @@ export interface MonitorDB {
    */
   getDaemonEventsAfter(afterId: number): EventRecord[];
   /**
+   * Returns queue dispatch failure/clear events for the provided PRD ids,
+   * ordered by id ascending.
+   */
+  getQueueDispatchFailureEvents(prdIds: string[]): EventRecord[];
+  /**
    * Returns the highest event row id among daemon-wide events (those whose type
    * appears in the `DAEMON_EVENT_TYPES` allowlist), or 0 when no such events exist.
    *
@@ -240,28 +245,12 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_file_diffs_run_id ON file_diffs(run_id);
 `;
 
-/**
- * Allowlist of daemon-wide event types surfaced via GET /api/daemon-events.
- * Derived from the event registry in @eforge-build/client: entries with
- * persist:true are included; daemon:heartbeat (persist:false, LIVE-ONLY) is
- * intentionally absent so it is never replayed from storage.
- *
- * Source of truth: packages/client/src/event-registry.ts
- */
-// DAEMON_EVENT_TYPES is imported from @eforge-build/client above.
-
 export function openDatabase(dbPath: string): MonitorDB {
   mkdirSync(dirname(dbPath), { recursive: true });
 
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode = WAL');
-  // Concurrent build subprocesses share this DB file; busy_timeout lets
-  // SQLite's native busy handler wait for the write lock instead of
-  // failing immediately with SQLITE_BUSY.
   db.exec('PRAGMA busy_timeout = 5000');
-  // NORMAL is safe with WAL: durable across app crashes, only risks losing
-  // the last committed transaction on OS/power failure. Trades that for
-  // fewer fsyncs and much higher write throughput under concurrency.
   db.exec('PRAGMA synchronous = NORMAL');
   // Node.js DatabaseSync enforces FK constraints by default. Daemon-level
   // events (e.g. daemon:auto-build:paused) use the watcher sessionId as
@@ -283,10 +272,6 @@ export function openDatabase(dbPath: string): MonitorDB {
   db.exec("UPDATE runs SET command = 'compile' WHERE command = 'plan'");
 
   // Migration: rebuild events table to support nullable run_id and explicit origin ownership.
-  // SQLite cannot drop NOT NULL constraints in place, so we rebuild when either:
-  //   (a) the origin column is absent, or
-  //   (b) run_id still has a NOT NULL constraint.
-  // For new DBs (created above via SCHEMA), both conditions are already satisfied.
   {
     const eventCols = db.prepare('PRAGMA table_info(events)').all() as unknown as { name: string; notnull: number }[];
     const hasOrigin = eventCols.some((c) => c.name === 'origin');
@@ -294,8 +279,6 @@ export function openDatabase(dbPath: string): MonitorDB {
     const runIdIsNotNull = runIdCol?.notnull === 1;
 
     if (!hasOrigin || runIdIsNotNull) {
-      // Build CASE expressions for the migration INSERT.
-      // Use DAEMON_EVENT_TYPES placeholders so the daemon allowlist stays DRY.
       const placeholders = DAEMON_EVENT_TYPES.map(() => '?').join(', ');
       // If existing table has an origin column, preserve its values for non-daemon rows;
       // otherwise default all non-daemon rows to 'run'.
@@ -453,6 +436,13 @@ export function openDatabase(dbPath: string): MonitorDB {
     ),
     getDaemonEventsAfter: db.prepare(
       `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
+    ),
+    getQueueDispatchFailureEvents: db.prepare(
+      `SELECT id, run_id as runId, origin, type, plan_id as planId, agent, data, timestamp
+       FROM events
+       WHERE type IN ('queue:prd:dispatch-failed', 'queue:prd:discovered')
+         AND json_extract(data, '$.prdId') IN (SELECT value FROM json_each(?))
+       ORDER BY id`,
     ),
     getMaxDaemonEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')})`,
@@ -641,6 +631,12 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getDaemonEventsAfter(afterId) {
       return (stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as RawEventRow[]).map(rowToEventRecord);
+    },
+
+    getQueueDispatchFailureEvents(prdIds) {
+      const uniqueIds = [...new Set(prdIds.filter((id) => id.length > 0))];
+      if (uniqueIds.length === 0) return [];
+      return (stmts.getQueueDispatchFailureEvents.all(JSON.stringify(uniqueIds)) as unknown as RawEventRow[]).map(rowToEventRecord);
     },
 
     getMaxDaemonEventId() {

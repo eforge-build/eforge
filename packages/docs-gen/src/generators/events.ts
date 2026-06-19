@@ -11,7 +11,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { EforgeEventSchema } from '@eforge-build/client';
+import { DaemonStreamSnapshotSchema, EforgeEventSchema } from '@eforge-build/client/events';
 import type { OutputPaths } from '../output-paths.js';
 import type { ProvenanceInfo } from '../provenance.js';
 import { buildProvenanceHeader } from '../provenance.js';
@@ -116,7 +116,16 @@ export async function generateEvents(opts: {
   // Write JSON Schema — TypeBox schema objects are JSON Schema (sans Symbol keys).
   // Normalize TypeBox auto-generated $id/$ref values because they depend on global
   // schema construction order and can drift when unrelated schemas are added.
-  const schemaJson = JSON.stringify(toDeterministicJsonSchema(EforgeEventSchema), null, 2);
+  const schemaJson = JSON.stringify(
+    toDeterministicJsonSchema({
+      ...EforgeEventSchema,
+      $defs: {
+        DaemonStreamSnapshot: DaemonStreamSnapshotSchema,
+      },
+    }),
+    null,
+    2,
+  );
   await mkdir(dirname(opts.outputPaths.schemaEvents), { recursive: true });
   await writeFile(opts.outputPaths.schemaEvents, schemaJson + '\n', 'utf-8');
 
@@ -132,6 +141,10 @@ export async function generateEvents(opts: {
     '',
     'Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected',
     'with one of the variant objects below. The `type` field discriminates the variant.',
+    '',
+    'The JSON Schema also includes a `DaemonStreamSnapshot` definition for the',
+    '`stream:hello` snapshot; queue items in that snapshot expose the optional',
+    '`dispatchFailure` projection populated from `queue:prd:dispatch-failed` events.',
     '',
     '## Event Variants',
     '',

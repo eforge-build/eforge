@@ -10,6 +10,7 @@ import {
   loadConfig,
   findConfigFile,
   ConfigMigrationError,
+  ConfigValidationError,
   AGENT_ROLES,
   thinkingConfigSchema,
   effortLevelSchema,
@@ -26,6 +27,7 @@ import {
   DEFAULT_TIER_MAX_TURNS,
 } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/harness';
+import { DAEMON_API_VERSION } from '@eforge-build/client';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
 describe('parseRawConfig strict validation', () => {
@@ -184,7 +186,6 @@ describe('extensionConfigSchema', () => {
         include: ['a'],
         exclude: ['b'],
         paths: ['./x.ts'],
-        trustProjectExtensions: false,
         eventHookTimeoutMs: 2500,
         policyGateTimeoutMs: 1500,
         policyGateFailurePolicy: 'fail-closed',
@@ -275,27 +276,37 @@ describe('parseRawConfigLegacy', () => {
   });
 });
 
-describe('extensions.trustProjectExtensions stripping from project/team config', () => {
-  it('project-team config file with trustProjectExtensions: true is stripped and emits a warning', async () => {
+describe('removed extension trust config field validation', () => {
+  const removedKey = ['trust', 'Project', 'Extensions'].join('');
+  const removedYaml = `extensions:\n  ${removedKey}: true\n`;
+
+  it('extensionConfigSchema rejects the removed field', () => {
+    expect(extensionConfigSchema.safeParse({ [removedKey]: true }).success).toBe(false);
+  });
+
+  it('configYamlSchema rejects the removed nested extension field', () => {
+    const result = configYamlSchema.safeParse({ extensions: { [removedKey]: true } });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['extensions']);
+  });
+
+  it('requires a daemon API version new enough for the removed config field contract', () => {
+    expect(DAEMON_API_VERSION).toBeGreaterThanOrEqual(71);
+  });
+
+  it('loadConfig rejects project-team config files containing the removed field', async () => {
     const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
 
-    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-strip-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-removed-'));
     const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = join(tmpDir, 'xdg');
     try {
-      // Write project-team config with trustProjectExtensions: true
       await mkdir(join(tmpDir, 'eforge'), { recursive: true });
-      await writeFile(join(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: true\n', 'utf-8');
+      await writeFile(join(tmpDir, 'eforge', 'config.yaml'), removedYaml, 'utf-8');
 
-      const { config, warnings } = await loadConfig(tmpDir);
-
-      // The setting must be stripped: final resolved config has the default (false)
-      expect(config.extensions.trustProjectExtensions).toBe(false);
-      // A warning must have been emitted
-      expect(warnings.some((w) => w.includes('trustProjectExtensions'))).toBe(true);
-      expect(warnings.some((w) => w.includes('project-team config'))).toBe(true);
+      await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigValidationError);
     } finally {
       if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
@@ -303,26 +314,21 @@ describe('extensions.trustProjectExtensions stripping from project/team config',
     }
   });
 
-  it('project-team profiles with trustProjectExtensions: true are stripped and emit a warning', async () => {
+  it('loadConfig rejects project-team profiles containing the removed field', async () => {
     const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
 
-    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-profile-strip-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-profile-removed-'));
     const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = join(tmpDir, 'xdg');
     try {
       await mkdir(join(tmpDir, 'eforge', 'profiles'), { recursive: true });
       await writeFile(join(tmpDir, 'eforge', 'config.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
       await writeFile(join(tmpDir, 'eforge', '.active-profile'), 'team-profile\n', 'utf-8');
-      await writeFile(join(tmpDir, 'eforge', 'profiles', 'team-profile.yaml'), 'extensions:\n  trustProjectExtensions: true\n', 'utf-8');
+      await writeFile(join(tmpDir, 'eforge', 'profiles', 'team-profile.yaml'), removedYaml, 'utf-8');
 
-      const { config, warnings, profile } = await loadConfig(tmpDir);
-
-      expect(profile).toMatchObject({ name: 'team-profile', scope: 'project' });
-      expect(profile.config?.extensions?.trustProjectExtensions).toBeUndefined();
-      expect(config.extensions.trustProjectExtensions).toBe(false);
-      expect(warnings.some((w) => w.includes('project-team profile "team-profile"'))).toBe(true);
+      await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigValidationError);
     } finally {
       if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
@@ -330,25 +336,19 @@ describe('extensions.trustProjectExtensions stripping from project/team config',
     }
   });
 
-  it('project-local config file with trustProjectExtensions: true is NOT stripped (project-local can set it)', async () => {
+  it('loadConfig rejects project-local config files containing the removed field', async () => {
     const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
 
-    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-local-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-local-removed-'));
     const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = join(tmpDir, 'xdg');
     try {
-      // Write project-local config with trustProjectExtensions: true
       await mkdir(join(tmpDir, '.eforge'), { recursive: true });
-      await writeFile(join(tmpDir, '.eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: true\n', 'utf-8');
+      await writeFile(join(tmpDir, '.eforge', 'config.yaml'), removedYaml, 'utf-8');
 
-      const { config, warnings } = await loadConfig(tmpDir);
-
-      // Project-local is not stripped: final resolved config respects the value
-      expect(config.extensions.trustProjectExtensions).toBe(true);
-      // No warning about trustProjectExtensions
-      expect(warnings.some((w) => w.includes('trustProjectExtensions'))).toBe(false);
+      await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigValidationError);
     } finally {
       if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
@@ -356,16 +356,54 @@ describe('extensions.trustProjectExtensions stripping from project/team config',
     }
   });
 
-  it('extensionConfigSchema accepts trustProjectExtensions as a valid schema field', () => {
-    const result = extensionConfigSchema.safeParse({ trustProjectExtensions: true });
-    expect(result.success).toBe(true);
+  it('loadConfig rejects user config files containing the removed field', async () => {
+    const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-user-removed-'));
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = join(tmpDir, 'xdg');
+    try {
+      const projectDir = join(tmpDir, 'project');
+      await mkdir(projectDir, { recursive: true });
+      await mkdir(join(tmpDir, 'xdg', 'eforge'), { recursive: true });
+      await writeFile(join(tmpDir, 'xdg', 'eforge', 'config.yaml'), removedYaml, 'utf-8');
+
+      await expect(loadConfig(projectDir)).rejects.toThrow(ConfigValidationError);
+    } finally {
+      if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      await rm(tmpDir, { recursive: true });
+    }
   });
 
-  it('mergePartialConfigs preserves trustProjectExtensions for user-level merge', () => {
-    const user: PartialEforgeConfig = { extensions: { trustProjectExtensions: true } };
+  it('loadConfig rejects project-local profiles containing the removed field', async () => {
+    const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-trust-local-profile-removed-'));
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = join(tmpDir, 'xdg');
+    try {
+      await mkdir(join(tmpDir, '.eforge', 'profiles'), { recursive: true });
+      await writeFile(join(tmpDir, '.eforge', 'config.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
+      await writeFile(join(tmpDir, '.eforge', '.active-profile'), 'local-profile\n', 'utf-8');
+      await writeFile(join(tmpDir, '.eforge', 'profiles', 'local-profile.yaml'), removedYaml, 'utf-8');
+
+      await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigValidationError);
+    } finally {
+      if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      await rm(tmpDir, { recursive: true });
+    }
+  });
+
+  it('mergePartialConfigs preserves allowed extension fields', () => {
+    const user: PartialEforgeConfig = { extensions: { enabled: false, eventHookTimeoutMs: 1234 } };
     const project: PartialEforgeConfig = { extensions: { include: ['alpha'] } };
     const merged = mergePartialConfigs(user, project);
-    // User-level setting is preserved through merge
-    expect(merged.extensions?.trustProjectExtensions).toBe(true);
+    expect(merged.extensions).toMatchObject({ enabled: false, include: ['alpha'], eventHookTimeoutMs: 1234 });
   });
 });

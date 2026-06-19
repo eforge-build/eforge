@@ -5,15 +5,15 @@ description: Create and run reusable workflow templates for recurring eforge bui
 
 # Playbooks
 
-A playbook is a reusable workflow template for recurring work. Instead of re-describing the same task each time, you write it once as a Markdown file and run it on demand. eforge resolves the playbook, optionally routes it to a specific agent runtime profile, and either enqueues a build directly or starts an investigation-first planning workflow.
+A playbook is an optional workflow artifact around the eforge build-engine kernel. Instead of re-describing recurring work each time, you write it once as a Markdown file and run it on demand. eforge resolves the playbook, optionally routes it to a specific agent runtime profile, and either normalizes it to build source for enqueue or routes to an investigation-first planning extension before a later handoff.
 
 ## Modes
 
 Every playbook has a `mode` field in its YAML frontmatter:
 
-**`mode: autonomous`** - running the playbook enqueues a build directly, like any other eforge input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
+**`mode: autonomous`** - running the playbook compiles it into normalized build source and enqueues a build, like any other producer input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
 
-**`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
+**`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from optional [eforge-plan](/docs/eforge-plan) and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the extension owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
 
 When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 

@@ -45,7 +45,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(extensions, 'typed.ts'), body.replace('NAME', 'typed'));
     await writeModule(resolve(extensions, 'typed-module.mts'), body.replace('NAME', 'typed-module'));
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.extensions.map((extension) => extension.name).sort()).toEqual(['module', 'plain', 'typed', 'typed-module']);
     expect(Object.fromEntries(result.registry.extensions.map((extension) => [extension.name, extension.strategy]))).toEqual({
@@ -64,7 +64,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(extensionDir, 'src', 'entry.ts'), `export default function extension(eforge) { eforge.registerTool({ name: 'dir-tool', description: 'dir', inputSchema: { type: 'object', properties: {} }, handler: () => 'ok' }); }`);
     await writeModule(resolve(extensionDir, 'package.json'), JSON.stringify({ exports: './src/entry.ts' }));
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.candidates.find((candidate) => candidate.name === 'dir-extension')).toMatchObject({
       layout: 'directory',
@@ -88,7 +88,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(extensions, 'missing-dependent', 'package.json'), JSON.stringify({ type: 'module', eforge: { extension: { name: 'missing-dependent', dependencies: { required: [{ name: 'missing-provider' }] } } } }));
     await writeModule(resolve(extensions, 'missing-dependent', 'index.js'), 'throw new Error("missing dependent must not import"); export default function extension() {}');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.extensions.map((extension) => extension.name)).toEqual(['provider', 'dependent']);
     expect(result.candidates.find((candidate) => candidate.name === 'missing-dependent')).toMatchObject({ status: 'skipped' });
@@ -105,7 +105,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(extensions, 'first.js'), 'export default function extension(eforge) { eforge.registerTool({ name: "dup", description: "one", inputSchema: { type: "object", properties: {} }, handler: () => "ok" }); }');
     await writeModule(resolve(extensions, 'second.js'), 'export default function extension(eforge) { eforge.registerTool({ name: "dup", description: "two", inputSchema: { type: "object", properties: {} }, handler: () => "ok" }); }');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'extension:invalid-export',
@@ -137,7 +137,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(extensions, 'scalar-schema.js'), 'export default function extension(eforge) { eforge.registerTool({ name: "scalar-tool", description: "bad", inputSchema: "not-an-object", handler: () => "ok" }); }');
     await writeModule(resolve(extensions, 'string-schema.js'), 'export default function extension(eforge) { eforge.registerTool({ name: "bad-tool", description: "bad", inputSchema: { type: "string" }, handler: () => "ok" }); }');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.tools).toEqual([]);
     expect(result.diagnostics).toEqual(expect.arrayContaining([
@@ -164,7 +164,7 @@ describe('native extension loader', () => {
     await writeModule(userPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "user-source", description: "user", fetch: async () => "ok" }); }');
     await writeModule(externalPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "external-source", description: "external", fetch: async () => "ok" }); }');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false, paths: [externalPath] } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, paths: [externalPath] } });
 
     expect(result.registry.extensions.map((extension) => extension.name).sort()).toEqual(['external', 'user']);
     expect(result.registry.inputSources.map((source) => source.name).sort()).toEqual(['external-source', 'user-source']);
@@ -196,7 +196,7 @@ describe('native extension loader', () => {
     const untrusted = await loadNativeExtensions({
       cwd: opts.cwd,
       configDir: opts.configDir,
-      config: { enabled: true, trustProjectExtensions: false, include: ['__eforge_no_auto_extensions__'], paths: [teamPath] },
+      config: { enabled: true, include: ['__eforge_no_auto_extensions__'], paths: [teamPath] },
     });
 
     expect(untrusted.registry.extensions).toHaveLength(0);
@@ -218,7 +218,7 @@ describe('native extension loader', () => {
     const trusted = await loadNativeExtensions({
       cwd: opts.cwd,
       configDir: opts.configDir,
-      config: { enabled: true, trustProjectExtensions: false, include: ['__eforge_no_auto_extensions__'], paths: [teamPath] },
+      config: { enabled: true, include: ['__eforge_no_auto_extensions__'], paths: [teamPath] },
     });
 
     expect(trusted.registry.extensions.map((extension) => extension.name)).toEqual(['team-explicit']);
@@ -239,7 +239,7 @@ describe('native extension loader', () => {
     const opts = await makeTree(root);
     await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "team", description: "team", fetch: async () => "ok" }); }');
 
-    const skipped = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const skipped = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     expect(skipped.registry.extensions).toHaveLength(0);
     expect(skipped.diagnostics.some((diagnostic) => diagnostic.code === 'extension:untrusted')).toBe(true);
     // Verify importExtension was never called - the candidate should be skipped, not loaded or error
@@ -248,12 +248,12 @@ describe('native extension loader', () => {
     expect(teamCandidate?.trustState).toBe('untrusted');
   });
 
-  it('skips untrusted project-team extensions even when trustProjectExtensions is true', async () => {
+  it('skips untrusted project-team extensions without a local trust record', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
-    await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'throw new Error("coarse trust flag must not import this"); export default function extension() {}');
+    await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'throw new Error("untrusted project-team extension must not import this"); export default function extension() {}');
 
-    const skipped = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true } });
+    const skipped = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(skipped.registry.extensions).toHaveLength(0);
     expect(skipped.candidates.find((c) => c.name === 'team')).toMatchObject({
@@ -273,7 +273,7 @@ describe('native extension loader', () => {
     const extensionPath = resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js');
     await writeModule(extensionPath, 'export default function extension() {}');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const projection = projectExtensionRegistry(result.registry);
 
     expect(projection.candidates).toEqual([
@@ -297,7 +297,7 @@ describe('native extension loader', () => {
 
     const result = await replayNativeExtensionEvents({
       cwd: root,
-      loaderOptions: { cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } },
+      loaderOptions: { cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } },
       name: 'team',
       events: [],
     });
@@ -325,7 +325,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "team", description: "team", fetch: async () => "ok" }); }');
 
     // Discover to get the current hash
-    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const candidate = discovery.candidates.find((c) => c.name === 'team');
     expect(candidate?.currentHash).toBeDefined();
 
@@ -333,7 +333,7 @@ describe('native extension loader', () => {
     const eforgeDir = resolve(root, '.eforge');
     await upsertTrustRecord(eforgeDir, 'team', candidate!.currentHash!, 'cli-user');
 
-    const loaded = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const loaded = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     expect(loaded.registry.extensions.map((extension) => extension.name)).toEqual(['team']);
     const loadedCandidate = loaded.candidates.find((c) => c.name === 'team');
     expect(loadedCandidate).toMatchObject({
@@ -369,7 +369,7 @@ describe('native extension loader', () => {
     await writeModule(extPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "team", description: "team", fetch: async () => "ok" }); }');
 
     // Discover and trust with initial hash
-    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const initialHash = discovery.candidates.find((c) => c.name === 'team')?.currentHash;
     expect(initialHash).toBeDefined();
     const eforgeDir = resolve(root, '.eforge');
@@ -378,7 +378,7 @@ describe('native extension loader', () => {
     // Modify the extension - now it's changed. The top-level throw proves the loader skips before import.
     await writeFile(extPath, 'throw new Error("changed extension should not be imported"); export default function extension(eforge) { eforge.registerInputSource({ name: "team-modified", description: "team", fetch: async () => "ok" }); }', 'utf-8');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     expect(result.registry.extensions).toHaveLength(0);
     const changedDiagnostic = result.diagnostics.find((d) => d.code === 'extension:trust-changed');
     expect(changedDiagnostic).toMatchObject({
@@ -407,7 +407,7 @@ describe('native extension loader', () => {
     // Write an extension that would throw if loaded (to prove it's not being imported)
     await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'throw-if-loaded.js'), 'throw new Error("should not be imported"); export default function extension() {}');
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     // Should emit untrusted, not factory-error
     expect(result.diagnostics.some((d) => d.code === 'extension:untrusted')).toBe(true);
     expect(result.diagnostics.some((d) => d.code === 'extension:factory-error')).toBe(false);
@@ -428,7 +428,7 @@ describe('native extension loader', () => {
     await writeModule(resolve(extensions, 'first.js'), `export default function extension(eforge) { ${registrations} }`);
     await writeModule(resolve(extensions, 'second.js'), `export default function extension(eforge) { ${registrations} }`);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
     const duplicateMessages = result.diagnostics
       .filter((diagnostic) => diagnostic.code === 'extension:duplicate-registration')
       .map((diagnostic) => diagnostic.message);
@@ -454,7 +454,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.reviewerPerspectives).toHaveLength(0);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -476,7 +476,7 @@ describe('native extension loader', () => {
       `);
     }
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.reviewerPerspectives).toHaveLength(0);
     const invalidDiagnostics = result.diagnostics.filter((d) => d.code === 'extension:invalid-registration');
@@ -498,7 +498,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.reviewerPerspectives).toHaveLength(0);
     expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(3);
@@ -526,7 +526,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.reviewerPerspectives).toHaveLength(2);
     expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(0);
@@ -550,7 +550,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.reviewerPerspectives).toHaveLength(0);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -579,7 +579,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.eventHooks).toEqual([expect.objectContaining({ extensionName: 'capture', value: expect.objectContaining({ pattern: '*' }) })]);
     expect(result.registry.agentRunHooks).toEqual([expect.objectContaining({ extensionName: 'capture' })]);
@@ -627,7 +627,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.validationProviders).toHaveLength(1);
     expect(result.registry.validationProviders[0]).toMatchObject({
@@ -646,7 +646,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.validationProviders).toHaveLength(0);
     expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toEqual([
@@ -663,7 +663,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.validationProviders).toHaveLength(0);
     expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toEqual([
@@ -680,7 +680,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.validationProviders).toHaveLength(0);
     expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toEqual([
@@ -699,7 +699,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.policyGates).toHaveLength(0);
     expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toEqual([
@@ -717,7 +717,7 @@ describe('native extension loader', () => {
     const engine = await EforgeEngine.create({
       cwd: root,
       agentRuntimes: new StubHarness([]),
-      config: { extensions: { enabled: false, trustProjectExtensions: false } },
+      config: { extensions: { enabled: false } },
     });
 
     expect(engine.resolvedConfig.extensions.enabled).toBe(false);
@@ -728,7 +728,7 @@ describe('native extension loader', () => {
   it('EforgeEngine.create keeps loading when one extension fails', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
-    await writeFile(resolve(opts.configDir, 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await writeFile(resolve(opts.configDir, 'config.yaml'), 'extensions:\n  enabled: true\n', 'utf-8');
     const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
     await writeModule(resolve(extensions, 'good.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "good", description: "good", fetch: async () => "ok" }); }');
     await writeModule(resolve(extensions, 'bad.js'), 'export default function extension() { throw new Error("bad"); }');
@@ -773,7 +773,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.profileRouters).toHaveLength(1);
     const registration = result.registry.profileRouters[0]!;
@@ -796,7 +796,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.profileRouters).toHaveLength(1);
     const registration = result.registry.profileRouters[0]!;
@@ -816,7 +816,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.profileRouters).toHaveLength(0);
     const invalidDiagnostics = result.diagnostics.filter((d) => d.code === 'extension:invalid-registration');
@@ -836,7 +836,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.inputSources).toHaveLength(1);
     expect(result.registry.prdEnrichers).toHaveLength(1);
@@ -865,7 +865,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     expect(result.registry.prdEnrichers).toHaveLength(0);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -890,7 +890,7 @@ describe('native extension loader', () => {
       }
     `);
 
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     // First registration should be kept
     expect(result.registry.prdEnrichers).toHaveLength(1);

@@ -27,7 +27,6 @@ extensions:
   policyGateTimeoutMs: 5000 # Optional policy gate timeout; defaults to eventHookTimeoutMs
   validationProviderTimeoutMs: 5000 # Optional registerValidationProvider timeout; defaults to eventHookTimeoutMs
   policyGateFailurePolicy: fail-closed # fail-closed blocks on failures; fail-open allows after diagnostics
-  trustProjectExtensions: false # Deprecated compatibility field; local trust records control project/team modules
   # include:                  # Allowlist by native extension name
   # exclude:                  # Denylist by native extension name
   # paths:                    # Additional explicit extension files/directories
@@ -163,7 +162,8 @@ build:
 #                                    # defaults to the root PRD id if omitted.
 #   stack_parent: <parent-prd-id>    # Parent PRD whose artifact branch this PRD targets. Optional
 #                                    # for single-dependency PRDs (inferred from depends_on); required
-#                                    # when a PRD has multiple depends_on entries.
+#                                    # when a PRD has multiple depends_on entries, and must be listed
+#                                    # in depends_on when stacking is enabled.
 #
 # See docs/stacking.md for the full stacking guide.
 
@@ -343,6 +343,8 @@ When `build.cleanupPlanFiles: true` (the default), the engine removes plan artif
 
 ## Native extensions
 
+Configuration is split between core build/daemon/profile settings and optional producer surfaces. The build-engine kernel consumes normalized build source; native extensions, playbooks, and session-plan compatibility adapters can prepare, route, or govern that source before enqueue without becoming kernel capabilities.
+
 The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery, loader-time registration capture, native hook timeout behavior, and runtime agent-run augmentation. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime support.
 
 ```yaml
@@ -360,7 +362,6 @@ extensions:
     - experimental-policy
   paths:
     - ./tools/eforge-audit.ts
-  trustProjectExtensions: false
 ```
 
 | Field | Default | Description |
@@ -375,13 +376,12 @@ extensions:
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. Valid values: `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Explicit extension files or directories to validate/load in addition to auto-discovery. Relative paths resolve from the project root. |
-| `extensions.trustProjectExtensions` | `false` | Deprecated compatibility field. It does not trust checked-in project/team extensions or bypass changed-hash blocking; explicit local trust records in `.eforge/extension-trust.json` control loading. User and project-local extensions load when enabled. |
 
 Extension action handlers use `extensions.eventHookTimeoutMs`; `agentContextHookTimeoutMs`, `profileRouterTimeoutMs`, `policyGateTimeoutMs`, and `validationProviderTimeoutMs` remain scoped to their existing registration families.
 
 Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `.eforge/extensions/` with precedence `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript entrypoints load through `jiti`; JavaScript entrypoints use dynamic import.
 
-Project/team extensions are committed code and require a per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading. `extensions.trustProjectExtensions` is retained only as a deprecated compatibility field: it does not trust project/team code, and committed project config/profile layers that set it are stripped with a warning. Any code change to the extension invalidates the stored hash and blocks the extension until re-trusted. The content hash covers the entrypoint for file-layout extensions and, for directory-layout extensions, `package.json` plus `.ts`, `.mts`, `.js`, and `.mjs` files under the extension directory (excluding top-level `node_modules/`, `dist/`, and `.git/`). It also covers every regular file under `workstation-assets/`, including nested `dist/`, `node_modules/`, or `.git/` directories there, so trusted workstation bundle assets are covered. Files imported from outside the extension directory — and non-source/data files outside `workstation-assets/` — are not covered. Extensions execute in the eforge daemon/worker Node process without a sandbox.
+Project/team extensions are committed code and require a per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` after inspecting the code — before loading. Any code change to the extension invalidates the stored hash and blocks the extension until re-trusted. The content hash covers the entrypoint for file-layout extensions and, for directory-layout extensions, `package.json` plus `.ts`, `.mts`, `.js`, and `.mjs` files under the extension directory (excluding top-level `node_modules/`, `dist/`, and `.git/`). It also covers every regular file under `workstation-assets/`, including nested `dist/`, `node_modules/`, or `.git/` directories there, so trusted workstation bundle assets are covered. Files imported from outside the extension directory — and non-source/data files outside `workstation-assets/` — are not covered. Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
 Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture for runtime-wired families, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan `validate`-stage execution, engine-side extension action/contribution/workstation registry support, Console System rendering for declarative contributions, sandboxed Console workstation rendering from `srcDoc` or daemon-owned `frameBundle` frame/asset URLs, host discovery/invocation for actions, integration commands, and action-backed deep links, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, daemon-owned `ctx.buildQueue.enqueue` dispatch for trusted queue handoffs, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote`). Package-managed extensions installed via `eforge extension install` carry nested `package.*` and `install.*` provenance fields such as `install.sourceKind`, `install.sourceSpec`, and `install.installedAt`; install sidecar files are excluded from the trust hash. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. The bundled playbook and session-planning adapters are internal/built-in and are not native extension registration points. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, direct React loading into the parent Console, private Console imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and user-authored workflow registration for custom session-plan or playbook extraction are separate, deferred, or unsupported runtime phases.
 
@@ -837,7 +837,7 @@ Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `extensions`,
 
 Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
-Playbooks are reusable input artifacts owned by the bundled playbook workflow adapter in `@eforge-build/input`, resolved across scopes by `@eforge-build/scopes`. The daemon compatibility service calls that adapter for playbook-domain list/load/save/write/move/copy/validate/compile/session-plan-seed behavior, then keeps queueing, landing, profile validation, and HTTP error mapping in the daemon. Autonomous playbooks compile to ordinary build source before enqueue. Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`, `--profile <name>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` runs the playbook (also available as `eforge play <name>`) — autonomous playbooks are enqueued as a build; planning playbooks require the `eforge.plan.planning-mode-playbook` capability from eforge-plan and return generic planning entry metadata for `eforge_extension_contribution` plus the eforge-plan workstation route, or `planning-unavailable` diagnostics when that capability is unavailable; `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
+Playbooks are optional workflow artifacts around the build-engine kernel. They are reusable input artifacts owned by the bundled playbook workflow adapter in `@eforge-build/input`, resolved across scopes by `@eforge-build/scopes`. The daemon compatibility service calls that adapter for playbook-domain list/load/save/write/move/copy/validate/compile/session-plan-seed behavior, then keeps queueing, landing, profile validation, and HTTP error mapping in the daemon. Autonomous playbooks compile to ordinary build source before enqueue. Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`, `--profile <name>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` runs the playbook (also available as `eforge play <name>`) — autonomous playbooks are enqueued as a build; planning playbooks require the `eforge.plan.planning-mode-playbook` capability from eforge-plan and return generic planning entry metadata for `eforge_extension_contribution` plus the eforge-plan workstation route, or `planning-unavailable` diagnostics when that capability is unavailable; `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
 
 ### Playbook `profile` field
 
@@ -878,7 +878,50 @@ PRDs with `depends_on` frontmatter whose upstream builds are still active (pendi
 
 Queue controls mutate runtime filesystem state under `.eforge/queue/` (or the configured `prdQueue.dir`), which is gitignored and produces no git commits. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; failed and skipped items reject priority mutation with a conflict until recovery/requeue makes them runnable, and running items reject priority changes because cancellation uses the existing session-id cancel route. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal deletes matching `.recovery.md` and `.recovery.json` sidecars. Removal fails closed when live pending/waiting dependents exist, lists dependent ids, and requires removing dependents first until future cascade controls ship. After successful mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
 
-When an active upstream build completes, its waiting dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`. Failed upstream cascades can be repaired through the daemon's queue recovery analyze/apply API; the apply path re-reads queue state and refuses the requested move set if the queue drifted since analysis.
+When an active upstream build completes, its waiting dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`. Failed upstream cascades can be inspected through the queue recovery analysis/preflight contract; analysis includes dependency classifications, dispatch preflight, and bounded metadata repair actions. The daemon apply route passes selected repair actions and dependency-removal confirmation through to the engine, then returns repair results from the client-owned queue recovery contract.
+
+#### Queue recovery contract fields
+
+Analysis responses may include `dependencyClassifications`, `dispatchPreflight`, and `availableRepairActions`. Apply requests may include `repairActions` plus `confirmDependencyRemoval: true` when removing satisfied dependencies; apply responses may include `dispatchPreflight` and `repairResults`.
+
+Dependency classifications:
+
+| `status` | Meaning |
+| --- | --- |
+| `blocking` | Dependency is still active in `queue` or `waiting`; the target cannot dispatch yet. |
+| `satisfied` | Dependency has a usable artifact and can be removed from `depends_on` if the caller confirms. |
+| `terminal` | Dependency is failed/skipped in queue state or historical completion state. |
+| `stale-historical` | Dependency is not active and has no usable artifact; surfaced as a dispatch preflight warning. |
+
+Dispatch preflight:
+
+| Field | Meaning |
+| --- | --- |
+| `canApply` | `true` only when no dispatch blockers remain after simulated repairs. |
+| `blockers` / `warnings` | Aggregate notices for consumers that do not inspect each item. |
+| `items[].canDispatch` | Whether this target could dispatch with the simulated metadata. |
+| `items[].blockers` / `items[].warnings` | Per-target dispatch validation messages. |
+| `items[].meaningfulDependencyIds` | Dependencies that can be selected as stack parents. |
+| `items[].requiresStackParentChoice` | `true` when stacked dispatch needs an operator-selected parent. |
+| `items[].currentStackParent` | Existing simulated stack parent, when present. |
+
+Repair actions:
+
+| Action | Meaning |
+| --- | --- |
+| `{ kind: 'remove-depends-on', targetPrdId, dependencyIds }` | Remove satisfied dependencies from `depends_on`; apply requires `confirmDependencyRemoval: true`. |
+| `{ kind: 'set-stack-parent', targetPrdId, selectedParentId }` | Set `stack_parent` to a dependency selected by the caller. Construct this from the target PRD's `meaningfulDependencyIds` when `requiresStackParentChoice` is `true`. |
+
+`availableRepairActions` currently includes satisfied dependency removals. When `requiresStackParentChoice` is `true`, callers construct `set-stack-parent` actions from dispatch preflight fields such as `items[].meaningfulDependencyIds`. Operators must explicitly select any dependency removal or stack parent choice before those repair actions are sent on apply.
+
+Repair result statuses:
+
+| `status` | Meaning |
+| --- | --- |
+| `applied` | Repair was accepted in simulation and written during apply. |
+| `blocked` | Repair was rejected before metadata mutation; see `message`. |
+| `skipped` | Repair was skipped after an earlier metadata write failure prevented durable application. |
+| `failed` | Repair was accepted in simulation but its metadata write failed during apply; see `message`. |
 
 CLI override: `--max-concurrent-builds <n>`
 

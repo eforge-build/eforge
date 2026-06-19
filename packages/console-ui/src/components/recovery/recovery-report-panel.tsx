@@ -4,11 +4,13 @@ import type {
   ContinueRepairEligibilityResponse,
   RecoveryAppliedMetadata,
   AcceptSuccessPreviewResponse,
+  QueueItem,
 } from '@eforge-build/client/browser';
 import { ConfirmAction } from '@/components/recovery/confirm-action';
 import { SafeMarkdown } from '@/components/recovery/safe-markdown';
 import { AdvancedCascadeSection } from '@/components/recovery/advanced-cascade-section';
 import { AcceptSuccessAction, type AcceptSuccessApplyInput } from '@/components/recovery/accept-success-action';
+import { formatQueueDispatchFailure, formatQueueDispatchFailureTimestamp } from '@/lib/selectors/queue-dispatch-failure';
 import type {
   RecoveryConfidenceValue,
   RecoveryVerdictValue,
@@ -60,6 +62,7 @@ export interface RecoveryReportPanelProps {
   /** Normalized verdict/confidence for the advanced queue-cascade section. */
   effectiveVerdict: RecoveryVerdictValue | undefined;
   effectiveConfidence: RecoveryConfidenceValue | undefined;
+  dispatchFailure?: QueueItem['dispatchFailure'];
   /**
    * Durable applied marker from the sidecar. When present the mutating sidecar
    * action is hidden so an already-applied verdict cannot be re-applied (the
@@ -99,6 +102,7 @@ export function RecoveryReportPanel({
   sidecarVerdict,
   effectiveVerdict,
   effectiveConfidence,
+  dispatchFailure,
   appliedMetadata,
   eligibility,
   eligibilityError,
@@ -133,8 +137,18 @@ export function RecoveryReportPanel({
     liveContinueRepairRecommended && !continueRepairActionInRecommendation,
   );
 
+  const dispatchFailureDetail = formatQueueDispatchFailure(dispatchFailure);
+  const dispatchFailureTimestamp = formatQueueDispatchFailureTimestamp(dispatchFailure);
+
   return (
     <div className="space-y-4 px-4 py-4">
+      {dispatchFailure && dispatchFailureDetail && (
+        <section className="space-y-1 rounded-md border border-yellow/30 bg-yellow/10 p-3">
+          <h3 className="text-sm font-medium text-foreground">Pre-session dispatch blocker</h3>
+          <p className="text-sm text-muted-foreground">{dispatchFailureDetail}</p>
+          <p className="text-xs text-muted-foreground">Stage: {dispatchFailure.stage}{dispatchFailureTimestamp ? ` · ${dispatchFailureTimestamp}` : ''}</p>
+        </section>
+      )}
       {/* Recovery report */}
       <section className="space-y-2">
         <h3 className="text-sm font-medium text-foreground">Recovery report</h3>

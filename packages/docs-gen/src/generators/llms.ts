@@ -15,12 +15,22 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { OutputPaths } from '../output-paths.js';
 import type { ProvenanceInfo } from '../provenance.js';
-import { LLMS_MANIFEST } from '../manifest.js';
+import { LLMS_MANIFEST, type LlmsGuideCategory } from '../manifest.js';
 
 async function writeToPath(content: string, path: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, 'utf-8');
 }
+
+const GUIDE_CATEGORY_HEADINGS: Array<{ category: LlmsGuideCategory; heading: string }> = [
+  { category: 'core-kernel', heading: 'Core kernel guides' },
+  { category: 'optional-workflow', heading: 'Optional workflow guides' },
+  { category: 'extension-platform', heading: 'Extension platform guides' },
+  { category: 'first-party-extension', heading: 'Optional first-party extension guides' },
+  { category: 'integration', heading: 'Integration guides' },
+  { category: 'operation', heading: 'Operations guides' },
+  { category: 'reference', heading: 'Reference guides' },
+];
 
 function buildLlmsTxt(): string {
   const lines: string[] = [
@@ -30,15 +40,19 @@ function buildLlmsTxt(): string {
     '',
     LLMS_MANIFEST.overview,
     '',
-    '## Getting started',
-    '',
   ];
 
-  for (const guide of LLMS_MANIFEST.guides) {
-    lines.push(`- [${guide.title}](${guide.url}): ${guide.description}`);
+  for (const { category, heading } of GUIDE_CATEGORY_HEADINGS) {
+    const guides = LLMS_MANIFEST.guides.filter((guide) => guide.category === category);
+    if (guides.length === 0) continue;
+    lines.push(`## ${heading}`);
+    lines.push('');
+    for (const guide of guides) {
+      lines.push(`- [${guide.title}](${guide.url}): ${guide.description}`);
+    }
+    lines.push('');
   }
 
-  lines.push('');
   lines.push('## Canonical reference');
   lines.push('');
 
@@ -82,6 +96,7 @@ async function buildLlmsFullTxt(outputPaths: OutputPaths): Promise<string> {
     configuration: outputPaths.publicDocsConfiguration,
     extensions: outputPaths.publicDocsExtensions,
     'extensions-api': outputPaths.publicDocsExtensionsApi,
+    'eforge-plan': outputPaths.publicDocsEforgePlan,
     profiles: outputPaths.publicDocsProfiles,
     playbooks: outputPaths.publicDocsPlaybooks,
     integrations: outputPaths.publicDocsIntegrations,
@@ -146,6 +161,10 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'extensions-api.md'),
       target: outputPaths.publicDocsExtensionsApi,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'eforge-plan.md'),
+      target: outputPaths.publicDocsEforgePlan,
     },
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'glossary.md'),

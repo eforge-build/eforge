@@ -7,7 +7,7 @@ description: Install eforge and run your first delegated build.
 
 # Getting Started
 
-eforge turns described work into reviewed, validated code changes. You describe what you want to build through a prompt, PRD, playbook, or session plan; eforge plans, implements, reviews, and validates the work through a multi-stage pipeline across isolated worktrees.
+eforge turns normalized build source into reviewed, validated code changes. For your first build, start directly from a prompt, PRD, or file path; optional workflow surfaces such as playbooks, session plans, and first-party planning extensions can prepare build source before it reaches the same kernel.
 
 ## Prerequisites
 
@@ -60,33 +60,30 @@ The CLI has no init command yet: run `/eforge:init` once in Pi or Claude Code to
 
 ## Your First Build
 
-Once eforge is installed and initialized, you can plan first through the generic eforge-plan planning entry when the eforge-plan extension is loaded/trusted. In Pi or Claude, discover and invoke the `eforge-plan:open-planning-entry` contribution with `eforge_extension_contribution`; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. You can also open the eforge-plan workstation deep link at `/console/workstations/eforge-plan%3Aplanning-workstation`. The workstation guides structured planning - exploring scope, architecture, risks, acceptance criteria, readiness, and assumptions - and writes a session-plan file under `.eforge/session-plans/` with planning type/depth, required/optional dimensions, skipped dimensions, open questions, and readiness status.
-
-When the session plan is ready to build:
-
-```
-/eforge:build
-```
-
-With no arguments, `/eforge:build` looks for active session plans. Ready session-plan files are submitted by file path as build source; eforge's bundled session-planning adapter converts the session plan into normalized build source, the daemon enqueues it, and the session plan is marked `submitted` with the resulting session ID.
-
-Or enqueue directly with a prompt:
+Once eforge is installed and initialized, enqueue directly with a prompt:
 
 ```
 /eforge:build Add a dark mode toggle to the settings page
 ```
-
-The daemon picks up the queued plan and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
 
 From the standalone CLI:
 
 ```bash
 eforge build "Add a dark mode toggle to the settings page"
 eforge build plans/my-feature-prd.md
+eforge build ./docs/my-feature.md
 eforge build --landing-action pr plans/my-feature-prd.md
 ```
 
+The daemon normalizes the prompt, PRD, or file into build source, queues it, and runs the full pipeline in the background. Console at `http://localhost:<port>/console/` (port deterministically assigned per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
+
 Use `--profile <name>` for a one-off agent runtime profile override, and `--landing-action pr|merge|leave` when one build should use a different landing action from `eforge/config.yaml`.
+
+## Optional planning and workflow surfaces
+
+Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension is available. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
+
+When eforge-plan is loaded and trusted, hosts can discover and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
 
 ## What Happens Next
 
@@ -103,7 +100,8 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 - [Concepts](./concepts) - How the pipeline works, what blind review means, and what harnesses do
 - [Configuration](./configuration) - The most important config options and how to tune them
 - [Profiles](./profiles) - Create and switch agent runtime profiles that control harness, model, and effort
-- [Playbooks](./playbooks) - Build reusable workflow templates for recurring work
+- [Playbooks](./playbooks) - Optional workflow artifacts that prepare build source for recurring work
+- [eforge-plan](./eforge-plan) - Optional first-party extension behavior
 - [Integrations](./integrations) - How to use eforge from Claude Code, Pi, the CLI, and external issue trackers
 - [Troubleshooting](./troubleshooting) - Daemon startup, failed builds, and common error remedies
 - [Glossary](./glossary) - Definitions for eforge-specific terms such as profiles, worktrees, and playbooks
@@ -111,6 +109,155 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 - [Configuration Reference](/reference/config) - Full `eforge/config.yaml` schema
 
 <!-- end-section: guide:getting-started -->
+
+<!-- section: guide:concepts -->
+---
+title: Concepts
+description: How the eforge build engine, inputs, and extension surfaces fit together.
+---
+
+# Concepts
+
+## Core engine and extension surfaces
+
+eforge is a build-engine kernel with extensible workflow surfaces around it. The core engine consumes normalized build source, compiles it into plans, orchestrates dependency-aware worktrees, runs implementation/review/validation loops, records conservative gates, and emits typed events for consumers.
+
+Input authoring and workflow UX live outside that core. CLI prompts, rough notes, PRD files, playbooks, session plans, wrapper-app artifacts, host integrations, toolbelts, shell hooks, and native extensions can shape how work is prepared or governed before it reaches the engine. They are extension surfaces, not separate engines.
+
+That boundary is why different hosts can feel different while the build semantics remain consistent: every input surface eventually normalizes into build source, and the engine handles the same compile/build/landing lifecycle.
+
+## What eforge builds
+
+Traditional build systems transform source code into artifacts. eforge transforms *build source* into source-code changes - then verifies its own output.
+
+The key quality insight: a single AI agent writing and reviewing its own code will almost always approve it. Quality requires **separation of concerns** - distinct agents for planning, building, reviewing, and evaluating. eforge applies build-system thinking to this multi-agent pipeline.
+
+## The Pipeline
+
+Every eforge build runs two phases:
+
+**Compile phase** - Runs once per build. A planner agent assesses complexity and selects a workflow profile, then produces plan files and an orchestration manifest. Large work is decomposed into modules that can build in parallel.
+
+**Build phase** - Runs once per plan. Builder agents implement the plan in an isolated git worktree. When the build stage completes, a blind review cycle runs, then the result merges back.
+
+The compile phase produces `orchestration.yaml` - a dependency graph over the plans. The orchestrator launches plans as soon as their dependencies have merged, not in fixed waves. Since agent execution is IO-bound, all ready plans run immediately in parallel.
+
+## Normalized build-source boundary
+
+A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, a wrapper-app artifact, an autonomous workflow artifact, or another host-provided file, but the build-engine kernel sees normalized build source rather than the original authoring surface.
+
+That boundary keeps producer UX optional. Hosts, wrapper apps, playbooks, session-plan compatibility adapters, and first-party extensions such as [eforge-plan](/docs/eforge-plan) may help collect intent, investigate scope, or format a handoff. They are producers around the kernel. Once a build is enqueued, the engine consumes the normalized source through the same compile/build/landing lifecycle.
+
+## Build Artifact Provenance
+
+When a build runs, eforge commits source artifacts into the artifact branch before building:
+
+- A canonical PRD copy is written to `eforge/prds/{prdId}.md` at dispatch time.
+- Compiled plan files and `orchestration.yaml` are written to `eforge/plans/{planSet}/` during compile.
+
+These committed files are the shared, team-visible provenance record linking a build session to its originating requirements and plan.
+
+When `build.cleanupPlanFiles: true` (the default), eforge removes these artifacts from `HEAD` during the `pr` or `merge` landing flows after a successful build. Cleanup also strips temporary plan-ID eforge region marker comment lines from tracked JavaScript/TypeScript-family source files while preserving durable semantic markers and marked code. `landing.action: leave` does not run cleanup and leaves the artifact branch in place for inspection. Build artifacts are not permanently lost — when the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the commits that added the artifacts remain reachable in Git history. Use `git show <sha>:<path>` with a commit-pinned reference to recover any artifact. PR bodies include an **Eforge provenance** section with these references when artifact commits are found. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy.
+
+The durable provenance guarantee is Git history, not the final tree. Squash or rebase merge strategies applied after a PR is opened (for example, GitHub's "Squash and merge") can collapse intermediate commits and make artifact references unreachable. Use merge commits when preserving build provenance history matters to your team.
+
+## Workflow Profiles
+
+The planner selects one of three profiles based on scope complexity:
+
+**Errand** - Small, self-contained changes. The planner generates a single simple plan or skips if nothing needs doing. Fast path with minimal overhead.
+
+**Excursion** - Multi-file feature work. The planner writes a full plan covering all files and dependencies, then a blind plan-review cycle validates it before building begins.
+
+**Expedition** - Large cross-cutting work. The planner writes an architecture document, decomposes work into modules with independent plans, runs cohesion review across the full plan set, then builds plans in parallel in dependency order.
+
+You can suggest a profile in your build prompt, but the planner makes the final call based on what it sees in the codebase.
+
+## Separation of Concerns
+
+Each pipeline stage uses a different agent with different context:
+
+- **Builder** - Has the plan, the codebase, and all tools. Writes code and commits changes.
+- **Reviewer** - Has only the code diff, not the builder's reasoning. Flags issues without being anchored to the builder's intent.
+- **Fixer** - Applies reviewer suggestions as unstaged changes.
+- **Evaluator** - Judges each fix against the original plan intent. Accepts strict improvements; rejects changes that alter intent.
+
+This three-step pattern (blind review - fix - evaluate) applies to code review, plan review, architecture review, and cohesion review. The evaluator is the safety valve: it keeps the fixer from over-correcting.
+
+## Harnesses
+
+eforge is harness-agnostic. A **harness** is the agent execution backend - the thing that runs the LLM and tools for each agent stage. Two harnesses ship with eforge:
+
+- **`pi`** - Recommended for new eforge setup. Uses pi-agent-core for provider-flexible execution across OpenAI, Anthropic, Google, Mistral, Groq, xAI, Bedrock, OpenRouter, local models, and more.
+- **`claude-sdk`** - Supported secondary path for users who intentionally want the Anthropic Claude Agent SDK with Anthropic API credentials.
+
+The harness you use to *drive* eforge (Claude Code or Pi) and the harness that *executes* builds are independent. You can plan in Claude Code and build with Pi, or plan in Pi and execute through the Anthropic-specific Claude Agent SDK. You can also switch harnesses mid-project by changing your active profile.
+
+## Tiers
+
+A **tier** is a named configuration slot: `planning`, `implementation`, `review`, and `evaluation`. Each tier specifies a harness, model, and effort level. Agent roles are assigned to tiers by default - the planner uses `planning`, the builder uses `implementation`, reviewers use `review`, and evaluators use `evaluation`.
+
+This means you can say "use a fast cheap model for implementation, a thorough slow model for review" without listing every agent role individually.
+
+## Agent Runtime Profiles
+
+A **profile** is a named YAML file that bundles tier recipes into a reusable unit. Profiles live at three scopes:
+
+- `~/.config/eforge/profiles/` - User scope, personal, cross-project
+- `eforge/profiles/` - Project scope, committed, team-canonical
+- `.eforge/profiles/` - Project-local scope, gitignored, personal override
+
+The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models. See [Profiles](/docs/profiles) for a full walkthrough.
+
+**Playbooks** are an optional workflow surface: a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Autonomous playbooks normalize to build source before enqueue; planning playbooks route to optional eforge-plan planning when that extension capability is available. See [Playbooks](/docs/playbooks).
+
+## The Queue and Daemon
+
+When you run `/eforge:build` or `eforge build`, eforge writes a normalized PRD file to the configured queue directory (`.eforge/queue/` by default - gitignored, runtime state only). During enqueue, eforge also extracts a canonical acceptance-criteria inventory with stable `ac-###` ids and stores it in an eforge-owned hidden Markdown block in that queued PRD. The inventory is validated for schema, source grounding, confidence, duplicates, and item quality before the queue file is written. If extraction is malformed or criteria are vague, grouping labels, bare commands, manual-only, visual-only, low-confidence, or ungrounded, enqueue fails and no queue Markdown file is created.
+
+A long-running **daemon** watches the queue and, when `prdQueue.autoBuild` is enabled, processes PRDs automatically. The daemon runs in the background and survives terminal exit. `prdQueue.watchPollIntervalMs` controls how often the watcher polls for queued work. Queued PRD builds require the persisted inventory; if a queued file is missing the hidden block, has multiple blocks, or has malformed inventory JSON, the build fails before orchestration and the PRD must be re-enqueued.
+
+At dispatch time, the daemon also writes a canonical copy of the PRD to `eforge/prds/{prdId}.md` - a committed provenance record that links the build session to its originating requirements independently of queue state. Queue files in `.eforge/queue/` are ephemeral; `eforge/prds/` files are committed to the artifact branch and survive queue cleanup. The hidden inventory is stripped from planner, validator, dependency, staleness, profile-router, and provenance prose, while the loaded stable IDs are passed to acceptance validation. When `build.cleanupPlanFiles: true` (the default), these artifacts are removed from `HEAD` during the `pr` or `merge` landing flows after a successful build, temporary plan-ID eforge region marker comment lines are stripped from tracked JavaScript/TypeScript-family source files, and artifacts remain recoverable from Git history via commit-pinned references. `landing.action: leave` preserves the artifact branch in place. See [Build Artifact Provenance](#build-artifact-provenance) above.
+
+The queue supports dependencies, priority, and runtime controls. A PRD can declare `depends_on` to wait for upstream PRDs to complete before it starts; eforge validates that dependencies refer to pending, running, or waiting queue items, or to completed items with durable usable artifacts. Failed, skipped, unknown, or completed-without-artifact dependencies are rejected. Within each dependency wave, lower numeric `priority` values run first, PRDs without `priority` run last, and ties fall back to creation date. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter, while failed and skipped items reject priority changes with a conflict until recovery or requeue makes them runnable. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files and deletes matching failed-build recovery sidecars. The daemon API also supports targeted dependency overrides for pending or waiting PRDs: one `depends_on` id is removed, remaining blockers keep the PRD in `waiting/`, and clearing the last blocker moves a waiting PRD back to the queue root. Running items reject priority, removal, and dependency override controls; cancel active work through the existing session-id cancel route instead. Removal fails closed when live pending/waiting dependents exist, lists dependent ids, and requires removing those dependents first; there is no cascade remove action. These are runtime filesystem mutations under `.eforge/queue/`, are gitignored, produce no git commits, and notify the scheduler so it re-reads queue files before dispatch. If an upstream PRD fails or is cancelled, waiting dependents are skipped instead of cascading a broken build. The Console Now dashboard surfaces failed and skipped terminal rows in the Needs attention strip rather than the Queue card; the Queue card preview lists only forward pending and waiting rows, which expose set-priority and confirmed remove actions. Failed upstreams with skipped descendants can be inspected before applying daemon-planned recovery, including projected pre-session dispatch blockers and explicit queue-cascade metadata repair choices when available.
+
+The **Console dashboard** (`http://localhost:<port>/console/`) tracks cost, token usage, and pipeline progress in real time. Root UI requests redirect to Console, and the daemon keeps it available after the build completes so you can inspect results.
+
+## Artifact Branches and Landing Actions
+
+Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output. After all plans merge into the artifact branch and post-merge validation passes, the **landing action** determines what happens next.
+
+Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave`).
+
+| `landing.action` | Behavior |
+|-----------------|----------|
+| `pr` | Opens a PR from the artifact branch targeting the resolved base branch. For direct non-stacked builds, eforge fetches `origin/<baseBranch>`, rebases the artifact branch onto that fetched base before validation, and checks freshness again immediately before PR creation. For stacked builds, the root PR targets the resolved trunk branch and child PRs target their parent artifact branch unless eforge proves a missing parent base is already integrated into trunk and performs branch-scoped stale-parent landing repair; before submission, stacked landing runs provider repo sync, branch restack, and a remote-base freshness proof. |
+| `merge` | Merges the artifact branch into the base branch directly. |
+| `leave` | Leaves the artifact branch in place for manual inspection or cherry-picking. |
+
+## Validation
+
+During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. Structured provider failures can be repaired before review: narrow issues use the review-fixer path, while `repairClass: 'structural'` issues route to an in-build validation-fixer path with evaluator-gated checkpoints. After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
+
+## Stacked PRs
+
+Stacked PR landing is optional. When `stacking.enabled: true` and `landing.action: pr` are set in `eforge/config.yaml`, builds form a **branch-per-PR stack**. The root artifact branch targets the resolved trunk branch, and each child artifact branch normally targets its parent artifact branch. If a parent branch was deleted after merge and the parent artifact commit is an ancestor of trunk, eforge can automatically land only the child artifact branch against trunk during landing. eforge currently uses git-spice to track branches and submit PRs into the stack.
+
+PRD frontmatter controls the stack topology: `stack_id` is a logical stack name shared by all PRDs in the stack; `stack_parent` is the parent PRD id. For single-dependency builds, `stack_parent` is inferred automatically from `depends_on`. See the [Stacked PRs](/docs/stacking) guide for setup instructions.
+
+## Agent-Readable Artifacts
+
+eforge publishes machine-readable reference artifacts for use by AI coding assistants:
+
+- `/llms.txt` - Structured index of available documentation, getting-started guides, reference docs, packages, schemas, and optional context
+- `/llms-full.txt` - Full reference documentation bundle in a single file
+- `/docs/getting-started.md`, `/docs/concepts.md`, `/docs/configuration.md`, `/docs/profiles.md`, `/docs/playbooks.md`, `/docs/eforge-plan.md`, `/docs/stacking.md`, `/docs/extensions.md`, `/docs/extensions-api.md`, `/docs/integrations.md`, `/docs/troubleshooting.md`, `/docs/glossary.md` - Raw Markdown guide pages useful for onboarding, operations, optional workflows, first-party extensions, and terminology
+- `/reference/cli.md`, `/reference/api.md`, `/reference/events.md`, `/reference/config.md`, `/reference/tools.md` - Raw Markdown reference docs
+- `/schemas/events.schema.json`, `/schemas/config.schema.json` - JSON Schemas for wire types and config
+
+These are served byte-for-byte from the static `public/` directory and are regenerated from source on every release.
+
+<!-- end-section: guide:concepts -->
 
 <!-- section: guide:configuration -->
 ---
@@ -257,6 +404,8 @@ The standalone CLI can override the active profile for one build with `eforge bu
 
 ## Native Extensions
 
+Configuration is split between core build/daemon/profile settings and optional producer surfaces. The build-engine kernel consumes normalized build source; native extensions, playbooks, and session-plan compatibility adapters can prepare, route, or govern that source before enqueue without becoming kernel capabilities.
+
 Native eforge extensions are TypeScript/JavaScript modules discovered from three scopes:
 
 | Scope | Directory | Trust default |
@@ -265,7 +414,7 @@ Native eforge extensions are TypeScript/JavaScript modules discovered from three
 | Project/team | `eforge/extensions/` | skipped unless a matching local trust record exists |
 | Project-local | `.eforge/extensions/` | trusted |
 
-Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require a per-extension local trust record in `.eforge/extension-trust.json` created by `eforge extension trust <name>`. `extensions.trustProjectExtensions` is retained only as a deprecated compatibility field: it does not trust project/team code, and committed project config/profile layers that set it are stripped with a warning. Any code change invalidates the stored hash and blocks the extension until re-trusted. The content hash covers supported source files plus every regular file under `workstation-assets/`, so declared workstation bundle assets are covered; broad top-level `dist/` output, package sidecars, and files outside the extension unit remain outside the trust hash.
+Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require a per-extension local trust record in `.eforge/extension-trust.json` created by `eforge extension trust <name>` after inspecting the code. Any code change invalidates the stored hash and blocks the extension until re-trusted. The content hash covers supported source files plus every regular file under `workstation-assets/`, so declared workstation bundle assets are covered; broad top-level `dist/` output, package sidecars, and files outside the extension unit remain outside the trust hash.
 
 ```yaml
 extensions:
@@ -282,7 +431,6 @@ extensions:
     - experimental-policy        # optional denylist by name
   paths:
     - ./tools/eforge-audit.ts    # explicit file/directory paths
-  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Extension action handlers use `extensions.eventHookTimeoutMs`; `agentContextHookTimeoutMs`, `profileRouterTimeoutMs`, `policyGateTimeoutMs`, and `validationProviderTimeoutMs` remain scoped to their existing registration families.
@@ -410,7 +558,7 @@ For the complete field schema and validation behavior, see the [Toolbelts](/refe
 
 ## Playbook Profiles
 
-Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
+Playbooks are optional workflow artifacts that resolve outside the build-engine kernel before autonomous runs normalize to build source or planning runs route to an extension. Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
 
 ```yaml
 ---
@@ -744,7 +892,6 @@ extensions:
   # exclude: [experimental]      # optional denylist by extension name
   # paths:                       # optional explicit extension modules/directories
   #   - ./tools/eforge-audit.ts
-  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Fields:
@@ -761,9 +908,10 @@ Fields:
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for policy-gate throws, timeouts, or invalid decisions. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
-| `extensions.trustProjectExtensions` | `false` | Deprecated compatibility field. It does not trust project/team extensions or bypass changed-hash blocking; explicit local trust records in `.eforge/extension-trust.json` control loading. User and project-local extensions are trusted when loading is enabled. |
 
-The compatibility trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently trust checked-in extensions, and `extensions.trustProjectExtensions` is stripped from committed project config/profile layers with a warning. Loading project/team extensions is controlled by explicit per-extension local trust records created with `eforge extension trust <name>`.
+Only the documented `extensions` keys are accepted in config files and profiles. Remove stale or obsolete project/team trust compatibility settings during upgrades; project/team extension loading now uses local trust records instead.
+
+Loading project/team extensions is controlled by explicit per-extension local trust records in `.eforge/extension-trust.json`, created with `eforge extension trust <name>` after inspecting the extension code. User and project-local extensions are trusted when loading is enabled.
 
 ## Discovery scopes and precedence
 
@@ -857,31 +1005,33 @@ Install scope follows the CLI scaffold labels: `local` targets `.eforge/extensio
 
 Non-JSON output prints concrete next steps after install. When the returned entry has `trustState: "untrusted"` or `"changed"`, the CLI prints a trust command (`eforge extension trust <name>`), a validate command, and a reload command. JSON output (`--json`) prints the daemon response directly.
 
-### First-party eforge-plan package
+### Optional first-party eforge-plan package
 
-`@eforge-build/eforge-plan` is the first-party installable planning package. It contributes the `eforge-plan` extension name, backlog and session-plan actions, the `eforge://input/eforge-plan/<itemId>` input source, integration commands, deep links, and the planning Console workstation.
+`@eforge-build/eforge-plan` is the optional first-party planning package. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, and revision flows is documented in [eforge-plan](/docs/eforge-plan) and the extension-owned README.
 
 ```bash
-# Install locally; local installs load without a project/team trust record
+# Local install (trusted by default)
 eforge extension install @eforge-build/eforge-plan
+eforge extension validate eforge-plan
+eforge extension reload
 
-# Install for the team and trust the reviewed artifact
-eforge extension install @eforge-build/eforge-plan --scope project --trust
-
-# Validate, trust when needed, and reload after install or update
+# Project/team install with post-inspection trust
+eforge extension install @eforge-build/eforge-plan --scope project
 eforge extension validate eforge-plan
 eforge extension trust eforge-plan
 eforge extension reload
 
-# Update from npm, optionally pinned to a version or dist-tag
+# Project/team install with immediate trust
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension reload
+
+# Update or remove
 eforge extension update eforge-plan
 eforge extension update eforge-plan --version latest
-
-# Remove the installed package
 eforge extension remove eforge-plan
 ```
 
-The package artifact includes compiled runtime files in `dist/` and the generated planning workstation bundle in `workstation-assets/plans/`. The extension remains unsandboxed arbitrary code: local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading. Updating a project/team install changes the reviewed hash, so re-trust after inspection or update with `--trust`.
+The package remains unsandboxed arbitrary code like any native extension. It ships its runtime entrypoints in `dist/` and its planning workstation browser bundle in `workstation-assets/plans/`. Local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading.
 
 ### Promote and demote
 
@@ -1093,7 +1243,7 @@ Action handlers can inspect immutable dependency and capability availability thr
 
 The MVP task runner is intentionally narrow. It resolves the existing `planner` role and enforces read-only agent tools for the run. Extensions cannot supply arbitrary raw prompt templates, register custom task kinds, expose multi-turn chat, or bypass the daemon-owned task lifecycle. The first supported task kind is a single-shot planning-draft task; extension-specific UI and higher-level eforge-plan actions can build on this boundary without owning the agent runtime directly.
 
-A planning-draft result is either a ready result that carries at least one applicable output section (including optional `sessionPlanCreationDraft` when a session plan is requested, structured `backlogCurationDraft` when backlog curation is requested, or `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan) or a `needs-input` decision that carries structured clarification questions and a rationale instead of output sections. Answer-only revision turns remain output-bearing because the assistant narrative lives in `planRevisionTurn` even when no patch is proposed. Curation-specific unresolved cases live inside `backlogCurationDraft.needsInput`; the top-level `needs-input` variant remains output-free. First-party eforge-plan revision sessions are an application-level pattern surfaced in the Console workstation as **Revise with AI** and built from extension actions plus daemon-owned single-shot tasks: eforge-plan stores transcript/index state, revision annotations, and turn annotation snapshots in its private extension storage, links turns to daemon task ids, owns preview/apply semantics, and keeps the daemon responsible only for task records, status, result, and error. While a task runs, the agent may report telemetry-only `sectionProgress` (current, covered, and remaining sections) through a read-only progress tool. The daemon sanitizes and length-caps that progress before persisting it on the running record and emitting it on sanitized progress events; section progress is advisory telemetry only and never determines readiness or apply eligibility.
+A planning-draft result is either a ready result that carries at least one applicable structured output section for a supported first-party workflow, or a `needs-input` decision that carries structured clarification questions and a rationale instead of output sections. Product-specific output-section names and preview/apply semantics belong to the extension that requested the task; the daemon owns only task records, status, result validation, cancellation, sanitized progress, and error lifecycle. While a task runs, the agent may report telemetry-only `sectionProgress` (current, covered, and remaining sections) through a read-only progress tool. The daemon sanitizes and length-caps that progress before persisting it on the running record and emitting it on sanitized progress events; section progress is advisory telemetry only and never determines readiness or apply eligibility.
 
 ### Console workstations
 
@@ -1654,7 +1804,7 @@ The SDK also exposes registration methods for extension-authored actions and hos
 
 Registers an extension-authored action handler. Action handlers run as trusted unsandboxed Node code. Action inputs require object-root TypeBox input schemas (`Type.Object(...)`). Action handlers must return JSON-safe outputs; optional output schemas are validated before eforge reports a successful invocation. Actions may declare an optional `outputProfile` (`agent-compact`, `agent-paginated`, `markdown`, `ui-rich`, or `debug-rich`) as manifest metadata so hosts can choose safe formatting without changing invocation success/failure response shapes. CLI non-`--json`, MCP/Claude, Pi, and Console previews use that metadata when formatting invocation output: exact `{ markdown: string }` outputs render as Markdown/plain text, oversized JSON is summarized with warnings while preserving identity fields, counts, omitted counts, and cursor/offset hints, and `ui-rich`/`debug-rich` outputs warn in coding-agent hosts even when they fit. Broad list/search/board-style action registrations remain valid, but validation emits warning diagnostics when they lack limit, cursor/page, projection controls, or their declared output schema contains array-shaped output without an explicit profile.
 
-Action contexts include dependency/capability lookup plus daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` expose immutable availability data only; they do not invoke another extension. `ctx.agentTasks` starts, reads, and cancels supported single-shot agent tasks; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events, and extensions never import provider SDKs or `AgentHarness`. `ctx.buildQueue.enqueue({ source, ... })` submits a normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. The MVP task runner resolves the `planner` role and enforces read-only tools. Its planning-draft results can include `planRevisionTurn` as an output section for first-party eforge-plan revision sessions, but those sessions keep transcript storage, revision annotations, annotation snapshots, and preview/apply semantics in eforge-plan rather than in the daemon task API. Extensions cannot provide arbitrary raw prompt templates, register custom task kinds, or implement multi-turn chat through this API.
+Action contexts include dependency/capability lookup plus daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` expose immutable availability data only; they do not invoke another extension. `ctx.agentTasks` starts, reads, and cancels supported single-shot agent tasks; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events, and extensions never import provider SDKs or `AgentHarness`. `ctx.buildQueue.enqueue({ source, ... })` submits normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. The MVP task runner resolves the `planner` role and enforces read-only tools. Product-specific output sections, transcript storage, annotations, and preview/apply semantics belong to the extension using the task API rather than to the daemon task API itself. Extensions cannot provide arbitrary raw prompt templates, register custom task kinds, or implement multi-turn chat through this API.
 
 #### `registerConsoleContribution(contribution)`
 
@@ -2419,9 +2569,9 @@ type ExtensionAgentTaskStartInput = {
 };
 ```
 
-`start` persists a task record before the background run is queued and returns it as `{ task }`. The planning-draft input may request structured output sections such as `recommendations`, `sessionPlanCreationDraft`, `backlogCurationDraft`, or `planRevisionTurn`; completed output-bearing results are validated by the shared client schema before persistence and count as output-bearing task results. `planRevisionTurn` supports answer-only revision turns with assistant narrative as well as patch-bearing turns against an existing session plan. Curation-specific unresolved cases live inside `backlogCurationDraft.needsInput`; the top-level `needs-input` result variant carries no output sections. `get` returns `{ task }` for the persisted record. `cancel` requests cancellation for a running task, records `status: "cancelled"` when accepted, and returns the updated record as `{ task }`. Task records use `status: "queued" | "running" | "completed" | "failed" | "cancelled"`; completed records contain a JSON-safe result, failed records contain a sanitized error message, and lifecycle events never include raw task input or raw result payloads.
+`start` persists a task record before the background run is queued and returns it as `{ task }`. The planning-draft input may request structured output sections owned by the calling first-party workflow; completed output-bearing results are validated by the shared client schema before persistence and count as output-bearing task results. Workflow-specific unresolved cases live inside the workflow output section; the top-level `needs-input` result variant carries no output sections. For first-party eforge-plan output sections and workflow semantics, see the [eforge-plan guide](/docs/eforge-plan). `get` returns `{ task }` for the persisted record. `cancel` requests cancellation for a running task, records `status: "cancelled"` when accepted, and returns the updated record as `{ task }`. Task records use `status: "queued" | "running" | "completed" | "failed" | "cancelled"`; completed records contain a JSON-safe result, failed records contain a sanitized error message, and lifecycle events never include raw task input or raw result payloads.
 
-The action dispatcher binds task provenance to the invoking extension and host request. Do not pass secrets or raw prompt templates through task metadata. First-party eforge-plan revision sessions are an application-level pattern layered above this API: eforge-plan stores extension-owned revision threads, annotations, and turn annotation snapshots, links turns to daemon task ids, and owns preview/apply semantics while `ctx.agentTasks` remains a daemon-owned single-shot task API. The MVP supports only the daemon-owned read-only planner task kind shown above; custom task-kind registration, arbitrary prompt templates, write-capable tools, and multi-turn chat are unsupported.
+The action dispatcher binds task provenance to the invoking extension and host request. Do not pass secrets or raw prompt templates through task metadata. First-party workflow packages may layer their own storage, UI state, annotations, or preview/apply semantics above this API while `ctx.agentTasks` remains a daemon-owned single-shot task API. The MVP supports only the daemon-owned read-only planner task kind shown above; custom task-kind registration, arbitrary prompt templates, write-capable tools, and multi-turn chat are unsupported.
 
 #### `ctx.buildQueue`
 
@@ -2551,7 +2701,7 @@ A `modify` variant (mutating the diff inline) is intentionally absent. `modify` 
 
 ## Event types and `EventPattern` glob semantics
 
-All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`.
+All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`. The lower-level `@eforge-build/client/events` subpath also exports `DaemonStreamSnapshotSchema` for validating the daemon `stream:hello` snapshot shape.
 
 Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 
@@ -2914,15 +3064,15 @@ description: Create and run reusable workflow templates for recurring eforge bui
 
 # Playbooks
 
-A playbook is a reusable workflow template for recurring work. Instead of re-describing the same task each time, you write it once as a Markdown file and run it on demand. eforge resolves the playbook, optionally routes it to a specific agent runtime profile, and either enqueues a build directly or starts an investigation-first planning workflow.
+A playbook is an optional workflow artifact around the eforge build-engine kernel. Instead of re-describing recurring work each time, you write it once as a Markdown file and run it on demand. eforge resolves the playbook, optionally routes it to a specific agent runtime profile, and either normalizes it to build source for enqueue or routes to an investigation-first planning extension before a later handoff.
 
 ## Modes
 
 Every playbook has a `mode` field in its YAML frontmatter:
 
-**`mode: autonomous`** - running the playbook enqueues a build directly, like any other eforge input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
+**`mode: autonomous`** - running the playbook compiles it into normalized build source and enqueues a build, like any other producer input. The daemon picks it up and runs the full pipeline without further interaction. Use this for mechanical, predictable workflows where the build agent does not need to consult you mid-run.
 
-**`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
+**`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from optional [eforge-plan](/docs/eforge-plan) and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` or the eforge-plan workstation deep link; the extension owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
 
 When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 
@@ -3097,6 +3247,259 @@ eforge playbook run docs-sync --after <queue-id>
 
 <!-- end-section: guide:playbooks -->
 
+<!-- section: guide:stacking -->
+---
+title: Stacked PRs
+description: Build and submit stacked pull requests with eforge and git-spice.
+---
+
+# Stacked PRs with git-spice
+
+Stacked PR landing is an optional, opt-in mode for teams that want a branch-per-PR review flow. eforge currently supports stacked pull requests via git-spice. When `stacking.enabled: true` and `landing.action: pr`, the root artifact branch targets the resolved trunk branch, and each child artifact branch normally targets its parent artifact branch, forming a linear stack of pull requests that reviewers can merge in order. During landing, eforge can repair a missing integrated parent by choosing trunk as the effective base before tracking an untracked child, or by retargeting a child that was already tracked earlier in the landing flow. It also runs provider repo sync, branch restack, and a remote-base freshness proof before submitting the PR.
+
+## Artifact branches
+
+Every eforge build produces an **artifact branch** - a named Git branch (`eforge/<prd-id>`) that holds the committed output from that build. When `landing.action: pr`, eforge opens a pull request from this artifact branch targeting its resolved base.
+
+For non-stacked builds, the resolved base is the branch eforge builds from (often the project trunk, but it can be an active feature branch), and direct PR base sync fetches `origin/<baseBranch>` before validation and again immediately before PR creation. For stacked builds, the root PRD targets the resolved trunk branch and child PRDs target the parent PRD's artifact branch. Stacked landing uses provider-owned repo sync/restack plus a remote effective-base ancestor proof instead of the direct non-stacked PR publication path:
+
+```mermaid
+graph TD
+    main --> A["eforge/prd-a<br/>(PR #1, targets main)"]
+    A --> B["eforge/prd-b<br/>(PR #2, targets eforge/prd-a)"]
+    B --> C["eforge/prd-c<br/>(PR #3, targets eforge/prd-b)"]
+```
+
+## stack_id and stack_parent
+
+PRD frontmatter carries two optional stacking fields:
+
+**`stack_id`** - a logical stack name shared by all PRDs in the same stack. If omitted, defaults to the first PRD id in the chain.
+
+**`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets, and must name an entry from `depends_on` when stacking is enabled.
+
+```yaml
+---
+title: Auth service - part 2
+stack_id: auth-refactor
+stack_parent: q-abc123
+depends_on: [q-abc123]
+---
+```
+
+## Single-dependency inference
+
+When a PRD has exactly one `depends_on` entry and stacking is enabled, eforge automatically infers `stack_parent` from that dependency at dispatch time. For linear stacks you do not need to set `stack_parent` explicitly.
+
+When a PRD has multiple `depends_on` entries, eforge cannot infer the stack parent. You must set `stack_parent` explicitly to indicate which dependency is the direct parent layer. If `stack_parent` is missing, or if it is set to an id that is not listed in `depends_on`, dispatch fails before `session:start` with a durable `queue:prd:dispatch-failed` event.
+
+### Explicit handoff and stack parent
+
+When you use `--after <queue-id>` (CLI) or `afterQueueId` (MCP/Pi tool) to create an explicit dependency, the resulting single `depends_on` entry participates in the same stack parent inference described above. If stacking is enabled and the explicit dependency is the only `depends_on` entry, eforge infers `stack_parent` from it at dispatch time - no extra configuration is needed. The explicit handoff is deterministic: dependency detector inference is not used when `afterQueueId` is supplied.
+
+## Enable stacking
+
+The guided path is `/eforge:workflow`. Choose a stacked workflow preset to opt in to stacked PR landing and write the required `landing.action: pr` and `stacking.enabled: true` keys to `eforge/config.yaml`. The `stacked-pr-autosync` preset also writes `stacking.sync.afterBuild: true` for daemon-owned automatic stack sync. eforge currently uses git-spice for stacked PR operations.
+
+To configure the same settings by hand, add these fields to `eforge/config.yaml`:
+
+```yaml
+stacking:
+  enabled: true
+
+landing:
+  action: pr    # stacking requires action: pr
+```
+
+If git-spice is not installed to a standard PATH location, set the command explicitly:
+
+```yaml
+stacking:
+  enabled: true
+  gitSpice:
+    command: /usr/local/bin/git-spice   # or 'gs' if you have the alias on PATH
+```
+
+## git-spice setup
+
+Install git-spice from [https://abhinav.github.io/git-spice/](https://abhinav.github.io/git-spice/), then initialize it in your repository once:
+
+```bash
+git-spice repo init
+```
+
+This writes a local tracking file that git-spice uses to maintain branch relationships. If git-spice is not available, eforge fails the build with a clear error message.
+
+## Stacked PR landing conflict recovery
+
+During stacked builds with `landing.action: pr`, eforge restacks the artifact branch before submitting it. If the stack provider classifies that restack failure as a recoverable conflict, eforge attempts automatic provider-encapsulated recovery before failing the landing step.
+
+Recovery first cleans up deterministic temporary plan-ID region marker conflicts. If unmerged files remain, eforge falls back to the merge-conflict resolver agent. The stack provider owns the continue and abort operations; eforge records provider commands as events without hard-coding git-spice arguments.
+
+If recovery succeeds, eforge proves remote-base freshness and then submits the PR normally. Manual recovery is still required for non-recoverable provider failures, failed automatic recovery, and conflicts from `eforge stack sync`.
+
+## Stack sync
+
+Landing-time sync/freshness is automatic and scoped to the branch being submitted: eforge runs provider repo sync, branch restack, and a remote-base ancestor proof immediately before PR submission. If the fetched effective base is not contained in `HEAD`, eforge retries that sync/restack/proof cycle once before failing closed.
+
+When an upstream PR merges, GitHub updates downstream PR bases, but your local artifact branches still need to sync and restack outside a landing run. Use one of these task surfaces:
+
+| Surface | Command |
+|---------|---------|
+| Claude Code | `/eforge:stack` |
+| Pi | `/eforge:stack:sync` |
+| Standalone CLI | `eforge stack sync` |
+
+Use `--dry-run` to preview what commands would run without executing them:
+
+```bash
+eforge stack sync --dry-run
+```
+
+`eforge stack sync` calls the daemon's stack sync route, which runs `git-spice repo sync` followed by `git-spice stack restack` to update the full local stack. This is different from automatic landing-time sync, which is branch-scoped and gates PR submission on a freshness proof for that branch's effective base. The sync executes from the project root and returns a structured report:
+
+| Field | Description |
+|-------|-------------|
+| `outcome` | One of `skipped`, `complete`, `deferred`, `failed`, `conflict` |
+| `restackCandidates` | Artifact branches eligible for restack |
+| `activeBuildSkips` | Branches excluded because active builds are using their worktrees |
+| `providerCommands` | git-spice commands that ran (or would run in dry-run mode) |
+| `fastForward` | Whether local trunk is at or behind `origin/<trunk>` |
+| `error` | Error message when outcome is `failed` or `conflict` |
+
+### Automatic after-build sync
+
+To run stack sync automatically after every queued build reaches a terminal state, set `stacking.sync.afterBuild: true` in `eforge/config.yaml`:
+
+```yaml
+stacking:
+  sync:
+    afterBuild: true
+```
+
+When enabled, the daemon triggers a sync from the project root after each build reaches a terminal state (completed, failed, or skipped). The after-build path uses `activeBuildPolicy: "defer"` — if other active builds still overlap the stack candidates, the sync records a `deferred` outcome rather than running.
+
+> **Avoid `build.postMergeCommands: ["eforge stack sync"]` for automatic sync.** That path bypasses active-build overlap detection. Use `stacking.sync.afterBuild: true` instead.
+
+### Active-build deferral
+
+When sync runs while active builds are in progress, branches whose worktrees overlap active builds are excluded and reported in `activeBuildSkips`. The outcome depends on the `activeBuildPolicy` in the request:
+
+- **`skip` (default for manual sync)** — returns `skipped` immediately without mutating any branch state. Re-run `eforge stack sync` manually after active builds complete.
+- **`defer` (used by the after-build trigger)** — returns `deferred`, recording that candidates were blocked. When `stacking.sync.afterBuild: true` is configured, the daemon fires another sync attempt after each build reaches a terminal state, which proceeds if the stack is no longer blocked.
+
+### Pre-landing reconciliation
+
+Before a stacked build lands, eforge checks whether the child artifact branch's stacked base still exists on the remote. This remote-base preflight protects git-spice submission from stale parent branches that were deleted after their PR merged. After preflight and any repair, eforge runs provider repo sync and branch restack, rechecks the effective base, fetches the latest remote effective base, and proves that fetched commit is an ancestor of `HEAD` before PR submission.
+
+If the parent remote branch is missing and eforge can prove that the parent artifact commit is already an ancestor of trunk, stale-parent landing repair is automatic and branch-scoped. For an initially untracked child, eforge treats trunk as the effective base, tracks the child against trunk, restacks, and submits the child PR against trunk. If the parent branch disappears after the child has already been tracked, eforge retargets and restacks only the child artifact branch onto trunk. This avoids running a whole-stack restack while preserving the proof that the parent layer is already integrated.
+
+If eforge cannot prove the parent artifact commit is an ancestor of trunk, landing fails closed with an actionable error instead of guessing or mutating the rest of the stack. Restore, submit, or repair the parent branch, or verify the parent changes are integrated before rerunning the build.
+
+`eforge stack sync` remains the command for normal whole-stack maintenance when parent branches move or upstream PRs merge. Stale-parent landing repair and landing-time sync/freshness are automatic and branch-scoped during landing; use stack sync when you intentionally want git-spice to reconcile the full local stack.
+
+### Conflict recovery
+
+When sync returns `outcome: conflict`, a merge conflict occurred during manual stack sync restack. This is separate from stacked PR landing, which attempts automatic provider-encapsulated recovery for provider-classified recoverable restack conflicts. To recover a sync conflict:
+
+1. Run `git status` to see the conflicting files.
+2. Resolve the conflicts in the affected files.
+3. Run `git add <resolved-files>` to stage the resolved files.
+4. Run `git rebase --continue` (or the git-spice equivalent) to resume the restack.
+5. Once the restack finishes, run `eforge stack sync` again to sync remaining branches.
+
+### Fast-forward-only trunk policy
+
+Sync uses a fast-forward-only policy for trunk. When `fastForward` is `false`, the local trunk is ahead of `origin/<trunk>`. Push or align the local trunk with origin before running sync.
+
+## Note on GitHub inline comments
+
+When a PR's base branch changes after an upstream PR merges, GitHub marks existing inline review comments as "outdated". This is a known GitHub limitation. The comment content remains accessible in the PR timeline.
+
+## Migration: build.onSuccess to landing.action
+
+`landing.action` is the current canonical config key. If your config uses the old `build.onSuccess` key, migrate by replacing it with `landing.action` under the `landing:` block:
+
+| Old `build.onSuccess` | New `landing.action` |
+|----------------------|---------------------|
+| `issue-pr` | `pr` |
+| `merge-to-base-branch` | `merge` |
+| `leave-branch` | `leave` |
+
+The old `build.onSuccess` key and the legacy full-string values (`issue-pr`, `merge-to-base-branch`, `leave-branch`) are both rejected at validation with migration guidance. Replace `build.onSuccess` with `landing.action` and update the values to `pr`, `merge`, or `leave` before running new builds.
+
+## Where to look next
+
+- [Configuration](/docs/configuration) - full config reference including `stacking`, `stacking.sync.afterBuild`, and `landing` fields
+- [Configuration Reference](/reference/config) - machine-readable schema
+- [Concepts](/docs/concepts) - artifact branches and the build pipeline
+
+<!-- end-section: guide:stacking -->
+
+<!-- section: guide:eforge-plan -->
+---
+title: eforge-plan
+description: Optional first-party planning, backlog, recommendation, and revision extension for eforge.
+---
+
+# eforge-plan
+
+`eforge-plan` is an optional first-party extension package around the eforge build-engine kernel. The kernel still consumes normalized build source and produces reviewed, validated code; `eforge-plan` owns planning-product workflows that help teams decide what build source to hand to the kernel.
+
+The detailed, canonical product documentation lives in [`eforge/extensions/eforge-plan/README.md`](https://github.com/eforge-build/eforge/blob/main/eforge/extensions/eforge-plan/README.md). This page summarizes the public boundary for users browsing the docs site.
+
+## What it adds
+
+Install `@eforge-build/eforge-plan` when you want first-party planning UX in addition to direct prompt, PRD, or file builds:
+
+- Project-local backlog capture, search, board rendering, epics, dependencies, and promotion.
+- Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks.
+- A Console planning workstation for investigation-first planning and handoff.
+- Session-plan creation, readiness checks, and handoff into ordinary eforge builds.
+- Revise with AI workflows for existing flat session plans, including durable annotations and revision turns.
+
+These are extension-owned product semantics, not kernel behavior. The engine receives the resulting normalized build source the same way it receives a prompt, PRD file, playbook output, or wrapper-app artifact.
+
+## Install
+
+```bash
+eforge extension install @eforge-build/eforge-plan
+eforge extension validate eforge-plan
+eforge extension reload
+```
+
+For a team/project install, inspect the package and use the normal extension trust flow:
+
+```bash
+eforge extension install @eforge-build/eforge-plan --scope project
+# Inspect the installed package, then trust and reload it.
+eforge extension trust eforge-plan
+eforge extension reload
+```
+
+## Storage and trust boundary
+
+`eforge-plan` runs as trusted extension code in the daemon process. Its private planning state lives under `.eforge/storage/extensions/eforge-plan/`, including backlog records, recommendation models, backlog curation previews, planning task indexes, lifecycle traces, accepted-analysis baselines, and plan revision threads. Treat that directory as local/private project metadata.
+
+Session plans created for handoff live under `.eforge/session-plans/` and are submitted to eforge as build source when ready. They are local and gitignored; committed build provenance is still the engine's artifact-branch PRD and plan records.
+
+## Product semantics owned here
+
+`eforge-plan` owns product-specific concepts that generic core and extension-platform docs intentionally do not describe in detail:
+
+- `backlogCurationDraft` outputs from backlog curation tasks.
+- Generated recommendations and recommendation freshness/staleness projection.
+- `planRevisionTurn` output for Revise with AI, including answer-only and patch-bearing turns.
+- Annotation-backed revision sessions and durable quote-context targets.
+- Daemon-owned `ctx.agentTasks` execution boundaries: the extension owns product storage and apply semantics while the daemon owns task records, status, cancellation, and sanitized results.
+- Workstation routing, planning-entry contributions, and backlog promotion UX.
+
+`eforge-plan` does not turn the daemon into a generic multi-turn chat runtime. Its planning and revision workflows are bounded extension UX built on daemon-owned single-shot tasks.
+
+Use the canonical extension README for full action inputs, storage paths, workstation behavior, and revision workflow details.
+
+<!-- end-section: guide:eforge-plan -->
+
 <!-- section: guide:integrations -->
 ---
 title: Integrations
@@ -3105,7 +3508,7 @@ description: How to use eforge from Claude Code, Pi, the standalone CLI, extensi
 
 # Integrations
 
-eforge can be driven from three host surfaces: the Claude Code plugin, the Pi extension, and the standalone CLI. All three talk to the same daemon and share the same queue, profiles, and playbooks. This page covers how each surface works and how to connect eforge to external systems.
+eforge can be driven from three host surfaces: the Claude Code plugin, the Pi extension, and the standalone CLI. All three talk to the same daemon and share the same core queue and profiles. Optional workflow surfaces such as playbooks, session-plan compatibility tools, and first-party extensions prepare or route build source around the kernel. This page covers how each surface works and how to connect eforge to external systems.
 
 ## Claude Code plugin
 
@@ -3141,8 +3544,8 @@ All eforge workflows are available as slash commands:
 
 | Command | Purpose |
 |---------|---------|
-| `/eforge:build` | Enqueue a build from a prompt or session plan |
-| `/eforge:playbook` | Create, run, list, edit, promote, or demote playbooks |
+| `/eforge:build` | Enqueue a build from a prompt, PRD, file path, or optional session-plan artifact |
+| `/eforge:playbook` | Optional workflow command to create, run, list, edit, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
 | `/eforge:workflow` | Choose or reconfigure landing action, PR auto-merge policy, stacking, and automatic stack sync |
@@ -3174,7 +3577,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including `eforge_build`, `eforge_status`, `eforge_auto_build`, `eforge_queue_priority`, `eforge_queue_remove`, `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links, including the eforge-plan planning entry when that extension is loaded.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links, including the optional [eforge-plan](/docs/eforge-plan) planning entry when that extension is loaded.
 
 ### Pi commands
 
@@ -3222,7 +3625,7 @@ For standalone use, run `/eforge:init` in Claude Code or Pi first to create `efo
 
 ## Extension host contributions
 
-Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs. Manifest entries also carry dependency/capability availability metadata; unavailable actions are rejected with error code `unavailable`.
+Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs. Optional first-party eforge-plan planning is discovered through this generic routing rather than through a kernel-owned planning command. Manifest entries also carry dependency/capability availability metadata; unavailable actions are rejected with error code `unavailable`.
 
 Action-backed commands and deep links can be invoked generically through those host surfaces. Non-JSON host output is formatted for bounded display: exact `{ markdown: string }` outputs render as Markdown/plain text, oversized JSON is summarized with warnings and preserved identity/count/continuation fields, and rich/debug output profiles warn in coding-agent hosts. Use CLI `--json` or direct client/HTTP invocation only when you intentionally need the full raw action result. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; richer extension UI uses registered sandboxed workstations (`srcDoc` or daemon-owned `frameBundle` assets), not arbitrary parent-Console frontend bundles.
 
@@ -3283,7 +3686,7 @@ Console shows:
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Console Needs attention strip for failed builds with root-hosted recovery dialog actions and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
+- Console Needs attention strip for failed builds, projected dispatch blockers, root-hosted recovery dialog actions with explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.
@@ -3434,7 +3837,7 @@ The recovery flow:
 5. Confirm the action with the user.
 6. Apply via `eforge_apply_recovery` / `eforge apply-recovery <prdId>` for `retry` and `abandon`. For `continue-repair`, call `eforge_continue_repair` (Pi), `mcp__eforge__eforge_continue_repair` (Claude Code), or `eforge continue-repair <prdId> [--set-name <name>] [--profile <name>]` (CLI). These commands queue the continued build and return queued metadata rather than a local worker session.
 
-When you are present in the Console Now dashboard, failed builds appear in the Needs attention strip with a **Recover…** action. The root-hosted recovery dialog leads with the recovery sidecar verdict and exactly one confirmed primary action: retry from scratch, continue and repair build from preserved compiled artifacts, abandon, or manual review / manual replanning guidance with no apply button. Continue-and-repair waits for scheduler dispatch under the same queue controls described above; after dispatch and a successful continued build it retires the failed queue item and reactivates skipped descendants automatically, while an activated failed continue-and-repair run returns the PRD to `failed/` with refreshed or degraded recovery evidence when possible. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue for explicit retry/repair and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. When no sidecar exists yet the dialog shows `recovery pending` with a confirmed **Run recovery analysis** action. Every mutating, queueing, or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
+When you are present in the Console Now dashboard, failed builds appear in the Needs attention strip with a **Recover…** action. Rows with daemon-projected pre-session dispatch blockers show the blocker stage and reason, and the root-hosted recovery dialog repeats that callout above the recovery report. The dialog leads with the recovery sidecar verdict and exactly one confirmed primary action: retry from scratch, continue and repair build from preserved compiled artifacts, abandon, or manual review / manual replanning guidance with no apply button. Continue-and-repair waits for scheduler dispatch under the same queue controls described above; after dispatch and a successful continued build it retires the failed queue item and reactivates skipped descendants automatically, while an activated failed continue-and-repair run returns the PRD to `failed/` with refreshed or degraded recovery evidence when possible. Lower-level queue-cascade retry/reactivation - which moves the failed upstream back to the queue for explicit retry/repair and may reactivate skipped descendants - lives in a collapsed advanced section that loads its analysis only when opened. That section renders dependency classifications, dispatch preflight blockers/warnings, explicit dependency-removal and `stack_parent` repair controls, selected-repair summaries, and repair results; dependency removal and `stack_parent` persistence are never silently selected. When no sidecar exists yet the dialog shows `recovery pending` with a confirmed **Run recovery analysis** action. Every mutating, queueing, or worker-spawning action requires an explicit confirmation, and a successful apply refreshes the queue.
 
 ## Untrusted project extension blocks loading
 
@@ -3495,6 +3898,132 @@ See [Extensions API - Policy gates](/docs/extensions-api) and [Configuration - N
 - [Integrations](/docs/integrations) - daemon startup, Console dashboard, and restart
 
 <!-- end-section: guide:troubleshooting -->
+
+<!-- section: guide:glossary -->
+---
+title: Glossary
+description: Definitions for eforge-specific terms used across the docs and agent-readable reference.
+---
+
+# Glossary
+
+## Agent runtime profile
+
+A named YAML file that selects the harness, model, and effort settings for eforge tiers. Profiles live at user, project, or project-local scope and can be switched without editing `eforge/config.yaml`. See [Profiles](/docs/profiles).
+
+## Auto-build
+
+The daemon mode that automatically processes queued PRDs when `prdQueue.autoBuild` is enabled. Auto-build can be disabled intentionally while staging work and pauses after failed builds until recovery is handled.
+
+## Build source
+
+The normalized input handed to the engine. It may originate from a CLI prompt, rough notes, a session plan, a playbook, a wrapper app, an input-source URI, or a PRD file.
+
+## Builder
+
+The agent stage that implements a plan in an isolated worktree and commits the result.
+
+## Compile phase
+
+The once-per-build phase where eforge formats input, assesses complexity, chooses Errand/Excursion/Expedition, and writes the plan set and dependency graph.
+
+## Daemon
+
+The long-running background process that watches the queue, runs builds, exposes the HTTP API, and streams live events to the monitor and integrations.
+
+## Errand, Excursion, Expedition
+
+Workflow profiles selected by the planner. Errand handles small changes, Excursion handles multi-file work with plan review, and Expedition handles large decomposed work with architecture and cohesion review.
+
+## Evaluator
+
+The agent stage that judges proposed fixes against the original intent and accepts only strict improvements.
+
+## Fixer
+
+The agent stage that applies reviewer suggestions as candidate changes before evaluation.
+
+## Harness
+
+The agent execution backend used by a stage. eforge recommends `pi` for provider-flexible execution through pi-agent-core, and also supports `claude-sdk` as an Anthropic-specific secondary path through the Claude Agent SDK.
+
+## Hooks
+
+Fire-and-forget shell commands triggered by eforge events. Configured in `eforge/config.yaml` under `hooks`. See [Configuration - Hooks](/docs/configuration#hooks) and [Configuration Reference - Hooks](/reference/config#hooks).
+
+## Input source
+
+A TypeScript extension adapter that resolves `eforge://input/<adapter>/<id>` URIs into PRD content. Adapters fetch issues or PRs from GitHub, Linear, Jira, or any custom source. See [Extensions - Input sources and PRD enrichers](/docs/extensions#input-sources-and-prd-enrichers).
+
+## Console dashboard
+
+The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, and queue management. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
+
+## Playbook
+
+A reusable Markdown workflow template for recurring work. Has a `mode` of either `autonomous` (enqueues a build directly) or `planning` (checks the eforge-plan planning capability and returns planning entry metadata). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
+
+## Planner
+
+The agent stage that sizes work, chooses the workflow profile, and writes implementation plans. This is separate from the driver-side planning conversation exposed by the generic eforge-plan planning entry.
+
+## PRD
+
+Product Requirements Document. A PRD file is one supported input surface, but eforge can also accept prompts, notes, session plans, playbooks, and wrapper-app input.
+
+## PRD provenance
+
+The `eforge/prds/` directory where the engine writes a canonical copy of each PRD at dispatch time. Each file is named `{prdId}.md` and serves as a committed artifact linking a build session to its originating requirements. Unlike queue state (`.eforge/queue/` — gitignored), PRD provenance files are committed to the artifact branch and survive queue cleanup. The hidden canonical acceptance-criteria inventory stored in the queued PRD is consumed for validation IDs and stripped from the committed prose artifact.
+
+When `build.cleanupPlanFiles: true` (default), the PRD copy and compiled plan artifacts in `eforge/plans/{planSet}/` may be removed from `HEAD` when cleanup runs during `pr` or `merge` landing. Cleanup also strips temporary plan-ID eforge region marker comment lines from tracked JavaScript/TypeScript-family source files while preserving durable semantic markers and marked code. `landing.action: leave` does not run cleanup and leaves the artifact branch in place for inspection. Artifacts removed by cleanup remain recoverable from Git history: when the artifact branch is landed with a merge commit (eforge's local `merge` action, or a GitHub PR merged via "Create a merge commit"), the commits that added these files stay reachable. Use `git show <sha>:<path>` with a commit-pinned reference to recover any artifact. PR bodies include an **Eforge provenance** section with these references when artifact commits are found. When `landing.action: pr` is used, provenance durability depends on the repository's chosen merge strategy.
+
+The durable provenance guarantee is Git history, not the final tree. Squash or rebase merge strategies applied after a PR is opened can collapse intermediate commits and make artifact references unreachable. Session plans (`.eforge/session-plans/`) are local and gitignored — they are not the shared provenance mechanism.
+
+## Post-merge validation
+
+The validation step after all plans merge. eforge runs `build.postMergeCommands` with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
+
+## Queue
+
+The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Each queued PRD includes an eforge-owned hidden canonical acceptance-criteria inventory; queued builds with missing, duplicated, or malformed inventory fail before orchestration and must be re-enqueued. Queue items can depend on earlier items with `depends_on` and can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal also deletes matching recovery sidecars and live-dependent conflicts list dependent ids. The daemon API can remove a single dependency from a pending or waiting queue item and moves a waiting item to the queue root when no dependencies remain.
+
+## Queue priority
+
+An optional PRD frontmatter number. Lower numbers run before higher numbers within the same dependency wave; PRDs without `priority` run after prioritized items. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; failed and skipped items return conflict until recovery or requeue makes them runnable, and running items must be cancelled by session id instead of reprioritized.
+
+## Recovery sidecar
+
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus a recommended `continue-repair` option.
+
+## Recovery verdict
+
+The outcome of a recovery sidecar analysis: `retry`, `continue-repair`, `abandon`, or `manual`. Applied via `/eforge:recover`, `eforge_apply_recovery`, `eforge_continue_repair`, `eforge apply-recovery <prdId>`, or `eforge continue-repair <prdId>` depending on the action. See [Troubleshooting - Recover from a failed build](/docs/troubleshooting#recover-from-a-failed-build).
+
+## Reviewer
+
+The blind review agent stage that evaluates a diff without the builder's reasoning or conversation context.
+
+## Session plan
+
+A driver-side planning artifact created by the generic eforge-plan planning entry under `.eforge/session-plans/`. It captures planning type/depth, scope, acceptance criteria, risks, assumptions, skipped dimensions, readiness, and other dimensions before `/eforge:build` converts a ready file into build source.
+
+## Tier
+
+A configuration slot such as `planning`, `implementation`, `review`, or `evaluation`. Tiers map agent roles to harness/model/effort settings.
+
+## Toolbelt
+
+A named declarative bundle of project MCP servers (from `.mcp.json`) that a tier can opt into via `toolbelt: <name>` in a profile. Filters project MCP access per tier without affecting engine tools or harness built-ins. See [Configuration - Guided Toolbelt Presets](/docs/configuration#guided-toolbelt-presets) and [Extensions API - Toolbelt-vs-extension boundary](/docs/extensions-api#toolbelt-vs-extension-boundary).
+
+## Trunk branch policy
+
+The pair of config fields (`build.trunkBranch` and `build.allowLocalMergeToTrunk`) that control how eforge handles landing when the current branch is the project trunk. By default, `landing.action: merge` is rejected on trunk to prevent accidental direct commits to a protected branch; the policy must be explicitly opted into for solo or unprotected projects. See [Configuration - Trunk Branch Policy](/docs/configuration#trunk-branch-policy).
+
+## Worktree
+
+An isolated git working tree used to build an individual plan without blocking or contaminating other concurrently running plans.
+
+<!-- end-section: guide:glossary -->
 
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
@@ -4139,6 +4668,8 @@ than embedding literal path strings.
 
 ## Routes
 
+Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
+
 Total routes: 85
 
 | Route key | Path pattern |
@@ -4250,9 +4781,13 @@ union exposed by `packages/client/src/events.schemas.ts` and implemented under `
 Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected
 with one of the variant objects below. The `type` field discriminates the variant.
 
+The JSON Schema also includes a `DaemonStreamSnapshot` definition for the
+`stream:hello` snapshot; queue items in that snapshot expose the optional
+`dispatchFailure` projection populated from `queue:prd:dispatch-failed` events.
+
 ## Event Variants
 
-Total variants: 226
+Total variants: 227
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -4459,6 +4994,7 @@ Total variants: 226
 | `queue:prd:dependency-overridden` | `currentDependsOn`, `prdId`, `previousDependsOn`, `reason`, `removedDependency`, `title` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
+| `queue:prd:dispatch-failed` | `prdId`, `reason`, `stage`, `title` |
 | `queue:prd:commit-failed` | `error`, `prdId`, `title` |
 | `queue:prd:complete` | `prdId`, `status` |
 | `queue:complete` | `processed`, `skipped` |
@@ -4714,6 +5250,8 @@ eforge exposes its capabilities through two integration surfaces:
 - **Native Pi commands and tools** for the Pi extension (`packages/pi-eforge/`)
 
 Both surfaces are kept in parity per `AGENTS.md`.
+
+Playbook and session-plan host tools prepare or manage optional workflow artifacts around normalized build source. They are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities.
 
 ## MCP tools (Claude Code)
 

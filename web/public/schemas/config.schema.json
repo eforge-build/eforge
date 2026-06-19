@@ -587,10 +587,6 @@
             "type": "string"
           }
         },
-        "trustProjectExtensions": {
-          "description": "Trust checked-in project-team native extensions",
-          "type": "boolean"
-        },
         "eventHookTimeoutMs": {
           "description": "Default timeout in milliseconds for native extension event-hook handlers",
           "type": "integer",

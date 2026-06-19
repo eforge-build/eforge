@@ -8,6 +8,7 @@ import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '@e
 import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
 import eforgePlanExtension from '../index.js';
 import { buildPlanRevisionAnnotationSnapshot, derivePlanRevisionUserMessage } from '../plan-revision-annotations.js';
+import { buildPlanRevisionSourceText } from '../plan-revision-orchestration.js';
 import { readPlanRevisionIndex, resolvePlanRevisionIndexPath } from '../plan-revision-store.js';
 import { MAX_PLAN_REVISION_ANNOTATIONS_PER_SESSION } from '../planning-agent-task-schemas.js';
 
@@ -160,22 +161,28 @@ describe('plan revision annotations', () => {
       const starts: unknown[] = [];
       const created = await dispatch(cwd, 'create-plan-revision-annotation', { session: 'annotated', body: 'Fix this scope.', target }, tasks);
       const annotation = (created.annotations as Array<{ annotationId: string }>)[0];
+      const secondCreated = await dispatch(cwd, 'create-plan-revision-annotation', { session: 'annotated', body: 'Keep this separate.', target: { ...target, label: 'Other scope' } }, tasks);
+      const otherAnnotation = (secondCreated.annotations as Array<{ annotationId: string }>).find((entry) => entry.annotationId !== annotation.annotationId)!;
       await dispatch(cwd, 'update-plan-revision-annotation', { session: 'annotated', annotationId: annotation.annotationId, body: 'Fix this scope now.' }, tasks);
-      const start = await dispatch(cwd, 'start-plan-revision-turn', { session: 'annotated', annotationIds: [annotation.annotationId], includeOpenAnnotations: true, steering: 'Prefer minimal edits.' }, tasks, starts);
-      const turn = start.turn as { taskId: string; turnId: string; basePlanFingerprint: string; annotationSnapshot: { annotations: Array<{ body?: string }> } };
-      expect(turn.annotationSnapshot.annotations[0].body).toBe('Fix this scope now.');
+      const start = await dispatch(cwd, 'start-plan-revision-turn', { session: 'annotated', annotationIds: [annotation.annotationId], includeOpenAnnotations: false, steering: 'Prefer minimal edits.' }, tasks, starts);
+      const turn = start.turn as { taskId: string; turnId: string; basePlanFingerprint: string; annotationSnapshot: { annotations: Array<{ annotationId: string; body?: string }> } };
+      expect(turn.annotationSnapshot.annotations).toMatchObject([{ annotationId: annotation.annotationId, body: 'Fix this scope now.' }]);
       const source = JSON.parse(String((starts[0] as { input: { sourceText: string } }).input.sourceText));
-      expect(source.context.annotationSnapshot).toMatchObject({ steering: 'Prefer minimal edits.', annotations: [expect.objectContaining({ target: expect.objectContaining({ quoteContext: expect.any(Object) }) })] });
+      expect(source.context.annotationSnapshot).toMatchObject({ steering: 'Prefer minimal edits.', annotations: [expect.objectContaining({ target: expect.objectContaining({ kind: 'selection', dimension: 'scope', quoteContext: expect.objectContaining({ exact: 'Existing scope.' }) }) })] });
       await dispatch(cwd, 'update-plan-revision-annotation', { session: 'annotated', annotationId: annotation.annotationId, body: 'Edited after start.' }, tasks);
       expect((await readPlanRevisionIndex(cwd)).sessions[0].turns[0].annotationSnapshot?.annotations[0].body).toBe('Fix this scope now.');
       tasks.set(turn.taskId, completedRevisionTask(turn.taskId, 'annotated', turn.basePlanFingerprint, [{ dimension: 'scope', content: 'Revised scope.' }]));
       await dispatch(cwd, 'apply-plan-revision-turn', { session: 'annotated', turnId: turn.turnId }, tasks);
-      const live = (await readPlanRevisionIndex(cwd)).sessions[0].annotations[0];
+      const annotations = (await readPlanRevisionIndex(cwd)).sessions[0].annotations;
+      const live = annotations.find((entry) => entry.annotationId === annotation.annotationId)!;
+      const untouched = annotations.find((entry) => entry.annotationId === otherAnnotation.annotationId)!;
       expect(live).toMatchObject({ resolvedByTurnId: turn.turnId });
       expect(live.resolvedAt).toBeDefined();
+      expect(untouched).not.toHaveProperty('resolvedAt');
+      expect(untouched).not.toHaveProperty('resolvedByTurnId');
       const firstResolvedAt = live.resolvedAt;
       await dispatch(cwd, 'apply-plan-revision-turn', { session: 'annotated', turnId: turn.turnId }, tasks);
-      expect((await readPlanRevisionIndex(cwd)).sessions[0].annotations[0].resolvedAt).toBe(firstResolvedAt);
+      expect((await readPlanRevisionIndex(cwd)).sessions[0].annotations.find((entry) => entry.annotationId === annotation.annotationId)?.resolvedAt).toBe(firstResolvedAt);
     });
   });
 
@@ -225,6 +232,40 @@ describe('plan revision annotations', () => {
       const withPlan = await dispatch(cwd, 'list-plan-revision-sessions', { includePlan: true }, tasks);
       expect((withPlan.sessions as Array<Record<string, unknown>>)[0]).toMatchObject({ annotations: [expect.objectContaining({ body: 'Projected when plan included.' })], plan: expect.any(Object) });
     });
+  });
+
+  it('summarizes oversized annotation fallback source context with bounded semantic targets', () => {
+    const snapshot = buildPlanRevisionAnnotationSnapshot({
+      annotations: [{ annotationId: 'a1', targetSession: 'fallback', body: 'body '.repeat(200), target: { kind: 'selection', dimension: 'scope', label: 'Scope'.repeat(80), capturedText: 'captured '.repeat(900), quoteContext: { exact: 'captured '.repeat(900), prefix: 'prefix '.repeat(300), suffix: 'suffix '.repeat(300) } }, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }],
+      annotationIds: ['a1'],
+      includeOpenAnnotations: true,
+      steering: 'steer',
+      now: '2026-01-02T00:00:00.000Z',
+    })!;
+    const sourceText = buildPlanRevisionSourceText({
+      targetSession: 'fallback',
+      plan: { session: 'fallback', topic: 'Fallback', status: 'planning', planning_type: 'feature', planning_depth: 'quick', required_dimensions: ['scope'], optional_dimensions: [], skipped_dimensions: [], open_questions: [], sections: new Map([['scope', 'huge '.repeat(20000)]]) } as never,
+      readiness: { ready: false },
+      path: '.eforge/session-plans/fallback.md',
+      basePlanFingerprint: 'a'.repeat(64),
+      baseSectionHashes: [],
+      recentTurns: Array.from({ length: 20 }, (_, index) => ({ turnId: `turn-${index}`, assistantMessage: 'previous '.repeat(700) })),
+      userMessage: 'Revise from 1 plan annotation.',
+      annotationSnapshot: snapshot,
+    });
+    const source = JSON.parse(sourceText);
+    expect(source.truncation).toMatchObject({ revisionContextSummarized: true, sourceTextTruncated: true });
+    expect(source.context.annotationSnapshot).toMatchObject({ includeOpenAnnotations: true, selectedCount: 1, openCount: 1, annotationCount: 1, annotations: [{ annotationId: 'a1', bodyPreview: expect.any(String), target: { kind: 'selection', dimension: 'scope', capturedTextPreview: expect.any(String), quoteContext: { exactPreview: expect.any(String), prefixPreview: expect.any(String), suffixPreview: expect.any(String) } } }] });
+    const summarized = source.context.annotationSnapshot.annotations[0];
+    expect(summarized.bodyPreview.length).toBeLessThanOrEqual(160);
+    expect(summarized.target.capturedTextPreview.length).toBeLessThanOrEqual(160);
+    expect(summarized.target.quoteContext.exactPreview.length).toBeLessThanOrEqual(160);
+    expect(summarized.target.quoteContext.prefixPreview.length).toBeLessThanOrEqual(120);
+    expect(summarized.target.quoteContext.suffixPreview.length).toBeLessThanOrEqual(120);
+    expect(summarized.target).not.toHaveProperty('capturedText');
+    expect(summarized.target.quoteContext).not.toHaveProperty('exact');
+    expect(summarized.target.quoteContext).not.toHaveProperty('prefix');
+    expect(summarized.target.quoteContext).not.toHaveProperty('suffix');
   });
 
   it('keeps manual message-only turns compatible without annotation snapshots', async () => {

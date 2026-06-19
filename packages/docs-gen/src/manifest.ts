@@ -14,10 +14,20 @@ export interface LlmsManifestEntry {
   description: string;
 }
 
+export type LlmsGuideCategory =
+  | 'core-kernel'
+  | 'optional-workflow'
+  | 'extension-platform'
+  | 'first-party-extension'
+  | 'integration'
+  | 'operation'
+  | 'reference';
+
 export interface LlmsManifestLink {
   title: string;
   url: string;
   description: string;
+  category?: LlmsGuideCategory;
 }
 
 export interface LlmsManifest {
@@ -32,53 +42,86 @@ export interface LlmsManifest {
 
 export const LLMS_MANIFEST: LlmsManifest = {
   summary:
-    'eforge turns prompts, plans, playbooks, or PRDs into reviewed code through a multi-agent build pipeline.',
+    'eforge is a build-engine kernel that turns normalized build source into reviewed, validated code.',
   overview:
-    'eforge is an autonomous build-and-review orchestration engine for code generation. ' +
-    'It accepts build intent from CLI prompts, rough notes, session plans, playbooks, or PRD files; ' +
-    'normalizes that input into build source; plans implementation steps using AI agents; builds in ' +
-    'parallel worktrees; reviews the result; and merges to the base branch. The daemon keeps a ' +
-    'persistent HTTP server for queue management and live SSE event streaming.',
+    'eforge is an autonomous build-and-review kernel for code generation. ' +
+    'It accepts normalized build source from direct prompts, PRD files, file inputs, or optional producer surfaces; ' +
+    'plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; ' +
+    'and merges to the base branch. Playbooks, session plans, and first-party planning extensions are optional ' +
+    'workflow or host surfaces around the kernel. The daemon keeps a persistent HTTP server for queue management ' +
+    'and live SSE event streaming.',
   guides: [
     {
       title: 'Getting Started',
       url: '/docs/getting-started.md',
-      description: 'Install eforge, initialize a project, and run your first build',
+      description: 'Install eforge, initialize a project, and run your first direct prompt, PRD, or file build',
+      category: 'core-kernel',
+    },
+    {
+      title: 'Core concepts',
+      url: '/docs/concepts.md',
+      description: 'Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts',
+      category: 'core-kernel',
     },
     {
       title: 'Configuration guide',
       url: '/docs/configuration.md',
-      description: 'Practical setup and tuning guidance before using the full config reference',
+      description: 'Configure the core daemon, builds, profiles, and optional workflow or extension surfaces',
+      category: 'core-kernel',
     },
     {
       title: 'Extensions guide',
       url: '/docs/extensions.md',
-      description: 'How native eforge extensions are discovered, trusted, loaded, authored, and bounded, including srcDoc/frameBundle Console workstations, workstation-assets trust hashing, and the LLM-first authoring checklist',
+      description: 'How native eforge extensions are discovered, trusted, loaded, authored, and bounded without product-specific first-party workflow semantics',
+      category: 'extension-platform',
     },
     {
       title: 'Extensions API reference',
       url: '/docs/extensions-api.md',
-      description: 'Typed extension SDK concepts, ConsoleWorkstation srcDoc/frameBundle APIs, @eforge-build/extension-sdk/browser bridge helpers, SDK stability and migration guidance, hook registration, context objects, runtime support, and unsupported boundaries',
+      description: 'Typed extension SDK concepts, ConsoleWorkstation APIs, frameBundle workstations, browser bridge helpers, SDK stability, hook registration, context objects, runtime support, and unsupported boundaries',
+      category: 'extension-platform',
     },
     {
       title: 'Profiles guide',
       url: '/docs/profiles.md',
       description: 'Create, activate, and route agent runtime profiles across project and user scopes',
+      category: 'core-kernel',
     },
     {
       title: 'Playbooks guide',
       url: '/docs/playbooks.md',
-      description: 'Create, manage, and run reusable workflow playbooks',
+      description: 'Create, manage, and run optional workflow playbooks that prepare or normalize build source',
+      category: 'optional-workflow',
+    },
+    {
+      title: 'Stacked PRs',
+      url: '/docs/stacking.md',
+      description: 'Configure git-spice-backed artifact branch stacks and PR targeting',
+      category: 'optional-workflow',
+    },
+    {
+      title: 'eforge-plan guide',
+      url: '/docs/eforge-plan.md',
+      description: 'Optional first-party eforge-plan extension documentation for planning, backlog, recommendation, workstation, and revision workflows',
+      category: 'first-party-extension',
     },
     {
       title: 'Integrations guide',
       url: '/docs/integrations.md',
       description: 'Use Claude Code, Pi, the standalone CLI, shell hooks, input sources, Langfuse tracing, daemon APIs, and the Console dashboard',
+      category: 'integration',
     },
     {
       title: 'Troubleshooting guide',
       url: '/docs/troubleshooting.md',
       description: 'Recover from failed builds, docs drift, invalid profiles, and other common issues',
+      category: 'operation',
+    },
+    {
+      title: 'Glossary',
+      url: '/docs/glossary.md',
+      description: 'eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook',
+      category: 'reference',
     },
   ],
   entries: [
@@ -147,11 +190,6 @@ export const LLMS_MANIFEST: LlmsManifest = {
       description: 'Positioning and product thesis: asynchronous engineering for planned work',
     },
     {
-      title: 'Core concepts',
-      url: '/docs/concepts.md',
-      description: 'Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts',
-    },
-    {
       title: 'Extension authoring checklist',
       url: '/docs/extensions.md#llm-first-extension-authoring-checklist',
       description: 'LLM-first scaffold, validate, test, trust, and reload checklist for native extension authors',
@@ -160,16 +198,6 @@ export const LLMS_MANIFEST: LlmsManifest = {
       title: 'SDK stability and migration guidance',
       url: '/docs/extensions-api.md#sdk-stability-and-migration-guidance',
       description: 'Canonical versioning and migration guidance for @eforge-build/extension-sdk authors',
-    },
-    {
-      title: 'Stacked PRs',
-      url: '/docs/stacking.md',
-      description: 'Configure git-spice-backed artifact branch stacks and PR targeting',
-    },
-    {
-      title: 'Glossary',
-      url: '/docs/glossary.md',
-      description: 'eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook',
     },
     {
       title: 'Project README',

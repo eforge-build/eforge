@@ -52,7 +52,6 @@ extensions:
   # exclude: [experimental]      # optional denylist by extension name
   # paths:                       # optional explicit extension modules/directories
   #   - ./tools/eforge-audit.ts
-  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Fields:
@@ -69,9 +68,10 @@ Fields:
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for policy-gate throws, timeouts, or invalid decisions. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
-| `extensions.trustProjectExtensions` | `false` | Deprecated compatibility field. It does not trust project/team extensions or bypass changed-hash blocking; explicit local trust records in `.eforge/extension-trust.json` control loading. User and project-local extensions are trusted when loading is enabled. |
 
-The compatibility trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently trust checked-in extensions, and `extensions.trustProjectExtensions` is stripped from committed project config/profile layers with a warning. Loading project/team extensions is controlled by explicit per-extension local trust records created with `eforge extension trust <name>`.
+Only the documented `extensions` keys are accepted in config files and profiles. Remove stale or obsolete project/team trust compatibility settings during upgrades; project/team extension loading now uses local trust records instead.
+
+Loading project/team extensions is controlled by explicit per-extension local trust records in `.eforge/extension-trust.json`, created with `eforge extension trust <name>` after inspecting the extension code. User and project-local extensions are trusted when loading is enabled.
 
 ## Discovery scopes and precedence
 
@@ -165,31 +165,33 @@ Install scope follows the CLI scaffold labels: `local` targets `.eforge/extensio
 
 Non-JSON output prints concrete next steps after install. When the returned entry has `trustState: "untrusted"` or `"changed"`, the CLI prints a trust command (`eforge extension trust <name>`), a validate command, and a reload command. JSON output (`--json`) prints the daemon response directly.
 
-### First-party eforge-plan package
+### Optional first-party eforge-plan package
 
-`@eforge-build/eforge-plan` is the first-party installable planning package. It contributes the `eforge-plan` extension name, backlog and session-plan actions, the `eforge://input/eforge-plan/<itemId>` input source, integration commands, deep links, and the planning Console workstation.
+`@eforge-build/eforge-plan` is the optional first-party planning package. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, and revision flows is documented in `/docs/eforge-plan` and the extension-owned README.
 
 ```bash
-# Install locally; local installs load without a project/team trust record
+# Local install (trusted by default)
 eforge extension install @eforge-build/eforge-plan
+eforge extension validate eforge-plan
+eforge extension reload
 
-# Install for the team and trust the reviewed artifact
-eforge extension install @eforge-build/eforge-plan --scope project --trust
-
-# Validate, trust when needed, and reload after install or update
+# Project/team install with post-inspection trust
+eforge extension install @eforge-build/eforge-plan --scope project
 eforge extension validate eforge-plan
 eforge extension trust eforge-plan
 eforge extension reload
 
-# Update from npm, optionally pinned to a version or dist-tag
+# Project/team install with immediate trust
+eforge extension install @eforge-build/eforge-plan --scope project --trust
+eforge extension reload
+
+# Update or remove
 eforge extension update eforge-plan
 eforge extension update eforge-plan --version latest
-
-# Remove the installed package
 eforge extension remove eforge-plan
 ```
 
-The package artifact includes compiled runtime files in `dist/` and the generated planning workstation bundle in `workstation-assets/plans/`. The extension remains unsandboxed arbitrary code: local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading. Updating a project/team install changes the reviewed hash, so re-trust after inspection or update with `--trust`.
+The package remains unsandboxed arbitrary code like any native extension. It ships its runtime entrypoints in `dist/` and its planning workstation browser bundle in `workstation-assets/plans/`. Local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading.
 
 ### Promote and demote
 
@@ -401,7 +403,7 @@ Action handlers can inspect immutable dependency and capability availability thr
 
 The MVP task runner is intentionally narrow. It resolves the existing `planner` role and enforces read-only agent tools for the run. Extensions cannot supply arbitrary raw prompt templates, register custom task kinds, expose multi-turn chat, or bypass the daemon-owned task lifecycle. The first supported task kind is a single-shot planning-draft task; extension-specific UI and higher-level eforge-plan actions can build on this boundary without owning the agent runtime directly.
 
-A planning-draft result is either a ready result that carries at least one applicable output section (including optional `sessionPlanCreationDraft` when a session plan is requested, structured `backlogCurationDraft` when backlog curation is requested, or `planRevisionTurn` for an answer-only or patch-bearing revision turn against an existing session plan) or a `needs-input` decision that carries structured clarification questions and a rationale instead of output sections. Answer-only revision turns remain output-bearing because the assistant narrative lives in `planRevisionTurn` even when no patch is proposed. Curation-specific unresolved cases live inside `backlogCurationDraft.needsInput`; the top-level `needs-input` variant remains output-free. First-party eforge-plan revision sessions are an application-level pattern surfaced in the Console workstation as **Revise with AI** and built from extension actions plus daemon-owned single-shot tasks: eforge-plan stores transcript/index state, revision annotations, and turn annotation snapshots in its private extension storage, links turns to daemon task ids, owns preview/apply semantics, and keeps the daemon responsible only for task records, status, result, and error. While a task runs, the agent may report telemetry-only `sectionProgress` (current, covered, and remaining sections) through a read-only progress tool. The daemon sanitizes and length-caps that progress before persisting it on the running record and emitting it on sanitized progress events; section progress is advisory telemetry only and never determines readiness or apply eligibility.
+A planning-draft result is either a ready result that carries at least one applicable structured output section for a supported first-party workflow, or a `needs-input` decision that carries structured clarification questions and a rationale instead of output sections. Product-specific output-section names and preview/apply semantics belong to the extension that requested the task; the daemon owns only task records, status, result validation, cancellation, sanitized progress, and error lifecycle. While a task runs, the agent may report telemetry-only `sectionProgress` (current, covered, and remaining sections) through a read-only progress tool. The daemon sanitizes and length-caps that progress before persisting it on the running record and emitting it on sanitized progress events; section progress is advisory telemetry only and never determines readiness or apply eligibility.
 
 ### Console workstations
 

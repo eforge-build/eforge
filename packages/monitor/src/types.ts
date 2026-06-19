@@ -31,7 +31,7 @@ export interface StartServerOptions {
   planOutputDir?: string;
   workerTracker?: WorkerTracker;
   daemonState?: DaemonState;
-  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'>;
+  config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue' | 'maxConcurrentBuilds' | 'plan' | 'build'> & { stacking?: EforgeConfig['stacking'] };
   agentRuntimes?: AgentRuntimeRegistry | AgentHarness;
   uiDirs?: { consoleUiDir?: string };
   daemonSessionId?: string;

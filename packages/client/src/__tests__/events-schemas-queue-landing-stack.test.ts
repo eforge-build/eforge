@@ -1,10 +1,88 @@
 import { describe, it, expect } from 'vitest';
 import { safeParseEforgeEvent, StackLayerWireSchema } from '../events.schemas.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, isPersistedDaemonEventType } from '../event-registry.js';
+import type { ProjectableState } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
 import { Value } from '@sinclair/typebox/value';
+import { DaemonQueueItemSchema } from '../events/snapshots.js';
 
 // --- eforge:region event-schema-tests ---
+
+describe('safeParseEforgeEvent — queue dispatch failures', () => {
+  it('accepts all declared dispatch failure stages and rejects unknown stages', () => {
+    for (const stage of ['stacking-validation', 'policy-gate', 'profile-routing', 'dispatch'] as const) {
+      expect(safeParseEforgeEvent({ type: 'queue:prd:dispatch-failed', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-1', title: 'PRD 1', reason: 'blocked', stage }).success).toBe(true);
+    }
+    expect(safeParseEforgeEvent({ type: 'queue:prd:dispatch-failed', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-1', title: 'PRD 1', reason: 'blocked', stage: 'nope' }).success).toBe(false);
+  });
+
+  it('registers dispatch failures as persisted daemon events with useful summaries', () => {
+    expect(eventRegistry['queue:prd:dispatch-failed']).toMatchObject({ scope: 'daemon', persist: true });
+    expect(DAEMON_EVENT_TYPES).toContain('queue:prd:dispatch-failed');
+    expect(isPersistedDaemonEventType('queue:prd:dispatch-failed')).toBe(true);
+    expect(getEventSummary({ type: 'queue:prd:dispatch-failed', timestamp: '2025-01-01T00:00:00.000Z', prdId: 'prd-1', title: 'PRD 1', reason: 'blocked', stage: 'dispatch' })).toContain('prd-1');
+  });
+
+  it('projects dispatch failure metadata onto failed queue items and preserves it through failed completion', () => {
+    const projectDispatchFailure = eventRegistry['queue:prd:dispatch-failed'].project!;
+    const emptyState: ProjectableState = { runs: [], queue: [], autoBuild: null, latestHeartbeat: null, stackLayers: [] };
+    const dispatchDelta = projectDispatchFailure({
+      type: 'queue:prd:dispatch-failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      title: 'PRD 1',
+      reason: 'stack_parent is required',
+      stage: 'stacking-validation',
+    }, emptyState);
+
+    expect(dispatchDelta?.queue?.[0]).toEqual({
+      id: 'prd-1',
+      title: 'PRD 1',
+      status: 'failed',
+      dispatchFailure: {
+        reason: 'stack_parent is required',
+        stage: 'stacking-validation',
+        timestamp: '2025-01-01T00:00:00.000Z',
+      },
+    });
+
+    const completeDelta = eventRegistry['queue:prd:complete'].project!({
+      type: 'queue:prd:complete',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      prdId: 'prd-1',
+      status: 'failed',
+    }, { ...emptyState, queue: dispatchDelta?.queue ?? [] });
+    expect(completeDelta?.queue?.[0]?.dispatchFailure).toEqual(dispatchDelta?.queue?.[0]?.dispatchFailure);
+  });
+
+  it('clears stale dispatch failure metadata when live discovery reintroduces the PRD', () => {
+    const staleState: ProjectableState = {
+      runs: [],
+      queue: [{ id: 'prd-1', title: 'PRD 1', status: 'failed', dispatchFailure: { reason: 'old blocker', stage: 'dispatch', timestamp: '2025-01-01T00:00:00.000Z' } }],
+      autoBuild: null,
+      latestHeartbeat: null,
+      stackLayers: [],
+    };
+    const delta = eventRegistry['queue:prd:discovered'].project!({
+      type: 'queue:prd:discovered',
+      timestamp: '2025-01-01T00:00:02.000Z',
+      prdId: 'prd-1',
+      title: 'PRD 1 requeued',
+      dependsOn: ['parent'],
+    }, staleState);
+
+    expect(delta?.queue?.[0]).toEqual({ id: 'prd-1', title: 'PRD 1 requeued', status: 'pending', dependsOn: ['parent'] });
+  });
+
+  it('accepts daemon queue snapshot items with dispatch failure metadata', () => {
+    expect(Value.Check(DaemonQueueItemSchema, {
+      id: 'prd-1',
+      title: 'PRD 1',
+      status: 'failed',
+      dispatchFailure: { reason: 'blocked', stage: 'policy-gate', timestamp: '2025-01-01T00:00:00.000Z' },
+    })).toBe(true);
+  });
+});
 
 describe('safeParseEforgeEvent — queue discovery dependencies', () => {
   it('accepts queue:prd:discovered with dependsOn metadata', () => {

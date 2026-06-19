@@ -33,9 +33,13 @@ async function writeSidecars(cwd: string, id: string): Promise<void> {
 }
 
 async function writeArtifact(cwd: string, prdId: string, artifactBranch = `eforge/${prdId}`): Promise<void> {
+  await writeArtifacts(cwd, [prdId], (id) => id === prdId ? artifactBranch : `eforge/${id}`);
+}
+
+async function writeArtifacts(cwd: string, prdIds: string[], branchFor: (prdId: string) => string = (prdId) => `eforge/${prdId}`): Promise<void> {
   const dir = join(cwd, '.eforge', 'artifacts');
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'builds.json'), JSON.stringify({ version: 1, builds: [{ prdId, artifactBranch, commitSha: 'abc123', resolvedBase: 'main', landingAction: 'leave', status: 'built', recordedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }] }), 'utf-8');
+  await writeFile(join(dir, 'builds.json'), JSON.stringify({ version: 1, builds: prdIds.map((prdId) => ({ prdId, artifactBranch: branchFor(prdId), commitSha: 'abc123', resolvedBase: 'main', landingAction: 'leave', status: 'built', recordedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' })) }), 'utf-8');
 }
 
 async function writeCompletion(cwd: string, prdId: string, status: 'failed' | 'skipped' | 'completed'): Promise<void> {
@@ -141,6 +145,163 @@ describe('queue recovery cascade engine', () => {
     expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.recovery.md'))).toBe(false);
     expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.recovery.json'))).toBe(false);
     expect(await exists(join(cwd, '.eforge', 'queue', 'waiting', 'child.md'))).toBe(true);
+  });
+
+  it('classifies recovery dependencies and offers repairs only for satisfied dependencies', async () => {
+    const cwd = makeTempDir();
+    await writePrd(cwd, 'failed', 'parent', ['active-dep', 'artifact-dep', 'terminal-dep', 'stale-dep']);
+    await writePrd(cwd, 'queue', 'active-dep');
+    await writePrd(cwd, 'failed', 'terminal-dep');
+    await writeArtifacts(cwd, ['artifact-dep']);
+    await writeCompletion(cwd, 'stale-dep', 'completed');
+
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent', stackingEnabled: true });
+
+    expect(Object.fromEntries((analysis.dependencyClassifications ?? []).map((classification) => [classification.dependencyPrdId, classification.status]))).toEqual({
+      'active-dep': 'blocking',
+      'artifact-dep': 'satisfied',
+      'terminal-dep': 'terminal',
+      'stale-dep': 'stale-historical',
+    });
+    expect(analysis.dispatchPreflight?.canApply).toBe(false);
+    expect(analysis.dispatchPreflight?.blockers.map((notice) => notice.message).join('\n')).toContain('multiple depends_on');
+    expect(analysis.availableRepairActions).toEqual([{ kind: 'remove-depends-on', targetPrdId: 'parent', dependencyIds: ['artifact-dep'] }]);
+  });
+
+  it('rejects satisfied dependency removal without explicit confirmation and leaves files in place', async () => {
+    const cwd = makeTempDir();
+    await writePrd(cwd, 'failed', 'parent', ['artifact-dep']);
+    await writeArtifacts(cwd, ['artifact-dep']);
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent' });
+
+    const applied = await applyQueueRecovery({
+      cwd,
+      selectedPrdId: 'parent',
+      expectedOperations: analysis.operations,
+      repairActions: [{ kind: 'remove-depends-on', targetPrdId: 'parent', dependencyIds: ['artifact-dep'] }],
+    });
+
+    expect(applied.applied).toBe(false);
+    expect(applied.repairResults).toContainEqual(expect.objectContaining({ status: 'blocked', message: expect.stringContaining('requires confirmation') }));
+    expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'parent.md'))).toBe(false);
+  });
+
+  it('applies confirmed dependency metadata repair before moving the failed PRD', async () => {
+    const cwd = makeTempDir();
+    await writePrd(cwd, 'failed', 'parent', ['artifact-a', 'artifact-b']);
+    await writeArtifacts(cwd, ['artifact-a', 'artifact-b']);
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent' });
+
+    const applied = await applyQueueRecovery({
+      cwd,
+      selectedPrdId: 'parent',
+      expectedOperations: analysis.operations,
+      repairActions: [{ kind: 'remove-depends-on', targetPrdId: 'parent', dependencyIds: ['artifact-a'] }],
+      confirmDependencyRemoval: true,
+    });
+
+    expect(applied.applied).toBe(true);
+    const content = await readFile(join(cwd, '.eforge', 'queue', 'parent.md'), 'utf-8');
+    expect(applied.repairResults).toContainEqual(expect.objectContaining({ status: 'applied', after: expect.objectContaining({ dependsOn: ['artifact-b'] }) }));
+    expect(content).not.toContain('artifact-a');
+    expect(content).toContain('artifact-b');
+  });
+
+  it('removes stack_parent when removing the dependency selected as stack parent', async () => {
+    const cwd = makeTempDir();
+    await writePrdWithFrontmatter(cwd, 'failed', 'parent', [
+      'title: parent',
+      'created: 2026-01-01',
+      'depends_on: ["artifact-a", "artifact-b"]',
+      'stack_parent: artifact-a',
+    ]);
+    await writeArtifacts(cwd, ['artifact-a', 'artifact-b']);
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent', stackingEnabled: true });
+
+    const applied = await applyQueueRecovery({
+      cwd,
+      selectedPrdId: 'parent',
+      expectedOperations: analysis.operations,
+      stackingEnabled: true,
+      repairActions: [{ kind: 'remove-depends-on', targetPrdId: 'parent', dependencyIds: ['artifact-a'] }],
+      confirmDependencyRemoval: true,
+    });
+
+    expect(applied.applied).toBe(true);
+    expect(applied.repairResults).toContainEqual(expect.objectContaining({ status: 'applied', after: { dependsOn: ['artifact-b'] } }));
+    const content = await readFile(join(cwd, '.eforge', 'queue', 'parent.md'), 'utf-8');
+    expect(content).toContain('artifact-b');
+    expect(content).not.toContain('artifact-a');
+    expect(content).not.toContain('stack_parent:');
+  });
+
+  it('blocks malformed repair actions before simulation', async () => {
+    const cwd = makeTempDir();
+    await writePrd(cwd, 'failed', 'parent', ['artifact-a']);
+    await writeArtifacts(cwd, ['artifact-a']);
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent' });
+
+    const applied = await applyQueueRecovery({
+      cwd,
+      selectedPrdId: 'parent',
+      expectedOperations: analysis.operations,
+      repairActions: [{ kind: 'remove-depends-on', targetPrdId: 'parent', dependencyIds: 'artifact-a' } as never],
+      confirmDependencyRemoval: true,
+    });
+
+    expect(applied.applied).toBe(false);
+    expect(applied.blockers).toContainEqual(expect.objectContaining({ code: 'invalid-repair-action', message: expect.stringContaining('dependencyIds') }));
+    expect(applied.repairResults).toEqual([]);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.md'))).toBe(true);
+  });
+
+  it('persists selected stack_parent repair before moving the failed PRD', async () => {
+    const cwd = makeTempDir();
+    await writePrd(cwd, 'failed', 'parent', ['artifact-a', 'artifact-b']);
+    await writeArtifacts(cwd, ['artifact-a', 'artifact-b']);
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent', stackingEnabled: true });
+
+    const applied = await applyQueueRecovery({
+      cwd,
+      selectedPrdId: 'parent',
+      expectedOperations: analysis.operations,
+      stackingEnabled: true,
+      repairActions: [{ kind: 'set-stack-parent', targetPrdId: 'parent', selectedParentId: 'artifact-a' }],
+    });
+
+    expect(applied.applied).toBe(true);
+    const content = await readFile(join(cwd, '.eforge', 'queue', 'parent.md'), 'utf-8');
+    expect(applied.repairResults).toContainEqual(expect.objectContaining({ status: 'applied', after: expect.objectContaining({ stackParent: 'artifact-a' }) }));
+    expect(content).toContain('stack_parent: artifact-a');
+  });
+
+  it('refuses to move queue files when simulated repairs still leave a dispatch blocker', async () => {
+    const cwd = makeTempDir();
+    await writePrd(cwd, 'failed', 'parent', ['artifact-a', 'artifact-b', 'artifact-c']);
+    await writeArtifacts(cwd, ['artifact-a', 'artifact-b', 'artifact-c']);
+    const analysis = await analyzeQueueRecovery({ cwd, selectedPrdId: 'parent', stackingEnabled: true });
+
+    const applied = await applyQueueRecovery({
+      cwd,
+      selectedPrdId: 'parent',
+      expectedOperations: analysis.operations,
+      stackingEnabled: true,
+      repairActions: [{ kind: 'remove-depends-on', targetPrdId: 'parent', dependencyIds: ['artifact-a'] }],
+      confirmDependencyRemoval: true,
+    });
+
+    expect(applied.applied).toBe(false);
+    expect((applied.dispatchPreflight?.blockers ?? []).map((notice) => notice.message).join('\n')).toContain('multiple depends_on');
+    expect(applied.repairResults).toContainEqual(
+      expect.objectContaining({
+        status: 'blocked',
+        after: expect.objectContaining({ dependsOn: ['artifact-b', 'artifact-c'] }),
+        message: expect.stringContaining('Repair was only simulated'),
+      }),
+    );
+    expect(await exists(join(cwd, '.eforge', 'queue', 'failed', 'parent.md'))).toBe(true);
+    expect(await exists(join(cwd, '.eforge', 'queue', 'parent.md'))).toBe(false);
   });
 
   it('refuses apply on drift before moving the failed parent', async () => {

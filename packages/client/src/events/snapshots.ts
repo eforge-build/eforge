@@ -43,6 +43,16 @@ export const DaemonQueueItemSchema = Type.Object({
   priority: Type.Optional(Type.Number()),
   created: Type.Optional(Type.String()),
   dependsOn: Type.Optional(Type.Array(Type.String())),
+  dispatchFailure: Type.Optional(Type.Object({
+    reason: Type.String(),
+    stage: Type.Union([
+      Type.Literal('stacking-validation'),
+      Type.Literal('policy-gate'),
+      Type.Literal('profile-routing'),
+      Type.Literal('dispatch'),
+    ]),
+    timestamp: Type.String(),
+  })),
   recoveryVerdict: Type.Optional(
     Type.Object({
       verdict: Type.Union([

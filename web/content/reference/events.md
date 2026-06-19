@@ -9,9 +9,13 @@ union exposed by `packages/client/src/events.schemas.ts` and implemented under `
 Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected
 with one of the variant objects below. The `type` field discriminates the variant.
 
+The JSON Schema also includes a `DaemonStreamSnapshot` definition for the
+`stream:hello` snapshot; queue items in that snapshot expose the optional
+`dispatchFailure` projection populated from `queue:prd:dispatch-failed` events.
+
 ## Event Variants
 
-Total variants: 226
+Total variants: 227
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -218,6 +222,7 @@ Total variants: 226
 | `queue:prd:dependency-overridden` | `currentDependsOn`, `prdId`, `previousDependsOn`, `reason`, `removedDependency`, `title` |
 | `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
 | `queue:prd:skip` | `prdId`, `reason` |
+| `queue:prd:dispatch-failed` | `prdId`, `reason`, `stage`, `title` |
 | `queue:prd:commit-failed` | `error`, `prdId`, `title` |
 | `queue:prd:complete` | `prdId`, `status` |
 | `queue:complete` | `processed`, `skipped` |

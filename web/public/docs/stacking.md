@@ -26,7 +26,7 @@ PRD frontmatter carries two optional stacking fields:
 
 **`stack_id`** - a logical stack name shared by all PRDs in the same stack. If omitted, defaults to the first PRD id in the chain.
 
-**`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets.
+**`stack_parent`** - the PRD id of the immediate parent layer. Controls which artifact branch this PRD's PR targets, and must name an entry from `depends_on` when stacking is enabled.
 
 ```yaml
 ---
@@ -41,7 +41,7 @@ depends_on: [q-abc123]
 
 When a PRD has exactly one `depends_on` entry and stacking is enabled, eforge automatically infers `stack_parent` from that dependency at dispatch time. For linear stacks you do not need to set `stack_parent` explicitly.
 
-When a PRD has multiple `depends_on` entries, eforge cannot infer the stack parent. You must set `stack_parent` explicitly to indicate which dependency is the direct parent layer. If `stack_parent` is missing and there are multiple `depends_on` entries, dispatch fails with a clear error.
+When a PRD has multiple `depends_on` entries, eforge cannot infer the stack parent. You must set `stack_parent` explicitly to indicate which dependency is the direct parent layer. If `stack_parent` is missing, or if it is set to an id that is not listed in `depends_on`, dispatch fails before `session:start` with a durable `queue:prd:dispatch-failed` event.
 
 ### Explicit handoff and stack parent
 

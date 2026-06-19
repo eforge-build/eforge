@@ -51,7 +51,6 @@ export async function discoverNativeExtensions(options: {
   configDir: string;
   config: {
     enabled: boolean;
-    trustProjectExtensions: boolean;
     include?: string[];
     exclude?: string[];
     paths?: string[];

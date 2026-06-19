@@ -15,21 +15,26 @@ import {
   type QueueRecoveryNotice,
   type QueueRecoveryOperation,
   type QueueRecoveryOperationResult,
+  type QueueRecoveryRepairResult,
   type QueueRecoveryStrategy,
 } from '@eforge-build/client';
-import { loadQueue, type QueuedPrd } from '../prd-queue.js';
+import { deleteQueuedPrdFrontmatterFieldsExistingOnly, loadQueue, setQueuedPrdFrontmatterFieldsExistingOnly, type QueuedPrd } from '../prd-queue.js';
 import { loadArtifactRegistry, hasUsableArtifact } from '../artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion } from '../artifacts/completions.js';
+import { buildRecoveryPreflight } from './recovery-preflight.js';
 
 interface RecoveryOptions {
   cwd: string;
   selectedPrdId: string;
   strategy?: QueueRecoveryStrategy | string;
   queueDir?: string;
+  stackingEnabled?: boolean;
 }
 
 export interface ApplyQueueRecoveryOptions extends RecoveryOptions {
   expectedOperations: QueueRecoveryOperation[];
+  repairActions?: unknown;
+  confirmDependencyRemoval?: boolean;
 }
 
 interface QueueRecord {
@@ -37,7 +42,9 @@ interface QueueRecord {
   title: string;
   location: QueueRecoveryLocation;
   dependsOn: string[];
+  stackParent?: string;
   filePath: string;
+  prd: QueuedPrd;
 }
 
 interface QueueSnapshot {
@@ -82,6 +89,20 @@ export async function analyzeQueueRecovery(options: RecoveryOptions): Promise<Qu
   const nodes = buildNodes(snapshot, selected.id, analyzedIds);
   const edges = buildEdges(snapshot, analyzedIds);
   const operations = await buildOperations(options.cwd, snapshot, selected.id, cascadeIds);
+  const targetIds = operations.filter((op) => op.kind === 'move-prd').map((op) => op.prdId);
+  const [artifactRegistry, completionRegistry] = await Promise.all([
+    loadArtifactRegistry(options.cwd),
+    loadCompletionRegistry(options.cwd),
+  ]);
+  const preflight = buildRecoveryPreflight({
+    records: snapshot.records.map((record) => ({ id: record.id, title: record.title, location: record.location, dependsOn: record.dependsOn, ...(record.stackParent !== undefined && { stackParent: record.stackParent }), prd: record.prd })),
+    targetIds,
+    artifactRegistry,
+    completionRegistry,
+    stackingEnabled: options.stackingEnabled ?? true,
+  });
+  warnings.push(...preflight.dispatchPreflight.warnings);
+  blockers.push(...preflight.dispatchPreflight.blockers);
 
   return {
     selectedPrdId: options.selectedPrdId,
@@ -92,6 +113,9 @@ export async function analyzeQueueRecovery(options: RecoveryOptions): Promise<Qu
     operations,
     warnings,
     blockers,
+    dependencyClassifications: preflight.dependencyClassifications,
+    dispatchPreflight: preflight.dispatchPreflight,
+    availableRepairActions: preflight.availableRepairActions,
   };
 }
 
@@ -103,8 +127,13 @@ export async function applyQueueRecovery(options: ApplyQueueRecoveryOptions): Pr
   if (!isQueueRecoveryStrategy(analysis.strategy)) {
     return blockedApply(analysis, baseResults, 'Unsupported recovery strategy');
   }
-  if (!analysis.eligible) {
-    return blockedApply(analysis, baseResults, firstBlockerMessage(analysis.blockers));
+  const repairActions = options.repairActions;
+  const hasRepairActions = Array.isArray(repairActions) ? repairActions.length > 0 : repairActions !== undefined;
+  const nonRepairableAnalysisBlockers = hasRepairActions
+    ? analysis.blockers.filter((notice) => notice.code !== 'dispatch-preflight-blocked')
+    : analysis.blockers;
+  if (nonRepairableAnalysisBlockers.length > 0) {
+    return blockedApply({ ...analysis, blockers: nonRepairableAnalysisBlockers }, baseResults, firstBlockerMessage(nonRepairableAnalysisBlockers));
   }
 
   const driftBlocker = await preflightApply(options, analysis.operations);
@@ -116,7 +145,38 @@ export async function applyQueueRecovery(options: ApplyQueueRecoveryOptions): Pr
       operationResults: baseResults.map((r) => ({ ...r, message: driftBlocker.message })),
       warnings: analysis.warnings,
       blockers: [driftBlocker],
+      dispatchPreflight: analysis.dispatchPreflight,
+      repairResults: [],
     };
+  }
+
+  const snapshot = await loadQueueSnapshot(options.cwd, options.queueDir);
+  const targetIds = analysis.operations.filter((op) => op.kind === 'move-prd').map((op) => op.prdId);
+  const [artifactRegistry, completionRegistry] = await Promise.all([loadArtifactRegistry(options.cwd), loadCompletionRegistry(options.cwd)]);
+  const preflight = buildRecoveryPreflight({
+    records: snapshot.records.map((record) => ({ id: record.id, title: record.title, location: record.location, dependsOn: record.dependsOn, ...(record.stackParent !== undefined && { stackParent: record.stackParent }), prd: record.prd })),
+    targetIds,
+    artifactRegistry,
+    completionRegistry,
+    stackingEnabled: options.stackingEnabled ?? true,
+    repairActions,
+    confirmDependencyRemoval: options.confirmDependencyRemoval === true,
+  });
+  const applyWarnings = replaceDispatchWarnings(analysis.warnings, analysis.dispatchPreflight?.warnings ?? [], preflight.dispatchPreflight.warnings);
+  const repairBlocker = preflight.repairResults.find((result) => result.status !== 'applied');
+  if (repairBlocker) {
+    const notice = blocker('repair-action-blocked', repairBlocker.message ?? 'Repair action blocked', repairBlocker.action.targetPrdId);
+    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: notice.message })), warnings: applyWarnings, blockers: [notice], dispatchPreflight: preflight.dispatchPreflight, repairResults: simulatedRepairsBlocked(preflight.repairResults, notice.message) };
+  }
+  if (!preflight.dispatchPreflight.canApply) {
+    const message = firstBlockerMessage(preflight.dispatchPreflight.blockers);
+    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message })), warnings: applyWarnings, blockers: preflight.dispatchPreflight.blockers, dispatchPreflight: preflight.dispatchPreflight, repairResults: simulatedRepairsBlocked(preflight.repairResults, message) };
+  }
+
+  const metadataWrite = await writeRepairMetadata(snapshot, preflight.repairResults);
+  if (metadataWrite.blocker) {
+    const { blocker: metadataBlocker } = metadataWrite;
+    return { selectedPrdId: analysis.selectedPrdId, strategy: analysis.strategy, applied: false, operationResults: baseResults.map((r) => ({ ...r, message: metadataBlocker.message })), warnings: applyWarnings, blockers: [metadataBlocker], dispatchPreflight: preflight.dispatchPreflight, repairResults: repairResultsAfterMetadataFailure(preflight.repairResults, metadataWrite.appliedActionKeys, metadataBlocker) };
   }
 
   const queueDir = resolve(options.cwd, options.queueDir ?? '.eforge/queue');
@@ -151,10 +211,12 @@ export async function applyQueueRecovery(options: ApplyQueueRecoveryOptions): Pr
     strategy: analysis.strategy,
     applied: allApplied,
     operationResults: results,
-    warnings: analysis.warnings,
+    warnings: applyWarnings,
     blockers: failedResult
       ? [blocker('operation-failed', failedResult.message ?? 'Queue recovery operation failed', failedResult.operation.prdId)]
       : [],
+    dispatchPreflight: preflight.dispatchPreflight,
+    repairResults: preflight.repairResults,
   };
 }
 
@@ -175,7 +237,9 @@ function toRecord(prd: QueuedPrd, location: QueueRecoveryLocation): QueueRecord 
     title: prd.frontmatter.title,
     location,
     dependsOn: prd.frontmatter.depends_on ?? [],
+    ...(prd.frontmatter.stack_parent !== undefined && { stackParent: prd.frontmatter.stack_parent }),
     filePath: prd.filePath,
+    prd,
   };
 }
 
@@ -331,6 +395,51 @@ async function preflightApply(options: ApplyQueueRecoveryOptions, currentOperati
   return null;
 }
 
+async function writeRepairMetadata(snapshot: QueueSnapshot, repairResults: QueueRecoveryRepairResult[]): Promise<{ blocker: QueueRecoveryNotice | null; appliedActionKeys: Set<string> }> {
+  const appliedActionKeys = new Set<string>();
+  for (const result of repairResults) {
+    if (result.status !== 'applied' || !result.after) continue;
+    const record = snapshot.byId.get(result.action.targetPrdId);
+    if (!record) return { blocker: blocker('repair-target-missing', `Repair target ${result.action.targetPrdId} is missing`, result.action.targetPrdId), appliedActionKeys };
+    try {
+      const fields: Record<string, string | string[]> = {};
+      if (result.after.dependsOn !== undefined) fields.depends_on = result.after.dependsOn;
+      if (result.after.stackParent !== undefined) fields.stack_parent = result.after.stackParent;
+      let updatedPrd = record.prd;
+      if (Object.keys(fields).length > 0) updatedPrd = await setQueuedPrdFrontmatterFieldsExistingOnly(updatedPrd, fields);
+      if (result.before?.stackParent !== undefined && result.after.stackParent === undefined) {
+        await deleteQueuedPrdFrontmatterFieldsExistingOnly(updatedPrd, ['stack_parent']);
+      }
+      appliedActionKeys.add(repairActionKey(result));
+    } catch (err) {
+      return { blocker: blocker('repair-metadata-write-failed', err instanceof Error ? err.message : String(err), result.action.targetPrdId), appliedActionKeys };
+    }
+  }
+  return { blocker: null, appliedActionKeys };
+}
+
+function simulatedRepairsBlocked(repairResults: QueueRecoveryRepairResult[], reason: string): QueueRecoveryRepairResult[] {
+  return repairResults.map((result) => result.status === 'applied'
+    ? { ...result, status: 'blocked', message: `Repair was only simulated; metadata was not written because apply is blocked: ${reason}` }
+    : result);
+}
+
+function repairResultsAfterMetadataFailure(repairResults: QueueRecoveryRepairResult[], appliedActionKeys: Set<string>, failure: QueueRecoveryNotice): QueueRecoveryRepairResult[] {
+  let failedRecorded = false;
+  return repairResults.map((result) => {
+    if (result.status !== 'applied' || appliedActionKeys.has(repairActionKey(result))) return result;
+    if (!failedRecorded && result.action.targetPrdId === failure.prdId) {
+      failedRecorded = true;
+      return { ...result, status: 'failed', message: failure.message };
+    }
+    return { ...result, status: 'skipped', message: `Skipped because repair metadata was not durably written: ${failure.message}` };
+  });
+}
+
+function repairActionKey(result: QueueRecoveryRepairResult): string {
+  return JSON.stringify(result.action);
+}
+
 function sameOperations(a: QueueRecoveryOperation[], b: QueueRecoveryOperation[]): boolean {
   const sig = (op: QueueRecoveryOperation) => [op.id, op.kind, op.prdId, op.expectedSourceLocation, op.targetLocation ?? ''].join('|');
   return JSON.stringify(a.map(sig).sort()) === JSON.stringify(b.map(sig).sort());
@@ -407,6 +516,15 @@ async function readSidecarWarnings(queueDir: string, prdId: string): Promise<Que
   }
 }
 
+function replaceDispatchWarnings(base: QueueRecoveryNotice[], previous: QueueRecoveryNotice[], next: QueueRecoveryNotice[]): QueueRecoveryNotice[] {
+  const previousKeys = new Set(previous.map(noticeKey));
+  return [...base.filter((notice) => !previousKeys.has(noticeKey(notice))), ...next];
+}
+
+function noticeKey(notice: QueueRecoveryNotice): string {
+  return `${notice.code}\0${notice.prdId ?? ''}\0${notice.message}`;
+}
+
 function blockedApply(analysis: QueueRecoveryAnalyzeResponse, results: QueueRecoveryOperationResult[], message: string): QueueRecoveryApplyResponse {
   return {
     selectedPrdId: analysis.selectedPrdId,
@@ -415,11 +533,29 @@ function blockedApply(analysis: QueueRecoveryAnalyzeResponse, results: QueueReco
     operationResults: results.map((r) => ({ ...r, message })),
     warnings: analysis.warnings,
     blockers: analysis.blockers,
+    dispatchPreflight: analysis.dispatchPreflight,
+    repairResults: [],
   };
 }
 
 function emptyAnalyze(selectedPrdId: string, strategy: string, warnings: QueueRecoveryNotice[], blockers: QueueRecoveryNotice[]): QueueRecoveryAnalyzeResponse {
-  return { selectedPrdId, strategy, eligible: false, nodes: [], edges: [], operations: [], warnings, blockers };
+  return {
+    selectedPrdId,
+    strategy,
+    eligible: false,
+    nodes: [],
+    edges: [],
+    operations: [],
+    warnings,
+    blockers,
+    dependencyClassifications: [],
+    dispatchPreflight: emptyDispatchPreflight(blockers),
+    availableRepairActions: [],
+  };
+}
+
+function emptyDispatchPreflight(blockers: QueueRecoveryNotice[]) {
+  return { canApply: false, blockers, warnings: [], items: [] };
 }
 
 function blocker(code: string, message: string, prdId?: string): QueueRecoveryNotice {

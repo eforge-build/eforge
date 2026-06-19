@@ -27,5 +27,8 @@
  * unavailable failure response.)
  * (v70 is a case 2 bump: extension update requests can carry npm registry
  * version specifiers that stale daemons would otherwise ignore.)
+ * (v71 is a case 1 bump: config show responses and config/profile
+ * validation no longer include or accept the removed project/team extension
+ * trust compatibility field.)
  */
-export const DAEMON_API_VERSION = 70; // v70: extension update version specifiers require daemon support.
+export const DAEMON_API_VERSION = 71; // v71: removed extension trust compatibility field from config contract.

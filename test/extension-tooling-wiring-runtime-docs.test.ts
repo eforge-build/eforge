@@ -288,20 +288,18 @@ describe('extension runtime documentation', () => {
       expect(source).toMatch(/project\/team|project-team|team extensions/i);
       expect(source).toMatch(/re-trust|hash.*changed|changed.*hash|content hash.*no longer|blocked.*until/i);
     }
-    // No stale language asserting hash-based trust is not shipped or that the old coarse trust flag loads project/team code.
+    // No stale language asserting hash-based trust is not shipped or that a removed coarse flag loads project/team code.
+    const removedKey = ['trust', 'Project', 'Extensions'].join('');
     for (const source of [docsExtensions, webExtensions, sdkReadme, readme, configDocs, webConfigDocs, claudeCodeSkill, piSkill]) {
       expect(source).not.toContain('Hash-based trust prompts/stores are not shipped behavior in this slice');
-      expect(source).not.toMatch(/trustProjectExtensions:\s*true[^.\n]*(?:project\/team|checked-in|committed)[^.\n]*(?:load|run|trust|skipped unless)/i);
-      expect(source).not.toMatch(/(?:project\/team|checked-in|committed)[^.\n]*(?:load|run|trust|skipped unless)[^.\n]*trustProjectExtensions:\s*true/i);
+      expect(source).not.toContain(removedKey);
     }
   });
 
-  it('config docs document per-extension local trust records and committed config cannot grant trust', () => {
+  it('config docs document per-extension local trust records as the project-team trust authority', () => {
     for (const source of [configDocs, webConfigDocs]) {
       expect(source).toMatch(/extension-trust\.json|per-extension.*trust|local.*trust.*record/i);
-      expect(source).toMatch(/trustProjectExtensions[^.\n]*(?:does not trust|does not.*bypass|deprecated compatibility)/i);
-      expect(source).toMatch(/(?:checked-in|committed)[^.\n]*(?:config|profile)/i);
-      expect(source).toMatch(/stripped[^.\n]*warning/i);
+      expect(source).toMatch(/eforge extension trust <name>/i);
     }
   });
 

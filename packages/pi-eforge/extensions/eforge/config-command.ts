@@ -108,7 +108,6 @@ export async function handleConfigCommand(
   if (extensions) {
     sections.push("## Extensions\n");
     if (extensions.enabled !== undefined) sections.push(`- Enabled: ${extensions.enabled}`);
-    if (extensions.trustProjectExtensions !== undefined) sections.push(`- Trust project extensions: ${extensions.trustProjectExtensions}`);
     if (Array.isArray(extensions.include) && extensions.include.length > 0) {
       sections.push(`- Include: ${extensions.include.map((v) => `\`${v}\``).join(", ")}`);
     }

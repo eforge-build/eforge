@@ -31,6 +31,7 @@ export {
   TerminalFailureScopeSchema,
 } from './events/shared/schemas.js';
 export { BuildDecisionSchema, PlanningDecisionEventSchema, PlanningDecisionSchema } from './events/decisions.js';
+export { QueueDispatchFailureStageSchema } from './events/queue-events.js';
 export { EventEnvelopeSchema } from './events/envelope.js';
 export { EforgeEventSchema } from './events/root.js';
 export { EforgeEventVariantsSchema } from './events/variants.js';
@@ -39,7 +40,7 @@ export { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, isBuiltInReviewPerspective }
 export { parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseEforgeEvent, safeParseSessionStreamSnapshot } from './events/parse.js';
 
 export type { BuildDecision, PlanningDecision, PlanningDecisionEvent } from './events/decisions.js';
-export type { QueueEvent } from './events/queue-events.js';
+export type { QueueDispatchFailureStage, QueueEvent } from './events/queue-events.js';
 export type { DaemonStreamSnapshot, SessionStreamSnapshot } from './events/snapshots.js';
 export type { StackSyncActiveBuildPolicyWire, StackSyncOutcomeWire, StackSyncStatusWire, StackSyncTriggerWire } from './events/shared/stack-wire.js';
 export type {

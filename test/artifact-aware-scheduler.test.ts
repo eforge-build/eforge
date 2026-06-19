@@ -289,9 +289,12 @@ describe('QueueScheduler artifact-aware readiness', () => {
     );
 
     expect(spawnPrdChild).not.toHaveBeenCalled();
+    expect(events).toContainEqual(expect.objectContaining({ type: 'queue:prd:dispatch-failed', prdId: 'child', stage: 'stacking-validation', reason: expect.stringContaining('multiple depends_on') }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'queue:prd:complete', prdId: 'child', status: 'failed' }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'plan:error:set', error: expect.stringContaining('multiple depends_on') }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'plan:error:set', error: expect.stringContaining('stack_parent') }));
+    expect(events.some((event) => event.type === 'session:start')).toBe(false);
+    expect(events.findIndex((event) => event.type === 'queue:prd:dispatch-failed')).toBeLessThan(events.findIndex((event) => event.type === 'queue:prd:complete'));
     eventQueue.removeProducer();
   });
 
@@ -464,10 +467,17 @@ describe('EforgeEngine.runQueue — completion index recording', () => {
     for await (const event of engine.runQueue()) events.push(event);
 
     expect(events).toContainEqual(expect.objectContaining({
+      type: 'queue:prd:dispatch-failed',
+      prdId: 'ambiguous-child',
+      stage: 'stacking-validation',
+      reason: expect.stringContaining('multiple depends_on'),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
       type: 'plan:error:set',
       planId: 'ambiguous-child',
       error: expect.stringContaining('multiple depends_on'),
     }));
+    expect(events.some((event) => event.type === 'session:start')).toBe(false);
     const registry = await loadCompletionRegistry(cwd);
     expect(registry.completions['ambiguous-child']).toEqual(expect.objectContaining({
       prdId: 'ambiguous-child',

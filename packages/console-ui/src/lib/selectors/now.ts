@@ -8,7 +8,7 @@
  */
 
 import type {
-  RunInfo, EforgeEvent,
+  RunInfo, EforgeEvent, QueueItem,
   ExtensionEntry, ExtensionTrustState,
 } from '@eforge-build/client/browser';
 import { getEventSummary, isTransientTransportError } from '@eforge-build/client/browser';
@@ -24,6 +24,7 @@ import { queueItemLabelById, selectNowQueueStacks } from './queue-stacks';
 import type { NowQueueStack } from './queue-stacks';
 import { selectNowQueueSummary } from './queue-summary';
 import type { NowQueueSummary } from './queue-summary';
+import { formatQueueDispatchFailure } from './queue-dispatch-failure';
 import { extensionNeedsTrust, extensionTrustActionLabel } from './system';
 
 export { selectNowQueueSummary } from './queue-summary';
@@ -66,12 +67,7 @@ export interface NowAttentionItem {
    * open the recovery dialog, so the attention strip — not the Queue card — owns
    * the Recover action for failures.
    */
-  recovery?: {
-    prdId: string;
-    prdTitle: string;
-    verdict?: string;
-    confidence?: string;
-  };
+  recovery?: { prdId: string; prdTitle: string; verdict?: string; confidence?: string; dispatchFailure?: QueueItem['dispatchFailure'] };
   /** Trust action payload for an extension-trust attention item (Now strip owns Trust/Re-trust). */
   extensionTrust?: { name: string; path: string; trustState?: ExtensionTrustState; actionLabel: 'Trust' | 'Re-trust' };
 }
@@ -258,6 +254,11 @@ function formatAppliedRecoveryDetail(applied: QueueRecoveryApplied): string {
   return `recovery applied: accepted-success landing ${applied.landing.status}${reason ? ` — ${reason}` : ''}`;
 }
 
+function formatDispatchAwareVerdictDetail(failure: QueueItem['dispatchFailure'], verdict: string, confidence: string): string {
+  const dispatchDetail = formatQueueDispatchFailure(failure);
+  return dispatchDetail ? `${dispatchDetail} — ${verdict} / ${confidence}` : `${verdict} / ${confidence}`;
+}
+
 interface AttentionCandidate {
   item: NowAttentionItem;
   dedupKey: string;
@@ -355,8 +356,8 @@ export function selectNowAttentionItems(
         id: `queue-failed-verdict-${item.id}`,
         severity: 'warning',
         message: `Failed: ${label}`,
-        detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : `${rv.verdict} / ${rv.confidence}`,
-        ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence } }),
+        detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : formatDispatchAwareVerdictDetail(item.dispatchFailure, rv.verdict, rv.confidence),
+        ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, verdict: rv.verdict, confidence: rv.confidence, ...(item.dispatchFailure ? { dispatchFailure: item.dispatchFailure } : {}) } }),
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });
@@ -373,8 +374,8 @@ export function selectNowAttentionItems(
         id: `queue-failed-${item.id}`,
         severity: 'warning',
         message: `Failed: ${label}`,
-        detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : 'recovery pending',
-        ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label } }),
+        detail: item.recoveryApplied ? formatAppliedRecoveryDetail(item.recoveryApplied) : (formatQueueDispatchFailure(item.dispatchFailure) ?? 'recovery pending'),
+        ...(item.recoveryApplied ? {} : { recovery: { prdId: item.id, prdTitle: label, ...(item.dispatchFailure ? { dispatchFailure: item.dispatchFailure } : {}) } }),
       },
       dedupKey: `prd:${normalizePrdDedupKey(item.id)}`,
     });

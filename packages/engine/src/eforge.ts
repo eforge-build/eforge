@@ -63,6 +63,7 @@ import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
 import { inferStackParentFromDependencies } from './queue/stack-parent-inference.js';
+import { applyStackedDispatchValidation } from './queue/dispatch-validation.js';
 import { runQueuedPrdBuild } from './queue/build-single-prd.js';
 import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
@@ -1393,7 +1394,8 @@ export class EforgeEngine {
     };
 
     // --- eforge:region gap-close ---
-    const failDispatch = async (prd: import('./prd-queue.js').QueuedPrd, message: string): Promise<void> => {
+    const failDispatch = async (prd: import('./prd-queue.js').QueuedPrd, message: string, stage: 'stacking-validation' | 'policy-gate' | 'profile-routing' | 'dispatch' = 'dispatch'): Promise<void> => {
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'queue:prd:dispatch-failed', prdId: prd.id, title: prd.frontmatter.title, reason: message, stage } as EforgeEvent);
       const state = prdState.get(prd.id);
       if (state) state.status = 'failed';
       eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:status:change', planId: prd.id, status: 'failed' } as EforgeEvent);
@@ -1403,31 +1405,10 @@ export class EforgeEngine {
     };
 
     const applyStackingDispatchValidation = async (prd: import('./prd-queue.js').QueuedPrd): Promise<import('./prd-queue.js').QueuedPrd | null> => {
-      if (!this.config.stacking.enabled) return prd;
-
-      const dependsOn = prd.frontmatter.depends_on ?? [];
-      if (prd.frontmatter.stack_parent) return prd;
-
-      if (dependsOn.length === 1) {
-        try {
-          const { setQueuedPrdStackParent } = await import('./prd-queue.js');
-          return await setQueuedPrdStackParent(prd, dependsOn[0], cwd);
-        } catch (err) {
-          const message = `Failed to persist inferred stack_parent '${dependsOn[0]}' for PRD '${prd.id}': ${err instanceof Error ? err.message : String(err)}`;
-          await failDispatch(prd, message);
-          return null;
-        }
-      }
-
-      if (dependsOn.length > 1) {
-        await failDispatch(
-          prd,
-          `Cannot dispatch stacked PRD '${prd.id}' with multiple depends_on entries without explicit stack_parent. Add stack_parent to disambiguate the parent layer.`,
-        );
-        return null;
-      }
-
-      return prd;
+      const result = await applyStackedDispatchValidation({ prd, cwd, stackingEnabled: this.config.stacking.enabled === true });
+      if ('prd' in result) return result.prd;
+      await failDispatch(prd, result.error, 'stacking-validation');
+      return null;
     };
     // --- eforge:endregion gap-close ---
 

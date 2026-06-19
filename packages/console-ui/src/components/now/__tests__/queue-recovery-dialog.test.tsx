@@ -179,6 +179,27 @@ function analysisFixture(overrides: Partial<QueueRecoveryAnalyzeResponse> = {}):
   };
 }
 
+function repairAnalysisFixture(overrides: Partial<QueueRecoveryAnalyzeResponse> = {}): QueueRecoveryAnalyzeResponse {
+  return analysisFixture({
+    eligible: false,
+    dependencyClassifications: [
+      { targetPrdId: 'failed-prd', dependentPrdId: 'failed-prd', dependencyPrdId: 'active-dep', status: 'blocking', reason: 'still active' },
+      { targetPrdId: 'failed-prd', dependentPrdId: 'failed-prd', dependencyPrdId: 'done-dep', status: 'satisfied', reason: 'usable artifact' },
+      { targetPrdId: 'child', dependentPrdId: 'child', dependencyPrdId: 'terminal-dep', status: 'terminal', reason: 'failed upstream' },
+      { targetPrdId: 'child', dependentPrdId: 'child', dependencyPrdId: 'stale-dep', status: 'stale-historical', reason: 'missing artifact' },
+    ],
+    dispatchPreflight: {
+      canApply: false,
+      blockers: [{ code: 'dispatch-preflight-blocked', prdId: 'failed-prd', message: 'choose stack_parent', severity: 'blocker' }],
+      warnings: [{ code: 'stale-historical-dependency', prdId: 'child', message: 'stale dependency remains', severity: 'warning' }],
+      items: [{ targetPrdId: 'failed-prd', canDispatch: false, blockers: ['choose stack_parent'], warnings: [], stackingEnabled: true, meaningfulDependencyIds: ['done-dep', 'active-dep'], requiresStackParentChoice: true }],
+    },
+    availableRepairActions: [{ kind: 'remove-depends-on', targetPrdId: 'failed-prd', dependencyIds: ['done-dep'] }],
+    blockers: [{ code: 'dispatch-preflight-blocked', prdId: 'failed-prd', message: 'choose stack_parent', severity: 'blocker' }],
+    ...overrides,
+  });
+}
+
 function cascadeApplyFixture(overrides: Partial<QueueRecoveryApplyResponse> = {}): QueueRecoveryApplyResponse {
   const base = analysisFixture();
   return {
@@ -536,6 +557,15 @@ describe('QueueRecoveryDialog - accepted success', () => {
   });
 });
 
+describe('QueueRecoveryDialog - dispatch blocker callout', () => {
+  it('displays imported dispatch failure stage, timestamp, and reason above the recovery report', async () => {
+    renderDialog({ dispatchFailure: { reason: 'stack_parent is required', stage: 'stacking-validation', timestamp: '2026-01-01T00:00:00.000Z' } });
+    expect(await screen.findByText('Pre-session dispatch blocker')).toBeDefined();
+    expect(screen.getByText(/Dispatch blocked before session:start \(stacking-validation\): stack_parent is required/)).toBeDefined();
+    expect(screen.getByText(/Stage: stacking-validation/)).toBeDefined();
+  });
+});
+
 describe('QueueRecoveryDialog - advanced queue-cascade', () => {
   it('shows the required upstream/descendant copy', async () => {
     renderDialog();
@@ -569,6 +599,75 @@ describe('QueueRecoveryDialog - advanced queue-cascade', () => {
     vi.mocked(fetchRecoverySidecar).mockResolvedValue(sidecarFixture('manual', 'high'));
     renderDialog();
     expect(await screen.findByText(/can contradict manual guidance/)).toBeDefined();
+  });
+
+  it('renders dependency classifications, dispatch preflight warnings, and repair result metadata', async () => {
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(repairAnalysisFixture({ dispatchPreflight: { canApply: true, blockers: [], warnings: [{ code: 'stale-historical-dependency', prdId: 'child', message: 'stale dependency remains', severity: 'warning' }], items: [] }, blockers: [] }));
+    vi.mocked(applyQueueRecovery).mockResolvedValue(cascadeApplyFixture({
+      repairResults: [{
+        action: { kind: 'remove-depends-on', targetPrdId: 'failed-prd', dependencyIds: ['done-dep'] },
+        status: 'applied',
+        before: { dependsOn: ['done-dep'] },
+        after: { dependsOn: [] },
+      }],
+    }));
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
+    expect(await screen.findByText('blocking')).toBeDefined();
+    expect(screen.getByText('satisfied')).toBeDefined();
+    expect(screen.getByText('terminal')).toBeDefined();
+    expect(screen.getByText('stale-historical')).toBeDefined();
+    expect(screen.getByText(/stale dependency remains/)).toBeDefined();
+    const remove = screen.getByRole('checkbox');
+    expect((remove as HTMLButtonElement).getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(remove);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply queue-cascade recovery' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/requeues the existing PRD artifact/)).toBeDefined();
+    expect(within(dialog).getByText(/Frontmatter is preserved unless/i)).toBeDefined();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(applyQueueRecovery).toHaveBeenCalledWith(expect.objectContaining({
+      repairActions: [{ kind: 'remove-depends-on', targetPrdId: 'failed-prd', dependencyIds: ['done-dep'] }],
+      confirmDependencyRemoval: true,
+    })));
+    expect(await screen.findByText(/remove-depends-on failed-prd: applied/)).toBeDefined();
+    expect(screen.getByText(/before:/)).toBeDefined();
+  });
+
+  it('sends selected stack_parent repair actions after an explicit operator choice', async () => {
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(repairAnalysisFixture({
+      availableRepairActions: [
+        { kind: 'remove-depends-on', targetPrdId: 'failed-prd', dependencyIds: ['done-dep'] },
+        { kind: 'set-stack-parent', targetPrdId: 'failed-prd', selectedParentId: 'done-dep' },
+      ],
+    }));
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
+    expect(await screen.findByText(/Select stack_parent for/)).toBeDefined();
+    const stackParentTrigger = screen.getByRole('combobox');
+    fireEvent.keyDown(stackParentTrigger, { key: 'ArrowDown' });
+    fireEvent.click(await screen.findByRole('option', { name: 'done-dep' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply queue-cascade recovery' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(applyQueueRecovery).toHaveBeenCalledWith(expect.objectContaining({
+      repairActions: [{ kind: 'set-stack-parent', targetPrdId: 'failed-prd', selectedParentId: 'done-dep' }],
+    })));
+  });
+
+  it('keeps queue-cascade apply disabled while required stack_parent choices are unresolved', async () => {
+    vi.mocked(fetchQueueRecoveryAnalysis).mockResolvedValue(repairAnalysisFixture());
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
+    expect(await screen.findByText(/requires an explicit stack_parent selection/)).toBeDefined();
+    expect((screen.getByRole('button', { name: 'Apply queue-cascade recovery' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(applyQueueRecovery).not.toHaveBeenCalled();
   });
 
   it('warns when the recovery verdict has low confidence', async () => {

@@ -43,6 +43,8 @@ export async function generateApi(opts: {
     '',
     '## Routes',
     '',
+    'Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.',
+    '',
     `Total routes: ${sortedRoutes.length}`,
     '',
     '| Route key | Path pattern |',

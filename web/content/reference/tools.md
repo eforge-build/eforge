@@ -9,6 +9,8 @@ eforge exposes its capabilities through two integration surfaces:
 
 Both surfaces are kept in parity per `AGENTS.md`.
 
+Playbook and session-plan host tools prepare or manage optional workflow artifacts around normalized build source. They are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities.
+
 ## MCP tools (Claude Code)
 
 Total tools: 20

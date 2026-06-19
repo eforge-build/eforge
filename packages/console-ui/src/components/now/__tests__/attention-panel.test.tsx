@@ -44,6 +44,29 @@ describe('AttentionPanel', () => {
     });
   });
 
+  it('renders dispatch blocker text and passes dispatchFailure through Recover payloads', () => {
+    const onRecover = vi.fn();
+    const dispatchFailure = { reason: 'stack_parent is required', stage: 'stacking-validation' as const, timestamp: '2026-01-01T00:00:00.000Z' };
+    render(
+      <AttentionPanel
+        items={[{ ...failedItem(), detail: 'Dispatch blocked before session:start (stacking-validation): stack_parent is required', recovery: { ...failedItem().recovery!, dispatchFailure } }]}
+        hiddenCount={0}
+        title="Needs attention"
+        onRecover={onRecover}
+      />,
+    );
+
+    expect(screen.getByText(/Dispatch blocked before session:start \(stacking-validation\): stack_parent is required/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /recover/i }));
+    expect(onRecover).toHaveBeenCalledWith({
+      prdId: 'my-prd',
+      prdTitle: 'My PRD',
+      verdict: 'retry',
+      confidence: 'high',
+      dispatchFailure,
+    });
+  });
+
   it('does not render a Recover button for system items without a recovery payload', () => {
     render(
       <AttentionPanel items={[systemItem()]} hiddenCount={0} onRecover={() => {}} />,

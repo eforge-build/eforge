@@ -29,7 +29,7 @@ async function loadFixture(root: string, modules: Record<string, string>) {
   const opts = await makeTree(root);
   const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
   for (const [name, body] of Object.entries(modules)) await writeModule(resolve(extensions, name), body);
-  return loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+  return loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 }
 
 describe('extension contribution registry runtime', () => {
@@ -92,7 +92,7 @@ describe('extension contribution registry runtime', () => {
     await writeModule(resolve(extensions, 'bundle', 'index.js'), `export default function extension(eforge) {
       eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', frameBundle: { root: 'workstation-assets/board', entrypoint: 'missing.js' } });
     }`);
-    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true } });
 
     const manifest = buildExtensionContributionManifest(result.registry);
 

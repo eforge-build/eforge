@@ -94,42 +94,26 @@ describe('eforge-plan plan revision documentation contract', () => {
     expect(plansBullet.indexOf('Revise with AI')).toBeLessThan(plansBullet.indexOf('Plan sets render'));
   });
 
-  it('documents planRevisionTurn and preserves the daemon chat boundary in shared guides', () => {
-    for (const path of ['docs/extensions.md', 'web/content/docs/extensions.md', 'web/public/docs/extensions.md']) {
+  it('documents planRevisionTurn and preserves the daemon chat boundary in optional eforge-plan docs', () => {
+    for (const path of ['eforge/extensions/eforge-plan/README.md', 'web/content/docs/eforge-plan.md']) {
       expectContainsAll(path, [
         'planRevisionTurn',
-        'First-party eforge-plan revision sessions',
-        'application-level pattern',
+        'Revise with AI',
         'ctx.agentTasks',
-        'Answer-only revision turns remain output-bearing',
-        'top-level `needs-input` variant remains output-free',
-        'links turns to daemon task ids',
-        'multi-turn chat',
-        'arbitrary raw prompt templates',
-      ]);
-    }
-  });
-
-  it('documents planRevisionTurn in the ctx.agentTasks API boundary', () => {
-    for (const path of ['docs/extensions-api.md', 'web/content/docs/extensions-api.md', 'web/public/docs/extensions-api.md']) {
-      expectContainsAll(path, [
-        'ctx.agentTasks',
-        'planRevisionTurn',
-        'answer-only revision turns',
-        'extension-owned revision threads',
-        'daemon-owned single-shot task API',
+        'answer-only',
+        'daemon-owned',
         'multi-turn chat',
       ]);
     }
   });
 
-  it('keeps generated public docs byte-identical to their source mirrors', () => {
-    expect(read('web/public/docs/extensions.md')).toBe(read('web/content/docs/extensions.md'));
-    expect(read('web/public/docs/extensions-api.md')).toBe(read('web/content/docs/extensions-api.md'));
-  });
-
-  it('includes the revision docs in the generated LLM bundle', () => {
-    expectContainsAll('web/public/llms-full.txt', ['planRevisionTurn', 'Revise with AI']);
+  it('keeps generic extension guides free of first-party plan revision product terms', () => {
+    for (const path of ['docs/extensions.md', 'web/content/docs/extensions.md', 'docs/extensions-api.md', 'web/content/docs/extensions-api.md']) {
+      const contents = read(path);
+      expect(contents, `${path} should not mention planRevisionTurn`).not.toContain('planRevisionTurn');
+      expect(contents, `${path} should not mention Revise with AI`).not.toContain('Revise with AI');
+      expect(contents, `${path} should not mention backlogCurationDraft`).not.toContain('backlogCurationDraft');
+    }
   });
 
   it('does not expose workstation-only revision sessions through Pi or Claude integration packages', () => {

@@ -3,7 +3,12 @@ import type { PlanRevisionAnnotation } from '@/types';
 import { buildBlockAnnotationTarget, buildQuoteContext, buildSectionAnnotationTarget, buildSelectionAnnotationTarget, buildWholePlanAnnotationTarget, MAX_CAPTURED_TEXT, MAX_CONTEXT_TEXT, MAX_STEERING_TEXT } from './plan-revision-annotation-targets';
 import { annotationSubmitDisabledReason, openAnnotations, syncSelectedAnnotationIds } from './plan-revision-annotation-view-model';
 
-function keys(value: unknown): string[] { return Object.keys(value as Record<string, unknown>); }
+const brittleTargetKeys = ['offset', 'startOffset', 'endOffset', 'range', 'nodePath', 'selector', 'xpath'];
+
+function allKeys(value: unknown): string[] {
+  if (value === null || typeof value !== 'object') return [];
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) => [key, ...allKeys(nested)]);
+}
 
 const target = buildSectionAnnotationTarget('scope', 'Scope', 'Captured text')!;
 const base: PlanRevisionAnnotation = { annotationId: 'a', targetSession: 's', target, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
@@ -60,7 +65,26 @@ describe('plan revision annotation targets', () => {
     const whole = buildWholePlanAnnotationTarget({ session: 's', topic: 'Topic', status: 'planning', sections: { scope: 'body', 'acceptance criteria': 'done' } })!;
     expect(section).toMatchObject({ kind: 'section', dimension: 'scope' });
     expect(whole).toMatchObject({ kind: 'whole-plan' });
-    for (const key of [...keys(section), ...keys(whole)]) expect(['offset', 'startOffset', 'endOffset', 'range', 'nodePath', 'selector', 'xpath']).not.toContain(key);
+    for (const key of [...allKeys(section), ...allKeys(whole)]) expect(brittleTargetKeys).not.toContain(key);
+  });
+
+  it('omits durable DOM anchors from selection and block targets', () => {
+    const root = document.createElement('section');
+    root.innerHTML = '<p>alpha beta gamma</p><p>second block</p>';
+    document.body.append(root);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    const area = document.createRange();
+    area.setStart(root.querySelector('p')!.firstChild!, 6);
+    area.setEnd(root.querySelector('p')!.firstChild!, 10);
+    selection.addRange(area);
+
+    const selected = buildSelectionAnnotationTarget(selection, root, 'scope', 'Scope selection')!;
+    const block = buildBlockAnnotationTarget(root.querySelectorAll('p')[1] as HTMLElement, root, 'scope', 'Scope block')!;
+
+    expect(selected).toMatchObject({ kind: 'selection', capturedText: 'beta', quoteContext: { exact: 'beta' } });
+    expect(block).toMatchObject({ kind: 'block', capturedText: 'second block', quoteContext: { exact: 'second block' } });
+    for (const key of [...allKeys(selected), ...allKeys(block)]) expect(brittleTargetKeys).not.toContain(key);
   });
 });
 
