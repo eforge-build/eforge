@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockEffectiveCurationRecommendations, mockRecommendations } from '@/fixtures/mock-data';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockEffectiveCurationRecommendations, mockFullAuditBacklogCurationPreview, mockRecommendations } from '@/fixtures/mock-data';
 import type { BacklogCurationPreviewDetails, PlanningTaskWorkflowEntry } from '@/types';
 import { BacklogCurationPreview } from './backlog-curation-preview';
 
@@ -12,6 +12,7 @@ const entry: PlanningTaskWorkflowEntry = {
   selection: {},
   requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
   purpose: 'backlog-curation',
+  scanMode: 'delta',
   sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint,
   createdAt: '2026-06-07T00:30:00.000Z',
 };
@@ -54,7 +55,7 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('Needs-input cases')).toBeTruthy();
     expect(screen.getByText('recommendations stale')).toBeTruthy();
     expect(screen.getByText(/Recommendation source fingerprint drifted/i)).toBeTruthy();
-    expect(screen.getByText('Git delta diagnostics')).toBeTruthy();
+    expect(screen.getByText('Delta git diagnostics')).toBeTruthy();
     expect(screen.getByText('baseline-missing')).toBeTruthy();
     expect(screen.getByText('baseline-unreachable')).toBeTruthy();
     expect(screen.getByText(/coverage fallback/i)).toBeTruthy();
@@ -78,6 +79,22 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getAllByText(/auto-mode/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/planning/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/traceability/).length).toBeGreaterThan(0);
+  });
+
+  it('renders full-audit mode labels, warning, coverage, caps, diagnostics, and evidence chips', () => {
+    renderPreview({ entry: { ...entry, scanMode: 'full-implementation-audit' }, curationPreview: mockFullAuditBacklogCurationPreview });
+
+    expect(screen.getAllByText('Full implementation audit').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/may take longer and use more context/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('Full implementation audit metadata')).toBeTruthy();
+    expect(screen.getByText('Audited items')).toBeTruthy();
+    expect(screen.getByText('6')).toBeTruthy();
+    expect(screen.getByText('File scan cap')).toBeTruthy();
+    expect(screen.getByText('250')).toBeTruthy();
+    expect(screen.getByText('pr-history-unavailable')).toBeTruthy();
+    expect(screen.getByText(/Some pull request metadata was unavailable/)).toBeTruthy();
+    expect(screen.getByText('Git History · strong')).toBeTruthy();
+    expect(screen.getByText('Combined · strong')).toBeTruthy();
   });
 
   it('counts generated recommendations from the server projection instead of raw recommendations', () => {

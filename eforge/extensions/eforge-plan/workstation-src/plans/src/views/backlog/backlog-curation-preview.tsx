@@ -6,8 +6,9 @@ import { getBridge } from '@/bridge';
 import { formatRelativeTime } from '@/lib/format-time';
 import type { BacklogCurationDraft, BacklogCurationPreviewDetails, JsonObject, PlanningTaskWorkflowEntry, RecommendationModel, RecommendationReferenceValidationResult } from '@/types';
 import type { RedraftInput } from './use-planning-task-workflows';
-import { abbreviateFingerprint, curationCounts, curationEvidencePreview, effectiveRecommendationsFromProjection, idLabel, metadataRows, projectionMetadataDisplay, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
+import { abbreviateFingerprint, curationCounts, curationEvidencePreview, curationScanModeLabel, effectiveRecommendationsFromProjection, FULL_AUDIT_WARNING, idLabel, matchFullAuditEvidenceForPatch, metadataRows, normalizeCurationScanMode, projectionMetadataDisplay, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
 import { RecommendationFreshnessBadge, RecommendationFreshnessLine } from '@/components/recommendation-freshness';
+import { BacklogCurationFullAuditPanel, FullAuditEvidenceChips } from './backlog-curation-full-audit-panel';
 import { BacklogCurationGitDeltaPanel } from './backlog-curation-git-delta-panel';
 import { SubBlock } from './sub-block';
 import { focusBoardItem } from '@/lib/focus-board-item';
@@ -30,6 +31,9 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
   const [previewLoading, setPreviewLoading] = React.useState(curationPreview === undefined);
   const effectivePreview = curationPreview ?? loadedPreview ?? undefined;
   const projection = effectivePreview?.recommendationProjection;
+  // --- eforge:region plan-03-workstation-docs ---
+  const scanMode = normalizeCurationScanMode(effectivePreview?.scanMode ?? entry.scanMode);
+  // --- eforge:endregion plan-03-workstation-docs ---
   const displayRecommendations = effectiveRecommendationsFromProjection(projection);
   const projectionMetadata = projectionMetadataDisplay(projection);
   const counts = curationCounts(draft, projection);
@@ -67,7 +71,12 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
     <SubBlock className="mt-3 gap-3 pt-3 text-sm">
       <div className="grid gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Backlog curation preview</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">Backlog curation preview</h3>
+            {/* --- eforge:region plan-03-workstation-docs --- */}
+            <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">{curationScanModeLabel(scanMode)}</span>
+            {/* --- eforge:endregion plan-03-workstation-docs --- */}
+          </div>
           <p className="text-xs text-muted-foreground">Read-only draft from source {abbreviateFingerprint(draft.sourceFingerprint)}{draft.generatedAt ? ` · generated ${formatRelativeTime(draft.generatedAt)}` : ''}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -86,7 +95,13 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           <RecommendationFreshnessLine freshness={effectivePreview.recommendationFreshness} />
         </div>
       )}
+      {/* --- eforge:region plan-03-workstation-docs --- */}
+      {scanMode === 'full-implementation-audit' && <div className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-100">{FULL_AUDIT_WARNING}</div>}
+      {/* --- eforge:endregion plan-03-workstation-docs --- */}
       <BacklogCurationGitDeltaPanel gitDelta={effectivePreview?.gitDelta} />
+      {/* --- eforge:region plan-03-workstation-docs --- */}
+      <BacklogCurationFullAuditPanel audit={effectivePreview?.fullImplementationAudit} />
+      {/* --- eforge:endregion plan-03-workstation-docs --- */}
       {previewLoading && <div className="rounded border border-border bg-card p-2 text-xs text-muted-foreground">Validating curation apply preconditions and effective recommendation projection…</div>}
       {!previewLoading && effectivePreview && !projection && recommendations && <div className="rounded border border-border bg-card p-2 text-xs text-muted-foreground">Effective recommendation projection unavailable; raw generated recommendations are available as provenance only and normal apply remains disabled.</div>}
       {recommendationValidation && <RecommendationValidationWarning validation={recommendationValidation} />}
@@ -103,8 +118,8 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           <summary className="cursor-pointer list-none text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">Review curation details</summary>
           <div className="mt-2 grid gap-3">
             {draft.summary.length > 0 && <ListSection title="Summary" entries={draft.summary} />}
-            <PatchSection title="Item changes" patches={draft.itemChanges} applied={applied} />
-            <PatchSection title="Epic changes" patches={draft.epicChanges} applied={applied} />
+            <PatchSection title="Item changes" patches={draft.itemChanges} applied={applied} fullAudit={effectivePreview?.fullImplementationAudit} />
+            <PatchSection title="Epic changes" patches={draft.epicChanges} applied={applied} fullAudit={effectivePreview?.fullImplementationAudit} />
             {draft.noOpRechecks.length > 0 && (
               <PreviewBlock title="No-op rechecks">
                 <details className="rounded border border-border p-2">
@@ -194,20 +209,23 @@ function ListSection({ title, entries }: { title: string; entries: string[] }) {
 
 type Patch = BacklogCurationDraft['itemChanges'][number] | BacklogCurationDraft['epicChanges'][number];
 
-function PatchSection({ title, patches, applied }: { title: string; patches: Patch[]; applied: boolean }) {
+function PatchSection({ title, patches, applied, fullAudit }: { title: string; patches: Patch[]; applied: boolean; fullAudit?: BacklogCurationPreviewDetails['fullImplementationAudit'] }) {
   if (patches.length === 0) return null;
   return (
     <PreviewBlock title={title}>
       <div className="grid gap-2">
-        {patches.map((patch) => <PatchCard key={`${patch.kind}:${patch.id}`} patch={patch} applied={applied} />)}
+        {patches.map((patch) => <PatchCard key={`${patch.kind}:${patch.id}`} patch={patch} applied={applied} fullAudit={fullAudit} />)}
       </div>
     </PreviewBlock>
   );
 }
 
-function PatchCard({ patch, applied }: { patch: Patch; applied: boolean }) {
+function PatchCard({ patch, applied, fullAudit }: { patch: Patch; applied: boolean; fullAudit?: BacklogCurationPreviewDetails['fullImplementationAudit'] }) {
   const rows = metadataRows(patch.metadata as Record<string, unknown> | undefined);
   const evidence = curationEvidencePreview(patch.evidence ?? []);
+  // --- eforge:region plan-03-workstation-docs ---
+  const fullAuditEvidence = matchFullAuditEvidenceForPatch(fullAudit, patch);
+  // --- eforge:endregion plan-03-workstation-docs ---
   return (
     <article className="grid gap-2 rounded border border-border p-2">
       <div>
@@ -216,10 +234,13 @@ function PatchCard({ patch, applied }: { patch: Patch; applied: boolean }) {
       </div>
       {rows.length > 0 && <dl className="grid gap-1 text-xs">{rows.map((row) => <div key={row.label} className="grid grid-cols-[8rem_1fr] gap-2"><dt className="text-muted-foreground">{row.label}</dt><dd className="text-foreground">{row.value}</dd></div>)}</dl>}
       {patch.sectionOperations && patch.sectionOperations.length > 0 && <div className="grid gap-1">{patch.sectionOperations.map((operation) => <details key={`${operation.heading}:${operation.action}`} className="border-l-2 border-border pl-2"><summary className="cursor-pointer text-xs text-muted-foreground">{sectionOperationLabel(operation.action)} · {operation.heading}</summary><SafeMarkdown markdown={operation.content} /></details>)}</div>}
-      {evidence.labels.length > 0 && (
+      {(evidence.labels.length > 0 || fullAuditEvidence.length > 0) && (
         <div className="grid gap-1 rounded border border-primary/20 bg-primary/5 p-2 text-xs text-muted-foreground">
-          <p>{applied ? 'Applied closure metadata evidence:' : 'Proposed closure metadata evidence in this draft:'}</p>
-          <div className="flex flex-wrap gap-1">{evidence.labels.map((label) => <span key={label} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{label}</span>)}</div>
+          {evidence.labels.length > 0 && <p>{applied ? 'Applied closure metadata evidence:' : 'Proposed closure metadata evidence in this draft:'}</p>}
+          {evidence.labels.length > 0 && <div className="flex flex-wrap gap-1">{evidence.labels.map((label) => <span key={label} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{label}</span>)}</div>}
+          {/* --- eforge:region plan-03-workstation-docs --- */}
+          {fullAuditEvidence.length > 0 && <FullAuditEvidenceChips evidence={fullAuditEvidence} />}
+          {/* --- eforge:endregion plan-03-workstation-docs --- */}
           {evidence.prIds.length > 0 && <p>PR identifiers: {evidence.prIds.join(', ')}</p>}
           {evidence.commitIds.length > 0 && <p>Commit identifiers: {evidence.commitIds.join(', ')}</p>}
         </div>

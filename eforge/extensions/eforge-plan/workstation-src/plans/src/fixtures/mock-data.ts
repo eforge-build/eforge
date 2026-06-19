@@ -1,4 +1,4 @@
-import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, BacklogCurationScanMode, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -404,7 +404,7 @@ export const mockBacklogCurationDraft: BacklogCurationDraft = {
 };
 export const mockEffectiveCurationRecommendations: RecommendationModel = { ...mockRecommendations, readyCandidates: [{ ref: 'ready-traceability', itemId: 'traceability', rationale: 'Still ready after server projection.' }], recommendedNextSequence: [{ ref: 'next-recommendations', itemId: 'recommend-next-work', rationale: 'Still effective after server projection.' }], safeParallelizableGroups: [{ ref: 'planning-foundations', title: 'Planning foundations', itemIds: ['recommend-next-work'], rationale: 'Server projection removed shipped same-draft targets.', recommendedProfile: 'excursion' }] };
 export const mockBacklogCurationPreview = {
-  valid: false, itemChanges: mockBacklogCurationDraft.itemChanges.length, epicChanges: mockBacklogCurationDraft.epicChanges.length, noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length, recommendationFreshness: mockRecommendationFreshnessStale,
+  valid: false, scanMode: 'delta' as const, itemChanges: mockBacklogCurationDraft.itemChanges.length, epicChanges: mockBacklogCurationDraft.epicChanges.length, noOpRechecks: mockBacklogCurationDraft.noOpRechecks.length, recommendationFreshness: mockRecommendationFreshnessStale,
   gitDelta: {
     baseline: { source: 'accepted-analysis-sidecar', commit: '1111111111111111111111111111111111111111', sourceFingerprint: 'old-source-fingerprint', time: '2026-06-06T00:00:00.000Z', taskId: 'task-baseline' }, currentHead: { commit: '2222222222222222222222222222222222222222', sourceFingerprint: 'current-source-fingerprint', time: '2026-06-07T00:30:00.000Z' }, coverage: { kind: 'fallback' as const, message: 'coverage fallback after baseline scan diagnostics' }, caps: { commitScanCount: 200, changedPathCount: 500 }, scannedCommitCount: 42, scannedCommits: [{ hash: '2222222222222222222222222222222222222222' }],
     diagnostics: [{ severity: 'info' as const, code: 'baseline-missing', message: 'Baseline sidecar was missing; using fallback scan.' }, { severity: 'warning' as const, code: 'baseline-unreachable', message: 'Baseline commit was not reachable from HEAD.', commit: '1111111111111111111111111111111111111111' }],
@@ -413,6 +413,28 @@ export const mockBacklogCurationPreview = {
   recommendationProjection: { effectiveRecommendations: mockEffectiveCurationRecommendations, recommendationSummary: { recommendedNextItemIds: ['recommend-next-work'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockEffectiveCurationRecommendations.rationaleAndAssumptions ?? [] }, removed: { itemIds: ['add-import-preview'], epicIds: ['planning'] }, repositioned: [{ itemId: 'recommend-next-work', from: 'readyCandidates', to: 'recommendedNextSequence' }], validation: { valid: false, issues: [{ path: 'safeParallelizableGroups.planning-foundations.itemIds[0]', id: 'recommend-next-work', kind: 'item' as const, reason: 'wrong-lane' as const, status: 'planned', title: 'Maintain next-work recommendations', message: 'Generated recommendation references an item in the wrong lane for this section.' }] } },
   generatedRecommendationValidation: { valid: false, issues: [{ path: 'blockedChains.closed-chain.blockedBy', id: 'closed-dep', kind: 'item' as const, reason: 'closed' as const, status: 'shipped', title: 'Closed dependency', message: 'Generated recommendation references closed item closed-dep.' }] },
 };
+
+// --- eforge:region plan-03-workstation-docs ---
+export const mockFullAuditBacklogCurationPreview = {
+  ...mockBacklogCurationPreview,
+  scanMode: 'full-implementation-audit' as const,
+  valid: true,
+  fullImplementationAudit: {
+    scope: { itemIds: ['auto-mode', 'add-import-preview', 'recommend-next-work', 'stale-idea'], openItemCount: 6 },
+    coverage: { auditedItemCount: 6, currentStateFileCount: 128, gitHistoryCommitCount: 200, pullRequestCount: 12 },
+    caps: { fileScanCount: 250, fileBytes: 1048576, evidencePerItem: 3, pathsPerCategory: 8, excerptBytes: 1200, diagnosticCount: 10, gitCommitScanCount: 200, prEnrichmentCount: 12 },
+    diagnostics: [
+      { severity: 'warning' as const, code: 'pr-history-unavailable', message: 'Some pull request metadata was unavailable; preview uses available git and file evidence.' },
+      { severity: 'info' as const, code: 'source-search-bounded', message: 'Current-state source search stopped at configured caps.' },
+    ],
+    itemSummaries: [
+      { itemId: 'add-import-preview', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'git-history', confidence: 'strong', matchedBy: ['item-id', 'path'], path: 'src/import-preview.ts', excerpt: 'landing row merge commit 1234567890abcdef' }] },
+      { itemId: 'recommend-next-work', candidateIntent: 'shipped', evidenceCount: 2, confidence: 'strong', evidence: [{ source: 'combined', confidence: 'strong', matchedBy: ['item-id', 'pr'], path: 'src/recommendations.ts', excerpt: 'git commit abcdef1234567890 merged via PR #191' }] },
+      { itemId: 'stale-idea', candidateIntent: 'needs-input', evidenceCount: 1, confidence: 'ambiguous', evidence: [{ source: 'code-search', confidence: 'ambiguous', matchedBy: ['title-token'], path: 'docs/cron.md', excerpt: 'cron triggers need product confirmation' }] },
+    ],
+  },
+};
+// --- eforge:endregion plan-03-workstation-docs ---
 
 export const mockBacklogCurationTask: PlanningAgentTaskRecord = {
   taskId: 'task-backlog-curation-ready', kind: TASK_KIND, status: 'completed',
@@ -447,7 +469,8 @@ export const mockPlanningTaskList: PlanningAgentTaskListItem[] = [
   { entry: workflowEntry({ taskId: mockRunningTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.' }), available: true, status: 'running', task: mockRunningTask },
   { entry: workflowEntry({ taskId: mockNeedsInputTask.taskId, derivedRequest: 'Draft a session plan for an ambiguous selection.' }), available: true, status: 'completed', task: mockNeedsInputTask },
   { entry: workflowEntry({ taskId: mockReadyCreationDraftTask.taskId, derivedRequest: 'Draft a session plan for Add import preview.', session: MOCK_CREATION_DRAFT_SESSION }), available: true, status: 'completed', task: mockReadyCreationDraftTask },
-  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask, backlogCurationPreview: mockBacklogCurationPreview },
+  { entry: workflowEntry({ taskId: mockBacklogCurationTask.taskId, derivedRequest: 'Analyze all backlog records for curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode: 'delta', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: mockBacklogCurationTask, backlogCurationPreview: mockBacklogCurationPreview },
+  { entry: workflowEntry({ taskId: 'task-backlog-curation-full-ready', derivedRequest: 'Run a full implementation audit for backlog curation.', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint }), available: true, status: 'completed', task: { ...mockBacklogCurationTask, taskId: 'task-backlog-curation-full-ready' }, backlogCurationPreview: mockFullAuditBacklogCurationPreview },
   { entry: workflowEntry({ taskId: mockFailedTask.taskId, derivedRequest: 'Draft a session plan that failed.' }), available: true, status: 'failed', task: mockFailedTask },
 ];
 
@@ -506,16 +529,21 @@ export function getMockRecommendationsResponse(): GetRecommendationsResponse {
   };
 }
 
-export function analyzeMockBacklog(): AnalyzeAllBacklogResponse {
-  const reusable = listMockPlanningTasks().find((item) => item.entry.purpose === 'backlog-curation' && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
+export function analyzeMockBacklog(input: JsonObject = {}): AnalyzeAllBacklogResponse {
+  const scanMode = parseMockScanMode(input.scanMode);
+  const reusable = listMockPlanningTasks().find((item) => item.entry.purpose === 'backlog-curation' && (item.entry.scanMode ?? 'delta') === scanMode && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
   if (reusable?.task) return { task: reusable.task, entry: reusable.entry, sourceFingerprint: reusable.entry.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint, reused: true };
   const response = pushDynamicTask({
     selection: {},
-    derivedRequest: 'Analyze all backlog records for curation.',
-    idPrefix: 'task-backlog-curation',
-    entryPatch: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint },
+    derivedRequest: scanMode === 'full-implementation-audit' ? 'Run a full implementation audit for backlog curation.' : 'Analyze all backlog records for curation.',
+    idPrefix: scanMode === 'full-implementation-audit' ? 'task-backlog-curation-full' : 'task-backlog-curation',
+    entryPatch: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode, sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint },
   });
   return { ...response, sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint };
+}
+
+function parseMockScanMode(value: unknown): BacklogCurationScanMode {
+  return value === 'full-implementation-audit' ? 'full-implementation-audit' : 'delta';
 }
 
 
@@ -526,7 +554,7 @@ export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 're
     parentTaskId,
     derivedRequest: `${mode === 'retry' ? 'Retry' : 'Redraft'} of ${parentTaskId}`,
     idPrefix: `task-${mode}`,
-    entryPatch: isCuration ? { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', sourceFingerprint: parent.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint } : undefined,
+    entryPatch: isCuration ? { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], purpose: 'backlog-curation', scanMode: parent.scanMode ?? 'delta', sourceFingerprint: parent.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint } : undefined,
   });
 }
 

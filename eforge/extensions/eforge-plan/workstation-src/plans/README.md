@@ -8,7 +8,9 @@ Backlog curation preview and apply data is server-authoritative. The iframe rend
 
 Required preview payload fields for curation UI and fixtures are:
 
+- `scanMode` — the server-selected curation mode. Render `delta` as **Delta curation** and `full-implementation-audit` as **Full implementation audit**; older entries without this field fall back to `delta`.
 - `gitDelta` — baseline/head git-delta coverage, diagnostics, scanned commit counts, caps, and affected item candidates.
+- `fullImplementationAudit` — full-audit coverage, caps, diagnostics, and evidence summaries when `scanMode` is `full-implementation-audit`.
 - `recommendationProjection` — the prospective overlay used by both preview and apply validation.
 - `recommendationProjection.effectiveRecommendations` / `effectiveRecommendations` display counts — the generated recommendations after closed targets are removed and active/planned targets are repositioned or excluded by the server.
 - `recommendationFreshness` — server labels and fingerprint comparison state for `missing`, `fresh`, or `stale`.
@@ -16,6 +18,8 @@ Required preview payload fields for curation UI and fixtures are:
 - Draft rows for item changes, epic changes, no-op rechecks, skipped rows, and needs-input rows.
 
 Render `gitDelta.baseline`, `gitDelta.baseline.commit`, `gitDelta.baseline.time`, `gitDelta.baseline.source`, `gitDelta.currentHead`, `gitDelta.coverage.kind`, diagnostics, scan caps, `gitDelta.scannedCommitCount`, scanned commits, and affected candidates directly. Missing, invalid, unreachable, shallow, and no-git baselines are fallback or unavailable diagnostic coverage states, not complete git-delta coverage. Expected diagnostics include `baseline-missing`, `baseline-invalid-sidecar`, `baseline-unreachable`, `baseline-shallow`, `git-unavailable`, `git-command-failed`, `scan-cap-truncated`, and `pr-enrichment-unavailable`. Optional PR enrichment is represented by server diagnostics such as `pr-enrichment-unavailable`; the workstation must not call `gh` itself.
+
+Full implementation audit previews are server-authoritative as well. Render the mode label and warning copy that the audit may take longer and use more context; it is comprehensive over open backlog items but bounded by configured caps and available git/PR history. Display full-audit coverage, caps, diagnostics, evidence source, and confidence only from preview/source metadata. PR/git unavailable diagnostics remain warnings in the preview rather than reasons to hide the result. The browser must not run local git, PR, or source searches and must not replay evidence matching or recommendation overlays.
 
 Render removed targets, repositioned targets, effective recommendation counts, and validation details from `recommendationProjection`. Do not locally replay backlog mutations or locally filter generated recommendations. Normal curation+recommendations apply writes the server-provided effective projection; curation-only apply remains visible as a path that applies backlog records, discards generated recommendations, and leaves those discarded recommendations unfresh.
 
@@ -27,7 +31,7 @@ Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, o
 
 ## Mock bridge and fixtures
 
-Local Vite development uses the mock bridge in `src/bridge.ts` and fixtures in `src/fixtures/mock-data.ts`. Fixtures that exercise curation preview must include server-shaped `gitDelta`, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped/superseded needs-input labels. Mock behavior should model the server contract rather than adding local git scanning, `gh` enrichment, overlay recomputation, or freshness inference.
+Local Vite development uses the mock bridge in `src/bridge.ts` and fixtures in `src/fixtures/mock-data.ts`. Fixtures that exercise curation preview must include server-shaped scan modes, `gitDelta`, full-audit coverage/caps/diagnostics/evidence metadata, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped/superseded needs-input labels. Mock analyze-all behavior should keep active/reused curation tasks separated by scan mode. Mock behavior should model the server contract rather than adding local git scanning, `gh` enrichment, overlay recomputation, or freshness inference.
 
 ## Targeted checks
 

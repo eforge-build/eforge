@@ -10,9 +10,7 @@ import { buildRoadmapContext } from './roadmap-context.js';
 import { readRecommendations, summarizeRecommendations } from './recommendations-store.js';
 import { collectBacklogCurationGitDeltaWithHistory, projectGitDeltaForFingerprint, type BacklogCurationGitDeltaCaps } from './backlog-curation-git-delta.js';
 import { classifyBacklogCurationEvidence, type EvidenceClassificationResult } from './backlog-curation-evidence-classification.js';
-// --- eforge:region plan-02-full-audit-evidence ---
 import { collectBacklogCurationFullImplementationAudit, projectFullImplementationAuditForFingerprint, type FullImplementationAuditResult } from './backlog-curation-full-audit.js';
-// --- eforge:endregion plan-02-full-audit-evidence ---
 // --- eforge:region shipped-evidence-context ---
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
@@ -36,9 +34,7 @@ export interface BacklogCurationSourcePreviewMetadata {
   generatedAt?: string;
   scanMode?: BacklogCurationScanMode;
   gitDelta?: BacklogCurationGitDeltaPreview;
-  // --- eforge:region plan-02-full-audit-evidence ---
   fullImplementationAudit?: BacklogCurationFullImplementationAuditPreview;
-  // --- eforge:endregion plan-02-full-audit-evidence ---
 }
 
 const SOURCE_TEXT_TARGET = 180_000;
@@ -60,9 +56,7 @@ interface BacklogCurationSourceBuildOptions {
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
   gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
-  // --- eforge:region plan-02-full-audit-evidence ---
   fullImplementationAuditCaps?: Record<string, number>;
-  // --- eforge:endregion plan-02-full-audit-evidence ---
 }
 // --- eforge:endregion shipped-evidence-context ---
 
@@ -89,17 +83,13 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
   }
   const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
   const scanMode = parsed.scanMode === undefined ? undefined : safeParseWithSchema(BacklogCurationScanModeSchema, parsed.scanMode);
-  // --- eforge:region plan-02-full-audit-evidence ---
   const fullImplementationAudit = parsed.fullImplementationAudit === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, parsed.fullImplementationAudit);
-  // --- eforge:endregion plan-02-full-audit-evidence ---
   return {
     sourceFingerprint,
     ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
     ...(scanMode?.success && { scanMode: scanMode.data }),
     ...(gitDelta?.success && { gitDelta: gitDelta.data }),
-    // --- eforge:region plan-02-full-audit-evidence ---
     ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
-    // --- eforge:endregion plan-02-full-audit-evidence ---
   };
 }
 

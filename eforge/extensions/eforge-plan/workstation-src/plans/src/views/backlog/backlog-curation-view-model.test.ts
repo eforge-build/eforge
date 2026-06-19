@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mockBacklogCurationDraft, mockBacklogCurationPreview } from '@/fixtures/mock-data';
-import { curationEvidencePreview, effectiveRecommendationsFromProjection, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
+import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockFullAuditBacklogCurationPreview } from '@/fixtures/mock-data';
+import { curationEvidencePreview, curationScanModeLabel, effectiveRecommendationsFromProjection, formatFullAuditCaps, formatFullAuditCoverage, matchFullAuditEvidenceForPatch, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
 
 describe('backlog curation view model', () => {
   it('extracts shipped evidence labels, PR identifiers, and commit identifiers', () => {
@@ -38,5 +38,21 @@ describe('backlog curation view model', () => {
     expect(display?.readyCandidates?.map((entry) => entry.itemId)).toEqual(['traceability']);
     expect(display?.recommendedNextSequence.map((entry) => entry.itemId)).toEqual(['recommend-next-work']);
     expect(recommendationSummaryCounts(display)).toMatchObject({ readyCandidates: 1, nextSequence: 1, safeParallelGroups: 1 });
+  });
+
+  it('formats scan modes and full-audit metadata from server preview details', () => {
+    expect(curationScanModeLabel(undefined)).toBe('Delta curation');
+    expect(curationScanModeLabel('full-implementation-audit')).toBe('Full implementation audit');
+    expect(formatFullAuditCoverage(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'Audited items', value: '6' });
+    expect(formatFullAuditCaps(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'File scan cap', value: '250' });
+  });
+
+  it('matches full-audit evidence summaries to proposed item evidence only from preview metadata', () => {
+    const patch = mockBacklogCurationDraft.itemChanges.find((entry) => entry.id === 'recommend-next-work');
+    expect(patch).toBeTruthy();
+
+    const evidence = matchFullAuditEvidenceForPatch(mockFullAuditBacklogCurationPreview.fullImplementationAudit, patch!);
+
+    expect(evidence).toEqual([expect.objectContaining({ source: 'combined', confidence: 'strong', path: 'src/recommendations.ts' })]);
   });
 });

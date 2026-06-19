@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { open, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import type { BacklogItem, TraceSummary } from './backlog-domain.js';
 import { classifyBacklogCurationEvidence } from './backlog-curation-evidence-classification.js';
@@ -9,6 +9,7 @@ import { boundString, normalizeShippedEvidenceCaps } from './shipped-evidence-li
 import { exactItemIdMatch, normalizeSlug, titleTokenScore, tokenizeTitle } from './shipped-evidence-matching.js';
 import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic } from './shipped-evidence-types.js';
 
+// --- eforge:region public-collection-types ---
 export interface FullImplementationAuditCaps {
   fileScanCount: number;
   fileBytes: number;
@@ -113,7 +114,7 @@ export async function collectBacklogCurationFullImplementationAudit(input: {
     coverage: context.coverage,
     caps: context.caps,
     diagnostics: boundedDiagnostics,
-    itemSummaries: items.map((item) => ({ itemId: item.itemId, candidateIntent: item.candidateIntent, evidenceCount: Array.isArray(item.evidence) ? item.evidence.length : 0, confidence: item.confidence, currentStateEvidenceTruncatedCount: item.currentStateEvidenceTruncatedCount, evidence: item.evidence })),
+    itemSummaries: items.map((item) => ({ itemId: item.itemId, candidateIntent: item.candidateIntent, evidenceCount: Array.isArray(item.evidence) ? item.evidence.length : 0, confidence: item.confidence, currentStateEvidenceTruncatedCount: item.currentStateEvidenceTruncatedCount, evidence: item.evidence, closureCandidates: item.closureCandidates })),
   };
   return { context, preview, fingerprint: projectFullImplementationAuditForFingerprint(context), shippedEvidenceCandidates: closureCandidates, diagnostics: boundedDiagnostics };
 }
@@ -129,7 +130,9 @@ export function projectFullImplementationAuditForFingerprint(value: Record<strin
     diagnostics: (value.diagnostics as Array<Record<string, unknown>>).map((diagnostic) => ({ code: diagnostic.code, severity: diagnostic.severity, path: diagnostic.path })),
   };
 }
+// --- eforge:endregion public-collection-types ---
 
+// --- eforge:region diagnostics-cap-helpers ---
 function normalizeFullAuditCaps(caps: Partial<FullImplementationAuditCaps> | undefined): FullImplementationAuditCaps {
   return {
     fileScanCount: cap(caps?.fileScanCount, DEFAULT_CAPS.fileScanCount, 5_000),
@@ -142,18 +145,19 @@ function normalizeFullAuditCaps(caps: Partial<FullImplementationAuditCaps> | und
     prEnrichmentCount: cap(caps?.prEnrichmentCount, DEFAULT_CAPS.prEnrichmentCount, 25),
   };
 }
+// --- eforge:endregion diagnostics-cap-helpers ---
 
+// --- eforge:region current-state-file-scan ---
 async function collectCurrentStateHits(cwd: string, items: readonly BacklogItem[], caps: FullImplementationAuditCaps, diagnostics: FullImplementationAuditDiagnostic[], signal?: AbortSignal): Promise<CurrentStateHit[]> {
   const files = await listRepositoryFiles(cwd, caps, diagnostics, signal);
   const hits: CurrentStateHit[] = [];
   for (const path of files) {
     throwIfAborted(signal);
-    let text = '';
-    try { text = await readFile(join(cwd, path), 'utf-8'); } catch (error) {
+    let bounded = '';
+    try { bounded = await readFilePrefix(join(cwd, path), caps.fileBytes); } catch (error) {
       diagnostics.push({ code: 'file-read-failed', severity: 'warning', message: `Unable to read ${path}.`, path, detail: error instanceof Error ? error.message : String(error) });
       continue;
     }
-    const bounded = text.length > caps.fileBytes ? text.slice(0, caps.fileBytes) : text;
     for (const item of items) {
       const hit = matchCurrentFile(item, path, bounded, caps);
       if (hit) hits.push(hit);
@@ -164,29 +168,38 @@ async function collectCurrentStateHits(cwd: string, items: readonly BacklogItem[
 
 async function listRepositoryFiles(cwd: string, caps: FullImplementationAuditCaps, diagnostics: FullImplementationAuditDiagnostic[], signal?: AbortSignal): Promise<string[]> {
   const files: string[] = [];
+  let overflow = false;
   async function visit(dir: string): Promise<void> {
-    if (files.length >= caps.fileScanCount) return;
+    if (overflow) return;
     throwIfAborted(signal);
     let entries;
     try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (files.length >= caps.fileScanCount) break;
+      if (overflow) break;
       const abs = join(dir, entry.name);
       const rel = relative(cwd, abs).split(sep).join('/');
       if (shouldExclude(rel, entry.name)) continue;
       if (entry.isDirectory()) await visit(abs);
-      else if (entry.isFile() && isTextLike(rel)) files.push(rel);
+      else if (entry.isFile() && isTextLike(rel)) {
+        if (files.length >= caps.fileScanCount) overflow = true;
+        else files.push(rel);
+      }
     }
   }
   await visit(cwd);
-  const overflow = await hasMoreFiles(cwd, files.length, caps.fileScanCount);
   if (overflow) diagnostics.push({ code: 'file-scan-cap-truncated', severity: 'warning', message: `Current-state file scan capped at ${caps.fileScanCount} files.` });
   return files;
 }
 
-async function hasMoreFiles(cwd: string, count: number, limit: number): Promise<boolean> {
-  if (count < limit) return false;
-  try { return (await stat(cwd)).isDirectory(); } catch { return false; }
+async function readFilePrefix(path: string, limit: number): Promise<string> {
+  const handle = await open(path, 'r');
+  try {
+    const buffer = Buffer.alloc(Math.max(0, limit));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead).toString('utf-8');
+  } finally {
+    await handle.close();
+  }
 }
 
 function matchCurrentFile(item: BacklogItem, path: string, text: string, caps: FullImplementationAuditCaps): CurrentStateHit | undefined {
@@ -202,7 +215,9 @@ function matchCurrentFile(item: BacklogItem, path: string, text: string, caps: F
   const excerpt = excerptFor(text, [...tokenizeTitle(`${item.id} ${item.title}`), item.id], caps.excerptBytes);
   return { itemId: item.id, evidenceSource: categoryForPath(path, item), confidence: matchedBy.includes('item-id') || matchedBy.includes('path') ? 'strong' : 'ambiguous', matchedBy, path, excerpt, score: matchedBy.length * 10 + titleTokenScore(item.title, haystack) * 10 };
 }
+// --- eforge:endregion current-state-file-scan ---
 
+// --- eforge:region item-candidate-projection ---
 function projectAuditItem(item: BacklogItem, hits: CurrentStateHit[], candidates: ShippedEvidenceCandidate[], trace: TraceSummary | undefined, caps: FullImplementationAuditCaps, diagnostics: FullImplementationAuditDiagnostic[]): Record<string, unknown> {
   const closure = candidates.find((candidate) => candidate.confidence === 'strong') ?? candidates[0];
   const pathBoundedHits = boundHitsPerCategoryPath(hits, caps.pathsPerCategory);
@@ -244,6 +259,7 @@ function projectCandidate(candidate: ShippedEvidenceCandidate): Record<string, u
   return {
     itemId: candidate.itemId,
     intent: candidate.intent,
+    source: candidate.evidenceSource,
     evidenceSource: candidate.evidenceSource,
     confidence: candidate.confidence,
     matchedBy: candidate.matchedBy ?? [],
@@ -262,6 +278,9 @@ function guidanceFor(intent: string): string {
   return 'Closure proposal requires the supplied strong evidence prefix and citation.';
 }
 
+// --- eforge:endregion item-candidate-projection ---
+
+// --- eforge:region formatting-redaction-helpers ---
 function categoryForPath(path: string, item: BacklogItem): CurrentStateHit['evidenceSource'] {
   if (exactItemIdMatch(path, item.id) || normalizeSlug(path).includes(normalizeSlug(item.id))) return 'current-file-state';
   const lower = path.toLowerCase();
@@ -296,6 +315,9 @@ function isStaleOrInvalid(item: BacklogItem): boolean {
   return item.tags.some((tag) => /^(stale|invalid|obsolete)$/i.test(tag)) || (typeof item.stale_after === 'string' && item.stale_after.length > 0 && item.stale_after < new Date().toISOString().slice(0, 10));
 }
 
+// --- eforge:endregion formatting-redaction-helpers ---
+
+// --- eforge:region shipped-diagnostics-candidate-helpers ---
 function mapGitDiagnostics(diagnostics: readonly ShippedEvidenceDiagnostic[]): FullImplementationAuditDiagnostic[] {
   return diagnostics.map((diagnostic) => ({ code: diagnostic.code === 'capExceeded' ? 'evidence-cap-truncated' : 'git-history-unavailable', severity: diagnostic.code === 'capExceeded' ? 'info' : 'warning', message: diagnostic.message, detail: diagnostic.detail }));
 }
@@ -321,6 +343,9 @@ function byHit(left: CurrentStateHit, right: CurrentStateHit): number {
   return left.itemId.localeCompare(right.itemId) || right.score - left.score || left.evidenceSource.localeCompare(right.evidenceSource) || left.path.localeCompare(right.path) || left.excerpt.localeCompare(right.excerpt);
 }
 
+// --- eforge:endregion shipped-diagnostics-candidate-helpers ---
+
+// --- eforge:region diagnostics-cap-runtime-helpers ---
 function cap(value: unknown, fallback: number, max: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(Math.floor(value), max) : fallback;
 }
@@ -328,3 +353,4 @@ function cap(value: unknown, fallback: number, max: number): number {
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Backlog curation full implementation audit was aborted.');
 }
+// --- eforge:endregion diagnostics-cap-runtime-helpers ---

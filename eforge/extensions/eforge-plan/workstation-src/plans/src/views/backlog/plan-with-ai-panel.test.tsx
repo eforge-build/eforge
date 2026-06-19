@@ -17,6 +17,7 @@ function curationItem(status: 'running' | 'completed', taskId: string): Planning
       selection: {},
       requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
       purpose: 'backlog-curation',
+      scanMode: 'delta',
       sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint,
       createdAt: '2026-06-07T00:30:00.000Z',
     },
@@ -63,9 +64,9 @@ describe('PlanWithAiPanel curation controls', () => {
     const analyzeAllBacklog = vi.fn(async () => null);
     renderPanel(workflows({ analyzeAllBacklog }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analyze all backlog' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze all backlog (Delta curation)' }));
 
-    expect(analyzeAllBacklog).toHaveBeenCalledOnce();
+    expect(analyzeAllBacklog).toHaveBeenCalledWith('delta');
   });
 
   it('keeps analyze-all disabled while the workflow API is busy or loading', () => {
@@ -74,14 +75,14 @@ describe('PlanWithAiPanel curation controls', () => {
         <PlanWithAiPanel workflows={workflows({ busy: true })} />
       </ToastProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Analyze all backlog' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Analyze all backlog (Delta curation)' })).toHaveProperty('disabled', true);
 
     rerender(
       <ToastProvider>
         <PlanWithAiPanel workflows={workflows({ loading: true })} />
       </ToastProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Analyze all backlog' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Analyze all backlog (Delta curation)' })).toHaveProperty('disabled', true);
   });
 
   it('summarizes running and ready backlog curation tasks in the panel header', () => {
@@ -89,6 +90,17 @@ describe('PlanWithAiPanel curation controls', () => {
 
     expect(screen.getByText('1 backlog curation running')).toBeTruthy();
     expect(screen.getByText('1 curation ready')).toBeTruthy();
-    expect(screen.getAllByText('Backlog curation').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Delta curation').length).toBeGreaterThan(0);
+  });
+
+  it('requires visible full-audit mode selection before starting full implementation audit', () => {
+    const analyzeAllBacklog = vi.fn(async () => null);
+    renderPanel(workflows({ analyzeAllBacklog }));
+
+    fireEvent.click(screen.getByLabelText(/Full implementation audit/));
+
+    expect(screen.getByText(/may take longer and use more context/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze all backlog (Full implementation audit)' }));
+    expect(analyzeAllBacklog).toHaveBeenCalledWith('full-implementation-audit');
   });
 });

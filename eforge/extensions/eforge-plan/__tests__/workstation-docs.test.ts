@@ -55,7 +55,7 @@ describe('eforge-plan workstation developer docs contract', () => {
   it('keeps bridge and fixture docs aligned with server-shaped curation previews', async () => {
     const text = await readDocs();
 
-    expect(text).toMatch(/Fixtures that exercise curation preview must include server-shaped `gitDelta`, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped\/superseded needs-input labels/);
+    expect(text).toMatch(/Fixtures that exercise curation preview must include server-shaped scan modes, `gitDelta`, full-audit coverage\/caps\/diagnostics\/evidence metadata, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped\/superseded needs-input labels/);
     expect(text).toMatch(/Mock behavior should model the server contract/);
     expect(text).toMatch(/rather than adding local git scanning, `gh` enrichment, overlay recomputation, or freshness inference/);
   });

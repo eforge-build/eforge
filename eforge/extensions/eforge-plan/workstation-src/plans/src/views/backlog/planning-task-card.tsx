@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { isGeneratedPlannerPrompt } from '@/lib/plan-title';
 import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry } from '@/types';
+import { curationScanModeLabel } from './backlog-curation-view-model';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -45,7 +46,7 @@ export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRe
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
             {entry.purpose === 'recommendation-refresh' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-text-bright">Recommendation refresh</span>}
-            {entry.purpose === 'backlog-curation' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-text-bright">Backlog curation</span>}
+            {entry.purpose === 'backlog-curation' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-text-bright">{curationScanModeLabel(entry.scanMode)}</span>}
             <TaskIdBadge taskId={entry.taskId} />
             {groupRef && <span className="max-w-full truncate" title={groupRef}>{groupRef}</span>}
             {entry.parentTaskId && <span title={entry.parentTaskId}>↳ {shortTaskId(entry.parentTaskId)}</span>}
