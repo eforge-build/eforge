@@ -2,7 +2,8 @@ name: improve-recovery-failed-enqueue-and-queue-control-ux
 description: Improve recovery guidance patching, failed-enqueue attention and
   re-enqueue, and safer queue hold/pause/cascade/cancel control UX.
 created: 2026-06-19
-status: draft
+status: compiled
+compiled: "2026-06-19"
 mode: expedition
 validate:
   - pnpm type-check
