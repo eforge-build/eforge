@@ -42,21 +42,21 @@ describe('backlog curation view model', () => {
 
   it('formats scan modes and full-audit metadata from server preview details', () => {
     expect(curationScanModeLabel(undefined)).toBe('Delta curation');
-    expect(curationScanModeLabel('full-implementation-audit')).toBe('Full implementation audit');
+    expect(curationScanModeLabel('full-implementation-audit')).toBe('Source-first implementation audit');
     expect(formatFullAuditCoverage(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'Audited items', value: '6' });
     expect(formatFullAuditCaps(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'File scan cap', value: '250' });
   });
 
-  it('matches full-audit evidence summaries to proposed item evidence only from preview metadata', () => {
+  it('matches source-first current-source evidence summaries to proposed closure patches only from preview metadata', () => {
     const patch = mockBacklogCurationDraft.itemChanges.find((entry) => entry.id === 'recommend-next-work');
     expect(patch).toBeTruthy();
 
     const evidence = matchFullAuditEvidenceForPatch(mockFullAuditBacklogCurationPreview.fullImplementationAudit, patch!);
 
-    expect(evidence).toEqual([expect.objectContaining({ source: 'combined', confidence: 'strong' })]);
+    expect(evidence).toEqual([expect.objectContaining({ source: 'current-source', confidence: 'strong', path: 'src/recommendations.ts' })]);
   });
 
-  it('ignores full-audit evidence summaries without displayable source and confidence', () => {
+  it('ignores full-audit closure candidates without displayable source and confidence', () => {
     const audit = {
       itemSummaries: [{
         itemId: 'recommend-next-work',
@@ -65,14 +65,17 @@ describe('backlog curation view model', () => {
           { source: 'combined', confidence: '', path: 'src/recommendations.ts' },
           { source: ' ', confidence: 'strong', path: 'src/recommendations.ts' },
         ],
-        closureCandidates: [{ source: 'git-history', confidence: 'strong', intent: 'shipped', citation: 'https://github.test/acme/repo/pull/191' }],
+        closureCandidates: [
+          { source: 'current-source', evidenceSource: 'current-source', confidence: '', intent: 'shipped', path: 'src/recommendations.ts' },
+          { source: ' ', evidenceSource: 'current-source', confidence: 'strong', intent: 'shipped', path: 'src/recommendations.ts' },
+        ],
       }],
     } as unknown as typeof mockFullAuditBacklogCurationPreview.fullImplementationAudit;
     const patch = mockBacklogCurationDraft.itemChanges.find((entry) => entry.id === 'recommend-next-work');
 
     const evidence = matchFullAuditEvidenceForPatch(audit, patch!);
 
-    expect(evidence).toEqual([{ source: 'git-history', confidence: 'strong', path: undefined, excerpt: undefined, matchedBy: [] }]);
+    expect(evidence).toEqual([]);
   });
 
   it('does not match closed full-audit patches against current-state evidence', () => {

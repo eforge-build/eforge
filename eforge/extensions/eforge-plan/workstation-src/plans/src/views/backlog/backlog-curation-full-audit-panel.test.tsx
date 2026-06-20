@@ -8,10 +8,13 @@ describe('BacklogCurationFullAuditPanel', () => {
   it('renders server-provided coverage, caps, diagnostics, and item summaries', () => {
     render(<BacklogCurationFullAuditPanel audit={mockFullAuditBacklogCurationPreview.fullImplementationAudit} />);
 
-    expect(screen.getByText('Full implementation audit metadata')).toBeTruthy();
-    expect(screen.getByText(/comprehensive over open items but bounded by caps/i)).toBeTruthy();
+    expect(screen.getByText('Source-first audit metadata')).toBeTruthy();
+    expect(screen.getByText(/current source is the only closure authority/i)).toBeTruthy();
     expect(screen.getByText('Audited items')).toBeTruthy();
+    expect(screen.getByText('Item audit concurrency')).toBeTruthy();
     expect(screen.getByText('File scan cap')).toBeTruthy();
+    expect(screen.getAllByText('Current-source citations').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Historical navigation hints (not closure evidence)').length).toBeGreaterThan(0);
     expect(screen.getByText('pr-history-unavailable')).toBeTruthy();
     expect(screen.getByText('source-search-bounded')).toBeTruthy();
     expect(screen.getByText(/audited item summaries/i)).toBeTruthy();

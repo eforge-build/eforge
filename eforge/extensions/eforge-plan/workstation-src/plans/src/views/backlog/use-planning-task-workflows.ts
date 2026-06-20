@@ -18,6 +18,7 @@ const bridge = getBridge();
 const POLL_MS = 1600;
 
 export interface RedraftInput { answers?: string[]; steering?: string; }
+export interface AnalyzeBacklogInput { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number; }
 
 export interface PlanningTaskWorkflowsApi {
   items: PlanningAgentTaskListItem[];
@@ -25,7 +26,7 @@ export interface PlanningTaskWorkflowsApi {
   busy: boolean;
   reload: () => Promise<void>;
   start: (input: JsonObject) => Promise<PlanningAgentTaskRecord | null>;
-  analyzeAllBacklog: (scanMode: BacklogCurationScanMode) => Promise<PlanningAgentTaskRecord | null>;
+  analyzeAllBacklog: (input: AnalyzeBacklogInput) => Promise<PlanningAgentTaskRecord | null>;
   retry: (taskId: string) => Promise<void>;
   redraft: (taskId: string, input: RedraftInput) => Promise<void>;
   cancel: (taskId: string) => Promise<void>;
@@ -122,12 +123,15 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [reload, reportError, toast]);
 
-  const analyzeAllBacklog = React.useCallback(async (scanMode: BacklogCurationScanMode): Promise<PlanningAgentTaskRecord | null> => {
+  const analyzeAllBacklog = React.useCallback(async (input: AnalyzeBacklogInput): Promise<PlanningAgentTaskRecord | null> => {
+    const { scanMode } = input;
     setBusy(true);
     try {
-      const response = await bridge.invokeAction<AnalyzeAllBacklogResponse>('analyze-all-backlog', { scanMode });
-      const modeLabel = scanMode === 'full-implementation-audit' ? 'full implementation audit' : 'delta curation';
-      toast.push(`${response.reused ? 'Reusing' : 'Started'} ${modeLabel} backlog curation task ${response.task.taskId}.`, 'success');
+      const payload: JsonObject = scanMode === 'full-implementation-audit' && input.itemAuditConcurrency !== undefined ? { scanMode, itemAuditConcurrency: input.itemAuditConcurrency } : { scanMode };
+      const response = await bridge.invokeAction<AnalyzeAllBacklogResponse>('analyze-all-backlog', payload);
+      const modeLabel = scanMode === 'full-implementation-audit' ? 'source-first implementation audit' : 'delta curation';
+      const concurrencyText = scanMode === 'full-implementation-audit' && input.itemAuditConcurrency !== undefined ? ` with concurrency ${input.itemAuditConcurrency}` : '';
+      toast.push(`${response.reused ? 'Reusing' : 'Started'} ${modeLabel}${concurrencyText} backlog curation task ${response.task.taskId}.`, 'success');
       await reload();
       return response.task;
     } catch (caught) {

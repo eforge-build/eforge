@@ -520,6 +520,15 @@ describe('backlog curation apply', () => {
       });
 
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+      const mixedHistoricalEvidenceTask = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'rocket-launcher', precondition: { kind: 'item', id: 'rocket-launcher', bodySha256: shippedSnapshot!.bodySha256, recordSha256: shippedSnapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Do not mix historical hints into source-first closure evidence.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/rocket-launcher.ts and src/rocket-entry.ts`, `${SHIPPED_LIFECYCLE_EVIDENCE_PREFIX} historical lifecycle hint`] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+      const mixedPreview = await previewBacklogCurationDraftFromTask(cwd, mixedHistoricalEvidenceTask, entry);
+      expect(mixedPreview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringMatching(/matching shipped evidence prefix/i) })]);
+      await expect(applyBacklogCurationDraftFromTask(cwd, mixedHistoricalEvidenceTask, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching shipped evidence prefix/i);
+
       const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
       const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 

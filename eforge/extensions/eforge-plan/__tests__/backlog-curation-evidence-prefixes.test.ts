@@ -24,6 +24,11 @@ describe('backlog curation evidence prefixes', () => {
     expect(validateClosedStatusEvidencePrefix('superseded', [`${SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX}src/widget.ts`], { allowCurrentSource: true })).toBe(true);
   });
 
+  it('rejects source-first closure evidence mixed with historical navigation hints', () => {
+    expect(validateClosedStatusEvidencePrefix('shipped', [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX}src/widget.ts`, `${SHIPPED_LIFECYCLE_EVIDENCE_PREFIX}trace`], { allowCurrentSource: true })).toBe(false);
+    expect(validateClosedStatusEvidencePrefix('superseded', [`${SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX}src/widget.ts`, `${SUPERSEDED_GIT_PR_EVIDENCE_PREFIX}git`], { allowCurrentSource: true })).toBe(false);
+  });
+
   it('rejects mixed valid plus ambiguous or opposite closure evidence', () => {
     expect(validateClosedStatusEvidencePrefix('shipped', [`${SHIPPED_GIT_PR_EVIDENCE_PREFIX}git`, `${AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX}ask`])).toBe(false);
     expect(validateClosedStatusEvidencePrefix('shipped', [`${SHIPPED_GIT_PR_EVIDENCE_PREFIX}git`, `${SUPERSEDED_GIT_PR_EVIDENCE_PREFIX}git`])).toBe(false);

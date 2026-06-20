@@ -128,7 +128,7 @@ function concurrencyForScanMode(scanMode: BacklogCurationScanMode, value: unknow
 
 function analyzeAllTopicForScanMode(scanMode: BacklogCurationScanMode): string {
   return scanMode === 'full-implementation-audit'
-    ? 'Analyze and curate all open eforge-plan backlog records using full implementation audit mode.'
+    ? 'Analyze and curate all open eforge-plan backlog records using Source-first implementation audit.'
     : ANALYZE_ALL_TOPIC;
 }
 

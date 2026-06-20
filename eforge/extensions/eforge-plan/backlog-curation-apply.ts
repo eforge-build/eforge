@@ -25,23 +25,19 @@ import { DEFAULT_BACKLOG_CURATION_SCAN_MODE, type BacklogCurationApplyDetails, t
 import { readBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { RecommendationBlockedChainSchema, RecommendationItemRefSchema, RecommendationProfileSchema } from './schema.js';
 import type { BacklogRecommendationModel } from './schema.js';
-
 interface PlanningAgentTaskRecordLike {
   taskId: string;
   kind: string;
   status: string;
   result?: unknown;
 }
-
 type Draft = ReturnType<typeof parseDraft>;
 type ItemPatch = Draft['itemChanges'][number];
 type EpicPatch = Draft['epicChanges'][number];
 type Recheck = Draft['noOpRechecks'][number];
 type Patch = ItemPatch | EpicPatch;
-
 type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
-
 // --- eforge:region apply-entrypoint ---
 export async function applyBacklogCurationDraftFromTask(
   cwd: string,
@@ -61,10 +57,8 @@ export async function applyBacklogCurationDraftFromTask(
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
     ? await computeRecommendationSourceFingerprint(cwd)
     : undefined;
-
   for (const entry of prepared.changedItems) await replaceBacklogItemRecord(cwd, entry.snapshot.id, entry.frontmatter, entry.body);
   for (const entry of prepared.changedEpics) await replaceBacklogEpicRecord(cwd, entry.snapshot.id, entry.frontmatter, entry.body);
-
   const changedIds = [...prepared.changedItems.map((entry) => entry.snapshot.id), ...prepared.changedEpics.map((entry) => entry.snapshot.id)];
   let recommendationBlock: BacklogCurationApplyDetails['recommendations'];
   let recommendationStatus: BacklogCurationApplyDetails['recommendationStatus'];
@@ -100,7 +94,6 @@ export async function applyBacklogCurationDraftFromTask(
     ...(skipGeneratedRecommendations && { recommendationsSkipped: { reason: 'apply-curation-only', generatedRecommendationValidation: prepared.generatedRecommendationValidation } }),
   };
 }
-
 export async function previewBacklogCurationDraftFromTask(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined): Promise<BacklogCurationPreviewDetails> {
   try {
     const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: true });
@@ -126,14 +119,12 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
   }
 }
 // --- eforge:endregion apply-entrypoint ---
-
 // --- eforge:region markdown-section-helpers ---
 export function applySectionOperations(body: string, operations: readonly { heading: string; action: 'replace' | 'append'; content: string }[]): string {
   let next = body;
   for (const operation of operations) next = applySectionOperation(next, operation);
   return next;
 }
-
 // --- eforge:endregion markdown-section-helpers ---
 
 // --- eforge:region validation-helpers ---

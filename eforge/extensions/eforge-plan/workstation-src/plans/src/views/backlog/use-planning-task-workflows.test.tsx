@@ -89,7 +89,7 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
 
     let returnedTaskId: string | undefined;
-    await act(async () => { returnedTaskId = (await result.current.analyzeAllBacklog('delta'))?.taskId; });
+    await act(async () => { returnedTaskId = (await result.current.analyzeAllBacklog({ scanMode: 'delta' }))?.taskId; });
 
     expect(returnedTaskId).toBe('task-curation');
     expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'delta' });
@@ -112,9 +112,9 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
 
-    await act(async () => { await result.current.analyzeAllBacklog('full-implementation-audit'); });
+    await act(async () => { await result.current.analyzeAllBacklog({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 6 }); });
 
-    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'full-implementation-audit' });
+    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'full-implementation-audit', itemAuditConcurrency: 6 });
   });
 
   it('reloads task list when polling observes terminal task status', async () => {
