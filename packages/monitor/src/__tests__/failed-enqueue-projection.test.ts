@@ -75,10 +75,13 @@ describe('failed enqueue projection', () => {
     const db = openDatabase(':memory:');
     try {
       insertRunWithEvent(db, { id: 'failed-run', source: 'prd.md', error: 'failed' });
+      insertRunWithEvent(db, { id: 'dismissed-run', source: 'dismissed.md', error: 'dismissed' });
       recordFailedEnqueueResolved(db, 'failed-run', t2, 'reenqueue-run');
+      recordFailedEnqueueResolved(db, 'dismissed-run', t2);
 
       expect(projectFailedEnqueues(db)).toEqual([]);
       expect(projectFailedEnqueues(db, { includeResolved: true })).toMatchObject([
+        { runId: 'dismissed-run', resolvedAt: t2, canReenqueue: false, disabledReason: expect.stringContaining('has been dismissed') },
         { runId: 'failed-run', resolvedAt: t2, canReenqueue: false, disabledReason: expect.stringContaining('already been re-enqueued') },
       ]);
     } finally {

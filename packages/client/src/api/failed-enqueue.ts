@@ -1,6 +1,8 @@
 import { daemonRequest, daemonRequestIfRunning } from '../daemon-client.js';
 import { API_ROUTES, buildPath } from '../routes.js';
 import type {
+  FailedEnqueueDismissRequest,
+  FailedEnqueueDismissResponse,
   FailedEnqueueReenqueueRequest,
   FailedEnqueueReenqueueResponse,
   FailedEnqueuesResponse,
@@ -28,6 +30,24 @@ export function apiReenqueueFailedEnqueueIfRunning(opts: { cwd: string; runId: s
     opts.cwd,
     'POST',
     buildPath(API_ROUTES.failedEnqueueReenqueue, { runId: opts.runId }),
+    opts.body,
+  );
+}
+
+export function apiDismissFailedEnqueue(opts: { cwd: string; runId: string; body: FailedEnqueueDismissRequest }) {
+  return daemonRequest<FailedEnqueueDismissResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.failedEnqueueDismiss, { runId: opts.runId }),
+    opts.body,
+  );
+}
+
+export function apiDismissFailedEnqueueIfRunning(opts: { cwd: string; runId: string; body: FailedEnqueueDismissRequest }) {
+  return daemonRequestIfRunning<FailedEnqueueDismissResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.failedEnqueueDismiss, { runId: opts.runId }),
     opts.body,
   );
 }

@@ -17,17 +17,21 @@ import {
 interface FailedEnqueueRowProps {
   failedEnqueue: FailedEnqueueInfo;
   pending?: boolean;
+  pendingAction?: 'reenqueue' | 'dismiss' | null;
   error?: string;
   onReenqueue?: (failedEnqueue: FailedEnqueueInfo) => Promise<void> | void;
+  onDismiss?: (failedEnqueue: FailedEnqueueInfo) => Promise<void> | void;
 }
 
 function commandLabel(failedEnqueue: FailedEnqueueInfo): string {
   return [failedEnqueue.nextCommand.executable, ...failedEnqueue.nextCommand.args].join(' ');
 }
 
-export function FailedEnqueueRow({ failedEnqueue, pending = false, error, onReenqueue }: FailedEnqueueRowProps) {
-  const [open, setOpen] = React.useState(false);
+export function FailedEnqueueRow({ failedEnqueue, pending = false, pendingAction = null, error, onReenqueue, onDismiss }: FailedEnqueueRowProps) {
+  const [reenqueueOpen, setReenqueueOpen] = React.useState(false);
+  const [dismissOpen, setDismissOpen] = React.useState(false);
   const canReenqueue = failedEnqueue.canReenqueue === true && Boolean(onReenqueue);
+  const hasControls = Boolean(onDismiss) || canReenqueue;
 
   return (
     <li className="flex items-start gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
@@ -50,35 +54,66 @@ export function FailedEnqueueRow({ failedEnqueue, pending = false, error, onReen
         )}
         {error && <p className="mt-1 text-xs text-destructive" role="alert">{error}</p>}
       </div>
-      {canReenqueue && (
-        <AlertDialog open={open} onOpenChange={setOpen}>
-          <AlertDialogTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="shrink-0 text-xs" disabled={pending}>
-              {pending ? 'Re-enqueuing…' : 'Re-enqueue…'}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Re-enqueue failed source?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Re-enqueue {failedEnqueue.sourceLabel} from failed run {failedEnqueue.runId}.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={pending}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void Promise.resolve(onReenqueue?.(failedEnqueue)).then(() => setOpen(false));
-                }}
-              >
-                Re-enqueue
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
+      {hasControls && <div className="flex shrink-0 items-center gap-2">
+        {onDismiss && (
+          <AlertDialog open={dismissOpen} onOpenChange={setDismissOpen}>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="text-xs" disabled={pending}>
+                {pending && pendingAction === 'dismiss' ? 'Dismissing…' : 'Dismiss…'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Dismiss failed enqueue?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Hide this warning for {failedEnqueue.sourceLabel} from failed run {failedEnqueue.runId}. This will not re-enqueue the source or start any work.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={pending}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void Promise.resolve(onDismiss(failedEnqueue)).then(() => setDismissOpen(false));
+                  }}
+                >
+                  Dismiss
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        {canReenqueue && (
+          <AlertDialog open={reenqueueOpen} onOpenChange={setReenqueueOpen}>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="text-xs" disabled={pending}>
+                {pending && pendingAction !== 'dismiss' ? 'Re-enqueuing…' : 'Re-enqueue…'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Re-enqueue failed source?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Re-enqueue {failedEnqueue.sourceLabel} from failed run {failedEnqueue.runId}.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={pending}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void Promise.resolve(onReenqueue?.(failedEnqueue)).then(() => setReenqueueOpen(false));
+                  }}
+                >
+                  Re-enqueue
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>}
     </li>
   );
 }

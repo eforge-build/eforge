@@ -34,5 +34,7 @@
  * failed-enqueue projections, scheduler pause/resume, and recovery guidance.)
  * (v73 is a case 1 bump: failed-enqueue re-enqueue reports spawnedSessionId
  * instead of a misleading run-id-shaped worker-tracker id.)
+ * (v74 is a case 2 bump: Console depends on the failed-enqueue dismiss action
+ * to clear stale attention rows without re-enqueuing work.)
  */
-export const DAEMON_API_VERSION = 73; // v73: failed-enqueue re-enqueue reports spawnedSessionId.
+export const DAEMON_API_VERSION = 74; // v74: failed-enqueue dismiss action clears stale attention rows.

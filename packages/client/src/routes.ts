@@ -116,6 +116,8 @@ export type {
   FailedEnqueuesResponse,
   FailedEnqueueReenqueueRequest,
   FailedEnqueueReenqueueResponse,
+  FailedEnqueueDismissRequest,
+  FailedEnqueueDismissResponse,
 } from './routes/failed-enqueue.js';
 
 export type {

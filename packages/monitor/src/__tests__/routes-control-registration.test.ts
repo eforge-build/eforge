@@ -10,7 +10,7 @@ const sensitive = [
   'queueDependencyOverride', 'queueHold', 'queueUnhold', 'queueCascadePreview', 'queueCascadeApply',
   'recover', 'recoveryGuidancePrepare', 'readRecoverySidecar', 'applyRecovery', 'acceptRecoverySuccessPreview',
   'acceptRecoverySuccess', 'continueRepair', 'continueRepairEligibility', 'queueRecoveryAnalyze', 'queueRecoveryApply',
-  'failedEnqueues', 'failedEnqueueReenqueue',
+  'failedEnqueues', 'failedEnqueueReenqueue', 'failedEnqueueDismiss',
 ];
 const intentionallyUngated: string[] = [];
 
@@ -33,6 +33,7 @@ describe('control monitor route registration', () => {
       'queueCascadeApply',
       'failedEnqueues',
       'failedEnqueueReenqueue',
+      'failedEnqueueDismiss',
       'schedulerPause',
       'schedulerResume',
     ]));

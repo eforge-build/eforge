@@ -12,6 +12,11 @@ interface FailedEnqueueEvidence {
   summary?: string;
 }
 
+interface FailedEnqueueResolution {
+  resolvedAt: string;
+  spawnedSessionId?: string;
+}
+
 export interface FailedEnqueueProjectionOptions { includeResolved?: boolean }
 
 type DaemonFailedEnqueueResolvedEvent = EforgeEvent & { type: 'daemon:failed-enqueue:resolved'; runId: string; resolvedAt: string; spawnedSessionId?: string };
@@ -61,17 +66,22 @@ export function recordFailedEnqueueResolved(db: MonitorDB, runId: string, resolv
   return event;
 }
 
-function resolvedByRunId(db: MonitorDB): Map<string, string> {
-  const result = new Map<string, string>();
+function resolvedByRunId(db: MonitorDB): Map<string, FailedEnqueueResolution> {
+  const result = new Map<string, FailedEnqueueResolution>();
   for (const row of db.getDaemonEventsAfter(0)) {
     if (row.type !== 'daemon:failed-enqueue:resolved') continue;
     const event = hydrateEforgeEvent(row) as DaemonFailedEnqueueResolvedEvent | null;
-    if (event?.type === 'daemon:failed-enqueue:resolved') result.set(event.runId, event.resolvedAt);
+    if (event?.type === 'daemon:failed-enqueue:resolved') {
+      result.set(event.runId, {
+        resolvedAt: event.resolvedAt,
+        ...(event.spawnedSessionId !== undefined ? { spawnedSessionId: event.spawnedSessionId } : {}),
+      });
+    }
   }
   return result;
 }
 
-function projectRun(db: MonitorDB, run: RunInfo, resolvedAt?: string): FailedEnqueueInfo | undefined {
+function projectRun(db: MonitorDB, run: RunInfo, resolution?: FailedEnqueueResolution): FailedEnqueueInfo | undefined {
   const evidence = collectEvidence(db, run);
   const failedAt = evidence.failedAt ?? run.completedAt ?? run.startedAt;
   const failureReason = safeProjectionText(evidence.error ?? evidence.summary ?? 'Enqueue failed', 500);
@@ -83,12 +93,19 @@ function projectRun(db: MonitorDB, run: RunInfo, resolvedAt?: string): FailedEnq
     provenance: { label: hasSource ? 'enqueue:start source' : 'run history' },
     failureReason,
     failedAt,
-    canReenqueue: hasSource && resolvedAt === undefined,
+    canReenqueue: hasSource && resolution === undefined,
     nextCommand: hasSource ? nextCommandForSource() : { executable: 'eforge', args: ['history', 'show', run.id] },
-    ...(resolvedAt !== undefined ? { resolvedAt } : {}),
+    ...(resolution !== undefined ? { resolvedAt: resolution.resolvedAt } : {}),
   };
-  if (!item.canReenqueue) item.disabledReason = resolvedAt !== undefined ? 'This failed enqueue has already been re-enqueued.' : 'Original enqueue source was not recorded; inspect Build history and rerun the original enqueue command.';
+  if (!item.canReenqueue) item.disabledReason = disabledReasonForProjection(resolution);
   return item;
+}
+
+function disabledReasonForProjection(resolution?: FailedEnqueueResolution): string {
+  if (resolution === undefined) return 'Original enqueue source was not recorded; inspect Build history and rerun the original enqueue command.';
+  return resolution.spawnedSessionId !== undefined
+    ? 'This failed enqueue has already been re-enqueued.'
+    : 'This failed enqueue has been dismissed.';
 }
 
 function collectEvidence(db: MonitorDB, run: RunInfo): FailedEnqueueEvidence {

@@ -4,6 +4,8 @@ import * as browser from '../browser.js';
 import * as client from '../index.js';
 import * as eventSchemas from '../events.js';
 import type {
+  FailedEnqueueDismissRequest,
+  FailedEnqueueDismissResponse,
   FailedEnqueueReenqueueRequest,
   FailedEnqueueReenqueueResponse,
   FailedEnqueuesResponse,
@@ -59,6 +61,7 @@ describe('client contract public exports', () => {
     expect(browser.applyQueueCascade).toEqual(expect.any(Function));
     expect(browser.fetchFailedEnqueues).toEqual(expect.any(Function));
     expect(browser.reenqueueFailedEnqueue).toEqual(expect.any(Function));
+    expect(browser.dismissFailedEnqueue).toEqual(expect.any(Function));
     expect(browser.pauseScheduler).toEqual(expect.any(Function));
     expect(browser.resumeScheduler).toEqual(expect.any(Function));
   });
@@ -78,6 +81,8 @@ describe('client contract public exports', () => {
     expect(client.apiGetFailedEnqueuesIfRunning).toEqual(expect.any(Function));
     expect(client.apiReenqueueFailedEnqueue).toEqual(expect.any(Function));
     expect(client.apiReenqueueFailedEnqueueIfRunning).toEqual(expect.any(Function));
+    expect(client.apiDismissFailedEnqueue).toEqual(expect.any(Function));
+    expect(client.apiDismissFailedEnqueueIfRunning).toEqual(expect.any(Function));
     expect(client.apiSchedulerPause).toEqual(expect.any(Function));
     expect(client.apiSchedulerPauseIfRunning).toEqual(expect.any(Function));
     expect(client.apiSchedulerResume).toEqual(expect.any(Function));
@@ -123,14 +128,17 @@ describe('client contract public exports', () => {
     const failedList: FailedEnqueuesResponse = [failedEnqueue];
     const reenqueueRequest: FailedEnqueueReenqueueRequest = { confirm: true };
     const reenqueueResponse: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue, queue: [queueItem], runs: [], spawnedSessionId: 'session-2' };
+    const dismissRequest: FailedEnqueueDismissRequest = { confirm: true };
+    const dismissResponse: FailedEnqueueDismissResponse = { dismissed: true, failedEnqueue: { ...failedEnqueue, canReenqueue: false, resolvedAt: '2026-06-19T11:00:00.000Z' }, queue: [], runs: [] };
     const pauseResponse: SchedulerPauseResponse = { enabled: true, watcher: { running: false, pid: null, sessionId: null } };
     const resumeResponse: SchedulerResumeResponse = pauseResponse;
 
-    expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, resumeResponse }).toMatchObject({
+    expect({ recoveryResponse, holdRequest, holdResponse, unholdRequest, unholdResponse, previewRequest, applyResponse, failedList, reenqueueRequest, reenqueueResponse, dismissRequest, dismissResponse, resumeResponse }).toMatchObject({
       recoveryResponse: { plans: [{ status: 'already-current' }] },
       holdResponse: { item: { capabilities } },
       applyResponse: { target: { status: 'removed' } },
       reenqueueResponse: { spawnedSessionId: 'session-2' },
+      dismissResponse: { dismissed: true },
       resumeResponse: pauseResponse,
     });
   });
@@ -142,10 +150,10 @@ describe('client contract public exports', () => {
     expect(eventSchemas.FailedEnqueueInfoSchema).toBeDefined();
   });
 
-  it('bumps the daemon API version for failed-enqueue re-enqueue contract changes', () => {
-    expect(client.DAEMON_API_VERSION).toBe(73);
-    expect(browser.DAEMON_API_VERSION).toBe(73);
+  it('bumps the daemon API version for failed-enqueue dismiss contract changes', () => {
+    expect(client.DAEMON_API_VERSION).toBe(74);
+    expect(browser.DAEMON_API_VERSION).toBe(74);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('failed-enqueue re-enqueue reports spawnedSessionId');
+    expect(source).toContain('failed-enqueue dismiss action');
   });
 });
