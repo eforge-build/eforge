@@ -11,7 +11,7 @@ import {
 import type { PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
 
 const ANALYZE_ALL_TOPIC = 'Analyze and curate all open eforge-plan backlog records.';
-const ANALYZE_ALL_SOURCE_PROVIDER = { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } as const;
+export const BACKLOG_CURATION_SOURCE_PROVIDER = { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource' } as const;
 export const BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS = ['backlogCurationDraft', 'recommendations'] as const;
 const analyzeStartChains = new Map<string, Promise<unknown>>();
 
@@ -19,7 +19,7 @@ type AnalyzeAllStartRequest = {
   kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
   input: {
     topic: string;
-    sourceProvider: typeof ANALYZE_ALL_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode } };
+    sourceProvider: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode } };
     requestedOutputSections: typeof BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS;
     includeRoadmap: true;
   };
@@ -85,7 +85,7 @@ async function startBacklogCurationTask(ctx: ExtensionActionContext, scanMode: B
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
       topic: analyzeAllTopicForScanMode(scanMode),
-      sourceProvider: { ...ANALYZE_ALL_SOURCE_PROVIDER, input: { scanMode } },
+      sourceProvider: { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { scanMode } },
       requestedOutputSections: BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS,
       includeRoadmap: true,
     },

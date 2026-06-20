@@ -16,7 +16,8 @@ import {
   removePlanningTaskWorkflowEntry,
 } from './planning-task-workflow-store.js';
 import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
-import { buildBacklogCurationSource, buildBacklogCurationRedraftContext, writeBacklogCurationSourcePreviewMetadata, type BacklogCurationSourceBuild } from './backlog-curation-source.js';
+import { buildBacklogCurationRedraftContext } from './backlog-curation-source.js';
+import { BACKLOG_CURATION_SOURCE_PROVIDER } from './backlog-curation-actions.js';
 import { normalizeBacklogCurationScanMode, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
@@ -202,13 +203,19 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
   async handler(input, ctx) {
     throwIfAborted(ctx.signal);
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'retry');
+    if (isBacklogCurationWorkflowEntry(parent)) {
+      const scanMode = normalizeBacklogCurationScanMode(parent.scanMode);
+      return await startLinkedTask(ctx, {
+        parent,
+        derivedGoal: parent.derivedRequest,
+        sourceProvider: backlogCurationSourceProviderInput(scanMode),
+        requestedOutputSections: parent.requestedOutputSections,
+      });
+    }
     const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
       ? await buildRecommendationRefreshSource(ctx.cwd)
-      : isBacklogCurationWorkflowEntry(parent)
-        ? await buildBacklogCurationSource(ctx.cwd, undefined, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode), signal: ctx.signal })
-        : undefined;
+      : undefined;
     throwIfAborted(ctx.signal);
-    if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
     const derivedGoal = workflowSource === undefined ? explicitOrPreservedGoal(input.userGoal, parent, context!) : parent.derivedRequest;
@@ -239,13 +246,19 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     const redraft = isBacklogCurationWorkflowEntry(parent)
       ? buildBacklogCurationRedraftContext(parent.taskId, completedTaskResult(previous.task), input)
       : buildRedraftContext(parent, previous.task, input);
+    if (isBacklogCurationWorkflowEntry(parent)) {
+      const scanMode = normalizeBacklogCurationScanMode(parent.scanMode);
+      return await startLinkedTask(ctx, {
+        parent,
+        derivedGoal: parent.derivedRequest,
+        sourceProvider: backlogCurationSourceProviderInput(scanMode, redraft),
+        requestedOutputSections: parent.requestedOutputSections,
+      });
+    }
     const workflowSource = isRecommendationRefreshWorkflowEntry(parent)
       ? await buildRecommendationRefreshSource(ctx.cwd, redraft)
-      : isBacklogCurationWorkflowEntry(parent)
-        ? await buildBacklogCurationSource(ctx.cwd, redraft, { scanMode: normalizeBacklogCurationScanMode(parent.scanMode), signal: ctx.signal })
-        : undefined;
+      : undefined;
     throwIfAborted(ctx.signal);
-    if (workflowSource !== undefined && isBacklogCurationWorkflowEntry(parent)) await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, workflowSource as BacklogCurationSourceBuild);
     const context = workflowSource === undefined ? await preparePlannerContext(ctx.cwd, plannerSelection(parent)) : undefined;
     throwIfAborted(ctx.signal);
     const derivedGoal = workflowSource === undefined ? explicitOrPreservedGoal(undefined, parent, context!) : parent.derivedRequest;
@@ -278,7 +291,8 @@ export const applyPlanningAgentTaskResultAction = defineExtensionAction({
 interface StartLinkedTaskParams {
   parent: PlanningTaskWorkflowEntry;
   derivedGoal: string;
-  sourceText: string;
+  sourceText?: string;
+  sourceProvider?: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode; redraft?: Record<string, unknown> } };
   sourceFingerprint?: string;
   requestedOutputSections: RequestedOutputSections;
 }
@@ -291,7 +305,8 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
       topic: params.derivedGoal,
-      sourceText: params.sourceText,
+      ...(params.sourceText !== undefined && { sourceText: params.sourceText }),
+      ...(params.sourceProvider !== undefined && { sourceProvider: params.sourceProvider }),
       ...(parent.session !== undefined && { session: parent.session }),
       ...(parent.planningType !== undefined && { planningType: parent.planningType }),
       ...(parent.planningDepth !== undefined && { planningDepth: parent.planningDepth }),
@@ -313,7 +328,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     includeRoadmap: parent.includeRoadmap,
     purpose: isRecommendationRefreshWorkflowEntry(parent) || isBacklogCurationWorkflowEntry(parent) ? parent.purpose : undefined,
     scanMode: isBacklogCurationWorkflowEntry(parent) ? normalizeBacklogCurationScanMode(parent.scanMode) : undefined,
-    sourceFingerprint: params.sourceFingerprint ?? parent.sourceFingerprint,
+    sourceFingerprint: params.sourceFingerprint ?? (params.sourceProvider === undefined ? parent.sourceFingerprint : undefined),
   }));
   return toJsonSafeObject({ task: response.task, entry });
 }
@@ -353,6 +368,10 @@ interface BuildEntryParams {
   purpose?: PlanningTaskWorkflowEntry['purpose'];
   scanMode?: BacklogCurationScanMode;
   sourceFingerprint?: string;
+}
+
+function backlogCurationSourceProviderInput(scanMode: BacklogCurationScanMode, redraft?: Record<string, unknown>): typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode; redraft?: Record<string, unknown> } } {
+  return { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { scanMode, ...(redraft !== undefined && { redraft }) } };
 }
 
 function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
