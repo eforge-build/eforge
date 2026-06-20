@@ -2,7 +2,7 @@
  * End-to-end tests for POST /api/recover/apply.
  *
  * Verifies the in-process synchronous apply route:
- * - retry happy-path: PRD moved to queue, sidecars removed (filesystem-only — commitSha:""), correct response
+ * - retry happy-path: guidance patched, PRD moved to queue, sidecars removed, correct response
  * - abandon happy-path: PRD and sidecars removed (filesystem-only — commitSha:"")
  * - missing sidecar JSON → 404 with descriptive error
  * - malformed sidecar JSON → 400 with descriptive error
@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, access, readFile, readdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import {
@@ -49,6 +49,53 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function createFeatureBranchWithArtifacts(cwd: string, setName = 'test-set'): Promise<void> {
+  execFileSync('git', ['switch', '-c', `eforge/${setName}`], { cwd });
+  const planDir = join(cwd, 'eforge', 'plans', setName);
+  await mkdir(planDir, { recursive: true });
+  await writeFile(
+    join(planDir, 'orchestration.yaml'),
+    `name: ${setName}
+description: Recovery route fixture
+base_branch: main
+mode: excursion
+validate: []
+plans:
+  - id: plan-01
+    name: Plan 01
+    depends_on: []
+    branch: ${setName}/plan-01
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile: []
+  defaultBuild: []
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: recovery
+`,
+  );
+  await writeFile(join(planDir, 'plan-01.md'), '# Plan 01\n\nImplementation plan.\n');
+  execFileSync('git', ['add', 'eforge'], { cwd });
+  execFileSync('git', ['commit', '-m', 'plan: compiled artifacts'], { cwd });
+  execFileSync('git', ['switch', 'main'], { cwd });
+}
+
+function mergeWorktreePlanPath(cwd: string, setName = 'test-set'): string {
+  return join(dirname(cwd), `${cwd.split('/').pop()}-${setName}-worktrees`, '__merge__', 'eforge', 'plans', setName, 'plan-01.md');
 }
 
 function recoverySidecarFromLegacy(legacy: { generatedAt?: string; summary: Record<string, unknown>; verdict: Record<string, unknown>; applied?: unknown }): Record<string, unknown> {
@@ -228,8 +275,9 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/recover/apply — retry', () => {
-  it('moves PRD to queue, removes sidecars, returns { verdict, commitSha, noAction }', async () => {
+  it('patches guidance, moves PRD to queue, removes sidecars, returns { verdict, commitSha, noAction }', async () => {
     const prdId = 'test-retry-prd';
+    await createFeatureBranchWithArtifacts(tmpDir);
     await seedFailedPrd(tmpDir, prdId, 'retry');
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
@@ -239,11 +287,14 @@ describe('POST /api/recover/apply — retry', () => {
     });
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { verdict: string; commitSha?: string; noAction?: boolean };
+    const data = await res.json() as { verdict: string; commitSha?: string; noAction?: boolean; detail?: string };
     expect(data.verdict).toBe('retry');
     expect(data.noAction).toBe(false);
-    // Filesystem-only — commitSha is empty string (no git commit for queue operations)
-    expect(data.commitSha).toBe('');
+    expect(data.commitSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(data.detail).toMatch(/guidance/i);
+
+    const rootPlan = await readFile(mergeWorktreePlanPath(tmpDir), 'utf-8');
+    expect((rootPlan.match(/^## Recovery Guidance$/gm) ?? [])).toHaveLength(1);
 
     // PRD moved to queue directory
     expect(await pathExists(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
@@ -257,6 +308,7 @@ describe('POST /api/recover/apply — retry', () => {
 
   it('does not spawn any worker', async () => {
     const prdId = 'test-retry-no-spawn';
+    await createFeatureBranchWithArtifacts(tmpDir);
     await seedFailedPrd(tmpDir, prdId, 'retry');
 
     await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
@@ -266,6 +318,22 @@ describe('POST /api/recover/apply — retry', () => {
     });
 
     expect(spawnCalls).toHaveLength(0);
+  });
+
+  it('returns 409 and leaves files unmoved when retry guidance cannot be prepared', async () => {
+    const prdId = 'test-retry-missing-artifacts';
+    await seedFailedPrd(tmpDir, prdId, 'retry');
+
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.applyRecovery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prdId }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', 'failed', `${prdId}.md`))).toBe(true);
+    expect(await pathExists(join(tmpDir, '.eforge', 'queue', `${prdId}.md`))).toBe(false);
+    expect(autoBuildWakeReasons).toEqual([]);
   });
 });
 
@@ -421,7 +489,7 @@ pipeline:
     expect(data.verdict).toBe('continue-repair');
     expect(data.status).toBe('applied');
     expect(data.noAction).toBe(false);
-    expect(data.commitSha).toBe('');
+    expect(data.commitSha).toMatch(/^[0-9a-f]{40}$/);
     expect(data.detail).toMatch(/continue/i);
 
     const queued = await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8');

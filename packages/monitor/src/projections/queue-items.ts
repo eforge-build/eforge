@@ -46,9 +46,20 @@ function buildQueueItem(id: string, fm: Record<string, unknown>, status: string,
   if (typeof fm.priority === 'number') item.priority = fm.priority;
   if (typeof fm.created === 'string') item.created = fm.created;
   if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
+  applyHoldProjection(item, fm);
   if (recovery.recoveryVerdict !== undefined) item.recoveryVerdict = recovery.recoveryVerdict;
   if (recovery.recoveryApplied !== undefined) item.recoveryApplied = recovery.recoveryApplied;
   return item;
+}
+
+export function applyHoldProjection(item: QueueItem, fm: Record<string, unknown>): void {
+  if (fm.held === true) {
+    item.hold = {
+      held: true,
+      ...(typeof fm.hold_reason === 'string' ? { reason: fm.hold_reason } : {}),
+      ...(typeof fm.held_at === 'string' ? { heldAt: fm.held_at } : {}),
+    };
+  }
 }
 
 function postProcessQueueDependsOn(items: QueueItem[]): void {

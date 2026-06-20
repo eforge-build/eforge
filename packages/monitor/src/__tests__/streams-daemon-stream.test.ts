@@ -94,7 +94,7 @@ describe('daemon stream module', () => {
     const db = tempDb();
     const id = insertDaemon(db);
     const context = await createMonitorContext(db);
-    const hello = buildDaemonHello(context, { startedAtMs: clock.now(), subscriberCount: 0, clock });
+    const hello = await buildDaemonHello(context, { startedAtMs: clock.now(), subscriberCount: 0, clock });
     expect(hello.cursor).toBe(id);
     expect(hello.snapshot.recentActivity[0].id).toBe(id);
   });
@@ -137,9 +137,9 @@ describe('daemon stream module', () => {
     const db = tempDb();
     const cwd = tempDir();
     const context = await createMonitorContext(db, 0, { cwd });
-    expect(buildDaemonHello(context, { startedAtMs: 0, subscriberCount: 0, clock }).snapshot.stackSyncStatus).toBeUndefined();
+    expect((await buildDaemonHello(context, { startedAtMs: 0, subscriberCount: 0, clock })).snapshot.stackSyncStatus).toBeUndefined();
     mkdirSync(join(cwd, '.eforge', 'stacks'), { recursive: true });
     writeFileSync(join(cwd, '.eforge', 'stacks', 'sync-status.json'), JSON.stringify({ version: 1, current: { id: 'sync-1', startedAt: ts, dryRun: true, restackCandidates: [] } }));
-    expect(buildDaemonHello(context, { startedAtMs: 0, subscriberCount: 0, clock }).snapshot.stackSyncStatus?.current?.id).toBe('sync-1');
+    expect((await buildDaemonHello(context, { startedAtMs: 0, subscriberCount: 0, clock })).snapshot.stackSyncStatus?.current?.id).toBe('sync-1');
   });
 });

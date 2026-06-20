@@ -2,8 +2,12 @@ import type { MonitorContext } from '../context.js';
 import type { RouteDefinition } from '../http/router.js';
 import { createControlPlaneRoutes } from './control-plane.js';
 import { createQueueControlRoutes } from './queue-control.js';
+import { createQueueControlAdvancedRoutes } from './queue-control-advanced.js';
 import { createQueueRecoveryRoutes } from './queue-recovery.js';
 import { createRecoveryRoutes } from './recovery.js';
+import { createRecoveryGuidanceRoutes } from './recovery-guidance.js';
+import { createFailedEnqueueRoutes } from './failed-enqueue.js';
+import { createSchedulerControlRoutes } from './scheduler-control.js';
 import { createContinueRepairRoutes } from './continue-repair.js';
 import { createMonitorDataRoutes } from './monitor-data.js';
 import { createRunDetailRoutes } from './run-details.js';
@@ -18,9 +22,15 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'autoBuildGet',
   'autoBuildSet',
   'schedulerKick',
+  'schedulerPause',
+  'schedulerResume',
   'queuePriority',
   'queueDependencyOverride',
   'queueRemove',
+  'queueHold',
+  'queueUnhold',
+  'queueCascadePreview',
+  'queueCascadeApply',
   'recover',
   'readRecoverySidecar',
   'applyRecovery',
@@ -28,8 +38,11 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'acceptRecoverySuccess',
   'continueRepair',
   'continueRepairEligibility',
+  'recoveryGuidancePrepare',
   'queueRecoveryAnalyze',
   'queueRecoveryApply',
+  'failedEnqueues',
+  'failedEnqueueReenqueue',
   'queue',
   'sessionMetadata',
   'runs',
@@ -45,10 +58,14 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
 export function createControlMonitorRoutes(context: MonitorContext, runtime?: ControlMonitorRuntime): RouteDefinition[] {
   return [
     ...createControlPlaneRoutes(context, runtime),
+    ...createSchedulerControlRoutes(context),
     ...createQueueControlRoutes(context),
+    ...createQueueControlAdvancedRoutes(context),
     ...createRecoveryRoutes(context),
     ...createContinueRepairRoutes(context),
+    ...createRecoveryGuidanceRoutes(context),
     ...createQueueRecoveryRoutes(context),
+    ...createFailedEnqueueRoutes(context),
     ...createMonitorDataRoutes(context),
     ...createRunDetailRoutes(context),
     ...createStreamAttachRoutes(context),

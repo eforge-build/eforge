@@ -119,13 +119,17 @@ async function writeFailedPrd(cwd: string, prdId: string, opts: { profile?: stri
     `---\ntitle: Failed PRD\n${opts.profile ? `profile: ${opts.profile}\n` : ''}---\n\n# Failed PRD\n`,
     'utf-8',
   );
-  if (opts.setName) {
-    await writeFile(
-      join(failedDir, `${prdId}.recovery.json`),
-      JSON.stringify({ schemaVersion: 3, generatedAt: new Date().toISOString(), prdId, setName: opts.setName, verdict: { verdict: 'manual', confidence: 'low', rationale: 'continue-repair metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'continue-repair metadata', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: [], risks: [] }, boundedEvidence: { identity: { prdId, setName: opts.setName, featureBranch: `eforge/${opts.setName}`, baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] } }),
-      'utf-8',
-    );
-  }
+  await writeRecoverySidecar(cwd, prdId, opts.setName ?? prdId);
+}
+
+async function writeRecoverySidecar(cwd: string, prdId: string, setName: string): Promise<void> {
+  const failedDir = join(cwd, '.eforge', 'queue', 'failed');
+  await mkdir(failedDir, { recursive: true });
+  await writeFile(
+    join(failedDir, `${prdId}.recovery.json`),
+    JSON.stringify({ schemaVersion: 3, generatedAt: new Date().toISOString(), prdId, setName, verdict: { verdict: 'manual', confidence: 'low', rationale: 'continue-repair metadata', completedWork: [], remainingWork: [], risks: [] }, report: { operatorSummary: 'continue-repair metadata', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: ['finish plan-01'], risks: [] }, boundedEvidence: { identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: new Date().toISOString() }, plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] } }),
+    'utf-8',
+  );
 }
 
 async function writeSkippedChild(cwd: string, childId: string, parentId: string): Promise<void> {
@@ -321,6 +325,7 @@ describe('POST /api/recover/continue-repair — queued mutation', () => {
     createFeatureBranchWithArtifacts(tmpDir, prdId);
     await mkdir(join(tmpDir, '.eforge', 'queue'), { recursive: true });
     await writeFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), `---\ntitle: Already queued\nresume_mode: compiled\nresume_from: ${prdId}\nresume_set_name: ${prdId}\nresume_feature_branch: eforge/${prdId}\nresume_base_branch: main\n---\n\n# Already queued\n`, 'utf-8');
+    await writeRecoverySidecar(tmpDir, prdId, prdId);
     await setupServer();
 
     const res = await postContinueRepair(server, { prdId });

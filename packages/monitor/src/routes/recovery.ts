@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { API_ROUTES } from '@eforge-build/client';
-import { applyRecoveryAbandon, applyRecoveryContinueRepair, applyRecoveryManual, applyRecoveryRetry } from '@eforge-build/engine/recovery/apply';
+import { applyRecoveryAbandon, applyRecoveryContinueRepair, applyRecoveryManual, applyRecoveryRetry, RecoveryApplyConflictError } from '@eforge-build/engine/recovery/apply';
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
 import { sendJson, sendJsonError } from '../http/response.js';
@@ -51,9 +51,21 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
       try {
         switch (recoveryData.verdict.verdict) {
           case 'retry': {
-            const result = await applyRecoveryRetry(helperOptions);
-            context.notifyQueueMutation('apply-recovery');
-            return sendJson(ctx.res, { verdict: 'retry', commitSha: result.commitSha, noAction: false });
+            try {
+              const result = await applyRecoveryRetry(helperOptions);
+              context.notifyQueueMutation('apply-recovery');
+              return sendJson(ctx.res, {
+                verdict: 'retry',
+                commitSha: result.commitSha,
+                noAction: false,
+                ...(result.detail !== undefined ? { detail: result.detail } : {}),
+              });
+            } catch (err) {
+              if (err instanceof RecoveryApplyConflictError) {
+                return sendJsonError(ctx.res, 409, err.message);
+              }
+              throw err;
+            }
           }
           case 'continue-repair': {
             try {
@@ -67,7 +79,7 @@ export function createRecoveryRoutes(context: MonitorContext): RouteDefinition[]
                 detail: result.detail,
               });
             } catch (err) {
-              if (err instanceof Error && err.name === 'RecoveryApplyConflictError') {
+              if (err instanceof RecoveryApplyConflictError) {
                 return sendJsonError(ctx.res, 409, err.message);
               }
               throw err;

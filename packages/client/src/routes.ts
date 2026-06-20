@@ -86,7 +86,43 @@ export type {
   QueueRemoveResponse,
   QueueDependencyOverrideRequest,
   QueueDependencyOverrideResponse,
+  QueueHoldRequest,
+  QueueHoldResponse,
+  QueueUnholdRequest,
+  QueueUnholdResponse,
+  QueueControlLocation,
+  QueueCascadeOperation,
+  QueueCascadeApplyResultStatus,
+  QueueCascadeStrategy,
+  QueueCascadeEffect,
+  QueueCascadeRunningOwnership,
+  QueueCascadeAffectedItem,
+  QueueCascadeExpectedAffected,
+  QueueCascadePreviewRequest,
+  QueueCascadePreviewResponse,
+  QueueCascadeApplyRequest,
+  QueueCascadeApplyItemResult,
+  QueueCascadeApplyResponse,
 } from './routes/queue-control.js';
+
+export type {
+  RecoveryGuidancePrepareRequest,
+  RecoveryGuidancePatchStatus,
+  RecoveryGuidancePatchedPlan,
+  RecoveryGuidancePrepareResponse,
+} from './routes/recovery-guidance.js';
+
+export type {
+  FailedEnqueuesResponse,
+  FailedEnqueueReenqueueRequest,
+  FailedEnqueueReenqueueResponse,
+} from './routes/failed-enqueue.js';
+
+export type {
+  SchedulerKickResponse,
+  SchedulerPauseResponse,
+  SchedulerResumeResponse,
+} from './routes/scheduler.js';
 
 export type {
   PlaybookRunRequest,

@@ -2,8 +2,10 @@
  * Recovery verdict dispatch helpers — apply the verdict from a recovery sidecar.
  *
  * Each mutating helper performs one atomic filesystem/queue mutation. Queue
- * state is runtime (`.eforge/queue` is gitignored), so no git operations are
- * needed. `manual` is a no-op: it returns without touching the working tree.
+ * state is runtime (`.eforge/queue` is gitignored). Retry and
+ * continue-and-repair may also create a tracked compiled-plan guidance commit
+ * via recovery guidance preparation. `manual` is a no-op: it returns without
+ * touching the working tree.
  *
  * Callers are expected to have already validated the verdict via
  * recoveryVerdictSchema before invoking these helpers.
@@ -15,6 +17,7 @@ import { dirname, join } from 'node:path';
 import type { ModelTracker } from '../model-tracker.js';
 import { prepareFailedPrdForQueuedCompiledResume } from '../resume/queued-resume.js';
 import { readRawAppliedAction, writeRecoveryAppliedMetadata } from './applied-sidecar.js';
+import { prepareRecoveryGuidance, recoveryGuidanceResumeBlocker } from './guidance.js';
 
 export interface ApplyHelperOptions {
   /** Absolute working directory (repo root). */
@@ -67,13 +70,14 @@ async function assertNoConflictingAppliedMarker(
 }
 
 /**
- * Apply a `retry` verdict: move the failed PRD back to the queue and remove both
- * sidecar files. Auto-build will pick up the requeued PRD on the next tick.
- * Filesystem-only — queue state is runtime, not tracked in git.
+ * Apply a `retry` verdict: prepare recovery guidance, then move the failed PRD
+ * back to the queue and remove both sidecar files. Auto-build will pick up the
+ * requeued PRD on the next tick. Queue movement is filesystem-only; guidance
+ * patches may create a tracked commit.
  */
 export async function applyRecoveryRetry(
   options: ApplyHelperOptions,
-): Promise<{ commitSha: string }> {
+): Promise<{ commitSha: string; detail?: string }> {
   const { prdId, queueDir } = options;
   const failedDir = join(queueDir, 'failed');
   const failedPrdPath = join(failedDir, `${prdId}.md`);
@@ -85,15 +89,50 @@ export async function applyRecoveryRetry(
   await assertNoConflictingAppliedMarker(recoveryJsonPath, 'retry');
 
   // Move failed PRD back to queue root without clobbering an existing queued PRD.
-  if (await exists(queuedPrdPath)) {
-    throw new Error(`Queue root already contains ${prdId}.md; refusing to overwrite it during recovery retry.`);
+  await assertRetryQueueMovePreflight({ prdId, failedPrdPath, queuedPrdPath });
+
+  const recoveryGuidance = await prepareRetryRecoveryGuidance(options);
+
+  try {
+    await moveNoOverwrite(failedPrdPath, queuedPrdPath);
+  } catch (err) {
+    if (isQueueMoveConflict(err)) {
+      throw new RecoveryApplyConflictError(queueMoveConflictMessage(prdId));
+    }
+    throw err;
   }
-  await moveNoOverwrite(failedPrdPath, queuedPrdPath);
   // Remove both sidecar files
   await rm(recoveryMdPath, { force: true });
   await rm(recoveryJsonPath, { force: true });
 
-  return { commitSha: '' };
+  const guidanceStatuses = recoveryGuidance.plans.map((plan) => plan.status);
+  const guidanceDetail = guidanceStatuses.length > 0 && guidanceStatuses.every((status) => status === 'patched' || status === 'already-current')
+    ? `Recovery guidance ${guidanceStatuses.includes('patched') ? 'patched' : 'already current'}.`
+    : undefined;
+
+  return {
+    commitSha: recoveryGuidance.commitSha ?? '',
+    ...(guidanceDetail !== undefined ? { detail: guidanceDetail } : {}),
+  };
+}
+
+async function prepareRetryRecoveryGuidance(options: ApplyHelperOptions) {
+  try {
+    const recoveryGuidance = await prepareRecoveryGuidance({
+      cwd: options.cwd,
+      prdId: options.prdId,
+      queueDir: options.queueDir,
+      outputDir: options.outputDir ?? 'eforge/plans',
+      ...(options.dbPath !== undefined ? { dbPath: options.dbPath } : {}),
+      ...(options.trunkBranch !== undefined ? { trunkBranch: options.trunkBranch } : {}),
+    });
+    const blocker = recoveryGuidanceResumeBlocker(recoveryGuidance);
+    if (blocker) throw new RecoveryApplyConflictError(blocker);
+    return recoveryGuidance;
+  } catch (err) {
+    if (err instanceof RecoveryApplyConflictError) throw err;
+    throw new RecoveryApplyConflictError(`Recovery guidance could not be prepared: ${(err as Error).message}`);
+  }
 }
 
 /**
@@ -125,14 +164,20 @@ export async function applyRecoveryContinueRepair(
   await writeRecoveryAppliedMetadata(sidecarJsonPath, {
     action: 'continue-repair',
     appliedAt: new Date().toISOString(),
+    ...(result.recoveryGuidance?.commitSha !== undefined ? { commitSha: result.recoveryGuidance.commitSha } : {}),
   });
 
+  const guidanceStatuses = result.recoveryGuidance?.plans.map((plan) => plan.status) ?? [];
+  const guidanceDetail = guidanceStatuses.length > 0 && guidanceStatuses.every((status) => status === 'patched' || status === 'already-current')
+    ? ` Recovery guidance ${guidanceStatuses.includes('patched') ? 'patched' : 'already current'}.`
+    : '';
+
   return {
-    commitSha: '',
+    commitSha: result.recoveryGuidance?.commitSha ?? '',
     status: result.status,
-    detail: result.status === 'already-queued'
+    detail: `${result.status === 'already-queued'
       ? 'Continue-and-repair was already queued.'
-      : 'Continue-and-repair queued.',
+      : 'Continue-and-repair queued.'}${guidanceDetail}`,
   };
 }
 
@@ -168,6 +213,24 @@ export async function applyRecoveryManual(
   _options: ApplyHelperOptions,
 ): Promise<{ noAction: true }> {
   return { noAction: true };
+}
+
+async function assertRetryQueueMovePreflight(opts: { prdId: string; failedPrdPath: string; queuedPrdPath: string }): Promise<void> {
+  if (!(await exists(opts.failedPrdPath))) {
+    throw new RecoveryApplyConflictError(queueMoveConflictMessage(opts.prdId));
+  }
+  if (await exists(opts.queuedPrdPath)) {
+    throw new RecoveryApplyConflictError(queueMoveConflictMessage(opts.prdId));
+  }
+}
+
+function queueMoveConflictMessage(prdId: string): string {
+  return `Failed PRD ${prdId}.md cannot be safely moved back to the queue; the failed source may be missing or the queue root already contains the PRD.`;
+}
+
+function isQueueMoveConflict(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code;
+  return code === 'EEXIST' || code === 'ENOENT';
 }
 
 async function moveNoOverwrite(source: string, target: string): Promise<void> {

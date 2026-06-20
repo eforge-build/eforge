@@ -77,11 +77,11 @@ export function createQueueControlRoutes(context: MonitorContext): RouteDefiniti
   ];
 }
 
-function queueDir(context: MonitorContext): string {
+export function queueDir(context: MonitorContext): string {
   return context.queuePaths?.queueDir ?? resolve(context.cwd!, context.options.queueDir ?? context.options.config?.prdQueue?.dir ?? '.eforge/queue');
 }
 
-function sendQueueControlError(res: ServerResponse, err: unknown): void {
+export function sendQueueControlError(res: ServerResponse, err: unknown): void {
   if (isQueueControlError(err)) {
     const status = err.kind === 'not-found' ? 404 : err.kind === 'validation' ? 400 : 409;
     return sendJsonError(res, status, err.message);

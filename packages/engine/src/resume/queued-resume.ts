@@ -8,6 +8,8 @@ import {
 import { buildFailureSummary } from '../recovery/failure-summary.js';
 import { tryReadRecoverySidecarProjection } from '../recovery/sidecar-read.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
+import type { RecoveryGuidancePrepareResponse } from '@eforge-build/client';
+import { prepareRecoveryGuidance, recoveryGuidanceResumeBlocker } from '../recovery/guidance.js';
 
 export interface QueuedCompiledResumeMetadata {
   prdId: string;
@@ -31,7 +33,7 @@ export interface PrepareQueuedCompiledResumeOptions extends ResolveQueuedCompile
   checkEligibility?: boolean;
 }
 
-export type PrepareQueuedCompiledResumeResult = RequeueCompiledResumeResult;
+export type PrepareQueuedCompiledResumeResult = RequeueCompiledResumeResult & { recoveryGuidance?: RecoveryGuidancePrepareResponse };
 
 export async function resolveQueuedCompiledResumeMetadata(
   options: ResolveQueuedCompiledResumeMetadataOptions,
@@ -102,7 +104,43 @@ export async function prepareFailedPrdForQueuedCompiledResume(
     }
   }
 
-  return requeueFailedPrdForCompiledResume({
+  let recoveryGuidance: RecoveryGuidancePrepareResponse;
+  try {
+    recoveryGuidance = await prepareRecoveryGuidance({
+      cwd: options.cwd,
+      prdId: metadata.prdId,
+      setName: metadata.setName,
+      featureBranch: metadata.featureBranch,
+      baseBranch: metadata.baseBranch,
+      queueDir: options.queueDir,
+      outputDir: options.outputDir ?? 'eforge/plans',
+      ...(options.dbPath !== undefined ? { dbPath: options.dbPath } : {}),
+      ...(options.trunkBranch !== undefined ? { trunkBranch: options.trunkBranch } : {}),
+    });
+  } catch (err) {
+    return {
+      status: 'blocked',
+      prdId: metadata.prdId,
+      setName: metadata.setName,
+      featureBranch: metadata.featureBranch,
+      baseBranch: metadata.baseBranch,
+      reason: `Recovery guidance could not be prepared: ${(err as Error).message}`,
+    };
+  }
+  const guidanceBlocker = recoveryGuidanceResumeBlocker(recoveryGuidance);
+  if (guidanceBlocker) {
+    return {
+      status: 'blocked',
+      prdId: metadata.prdId,
+      setName: metadata.setName,
+      featureBranch: metadata.featureBranch,
+      baseBranch: metadata.baseBranch,
+      reason: guidanceBlocker,
+      recoveryGuidance,
+    };
+  }
+
+  const requeueResult = await requeueFailedPrdForCompiledResume({
     cwd: options.cwd,
     prdId: metadata.prdId,
     queueDir: options.queueDir,
@@ -111,6 +149,7 @@ export async function prepareFailedPrdForQueuedCompiledResume(
     baseBranch: metadata.baseBranch,
     ...(options.profileOverride !== undefined ? { profileOverride: options.profileOverride } : {}),
   });
+  return { ...requeueResult, recoveryGuidance };
 }
 
 async function readResumeSetName(opts: { prdId: string; failedDir: string }): Promise<string> {

@@ -13,6 +13,10 @@ import {
   updateQueuePriority,
   removeQueueItem,
   overrideQueueDependency,
+  holdQueueItem,
+  unholdQueueItem,
+  previewQueueCascade,
+  applyQueueCascade,
 } from '@eforge-build/client/browser';
 
 interface CapturedRequest {
@@ -107,5 +111,36 @@ describe('browser queue-control helpers — error surfacing', () => {
     await expect(overrideQueueDependency('prd-6', { dependencyId: 'parent' })).rejects.toThrow(
       'Queue dependency override request failed (409): Queue item does not depend on parent',
     );
+  });
+});
+
+
+describe('browser queue-control helpers — hold and cascade route selection', () => {
+  it('holdQueueItem and unholdQueueItem POST JSON bodies to encoded routes', async () => {
+    nextResponse = { ok: true, status: 200, json: { status: 'held', item: { id: 'prd-7', title: 'PRD', status: 'pending', capabilities: { priority: { allowed: true }, remove: { allowed: true }, dependencyOverride: { allowed: true }, hold: { allowed: true }, unhold: { allowed: true }, cascadeRemove: { allowed: true }, cancel: { allowed: true }, cascadeCancel: { allowed: true } } } } };
+    await holdQueueItem('prd/7', { reason: 'manual' });
+    await unholdQueueItem('prd/7');
+    expect(captured[0].method).toBe('POST');
+    expect(captured[0].url).toBe(buildPath(API_ROUTES.queueHold, { prdId: 'prd/7' }));
+    expect(captured[0].body).toEqual({ reason: 'manual' });
+    expect(captured[1].method).toBe('POST');
+    expect(captured[1].url).toBe(buildPath(API_ROUTES.queueUnhold, { prdId: 'prd/7' }));
+    expect(captured[1].body).toEqual({});
+  });
+
+  it('previewQueueCascade and applyQueueCascade POST JSON bodies to encoded routes', async () => {
+    nextResponse = { ok: true, status: 200, json: { target: {}, dependents: [], safeStrategies: [], warnings: [], blockers: [], expectedAffected: { token: 't', prdIds: [] } } };
+    await previewQueueCascade('prd/8', { operation: 'remove' });
+    await applyQueueCascade('prd/8', { operation: 'remove', strategy: 'cascade-dependents', expectedAffected: { token: 't', prdIds: ['prd/8'] }, confirmDependents: true });
+    expect(captured[0].url).toBe(buildPath(API_ROUTES.queueCascadePreview, { prdId: 'prd/8' }));
+    expect(captured[0].body).toEqual({ operation: 'remove' });
+    expect(captured[1].url).toBe(buildPath(API_ROUTES.queueCascadeApply, { prdId: 'prd/8' }));
+    expect(captured[1].body).toEqual({ operation: 'remove', strategy: 'cascade-dependents', expectedAffected: { token: 't', prdIds: ['prd/8'] }, confirmDependents: true });
+  });
+
+  it('surfaces daemon text for hold and cascade errors', async () => {
+    nextResponse = { ok: false, status: 409, text: 'blocked' };
+    await expect(holdQueueItem('prd-9', {})).rejects.toThrow('Queue hold request failed (409): blocked');
+    await expect(previewQueueCascade('prd-9', { operation: 'cancel' })).rejects.toThrow('Queue cascade preview request failed (409): blocked');
   });
 });

@@ -10,6 +10,7 @@ import {
 import type { NowAttentionItem } from '@/lib/selectors/now';
 import { formatQueueDispatchFailure } from '@/lib/selectors/queue-dispatch-failure';
 import { TrustConfirmDialog } from '@/components/extensions/trust-confirm-dialog';
+import { FailedEnqueueRow } from './failed-enqueue-row';
 import { cn } from '@/lib/utils';
 
 interface AttentionPanelProps {
@@ -33,6 +34,11 @@ interface AttentionPanelProps {
     pendingPath: string | null;
     errors: Record<string, string>;
     onTrust: (payload: NonNullable<NowAttentionItem['extensionTrust']>) => void;
+  };
+  failedEnqueueControls?: {
+    pendingRunId: string | null;
+    errorsByRunId: Record<string, string>;
+    onReenqueue: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
   };
 }
 
@@ -181,7 +187,7 @@ function HealthRow({ item }: { item: NowAttentionItem }) {
   );
 }
 
-export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust }: AttentionPanelProps) {
+export function AttentionPanel({ items, hiddenCount, title = 'Attention', onRecover, extensionTrust, failedEnqueueControls }: AttentionPanelProps) {
   if (items.length === 0) return null;
 
   return (
@@ -192,7 +198,15 @@ export function AttentionPanel({ items, hiddenCount, title = 'Attention', onReco
       <CardContent className="px-4 pb-4">
         <ul className="space-y-2">
           {items.map((item) =>
-            item.extensionTrust ? (
+            item.failedEnqueue ? (
+              <FailedEnqueueRow
+                key={item.id}
+                failedEnqueue={item.failedEnqueue}
+                pending={failedEnqueueControls?.pendingRunId === item.failedEnqueue.runId}
+                error={failedEnqueueControls?.errorsByRunId[item.failedEnqueue.runId]}
+                onReenqueue={failedEnqueueControls?.onReenqueue}
+              />
+            ) : item.extensionTrust ? (
               <ExtensionTrustRow key={item.id} item={item} controls={extensionTrust} />
             ) : item.recovery ? (
               <RecoveryRow key={item.id} recovery={item.recovery} onRecover={onRecover} />

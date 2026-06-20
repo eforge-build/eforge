@@ -61,7 +61,7 @@ Agent settings resolve through three layers of granularity: **global** (applies 
 7. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
 8. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
 9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
-10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
+10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - desired daemon auto-build state; scheduler pause is a separate runtime launch gate), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
 11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
 12. **Stacking** (opt-in - "Does this project use stacked PRs with git-spice?") - `stacking.enabled` (default `false`; set to `true` to enable git-spice-backed stacking where artifact branch PRs normally target the parent artifact branch rather than the feature/trunk branch; during landing, eforge can repair a missing integrated parent by choosing trunk as the effective base for an initially untracked child or by retargeting a child that is already tracked, then gates PR submission on provider sync/restack and a remote-base freshness proof), `stacking.gitSpice.command` (optional path to the `git-spice` binary when it is not on `$PATH`, e.g. `/usr/local/bin/git-spice`; set to `gs` only if you use the optional short alias). The `stacking.provider` is always `git-spice` and need not be set.
 
@@ -226,7 +226,7 @@ plugins:
 # PRD queue
 prdQueue:
   dir: eforge/queue
-  autoBuild: true                      # Daemon auto-builds after enqueue
+  autoBuild: true                      # Desired auto-build state; scheduler pause can gate launches
   watchPollIntervalMs: 5000            # Poll interval for watch mode (ms)
 
 # Daemon

@@ -28,7 +28,7 @@ export interface StreamHubOptions {
 
 export interface StreamHub extends Omit<MonitorStreamHub, 'attachSession' | 'attachDaemon' | 'subscriberCount' | 'buildHeartbeatObject'> {
   attachSession(req: IncomingMessage, res: ServerResponse, id: string): void;
-  attachDaemon(req: IncomingMessage, res: ServerResponse): void;
+  attachDaemon(req: IncomingMessage, res: ServerResponse): void | Promise<void>;
   subscriberCount(): number;
   buildHeartbeatObject(): unknown;
   flush(): void;
@@ -132,8 +132,8 @@ export function createStreamHub(context: MonitorContext, options: StreamHubOptio
     attachSession(req: IncomingMessage, res: ServerResponse, id: string): void {
       attachSessionStream({ context, subscribers: sessionSubscribers, req, res, id });
     },
-    attachDaemon(req: IncomingMessage, res: ServerResponse): void {
-      attachDaemonStream({ context, subscribers: daemonSubscribers, req, res, ...heartbeatOptions() });
+    attachDaemon(req: IncomingMessage, res: ServerResponse): Promise<void> {
+      return attachDaemonStream({ context, subscribers: daemonSubscribers, req, res, ...heartbeatOptions() });
     },
     broadcast(eventName: string, data: string | EforgeEvent): void {
       for (const subscriber of sessionSubscribers) {

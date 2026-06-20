@@ -65,6 +65,7 @@ import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from 
 import { inferStackParentFromDependencies } from './queue/stack-parent-inference.js';
 import { applyStackedDispatchValidation } from './queue/dispatch-validation.js';
 import { runQueuedPrdBuild } from './queue/build-single-prd.js';
+import { classifyQueueChildExit, consumeQueuePrdCancellation } from './queue/cancellation.js';
 import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import type { ArtifactRegistry } from './artifacts/registry.js';
@@ -1119,6 +1120,7 @@ export class EforgeEngine {
         const wasAborted = abortController?.signal.aborted === true;
         const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
         const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
+        const operatorCancellation = signal !== null ? await consumeQueuePrdCancellation({ cwd, prdId, expectedSessionId: prdSessionId, ...(child.pid !== undefined ? { expectedPid: child.pid } : {}) }) : null;
         let compiledResume: ReturnType<typeof getCompiledResumeFrontmatter>;
         try { compiledResume = getCompiledResumeFrontmatter(prd.frontmatter); } catch { compiledResume = undefined; }
         const isCompiledResumePrd = compiledResume !== undefined || prd.frontmatter.resume_mode !== undefined || prd.frontmatter.resume_from !== undefined || prd.frontmatter.resume_set_name !== undefined || prd.frontmatter.resume_feature_branch !== undefined || prd.frontmatter.resume_base_branch !== undefined;
@@ -1129,36 +1131,26 @@ export class EforgeEngine {
         let shouldCleanupCompleted = false;
         const shouldRelease = !isAlreadyClaimed;
 
+        const childExit = classifyQueueChildExit({ exitCode, signal, schedulerAborted: wasAborted, operatorCancellation });
+        status = childExit.status;
+        moveTo = childExit.moveTo;
+        shouldCleanupCompleted = childExit.shouldCleanupCompleted;
+
         if (isSignalKill && wasAborted) {
           // User-requested cancel (parent sent SIGTERM in response to abort).
           // Leave the PRD in queue/ so a subsequent run can pick it up;
           // don't mark it failed — that would trip the "don't retry failed
           // builds" behavior.
-          status = 'skipped';
-          moveTo = null;
+        } else if (isSignalKill && operatorCancellation) {
+          // Operator PRD cancellation is classified as skipped and moved to skipped/.
         } else if (isSignalKill) {
           // Unsolicited signal (OOM kill, SIGKILL from outside). Treat as failure.
-          status = 'failed';
-          moveTo = 'failed';
-        } else if (exitCode === QueueExecExitCode.Completed) {
-          status = 'completed';
-          moveTo = null;
-          shouldCleanupCompleted = true;
-        } else if (exitCode === QueueExecExitCode.Skipped) {
-          status = 'skipped';
-          moveTo = 'skipped';
         } else if (isAlreadyClaimed) {
           // Non-terminal: another process holds the claim. Return 'already-claimed'
           // so the scheduler keeps the PRD in running state without emitting a
           // terminal queue:prd:complete. Lock is NOT released (shouldRelease=false above).
-          status = 'already-claimed';
-          moveTo = null;
         } else if (needsRevision) {
-          status = 'skipped';
-          moveTo = null;
-        } else {
-          status = 'failed';
-          moveTo = 'failed';
+          // Needs revision leaves the file in queue/ for manual updates.
         }
 
         try {
@@ -1471,6 +1463,7 @@ export class EforgeEngine {
       for (const prd of orderedPrds) {
         if (abortController?.signal.aborted) break;
         const candidateState = prdState.get(prd.id);
+        if (candidateState?.status === 'pending' && prd.frontmatter.held === true) continue;
         if (candidateState?.status === 'pending') {
           const blockingDeps = candidateState.dependsOn.filter((dep) => isDependencyBlocking(dep, terminalIds, completionRegistry));
           if (blockingDeps.length > 0) {
@@ -2040,13 +2033,14 @@ export class EforgeEngine {
    *
    * Reads the recovery sidecar JSON written by `recover()`, validates the verdict,
    * and dispatches to one of four verdict-specific helpers:
-   *   - retry: moves the failed PRD back to the queue and removes sidecars
-   *   - continue-repair: queues the failed PRD through the compiled-artifact repair path
+   *   - retry: prepares recovery guidance, then moves the failed PRD back to the queue and removes sidecars
+   *   - continue-repair: prepares recovery guidance, then queues the failed PRD through the compiled-artifact repair path
    *   - abandon: removes the failed PRD and both sidecars
    *   - manual: no-op, returns noAction: true
    *
-   * Filesystem-only queue dispatch. Throws on missing sidecar, validation
-   * failure, or continue-and-repair eligibility failure.
+   * Queue mutations are filesystem-only. Retry and continue-and-repair may also
+   * create a tracked compiled-plan guidance commit. Throws on missing sidecar,
+   * validation failure, or retry/continue-and-repair guidance eligibility failure.
    */
   async *applyRecovery(
     prdId: string,
@@ -2107,8 +2101,13 @@ export class EforgeEngine {
 
       switch (verdict.verdict) {
         case 'retry': {
-          const { commitSha } = await applyRecoveryRetry(helperOptions);
-          result = { verdict: 'retry', noAction: false, commitSha };
+          const { commitSha, detail } = await applyRecoveryRetry(helperOptions);
+          result = {
+            verdict: 'retry',
+            noAction: false,
+            commitSha,
+            ...(detail !== undefined ? { detail } : {}),
+          };
           break;
         }
         case 'continue-repair': {
@@ -2260,7 +2259,7 @@ export class EforgeEngine {
 
       // Eligibility check runs inside the phase so failures are correlated with runId.
       const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection, resolveResumePrdContent } = await import('./resume/compiled-build.js');
-      const eligibility = await checkResumeEligibility({
+      let eligibility = await checkResumeEligibility({
         cwd, setName, prdId, mergeWorktreePath,
         outputDir: this.config.plan.outputDir, dbPath,
         trunkBranch: baseBranch ?? this.config.build.trunkBranch,
@@ -2276,6 +2275,53 @@ export class EforgeEngine {
           ...(eligibility.checkedPath ? { checkedPath: eligibility.checkedPath } : {}),
         };
         return;
+      }
+
+      const { prepareRecoveryGuidance, recoveryGuidanceResumeBlocker } = await import('./recovery/guidance.js');
+      let recoveryGuidance: Awaited<ReturnType<typeof prepareRecoveryGuidance>>;
+      try {
+        recoveryGuidance = await prepareRecoveryGuidance({
+          cwd,
+          prdId,
+          setName,
+          featureBranch,
+          queueDir: this.config.prdQueue.dir,
+          outputDir: this.config.plan.outputDir,
+          dbPath,
+          trunkBranch: baseBranch ?? this.config.build.trunkBranch,
+          ...(baseBranch !== undefined ? { baseBranch } : {}),
+        });
+      } catch (err) {
+        const reason = `Recovery guidance could not be prepared: ${(err as Error).message}`;
+        status = 'failed';
+        buildSummary = reason;
+        yield { timestamp: ts(), type: 'build:resume:ineligible', reason };
+        return;
+      }
+      const recoveryGuidanceBlocker = recoveryGuidanceResumeBlocker(recoveryGuidance);
+      if (recoveryGuidanceBlocker) {
+        status = 'failed';
+        buildSummary = recoveryGuidanceBlocker;
+        yield { timestamp: ts(), type: 'build:resume:ineligible', reason: recoveryGuidanceBlocker };
+        return;
+      }
+      if (recoveryGuidance.commitSha !== undefined) {
+        eligibility = await checkResumeEligibility({
+          cwd, setName, prdId, mergeWorktreePath,
+          outputDir: this.config.plan.outputDir, dbPath,
+          trunkBranch: baseBranch ?? this.config.build.trunkBranch,
+          featureBranch,
+          ...(baseBranch !== undefined ? { baseBranch } : {}),
+        });
+        if (!eligibility.eligible) {
+          status = 'failed';
+          buildSummary = eligibility.reason;
+          yield {
+            timestamp: ts(), type: 'build:resume:ineligible', reason: eligibility.reason,
+            ...(eligibility.checkedPath ? { checkedPath: eligibility.checkedPath } : {}),
+          };
+          return;
+        }
       }
 
       const { summary, diffStat, artifactBasePath } = eligibility;

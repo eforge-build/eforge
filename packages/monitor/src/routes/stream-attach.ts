@@ -12,8 +12,8 @@ export function createStreamAttachRoutes(_context: MonitorContext): RouteDefinit
       if (!isSafeRouteId(runId)) return sendLegacyTextParameterFailure(ctx.res, 'Invalid runId');
       ctx.streams.attachSession(ctx.req, ctx.res, runId);
     } }),
-    defineRoute({ routeKey: 'daemonEvents', method: 'GET', pattern: API_ROUTES.daemonEvents, security: readSecurity, handler(ctx) {
-      ctx.streams.attachDaemon(ctx.req, ctx.res);
+    defineRoute({ routeKey: 'daemonEvents', method: 'GET', pattern: API_ROUTES.daemonEvents, security: readSecurity, async handler(ctx) {
+      await ctx.streams.attachDaemon(ctx.req, ctx.res);
     } }),
   ];
 }

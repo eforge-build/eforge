@@ -8,7 +8,7 @@ import { API_ROUTES, buildPath } from '../routes.js';
 import type {
   EnqueueResponse,
   CancelResponse,
-  QueueItem,
+  QueueItemWithCapabilities,
   RunInfo,
   RunSummary,
   RunState,
@@ -23,6 +23,14 @@ import type {
   QueueRemoveResponse,
   QueueDependencyOverrideRequest,
   QueueDependencyOverrideResponse,
+  QueueHoldRequest,
+  QueueHoldResponse,
+  QueueUnholdRequest,
+  QueueUnholdResponse,
+  QueueCascadePreviewRequest,
+  QueueCascadePreviewResponse,
+  QueueCascadeApplyRequest,
+  QueueCascadeApplyResponse,
 } from '../routes.js';
 
 export function apiEnqueue(opts: { cwd: string; body: EnqueueRequest }) {
@@ -50,11 +58,11 @@ export function apiCancelIfRunning(opts: { cwd: string; sessionId: string }) {
 }
 
 export function apiGetQueue(opts: { cwd: string }) {
-  return daemonRequest<QueueItem[]>(opts.cwd, 'GET', API_ROUTES.queue);
+  return daemonRequest<QueueItemWithCapabilities[]>(opts.cwd, 'GET', API_ROUTES.queue);
 }
 
 export function apiGetQueueIfRunning(opts: { cwd: string }) {
-  return daemonRequestIfRunning<QueueItem[]>(opts.cwd, 'GET', API_ROUTES.queue);
+  return daemonRequestIfRunning<QueueItemWithCapabilities[]>(opts.cwd, 'GET', API_ROUTES.queue);
 }
 
 export function apiUpdateQueuePriority(opts: { cwd: string; prdId: string; priority: number }) {
@@ -105,6 +113,79 @@ export function apiOverrideQueueDependencyIfRunning(opts: { cwd: string; prdId: 
     opts.cwd,
     'POST',
     buildPath(API_ROUTES.queueDependencyOverride, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+
+export function apiHoldQueueItem(opts: { cwd: string; prdId: string; body?: QueueHoldRequest }) {
+  return daemonRequest<QueueHoldResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueHold, { prdId: opts.prdId }),
+    opts.body ?? {},
+  );
+}
+
+export function apiHoldQueueItemIfRunning(opts: { cwd: string; prdId: string; body?: QueueHoldRequest }) {
+  return daemonRequestIfRunning<QueueHoldResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueHold, { prdId: opts.prdId }),
+    opts.body ?? {},
+  );
+}
+
+export function apiUnholdQueueItem(opts: { cwd: string; prdId: string; body?: QueueUnholdRequest }) {
+  return daemonRequest<QueueUnholdResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueUnhold, { prdId: opts.prdId }),
+    opts.body ?? {},
+  );
+}
+
+export function apiUnholdQueueItemIfRunning(opts: { cwd: string; prdId: string; body?: QueueUnholdRequest }) {
+  return daemonRequestIfRunning<QueueUnholdResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueUnhold, { prdId: opts.prdId }),
+    opts.body ?? {},
+  );
+}
+
+export function apiPreviewQueueCascade(opts: { cwd: string; prdId: string; body: QueueCascadePreviewRequest }) {
+  return daemonRequest<QueueCascadePreviewResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadePreview, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiPreviewQueueCascadeIfRunning(opts: { cwd: string; prdId: string; body: QueueCascadePreviewRequest }) {
+  return daemonRequestIfRunning<QueueCascadePreviewResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadePreview, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiApplyQueueCascade(opts: { cwd: string; prdId: string; body: QueueCascadeApplyRequest }) {
+  return daemonRequest<QueueCascadeApplyResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadeApply, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiApplyQueueCascadeIfRunning(opts: { cwd: string; prdId: string; body: QueueCascadeApplyRequest }) {
+  return daemonRequestIfRunning<QueueCascadeApplyResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadeApply, { prdId: opts.prdId }),
     opts.body,
   );
 }

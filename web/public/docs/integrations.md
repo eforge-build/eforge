@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The `eforge_auto_build` tool reads or updates the daemon's auto-build mode; Console uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -118,7 +118,7 @@ eforge stack sync
 eforge stack sync --dry-run
 ```
 
-For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands. CLI queue controls match host tools: priority applies to pending/waiting items, removal applies to non-running pending, waiting, failed, and skipped items, running items must be cancelled by session id through the existing cancel route, and failed removal cleans up recovery sidecars.
+For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands. Documented CLI queue controls match host tools: priority applies to pending/waiting items, removal applies to non-running pending, waiting, failed, and skipped items, running queue-item cancellation requires daemon ownership evidence, and failed removal cleans up recovery sidecars.
 
 ## Extension host contributions
 
@@ -128,7 +128,7 @@ Action-backed commands and deep links can be invoked generically through those h
 
 ## Daemon HTTP API
 
-The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; browser/Console integrations should use `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; queue and recovery helpers include hold/unhold, queue cascade preview/apply, failed-enqueue list/re-enqueue, recovery-guidance preparation, and scheduler pause/resume. Browser/Console integrations should use `holdQueueItem`, `unholdQueueItem`, `previewQueueCascade`, `applyQueueCascade`, `fetchFailedEnqueues`, `reenqueueFailedEnqueue`, `prepareRecoveryGuidance`, `pauseScheduler`, `resumeScheduler`, `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 
@@ -179,11 +179,12 @@ The port is deterministically assigned per project in the 4567-4667 range. The s
 
 Console shows:
 - Active and queued builds with live progress
-- Pending/waiting queue row actions to set priority and confirm removal
+- Pending/waiting queue row actions to set priority, hold/unhold rows, show daemon capability disabled reasons, and confirm preview-first remove/cascade flows
+- Header controls that distinguish disabling auto-build from pausing/resuming scheduler launches
 - Per-plan stage breakdown (plan, implement, review, merge, validate)
 - Token usage and cost per build
 - Runtime agent decisions (effort, thinking mode) on stage hover
-- Console Needs attention strip for failed builds, projected dispatch blockers, root-hosted recovery dialog actions with explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
+- Console Needs attention strip for failed builds, projected dispatch blockers, durable failed-enqueue rows with confirmed re-enqueue when source data exists, root-hosted recovery dialog actions with explicit queue-cascade repair controls, and queue refresh, plus untrusted/changed project-team extension alerts with inline Trust/Re-trust actions
 - Extension inventory, status, and diagnostics, plus a System extension management surface (under `/console/system`) for reloading extensions, validating a selected extension, and trusting/re-trusting, untrusting, promoting, and demoting discovered extensions through confirmation-gated actions
 
 The daemon keeps Console available after a build completes so you can inspect results and costs.

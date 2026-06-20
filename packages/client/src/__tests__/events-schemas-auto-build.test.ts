@@ -68,6 +68,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
       autoBuild: { enabled: false, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
       latestHeartbeat: null,
       stackLayers: [],
+      failedEnqueues: [],
     };
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toEqual({
       autoBuild: {
@@ -88,7 +89,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
     });
   });
 
-  it('projects paused desired-enabled transitions as legacy enabled=false', () => {
+  it('projects paused desired-enabled transitions as enabled scheduler pauses', () => {
     const event = {
       type: 'daemon:auto-build:transition',
       timestamp: '2025-01-01T00:00:00.000Z',
@@ -104,14 +105,43 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
       autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
       latestHeartbeat: null,
       stackLayers: [],
+      failedEnqueues: [],
     };
 
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toMatchObject({
       autoBuild: {
-        enabled: false,
+        enabled: true,
         desired: 'enabled',
         mode: 'paused',
+        scheduler: { paused: true },
         reason: 'build failed',
+      },
+    });
+  });
+});
+
+describe('eventRegistry — daemon:auto-build:paused', () => {
+  it('projects compatibility pauses without disabling desired-enabled auto-build', () => {
+    const event = {
+      type: 'daemon:auto-build:paused',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      reason: 'build failed',
+    } as const;
+    const state = {
+      runs: [],
+      queue: [],
+      autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
+      latestHeartbeat: null,
+      stackLayers: [],
+      failedEnqueues: [],
+    };
+
+    expect(eventRegistry['daemon:auto-build:paused'].project?.(event, state)).toMatchObject({
+      autoBuild: {
+        enabled: true,
+        desired: 'enabled',
+        mode: 'paused',
+        scheduler: { paused: true },
       },
     });
   });
@@ -137,6 +167,7 @@ describe('eventRegistry — daemon:auto-build:disabled', () => {
       autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: null } },
       latestHeartbeat: null,
       stackLayers: [],
+      failedEnqueues: [],
     };
     const project = eventRegistry['daemon:auto-build:disabled'].project;
     expect(project?.(event, state)).toEqual({
@@ -200,6 +231,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         reason: 'watcher started',
       },
       stackLayers: [],
+      failedEnqueues: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -236,6 +268,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         scheduler: { alive: true, paused: false, runningCount: 2, limit: 4 },
       },
       stackLayers: [],
+      failedEnqueues: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -284,6 +317,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         mode: 'running',
       },
       stackLayers: [],
+      failedEnqueues: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -317,6 +351,7 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
         mode: 'warming-up',
       },
       stackLayers: [],
+      failedEnqueues: [],
     };
 
     const result = safeParseDaemonStreamSnapshot(snapshot);
@@ -329,6 +364,8 @@ describe('safeParseDaemonStreamSnapshot — enriched autoBuild state', () => {
 });
 
 describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', () => {
+  const capabilities = { priority: { allowed: true }, remove: { allowed: true }, dependencyOverride: { allowed: true }, hold: { allowed: true }, unhold: { allowed: true }, cascadeRemove: { allowed: true }, cancel: { allowed: true }, cascadeCancel: { allowed: true } };
+
   function snapshotWithQueueItem(queueItem: Record<string, unknown>) {
     return {
       cursor: 1,
@@ -343,7 +380,7 @@ describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', 
       },
       recentActivity: [],
       runs: [],
-      queue: [queueItem],
+      queue: [{ capabilities, ...queueItem }],
       sessionMetadata: {},
       autoBuild: {
         enabled: true,
@@ -353,6 +390,7 @@ describe('safeParseDaemonStreamSnapshot — queue-item recoveryApplied marker', 
         scheduler: { alive: true, paused: false },
       },
       stackLayers: [],
+      failedEnqueues: [],
     };
   }
 

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { API_ROUTES, buildPath } from '@eforge-build/client';
-import { loadQueueItems } from '../projections/queue-items.js';
+import { projectQueueForContext } from '../projections/monitor-state.js';
 import { startControlRouteHarness, type ControlRouteHarness } from './routes-control-harness.js';
 
 let harness: ControlRouteHarness | undefined;
@@ -50,7 +50,7 @@ describe('monitor data and stream attach acceptance coverage', () => {
 
     const res = await harness.get(API_ROUTES.queue);
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual(await loadQueueItems(harness.context.queuePaths!.queueDir, harness.context.queuePaths!.lockDir));
+    await expect(res.json()).resolves.toEqual(await projectQueueForContext(harness.context));
   });
 
   it('delegates session stream attachment and writes stream:hello as the first block', async () => {

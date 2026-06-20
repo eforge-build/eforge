@@ -47,10 +47,10 @@ function unlocksLabel(item: NowQueueStackItem): string | null {
 /**
  * A running stack item is already shown in full as an active build card above,
  * so it collapses to a thin reference row here: it holds its place in the
- * dependency chain (node, connector, layer, title) and points back to the
- * detailed card, without re-rendering a second status surface or actions.
+ * dependency chain (node, connector, layer, title), points back to the detailed
+ * card, and renders only daemon-capability-gated PRD cancel controls.
  */
-function RunningStackRow({ item, isLast }: { item: NowQueueStackItem; isLast: boolean }) {
+function RunningStackRow({ item, isLast, onPreviewCascade, onApplyCascade }: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
   const unlocks = unlocksLabel(item);
   return (
     <li className="relative pl-6">
@@ -67,6 +67,15 @@ function RunningStackRow({ item, isLast }: { item: NowQueueStackItem; isLast: bo
         <span className="text-foreground/70">running ↑</span>
         <span aria-hidden="true">·</span>
         <span>see above{unlocks ? ` · ${unlocks}` : ''}</span>
+        <QueueRowActions
+          itemId={item.id}
+          itemTitle={item.title}
+          showCancel
+          hold={item.hold}
+          capabilities={item.capabilities}
+          onPreviewCascade={onPreviewCascade}
+          onApplyCascade={onApplyCascade}
+        />
       </div>
     </li>
   );
@@ -76,14 +85,19 @@ function QueueStackItemRow({
   item,
   isLast,
   onSetPriority,
-  onRemove,
   onOverrideDependency,
+  onHold,
+  onUnhold,
+  onPreviewCascade,
+  onApplyCascade,
 }: { item: NowQueueStackItem; isLast: boolean } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   if (status === 'running') {
-    return <RunningStackRow item={item} isLast={isLast} />;
+    return <RunningStackRow item={item} isLast={isLast} onPreviewCascade={onPreviewCascade} onApplyCascade={onApplyCascade} />;
   }
-  // Only forward queue work (pending/waiting) is mutable from Console.
+  // Pending/waiting rows expose the full queue-control set; running rows are
+  // handled above and only expose PRD cancel controls when daemon capabilities
+  // allow it.
   const showActions = status === 'pending' || status === 'waiting';
   return (
     <li className="relative pl-6">
@@ -100,9 +114,11 @@ function QueueStackItemRow({
           <Badge variant={statusVariant(item.status)} className="capitalize text-xs">
             {item.status}
           </Badge>
+          {item.hold?.held === true && <Badge variant="outline" className="text-xs">Held</Badge>}
         </div>
         <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{itemDetail(item)}</p>
+        {item.hold?.reason && <p className="text-xs text-muted-foreground">hold: {item.hold.reason}</p>}
         {showActions && (
           <>
             <QueueRowActions
@@ -110,9 +126,14 @@ function QueueStackItemRow({
               itemTitle={item.title}
               initialPriority={item.priority}
               onSetPriority={onSetPriority}
-              onRemove={onRemove}
               dependencyIds={item.dependsOn}
               onOverrideDependency={onOverrideDependency}
+              onHold={onHold}
+              onUnhold={onUnhold}
+              onPreviewCascade={onPreviewCascade}
+              onApplyCascade={onApplyCascade}
+              hold={item.hold}
+              capabilities={item.capabilities}
             />
           </>
         )}
@@ -124,8 +145,11 @@ function QueueStackItemRow({
 export function QueueStacks({
   stacks,
   onSetPriority,
-  onRemove,
   onOverrideDependency,
+  onHold,
+  onUnhold,
+  onPreviewCascade,
+  onApplyCascade,
 }: QueueStacksProps) {
   if (stacks.length === 0) return null;
 
@@ -163,8 +187,11 @@ export function QueueStacks({
                   item={item}
                   isLast={itemIndex === stack.items.length - 1}
                   onSetPriority={onSetPriority}
-                  onRemove={onRemove}
                   onOverrideDependency={onOverrideDependency}
+                  onHold={onHold}
+                  onUnhold={onUnhold}
+                  onPreviewCascade={onPreviewCascade}
+                  onApplyCascade={onApplyCascade}
                 />
               ))}
             </ol>

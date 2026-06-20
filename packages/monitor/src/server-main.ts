@@ -416,6 +416,22 @@ async function main(): Promise<void> {
         return { sessionId, pid };
       },
 
+      listWorkerSessions(): string[] {
+        return [...workerProcesses.keys()];
+      },
+
+      cancelWorkerProcess(sessionId: string): boolean {
+        const child = workerProcesses.get(sessionId);
+        if (child?.pid) {
+          try { process.kill(child.pid, 'SIGTERM'); } catch { /* Process may have already exited */ }
+          workerProcesses.delete(sessionId);
+          return true;
+        }
+        const run = db.getRunningRuns().find((item) => item.sessionId === sessionId && item.pid !== undefined);
+        if (!run?.pid) return false;
+        try { process.kill(run.pid, 'SIGTERM'); return true; } catch { return false; }
+      },
+
       cancelWorker(sessionId: string): boolean {
         // First check in-memory tracked workers
         const child = workerProcesses.get(sessionId);

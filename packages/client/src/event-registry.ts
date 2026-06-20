@@ -19,16 +19,13 @@
  * has an entry, so adding a new event variant to the exported schema/type
  * contract forces an update here.
  */
-
 import type { EforgeEvent, StackLayerWire } from './events.js';
 import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked, projectQueueDependencyOverridden, projectQueuePrdDispatchFailed } from './event-projections/queue.js';
-import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
-
+import type { RunInfo, QueueItem, AutoBuildState, FailedEnqueueInfo } from './types.js';
 // ---------------------------------------------------------------------------
 // Minimal state shape the project functions operate on.
 // Console and daemon project-state snapshots satisfy this interface structurally.
 // ---------------------------------------------------------------------------
-
 export interface ProjectableState {
   /** Runs sorted by startedAt DESC; runs[0] is the most-recent session. */
   runs: RunInfo[];
@@ -60,14 +57,12 @@ export interface ProjectableState {
   } | null;
   /** Stack layer records keyed by prdId, or empty array when none have been recorded. */
   stackLayers: StackLayerWire[];
+  /** Durable failed-enqueue attention rows keyed by runId. */ failedEnqueues?: FailedEnqueueInfo[];
 }
-
 // ---------------------------------------------------------------------------
 // EventMeta: per-variant metadata shape
 // ---------------------------------------------------------------------------
-
 export type EventScope = 'daemon' | 'session';
-
 export interface EventMeta<T extends EforgeEvent['type']> {
   /** Context this event belongs to. */
   scope: EventScope;
@@ -94,11 +89,9 @@ export interface EventMeta<T extends EforgeEvent['type']> {
     state: Readonly<ProjectableState>,
   ) => Partial<ProjectableState> | undefined;
 }
-
 // ---------------------------------------------------------------------------
 // Registry shape: every EforgeEvent type must have an entry
 // ---------------------------------------------------------------------------
-
 type EventRegistryShape = {
   [T in EforgeEvent['type']]: EventMeta<T>;
 };
@@ -1442,8 +1435,16 @@ const eventRegistry = {
     summary: (e) => `Auto-build paused: ${e.reason}`,
     project(_event, state) {
       if (!state.autoBuild) return undefined;
-      if (!state.autoBuild.enabled) return undefined;
-      return { autoBuild: { ...state.autoBuild, enabled: false } };
+      if (!state.autoBuild.enabled && state.autoBuild.desired !== 'enabled') return undefined;
+      return {
+        autoBuild: {
+          ...state.autoBuild,
+          enabled: true,
+          desired: 'enabled',
+          mode: 'paused',
+          scheduler: { ...(state.autoBuild.scheduler ?? { alive: false }), paused: true },
+        },
+      };
     },
   },
 
@@ -1610,15 +1611,16 @@ const eventRegistry = {
       `Auto-build ${e.previousMode} → ${e.nextMode} (${e.desired})${e.reason ? `: ${e.reason}` : ''}`,
     project(event, state) {
       if (!state.autoBuild) return undefined;
-      const enabled =
-        event.desired === 'enabled' &&
-        (event.nextMode === 'starting' || event.nextMode === 'running' || event.nextMode === 'restarting');
+      const enabled = event.desired === 'enabled';
       return {
         autoBuild: {
           ...state.autoBuild,
           enabled,
           desired: event.desired,
           mode: event.nextMode,
+          ...(event.nextMode === 'paused' && {
+            scheduler: { ...(state.autoBuild.scheduler ?? { alive: false }), paused: true },
+          }),
           lastTransition: {
             at: event.timestamp,
             previousMode: event.previousMode,
@@ -1671,6 +1673,10 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Orphaned build reaped: ${e.runId} (pid ${e.pid})`,
   },
+
+
+  'daemon:failed-enqueue:upsert': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.failedEnqueue.runId}: ${e.failedEnqueue.failureReason}`, project(event, state) { const existing = state.failedEnqueues ?? []; const withoutCurrent = existing.filter((item) => item.runId !== event.failedEnqueue.runId); return { failedEnqueues: [event.failedEnqueue, ...withoutCurrent].sort((a, b) => b.failedAt.localeCompare(a.failedAt) || a.runId.localeCompare(b.runId)) }; } },
+  'daemon:failed-enqueue:resolved': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.runId} resolved${e.spawnedSessionId ? ` as ${e.spawnedSessionId}` : ''}`, project(event, state) { const existing = state.failedEnqueues ?? []; const failedEnqueues = existing.filter((item) => item.runId !== event.runId); if (failedEnqueues.length === existing.length) return undefined; return { failedEnqueues }; } },
 
   // -------------------------------------------------------------------------
   // Daemon errors and warnings

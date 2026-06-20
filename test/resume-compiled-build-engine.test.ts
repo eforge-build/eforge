@@ -153,6 +153,7 @@ function seedFailedRunEvidence(cwd: string, setName: string): string {
   db.insertEvent({ runId, type: 'phase:end', data: JSON.stringify({ type: 'phase:end', runId, result: { status: 'failed', summary: 'failed' }, timestamp: ts }), timestamp: ts });
   db.updateRunStatus(runId, 'failed', ts);
   db.close();
+  writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${setName}.recovery.json`), minimalV3Sidecar(setName, setName, 'plan-01'));
   return dbPath;
 }
 
@@ -647,8 +648,8 @@ depends_on: ["${prdId}"]
     createFeatureBranchWithArtifacts(cwd, setName);
     seedRecoveryRunSelectionFixture(cwd, setName, 'failed');
     seedFailedQueuedResumePrd(cwd, prdId, setName);
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Old recovery for old-plan\n');
-    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), minimalV3Sidecar(prdId, setName));
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), '# Old recovery for plan-01\n');
+    writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), minimalV3Sidecar(prdId, setName, 'plan-01'));
 
     const harness = new RoleRecordingStubHarness([{ error: new Error('resume builder failure') }, { text: recoveryAnalystManualXml('plan-01') }]);
     const engine = await EforgeEngine.create({ cwd, agentRuntimes: harness, config: { landing: { ...DEFAULT_CONFIG.landing, action: 'leave' }, build: { ...DEFAULT_CONFIG.build, postMergeCommands: [], cleanupPlanFiles: false, validation: { ...DEFAULT_CONFIG.build.validation, allowNoCommands: true, noCommandsReason: 'direct failed resume sidecar test' } } } });
@@ -690,7 +691,7 @@ depends_on: ["${prdId}"]
     createFeatureBranchWithArtifacts(cwd, setName);
     seedFailedQueuedResumePrd(cwd, prdId, setName);
     const oldMd = '# Old recovery stays authoritative until manual cleanup\n';
-    const oldJson = minimalV3Sidecar(prdId, setName);
+    const oldJson = minimalV3Sidecar(prdId, setName, 'plan-01');
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.md`), oldMd);
     writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), oldJson);
 

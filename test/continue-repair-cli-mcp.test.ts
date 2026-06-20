@@ -57,14 +57,25 @@ function initRepo(cwd: string): void {
 
 function createFeatureBranchWithArtifacts(cwd: string, setName: string): void {
   git(cwd, ['switch', '-c', `eforge/${setName}`]);
-  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'), `name: ${setName}\ndescription: Test\nbase_branch: main\nmode: excursion\nvalidate: []\nplans: []\npipeline:\n  scope: excursion\n  compile: []\n  defaultBuild: []\n  defaultReview:\n    strategy: auto\n    perspectives: [code]\n    maxRounds: 1\n    evaluatorStrictness: standard\n  rationale: continue-repair\n`);
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'orchestration.yaml'), `name: ${setName}\ndescription: Test\nbase_branch: main\nmode: excursion\nvalidate: []\nplans:\n  - id: plan-01\n    name: Plan 01\n    depends_on: []\n    branch: ${setName}/plan-01\n    build: [implement]\n    review:\n      strategy: auto\n      perspectives: [code]\n      maxRounds: 1\n      evaluatorStrictness: standard\npipeline:\n  scope: excursion\n  compile: []\n  defaultBuild: []\n  defaultReview:\n    strategy: auto\n    perspectives: [code]\n    maxRounds: 1\n    evaluatorStrictness: standard\n  rationale: continue-repair\n`);
+  writeFileEnsuringDir(join(cwd, 'eforge', 'plans', setName, 'plan-01.md'), '# Plan 01\n');
   git(cwd, ['add', 'eforge']);
   git(cwd, ['commit', '-m', 'plan: compiled artifacts']);
   git(cwd, ['switch', 'main']);
 }
 
-function writeFailedPrd(cwd: string, prdId: string): void {
+function writeFailedPrd(cwd: string, prdId: string, setName = prdId): void {
   writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.md`), '---\ntitle: Failed PRD\n---\n\n# Failed PRD\n');
+  const generatedAt = new Date().toISOString();
+  writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
+    schemaVersion: 3,
+    generatedAt,
+    prdId,
+    setName,
+    verdict: { verdict: 'continue-repair', confidence: 'high', rationale: 'continue repair', completedWork: [], remainingWork: [], risks: [] },
+    report: { operatorSummary: 'plan-01 failed', recommendedAction: 'Continue and repair build.', keyEvidence: [], completedWork: [], remainingWork: ['finish plan-01'], risks: [] },
+    boundedEvidence: { identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: generatedAt }, plans: [{ planId: 'plan-01', status: 'failed' }], failingPlan: { planId: 'plan-01' }, landedCommits: [], modelsUsed: [] },
+  }));
 }
 
 function makeStubTracker(): { tracker: WorkerTracker; calls: Array<{ command: string; args: string[] }> } {
@@ -213,7 +224,7 @@ describe('apiContinueRepair helper', () => {
     const prdId = 'my-feature-prd';
     const setName = 'my-set';
     createFeatureBranchWithArtifacts(tmpDir, setName);
-    writeFailedPrd(tmpDir, prdId);
+    writeFailedPrd(tmpDir, prdId, setName);
     const { data } = await apiContinueRepair({ cwd: tmpDir, body: { prdId, setName } });
 
     expect(data.kind).toBe('queued');

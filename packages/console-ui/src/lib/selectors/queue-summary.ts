@@ -10,6 +10,8 @@ export interface NowQueueItem {
   created: string | undefined;
   dependsOn: string[] | undefined;
   recoveryVerdict: { verdict: string; confidence: string } | undefined;
+  hold?: QueueItem['hold'];
+  capabilities?: QueueItem['capabilities'];
 }
 
 export interface NowQueueSummary {
@@ -38,6 +40,8 @@ function toNowQueueItem(item: QueueItem): NowQueueItem {
     created: item.created,
     dependsOn: item.dependsOn,
     recoveryVerdict: item.recoveryVerdict,
+    hold: item.hold,
+    capabilities: item.capabilities,
   };
 }
 

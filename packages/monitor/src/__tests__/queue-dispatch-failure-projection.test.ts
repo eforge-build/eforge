@@ -101,7 +101,7 @@ describe('queue dispatch failure projection', () => {
     });
 
     const restQueue = await (await harness.get(API_ROUTES.queue)).json();
-    const helloQueue = buildDaemonHello(harness.context, { startedAtMs: 0, subscriberCount: 0, clock: { now: () => 0 } }).snapshot.queue;
+    const helloQueue = (await buildDaemonHello(harness.context, { startedAtMs: 0, subscriberCount: 0, clock: { now: () => 0 } })).snapshot.queue;
 
     expect(helloQueue).toEqual(restQueue);
     expect(restQueue.find((item: { id: string }) => item.id === 'failed-prd')?.dispatchFailure).toEqual({

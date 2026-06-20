@@ -25,7 +25,7 @@ import type { MonitorServer, DaemonState } from '../server.js';
 import { AutoBuildSupervisor } from '../auto-build-supervisor.js';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import type { QueueItem } from '@eforge-build/client';
+import { API_ROUTES, type QueueItem } from '@eforge-build/client';
 import { eventRegistry } from '@eforge-build/client';
 
 function makeTmpCwd(): string {
@@ -224,6 +224,30 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     });
     db.updateRunStatus(runId2, 'completed', now);
 
+    // --- Seed failed enqueue projection rows ---
+    const failedEnqueueRunId = `run-failed-enqueue-${Date.now()}`;
+    db.insertRun({
+      id: failedEnqueueRunId,
+      sessionId: `sess-failed-enqueue-${Date.now()}`,
+      planSet: 'failed-enqueue-source',
+      command: 'enqueue',
+      status: 'failed',
+      startedAt: now,
+      cwd,
+    });
+    db.insertEvent({
+      runId: failedEnqueueRunId,
+      type: 'enqueue:start',
+      data: JSON.stringify({ type: 'enqueue:start', timestamp: now, source: 'docs/failed-enqueue.md' }),
+      timestamp: now,
+    });
+    db.insertEvent({
+      runId: failedEnqueueRunId,
+      type: 'enqueue:failed',
+      data: JSON.stringify({ type: 'enqueue:failed', timestamp: now, error: 'enqueue validation failed' }),
+      timestamp: now,
+    });
+
     // --- Seed session metadata events ---
     // session:profile event for session1
     db.insertEvent({
@@ -321,14 +345,16 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
       queue: unknown;
       sessionMetadata: unknown;
       autoBuild: unknown;
+      failedEnqueues: unknown;
     };
 
     // --- Fetch REST endpoints ---
-    const [restRuns, restQueue, restSessionMetadata, restAutoBuild] = await Promise.all([
+    const [restRuns, restQueue, restSessionMetadata, restAutoBuild, restFailedEnqueues] = await Promise.all([
       fetchJson(`${base}/api/runs`),
       fetchJson(`${base}/api/queue`),
       fetchJson(`${base}/api/session-metadata`),
       fetchJson(`${base}/api/auto-build`),
+      fetchJson(`${base}${API_ROUTES.failedEnqueues}`),
     ]);
 
     // --- Defensive non-empty/value assertions ---
@@ -336,12 +362,16 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     // empty/default data due to a shared regression. Assert the seeded state
     // actually surfaces in the REST payloads before comparing parity.
     expect(Array.isArray(restRuns)).toBe(true);
-    expect((restRuns as unknown[]).length).toBe(2);
+    expect((restRuns as unknown[]).length).toBe(3);
+    expect(restRuns).toEqual(expect.arrayContaining([expect.objectContaining({ id: failedEnqueueRunId, command: 'enqueue', status: 'failed' })]));
     expect(Array.isArray(restQueue)).toBe(true);
     expect((restQueue as unknown[]).length).toBe(3);
     expect(restSessionMetadata).toEqual({
       [sessionId1]: { planCount: 2, baseProfile: 'test-profile' },
     });
+    expect(restFailedEnqueues).toMatchObject([
+      { runId: failedEnqueueRunId, sourceLabel: 'docs/failed-enqueue.md', failureReason: 'enqueue validation failed', canReenqueue: true },
+    ]);
     expect(restAutoBuild).toMatchObject({
       enabled: true,
       watcher: { running: true, pid: 99, sessionId: 'sess-99' },
@@ -381,6 +411,7 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     expect(helloData.queue).toEqual(restQueue);
     expect(helloData.sessionMetadata).toEqual(restSessionMetadata);
     expect(helloData.autoBuild).toEqual(restAutoBuild);
+    expect(helloData.failedEnqueues).toEqual(restFailedEnqueues);
 
     await server.stop();
     db.close();
@@ -623,9 +654,11 @@ describe('stream:hello queue parity with live queue:prd:discovered projection', 
     const liveQueue = delta!.queue!;
     expect(liveQueue).toHaveLength(1);
 
-    // Live projection must deep-equal the snapshot item shape, including any
-    // optional fields the snapshot would add.
-    expect(liveQueue).toEqual([snapshotItem]);
+    // Live queue discovery events carry the client-owned base queue item. The
+    // daemon snapshot augments REST/hello queue items with daemon-authored
+    // capabilities, which live event projectors cannot derive on their own.
+    expect(liveQueue).toEqual([{ id: snapshotItem.id, title: snapshotItem.title, status: snapshotItem.status }]);
+    expect(snapshotItem.capabilities).toMatchObject({ priority: { allowed: true }, hold: { allowed: true } });
 
     await server.stop();
     db.close();

@@ -10,6 +10,7 @@ import type {
   IntegrationCommandManifestEntry,
 } from './extension-contributions.js';
 import type { RecoveryAppliedMetadata } from './routes/recovery.js';
+import type { QueueItemCapabilities, QueueItemHold } from './queue-wire-types.js';
 
 // GET /api/health
 export interface HealthResponse {
@@ -48,6 +49,7 @@ export interface AutoBuildTransitionDetail {
 }
 
 export interface AutoBuildState {
+  /** Desired auto-build toggle. Remains true during scheduler pauses; use mode/scheduler.paused for runtime pause state. */
   enabled: boolean;
   watcher: {
     running: boolean;
@@ -509,30 +511,26 @@ export interface ExtensionReloadResponse extends ExtensionListResponse, Extensio
 // GET /api/queue (array of these)
 export interface QueueDispatchFailureProjection { reason: string; stage: 'stacking-validation' | 'policy-gate' | 'profile-routing' | 'dispatch'; timestamp: string }
 
+export type { QueueItemCapability, QueueItemCapabilities, QueueItemHold, FailedEnqueueProvenance, FailedEnqueueRecoveryCommand, FailedEnqueueInfo } from './queue-wire-types.js';
 export interface QueueItem {
   id: string;
   title: string;
   status: string;
   priority?: number;
   created?: string; dependsOn?: string[]; dispatchFailure?: QueueDispatchFailureProjection;
-  /**
-   * Recovery verdict for failed items. Populated by the daemon when a
-   * `<prdId>.recovery.json` sidecar exists in the `failed/` directory.
-   * Absent when no sidecar is present or the sidecar is malformed.
-   */
+  /** Recovery verdict for failed items when a valid `<prdId>.recovery.json` sidecar exists. */
   recoveryVerdict?: {
     verdict: 'retry' | 'continue-repair' | 'abandon' | 'manual';
     confidence: 'low' | 'medium' | 'high';
   };
   /** Durable applied-recovery marker; set when the failed item's sidecar carries a valid `applied` object. */
   recoveryApplied?: RecoveryAppliedMetadata;
+  hold?: QueueItemHold; capabilities?: QueueItemCapabilities;
 }
 
+export type QueueItemWithCapabilities = QueueItem & { capabilities: QueueItemCapabilities };
 // GET /api/session-metadata (values in Record<string, SessionMetadata>)
-export interface SessionMetadata {
-  planCount: number | null;
-  baseProfile: string | null;
-}
+export interface SessionMetadata { planCount: number | null; baseProfile: string | null }
 
 // GET /api/runs (array of these)
 export interface RunInfo {

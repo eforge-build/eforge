@@ -79,6 +79,16 @@ describe('safeParseEforgeEvent — queue dispatch failures', () => {
       id: 'prd-1',
       title: 'PRD 1',
       status: 'failed',
+      capabilities: {
+        priority: { allowed: true },
+        remove: { allowed: true },
+        dependencyOverride: { allowed: true },
+        hold: { allowed: true },
+        unhold: { allowed: true },
+        cascadeRemove: { allowed: true },
+        cancel: { allowed: true },
+        cascadeCancel: { allowed: true },
+      },
       dispatchFailure: { reason: 'blocked', stage: 'policy-gate', timestamp: '2025-01-01T00:00:00.000Z' },
     })).toBe(true);
   });

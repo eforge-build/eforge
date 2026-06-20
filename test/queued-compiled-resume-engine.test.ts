@@ -95,6 +95,25 @@ function seedFailedRunEvidence(cwd: string, setName: string): void {
   db.close();
 }
 
+function seedRecoveryGuidanceSidecar(cwd: string, prdId: string, setName: string): void {
+  const generatedAt = '2026-01-01T00:00:00.000Z';
+  writeFileEnsuringDir(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), JSON.stringify({
+    schemaVersion: 3,
+    generatedAt,
+    prdId,
+    setName,
+    verdict: { verdict: 'continue-repair', confidence: 'high', rationale: 'retry plan-01', completedWork: [], remainingWork: ['finish plan-01'], risks: [] },
+    report: { operatorSummary: 'plan-01 failed during the prior run.', recommendedAction: 'Continue repair from compiled artifacts.', keyEvidence: [], completedWork: [], remainingWork: ['finish plan-01'], risks: [] },
+    boundedEvidence: {
+      identity: { prdId, setName, featureBranch: `eforge/${setName}`, baseBranch: 'main', failedAt: generatedAt },
+      plans: [{ planId: 'plan-01', status: 'failed' }],
+      failingPlan: { planId: 'plan-01' },
+      landedCommits: [],
+      modelsUsed: [],
+    },
+  }));
+}
+
 function prdContent(title: string): string {
   const body = `# ${title}\n\n## Acceptance Criteria\n\n- Queued resume validates the requeued PRD body.\n`;
   const inventory: CanonicalAcceptanceCriteriaInventory = {
@@ -125,6 +144,7 @@ describe('queued compiled-build resume execution', () => {
     const prdId = 'queued-resume-prd';
     createFeatureBranchWithArtifacts(cwd, setName);
     seedFailedRunEvidence(cwd, setName);
+    seedRecoveryGuidanceSidecar(cwd, prdId, setName);
     const prd = await writeResumeMarkedPrd(cwd, prdId, setName, prdContent('Queued Resume PRD'));
     const validationResponse = { text: JSON.stringify({ gaps: [], completionPercent: 100, acceptanceVerdicts: [{ criterion: 'ac-001', verdict: 'pass', evidence: 'The requeued PRD body was validated.' }] }) };
     const stub = new StubHarness([
@@ -159,6 +179,8 @@ describe('queued compiled-build resume execution', () => {
     expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:start' }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'prd_validation:complete', passed: true }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'acceptance_validation:complete', passed: true }));
+    const artifacts = events.find((event): event is Extract<EforgeEvent, { type: 'build:resume:artifacts' }> => event.type === 'build:resume:artifacts');
+    expect(artifacts?.plans[0]?.body.match(/^## Recovery Guidance$/gm)).toHaveLength(1);
     expect(stub.prompts.some((prompt) => prompt.includes('Queued resume validates the requeued PRD body.'))).toBe(true);
   });
 

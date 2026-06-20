@@ -1,13 +1,14 @@
 import * as React from 'react';
 import { ActiveBuildCard } from './active-build-card';
 import type { NowActiveBuildCard } from '@/lib/selectors/now';
+import type { QueueRowActionCallbacks } from './queue-row-actions';
 
-interface ActiveBuildsGridProps {
+interface ActiveBuildsGridProps extends Pick<QueueRowActionCallbacks, 'onPreviewCascade' | 'onApplyCascade'> {
   cards: NowActiveBuildCard[];
   onNavigate?: (href: string) => void;
 }
 
-export function ActiveBuildsGrid({ cards, onNavigate }: ActiveBuildsGridProps) {
+export function ActiveBuildsGrid({ cards, onNavigate, onPreviewCascade, onApplyCascade }: ActiveBuildsGridProps) {
   if (cards.length === 0) return null;
 
   // Single column: each active build fills the full width of its container
@@ -16,7 +17,7 @@ export function ActiveBuildsGrid({ cards, onNavigate }: ActiveBuildsGridProps) {
   return (
     <div className="grid grid-cols-1 gap-5">
       {cards.map((card) => (
-        <ActiveBuildCard key={card.sessionId} card={card} onNavigate={onNavigate} />
+        <ActiveBuildCard key={card.sessionId} card={card} onNavigate={onNavigate} onPreviewCascade={onPreviewCascade} onApplyCascade={onApplyCascade} />
       ))}
     </div>
   );

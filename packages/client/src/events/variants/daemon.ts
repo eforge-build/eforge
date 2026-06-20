@@ -15,6 +15,7 @@ import {
   EforgeResultSchema,
   EvaluationIssueOutcomeSchema,
   ExpeditionModuleSchema,
+  FailedEnqueueInfoSchema,
   FinalMergePolicyGateProvenanceFields,
   LandingActionSchema,
   LandingPublicationActionSchema,
@@ -178,6 +179,17 @@ export const daemonEventVariants = [
     sessionId: Type.String(),
     planSet: Type.String(),
     pid: Type.Number(),
+  }),
+
+  Type.Object({
+    type: Type.Literal('daemon:failed-enqueue:upsert'),
+    failedEnqueue: FailedEnqueueInfoSchema,
+  }),
+  Type.Object({
+    type: Type.Literal('daemon:failed-enqueue:resolved'),
+    runId: Type.String(),
+    resolvedAt: Type.String(),
+    spawnedSessionId: Type.Optional(Type.String()),
   }),
 
   // Daemon errors and warnings

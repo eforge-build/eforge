@@ -4,6 +4,7 @@ import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { RunInfo } from '@eforge-build/client';
 import { isPersistedDaemonEventType } from '@eforge-build/client';
 import type { MonitorDB } from './db.js';
+import { recordFailedEnqueueUpsert } from './projections/failed-enqueues.js';
 
 /**
  * Build and immediately persist a `daemon:run:upsert` event for the given run.
@@ -259,6 +260,8 @@ export async function* withRecording(
       db.updateRunStatus(enqueueRunId, 'failed', new Date().toISOString());
       const upsert = buildAndPersistRunUpsert(db, enqueueRunId, enqueueRunId);
       if (upsert) pendingUpserts.push(upsert);
+      const failedEnqueueUpsert = recordFailedEnqueueUpsert(db, enqueueRunId);
+      if (failedEnqueueUpsert) pendingUpserts.push(failedEnqueueUpsert);
       // NOTE: enqueueRunId is intentionally NOT cleared here. session:end still
       // needs `activeRunId` set to be persisted to the events table. The
       // session:end-failure handler below guards against double-firing by

@@ -12,6 +12,8 @@ export interface NowQueueStackItem {
   unlocksCount: number;
   layer: number;
   totalLayers: number;
+  hold?: QueueItem['hold'];
+  capabilities?: QueueItem['capabilities'];
 }
 
 export interface NowQueueStack {
@@ -172,6 +174,8 @@ export function selectNowQueueStacks(queue: QueueItem[]): NowQueueStack[] {
           unlocksCount,
           layer: layerById.get(item.id) ?? 1,
           totalLayers,
+          hold: item.hold,
+          capabilities: item.capabilities,
         };
       }),
     } satisfies NowQueueStack;

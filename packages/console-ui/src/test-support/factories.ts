@@ -12,7 +12,7 @@
  * Not part of the app bundle — nothing under src reachable from main.tsx imports
  * this module, so Vite tree-shakes it out of production builds.
  */
-import type { QueueItem, RunInfo } from '@eforge-build/client/browser';
+import type { QueueItem, QueueItemCapabilities, RunInfo } from '@eforge-build/client/browser';
 import type {
   ActiveSessionDetail,
   UseActiveSessionStreamsResult,
@@ -47,6 +47,21 @@ export function makeRun(overrides: Partial<RunInfo> = {}): RunInfo {
 
 let queueSeq = 0;
 
+export function makeQueueCapabilities(overrides: Partial<QueueItemCapabilities> = {}): QueueItemCapabilities {
+  const allowed = { allowed: true };
+  return {
+    priority: allowed,
+    remove: allowed,
+    dependencyOverride: allowed,
+    hold: allowed,
+    unhold: allowed,
+    cascadeRemove: allowed,
+    cancel: allowed,
+    cascadeCancel: allowed,
+    ...overrides,
+  };
+}
+
 /** A pending queue item. Override any field; ids auto-increment when omitted. */
 export function makeQueue(overrides: Partial<QueueItem> = {}): QueueItem {
   queueSeq += 1;
@@ -54,6 +69,7 @@ export function makeQueue(overrides: Partial<QueueItem> = {}): QueueItem {
     id: `q-${queueSeq}`,
     title: 'My task',
     status: 'pending',
+    capabilities: makeQueueCapabilities(overrides.capabilities),
     ...overrides,
   };
 }

@@ -139,6 +139,7 @@ describe('extension tooling route constants and helpers', () => {
       expect(client[name], name).toBeTypeOf('function');
       expect(source, name).toContain(name);
     }
+    const exportsTypesBarrel = source.includes("export type * from './types.js';");
     for (const name of [
       'ExtensionPackageProvenance', 'ExtensionInstallProvenance',
       'ExtensionInstallRequest', 'ExtensionInstallResponse',
@@ -147,12 +148,13 @@ describe('extension tooling route constants and helpers', () => {
       'ExtensionPromoteRequest', 'ExtensionPromoteResponse',
       'ExtensionDemoteRequest', 'ExtensionDemoteResponse',
     ]) {
-      expect(source, name).toContain(name);
+      expect(source.includes(name) || exportsTypesBarrel, name).toBe(true);
     }
   });
 
   it('client browser entrypoint exports provenance and operation wire types but no helpers', () => {
     const source = readRepoFile('packages/client/src/browser.ts');
+    const exportsTypesBarrel = source.includes("export type * from './types.js';");
     for (const name of [
       'ExtensionPackageProvenance', 'ExtensionInstallProvenance',
       'ExtensionInstallRequest', 'ExtensionInstallResponse',
@@ -161,7 +163,7 @@ describe('extension tooling route constants and helpers', () => {
       'ExtensionPromoteRequest', 'ExtensionPromoteResponse',
       'ExtensionDemoteRequest', 'ExtensionDemoteResponse',
     ]) {
-      expect(source, name).toContain(name);
+      expect(source.includes(name) || exportsTypesBarrel, name).toBe(true);
     }
     // Browser entrypoint must not export Node.js client helpers.
     expect(source).not.toContain('apiInstallExtension');

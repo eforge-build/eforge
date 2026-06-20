@@ -630,6 +630,7 @@ export class QueueScheduler {
 
       // Emit dependency-blocked once per (prdId, tick) for pending PRDs whose deps are unmet.
       const candidateState = this.prdState.get(prd.id);
+      if (candidateState?.status === 'pending' && prd.frontmatter.held === true) continue;
       if (candidateState?.status === 'pending') {
         const blockingDeps = candidateState.dependsOn.filter((dep) => this.isDependencyBlocking(dep, terminalIds, completionRegistry));
         if (blockingDeps.length > 0) {
