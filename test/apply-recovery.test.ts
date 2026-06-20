@@ -284,7 +284,7 @@ pipeline:
 
     expect(result.verdict).toBe('continue-repair');
     expect(result.noAction).toBe(false);
-    expect(result.commitSha).toBe('');
+    expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
     expect(result.status).toBe('applied');
     expect(result.detail).toMatch(/continue/i);
 
@@ -298,7 +298,7 @@ pipeline:
     expect(queuedContent).toContain('resume_set_name: test-set');
 
     const sidecar = JSON.parse(await readFile(join(dir, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8'));
-    expect(sidecar.applied).toMatchObject({ action: 'continue-repair' });
+    expect(sidecar.applied).toMatchObject({ action: 'continue-repair', commitSha: result.commitSha });
     expect(typeof sidecar.applied.appliedAt).toBe('string');
 
     const completeEvent = events.find((e): e is Extract<EforgeEvent, { type: 'recovery:apply:complete' }> => e.type === 'recovery:apply:complete');

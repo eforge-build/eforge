@@ -2,8 +2,10 @@
  * Recovery verdict dispatch helpers — apply the verdict from a recovery sidecar.
  *
  * Each mutating helper performs one atomic filesystem/queue mutation. Queue
- * state is runtime (`.eforge/queue` is gitignored), so no git operations are
- * needed. `manual` is a no-op: it returns without touching the working tree.
+ * state is runtime (`.eforge/queue` is gitignored). Continue-and-repair may
+ * also create a tracked compiled-plan guidance commit via the resume
+ * preparation helper. `manual` is a no-op: it returns without touching the
+ * working tree.
  *
  * Callers are expected to have already validated the verdict via
  * recoveryVerdictSchema before invoking these helpers.
@@ -125,15 +127,23 @@ export async function applyRecoveryContinueRepair(
   await writeRecoveryAppliedMetadata(sidecarJsonPath, {
     action: 'continue-repair',
     appliedAt: new Date().toISOString(),
+    ...(result.recoveryGuidance?.commitSha !== undefined ? { commitSha: result.recoveryGuidance.commitSha } : {}),
   });
 
+  // --- eforge:region plan-03-engine-recovery-guidance ---
+  const guidanceStatuses = result.recoveryGuidance?.plans.map((plan) => plan.status) ?? [];
+  const guidanceDetail = guidanceStatuses.length > 0 && guidanceStatuses.every((status) => status === 'patched' || status === 'already-current')
+    ? ` Recovery guidance ${guidanceStatuses.includes('patched') ? 'patched' : 'already current'}.`
+    : '';
+
   return {
-    commitSha: '',
+    commitSha: result.recoveryGuidance?.commitSha ?? '',
     status: result.status,
-    detail: result.status === 'already-queued'
+    detail: `${result.status === 'already-queued'
       ? 'Continue-and-repair was already queued.'
-      : 'Continue-and-repair queued.',
+      : 'Continue-and-repair queued.'}${guidanceDetail}`,
   };
+  // --- eforge:endregion plan-03-engine-recovery-guidance ---
 }
 
 /**

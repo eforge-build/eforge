@@ -2042,12 +2042,13 @@ export class EforgeEngine {
    * Reads the recovery sidecar JSON written by `recover()`, validates the verdict,
    * and dispatches to one of four verdict-specific helpers:
    *   - retry: moves the failed PRD back to the queue and removes sidecars
-   *   - continue-repair: queues the failed PRD through the compiled-artifact repair path
+   *   - continue-repair: prepares recovery guidance, then queues the failed PRD through the compiled-artifact repair path
    *   - abandon: removes the failed PRD and both sidecars
    *   - manual: no-op, returns noAction: true
    *
-   * Filesystem-only queue dispatch. Throws on missing sidecar, validation
-   * failure, or continue-and-repair eligibility failure.
+   * Queue mutations are filesystem-only. Continue-and-repair may also create a
+   * tracked compiled-plan guidance commit. Throws on missing sidecar,
+   * validation failure, or continue-and-repair/guidance eligibility failure.
    */
   async *applyRecovery(
     prdId: string,
@@ -2261,7 +2262,7 @@ export class EforgeEngine {
 
       // Eligibility check runs inside the phase so failures are correlated with runId.
       const { checkResumeEligibility, deriveResumeSeedState, formatResumeContext, buildResumeArtifactsProjection, resolveResumePrdContent } = await import('./resume/compiled-build.js');
-      const eligibility = await checkResumeEligibility({
+      let eligibility = await checkResumeEligibility({
         cwd, setName, prdId, mergeWorktreePath,
         outputDir: this.config.plan.outputDir, dbPath,
         trunkBranch: baseBranch ?? this.config.build.trunkBranch,
@@ -2278,6 +2279,55 @@ export class EforgeEngine {
         };
         return;
       }
+
+      // --- eforge:region plan-03-engine-recovery-guidance ---
+      const { prepareRecoveryGuidance, recoveryGuidanceResumeBlocker } = await import('./recovery/guidance.js');
+      let recoveryGuidance: Awaited<ReturnType<typeof prepareRecoveryGuidance>>;
+      try {
+        recoveryGuidance = await prepareRecoveryGuidance({
+          cwd,
+          prdId,
+          setName,
+          featureBranch,
+          queueDir: this.config.prdQueue.dir,
+          outputDir: this.config.plan.outputDir,
+          dbPath,
+          trunkBranch: baseBranch ?? this.config.build.trunkBranch,
+          ...(baseBranch !== undefined ? { baseBranch } : {}),
+        });
+      } catch (err) {
+        const reason = `Recovery guidance could not be prepared: ${(err as Error).message}`;
+        status = 'failed';
+        buildSummary = reason;
+        yield { timestamp: ts(), type: 'build:resume:ineligible', reason };
+        return;
+      }
+      const recoveryGuidanceBlocker = recoveryGuidanceResumeBlocker(recoveryGuidance);
+      if (recoveryGuidanceBlocker) {
+        status = 'failed';
+        buildSummary = recoveryGuidanceBlocker;
+        yield { timestamp: ts(), type: 'build:resume:ineligible', reason: recoveryGuidanceBlocker };
+        return;
+      }
+      if (recoveryGuidance.commitSha !== undefined) {
+        eligibility = await checkResumeEligibility({
+          cwd, setName, prdId, mergeWorktreePath,
+          outputDir: this.config.plan.outputDir, dbPath,
+          trunkBranch: baseBranch ?? this.config.build.trunkBranch,
+          featureBranch,
+          ...(baseBranch !== undefined ? { baseBranch } : {}),
+        });
+        if (!eligibility.eligible) {
+          status = 'failed';
+          buildSummary = eligibility.reason;
+          yield {
+            timestamp: ts(), type: 'build:resume:ineligible', reason: eligibility.reason,
+            ...(eligibility.checkedPath ? { checkedPath: eligibility.checkedPath } : {}),
+          };
+          return;
+        }
+      }
+      // --- eforge:endregion plan-03-engine-recovery-guidance ---
 
       const { summary, diffStat, artifactBasePath } = eligibility;
 

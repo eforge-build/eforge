@@ -421,7 +421,7 @@ pipeline:
     expect(data.verdict).toBe('continue-repair');
     expect(data.status).toBe('applied');
     expect(data.noAction).toBe(false);
-    expect(data.commitSha).toBe('');
+    expect(data.commitSha).toMatch(/^[0-9a-f]{40}$/);
     expect(data.detail).toMatch(/continue/i);
 
     const queued = await readFile(join(tmpDir, '.eforge', 'queue', `${prdId}.md`), 'utf-8');

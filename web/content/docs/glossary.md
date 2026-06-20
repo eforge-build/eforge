@@ -91,7 +91,7 @@ An optional PRD frontmatter number. Lower numbers run before higher numbers with
 
 ## Recovery sidecar
 
-A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus a recommended `continue-repair` option.
+A structured recovery analysis artifact written for a failed build plan. It records whether eforge should retry, continue and repair from preserved compiled artifacts, abandon, or require manual review / manual replanning, and may include read-only `continueRepairEligibility` plus a recommended `continue-repair` option. For compiled-artifact continue/resume, it is also the durable source used to patch the failed root compiled plans with `## Recovery Guidance` before builders read them.
 
 ## Recovery verdict
 
