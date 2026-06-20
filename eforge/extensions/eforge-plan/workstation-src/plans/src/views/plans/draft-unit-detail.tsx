@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ClipboardList, Loader2, Rocket, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardList, Loader2, Plus, Rocket, Scissors, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +8,9 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/toast';
 import { planKey } from '@/lib/plan-links';
-import type { DraftPlanUnit, PromoteDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
-
-const PROFILES = ['errand', 'excursion', 'expedition'] as const;
+import type { DraftPlanUnit, DraftUnitAdvisory, PlanningProfile, PromoteDraftUnitResponse, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
+import { PLANNING_PROFILES } from '@/types';
+import { DraftUnitSplitPanel } from './draft-unit-split-panel';
 
 interface DraftUnitDetailCardProps {
   unit: DraftPlanUnit;
@@ -18,6 +18,8 @@ interface DraftUnitDetailCardProps {
   onUpdate: (input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>;
   onDelete: (unitId: string) => Promise<void>;
   onPromote: (unitId: string) => Promise<PromoteDraftUnitResponse>;
+  onSplit?: (input: SplitDraftUnitInput) => Promise<SplitDraftUnitResponse>;
+  onAdviseSplit?: (unitId: string, itemIds: string[]) => Promise<DraftUnitAdvisory>;
   onOpenItem?: (itemId: string) => void;
   onOpenPlan?: (key: string) => void;
 }
@@ -28,12 +30,26 @@ interface DraftUnitDetailCardProps {
  * session plan. The unit carries grouping + intent only; scope and acceptance
  * criteria are authored in the session plan it promotes into.
  */
-export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromote, onOpenItem, onOpenPlan }: DraftUnitDetailCardProps) {
+export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromote, onSplit, onAdviseSplit, onOpenItem, onOpenPlan }: DraftUnitDetailCardProps) {
   const toast = useToast();
   const [busy, setBusy] = React.useState(false);
+  const [picking, setPicking] = React.useState(false);
+  const [splitting, setSplitting] = React.useState(false);
   const promoted = unit.status === 'promoted';
+  // Splitting needs at least two items (one to peel, one to keep) and the wiring.
+  const canSplit = Boolean(onSplit && onAdviseSplit) && !promoted && unit.items.length >= 2;
   const promotedSession = unit.promotedSession;
   const label = (id: string) => titles.get(id) ?? id;
+
+  // Board items not already in the unit are the candidates the user can add.
+  // `titles` carries every board item (id -> title), so we derive the picker
+  // list from it rather than threading a second board prop through.
+  const candidates = React.useMemo(() => {
+    const present = new Set(unit.items.map((item) => item.itemId));
+    return Array.from(titles.entries())
+      .filter(([id]) => !present.has(id))
+      .map(([id, title]) => ({ id, title }));
+  }, [titles, unit.items]);
 
   const run = React.useCallback(async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -98,18 +114,28 @@ export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromot
           <Select
             value={unit.profile ?? ''}
             disabled={busy || promoted}
-            onChange={(event) => void run(() => onUpdate({ unitId: unit.unitId, profile: event.target.value }))}
+            onChange={(event) => void run(() => onUpdate({ unitId: unit.unitId, profile: event.target.value as PlanningProfile | '' }))}
           >
             <option value="">none</option>
-            {PROFILES.map((value) => <option key={value} value={value}>{value}</option>)}
+            {PLANNING_PROFILES.map((value) => <option key={value} value={value}>{value}</option>)}
           </Select>
         </FieldRow>
 
         <section className="grid gap-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items ({unit.items.length})</h4>
-            {unit.sourceRecommendationRef && <span className="text-2xs text-muted-foreground">lane: {unit.sourceRecommendationRef}</span>}
+            <div className="flex items-center gap-2">
+              {unit.sourceRecommendationRef && <span className="text-2xs text-muted-foreground">lane: {unit.sourceRecommendationRef}</span>}
+              {!promoted && (
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" disabled={busy} aria-expanded={picking} onClick={() => setPicking((value) => !value)}>
+                  <Plus className="h-3 w-3" /> Add items
+                </Button>
+              )}
+            </div>
           </div>
+          {picking && !promoted && (
+            <AddItemPicker candidates={candidates} disabled={busy} onAdd={(id) => void run(() => onUpdate({ unitId: unit.unitId, addItemIds: [id] }))} />
+          )}
           {unit.items.length === 0
             ? <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No items. Remove leaves nothing to promote.</p>
             : <ul className="grid gap-1">
@@ -131,16 +157,77 @@ export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromot
               </ul>}
         </section>
 
+        {splitting && canSplit && onSplit && onAdviseSplit && (
+          <DraftUnitSplitPanel unit={unit} titles={titles} onAdvise={onAdviseSplit} onSplit={onSplit} onClose={() => setSplitting(false)} onOpenUnit={onOpenPlan} />
+        )}
+
         <div className="flex flex-wrap items-center gap-2 border-t pt-3">
           <Button disabled={busy || promoted || unit.items.length === 0} onClick={promote} title={unit.items.length === 0 ? 'Add at least one item before promoting.' : 'Promote plan-first into a session plan.'}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />} Promote to a build plan
           </Button>
+          {canSplit && (
+            <Button variant="outline" disabled={busy} aria-expanded={splitting} onClick={() => setSplitting((value) => !value)} title="Split this unit's items into two units.">
+              <Scissors className="h-4 w-4" /> Split
+            </Button>
+          )}
           <Button variant="ghost" className="text-[color:var(--lane-blocked)]" disabled={busy} onClick={() => void run(() => onDelete(unit.unitId))}>
             <Trash2 className="h-4 w-4" /> Delete
           </Button>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+interface AddItemPickerProps {
+  candidates: { id: string; title: string }[];
+  disabled: boolean;
+  onAdd: (itemId: string) => void;
+}
+
+/**
+ * Searchable list of board items not yet in the unit. Adds carry origin 'user'
+ * (the backend stamps it), so a manually added item reads "you" in the row
+ * badge. The picker stays open after an add so several can be pulled in at once.
+ */
+function AddItemPicker({ candidates, disabled, onAdd }: AddItemPickerProps) {
+  const [query, setQuery] = React.useState('');
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = q ? candidates.filter((entry) => entry.title.toLowerCase().includes(q) || entry.id.toLowerCase().includes(q)) : candidates;
+    return matches.slice(0, 50);
+  }, [candidates, query]);
+
+  return (
+    <div className="grid gap-2 rounded-md border border-dashed border-border p-2">
+      {candidates.length === 0 ? (
+        <p className="text-2xs text-muted-foreground">Every board item is already in this unit.</p>
+      ) : (
+        <>
+          <Input value={query} disabled={disabled} className="h-8 text-xs" placeholder="Search board items to add…" onChange={(event) => setQuery(event.target.value)} />
+          {filtered.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">No board items match “{query}”.</p>
+          ) : (
+            <ul className="grid max-h-48 gap-1 overflow-auto">
+              {filtered.map((entry) => (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    title={entry.id}
+                    onClick={() => onAdd(entry.id)}
+                    className="flex w-full items-center gap-2 rounded border border-border p-1.5 text-left text-xs hover:border-primary disabled:opacity-50"
+                  >
+                    <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-text-bright">{entry.title}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

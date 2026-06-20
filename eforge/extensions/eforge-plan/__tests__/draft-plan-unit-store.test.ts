@@ -16,8 +16,10 @@ import {
   findDraftPlanUnit,
   listDraftPlanUnits,
   markDraftPlanUnitPromoted,
+  mergeDraftPlanUnits,
   readDraftPlanUnitIndex,
   resolveDraftPlanUnitIndexPath,
+  splitDraftPlanUnit,
   updateDraftPlanUnit,
 } from '../draft-plan-unit-store.js';
 
@@ -45,6 +47,14 @@ async function seedBacklog(cwd: string): Promise<void> {
   await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', tags: [], body: '# Epic One\n' });
   await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', tags: [], depends_on: [], epic: 'epic-one', body: '# Item One\n\n## Claim\n\nFirst.\n\n## Acceptance Criteria\n\n- One done.\n' });
   await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', tags: [], depends_on: [], epic: 'epic-one', body: '# Item Two\n\n## Claim\n\nSecond.\n\n## Acceptance Criteria\n\n- Two done.\n' });
+}
+
+// item-two depends on item-one, so merging/splitting them exercises the
+// dependency advisor's coupled-vs-independent paths.
+async function seedBacklogWithDependency(cwd: string): Promise<void> {
+  await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', tags: [], body: '# Epic One\n' });
+  await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', tags: [], depends_on: [], epic: 'epic-one', body: '# Item One\n\n## Claim\n\nFirst.\n\n## Acceptance Criteria\n\n- One done.\n' });
+  await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', tags: [], depends_on: ['item-one'], epic: 'epic-one', body: '# Item Two\n\n## Claim\n\nSecond.\n\n## Acceptance Criteria\n\n- Two done.\n' });
 }
 
 async function seedLane(cwd: string): Promise<void> {
@@ -97,6 +107,48 @@ describe('draft plan unit store', () => {
       expect((await updateDraftPlanUnit(cwd, unit.unitId, { profile: '' })).profile).toBeUndefined();
       const promoted = await markDraftPlanUnitPromoted(cwd, unit.unitId, 'session-x');
       expect(promoted).toMatchObject({ status: 'promoted', promotedSession: 'session-x' });
+    });
+  });
+
+  it('merges several units into one user-authored unit and removes the sources', async () => {
+    await withTempProject(async (cwd) => {
+      const a = await createDraftPlanUnit(cwd, { title: 'A', provenance: 'recommendation', sourceRecommendationRef: 'lane-a', profile: 'excursion', items: [{ itemId: 'a', origin: 'recommendation' }, { itemId: 'shared', origin: 'recommendation' }] });
+      const b = await createDraftPlanUnit(cwd, { title: 'B', provenance: 'user', items: [{ itemId: 'shared', origin: 'user' }, { itemId: 'b', origin: 'user' }] });
+
+      const { unit, removedUnitIds } = await mergeDraftPlanUnits(cwd, [a.unitId, b.unitId]);
+      // Union, deduped with first-occurrence origin; provenance/title default to the first unit.
+      expect(unit.items).toEqual([{ itemId: 'a', origin: 'recommendation' }, { itemId: 'shared', origin: 'recommendation' }, { itemId: 'b', origin: 'user' }]);
+      expect(unit).toMatchObject({ title: 'A', provenance: 'user', profile: 'excursion' });
+      expect(unit.sourceRecommendationRef).toBeUndefined();
+      expect(removedUnitIds).toEqual([a.unitId, b.unitId]);
+      expect(listDraftPlanUnits(await readDraftPlanUnitIndex(cwd)).map((entry) => entry.unitId)).toEqual([unit.unitId]);
+    });
+  });
+
+  it('refuses to merge a promoted unit', async () => {
+    await withTempProject(async (cwd) => {
+      const a = await createDraftPlanUnit(cwd, { title: 'A', provenance: 'user', items: [{ itemId: 'a', origin: 'user' }] });
+      const b = await createDraftPlanUnit(cwd, { title: 'B', provenance: 'user', items: [{ itemId: 'b', origin: 'user' }] });
+      await markDraftPlanUnitPromoted(cwd, b.unitId, 'session-x');
+      await expect(mergeDraftPlanUnits(cwd, [a.unitId, b.unitId])).rejects.toThrow(/already promoted/);
+    });
+  });
+
+  it('splits a strict subset into a new unit while the original keeps the remainder', async () => {
+    await withTempProject(async (cwd) => {
+      const unit = await createDraftPlanUnit(cwd, { title: 'Whole', provenance: 'recommendation', items: [{ itemId: 'a', origin: 'recommendation' }, { itemId: 'b', origin: 'user' }, { itemId: 'c', origin: 'recommendation' }] });
+      const { original, created } = await splitDraftPlanUnit(cwd, unit.unitId, ['b'], { title: 'Peeled' });
+      expect(original.items).toEqual([{ itemId: 'a', origin: 'recommendation' }, { itemId: 'c', origin: 'recommendation' }]);
+      expect(created).toMatchObject({ title: 'Peeled', provenance: 'user', items: [{ itemId: 'b', origin: 'user' }] });
+      expect(listDraftPlanUnits(await readDraftPlanUnitIndex(cwd)).map((entry) => entry.unitId).sort()).toEqual([original.unitId, created.unitId].sort());
+    });
+  });
+
+  it('refuses to split off every item or unknown items', async () => {
+    await withTempProject(async (cwd) => {
+      const unit = await createDraftPlanUnit(cwd, { title: 'Whole', provenance: 'user', items: [{ itemId: 'a', origin: 'user' }, { itemId: 'b', origin: 'user' }] });
+      await expect(splitDraftPlanUnit(cwd, unit.unitId, ['a', 'b'], { title: 'All' })).rejects.toThrow(/leave draft plan unit/);
+      await expect(splitDraftPlanUnit(cwd, unit.unitId, ['ghost'], { title: 'Ghost' })).rejects.toThrow(/not in draft plan unit/);
     });
   });
 
@@ -220,6 +272,61 @@ describe('draft plan unit actions', () => {
 
       const again = await dispatch(cwd, 'promote-draft-unit', { unitId, session: 'second-attempt' });
       expect(again.kind).toBe('invalid-input');
+    });
+  });
+
+  it('merges two units through the action surface and returns a justified-by-dependency advisory', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklogWithDependency(cwd);
+      const a = (await dispatch(cwd, 'create-draft-unit', { title: 'A', itemIds: ['item-one'] }) as { output: { unit: { unitId: string } } }).output.unit.unitId;
+      const b = (await dispatch(cwd, 'create-draft-unit', { title: 'B', itemIds: ['item-two'] }) as { output: { unit: { unitId: string } } }).output.unit.unitId;
+
+      const merged = await dispatch(cwd, 'merge-draft-units', { unitIds: [a, b] });
+      expect(merged.kind).toBe('success');
+      const output = (merged as { output: { unit: { items: { itemId: string }[] }; removedUnitIds: string[]; advisory: { severity: string; findings: { code: string }[] } } }).output;
+      expect(output.unit.items.map((item) => item.itemId)).toEqual(['item-one', 'item-two']);
+      expect(output.removedUnitIds).toEqual([a, b]);
+      // item-two depends on item-one, so the merge is justified.
+      expect(output.advisory.severity).toBe('ok');
+      expect(output.advisory.findings[0].code).toBe('merge-justified-by-dependency');
+    });
+  });
+
+  it('splits a unit through the action surface and cautions when a dependency is separated', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklogWithDependency(cwd);
+      const unitId = (await dispatch(cwd, 'create-draft-unit', { title: 'Both', itemIds: ['item-one', 'item-two'] }) as { output: { unit: { unitId: string } } }).output.unit.unitId;
+
+      const split = await dispatch(cwd, 'split-draft-unit', { unitId, itemIds: ['item-two'], title: 'Peeled' });
+      expect(split.kind).toBe('success');
+      const output = (split as { output: { original: { items: { itemId: string }[] }; created: { title: string }; advisory: { severity: string; findings: { code: string }[] } } }).output;
+      expect(output.original.items.map((item) => item.itemId)).toEqual(['item-one']);
+      expect(output.created.title).toBe('Peeled');
+      // Separating item-two (depends on item-one) from item-one crosses the edge.
+      expect(output.advisory.severity).toBe('caution');
+      expect(output.advisory.findings[0].code).toBe('split-crosses-dependency');
+    });
+  });
+
+  it('previews merge and split advisories without mutating, and rejects promoted/invalid inputs', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklogWithDependency(cwd);
+      const a = (await dispatch(cwd, 'create-draft-unit', { title: 'A', itemIds: ['item-one'] }) as { output: { unit: { unitId: string } } }).output.unit.unitId;
+      const b = (await dispatch(cwd, 'create-draft-unit', { title: 'B', itemIds: ['item-two'] }) as { output: { unit: { unitId: string } } }).output.unit.unitId;
+
+      const advise = await dispatch(cwd, 'advise-merge-draft-units', { unitIds: [a, b] });
+      expect(advise.kind).toBe('success');
+      expect((advise as { output: { advisory: { severity: string } } }).output.advisory.severity).toBe('ok');
+      // Preview did not consume the units.
+      expect((await dispatch(cwd, 'list-draft-units', {}) as { output: { units: unknown[] } }).output.units).toHaveLength(2);
+
+      const both = (await dispatch(cwd, 'create-draft-unit', { title: 'Both', itemIds: ['item-one', 'item-two'] }) as { output: { unit: { unitId: string } } }).output.unit.unitId;
+      const adviseSplitResult = await dispatch(cwd, 'advise-split-draft-unit', { unitId: both, itemIds: ['item-two'] });
+      expect((adviseSplitResult as { output: { advisory: { severity: string } } }).output.advisory.severity).toBe('caution');
+
+      await markDraftPlanUnitPromoted(cwd, a, 'session-x');
+      expect((await dispatch(cwd, 'advise-merge-draft-units', { unitIds: [a, b] })).kind).toBe('invalid-input');
+      expect((await dispatch(cwd, 'merge-draft-units', { unitIds: [a, b] })).kind).toBe('invalid-input');
     });
   });
 });

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ClipboardList, Plus } from 'lucide-react';
+import { ClipboardList, GitMerge, Plus } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,13 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
-import type { Artifact, Detail, DraftPlanUnit, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, UpdateDraftUnitInput } from '@/types';
+import type { Artifact, Detail, DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { intersectsLens } from '@/lib/lens';
 import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
 import { PlanDetailCard } from './plans/plan-detail';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
 import { DraftUnitDetailCard } from './plans/draft-unit-detail';
+import { DraftMergePanel } from './plans/draft-merge-panel';
 
 const bridge = getBridge();
 
@@ -26,11 +27,15 @@ interface PlansViewProps {
   onUpdateDraftUnit: (input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>;
   onDeleteDraftUnit: (unitId: string) => Promise<void>;
   onPromoteDraftUnit: (unitId: string) => Promise<PromoteDraftUnitResponse>;
+  onMergeDraftUnits: (input: MergeDraftUnitsInput) => Promise<MergeDraftUnitsResponse>;
+  onSplitDraftUnit: (input: SplitDraftUnitInput) => Promise<SplitDraftUnitResponse>;
+  onAdviseMergeDraftUnits: (unitIds: string[]) => Promise<DraftUnitAdvisory>;
+  onAdviseSplitDraftUnit: (unitId: string, itemIds: string[]) => Promise<DraftUnitAdvisory>;
   lensTag?: string;
   lensItemIds?: Set<string>;
 }
 
-export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDraftUnit, onDeleteDraftUnit, onPromoteDraftUnit, lensTag = '', lensItemIds }: PlansViewProps) {
+export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDraftUnit, onDeleteDraftUnit, onPromoteDraftUnit, onMergeDraftUnits, onSplitDraftUnit, onAdviseMergeDraftUnits, onAdviseSplitDraftUnit, lensTag = '', lensItemIds }: PlansViewProps) {
   const router = useRouter();
   const toast = useToast();
   const nav = usePlanNavigation();
@@ -38,6 +43,18 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
   const selectPlan = React.useCallback((key: string) => {
     router.setQuery((params) => { if (key) params.set('plan', key); else params.delete('plan'); });
   }, [router]);
+
+  // Merge mode: pick 2+ draft (non-promoted) units, then confirm in the detail
+  // pane. Promoted units are frozen and never selectable here.
+  const [mergeMode, setMergeMode] = React.useState(false);
+  const [mergeSelection, setMergeSelection] = React.useState<Set<string>>(new Set());
+  const [merging, setMerging] = React.useState(false);
+  const mergeableCount = React.useMemo(() => draftUnits.filter((unit) => unit.status === 'draft').length, [draftUnits]);
+  const toggleMergePick = React.useCallback((unitId: string) => {
+    setMergeSelection((prev) => { const next = new Set(prev); if (next.has(unitId)) next.delete(unitId); else next.add(unitId); return next; });
+  }, []);
+  const exitMergeMode = React.useCallback(() => { setMergeMode(false); setMerging(false); setMergeSelection(new Set()); }, []);
+  const mergeUnits = React.useMemo(() => draftUnits.filter((unit) => mergeSelection.has(unit.unitId)), [draftUnits, mergeSelection]);
   const selectedDraftId = parseDraftKey(selectedKey);
   const selectedDraft = selectedDraftId !== null ? draftUnits.find((unit) => unit.unitId === selectedDraftId) ?? null : null;
   // The key still names a draft but no unit matches it (deleted elsewhere, or a
@@ -93,24 +110,41 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
             {creating && <CreatePlanForm onClose={() => setCreating(false)} onCreated={onRefresh} />}
             {draftUnits.length > 0 && (
               <>
-                <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Drafts</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Drafts</span>
+                  {mergeableCount >= 2 && (
+                    mergeMode
+                      ? <button type="button" className="text-2xs text-muted-foreground hover:text-foreground" onClick={exitMergeMode}>Cancel</button>
+                      : <button type="button" className="inline-flex items-center gap-0.5 text-2xs text-muted-foreground hover:text-foreground" onClick={() => setMergeMode(true)} title="Select draft units to merge"><GitMerge className="h-3 w-3" /> Merge</button>
+                  )}
+                </div>
                 {draftUnits.map((unit) => {
                   const key = draftKey(unit.unitId);
+                  const picked = mergeSelection.has(unit.unitId);
+                  const pickable = mergeMode && unit.status === 'draft';
                   return (
-                    <button
+                    <div
                       key={key}
-                      type="button"
-                      onClick={() => selectPlan(key)}
-                      className={`rounded-md border p-3 text-left transition-colors hover:bg-accent ${selectedKey === key ? 'border-primary bg-accent' : 'border-border'}`}
+                      className={`flex items-start gap-2 rounded-md border p-3 transition-colors hover:bg-accent ${selectedKey === key && !mergeMode ? 'border-primary bg-accent' : picked ? 'border-primary bg-primary/10' : 'border-border'}`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-text-bright">{unit.title}</span>
-                        <Badge variant={unit.status === 'promoted' ? 'default' : 'outline'}>{unit.status}</Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{unit.items.length} item{unit.items.length === 1 ? '' : 's'}{unit.sourceRecommendationRef ? ` · ${unit.sourceRecommendationRef}` : ''}</p>
-                    </button>
+                      {pickable && (
+                        <input type="checkbox" className="mt-1 shrink-0" checked={picked} aria-label={`Select ${unit.title} to merge`} onChange={() => toggleMergePick(unit.unitId)} />
+                      )}
+                      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => (pickable ? toggleMergePick(unit.unitId) : selectPlan(key))}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-medium text-text-bright">{unit.title}</span>
+                          <Badge variant={unit.status === 'promoted' ? 'default' : 'outline'}>{unit.status}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{unit.items.length} item{unit.items.length === 1 ? '' : 's'}{unit.sourceRecommendationRef ? ` · ${unit.sourceRecommendationRef}` : ''}</p>
+                      </button>
+                    </div>
                   );
                 })}
+                {mergeMode && (
+                  <Button size="sm" disabled={mergeSelection.size < 2} onClick={() => setMerging(true)} title={mergeSelection.size < 2 ? 'Select at least two draft units.' : 'Review and confirm the merge.'}>
+                    <GitMerge className="h-4 w-4" /> Merge {mergeSelection.size || ''} selected
+                  </Button>
+                )}
                 <span className="mt-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Plans</span>
               </>
             )}
@@ -141,7 +175,15 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
       </aside>
 
       <section className="min-w-0">
-        {selectedDraft
+        {merging && mergeUnits.length >= 2
+          ? <DraftMergePanel
+              units={mergeUnits}
+              onAdvise={onAdviseMergeDraftUnits}
+              onMerge={onMergeDraftUnits}
+              onClose={exitMergeMode}
+              onOpenUnit={(key) => { exitMergeMode(); selectPlan(key); }}
+            />
+          : selectedDraft
           ? <DraftUnitDetailCard
               key={selectedDraft.unitId}
               unit={selectedDraft}
@@ -149,6 +191,8 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
               onUpdate={onUpdateDraftUnit}
               onDelete={async (id) => { await onDeleteDraftUnit(id); selectPlan(''); }}
               onPromote={onPromoteDraftUnit}
+              onSplit={onSplitDraftUnit}
+              onAdviseSplit={onAdviseSplitDraftUnit}
               onOpenItem={nav.openItem}
               onOpenPlan={selectPlan}
             />

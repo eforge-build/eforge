@@ -13,6 +13,7 @@ interface PlanningFocusProps {
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   lensTag: string;
   lensItemIds: Set<string>;
+  onForkLane: (recommendationRef: string) => Promise<void>;
 }
 
 /**
@@ -20,7 +21,7 @@ interface PlanningFocusProps {
  * full recommendation model (lanes, sequence, blocked chains, rationale). This
  * is where the rich, scroll-heavy guidance lives so it never crowds the board.
  */
-export function PlanningFocus({ workflows, selection, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, lensTag, lensItemIds }: PlanningFocusProps) {
+export function PlanningFocus({ workflows, selection, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, lensTag, lensItemIds, onForkLane }: PlanningFocusProps) {
   return (
     <div className="grid gap-4">
       <PlanWithAiPanel workflows={workflows} />
@@ -37,6 +38,7 @@ export function PlanningFocus({ workflows, selection, recommendations, recommend
         onPickItem={selection.pickItem}
         onPickItems={selection.pickItems}
         onPlanItems={selection.planLane}
+        onForkLane={onForkLane}
         busy={workflows.busy}
       />
     </div>

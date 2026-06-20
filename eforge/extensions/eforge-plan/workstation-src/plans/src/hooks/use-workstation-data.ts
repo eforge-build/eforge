@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
-import type { Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
+import type { AdvisoryResponse, Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftUnitAdvisory, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
@@ -23,6 +23,10 @@ export interface WorkstationDataState {
   updateDraftUnit: (input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>;
   deleteDraftUnit: (unitId: string) => Promise<void>;
   promoteDraftUnit: (unitId: string, options?: { session?: string; status?: 'active' | 'planned' }) => Promise<PromoteDraftUnitResponse>;
+  mergeDraftUnits: (input: MergeDraftUnitsInput) => Promise<MergeDraftUnitsResponse>;
+  splitDraftUnit: (input: SplitDraftUnitInput) => Promise<SplitDraftUnitResponse>;
+  adviseMergeDraftUnits: (unitIds: string[]) => Promise<DraftUnitAdvisory>;
+  adviseSplitDraftUnit: (unitId: string, itemIds: string[]) => Promise<DraftUnitAdvisory>;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -145,9 +149,30 @@ export function useWorkstationData(): WorkstationDataState {
     return response;
   }, [refresh]);
 
+  const mergeDraftUnits = React.useCallback(async (input: MergeDraftUnitsInput) => {
+    const response = await bridge.invokeAction<MergeDraftUnitsResponse>('merge-draft-units', input as unknown as JsonObject);
+    await refresh();
+    return response;
+  }, [refresh]);
+
+  const splitDraftUnit = React.useCallback(async (input: SplitDraftUnitInput) => {
+    const response = await bridge.invokeAction<SplitDraftUnitResponse>('split-draft-unit', input as unknown as JsonObject);
+    await refresh();
+    return response;
+  }, [refresh]);
+
+  // Read-only previews: no refresh, used to warn before committing a reshape.
+  const adviseMergeDraftUnits = React.useCallback(async (unitIds: string[]) => {
+    return (await bridge.invokeAction<AdvisoryResponse>('advise-merge-draft-units', { unitIds })).advisory;
+  }, []);
+
+  const adviseSplitDraftUnit = React.useCallback(async (unitId: string, itemIds: string[]) => {
+    return (await bridge.invokeAction<AdvisoryResponse>('advise-split-draft-unit', { unitId, itemIds })).advisory;
+  }, []);
+
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, draftUnits, saveRoadmapState, refreshRecommendations, forkRecommendationToDraftUnit, updateDraftUnit, deleteDraftUnit, promoteDraftUnit, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, draftUnits, saveRoadmapState, refreshRecommendations, forkRecommendationToDraftUnit, updateDraftUnit, deleteDraftUnit, promoteDraftUnit, mergeDraftUnits, splitDraftUnit, adviseMergeDraftUnits, adviseSplitDraftUnit, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

@@ -20,7 +20,7 @@ import {
   updateMockItem,
 } from '@/fixtures/mock-data';
 import { getMockRecommendationsWithRoadmapRefresh, getMockRoadmapState, refreshMockRecommendations, updateMockRoadmapState } from '@/fixtures/mock-roadmap';
-import { deleteMockDraftUnit, forkMockDraftUnit, getMockDraftUnit, listMockDraftUnits, promoteMockDraftUnit, updateMockDraftUnit } from '@/fixtures/mock-draft-units';
+import { adviseMergeMockDraftUnits, adviseSplitMockDraftUnit, deleteMockDraftUnit, forkMockDraftUnit, getMockDraftUnit, listMockDraftUnits, mergeMockDraftUnits, promoteMockDraftUnit, splitMockDraftUnit, updateMockDraftUnit } from '@/fixtures/mock-draft-units';
 import {
   applyMockPlanRevisionTurn,
   cancelMockPlanRevisionTurn,
@@ -148,6 +148,10 @@ function createMockBridge(): EforgeBridge {
         case 'update-draft-unit': return updateMockDraftUnit(input) as TOutput;
         case 'delete-draft-unit': return deleteMockDraftUnit(input) as TOutput;
         case 'promote-draft-unit': return promoteMockDraftUnit(input) as TOutput;
+        case 'merge-draft-units': return mergeMockDraftUnits(input) as TOutput;
+        case 'split-draft-unit': return splitMockDraftUnit(input) as TOutput;
+        case 'advise-merge-draft-units': return adviseMergeMockDraftUnits(input) as TOutput;
+        case 'advise-split-draft-unit': return adviseSplitMockDraftUnit(input) as TOutput;
         default: return { message: `${actionId} accepted by mock bridge.` } as TOutput;
       }
     },

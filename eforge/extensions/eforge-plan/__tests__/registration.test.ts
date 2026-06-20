@@ -14,8 +14,8 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'update-roadmap-state', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation', 'fork-recommendation-to-draft-unit', 'create-draft-unit', 'update-draft-unit', 'delete-draft-unit', 'promote-draft-unit']);
-const READ_ACTIONS = new Set(['prepare-planner-context', 'get-roadmap-state', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session', 'list-draft-units', 'get-draft-unit']);
+const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'update-roadmap-state', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation', 'fork-recommendation-to-draft-unit', 'create-draft-unit', 'update-draft-unit', 'delete-draft-unit', 'promote-draft-unit', 'merge-draft-units', 'split-draft-unit']);
+const READ_ACTIONS = new Set(['prepare-planner-context', 'get-roadmap-state', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session', 'list-draft-units', 'get-draft-unit', 'advise-merge-draft-units', 'advise-split-draft-unit']);
 const NONE_ACTIONS = new Set(['open-planning-entry']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
 const BUILD_QUEUE_ACTIONS = new Set(['handoff-session-plan']);
@@ -83,6 +83,8 @@ describe('eforge-plan extension registration', () => {
     const state = load();
     const actions = state.actions.map((entry) => entry.value);
     expect(actions.map((action) => action.id).sort()).toEqual([
+      'advise-merge-draft-units',
+      'advise-split-draft-unit',
       'analyze-all-backlog',
       'apply-plan-revision-turn',
       'apply-planner-result',
@@ -114,6 +116,7 @@ describe('eforge-plan extension registration', () => {
       'list-plan-revision-sessions',
       'list-planning-agent-tasks',
       'list-planning-artifacts',
+      'merge-draft-units',
       'open-planning-entry',
       'prepare-planner-context',
       'preview-backlog-curation-task',
@@ -134,6 +137,7 @@ describe('eforge-plan extension registration', () => {
       'set-session-plan-section',
       'show-session-plan',
       'show-session-plan-set',
+      'split-draft-unit',
       'start-plan-revision-session',
       'start-plan-revision-turn',
       'start-planning-agent-task',

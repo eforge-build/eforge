@@ -1,11 +1,14 @@
 import { defineExtensionAction } from '@eforge-build/extension-sdk';
 import { toJsonSafeObject } from './json-safe.js';
 import { userActionError } from './action-errors.js';
-import { readBacklogItem } from './markdown-store.js';
+import { listBacklogItems, readBacklogItem } from './markdown-store.js';
 import { promoteBacklogSelection } from './promote.js';
 import { readRecommendationsFromPath, resolveRecommendationsPath } from './recommendations-store.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
 import {
+  AdviseMergeDraftUnitsInputSchema,
+  AdviseSplitDraftUnitInputSchema,
+  AdvisoryOutputSchema,
   CreateDraftUnitInputSchema,
   DeleteDraftUnitOutputSchema,
   DraftUnitIdInputSchema,
@@ -13,9 +16,15 @@ import {
   ForkRecommendationToDraftUnitInputSchema,
   ListDraftUnitsInputSchema,
   ListDraftUnitsOutputSchema,
+  MergeDraftUnitsInputSchema,
+  MergeDraftUnitsOutputSchema,
   PromoteDraftUnitInputSchema,
   PromoteDraftUnitOutputSchema,
+  SplitDraftUnitInputSchema,
+  SplitDraftUnitOutputSchema,
   UpdateDraftUnitInputSchema,
+  type DraftPlanUnit,
+  type DraftPlanUnitIndex,
   type DraftPlanUnitItem,
 } from './draft-plan-unit-schemas.js';
 import {
@@ -24,9 +33,12 @@ import {
   findDraftPlanUnit,
   listDraftPlanUnits,
   markDraftPlanUnitPromoted,
+  mergeDraftPlanUnits,
   readDraftPlanUnitIndex,
+  splitDraftPlanUnit,
   updateDraftPlanUnit,
 } from './draft-plan-unit-store.js';
+import { adviseMerge, adviseSplit, buildDependencyContext, type DependencyMap, type LabelMap } from './draft-plan-unit-advisor.js';
 
 async function assertItemsExist(cwd: string, itemIds: readonly string[]): Promise<void> {
   const missing: string[] = [];
@@ -34,6 +46,41 @@ async function assertItemsExist(cwd: string, itemIds: readonly string[]): Promis
     if ((await readBacklogItem(cwd, id)) === null) missing.push(id);
   }
   if (missing.length > 0) throw userActionError(`Backlog item(s) not found: ${missing.join(', ')}.`, { path: 'itemIds', details: { missing } });
+}
+
+// Build the in-scope dependency + label maps the advisor consumes. `depends_on`
+// is the only edge source; everything outside `scopeIds` is filtered so the
+// advisor reasons only about edges between the items under consideration.
+async function loadDependencyContext(cwd: string, scopeIds: ReadonlySet<string>): Promise<{ deps: DependencyMap; labels: LabelMap }> {
+  const rows = (await listBacklogItems(cwd)).map((item) => ({ id: item.id, title: item.title, dependsOn: item.depends_on }));
+  return buildDependencyContext(rows, scopeIds);
+}
+
+// Resolve and validate the units named for a merge (or merge preview): every id
+// must exist and none may be promoted. Returns them in the requested order.
+function resolveMergeSources(index: DraftPlanUnitIndex, unitIds: readonly string[]): DraftPlanUnit[] {
+  return unitIds.map((unitId) => {
+    const unit = findDraftPlanUnit(index, unitId);
+    if (unit === undefined) throw userActionError(`No draft plan unit found for ${unitId}.`, { path: 'unitIds', details: { unitId } });
+    if (unit.status === 'promoted') throw userActionError(`Draft plan unit ${unitId} was already promoted and cannot be merged.`, { path: 'unitIds', details: { unitId } });
+    return unit;
+  });
+}
+
+// Resolve and validate one unit and a peel set for a split (or split preview):
+// the unit must exist, be a draft, and the peel set must be a non-empty strict
+// subset of its items. Returns the split and remainder item-id lists.
+function resolveSplitItemIds(index: DraftPlanUnitIndex, unitId: string, itemIds: readonly string[]): { splitIds: string[]; remainderIds: string[] } {
+  const unit = findDraftPlanUnit(index, unitId);
+  if (unit === undefined) throw userActionError(`No draft plan unit found for ${unitId}.`, { path: 'unitId', details: { unitId } });
+  if (unit.status === 'promoted') throw userActionError(`Draft plan unit ${unitId} was already promoted and cannot be split.`, { path: 'unitId', details: { unitId } });
+  const present = new Set(unit.items.map((item) => item.itemId));
+  const missing = itemIds.filter((id) => !present.has(id));
+  if (missing.length > 0) throw userActionError(`Item(s) not in draft plan unit ${unitId}: ${missing.join(', ')}.`, { path: 'itemIds', details: { missing } });
+  const peel = new Set(itemIds);
+  const remainderIds = unit.items.filter((item) => !peel.has(item.itemId)).map((item) => item.itemId);
+  if (remainderIds.length === 0) throw userActionError(`Splitting off every item would leave draft plan unit ${unitId} empty; keep at least one item in the original.`, { path: 'itemIds', details: { unitId } });
+  return { splitIds: [...itemIds], remainderIds };
 }
 
 const forkRecommendationToDraftUnit = defineExtensionAction({
@@ -172,6 +219,76 @@ const promoteDraftUnit = defineExtensionAction({
   },
 });
 
+const mergeDraftUnits = defineExtensionAction({
+  id: 'merge-draft-units',
+  title: 'Merge draft plan units',
+  description: 'Combine several draft plan units into one user-authored unit (union of items) and remove the sources. Returns a dependency advisory for the merge.',
+  inputSchema: MergeDraftUnitsInputSchema,
+  outputSchema: MergeDraftUnitsOutputSchema,
+  sideEffects: ['local-read', 'local-write'],
+  async handler(input, ctx) {
+    const sources = resolveMergeSources(await readDraftPlanUnitIndex(ctx.cwd), input.unitIds);
+    const groups = sources.map((unit) => unit.items.map((item) => item.itemId));
+    const result = await mergeDraftPlanUnits(ctx.cwd, input.unitIds, {
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.intent !== undefined && { intent: input.intent }),
+      ...(input.profile !== undefined && { profile: input.profile }),
+    });
+    const { deps, labels } = await loadDependencyContext(ctx.cwd, new Set(groups.flat()));
+    const advisory = adviseMerge(groups, deps, labels);
+    return toJsonSafeObject({ unit: result.unit, removedUnitIds: result.removedUnitIds, advisory });
+  },
+});
+
+const splitDraftUnit = defineExtensionAction({
+  id: 'split-draft-unit',
+  title: 'Split draft plan unit',
+  description: 'Peel a subset of a draft plan unit’s items into a new user-authored unit; the original keeps the rest. Returns a dependency advisory for the split.',
+  inputSchema: SplitDraftUnitInputSchema,
+  outputSchema: SplitDraftUnitOutputSchema,
+  sideEffects: ['local-read', 'local-write'],
+  async handler(input, ctx) {
+    const { splitIds, remainderIds } = resolveSplitItemIds(await readDraftPlanUnitIndex(ctx.cwd), input.unitId, input.itemIds);
+    const result = await splitDraftPlanUnit(ctx.cwd, input.unitId, input.itemIds, {
+      title: input.title,
+      ...(input.intent !== undefined && { intent: input.intent }),
+      ...(input.profile !== undefined && { profile: input.profile }),
+    });
+    const { deps, labels } = await loadDependencyContext(ctx.cwd, new Set([...splitIds, ...remainderIds]));
+    const advisory = adviseSplit(splitIds, remainderIds, deps, labels);
+    return toJsonSafeObject({ original: result.original, created: result.created, advisory });
+  },
+});
+
+const adviseMergeDraftUnits = defineExtensionAction({
+  id: 'advise-merge-draft-units',
+  title: 'Advise on merging draft plan units',
+  description: 'Preview the dependency advisory for merging draft plan units without changing anything. Use before merging to warn when units are independent.',
+  inputSchema: AdviseMergeDraftUnitsInputSchema,
+  outputSchema: AdvisoryOutputSchema,
+  sideEffects: ['local-read'],
+  async handler(input, ctx) {
+    const sources = resolveMergeSources(await readDraftPlanUnitIndex(ctx.cwd), input.unitIds);
+    const groups = sources.map((unit) => unit.items.map((item) => item.itemId));
+    const { deps, labels } = await loadDependencyContext(ctx.cwd, new Set(groups.flat()));
+    return toJsonSafeObject({ advisory: adviseMerge(groups, deps, labels) });
+  },
+});
+
+const adviseSplitDraftUnit = defineExtensionAction({
+  id: 'advise-split-draft-unit',
+  title: 'Advise on splitting a draft plan unit',
+  description: 'Preview the dependency advisory for splitting a draft plan unit without changing anything. Use before splitting to warn when a dependency would be separated.',
+  inputSchema: AdviseSplitDraftUnitInputSchema,
+  outputSchema: AdvisoryOutputSchema,
+  sideEffects: ['local-read'],
+  async handler(input, ctx) {
+    const { splitIds, remainderIds } = resolveSplitItemIds(await readDraftPlanUnitIndex(ctx.cwd), input.unitId, input.itemIds);
+    const { deps, labels } = await loadDependencyContext(ctx.cwd, new Set([...splitIds, ...remainderIds]));
+    return toJsonSafeObject({ advisory: adviseSplit(splitIds, remainderIds, deps, labels) });
+  },
+});
+
 export const draftPlanUnitActions = [
   forkRecommendationToDraftUnit,
   createDraftUnit,
@@ -180,4 +297,8 @@ export const draftPlanUnitActions = [
   updateDraftUnit,
   deleteDraftUnit,
   promoteDraftUnit,
+  mergeDraftUnits,
+  splitDraftUnit,
+  adviseMergeDraftUnits,
+  adviseSplitDraftUnit,
 ] as const;

@@ -63,6 +63,12 @@ describe('DraftUnitDetailCard', () => {
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ unitId: 'u1', title: 'Renamed' }));
   });
 
+  it('clears the profile by selecting none (sends the empty string the backend treats as clear)', async () => {
+    const { onUpdate } = renderCard(baseUnit);
+    fireEvent.change(screen.getByDisplayValue('excursion'), { target: { value: '' } });
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ unitId: 'u1', profile: '' }));
+  });
+
   it('deletes the unit through onDelete', async () => {
     const { onDelete } = renderCard(baseUnit);
     fireEvent.click(screen.getByRole('button', { name: /Delete/ }));
@@ -80,6 +86,65 @@ describe('DraftUnitDetailCard', () => {
     renderCard({ ...baseUnit, status: 'promoted', promotedSession: 'sess-1' });
     expect((screen.getByRole('button', { name: /Promote to a build plan/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTitle('Remove from unit')).toBeNull();
+  });
+
+  it('adds a board item not yet in the unit through the picker', async () => {
+    // 'c' is on the board (in titles) but not in the unit, so it is the only
+    // candidate the picker should offer; 'a' and 'b' are already members.
+    const onUpdate = vi.fn<(input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>>(async () => baseUnit);
+    const pickerTitles = new Map([...titles, ['c', 'Item C']]);
+    render(
+      <ToastProvider>
+        <DraftUnitDetailCard
+          unit={baseUnit}
+          titles={pickerTitles}
+          onUpdate={onUpdate}
+          onDelete={vi.fn<(unitId: string) => Promise<void>>(async () => undefined)}
+          onPromote={vi.fn<(unitId: string) => Promise<PromoteDraftUnitResponse>>()}
+        />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Add items/ }));
+    // Scope to the picker so unit-row buttons (Item A / Item B) don't leak in:
+    // the picker must only offer board items not already in the unit.
+    const picker = screen.getByPlaceholderText('Search board items to add…').closest('div') as HTMLElement;
+    expect(within(picker).getByRole('button', { name: /Item C/ })).toBeDefined();
+    expect(within(picker).queryByRole('button', { name: /Item A/ })).toBeNull();
+    fireEvent.click(within(picker).getByRole('button', { name: /Item C/ }));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ unitId: 'u1', addItemIds: ['c'] }));
+  });
+
+  it('hides the add-items affordance once promoted', () => {
+    renderCard({ ...baseUnit, status: 'promoted', promotedSession: 'sess-1' });
+    expect(screen.queryByRole('button', { name: /Add items/ })).toBeNull();
+  });
+
+  it('shows the Split affordance only when split wiring is present and there are at least two items', () => {
+    // Without onSplit/onAdviseSplit wiring, the Split button never renders.
+    renderCard(baseUnit);
+    expect(screen.queryByRole('button', { name: /^Split$/ })).toBeNull();
+
+    // With wiring and two items, Split is available; with a single item it is not.
+    const onSplit = vi.fn();
+    const onAdviseSplit = vi.fn();
+    const wired = (unit: DraftPlanUnit) => render(
+      <ToastProvider>
+        <DraftUnitDetailCard
+          unit={unit}
+          titles={titles}
+          onUpdate={vi.fn<(input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>>(async () => unit)}
+          onDelete={vi.fn<(unitId: string) => Promise<void>>(async () => undefined)}
+          onPromote={vi.fn<(unitId: string) => Promise<PromoteDraftUnitResponse>>()}
+          onSplit={onSplit}
+          onAdviseSplit={onAdviseSplit}
+        />
+      </ToastProvider>,
+    );
+    wired(baseUnit);
+    expect(screen.getByRole('button', { name: /^Split$/ })).toBeDefined();
+    cleanup();
+    wired({ ...baseUnit, items: [{ itemId: 'a', origin: 'recommendation' }] });
+    expect(screen.queryByRole('button', { name: /^Split$/ })).toBeNull();
   });
 });
 

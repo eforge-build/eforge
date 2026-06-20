@@ -114,3 +114,81 @@ export const PromoteDraftUnitOutputSchema = Type.Object({
   unit: DraftPlanUnitSchema,
   promotion: PromotionSelectionOutputSchema,
 }, { additionalProperties: false });
+
+// --- merge / split + dependency advisory ---
+
+// Non-blocking advice from the dependency-graph advisor. 'caution' means the
+// proposed reshape works against the dependency structure (a split separating a
+// dependency, or a merge serializing independent work); 'ok' confirms it is
+// consistent. The user always decides - the advisory never gates the operation.
+export const DraftUnitAdvisorySeveritySchema = Type.Union([
+  Type.Literal('ok'),
+  Type.Literal('caution'),
+]);
+export type DraftUnitAdvisorySeverity = Static<typeof DraftUnitAdvisorySeveritySchema>;
+
+export const DraftUnitAdvisoryFindingCodeSchema = Type.Union([
+  Type.Literal('split-crosses-dependency'),
+  Type.Literal('split-respects-dependencies'),
+  Type.Literal('merge-justified-by-dependency'),
+  Type.Literal('merge-independent-units'),
+]);
+export type DraftUnitAdvisoryFindingCode = Static<typeof DraftUnitAdvisoryFindingCodeSchema>;
+
+export const DraftUnitAdvisoryFindingSchema = Type.Object({
+  code: DraftUnitAdvisoryFindingCodeSchema,
+  message: Type.String(),
+  itemIds: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export type DraftUnitAdvisoryFinding = Static<typeof DraftUnitAdvisoryFindingSchema>;
+
+export const DraftUnitAdvisorySchema = Type.Object({
+  severity: DraftUnitAdvisorySeveritySchema,
+  findings: Type.Array(DraftUnitAdvisoryFindingSchema),
+}, { additionalProperties: false });
+export type DraftUnitAdvisory = Static<typeof DraftUnitAdvisorySchema>;
+
+export const MergeDraftUnitsInputSchema = Type.Object({
+  // At least two distinct draft units to combine, in the order their items
+  // should be concatenated (first occurrence of a shared item wins its origin).
+  unitIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 2, uniqueItems: true }),
+  // Optional overrides for the merged unit; default to the first unit's values.
+  title: Type.Optional(Type.String({ minLength: 1 })),
+  intent: Type.Optional(Type.String()),
+  profile: Type.Optional(PlanningProfileSchema),
+}, { additionalProperties: false });
+
+export const MergeDraftUnitsOutputSchema = Type.Object({
+  unit: DraftPlanUnitSchema,
+  removedUnitIds: Type.Array(Type.String()),
+  advisory: DraftUnitAdvisorySchema,
+}, { additionalProperties: false });
+
+export const SplitDraftUnitInputSchema = Type.Object({
+  unitId: Type.String({ minLength: 1 }),
+  // The subset of the unit's items to peel off into a new unit. Must be a
+  // non-empty strict subset so both the original and the new unit keep items.
+  itemIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }),
+  title: Type.String({ minLength: 1 }),
+  intent: Type.Optional(Type.String()),
+  profile: Type.Optional(PlanningProfileSchema),
+}, { additionalProperties: false });
+
+export const SplitDraftUnitOutputSchema = Type.Object({
+  original: DraftPlanUnitSchema,
+  created: DraftPlanUnitSchema,
+  advisory: DraftUnitAdvisorySchema,
+}, { additionalProperties: false });
+
+export const AdviseMergeDraftUnitsInputSchema = Type.Object({
+  unitIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 2, uniqueItems: true }),
+}, { additionalProperties: false });
+
+export const AdviseSplitDraftUnitInputSchema = Type.Object({
+  unitId: Type.String({ minLength: 1 }),
+  itemIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }),
+}, { additionalProperties: false });
+
+export const AdvisoryOutputSchema = Type.Object({
+  advisory: DraftUnitAdvisorySchema,
+}, { additionalProperties: false });

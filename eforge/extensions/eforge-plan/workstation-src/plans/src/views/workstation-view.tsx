@@ -133,6 +133,10 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
               onUpdateDraftUnit={data.updateDraftUnit}
               onDeleteDraftUnit={data.deleteDraftUnit}
               onPromoteDraftUnit={(unitId) => data.promoteDraftUnit(unitId)}
+              onMergeDraftUnits={data.mergeDraftUnits}
+              onSplitDraftUnit={data.splitDraftUnit}
+              onAdviseMergeDraftUnits={data.adviseMergeDraftUnits}
+              onAdviseSplitDraftUnit={data.adviseSplitDraftUnit}
               lensTag={lensTag}
               lensItemIds={lensItemIds}
             />
@@ -146,6 +150,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
               activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
               lensTag={lensTag}
               lensItemIds={lensItemIds}
+              onForkLane={onForkLane}
             />
           ) : (
             <BoardFocus

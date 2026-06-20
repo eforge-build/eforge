@@ -156,6 +156,102 @@ export async function deleteDraftPlanUnit(cwd: string, unitId: string): Promise<
   });
 }
 
+export interface MergeDraftPlanUnitsOverrides {
+  title?: string;
+  intent?: string;
+  profile?: DraftPlanUnit['profile'];
+}
+
+export interface MergeDraftPlanUnitsResult {
+  unit: DraftPlanUnit;
+  removedUnitIds: string[];
+}
+
+/**
+ * Combine several draft units into one new user-authored unit (union of items,
+ * deduped with first-occurrence origin) and remove the sources. Promoted units
+ * cannot participate - their session plan already exists. Title/intent/profile
+ * default to the first listed unit's values when no override is given.
+ */
+export async function mergeDraftPlanUnits(cwd: string, unitIds: readonly string[], overrides: MergeDraftPlanUnitsOverrides = {}, now = new Date().toISOString()): Promise<MergeDraftPlanUnitsResult> {
+  const path = resolveDraftPlanUnitIndexPath(cwd);
+  return runExclusive(path, async () => {
+    const index = await readDraftPlanUnitIndex(cwd);
+    const sources = unitIds.map((unitId) => {
+      const unit = findDraftPlanUnit(index, unitId);
+      if (unit === undefined) throw userActionError(`No draft plan unit found for ${unitId}.`, { path: 'unitIds', details: { unitId } });
+      if (unit.status === 'promoted') throw userActionError(`Draft plan unit ${unitId} was already promoted and cannot be merged.`, { path: 'unitIds', details: { unitId } });
+      return unit;
+    });
+    const [first] = sources;
+    const items = dedupeItems(sources.flatMap((unit) => unit.items));
+    const profile = overrides.profile ?? first.profile;
+    const intent = overrides.intent ?? first.intent;
+    const unit: DraftPlanUnit = {
+      unitId: randomUUID(),
+      title: overrides.title ?? first.title,
+      ...(intent !== undefined && { intent }),
+      provenance: 'user',
+      ...(profile !== undefined && { profile }),
+      items,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const removed = new Set(unitIds);
+    await writeDraftPlanUnitIndex(cwd, { schemaVersion: 1, units: [...index.units.filter((entry) => !removed.has(entry.unitId)), unit] });
+    return { unit, removedUnitIds: [...unitIds] };
+  });
+}
+
+export interface SplitDraftPlanUnitOverrides {
+  title: string;
+  intent?: string;
+  profile?: DraftPlanUnit['profile'];
+}
+
+export interface SplitDraftPlanUnitResult {
+  original: DraftPlanUnit;
+  created: DraftPlanUnit;
+}
+
+/**
+ * Peel a non-empty strict subset of a draft unit's items into a new
+ * user-authored unit; the original keeps the remainder. Both sides must keep at
+ * least one item. Peeled items retain their original origin. Promoted units are
+ * frozen and cannot be split.
+ */
+export async function splitDraftPlanUnit(cwd: string, unitId: string, splitItemIds: readonly string[], overrides: SplitDraftPlanUnitOverrides, now = new Date().toISOString()): Promise<SplitDraftPlanUnitResult> {
+  const path = resolveDraftPlanUnitIndexPath(cwd);
+  return runExclusive(path, async () => {
+    const index = await readDraftPlanUnitIndex(cwd);
+    const source = findDraftPlanUnit(index, unitId);
+    if (source === undefined) throw userActionError(`No draft plan unit found for ${unitId}.`, { path: 'unitId', details: { unitId } });
+    if (source.status === 'promoted') throw userActionError(`Draft plan unit ${unitId} was already promoted and cannot be split.`, { path: 'unitId', details: { unitId } });
+    const present = new Set(source.items.map((item) => item.itemId));
+    const missing = splitItemIds.filter((id) => !present.has(id));
+    if (missing.length > 0) throw userActionError(`Item(s) not in draft plan unit ${unitId}: ${missing.join(', ')}.`, { path: 'itemIds', details: { missing } });
+    const peel = new Set(splitItemIds);
+    const splitItems = source.items.filter((item) => peel.has(item.itemId));
+    const remainderItems = source.items.filter((item) => !peel.has(item.itemId));
+    if (remainderItems.length === 0) throw userActionError(`Splitting off every item would leave draft plan unit ${unitId} empty; keep at least one item in the original.`, { path: 'itemIds', details: { unitId } });
+    const original: DraftPlanUnit = { ...source, items: remainderItems, updatedAt: now };
+    const created: DraftPlanUnit = {
+      unitId: randomUUID(),
+      title: overrides.title,
+      ...(overrides.intent !== undefined && { intent: overrides.intent }),
+      provenance: 'user',
+      ...(overrides.profile !== undefined && { profile: overrides.profile }),
+      items: splitItems,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await writeDraftPlanUnitIndex(cwd, { schemaVersion: 1, units: [...index.units.map((entry) => entry.unitId === unitId ? original : entry), created] });
+    return { original, created };
+  });
+}
+
 async function mutateUnit(cwd: string, unitId: string, now: string, mutate: (unit: DraftPlanUnit) => DraftPlanUnit): Promise<DraftPlanUnit> {
   const path = resolveDraftPlanUnitIndexPath(cwd);
   return runExclusive(path, async () => {

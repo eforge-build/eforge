@@ -267,6 +267,10 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Update draft unit', content: 'Edit a draft plan unit: rename, set intent or profile, add/remove/reorder items.', action: { actionId: 'update-draft-unit' } },
       { rendererId: 'action-form', title: 'Delete draft unit', content: 'Delete a draft plan unit.', action: { actionId: 'delete-draft-unit' } },
       { rendererId: 'action-form', title: 'Promote draft unit', content: 'Promote a draft plan unit plan-first into one session plan.', action: { actionId: 'promote-draft-unit', inputDefaults: { status: 'active' } } },
+      { rendererId: 'action-form', title: 'Merge draft units', content: 'Combine several draft plan units into one; returns a dependency advisory.', action: { actionId: 'merge-draft-units' } },
+      { rendererId: 'action-form', title: 'Split draft unit', content: 'Peel a subset of a draft plan unit’s items into a new unit; returns a dependency advisory.', action: { actionId: 'split-draft-unit' } },
+      { rendererId: 'action-form', title: 'Advise: merge draft units', content: 'Preview the dependency advisory for a merge without changing anything.', action: { actionId: 'advise-merge-draft-units' } },
+      { rendererId: 'action-form', title: 'Advise: split draft unit', content: 'Preview the dependency advisory for a split without changing anything.', action: { actionId: 'advise-split-draft-unit' } },
     ],
   }));
   eforge.registerConsoleWorkstation(defineConsoleWorkstation({
@@ -327,6 +331,10 @@ export default defineEforgeExtension((eforge) => {
       'update-draft-unit',
       'delete-draft-unit',
       'promote-draft-unit',
+      'merge-draft-units',
+      'split-draft-unit',
+      'advise-merge-draft-units',
+      'advise-split-draft-unit',
     ],
     frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
   }));

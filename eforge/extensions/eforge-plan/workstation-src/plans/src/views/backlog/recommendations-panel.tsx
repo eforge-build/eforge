@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Lightbulb, Loader2 } from 'lucide-react';
+import { GitFork, Lightbulb, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
@@ -24,13 +24,15 @@ interface RecommendationsPanelProps {
   onPickItems: (itemIds: string[]) => void;
   // Starts a planning task directly from a lane's ready items (one-click path).
   onPlanItems: (itemIds: string[], recommendationRef?: string) => Promise<void>;
+  // Forks a lane into an editable draft plan unit (curate-then-promote path).
+  onForkLane?: (recommendationRef: string) => Promise<void>;
   // Active perspective lens: lanes touching it are flagged with their match count.
   lensTag?: string;
   lensItemIds?: Set<string>;
   busy?: boolean;
 }
 
-export function RecommendationsPanel({ recommendations, status, freshness, activeRefreshTask, titles, selected, readyIds, lensTag = '', lensItemIds, onPickItem, onPickItems, onPlanItems, busy }: RecommendationsPanelProps) {
+export function RecommendationsPanel({ recommendations, status, freshness, activeRefreshTask, titles, selected, readyIds, lensTag = '', lensItemIds, onPickItem, onPickItems, onPlanItems, onForkLane, busy }: RecommendationsPanelProps) {
   if (!recommendations && !status && !freshness) return null;
   const next = recommendations?.recommendedNextSequence ?? [];
   const groups = recommendations?.safeParallelizableGroups ?? [];
@@ -114,7 +116,7 @@ export function RecommendationsPanel({ recommendations, status, freshness, activ
           <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Planning lanes · safe to plan in parallel</span>
           <div className="grid gap-2 lg:grid-cols-2">
             {groups.map((group) => (
-              <PlanningLaneCard key={group.ref} group={group} label={label} selected={selected} readyIds={readyIds} lensTag={lensTag} lensItemIds={lensItemIds} busy={busy} onPickItem={onPickItem} onPickItems={onPickItems} onPlanItems={onPlanItems} />
+              <PlanningLaneCard key={group.ref} group={group} label={label} selected={selected} readyIds={readyIds} lensTag={lensTag} lensItemIds={lensItemIds} busy={busy} onPickItem={onPickItem} onPickItems={onPickItems} onPlanItems={onPlanItems} onForkLane={onForkLane} />
             ))}
           </div>
         </div>
@@ -187,20 +189,23 @@ interface PlanningLaneCardProps {
   onPickItem: (itemId: string) => void;
   onPickItems: (itemIds: string[]) => void;
   onPlanItems: (itemIds: string[], recommendationRef?: string) => Promise<void>;
+  onForkLane?: (recommendationRef: string) => Promise<void>;
 }
 
 /**
  * First-class card for a safe parallelizable group - the primary path into
  * planning. "Plan lane" starts a planning task from the lane's ready items in
  * one click; "Select group" toggles every item into the backlog selection for
- * manual curation via "Promote to a build plan". Individual chips toggle
- * single items.
+ * manual curation via "Promote to a build plan"; "Fork to draft" copies the lane
+ * into an editable draft plan unit. Individual chips toggle single items.
  */
-function PlanningLaneCard({ group, label, selected, readyIds, lensTag = '', lensItemIds, busy, onPickItem, onPickItems, onPlanItems }: PlanningLaneCardProps) {
+function PlanningLaneCard({ group, label, selected, readyIds, lensTag = '', lensItemIds, busy, onPickItem, onPickItems, onPlanItems, onForkLane }: PlanningLaneCardProps) {
   const title = group.title ?? group.ref;
   const allSelected = group.itemIds.length > 0 && group.itemIds.every((id) => selected.has(id));
   const readyCount = group.itemIds.filter((id) => readyIds.has(id)).length;
   const lensCount = lensItemIds ? group.itemIds.filter((id) => lensItemIds.has(id)).length : 0;
+  const [forking, setForking] = React.useState(false);
+  const fork = () => { if (!onForkLane) return; setForking(true); void onForkLane(group.ref).finally(() => setForking(false)); };
   return (
     <div className={`flex flex-col gap-1.5 rounded-md border bg-card p-2.5 ${allSelected ? 'border-primary ring-1 ring-primary' : lensTag && lensCount > 0 ? 'border-[color:var(--lane-ready)]/50' : 'border-border'}`}>
       <div className="flex items-center gap-2">
@@ -244,6 +249,18 @@ function PlanningLaneCard({ group, label, selected, readyIds, lensTag = '', lens
         >
           {allSelected ? 'Clear group' : 'Select group'}
         </Button>
+        {onForkLane && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={forking}
+            aria-label={`Fork lane ${title} to a draft plan unit`}
+            title="Fork this lane into an editable draft plan unit"
+            onClick={fork}
+          >
+            <GitFork className="h-4 w-4" /> {forking ? 'Forking…' : 'Fork to draft'}
+          </Button>
+        )}
       </div>
     </div>
   );
