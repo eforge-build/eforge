@@ -114,6 +114,19 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
+  it('passes redraft context through deferred source-provider assembly', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'redraft-item', status: 'candidate', body: '# Redraft Item\n\n## Claim\n\nClaim\n' });
+      const { sourceText } = await buildBacklogCurationTaskSource({
+        cwd,
+        signal: new AbortController().signal,
+        input: { scanMode: 'delta', redraft: { parentTaskId: 'task-parent', steering: 'Close PR-linked items automatically when evidence is strong.' } },
+      });
+      const packet = JSON.parse(sourceText) as { redraft?: Record<string, unknown> };
+      expect(packet.redraft).toMatchObject({ parentTaskId: 'task-parent', steering: 'Close PR-linked items automatically when evidence is strong.' });
+    });
+  });
+
   it.each(['queued', 'running'] as const)('reuses unapplied active %s curation tasks without building source first', async (status) => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });

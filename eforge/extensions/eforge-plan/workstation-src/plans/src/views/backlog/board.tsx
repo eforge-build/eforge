@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { ChevronsLeft, ChevronsRight, FileText } from 'lucide-react';
 import type { Board as BoardData, BoardItem } from '@/types';
+import type { PlanLink } from '@/lib/plan-links';
 import { ItemCard, type CardRelation } from './item-card';
 import {
   allEpicChips,
@@ -17,6 +18,9 @@ import {
 
 interface BoardProps {
   board: BoardData;
+  lensTag?: string;
+  itemPlanIndex?: Map<string, PlanLink[]>;
+  onOpenPlan?: (key: string) => void;
   query: string;
   onQuery: (value: string) => void;
   filter: StatusFilter;
@@ -50,7 +54,7 @@ function readExpandedColumns(): Set<string> {
   }
 }
 
-export function Board({ board, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onOpenEpic, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
+export function Board({ board, lensTag = '', itemPlanIndex, onOpenPlan, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onOpenEpic, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
   const allItems = board.items ?? [];
   const [hoverId, setHoverId] = React.useState<string | null>(null);
   const [expandedClosed, setExpandedClosed] = React.useState<Set<string>>(() => readExpandedColumns());
@@ -216,7 +220,7 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
       {columns.length === 0
         ? <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">No items match this view.</p>
         : (
-          <div className="flex items-start gap-3 overflow-x-auto pb-2">
+          <div className="flex max-h-[78vh] items-start gap-3 overflow-auto pb-2">
             {columns.map((column) => {
               const collapsible = group !== 'epic' && COLLAPSED_BY_DEFAULT.has(column.key);
               if (collapsible && !expandedClosed.has(column.key)) {
@@ -250,6 +254,9 @@ export function Board({ board, query, onQuery, filter, onFilter, group, onGroup,
                             item={item}
                             selected={selected.has(item.id)}
                             relation={relationFor(item)}
+                            lensTag={lensTag}
+                            plannedIn={itemPlanIndex?.get(item.id)}
+                            onOpenPlan={onOpenPlan}
                             onToggle={onToggle}
                             onOpenDetail={onOpenDetail}
                             onHoverChange={setHoverId}

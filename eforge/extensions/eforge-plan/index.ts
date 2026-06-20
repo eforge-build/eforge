@@ -33,6 +33,7 @@ import { markRecommendationsStaleForBacklogMutation } from './recommendation-sta
 import { plannerActions } from './planner-actions.js';
 import { backlogCurationActions } from './backlog-curation-actions.js';
 import { planRevisionActions } from './plan-revision-actions.js';
+import { draftPlanUnitActions } from './draft-plan-unit-actions.js';
 import { roadmapActions } from './roadmap-actions.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
@@ -226,6 +227,7 @@ export default defineEforgeExtension((eforge) => {
   registerActions(eforge, backlogCurationActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, sessionPlanActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, planRevisionActions as unknown as readonly RegistrableAction[]);
+  registerActions(eforge, draftPlanUnitActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, roadmapActions as unknown as readonly RegistrableAction[]);
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
@@ -258,6 +260,17 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
       { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy selected legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
+      { rendererId: 'action-form', title: 'Fork recommendation to draft unit', content: 'Create an editable draft plan unit from a recommendation safe-to-parallelize lane.', action: { actionId: 'fork-recommendation-to-draft-unit' } },
+      { rendererId: 'action-form', title: 'Create draft unit', content: 'Create a user-authored draft plan unit from hand-picked backlog items.', action: { actionId: 'create-draft-unit' } },
+      { rendererId: 'action-button', title: 'List draft units', content: 'List all draft plan units newest-first.', action: { actionId: 'list-draft-units' } },
+      { rendererId: 'action-form', title: 'Get draft unit', content: 'Read one draft plan unit by id.', action: { actionId: 'get-draft-unit' } },
+      { rendererId: 'action-form', title: 'Update draft unit', content: 'Edit a draft plan unit: rename, set intent or profile, add/remove/reorder items.', action: { actionId: 'update-draft-unit' } },
+      { rendererId: 'action-form', title: 'Delete draft unit', content: 'Delete a draft plan unit.', action: { actionId: 'delete-draft-unit' } },
+      { rendererId: 'action-form', title: 'Promote draft unit', content: 'Promote a draft plan unit plan-first into one session plan.', action: { actionId: 'promote-draft-unit', inputDefaults: { status: 'active' } } },
+      { rendererId: 'action-form', title: 'Merge draft units', content: 'Combine several draft plan units into one; returns a dependency advisory.', action: { actionId: 'merge-draft-units' } },
+      { rendererId: 'action-form', title: 'Split draft unit', content: 'Peel a subset of a draft plan unit’s items into a new unit; returns a dependency advisory.', action: { actionId: 'split-draft-unit' } },
+      { rendererId: 'action-form', title: 'Advise: merge draft units', content: 'Preview the dependency advisory for a merge without changing anything.', action: { actionId: 'advise-merge-draft-units' } },
+      { rendererId: 'action-form', title: 'Advise: split draft unit', content: 'Preview the dependency advisory for a split without changing anything.', action: { actionId: 'advise-split-draft-unit' } },
     ],
   }));
   eforge.registerConsoleWorkstation(defineConsoleWorkstation({
@@ -311,6 +324,17 @@ export default defineEforgeExtension((eforge) => {
       'retry-plan-revision-turn',
       'cancel-plan-revision-turn',
       'apply-plan-revision-turn',
+      'fork-recommendation-to-draft-unit',
+      'create-draft-unit',
+      'list-draft-units',
+      'get-draft-unit',
+      'update-draft-unit',
+      'delete-draft-unit',
+      'promote-draft-unit',
+      'merge-draft-units',
+      'split-draft-unit',
+      'advise-merge-draft-units',
+      'advise-split-draft-unit',
     ],
     frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
   }));

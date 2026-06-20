@@ -96,3 +96,13 @@ export function useRouter(): RouterValue {
   if (!context) throw new Error('useRouter must be used within RouterProvider');
   return context;
 }
+
+/**
+ * Router access that tolerates being rendered outside a provider (returns null
+ * instead of throwing). For components that want to deep-link when routing is
+ * available but must still render in isolation - e.g. plan detail panels in unit
+ * tests that mount without the workstation shell.
+ */
+export function useOptionalRouter(): RouterValue | null {
+  return React.useContext(RouterContext);
+}

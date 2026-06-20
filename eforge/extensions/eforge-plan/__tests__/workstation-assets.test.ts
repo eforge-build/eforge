@@ -13,7 +13,10 @@ beforeAll(() => {
   execFileSync('pnpm', ['--filter', '@eforge-build/eforge-plan-workstation', 'build'], { stdio: 'inherit' });
 }, 120_000);
 const SRC = 'eforge/extensions/eforge-plan/workstation-src/plans/src';
-const BACKLOG_VIEW = `${SRC}/views/backlog-view.tsx`;
+const BOARD_FOCUS = `${SRC}/views/board-focus.tsx`;
+const SELECTION_RAIL = `${SRC}/views/selection-rail.tsx`;
+const BACKLOG_SELECTION_HOOK = `${SRC}/hooks/use-backlog-selection.ts`;
+const PLAN_CONTEXT_RAIL = `${SRC}/views/plan-context-rail.tsx`;
 const RECOMMENDATIONS_PANEL = `${SRC}/views/backlog/recommendations-panel.tsx`;
 const PLAN_WITH_AI_PANEL = `${SRC}/views/backlog/plan-with-ai-panel.tsx`;
 const TASK_WORKFLOWS_HOOK = `${SRC}/views/backlog/use-planning-task-workflows.ts`;
@@ -78,8 +81,11 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('confirmApply');
     expect(source).toContain('Promote to a build plan');
     expect(source).toContain('Lifecycle evidence');
-    expect(source).toContain('Source refs');
-    expect(source).toContain('Partial progress');
+    // Plan provenance moved into the context rail ("Built from") and the build
+    // trace panel ("Build trace"); the old in-body "Source refs"/"Partial
+    // progress" sections were removed during the unified-workstation redesign.
+    expect(source).toContain('Built from');
+    expect(source).toContain('Build trace');
     expect(source).toContain('Revise with AI');
     expect(source).toContain('planRevisionTurn');
     expect(source).toContain(CURATION_PREVIEW_ACTION);
@@ -134,21 +140,21 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('keeps recommendation-only refresh out of the workstation primary UI', async () => {
-    const [hook, panel, bridge, backlogView] = await Promise.all([
+    const [hook, panel, bridge, boardFocus] = await Promise.all([
       readFile(TASK_WORKFLOWS_HOOK, 'utf-8'),
       readFile(RECOMMENDATIONS_PANEL, 'utf-8'),
       readFile(BRIDGE, 'utf-8'),
-      readFile(BACKLOG_VIEW, 'utf-8'),
+      readFile(BOARD_FOCUS, 'utf-8'),
     ]);
 
     expect(hook).not.toContain("'refresh-recommendations'");
     expect(panel).not.toContain('onRefreshRecommendations');
     expect(panel).not.toContain('Refresh recommendations');
-    // Roadmap workstation owns the manual refresh action; keep it out of the
-    // recommendation-only/backlog primary surfaces covered by this regression.
+    // The Roadmap focus owns the manual refresh action; keep it out of the
+    // primary board surface covered by this regression.
     expect(bridge).toContain("case 'refresh-recommendations'");
-    expect(backlogView).not.toContain('refreshRecommendations');
-    expect(`${hook}\n${panel}\n${bridge}\n${backlogView}`).not.toMatch(/build-queue/);
+    expect(boardFocus).not.toContain('refreshRecommendations');
+    expect(`${hook}\n${panel}\n${bridge}\n${boardFocus}`).not.toMatch(/build-queue/);
   });
 
   it('keeps a stateful mock fixture set for running, failed, needs-input, and ready creation drafts', async () => {
@@ -199,13 +205,17 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('promotes selected ready backlog items through a single AI planning task', async () => {
-    const source = await readFile(BACKLOG_VIEW, 'utf-8');
+    const [rail, hook] = await Promise.all([
+      readFile(SELECTION_RAIL, 'utf-8'),
+      readFile(BACKLOG_SELECTION_HOOK, 'utf-8'),
+    ]);
+    const source = `${rail}\n${hook}`;
 
-    expect(source).toContain('Promote to a build plan');
+    expect(rail).toContain('Promote to a build plan');
     expect(source).not.toContain('Promote as one plan');
     expect(source).not.toContain("'promote-selection'");
     expect(source).toContain('selectedReadyIds');
-    expect(source).toContain('workflows.start');
+    expect(hook).toContain('workflows.start');
   });
 
   it('contains the plan revision workstation source contract', async () => {
@@ -243,8 +253,9 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('renders lifecycle source and evidence panels from extension action projections only', async () => {
-    const [backlogPanel, evidencePanel, detail, bridge, asset, boardModel] = await Promise.all([
+    const [backlogPanel, sourceRail, evidencePanel, detail, bridge, asset, boardModel] = await Promise.all([
       readFile(LIFECYCLE_PANEL, 'utf-8'),
+      readFile(PLAN_CONTEXT_RAIL, 'utf-8'),
       readFile(LIFECYCLE_EVIDENCE_PANEL, 'utf-8'),
       readFile(PLAN_DETAIL, 'utf-8'),
       readFile(BRIDGE, 'utf-8'),
@@ -256,21 +267,23 @@ describe('eforge-plan planning workstation assets', () => {
     expect(backlogPanel).toContain('PR open');
     expect(backlogPanel).toContain('Merged');
     expect(backlogPanel).toContain('Failed');
-    expect(evidencePanel).toContain('Source refs');
-    expect(evidencePanel).toContain('Partial progress');
-    // Status-first layout: the actionable readiness checklist leads; lifecycle
-    // provenance sinks into the collapsed Provenance panel below.
-    expect(detail.indexOf('<ReadinessChecklist')).toBeLessThan(detail.indexOf('<PlanLifecycleEvidencePanel'));
+    // Provenance now lives in the plan context rail ("Built from" source items),
+    // and the in-body footer panel is the flat build trace.
+    expect(sourceRail).toContain('Built from');
+    expect(evidencePanel).toContain('Build trace');
+    // Status-first layout: the actionable readiness checklist leads; the build
+    // trace sinks into the collapsed "Build activity & metadata" panel below.
+    expect(detail.indexOf('<ReadinessChecklist')).toBeLessThan(detail.indexOf('<PlanBuildTracePanel'));
     expect(boardModel).toContain('lifecycleSearchText');
     expect(boardModel).toContain('row.prUrl');
     expect(boardModel).toContain('row.sessionId');
     expect(boardModel).toContain('row.affectedItemIds');
     expect(bridge).toContain('mockBoard');
-    for (const source of [backlogPanel, evidencePanel, detail, bridge, asset]) {
+    for (const source of [backlogPanel, sourceRail, evidencePanel, detail, bridge, asset]) {
       expect(source).not.toMatch(/fetch\s*\(/);
       expect(source).not.toMatch(/XMLHttpRequest/);
     }
-    for (const source of [backlogPanel, evidencePanel, detail, bridge]) {
+    for (const source of [backlogPanel, sourceRail, evidencePanel, detail, bridge]) {
       expect(source).not.toMatch(/\.eforge\/storage\/extensions/);
     }
   });

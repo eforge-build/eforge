@@ -12,7 +12,7 @@ import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { OpenQuestionsPanel } from './open-questions-panel';
 import { titleCase } from './dimensions';
-import { PlanLifecycleEvidencePanel } from './lifecycle-evidence-panel';
+import { PlanBuildTracePanel } from './lifecycle-evidence-panel';
 import { PlanRevisionPanel } from './plan-revision-panel';
 import { usePlanRevisionSession } from './use-plan-revision-session';
 import { AnnotatablePlanSection } from './plan-annotatable-section';
@@ -154,9 +154,9 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
         <PlanRevisionAnnotationsPanel plan={plan} api={revision} disabled={locked} />
         <PlanRevisionPanel plan={plan} api={revision} />
 
-        <CollapsiblePanel storageKey={`eforge-plan.provenance.${plan.session}`} title="Provenance & metadata">
+        <CollapsiblePanel storageKey={`eforge-plan.provenance.${plan.session}`} title="Build activity & metadata">
           <div className="grid gap-3">
-            <PlanLifecycleEvidencePanel plan={plan} detail={detail} />
+            <PlanBuildTracePanel plan={plan} detail={detail} />
             <MetadataEditor plan={plan} disabled={locked} onSave={saveMetadata} />
           </div>
         </CollapsiblePanel>

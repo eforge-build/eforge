@@ -8,10 +8,10 @@ function setBridge(bridge: EforgeBridge) {
   (window as Window & { eforge?: EforgeBridge }).eforge = bridge;
 }
 
-describe('App roadmap placement', () => {
+describe('App workstation surface', () => {
   beforeEach(() => { vi.resetModules(); });
 
-  it('renders the roadmap panel in the shell and loads startup data through the bridge', async () => {
+  it('renders the focus switcher (Roadmap/Board/Plans/Plan with AI) and activity rail, loading startup data through the bridge', async () => {
     const calls: Array<{ actionId: string; input: unknown }> = [];
     setBridge({
       version: 9,
@@ -21,6 +21,7 @@ describe('App roadmap placement', () => {
         if (actionId === 'list-planning-artifacts') return { artifacts: getMockArtifacts() } as TOutput;
         if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
         if (actionId === 'get-roadmap-state') return getMockRoadmapState() as TOutput;
+        if (actionId === 'list-planning-agent-tasks') return { tasks: [] } as TOutput;
         throw new Error(`unexpected action ${actionId}`);
       },
     });
@@ -28,12 +29,13 @@ describe('App roadmap placement', () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText('Roadmap workstation')).toBeTruthy());
-    await waitFor(() => expect(screen.getByText('Local focus roadmap')).toBeTruthy());
-    expect(screen.getAllByText('Configured shared context').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Discovered context').length).toBeGreaterThan(0);
-    expect(screen.getByText('Backlog')).toBeTruthy();
-    expect(calls.map((call) => call.actionId)).toEqual(expect.arrayContaining(['get-roadmap-state', 'get-recommendations', 'list-board-compact', 'list-planning-artifacts']));
+    // Roadmap / Board / Plans / Plan with AI are focuses on one surface, switched
+    // in the header. The board focus loads by default with its activity rail.
+    await waitFor(() => expect(screen.getByText('Board')).toBeTruthy());
+    expect(screen.getByText('Roadmap')).toBeTruthy();
+    expect(screen.getByText('Plan with AI')).toBeTruthy();
+    expect(screen.getByText('Planning activity')).toBeTruthy();
+    expect(calls.map((call) => call.actionId)).toEqual(expect.arrayContaining(['get-roadmap-state', 'get-recommendations', 'list-board-compact', 'list-planning-artifacts', 'list-planning-agent-tasks']));
     expect(calls).toContainEqual({ actionId: 'list-planning-artifacts', input: { includeBoard: false } });
   });
 });

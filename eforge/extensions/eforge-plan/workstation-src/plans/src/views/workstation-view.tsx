@@ -1,0 +1,206 @@
+import * as React from 'react';
+import { ClipboardList, GitBranch, Map, Sparkles } from 'lucide-react';
+import { useRouter } from '@/router';
+import type { WorkstationDataState } from '@/hooks/use-workstation-data';
+import { useBacklogSelection } from '@/hooks/use-backlog-selection';
+import type { ApplyPlanningTaskResponse, JsonObject } from '@/types';
+import { collectLensTags, lensMatchingItemIds } from '@/lib/lens';
+import { buildItemPlanIndex, draftKey, planKey } from '@/lib/plan-links';
+import { RoadmapContextRail, RoadmapFocus } from './roadmap/roadmap-panel';
+import { sourceSummary } from './roadmap/roadmap-view-model';
+import { LensBar } from './lens-bar';
+import { BoardFocus } from './board-focus';
+import { PlansView } from './plans-view';
+import { PlanningFocus } from './planning-focus';
+import { ActivityRail } from './activity-rail';
+import { RecommendationsRail } from './recommendations-rail';
+import { SelectionRail } from './selection-rail';
+import { PlanContextRail } from './plan-context-rail';
+import { usePlanningTaskWorkflows } from './backlog/use-planning-task-workflows';
+
+type Focus = 'roadmap' | 'board' | 'plans' | 'ai';
+
+const FOCUSES: { id: Focus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'roadmap', label: 'Roadmap', icon: Map },
+  { id: 'board', label: 'Board', icon: GitBranch },
+  { id: 'plans', label: 'Plans', icon: ClipboardList },
+  { id: 'ai', label: 'Plan with AI', icon: Sparkles },
+];
+
+/**
+ * Single planning workstation: a focal work pane (Roadmap / Board / Plans / Plan
+ * with AI, switched in the header) beside a context rail that adapts to the
+ * focus. One mental model with hierarchy - the work leads, guidance and context
+ * support it. The rail is context for whatever you're focused on, not a fixed
+ * board sidebar.
+ */
+export function WorkstationView({ data }: { data: WorkstationDataState }) {
+  const router = useRouter();
+  const workflows = usePlanningTaskWorkflows(data.refresh);
+  const selection = useBacklogSelection(data.board, workflows);
+
+  const focus: Focus = readFocus(router.query.get('focus'));
+  const setFocus = React.useCallback((next: Focus) => {
+    router.setQuery((params) => { if (next === 'board') params.delete('focus'); else params.set('focus', next); });
+  }, [router]);
+
+  // Applying a generated result that creates a session plan jumps to it on the
+  // Plans focus so iteration continues there.
+  const applyAndOpenPlan = React.useCallback(async (taskId: string, input: JsonObject): Promise<ApplyPlanningTaskResponse | null> => {
+    const response = await workflows.apply(taskId, input);
+    const session = response?.sessionPlanCreationDraft?.session;
+    if (session) router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', planKey(session)); });
+    return response;
+  }, [workflows, router]);
+  const panelWorkflows = React.useMemo(() => ({ ...workflows, apply: applyAndOpenPlan }), [workflows, applyAndOpenPlan]);
+
+  // Perspective lens: an orthogonal view keyed off item tags. It highlights work
+  // under a perspective and dims the rest; it never removes items.
+  const items = data.board.items ?? [];
+  const lensTag = router.query.get('lens') ?? '';
+  const lensTags = React.useMemo(() => collectLensTags(items, lensTag), [items, lensTag]);
+  const lensItemIds = React.useMemo(() => lensMatchingItemIds(items, lensTag), [items, lensTag]);
+  const onSelectLens = React.useCallback((tag: string) => {
+    router.setQuery((params) => { if (tag) params.set('lens', tag); else params.delete('lens'); });
+  }, [router]);
+
+  // Fork a recommendation lane into an editable draft plan unit, then jump to it
+  // on the Plans focus so curation continues there.
+  const onForkLane = React.useCallback(async (recommendationRef: string) => {
+    const unit = await data.forkRecommendationToDraftUnit(recommendationRef);
+    router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', draftKey(unit.unitId)); });
+  }, [data, router]);
+
+  // Reverse index of the plan->item linkage so a board card (and its drawer) can
+  // show which plan(s) converged on it, mirroring the source refs a plan shows.
+  const itemPlanIndex = React.useMemo(() => buildItemPlanIndex(data.artifacts), [data.artifacts]);
+
+  // The rail is context for the current focus. The Plans focus swaps the
+  // board-oriented cards for the open plan's lineage; the lens stays pinned so
+  // the rail reads as "lens + context", not a panel that teleports per tab.
+  const selectedPlanKey = router.query.get('plan') ?? '';
+  const selectedArtifact = React.useMemo(
+    () => data.artifacts.find((entry) => entry.key === selectedPlanKey) ?? null,
+    [data.artifacts, selectedPlanKey],
+  );
+
+  const roadmapSummary = sourceSummary(data.roadmapState);
+  const counts: Record<Focus, number> = {
+    roadmap: roadmapSummary.local + roadmapSummary.configuredShared + roadmapSummary.discovered,
+    board: data.board.counts?.total ?? items.length,
+    plans: data.artifacts.length,
+    ai: workflows.items.length,
+  };
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="min-w-0">
+          <nav className="mb-4 flex flex-wrap gap-1 border-b pb-2">
+            {FOCUSES.map((entry) => {
+              const Icon = entry.icon;
+              const active = entry.id === focus;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => setFocus(entry.id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${active ? 'bg-accent text-text-bright' : 'text-muted-foreground hover:bg-accent/60'}`}
+                >
+                  <Icon className="h-4 w-4" /> <span>{entry.label}</span>
+                  <span className={`rounded-full border px-1.5 text-2xs ${active ? 'border-border text-muted-foreground' : 'border-transparent text-muted-foreground/70'}`}>{counts[entry.id]}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {focus === 'roadmap' ? (
+            <RoadmapFocus
+              state={data.roadmapState}
+              recommendationStatus={data.recommendationStatus}
+              recommendationFreshness={data.recommendationFreshness}
+              activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+              onSaveLocalFocus={data.saveRoadmapState}
+              onRefreshRecommendations={data.refreshRecommendations}
+            />
+          ) : focus === 'plans' ? (
+            <PlansView
+              artifacts={data.artifacts}
+              draftUnits={data.draftUnits}
+              titles={selection.titles}
+              onRefresh={data.refresh}
+              onUpdateDraftUnit={data.updateDraftUnit}
+              onDeleteDraftUnit={data.deleteDraftUnit}
+              onPromoteDraftUnit={(unitId) => data.promoteDraftUnit(unitId)}
+              onMergeDraftUnits={data.mergeDraftUnits}
+              onSplitDraftUnit={data.splitDraftUnit}
+              onAdviseMergeDraftUnits={data.adviseMergeDraftUnits}
+              onAdviseSplitDraftUnit={data.adviseSplitDraftUnit}
+              lensTag={lensTag}
+              lensItemIds={lensItemIds}
+            />
+          ) : focus === 'ai' ? (
+            <PlanningFocus
+              workflows={panelWorkflows}
+              selection={selection}
+              recommendations={data.recommendations}
+              recommendationStatus={data.recommendationStatus}
+              recommendationFreshness={data.recommendationFreshness}
+              activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+              lensTag={lensTag}
+              lensItemIds={lensItemIds}
+              onForkLane={onForkLane}
+            />
+          ) : (
+            <BoardFocus
+              board={data.board}
+              selection={selection}
+              lensTag={lensTag}
+              itemPlanIndex={itemPlanIndex}
+              onRefresh={data.refresh}
+              onLoadMoreBoard={data.loadMoreBoard}
+              onLoadClosedLane={data.loadClosedLane}
+            />
+          )}
+        </div>
+
+        <aside className="grid gap-3 lg:sticky lg:top-[5.5rem]">
+          {focus === 'roadmap' ? (
+            <RoadmapContextRail
+              state={data.roadmapState}
+              loading={data.loading}
+              recommendationStatus={data.recommendationStatus}
+              recommendationFreshness={data.recommendationFreshness}
+              activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+              onReloadRoadmap={data.refresh}
+            />
+          ) : focus === 'plans' ? (
+            <PlanContextRail artifact={selectedArtifact} titles={selection.titles} />
+          ) : (
+            <>
+              <SelectionRail selection={selection} busy={workflows.busy} />
+              <LensBar tags={lensTags} active={lensTag} matchCount={lensItemIds.size} onSelect={onSelectLens} />
+              <RecommendationsRail
+                recommendations={data.recommendations}
+                status={data.recommendationStatus}
+                freshness={data.recommendationFreshness}
+                selection={selection}
+                lensTag={lensTag}
+                lensItemIds={lensItemIds}
+                busy={workflows.busy}
+                onOpenPlanning={() => setFocus('ai')}
+                onForkLane={onForkLane}
+              />
+              <ActivityRail workflows={workflows} />
+            </>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function readFocus(value: string | null): Focus {
+  return value === 'roadmap' || value === 'plans' || value === 'ai' ? value : 'board';
+}
