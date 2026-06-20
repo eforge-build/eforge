@@ -36,10 +36,10 @@ export function renderRecoveryGuidanceSection(options: RenderRecoveryGuidanceSec
     `- Recommended action: ${formatSidecarEvidence(sidecar.report.recommendedAction)}`,
     '- Remaining work:',
     ...remainingWork.map((item) => `  - ${item}`),
-    `- Retry/resume guidance: Continue ${formatSidecarEvidence(planId)} for failed PRD ${formatSidecarEvidence(prdId)} from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.`,
-    `- Sidecar generated at: ${formatSidecarEvidence(sidecar.generatedAt)}`,
-    `- Source sidecar: ${formatSidecarEvidence(sidecarPath)}`,
-    `- Source identity: prdId=${formatSidecarEvidence(prdId)}; setName=${formatSidecarEvidence(setName)}; featureBranch=${formatSidecarEvidence(featureBranch)}; baseBranch=${formatSidecarEvidence(baseBranch)}`,
+    `- Retry/resume guidance: Continue ${formatSidecarEvidenceText(planId)} for failed PRD ${formatSidecarEvidenceText(prdId)} from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.`,
+    `- Sidecar generated at: ${formatSidecarEvidenceText(sidecar.generatedAt)}`,
+    `- Source sidecar: ${formatSidecarEvidenceText(sidecarPath)}`,
+    `- Source identity: prdId=${formatSidecarEvidenceText(prdId)}; setName=${formatSidecarEvidenceText(setName)}; featureBranch=${formatSidecarEvidenceText(featureBranch)}; baseBranch=${formatSidecarEvidenceText(baseBranch)}`,
   ].join('\n'));
 }
 
@@ -91,10 +91,14 @@ function recoveryGuidanceSectionRanges(markdown: string): Array<{ start: number;
 }
 
 function formatSidecarEvidence(value: string): string {
+  return JSON.stringify(formatSidecarEvidenceText(value));
+}
+
+function formatSidecarEvidenceText(value: string): string {
   const sanitized = redactSecretLikeValues(value)
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu, ' ')
     .replace(/\r?\n/gu, ' ⏎ ');
-  return JSON.stringify(sanitized.length > 1000 ? `${sanitized.slice(0, 999)}…` : sanitized);
+  return sanitized.length > 1000 ? `${sanitized.slice(0, 999)}…` : sanitized;
 }
 
 function findFailingPlan(sidecar: RecoveryVerdictSidecar, planId: string): RecoveryVerdictSidecar['boundedEvidence']['failingPlan'] | undefined {

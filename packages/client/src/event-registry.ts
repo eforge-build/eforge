@@ -19,16 +19,13 @@
  * has an entry, so adding a new event variant to the exported schema/type
  * contract forces an update here.
  */
-
 import type { EforgeEvent, StackLayerWire } from './events.js';
 import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked, projectQueueDependencyOverridden, projectQueuePrdDispatchFailed } from './event-projections/queue.js';
 import type { RunInfo, QueueItem, AutoBuildState, FailedEnqueueInfo } from './types.js';
-
 // ---------------------------------------------------------------------------
 // Minimal state shape the project functions operate on.
 // Console and daemon project-state snapshots satisfy this interface structurally.
 // ---------------------------------------------------------------------------
-
 export interface ProjectableState {
   /** Runs sorted by startedAt DESC; runs[0] is the most-recent session. */
   runs: RunInfo[];
@@ -62,13 +59,10 @@ export interface ProjectableState {
   stackLayers: StackLayerWire[];
   /** Durable failed-enqueue attention rows keyed by runId. */ failedEnqueues?: FailedEnqueueInfo[];
 }
-
 // ---------------------------------------------------------------------------
 // EventMeta: per-variant metadata shape
 // ---------------------------------------------------------------------------
-
 export type EventScope = 'daemon' | 'session';
-
 export interface EventMeta<T extends EforgeEvent['type']> {
   /** Context this event belongs to. */
   scope: EventScope;
@@ -95,11 +89,9 @@ export interface EventMeta<T extends EforgeEvent['type']> {
     state: Readonly<ProjectableState>,
   ) => Partial<ProjectableState> | undefined;
 }
-
 // ---------------------------------------------------------------------------
 // Registry shape: every EforgeEvent type must have an entry
 // ---------------------------------------------------------------------------
-
 type EventRegistryShape = {
   [T in EforgeEvent['type']]: EventMeta<T>;
 };
