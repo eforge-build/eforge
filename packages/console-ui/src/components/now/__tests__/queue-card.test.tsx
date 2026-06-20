@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { QueueCard } from '../queue-card';
+import type { QueueCascadeApplyResponse, QueueCascadePreviewResponse } from '@eforge-build/client/browser';
 import type { NowEnqueueCard, NowQueueSummary } from '@/lib/selectors/now';
+import { makeQueueCapabilities } from '@/test-support/factories';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -162,23 +164,38 @@ describe('QueueCard - loose row actions', () => {
       pendingCount: status === 'pending' ? 1 : 0,
       waitingCount: status === 'waiting' ? 1 : 0,
       topItems: [
-        { id: 'q-1', title, status, priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined },
+        { id: 'q-1', title, status, priority: undefined, created: undefined, dependsOn: undefined, recoveryVerdict: undefined, capabilities: makeQueueCapabilities() },
       ],
     });
   }
 
+  function cascadePreview(): QueueCascadePreviewResponse {
+    return {
+      operation: 'remove',
+      target: { prdId: 'q-1', title: 'Pending Task', status: 'pending', effect: 'remove', depth: 0, blockers: [] },
+      dependents: [],
+      expectedAffected: { prdIds: ['q-1'] },
+      warnings: [],
+      blockers: [],
+    };
+  }
+
+  function cascadeApplied(): QueueCascadeApplyResponse {
+    return { applied: true, operation: 'remove', strategy: 'target-only', affected: { prdIds: ['q-1'] }, warnings: [], blockers: [] };
+  }
+
   it('renders Set priority and Remove controls for pending loose rows', () => {
-    render(<QueueCard summary={pendingSummary('pending', 'Pending Task')} onSetPriority={vi.fn()} onRemove={vi.fn()} />);
+    render(<QueueCard summary={pendingSummary('pending', 'Pending Task')} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />);
     expect(screen.getByLabelText('Priority for Pending Task')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Set priority' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Remove…' })).toBeDefined();
   });
 
   it('renders Set priority and Remove controls for waiting loose rows', () => {
-    render(<QueueCard summary={pendingSummary('waiting', 'Waiting Task')} onSetPriority={vi.fn()} onRemove={vi.fn()} />);
+    render(<QueueCard summary={pendingSummary('waiting', 'Waiting Task')} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />);
     expect(screen.getByLabelText('Priority for Waiting Task')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Set priority' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Remove…' })).toBeDefined();
   });
 
   it('excludes running rows from the loose list entirely (no row, no controls)', () => {
@@ -190,7 +207,7 @@ describe('QueueCard - loose row actions', () => {
       ],
     });
     const { container } = render(
-      <QueueCard summary={summary} onSetPriority={vi.fn()} onRemove={vi.fn()} />,
+      <QueueCard summary={summary} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />,
     );
     // Running rows are not forward work; with no other work the card omits them
     // by rendering nothing at all.
@@ -208,16 +225,18 @@ describe('QueueCard - loose row actions', () => {
     expect(onSetPriority).toHaveBeenCalledWith('q-1', 5);
   });
 
-  it('calls onRemove only after the AlertDialog confirm action', () => {
-    const onRemove = vi.fn();
-    render(<QueueCard summary={pendingSummary('pending', 'Pending Task')} onRemove={onRemove} />);
-    // Opening the confirmation dialog must not mutate.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    expect(onRemove).not.toHaveBeenCalled();
-    // Confirming inside the dialog runs the removal.
+  it('previews and applies remove only after the cascade dialog confirm action', async () => {
+    const onPreviewCascade = vi.fn().mockResolvedValue(cascadePreview());
+    const onApplyCascade = vi.fn().mockResolvedValue(cascadeApplied());
+    render(<QueueCard summary={pendingSummary('pending', 'Pending Task')} onPreviewCascade={onPreviewCascade} onApplyCascade={onApplyCascade} />);
+    // Opening the confirmation dialog previews but does not mutate.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
+    expect(onApplyCascade).not.toHaveBeenCalled();
+    await waitFor(() => expect(onPreviewCascade).toHaveBeenCalledWith('q-1', 'remove'));
+    // Confirming inside the dialog runs the apply mutation.
     const dialog = screen.getByRole('alertdialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
-    expect(onRemove).toHaveBeenCalledWith('q-1');
+    await waitFor(() => expect(onApplyCascade).toHaveBeenCalledWith('q-1', expect.objectContaining({ operation: 'remove', strategy: 'target-only' })));
   });
 
   it('hides actions entirely when no callbacks are provided', () => {
@@ -232,7 +251,7 @@ describe('QueueCard - loose row actions', () => {
       pendingCount: 1,
       withDependenciesCount: 1,
       topItems: [
-        { id: 'q-1', title: 'Blocked Task', status: 'pending', priority: undefined, created: undefined, dependsOn: ['q-prev'], recoveryVerdict: undefined },
+        { id: 'q-1', title: 'Blocked Task', status: 'pending', priority: undefined, created: undefined, dependsOn: ['q-prev'], recoveryVerdict: undefined, capabilities: makeQueueCapabilities() },
       ],
     });
     const { container } = render(<QueueCard summary={summary} onOverrideDependency={vi.fn()} />);
@@ -253,7 +272,7 @@ describe('QueueCard - loose row actions', () => {
       waitingCount: 1,
       withDependenciesCount: 1,
       topItems: [
-        { id: 'q-1', title: 'Blocked Task', status: 'waiting', priority: undefined, created: undefined, dependsOn: ['dep-a', 'dep-b'], recoveryVerdict: undefined },
+        { id: 'q-1', title: 'Blocked Task', status: 'waiting', priority: undefined, created: undefined, dependsOn: ['dep-a', 'dep-b'], recoveryVerdict: undefined, capabilities: makeQueueCapabilities() },
       ],
     });
     render(<QueueCard summary={summary} onOverrideDependency={onOverrideDependency} />);
@@ -291,7 +310,8 @@ describe('QueueCard - loose row actions', () => {
       <QueueCard
         summary={pendingSummary('pending', 'Pending Task')}
         onSetPriority={onSetPriority}
-        onRemove={vi.fn()}
+        onPreviewCascade={vi.fn()}
+        onApplyCascade={vi.fn()}
       />,
     );
     const input = screen.getByLabelText('Priority for Pending Task') as HTMLInputElement;
@@ -302,7 +322,6 @@ describe('QueueCard - loose row actions', () => {
     // While the mutation is in flight every control is disabled.
     await waitFor(() => expect(setButton.disabled).toBe(true));
     expect(input.disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement).disabled).toBe(true);
 
     // Resolving the mutation re-enables the controls.
     resolveSet();
@@ -310,17 +329,19 @@ describe('QueueCard - loose row actions', () => {
     expect(input.disabled).toBe(false);
   });
 
-  it('disables the dialog confirm/cancel while the remove promise is pending, then closes on resolve', async () => {
-    let resolveRemove!: () => void;
-    const onRemove = vi.fn().mockReturnValue(
-      new Promise<void>((resolve) => {
-        resolveRemove = resolve;
+  it('disables the dialog confirm/cancel while the cascade apply promise is pending, then closes on resolve', async () => {
+    let resolveApply!: (value: QueueCascadeApplyResponse) => void;
+    const onPreviewCascade = vi.fn().mockResolvedValue(cascadePreview());
+    const onApplyCascade = vi.fn().mockReturnValue(
+      new Promise<QueueCascadeApplyResponse>((resolve) => {
+        resolveApply = resolve;
       }),
     );
-    render(<QueueCard summary={pendingSummary('pending', 'Pending Task')} onRemove={onRemove} />);
+    render(<QueueCard summary={pendingSummary('pending', 'Pending Task')} onPreviewCascade={onPreviewCascade} onApplyCascade={onApplyCascade} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
     const dialog = screen.getByRole('alertdialog');
+    await waitFor(() => expect(onPreviewCascade).toHaveBeenCalled());
     const confirm = within(dialog).getByRole('button', { name: 'Remove' }) as HTMLButtonElement;
     fireEvent.click(confirm);
 
@@ -329,9 +350,9 @@ describe('QueueCard - loose row actions', () => {
     expect((within(dialog).getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
 
     // On success the component closes the dialog itself.
-    resolveRemove();
+    resolveApply(cascadeApplied());
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-    expect(onRemove).toHaveBeenCalledWith('q-1');
+    expect(onApplyCascade).toHaveBeenCalledWith('q-1', expect.objectContaining({ operation: 'remove' }));
   });
 });
 

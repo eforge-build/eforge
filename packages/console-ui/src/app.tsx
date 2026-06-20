@@ -39,11 +39,15 @@ export function App() {
   const [currentRoute, setCurrentRoute] = useState<ConsoleRouteId>(getInitialRoute);
 
   // Daemon-wide state
-  const { projectState, refreshQueue, setDaemonAutoBuild } = useDaemonEvents();
-  const { toggling: autoBuildToggling, setEnabled: onSetAutoBuildEnabled } = useAutoBuild(
-    projectState.autoBuild,
-    setDaemonAutoBuild,
-  );
+  const { projectState, refreshQueue, refreshRuns, refreshFailedEnqueues, setDaemonAutoBuild } = useDaemonEvents();
+  const {
+    toggling: autoBuildToggling,
+    setEnabled: onSetAutoBuildEnabled,
+    schedulerToggling,
+    schedulerError,
+    pauseScheduler,
+    resumeScheduler,
+  } = useAutoBuild(projectState.autoBuild, setDaemonAutoBuild);
 
   // Derive active session IDs from live runs
   const activeSessionIds = selectActiveSessionIds(projectState.runs);
@@ -85,7 +89,16 @@ export function App() {
   const routeContent = (() => {
     // --- eforge:region now-dashboard ---
     if (currentRoute === 'now') {
-      return <NowDashboard projectState={projectState} activeSessions={activeSessionStreams} onNavigate={handleNavigate} refreshQueue={refreshQueue} />;
+      return (
+        <NowDashboard
+          projectState={projectState}
+          activeSessions={activeSessionStreams}
+          onNavigate={handleNavigate}
+          refreshQueue={refreshQueue}
+          refreshRuns={refreshRuns}
+          refreshFailedEnqueues={refreshFailedEnqueues}
+        />
+      );
     }
     // --- eforge:endregion now-dashboard ---
 
@@ -135,6 +148,10 @@ export function App() {
       projectState={projectState}
       autoBuildToggling={autoBuildToggling}
       onSetAutoBuildEnabled={onSetAutoBuildEnabled}
+      schedulerToggling={schedulerToggling}
+      schedulerError={schedulerError}
+      onPauseScheduler={pauseScheduler}
+      onResumeScheduler={resumeScheduler}
       onNavigate={handleNavigate}
     >
       {routeContent}

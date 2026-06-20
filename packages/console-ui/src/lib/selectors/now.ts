@@ -9,7 +9,7 @@
 
 import type {
   RunInfo, EforgeEvent, QueueItem,
-  ExtensionEntry, ExtensionTrustState,
+  ExtensionEntry, ExtensionTrustState, FailedEnqueueInfo,
 } from '@eforge-build/client/browser';
 import { getEventSummary, isTransientTransportError } from '@eforge-build/client/browser';
 import type { ConsoleProjectState } from '@/lib/project-state';
@@ -26,6 +26,7 @@ import { selectNowQueueSummary } from './queue-summary';
 import type { NowQueueSummary } from './queue-summary';
 import { formatQueueDispatchFailure } from './queue-dispatch-failure';
 import { extensionNeedsTrust, extensionTrustActionLabel } from './system';
+import { failedEnqueueAttentionCandidates } from '@/lib/failed-enqueues';
 
 export { selectNowQueueSummary } from './queue-summary';
 export type { NowQueueItem, NowQueueSummary } from './queue-summary';
@@ -70,6 +71,7 @@ export interface NowAttentionItem {
   recovery?: { prdId: string; prdTitle: string; verdict?: string; confidence?: string; dispatchFailure?: QueueItem['dispatchFailure'] };
   /** Trust action payload for an extension-trust attention item (Now strip owns Trust/Re-trust). */
   extensionTrust?: { name: string; path: string; trustState?: ExtensionTrustState; actionLabel: 'Trust' | 'Re-trust' };
+  failedEnqueue?: FailedEnqueueInfo;
 }
 
 export type NowBuildLifecyclePhase =
@@ -136,6 +138,7 @@ export interface NowActiveBuildCard {
   planning: PlanningLane;
   /** True when planning events exist in the run state (shows PRD row in pipeline strip). */
   hasPlanningRow: boolean;
+  queueControl?: { prdId: string; title: string; capabilities?: QueueItem['capabilities'] };
 }
 
 export interface NowActivityPreviewItem {
@@ -292,7 +295,7 @@ export function isLivenessStale(
 export function selectNowAttentionItems(
   state: Pick<
     ConsoleProjectState,
-    'connectionStatus' | 'error' | 'queue' | 'runs' | 'lastEventAt' | 'lastSnapshotAt' | 'latestHeartbeat' | 'liveness'
+    'connectionStatus' | 'error' | 'queue' | 'runs' | 'failedEnqueues' | 'lastEventAt' | 'lastSnapshotAt' | 'latestHeartbeat' | 'liveness'
   >,
   activeDetails: Record<string, ActiveSessionDetail>,
   now: number = Date.now(),
@@ -301,6 +304,8 @@ export function selectNowAttentionItems(
   /** Keep predicate run on deduped candidates BEFORE the cap (excluded items never displace kept ones; hiddenCount stays accurate). */ keep: (i: NowAttentionItem) => boolean = () => true,
 ): { items: NowAttentionItem[]; hiddenCount: number } {
   const candidates: AttentionCandidate[] = [];
+
+  candidates.push(...failedEnqueueAttentionCandidates(state.failedEnqueues ?? []));
 
   // 1. Stream disconnected/error
   if (state.connectionStatus === 'disconnected' && state.error) {
@@ -652,13 +657,7 @@ export function selectNowActiveBuildCards(
   sessionMetadata: Record<string, { planCount: number | null; baseProfile: string | null }>,
   activeDetails: Record<string, ActiveSessionDetail>,
   now: number = Date.now(),
-  /**
-   * Optional map from PRD/plan-set id to its human-authored title, sourced from
-   * the queue. When the running build's `planSet` slug resolves to a queue
-   * item, its title is used so the card label matches Attention/Queue labeling
-   * instead of a naively title-cased slug.
-   */
-  titleByPlanSet: Map<string, string> = new Map(),
+  queueItemByPlanSet: Map<string, QueueItem> = new Map(),
 ): NowActiveBuildCard[] {
   // Filter to active *build* runs (no completedAt, non-terminal status). Enqueue
   // runs share a session with the build that follows but are pre-build PRD
@@ -733,7 +732,7 @@ export function selectNowActiveBuildCards(
     return {
       sessionId,
       runId: run.id,
-      planSet: selectPrdDisplayLabel(titleByPlanSet.get(run.planSet), run.planSet),
+      planSet: selectPrdDisplayLabel(queueItemByPlanSet.get(run.planSet)?.title, run.planSet),
       command: run.command,
       status: run.status,
       startedAt: run.startedAt,
@@ -757,6 +756,7 @@ export function selectNowActiveBuildCards(
       planLanes,
       planning,
       hasPlanningRow,
+      queueControl: queueItemByPlanSet.has(run.planSet) ? { prdId: run.planSet, title: selectPrdDisplayLabel(queueItemByPlanSet.get(run.planSet)?.title, run.planSet), capabilities: queueItemByPlanSet.get(run.planSet)?.capabilities } : undefined,
     };
   });
 }
@@ -985,15 +985,13 @@ export function selectNowDashboardModel(
     now,
     extensions,
   );
-  // Resolve human-authored PRD titles from the queue so active build cards
-  // label the running plan-set identically to the Queue/Attention surfaces.
-  const titleByPlanSet = new Map(state.queue.map((q) => [q.id, q.title]));
+  const queueItemByPlanSet = new Map(state.queue.map((q) => [q.id, q]));
   const activeBuilds = selectNowActiveBuildCards(
     state.runs,
     state.sessionMetadata,
     activeSessions.sessions,
     now,
-    titleByPlanSet,
+    queueItemByPlanSet,
   );
   const enqueueCards = selectNowEnqueueCards(state.runs, activeSessions.sessions, now);
   const queue = selectNowQueueSummary(state.queue);

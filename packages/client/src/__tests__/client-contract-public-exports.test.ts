@@ -122,7 +122,7 @@ describe('client contract public exports', () => {
     };
     const failedList: FailedEnqueuesResponse = [failedEnqueue];
     const reenqueueRequest: FailedEnqueueReenqueueRequest = { confirm: true };
-    const reenqueueResponse: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue, queue: [queueItem], runs: [], newRunId: 'run-2' };
+    const reenqueueResponse: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue, queue: [queueItem], runs: [], spawnedSessionId: 'session-2' };
     const pauseResponse: SchedulerPauseResponse = { enabled: true, watcher: { running: false, pid: null, sessionId: null } };
     const resumeResponse: SchedulerResumeResponse = pauseResponse;
 
@@ -130,7 +130,7 @@ describe('client contract public exports', () => {
       recoveryResponse: { plans: [{ status: 'already-current' }] },
       holdResponse: { item: { capabilities } },
       applyResponse: { target: { status: 'removed' } },
-      reenqueueResponse: { newRunId: 'run-2' },
+      reenqueueResponse: { spawnedSessionId: 'session-2' },
       resumeResponse: pauseResponse,
     });
   });
@@ -142,11 +142,10 @@ describe('client contract public exports', () => {
     expect(eventSchemas.FailedEnqueueInfoSchema).toBeDefined();
   });
 
-  it('bumps the daemon API version for the Console feature gate', () => {
-    expect(client.DAEMON_API_VERSION).toBe(72);
-    expect(browser.DAEMON_API_VERSION).toBe(72);
+  it('bumps the daemon API version for failed-enqueue re-enqueue contract changes', () => {
+    expect(client.DAEMON_API_VERSION).toBe(73);
+    expect(browser.DAEMON_API_VERSION).toBe(73);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('Console feature gate');
-    expect(source).toContain('failed-enqueue projections');
+    expect(source).toContain('failed-enqueue re-enqueue reports spawnedSessionId');
   });
 });

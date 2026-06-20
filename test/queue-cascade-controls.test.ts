@@ -68,7 +68,7 @@ describe('queue cascade controls', () => {
     expect(readFileSync(join(queueRoot(dir), 'skipped', 'b.md'), 'utf-8')).toContain('upstream a');
   });
 
-  it('refuses drifted expected affected tokens before mutation', async () => {
+  it('refuses drifted or cross-operation expected affected tokens before mutation', async () => {
     const dir = tmp();
     const path = writePrd(dir, 'queue', 'a');
     const preview = await previewQueueCascade({ cwd: dir, queueDir: queueRoot(dir), prdId: 'a', operation: 'remove' });
@@ -82,6 +82,16 @@ describe('queue cascade controls', () => {
       confirmDependents: false,
     });
     expect(applied).toMatchObject({ applied: false, blockers: [expect.stringContaining('drifted')] });
+    const crossOperation = await applyQueueCascade({
+      cwd: dir,
+      queueDir: queueRoot(dir),
+      prdId: 'a',
+      operation: 'cancel',
+      strategy: 'target-only',
+      expectedAffected: preview.expectedAffected,
+      confirmDependents: false,
+    });
+    expect(crossOperation).toMatchObject({ applied: false, blockers: [expect.stringContaining('drifted')] });
     expect(existsSync(path)).toBe(true);
   });
 

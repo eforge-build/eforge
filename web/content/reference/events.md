@@ -215,7 +215,7 @@ Total variants: 229
 | `daemon:recovery:complete` | `durationMs`, `locksRemoved`, `runsFailed` |
 | `daemon:orphan:reaped` | `pid`, `planSet`, `runId`, `sessionId` |
 | `daemon:failed-enqueue:upsert` | `failedEnqueue` |
-| `daemon:failed-enqueue:resolved` | `newRunId`, `resolvedAt`, `runId` |
+| `daemon:failed-enqueue:resolved` | `spawnedSessionId`, `resolvedAt`, `runId` |
 | `daemon:warning` | `details`, `message`, `source` |
 | `daemon:error` | `message`, `source`, `stack` |
 | `queue:start` | `dir`, `prdCount` |

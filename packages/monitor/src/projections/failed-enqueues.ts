@@ -1,5 +1,6 @@
 import { basename, dirname } from 'node:path';
 import type { EforgeEvent, FailedEnqueueInfo, FailedEnqueueRecoveryCommand, RunInfo } from '@eforge-build/client';
+import { redactSecretLikeValues } from '@eforge-build/engine/secret-redaction';
 import type { MonitorDB } from '../db.js';
 import { hydrateEforgeEvent } from './event-hydration.js';
 
@@ -13,7 +14,7 @@ interface FailedEnqueueEvidence {
 
 export interface FailedEnqueueProjectionOptions { includeResolved?: boolean }
 
-type DaemonFailedEnqueueResolvedEvent = EforgeEvent & { type: 'daemon:failed-enqueue:resolved'; runId: string; resolvedAt: string; newRunId?: string };
+type DaemonFailedEnqueueResolvedEvent = EforgeEvent & { type: 'daemon:failed-enqueue:resolved'; runId: string; resolvedAt: string; spawnedSessionId?: string };
 type DaemonFailedEnqueueUpsertEvent = EforgeEvent & { type: 'daemon:failed-enqueue:upsert'; failedEnqueue: FailedEnqueueInfo };
 
 export function projectFailedEnqueues(db: MonitorDB, options: FailedEnqueueProjectionOptions = {}): FailedEnqueueInfo[] {
@@ -43,8 +44,8 @@ export function buildFailedEnqueueUpsertEvent(db: MonitorDB, runId: string): Dae
   return { type: 'daemon:failed-enqueue:upsert', timestamp: failedEnqueue.failedAt, failedEnqueue };
 }
 
-export function buildFailedEnqueueResolvedEvent(runId: string, resolvedAt: string, newRunId?: string): DaemonFailedEnqueueResolvedEvent {
-  return { type: 'daemon:failed-enqueue:resolved', timestamp: resolvedAt, runId, resolvedAt, ...(newRunId !== undefined ? { newRunId } : {}) };
+export function buildFailedEnqueueResolvedEvent(runId: string, resolvedAt: string, spawnedSessionId?: string): DaemonFailedEnqueueResolvedEvent {
+  return { type: 'daemon:failed-enqueue:resolved', timestamp: resolvedAt, runId, resolvedAt, ...(spawnedSessionId !== undefined ? { spawnedSessionId } : {}) };
 }
 
 export function recordFailedEnqueueUpsert(db: MonitorDB, runId: string): DaemonFailedEnqueueUpsertEvent | undefined {
@@ -54,8 +55,8 @@ export function recordFailedEnqueueUpsert(db: MonitorDB, runId: string): DaemonF
   return event;
 }
 
-export function recordFailedEnqueueResolved(db: MonitorDB, runId: string, resolvedAt: string, newRunId?: string): DaemonFailedEnqueueResolvedEvent {
-  const event = buildFailedEnqueueResolvedEvent(runId, resolvedAt, newRunId);
+export function recordFailedEnqueueResolved(db: MonitorDB, runId: string, resolvedAt: string, spawnedSessionId?: string): DaemonFailedEnqueueResolvedEvent {
+  const event = buildFailedEnqueueResolvedEvent(runId, resolvedAt, spawnedSessionId);
   db.insertDaemonEvent({ type: event.type, data: JSON.stringify(event), timestamp: event.timestamp });
   return event;
 }
@@ -83,10 +84,9 @@ function projectRun(db: MonitorDB, run: RunInfo, resolvedAt?: string): FailedEnq
     failureReason,
     failedAt,
     canReenqueue: hasSource && resolvedAt === undefined,
+    nextCommand: hasSource ? nextCommandForSource() : { executable: 'eforge', args: ['history', 'show', run.id] },
     ...(resolvedAt !== undefined ? { resolvedAt } : {}),
   };
-  if (hasSource) item.nextCommand = nextCommandForSource();
-  else item.nextCommand = { executable: 'eforge', args: ['history', 'show', run.id] };
   if (!item.canReenqueue) item.disabledReason = resolvedAt !== undefined ? 'This failed enqueue has already been re-enqueued.' : 'Original enqueue source was not recorded; inspect Build history and rerun the original enqueue command.';
   return item;
 }
@@ -132,12 +132,7 @@ function nextCommandForSource(): FailedEnqueueRecoveryCommand {
 }
 
 function safeProjectionText(value: string, maxLength: number): string {
-  const redacted = value
-    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/=-]{16,}/giu, '$1[REDACTED]')
-    .replace(/\b((?:[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|authorization|api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*)\s*(?:=|:)\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s"',;]+)/giu, '$1[REDACTED]')
-    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu, '[REDACTED_JWT]')
-    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/gu, '[REDACTED_GITHUB_TOKEN]')
-    .replace(/\bnpm_[A-Za-z0-9]{20,}\b/gu, '[REDACTED_NPM_TOKEN]')
+  const redacted = redactSecretLikeValues(value)
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();

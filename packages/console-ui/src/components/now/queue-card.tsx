@@ -60,8 +60,11 @@ function isForwardItem(item: NowQueueItem): boolean {
 function LooseQueueRow({
   item,
   onSetPriority,
-  onRemove,
   onOverrideDependency,
+  onHold,
+  onUnhold,
+  onPreviewCascade,
+  onApplyCascade,
 }: { item: NowQueueItem } & QueueRowActionCallbacks) {
   const status = item.status.toLowerCase();
   // Only forward queue work (pending/waiting) is mutable from Console; running
@@ -74,12 +77,16 @@ function LooseQueueRow({
       </Badge>
       <div className="min-w-0 flex-1">
         <p className="text-xs text-foreground truncate">{item.title}</p>
-        {item.priority != null && (
-          <span className="inline-block text-xs text-muted-foreground">priority {item.priority}</span>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {item.priority != null && (
+            <span className="inline-block text-xs text-muted-foreground">priority {item.priority}</span>
+          )}
+          {item.hold?.held === true && <Badge variant="outline" className="text-xs">Held</Badge>}
+        </div>
         {item.dependsOn && item.dependsOn.length > 0 && (
           <p className="text-xs text-muted-foreground">blocked by {blockedByLabel(item.dependsOn)}</p>
         )}
+        {item.hold?.reason && <p className="text-xs text-muted-foreground">hold: {item.hold.reason}</p>}
         {showActions && (
           <>
             <QueueRowActions
@@ -87,9 +94,14 @@ function LooseQueueRow({
               itemTitle={item.title}
               initialPriority={item.priority}
               onSetPriority={onSetPriority}
-              onRemove={onRemove}
               dependencyIds={item.dependsOn ?? []}
               onOverrideDependency={onOverrideDependency}
+              onHold={onHold}
+              onUnhold={onUnhold}
+              onPreviewCascade={onPreviewCascade}
+              onApplyCascade={onApplyCascade}
+              hold={item.hold}
+              capabilities={item.capabilities}
             />
           </>
         )}
@@ -103,8 +115,11 @@ export function QueueCard({
   summary,
   enqueueCards = [],
   onSetPriority,
-  onRemove,
   onOverrideDependency,
+  onHold,
+  onUnhold,
+  onPreviewCascade,
+  onApplyCascade,
 }: QueueCardProps) {
   const [expanded, setExpanded] = React.useState(false);
 
@@ -157,8 +172,11 @@ export function QueueCard({
             <QueueStacks
               stacks={stacks}
               onSetPriority={onSetPriority}
-              onRemove={onRemove}
               onOverrideDependency={onOverrideDependency}
+              onHold={onHold}
+              onUnhold={onUnhold}
+              onPreviewCascade={onPreviewCascade}
+              onApplyCascade={onApplyCascade}
             />
           </div>
         )}
@@ -181,8 +199,11 @@ export function QueueCard({
                   key={item.id}
                   item={item}
                   onSetPriority={onSetPriority}
-                  onRemove={onRemove}
                   onOverrideDependency={onOverrideDependency}
+                  onHold={onHold}
+                  onUnhold={onUnhold}
+                  onPreviewCascade={onPreviewCascade}
+                  onApplyCascade={onApplyCascade}
                 />
               ))}
             </ul>

@@ -82,4 +82,16 @@ describe('failed enqueue routes', () => {
     expect(await res.text()).toContain('worker spawning is unavailable');
     expect(harness.db.getDaemonEventsAfter(0).filter((row) => row.type === 'daemon:failed-enqueue:resolved')).toEqual([]);
   });
+
+  it('reports the spawned worker session separately from run ids when re-enqueue succeeds', async () => {
+    harness = await startControlRouteHarness({ serverOptions: { workerTracker: { spawnWorker: () => ({ sessionId: 'spawned-session-1', pid: 123 }), cancelWorker: () => false } } });
+    insertFailedEnqueue('run-1', { source: 'docs/prd.md', error: 'bad source' });
+
+    const res = await harness.postJson(reenqueuePath('run-1'), { confirm: true });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ enqueued: true, spawnedSessionId: 'spawned-session-1' });
+    const [eventRow] = harness.db.getDaemonEventsAfter(0).filter((row) => row.type === 'daemon:failed-enqueue:resolved');
+    expect(JSON.parse(eventRow!.data)).toMatchObject({ runId: 'run-1', spawnedSessionId: 'spawned-session-1' });
+  });
 });

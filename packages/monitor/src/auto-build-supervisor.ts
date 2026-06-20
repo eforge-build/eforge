@@ -132,8 +132,8 @@ export function createAutoBuildSupervisorState(
 
 export const initialAutoBuildSupervisorState = createAutoBuildSupervisorState();
 
-function legacyEnabled(mode: AutoBuildRuntimeMode, desired: AutoBuildDesired): boolean {
-  return desired === 'enabled' && (mode === 'starting' || mode === 'running' || mode === 'restarting');
+function legacyEnabled(_mode: AutoBuildRuntimeMode, desired: AutoBuildDesired): boolean {
+  return desired === 'enabled';
 }
 
 function transitionTo(

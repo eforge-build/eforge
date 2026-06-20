@@ -1,15 +1,11 @@
-/**
- * QueueRowActions — reusable set-priority and confirmed-remove controls shared
- * by loose queue rows and dependency-stack rows.
- *
- * The row owns its transient UI state (the priority input value, the pending
- * flag, and the latest error text). The parent owns the daemon mutation
- * callbacks and the post-success queue refresh — this component never inspects
- * queue filesystem paths, daemon wire shapes, or calls fetch directly. Numeric
- * validation rejects empty or non-integer values locally before invoking the
- * daemon; daemon rejections still surface as row-local error text.
- */
 import * as React from 'react';
+import type {
+  QueueCascadeApplyRequest,
+  QueueCascadeApplyResponse,
+  QueueCascadeOperation,
+  QueueCascadePreviewResponse,
+  QueueItem,
+} from '@eforge-build/client/browser';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -22,12 +18,20 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { QueueHoldAction } from './queue-hold-action';
+import { QueueCascadeAction } from './queue-cascade-action';
+import { QueueActionDisabledReason } from './queue-action-disabled-reason';
+import { capabilityOrUnavailable, capabilityReason, isHeld } from './queue-capability';
 
-/** Mutation callbacks shared by loose and stack rows. Absent callback hides its action. */
 export interface QueueRowActionCallbacks {
   onSetPriority?: (id: string, priority: number) => Promise<void> | void;
+  /** @deprecated Console destructive controls use preview/apply cascade callbacks. */
   onRemove?: (id: string) => Promise<void> | void;
   onOverrideDependency?: (id: string, dependencyId: string, reason?: string) => Promise<void> | void;
+  onHold?: (id: string, reason?: string) => Promise<void> | void;
+  onUnhold?: (id: string) => Promise<void> | void;
+  onPreviewCascade?: (id: string, operation: QueueCascadeOperation) => Promise<QueueCascadePreviewResponse>;
+  onApplyCascade?: (id: string, request: QueueCascadeApplyRequest) => Promise<QueueCascadeApplyResponse>;
 }
 
 interface QueueRowActionsProps extends QueueRowActionCallbacks {
@@ -35,6 +39,9 @@ interface QueueRowActionsProps extends QueueRowActionCallbacks {
   itemTitle: string;
   initialPriority?: number;
   dependencyIds?: string[];
+  hold?: QueueItem['hold'];
+  capabilities?: QueueItem['capabilities'];
+  showCancel?: boolean;
 }
 
 export function QueueRowActions({
@@ -45,19 +52,24 @@ export function QueueRowActions({
   onSetPriority,
   onRemove,
   onOverrideDependency,
+  onHold,
+  onUnhold,
+  onPreviewCascade,
+  onApplyCascade,
+  hold,
+  capabilities,
+  showCancel = false,
 }: QueueRowActionsProps) {
-  const [priorityValue, setPriorityValue] = React.useState(
-    initialPriority != null ? String(initialPriority) : '',
-  );
+  const [priorityValue, setPriorityValue] = React.useState(initialPriority != null ? String(initialPriority) : '');
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = React.useState(false);
   const [overrideOpen, setOverrideOpen] = React.useState(false);
-  const [selectedDependencyId, setSelectedDependencyId] = React.useState(
-    dependencyIds.length === 1 ? dependencyIds[0] : '',
-  );
+  const [selectedDependencyId, setSelectedDependencyId] = React.useState(dependencyIds.length === 1 ? dependencyIds[0] : '');
   const [overrideReason, setOverrideReason] = React.useState('');
   const showOverrideDependency = Boolean(onOverrideDependency && dependencyIds.length > 0);
+  const priorityAllowed = capabilityOrUnavailable(capabilities?.priority).allowed;
+  const dependencyAllowed = capabilityOrUnavailable(capabilities?.dependencyOverride).allowed;
 
   React.useEffect(() => {
     if (!dependencyIds.includes(selectedDependencyId)) {
@@ -65,8 +77,7 @@ export function QueueRowActions({
     }
   }, [dependencyIds, selectedDependencyId]);
 
-  // Hide entirely when no action is wired (e.g. read-only callers).
-  if (!onSetPriority && !onRemove && !showOverrideDependency) return null;
+  if (!onSetPriority && !onRemove && !showOverrideDependency && !onHold && !onUnhold && !onPreviewCascade && !onApplyCascade) return null;
 
   async function runAction(action: () => Promise<void> | void): Promise<boolean> {
     setPending(true);
@@ -113,60 +124,74 @@ export function QueueRowActions({
     <div className="mt-1 flex flex-wrap items-center gap-2">
       {onSetPriority && (
         <>
+          {!priorityAllowed && <QueueActionDisabledReason reason={capabilityReason(capabilities?.priority)} />}
           <input
             type="number"
             aria-label={`Priority for ${itemTitle}`}
             value={priorityValue}
             onChange={(event) => setPriorityValue(event.target.value)}
-            disabled={pending}
+            disabled={pending || !priorityAllowed}
             className="h-7 w-16 rounded-md border border-input bg-background px-2 text-xs"
           />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={handleSetPriority}
-          >
+          <Button type="button" size="sm" variant="outline" disabled={pending || !priorityAllowed} onClick={handleSetPriority}>
             Set priority
           </Button>
         </>
       )}
-      {onRemove && (
+      {(onHold || onUnhold) && (
+        <QueueHoldAction
+          itemId={itemId}
+          itemTitle={itemTitle}
+          held={isHeld(hold)}
+          capability={isHeld(hold) ? capabilities?.unhold : capabilities?.hold}
+          pending={pending}
+          onHold={onHold}
+          onUnhold={onUnhold}
+        />
+      )}
+      {onRemove && !(onPreviewCascade && onApplyCascade) && (
         <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
           <AlertDialogTrigger asChild>
-            <Button type="button" size="sm" variant="destructive" disabled={pending}>
-              Remove
-            </Button>
+            <Button type="button" size="sm" variant="destructive" disabled={pending}>Remove</Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Remove queued item?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Remove {itemTitle} ({itemId}) from the queue? This cannot be undone.
-              </AlertDialogDescription>
+              <AlertDialogDescription>Remove {itemTitle} ({itemId}) from the queue? This cannot be undone.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={pending}
-                onClick={(event) => {
-                  // Keep the dialog mounted through the async mutation; close it
-                  // ourselves only on success so an error stays visible.
-                  event.preventDefault();
-                  void handleConfirmRemove();
-                }}
-              >
-                Remove
-              </AlertDialogAction>
+              <AlertDialogAction disabled={pending} onClick={(event) => { event.preventDefault(); void handleConfirmRemove(); }}>Remove</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       )}
+      {!showCancel && onPreviewCascade && onApplyCascade && (
+        <QueueCascadeAction
+          itemId={itemId}
+          itemTitle={itemTitle}
+          operation="remove"
+          capability={capabilities?.remove}
+          cascadeCapability={capabilities?.cascadeRemove}
+          onPreviewCascade={onPreviewCascade}
+          onApplyCascade={onApplyCascade}
+        />
+      )}
+      {showCancel && onPreviewCascade && onApplyCascade && (
+        <QueueCascadeAction
+          itemId={itemId}
+          itemTitle={itemTitle}
+          operation="cancel"
+          capability={capabilities?.cancel}
+          cascadeCapability={capabilities?.cascadeCancel}
+          onPreviewCascade={onPreviewCascade}
+          onApplyCascade={onApplyCascade}
+        />
+      )}
       {showOverrideDependency && (
         <AlertDialog open={overrideOpen} onOpenChange={setOverrideOpen}>
           <AlertDialogTrigger asChild>
-            <Button type="button" size="sm" variant="destructive" disabled={pending}>
+            <Button type="button" size="sm" variant="destructive" disabled={pending || !dependencyAllowed}>
               Override dependency
             </Button>
           </AlertDialogTrigger>
@@ -177,6 +202,7 @@ export function QueueRowActions({
                 This bypasses queue dependency ordering for {itemTitle} ({itemId}). pre-PR merge/reconciliation must handle overlap before the work lands.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {!dependencyAllowed && <QueueActionDisabledReason reason={capabilityReason(capabilities?.dependencyOverride)} />}
             <div className="space-y-3 py-2">
               <label className="block text-sm font-medium text-foreground">
                 Dependency to override
@@ -188,11 +214,7 @@ export function QueueRowActions({
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   {dependencyIds.length > 1 && <option value="">Choose a dependency…</option>}
-                  {dependencyIds.map((dependencyId) => (
-                    <option key={dependencyId} value={dependencyId}>
-                      {dependencyId}
-                    </option>
-                  ))}
+                  {dependencyIds.map((dependencyId) => <option key={dependencyId} value={dependencyId}>{dependencyId}</option>)}
                 </select>
               </label>
               <label className="block text-sm font-medium text-foreground">
@@ -208,24 +230,14 @@ export function QueueRowActions({
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={pending || !selectedDependencyId}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void handleConfirmOverrideDependency();
-                }}
-              >
+              <AlertDialogAction disabled={pending || !selectedDependencyId} onClick={(event) => { event.preventDefault(); void handleConfirmOverrideDependency(); }}>
                 Override dependency
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       )}
-      {error && (
-        <span role="alert" className="text-xs text-destructive">
-          {error}
-        </span>
-      )}
+      {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
     </div>
   );
 }

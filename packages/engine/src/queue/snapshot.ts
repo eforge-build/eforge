@@ -160,18 +160,21 @@ export function findCascadeDependents(targetId: string, records: QueueControlRec
   return result.sort((a, b) => a.depth - b.depth || a.record.id.localeCompare(b.record.id));
 }
 
-export function buildCascadeExpectedAffected(target: QueueControlRecord, dependents: CascadeDependent[]): { token: string; prdIds: string[] } {
+export function buildCascadeExpectedAffected(target: QueueControlRecord, dependents: CascadeDependent[], operation: 'remove' | 'cancel'): { token: string; prdIds: string[] } {
   const affected = [target, ...dependents.map((d) => d.record)];
   const prdIds = affected.map((r) => r.id);
-  const payload = affected.map((r) => ({
-    id: r.id,
-    location: r.location,
-    status: r.status,
-    dependsOn: [...r.dependsOn].sort(),
-    basename: basename(r.filePath),
-    held: r.frontmatter.held === true,
-    lock: r.lock?.state ?? 'none',
-  }));
+  const payload = {
+    operation,
+    affected: affected.map((r) => ({
+      id: r.id,
+      location: r.location,
+      status: r.status,
+      dependsOn: [...r.dependsOn].sort(),
+      basename: basename(r.filePath),
+      held: r.frontmatter.held === true,
+      lock: r.lock?.state ?? 'none',
+    })),
+  };
   const token = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   return { token, prdIds };
 }

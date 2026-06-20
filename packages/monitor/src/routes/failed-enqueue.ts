@@ -39,7 +39,7 @@ export function createFailedEnqueueRoutes(context: MonitorContext): RouteDefinit
       const resolvedAt = new Date().toISOString();
       recordFailedEnqueueResolved(context.db, runId, resolvedAt, spawned.sessionId);
       const resolved = projectFailedEnqueueByRunId(context.db, runId, { includeResolved: true }) ?? { ...failedEnqueue, resolvedAt, canReenqueue: false, disabledReason: 'This failed enqueue has already been re-enqueued.' };
-      const response: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue: resolved, queue: await projectQueueForContext(context), runs: projectRunsForContext(context), newRunId: spawned.sessionId, autoBuild: projectAutoBuildForContext(context) };
+      const response: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue: resolved, queue: await projectQueueForContext(context), runs: projectRunsForContext(context), spawnedSessionId: spawned.sessionId, autoBuild: projectAutoBuildForContext(context) };
       sendJson(ctx.res, response);
     } }),
   ];

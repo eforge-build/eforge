@@ -49,6 +49,7 @@ export interface AutoBuildTransitionDetail {
 }
 
 export interface AutoBuildState {
+  /** Desired auto-build toggle. Remains true during scheduler pauses; use mode/scheduler.paused for runtime pause state. */
   enabled: boolean;
   watcher: {
     running: boolean;

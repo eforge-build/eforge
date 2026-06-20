@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 import { QueueStacks } from '../queue-stack-card';
 import type { NowQueueStack } from '@/lib/selectors/now';
+import { makeQueueCapabilities } from '@/test-support/factories';
 
 function makeStack(): NowQueueStack {
   return {
@@ -24,6 +25,7 @@ function makeStack(): NowQueueStack {
         unlocksCount: 1,
         layer: 1,
         totalLayers: 3,
+        capabilities: makeQueueCapabilities(),
       },
       {
         id: 'api',
@@ -36,6 +38,7 @@ function makeStack(): NowQueueStack {
         unlocksCount: 1,
         layer: 2,
         totalLayers: 3,
+        capabilities: makeQueueCapabilities(),
       },
       {
         id: 'handoff',
@@ -48,6 +51,7 @@ function makeStack(): NowQueueStack {
         unlocksCount: 0,
         layer: 3,
         totalLayers: 3,
+        capabilities: makeQueueCapabilities(),
       },
     ],
   };
@@ -76,13 +80,13 @@ describe('QueueStacks', () => {
 
 describe('QueueStacks - row actions', () => {
   it('renders Set priority and Remove controls for waiting rows but not running rows', () => {
-    render(<QueueStacks stacks={[makeStack()]} onSetPriority={vi.fn()} onRemove={vi.fn()} />);
+    render(<QueueStacks stacks={[makeStack()]} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />);
 
     // The two waiting layers expose controls.
     expect(screen.getByLabelText('Priority for API Build')).toBeDefined();
     expect(screen.getByLabelText('Priority for Handoff Build')).toBeDefined();
     expect(screen.getAllByRole('button', { name: 'Set priority' })).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Remove…' })).toHaveLength(2);
 
     // The running base layer keeps its status-only presentation.
     expect(screen.queryByLabelText('Priority for Base Build')).toBeNull();
@@ -96,7 +100,7 @@ describe('QueueStacks - row actions', () => {
         item.id === 'base' ? { ...item, status: 'pending' } : item,
       ),
     };
-    render(<QueueStacks stacks={[stack]} onSetPriority={vi.fn()} onRemove={vi.fn()} />);
+    render(<QueueStacks stacks={[stack]} onSetPriority={vi.fn()} onPreviewCascade={vi.fn()} onApplyCascade={vi.fn()} />);
 
     expect(screen.getByLabelText('Priority for Base Build')).toBeDefined();
     expect(screen.getAllByRole('button', { name: 'Set priority' })).toHaveLength(3);
@@ -105,7 +109,7 @@ describe('QueueStacks - row actions', () => {
   it('renders no controls when no callbacks are provided', () => {
     render(<QueueStacks stacks={[makeStack()]} />);
     expect(screen.queryByRole('button', { name: 'Set priority' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull();
   });
 
   it('renders Override dependency for waiting stack rows with dependencies', () => {

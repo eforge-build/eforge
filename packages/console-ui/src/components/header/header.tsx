@@ -10,6 +10,7 @@ import { useProjectContext } from '@/hooks/use-project-context';
 import type { ConsoleProjectState } from '@/lib/project-state';
 import { ConnectionIndicator } from './connection-indicator';
 import { AutoBuildToggle } from './auto-build-toggle';
+import { SchedulerPauseControl } from './scheduler-pause-control';
 import { ProjectNameChip } from './project-name-chip';
 import { ControlSurfaceLinks } from './control-surface-links';
 import { PipelineChips } from './pipeline-chips';
@@ -18,10 +19,14 @@ interface HeaderProps {
   projectState: ConsoleProjectState;
   autoBuildToggling: boolean;
   onSetAutoBuildEnabled: (enabled: boolean) => void;
+  schedulerToggling: boolean;
+  schedulerError: string | null;
+  onPauseScheduler: () => void;
+  onResumeScheduler: () => void;
   onNavigate?: (href: string) => void;
 }
 
-export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled, onNavigate }: HeaderProps) {
+export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled, schedulerToggling, schedulerError, onPauseScheduler, onResumeScheduler, onNavigate }: HeaderProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -95,9 +100,18 @@ export function Header({ projectState, autoBuildToggling, onSetAutoBuildEnabled,
         {/* Connection indicator */}
         <ConnectionIndicator status={summary.connectionStatus} />
 
+        <SchedulerPauseControl
+          autoBuild={projectState.autoBuild}
+          pending={schedulerToggling}
+          error={schedulerError}
+          onPause={onPauseScheduler}
+          onResume={onResumeScheduler}
+        />
+
         {/* Auto-build toggle */}
         <AutoBuildToggle
           enabled={summary.autoBuildEnabled}
+          autoBuild={projectState.autoBuild}
           toggling={autoBuildToggling}
           onSetEnabled={onSetAutoBuildEnabled}
         />

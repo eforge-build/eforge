@@ -1675,7 +1675,7 @@ const eventRegistry = {
 
 
   'daemon:failed-enqueue:upsert': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.failedEnqueue.runId}: ${e.failedEnqueue.failureReason}`, project(event, state) { const existing = state.failedEnqueues ?? []; const withoutCurrent = existing.filter((item) => item.runId !== event.failedEnqueue.runId); return { failedEnqueues: [event.failedEnqueue, ...withoutCurrent].sort((a, b) => b.failedAt.localeCompare(a.failedAt) || a.runId.localeCompare(b.runId)) }; } },
-  'daemon:failed-enqueue:resolved': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.runId} resolved${e.newRunId ? ` as ${e.newRunId}` : ''}`, project(event, state) { const existing = state.failedEnqueues ?? []; const failedEnqueues = existing.filter((item) => item.runId !== event.runId); if (failedEnqueues.length === existing.length) return undefined; return { failedEnqueues }; } },
+  'daemon:failed-enqueue:resolved': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.runId} resolved${e.spawnedSessionId ? ` as ${e.spawnedSessionId}` : ''}`, project(event, state) { const existing = state.failedEnqueues ?? []; const failedEnqueues = existing.filter((item) => item.runId !== event.runId); if (failedEnqueues.length === existing.length) return undefined; return { failedEnqueues }; } },
 
   // -------------------------------------------------------------------------
   // Daemon errors and warnings

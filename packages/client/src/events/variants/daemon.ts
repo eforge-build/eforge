@@ -190,7 +190,7 @@ export const daemonEventVariants = [
     type: Type.Literal('daemon:failed-enqueue:resolved'),
     runId: Type.String(),
     resolvedAt: Type.String(),
-    newRunId: Type.Optional(Type.String()),
+    spawnedSessionId: Type.Optional(Type.String()),
   }),
   // --- eforge:endregion plan-01-client-contracts ---
 

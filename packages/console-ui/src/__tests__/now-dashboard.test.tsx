@@ -11,7 +11,7 @@ import {
   emptyActiveSessions,
   connectedState,
 } from '@/test-support/factories';
-import { removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
+import { applyQueueCascade, previewQueueCascade, updateQueuePriority } from '@eforge-build/client/browser';
 
 // Mock only the queue-control browser helpers; everything else in the browser
 // barrel (types, selectors' transitive imports) keeps its real implementation.
@@ -20,7 +20,8 @@ vi.mock('@eforge-build/client/browser', async (importActual) => {
   return {
     ...actual,
     updateQueuePriority: vi.fn(),
-    removeQueueItem: vi.fn(),
+    previewQueueCascade: vi.fn(),
+    applyQueueCascade: vi.fn(),
   };
 });
 
@@ -172,11 +173,13 @@ describe('NowDashboard', () => {
 
   describe('queue mutations', () => {
     const priorityMock = vi.mocked(updateQueuePriority);
-    const removeMock = vi.mocked(removeQueueItem);
+    const previewCascadeMock = vi.mocked(previewQueueCascade);
+    const applyCascadeMock = vi.mocked(applyQueueCascade);
 
     beforeEach(() => {
       priorityMock.mockReset();
-      removeMock.mockReset();
+      previewCascadeMock.mockReset();
+      applyCascadeMock.mockReset();
     });
 
     function pendingState() {
@@ -227,10 +230,18 @@ describe('NowDashboard', () => {
       );
     });
 
-    it('refreshes the queue only after the remove helper resolves', async () => {
-      let resolveRemove!: (value: Awaited<ReturnType<typeof removeQueueItem>>) => void;
-      removeMock.mockReturnValue(
-        new Promise<Awaited<ReturnType<typeof removeQueueItem>>>((resolve) => {
+    it('refreshes the queue only after the cascade remove helper resolves', async () => {
+      previewCascadeMock.mockResolvedValue({
+        operation: 'remove',
+        target: { prdId: 'q-pending', title: 'Pending Build', status: 'pending', effect: 'remove', depth: 0, blockers: [] },
+        dependents: [],
+        expectedAffected: { prdIds: ['q-pending'] },
+        warnings: [],
+        blockers: [],
+      });
+      let resolveRemove!: (value: Awaited<ReturnType<typeof applyQueueCascade>>) => void;
+      applyCascadeMock.mockReturnValue(
+        new Promise<Awaited<ReturnType<typeof applyQueueCascade>>>((resolve) => {
           resolveRemove = resolve;
         }),
       );
@@ -244,22 +255,25 @@ describe('NowDashboard', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
       const dialog = screen.getByRole('alertdialog');
+      await waitFor(() => expect(previewCascadeMock).toHaveBeenCalledWith('q-pending', { operation: 'remove' }));
       fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
-      await waitFor(() => expect(removeMock).toHaveBeenCalledWith('q-pending'));
+      await waitFor(() => expect(applyCascadeMock).toHaveBeenCalledWith('q-pending', expect.objectContaining({ operation: 'remove', strategy: 'target-only' })));
       expect(refreshQueue).not.toHaveBeenCalled();
 
       resolveRemove({
-        id: 'q-pending',
-        previousStatus: 'pending',
-        currentStatus: 'removed',
-        removedSidecars: [],
+        applied: true,
+        operation: 'remove',
+        strategy: 'target-only',
+        affected: { prdIds: ['q-pending'] },
+        warnings: [],
+        blockers: [],
       });
 
       await waitFor(() => expect(refreshQueue).toHaveBeenCalledTimes(1));
-      expect(removeMock.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(applyCascadeMock.mock.invocationCallOrder[0]).toBeLessThan(
         refreshQueue.mock.invocationCallOrder[0],
       );
     });
@@ -285,10 +299,18 @@ describe('NowDashboard', () => {
       expect(refreshQueue).not.toHaveBeenCalled();
     });
 
-    it('shows row error text and does not refresh the queue when the remove helper fails', async () => {
+    it('shows row error text and does not refresh the queue when the cascade remove helper fails', async () => {
       // The remove failure path goes through the AlertDialog confirm flow and must
       // keep the row error visible without refreshing the queue.
-      removeMock.mockRejectedValue(new Error('Queue removal request failed (409): locked'));
+      previewCascadeMock.mockResolvedValue({
+        operation: 'remove',
+        target: { prdId: 'q-pending', title: 'Pending Build', status: 'pending', effect: 'remove', depth: 0, blockers: [] },
+        dependents: [],
+        expectedAffected: { prdIds: ['q-pending'] },
+        warnings: [],
+        blockers: [],
+      });
+      applyCascadeMock.mockRejectedValue(new Error('Queue cascade request failed (409): locked'));
       const refreshQueue = vi.fn().mockResolvedValue(undefined);
 
       render(
@@ -299,12 +321,13 @@ describe('NowDashboard', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove…' }));
       const dialog = screen.getByRole('alertdialog');
+      await waitFor(() => expect(previewCascadeMock).toHaveBeenCalled());
       fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
-      await waitFor(() => expect(removeMock).toHaveBeenCalledWith('q-pending'));
-      await screen.findByText(/Queue removal request failed/);
+      await waitFor(() => expect(applyCascadeMock).toHaveBeenCalledWith('q-pending', expect.objectContaining({ operation: 'remove' })));
+      await screen.findByText(/Queue cascade request failed/);
       expect(refreshQueue).not.toHaveBeenCalled();
     });
 

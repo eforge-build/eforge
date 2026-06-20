@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
+import type { AutoBuildState } from '@eforge-build/client/browser';
 import {
   Tooltip,
   TooltipContent,
@@ -20,13 +21,15 @@ import {
 
 interface AutoBuildToggleProps {
   enabled: boolean | null;
+  autoBuild?: AutoBuildState | null;
   toggling: boolean;
   onSetEnabled: (enabled: boolean) => void;
 }
 
-export function AutoBuildToggle({ enabled, toggling, onSetEnabled }: AutoBuildToggleProps) {
+export function AutoBuildToggle({ enabled, autoBuild, toggling, onSetEnabled }: AutoBuildToggleProps) {
   const [enableDialogOpen, setEnableDialogOpen] = useState(false);
   const disabled = enabled === null || toggling;
+  const schedulerPaused = autoBuild?.scheduler?.paused === true || autoBuild?.mode === 'paused';
 
   function handleSwitchChange(checked: boolean) {
     if (checked) {
@@ -57,7 +60,7 @@ export function AutoBuildToggle({ enabled, toggling, onSetEnabled }: AutoBuildTo
           </TooltipTrigger>
           <TooltipContent>
             Auto-build:{' '}
-            {enabled === null ? 'unknown' : enabled ? 'on' : 'off'}
+            {enabled === null ? 'unknown' : enabled ? (schedulerPaused ? 'on (scheduler paused)' : 'on') : 'off'}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

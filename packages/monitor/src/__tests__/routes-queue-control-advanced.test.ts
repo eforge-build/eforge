@@ -44,6 +44,7 @@ describe('advanced queue control routes', () => {
     expect((await harness.rawPost(holdPath('prd-1'), '{bad', { 'content-type': 'application/json' })).status).toBe(400);
     expect((await harness.postJson(holdPath('prd-1'), { reason: 'line\nbreak' })).status).toBe(400);
     expect((await harness.postJson(unholdPath('prd-1'), 1)).status).toBe(400);
+    expect((await harness.postJson(unholdPath('prd-1'), { reason: 'ignored' })).status).toBe(400);
     expect((await harness.postJson(previewPath('prd-1'), { operation: 'rename' })).status).toBe(400);
     expect((await harness.postJson(applyPath('prd-1'), { operation: 'remove' })).status).toBe(400);
   });

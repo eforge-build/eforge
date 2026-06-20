@@ -11001,7 +11001,8 @@
                 "sourceLabel",
                 "failureReason",
                 "failedAt",
-                "canReenqueue"
+                "canReenqueue",
+                "nextCommand"
               ],
               "properties": {
                 "runId": {
@@ -11081,7 +11082,7 @@
             "resolvedAt": {
               "type": "string"
             },
-            "newRunId": {
+            "spawnedSessionId": {
               "type": "string"
             }
           }
@@ -13387,7 +13388,8 @@
         "queue",
         "sessionMetadata",
         "autoBuild",
-        "stackLayers"
+        "stackLayers",
+        "failedEnqueues"
       ],
       "properties": {
         "cursor": {
@@ -24624,7 +24626,8 @@
                               "sourceLabel",
                               "failureReason",
                               "failedAt",
-                              "canReenqueue"
+                              "canReenqueue",
+                              "nextCommand"
                             ],
                             "properties": {
                               "runId": {
@@ -24704,7 +24707,7 @@
                           "resolvedAt": {
                             "type": "string"
                           },
-                          "newRunId": {
+                          "spawnedSessionId": {
                             "type": "string"
                           }
                         }
@@ -27053,7 +27056,8 @@
             "required": [
               "id",
               "title",
-              "status"
+              "status",
+              "capabilities"
             ],
             "properties": {
               "id": {
@@ -27964,7 +27968,8 @@
               "sourceLabel",
               "failureReason",
               "failedAt",
-              "canReenqueue"
+              "canReenqueue",
+              "nextCommand"
             ],
             "properties": {
               "runId": {

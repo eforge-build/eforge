@@ -17,7 +17,8 @@ import { selectNowSpendPanel } from '@/lib/selectors/spend';
 import { StackSyncAlert } from '@/components/now/stack-sync-alert';
 import { QueueRecoveryDialog } from '@/components/now/queue-recovery-dialog';
 import { toConsolePath } from '@/lib/navigation';
-import { overrideQueueDependency, removeQueueItem, updateQueuePriority } from '@eforge-build/client/browser';
+import { useQueueControlActions } from '@/hooks/use-queue-control-actions';
+import { useFailedEnqueueActions } from '@/hooks/use-failed-enqueue-actions';
 
 // ---------------------------------------------------------------------------
 // Attention partitioning
@@ -48,9 +49,11 @@ interface NowDashboardProps {
   activeSessions: UseActiveSessionStreamsResult;
   onNavigate?: (href: string) => void;
   refreshQueue?: () => Promise<void> | void;
+  refreshRuns?: () => Promise<void> | void;
+  refreshFailedEnqueues?: () => Promise<void> | void;
 }
 
-export function NowDashboard({ projectState, activeSessions, onNavigate, refreshQueue }: NowDashboardProps) {
+export function NowDashboard({ projectState, activeSessions, onNavigate, refreshQueue, refreshRuns, refreshFailedEnqueues }: NowDashboardProps) {
   const [tick, setTick] = React.useState(() => Date.now());
 
   React.useEffect(() => {
@@ -95,30 +98,8 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
     isStripAttentionItem,
   );
 
-  // Queue mutation handlers — call the browser-safe client helper, then refresh
-  // queue state on success. A helper rejection propagates to the row, which
-  // renders the error and skips the refresh.
-  const handleQueuePriority = React.useCallback(
-    async (id: string, priority: number) => {
-      await updateQueuePriority(id, { priority });
-      await refreshQueue?.();
-    },
-    [refreshQueue],
-  );
-  const handleQueueRemove = React.useCallback(
-    async (id: string) => {
-      await removeQueueItem(id);
-      await refreshQueue?.();
-    },
-    [refreshQueue],
-  );
-  const handleQueueDependencyOverride = React.useCallback(
-    async (id: string, dependencyId: string, reason?: string) => {
-      await overrideQueueDependency(id, { dependencyId, reason });
-      await refreshQueue?.();
-    },
-    [refreshQueue],
-  );
+  const queueActions = useQueueControlActions({ refreshQueue, refreshRuns });
+  const failedEnqueueActions = useFailedEnqueueActions({ refreshQueue, refreshRuns, refreshFailedEnqueues });
 
   return (
     <div data-testid="now-dashboard" className="mx-auto w-full max-w-[1600px] space-y-4">
@@ -156,8 +137,18 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
               errors: extensionTrustMutation.errors,
               onTrust: (payload) => extensionTrustMutation.onTrust(payload.path),
             }}
+            failedEnqueueControls={{
+              pendingRunId: failedEnqueueActions.pendingRunId,
+              errorsByRunId: failedEnqueueActions.errorsByRunId,
+              onReenqueue: failedEnqueueActions.reenqueue,
+            }}
           />
-          <ActiveBuildsGrid cards={model.activeBuilds} onNavigate={onNavigate} />
+          <ActiveBuildsGrid
+            cards={model.activeBuilds}
+            onNavigate={onNavigate}
+            onPreviewCascade={queueActions.previewCascade}
+            onApplyCascade={queueActions.applyCascade}
+          />
           {/* Queue owns intake too now: a "Preparing PRD" run is work entering
               the queue, shown as the Intake lane inside the card rather than as
               a full-width peer of active builds. The at-a-glance Intake/Queued/
@@ -166,9 +157,12 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             stacks={model.queueStacks}
             summary={model.queue}
             enqueueCards={model.enqueueCards}
-            onSetPriority={handleQueuePriority}
-            onRemove={handleQueueRemove}
-            onOverrideDependency={handleQueueDependencyOverride}
+            onSetPriority={queueActions.setPriority}
+            onOverrideDependency={queueActions.overrideDependency}
+            onHold={queueActions.hold}
+            onUnhold={queueActions.unhold}
+            onPreviewCascade={queueActions.previewCascade}
+            onApplyCascade={queueActions.applyCascade}
           />
         </div>
 

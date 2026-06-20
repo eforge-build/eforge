@@ -1,7 +1,7 @@
 // --- eforge:region console-shell ---
 import { useReducer, useEffect, useCallback } from 'react';
-import { API_ROUTES, subscribeWithSnapshot } from '@eforge-build/client/browser';
-import type { AutoBuildState, DaemonStreamSnapshot, EforgeEvent, QueueItem } from '@eforge-build/client/browser';
+import { API_ROUTES, fetchFailedEnqueues, subscribeWithSnapshot } from '@eforge-build/client/browser';
+import type { AutoBuildState, DaemonStreamSnapshot, EforgeEvent, QueueItem, RunInfo } from '@eforge-build/client/browser';
 import {
   consoleProjectReducer,
   initialConsoleProjectState,
@@ -13,6 +13,8 @@ export interface UseDaemonEventsResult {
   projectState: ConsoleProjectState;
   connectionStatus: ConnectionStatus;
   refreshQueue: () => Promise<void>;
+  refreshRuns: () => Promise<void>;
+  refreshFailedEnqueues: () => Promise<void>;
   setDaemonAutoBuild: (autoBuild: AutoBuildState | null) => void;
 }
 
@@ -30,6 +32,21 @@ export function useDaemonEvents(): UseDaemonEventsResult {
     }
     const queue = await response.json() as QueueItem[];
     dispatch({ type: 'QUEUE_REFRESH_RECEIVED', queue });
+  }, []);
+
+  const refreshRuns = useCallback(async () => {
+    const response = await fetch(API_ROUTES.runs);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Runs refresh failed (${response.status}): ${text}`);
+    }
+    const runs = await response.json() as RunInfo[];
+    dispatch({ type: 'RUNS_REFRESH_RECEIVED', runs });
+  }, []);
+
+  const refreshFailedEnqueues = useCallback(async () => {
+    const failedEnqueues = await fetchFailedEnqueues();
+    dispatch({ type: 'FAILED_ENQUEUES_REFRESH_RECEIVED', failedEnqueues });
   }, []);
 
   const setDaemonAutoBuild = useCallback((autoBuild: AutoBuildState | null) => {
@@ -82,6 +99,8 @@ export function useDaemonEvents(): UseDaemonEventsResult {
     projectState,
     connectionStatus: projectState.connectionStatus,
     refreshQueue,
+    refreshRuns,
+    refreshFailedEnqueues,
     setDaemonAutoBuild,
   };
 }

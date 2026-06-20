@@ -33,14 +33,14 @@ describe('failed enqueue contracts', () => {
   it('exposes routes and response wire types', () => {
     expect(API_ROUTES.failedEnqueues).toBe('/api/enqueue/failed');
     expect(buildPath(API_ROUTES.failedEnqueueReenqueue, { runId: 'run/1' })).toBe('/api/enqueue/failed/run%2F1/reenqueue');
-    const response: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue, queue: [], runs: [], newRunId: 'run-2' };
-    expect(response.newRunId).toBe('run-2');
+    const response: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue, queue: [], runs: [], spawnedSessionId: 'session-2' };
+    expect(response.spawnedSessionId).toBe('session-2');
   });
 
   it('parses snapshot and event schemas', () => {
     expect(safeParseDaemonStreamSnapshot(snapshot({ failedEnqueues: [failedEnqueue, { ...failedEnqueue, runId: 'run-2' }] }))).toMatchObject({ success: true });
     expect(safeParseEforgeEvent({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue })).toMatchObject({ success: true });
-    expect(safeParseEforgeEvent({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: failedEnqueue.failedAt, newRunId: 'run-2' })).toMatchObject({ success: true });
+    expect(safeParseEforgeEvent({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: failedEnqueue.failedAt, spawnedSessionId: 'session-2' })).toMatchObject({ success: true });
     expect(safeParseEforgeEvent({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue: { ...failedEnqueue, source: { source: 'secret.md', flags: ['--token=secret'] } } })).toMatchObject({ success: false });
     expect(safeParseEforgeEvent({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue: { ...failedEnqueue, nextCommand: 'eforge enqueue prd.md' } })).toMatchObject({ success: false });
     expect(safeParseEforgeEvent({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue: { runId: 'bad' } })).toMatchObject({ success: false });
@@ -57,6 +57,6 @@ describe('failed enqueue contracts', () => {
     expect(tied?.failedEnqueues?.map((item) => item.runId)).toEqual(['run-0', 'run-1']);
     const resolved = eventRegistry['daemon:failed-enqueue:resolved'].project!({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: '2026-06-19T11:00:00.000Z' }, { ...state, ...second });
     expect(resolved?.failedEnqueues).toEqual([]);
-    expect(getEventSummary({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: failedEnqueue.failedAt, newRunId: 'run-2' })).toContain('run-2');
+    expect(getEventSummary({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: failedEnqueue.failedAt, spawnedSessionId: 'session-2' })).toContain('session-2');
   });
 });

@@ -6,6 +6,10 @@ interface ConsoleShellProps {
   projectState: ConsoleProjectState;
   autoBuildToggling: boolean;
   onSetAutoBuildEnabled: (enabled: boolean) => void;
+  schedulerToggling: boolean;
+  schedulerError: string | null;
+  onPauseScheduler: () => void;
+  onResumeScheduler: () => void;
   children: React.ReactNode;
   onNavigate?: (href: string) => void;
 }
@@ -14,6 +18,10 @@ export function ConsoleShell({
   projectState,
   autoBuildToggling,
   onSetAutoBuildEnabled,
+  schedulerToggling,
+  schedulerError,
+  onPauseScheduler,
+  onResumeScheduler,
   children,
   onNavigate,
 }: ConsoleShellProps) {
@@ -23,6 +31,10 @@ export function ConsoleShell({
         projectState={projectState}
         autoBuildToggling={autoBuildToggling}
         onSetAutoBuildEnabled={onSetAutoBuildEnabled}
+        schedulerToggling={schedulerToggling}
+        schedulerError={schedulerError}
+        onPauseScheduler={onPauseScheduler}
+        onResumeScheduler={onResumeScheduler}
         onNavigate={onNavigate}
       />
       <main className="flex-1 overflow-auto p-4">

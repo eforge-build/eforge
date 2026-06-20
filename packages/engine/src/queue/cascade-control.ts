@@ -145,7 +145,7 @@ export async function previewQueueCascade(options: PreviewQueueCascadeOptions): 
     safeStrategies,
     warnings,
     blockers,
-    expectedAffected: buildCascadeExpectedAffected(target, dependentLinks),
+    expectedAffected: buildCascadeExpectedAffected(target, dependentLinks, options.operation),
   };
 }
 
@@ -264,7 +264,7 @@ export async function applyQueueCascade(options: ApplyQueueCascadeOptions): Prom
   const target = snapshot.byId.get(options.prdId);
   if (!target) return missingPreview(options.operation, strategy, preview);
   const dependents = findCascadeDependents(options.prdId, snapshot.records);
-  const expected = buildCascadeExpectedAffected(target, dependents);
+  const expected = buildCascadeExpectedAffected(target, dependents, options.operation);
   if (!expectedMatches(options.expectedAffected, expected)) return blocker('Queue cascade preview drifted; refresh the preview and retry.');
   const records = strategy === 'cascade-dependents' ? [target, ...dependents.map((d) => d.record)] : [target];
   for (const record of records) {

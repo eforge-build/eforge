@@ -1,4 +1,4 @@
-import { API_ROUTES, type QueueCascadeOperation, type QueueCascadeStrategy } from '@eforge-build/client';
+import { API_ROUTES, type QueueCascadeExpectedAffected, type QueueCascadeOperation, type QueueCascadeStrategy } from '@eforge-build/client';
 import { applyQueueCascade, previewQueueCascade } from '@eforge-build/engine/queue/cascade-control';
 import { resolveRunningPrdOwnership } from '@eforge-build/engine/queue/cancellation';
 import type { QueueControlRecord } from '@eforge-build/engine/queue/snapshot';
@@ -38,6 +38,7 @@ export function createQueueControlAdvancedRoutes(context: MonitorContext): Route
       const parsed = await readJsonBody(ctx.req);
       if (!parsed.ok) return sendInvalidJson(ctx.res, parsed.tooLarge);
       if (!isPlainObject(parsed.value)) return sendJsonError(ctx.res, 400, 'Invalid request body: must be a JSON object');
+      if (Object.keys(parsed.value).length > 0) return sendJsonError(ctx.res, 400, 'Invalid request body: unhold does not accept fields');
       try {
         const result = await unholdQueuedPrd({ cwd: context.cwd, queueDir: queueDir(context), prdId });
         if (result.status === 'unheld') context.notifyQueueMutation('external');
@@ -83,7 +84,7 @@ export function createQueueControlAdvancedRoutes(context: MonitorContext): Route
 function parseOperation(value: unknown): QueueCascadeOperation | undefined { return value === 'remove' || value === 'cancel' ? value : undefined; }
 function parseStrategy(value: unknown): QueueCascadeStrategy | undefined { return value === 'target-only' || value === 'cascade-dependents' ? value : undefined; }
 
-function isExpectedAffected(value: unknown): value is { token: string; prdIds: string[] } {
+function isExpectedAffected(value: unknown): value is QueueCascadeExpectedAffected {
   return isPlainObject(value) && typeof value.token === 'string' && Array.isArray(value.prdIds) && value.prdIds.every((id) => typeof id === 'string' && isValidPathSegment(id));
 }
 

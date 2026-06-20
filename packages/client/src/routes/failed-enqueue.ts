@@ -11,7 +11,7 @@ export interface FailedEnqueueReenqueueResponse {
   failedEnqueue: FailedEnqueueInfo;
   queue: QueueItemWithCapabilities[];
   runs: RunInfo[];
-  newRunId?: string;
+  spawnedSessionId?: string;
   disabledReason?: string;
   nextCommand?: FailedEnqueueRecoveryCommand;
   autoBuild?: AutoBuildState;

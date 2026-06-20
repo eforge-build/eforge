@@ -237,7 +237,7 @@ describe('AutoBuildSupervisor', () => {
 
     const faulted = controller.getSnapshot();
     expect(faulted).toMatchObject({
-      enabled: false,
+      enabled: true,
       desired: 'enabled',
       mode: 'faulted',
       reason: 'Watcher failed to start: spawn failed',
@@ -255,7 +255,7 @@ describe('AutoBuildSupervisor', () => {
 
     const paused = controller.pauseOnFailure('build failed');
     expect(calls).toContain('pause-scheduler');
-    expect(paused.enabled).toBe(false);
+    expect(paused.enabled).toBe(true);
     expect(paused.desired).toBe('enabled');
     expect(paused.mode).toBe('paused');
     expect(events.some((e) => e.type === 'daemon:auto-build:paused')).toBe(true);

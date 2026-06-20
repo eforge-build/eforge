@@ -7,6 +7,7 @@ import type { ActiveSessionDetail } from '@/hooks/use-active-session-streams';
 import { createInitialRunState as freshRunState } from '@/lib/run-state';
 import {
   makeRun,
+  makeQueue,
   activeSessionDetail,
   sampleBuildRunState,
   landingRunState,
@@ -34,7 +35,7 @@ function cardFor(detail: ActiveSessionDetail, planSet = 'storybook-phase-1'): No
     { [SESSION]: { planCount: 2, baseProfile: 'default' } },
     { [SESSION]: { ...detail, sessionId: SESSION } },
     Date.now(),
-    new Map([[planSet, 'Storybook Phase 1']]),
+    new Map([[planSet, makeQueue({ id: planSet, title: 'Storybook Phase 1', status: 'running' })]]),
   );
   return cards[0];
 }

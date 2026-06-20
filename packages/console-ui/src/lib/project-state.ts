@@ -5,6 +5,7 @@
  *   1. SNAPSHOT_RECEIVED — from `stream:hello` payloads on (re)connect.
  *   2. EVENT_RECEIVED    — from live daemon SSE events.
  *   3. STREAM_ERROR      — on SSE stream failure.
+ *   4. Explicit REST refresh actions for queue, runs, and failed enqueues.
  */
 import type {
   RunInfo,
@@ -13,6 +14,7 @@ import type {
   AutoBuildState,
   StackLayerWire,
   EforgeEvent,
+  FailedEnqueueInfo,
 } from '@eforge-build/client/browser';
 import type {
   DaemonStreamSnapshot,
@@ -20,6 +22,7 @@ import type {
 import type { ProjectableState } from '@eforge-build/client/browser';
 import type { ConnectionStatus, ConsoleActivityEntry } from '@/lib/types';
 import { daemonEventProjectorRegistry } from '@/lib/daemon-event-projector';
+import { dedupeFailedEnqueuesByRunId } from '@/lib/failed-enqueues';
 
 /** Maximum entries in the activity ring buffer. */
 export const ACTIVITY_BUFFER_CAP = 500;
@@ -33,6 +36,7 @@ export interface ConsoleProjectState {
   queue: QueueItem[];
   sessionMetadata: Record<string, SessionMetadata>;
   autoBuild: AutoBuildState | null;
+  failedEnqueues: FailedEnqueueInfo[];
   liveness: DaemonStreamSnapshot['liveness'] | null;
   latestHeartbeat: ProjectableState['latestHeartbeat'];
   recentActivity: ConsoleActivityEntry[];
@@ -49,6 +53,7 @@ export const initialConsoleProjectState: ConsoleProjectState = {
   queue: [],
   sessionMetadata: {},
   autoBuild: null,
+  failedEnqueues: [],
   liveness: null,
   latestHeartbeat: null,
   recentActivity: [],
@@ -88,6 +93,14 @@ export type ConsoleProjectAction =
       queue: QueueItem[];
     }
   | {
+      type: 'RUNS_REFRESH_RECEIVED';
+      runs: RunInfo[];
+    }
+  | {
+      type: 'FAILED_ENQUEUES_REFRESH_RECEIVED';
+      failedEnqueues: FailedEnqueueInfo[];
+    }
+  | {
       type: 'SET_AUTO_BUILD';
       autoBuild: AutoBuildState | null;
     };
@@ -105,6 +118,7 @@ function toProjectable(state: ConsoleProjectState): ProjectableState {
     runs: state.runs,
     queue: state.queue,
     autoBuild: state.autoBuild,
+    failedEnqueues: state.failedEnqueues,
     latestHeartbeat: state.latestHeartbeat,
     stackLayers: state.stackLayers,
   };
@@ -148,6 +162,7 @@ export function consoleProjectReducer(
         queue: snapshot.queue,
         sessionMetadata: snapshot.sessionMetadata,
         autoBuild: snapshot.autoBuild,
+        failedEnqueues: dedupeFailedEnqueuesByRunId(snapshot.failedEnqueues ?? []),
         liveness,
         latestHeartbeat: {
           at: receivedAt,
@@ -371,6 +386,18 @@ export function consoleProjectReducer(
         lastEventAt: receivedAt,
       };
     }
+
+    case 'FAILED_ENQUEUES_REFRESH_RECEIVED':
+      return {
+        ...state,
+        failedEnqueues: dedupeFailedEnqueuesByRunId(action.failedEnqueues),
+      };
+
+    case 'RUNS_REFRESH_RECEIVED':
+      return {
+        ...state,
+        runs: action.runs,
+      };
 
     case 'QUEUE_REFRESH_RECEIVED': {
       const queueDepth = queueDepthFromQueue(action.queue);

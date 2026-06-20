@@ -6,9 +6,11 @@ import type { MiniGanttRow } from '@/lib/run-state';
 import { formatDuration, truncateId, compactTokens } from '@/lib/format';
 import { MiniPlanSwimlane } from './mini-plan-swimlane';
 import { CancelBuildButton } from './cancel-build-button';
+import { QueueCascadeAction } from './queue-cascade-action';
+import type { QueueRowActionCallbacks } from './queue-row-actions';
 import { cn } from '@/lib/utils';
 
-interface ActiveBuildCardProps {
+interface ActiveBuildCardProps extends Pick<QueueRowActionCallbacks, 'onPreviewCascade' | 'onApplyCascade'> {
   card: NowActiveBuildCardModel;
   onNavigate?: (href: string) => void;
 }
@@ -136,7 +138,7 @@ function BuildLifecycleRail({ steps }: { steps: RailStep[] }) {
   );
 }
 
-export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
+export function ActiveBuildCard({ card, onNavigate, onPreviewCascade, onApplyCascade }: ActiveBuildCardProps) {
   const durationLabel = formatDuration(card.durationMs);
   const streamBadgeVariant = STREAM_STATUS_BADGE[card.streamStatus] ?? 'secondary';
   // "connected" is the silent default — the card's own pulse signals liveness —
@@ -208,6 +210,17 @@ export function ActiveBuildCard({ card, onNavigate }: ActiveBuildCardProps) {
               <Badge variant={streamBadgeVariant} className="capitalize text-xs">
                 {card.streamStatus}
               </Badge>
+            )}
+            {card.queueControl && (
+              <QueueCascadeAction
+                itemId={card.queueControl.prdId}
+                itemTitle={card.queueControl.title}
+                operation="cancel"
+                capability={card.queueControl.capabilities?.cancel}
+                cascadeCapability={card.queueControl.capabilities?.cascadeCancel}
+                onPreviewCascade={onPreviewCascade}
+                onApplyCascade={onApplyCascade}
+              />
             )}
             <CancelBuildButton sessionId={card.sessionId} label={title} />
           </div>
