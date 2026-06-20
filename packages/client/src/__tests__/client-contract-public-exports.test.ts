@@ -47,6 +47,7 @@ const failedEnqueue: FailedEnqueueInfo = {
   failureReason: 'enqueue failed',
   failedAt: '2026-06-19T10:00:00.000Z',
   canReenqueue: true,
+  nextCommand: { executable: 'eforge', args: ['enqueue', 'prd.md'] },
 };
 
 describe('client contract public exports', () => {

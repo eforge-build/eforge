@@ -1,10 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { DaemonStreamSnapshot } from '@eforge-build/client';
 import type { MonitorContext } from '../context.js';
-import { autoBuildStateToWire, buildDaemonHeartbeatObject } from '../projections/auto-build-state.js';
-import { overlayQueueDispatchFailures } from '../projections/queue-dispatch-failures.js';
-import { countPendingQueueDepth, loadQueueItemsSync } from '../projections/queue-items.js';
-import { projectRunsForAcceptedSuccess } from '../projections/runs.js';
+import { buildDaemonHeartbeatObject } from '../projections/auto-build-state.js';
+import { countPendingQueueDepth } from '../projections/queue-items.js';
+import { projectAutoBuildForContext, projectFailedEnqueuesForContext, projectQueueForContext, projectRunsForContext, projectSessionMetadataForContext } from '../projections/monitor-state.js';
 import { stackLayersToWire } from '../projections/stack-layers.js';
 import { writeHello } from '../sse-handshake.js';
 import { loadSyncStatusForRouteSync } from '../stack-sync-service.js';
@@ -33,11 +32,11 @@ export interface AttachDaemonStreamInput extends DaemonStreamSnapshotOptions {
   res: ServerResponse;
 }
 
-export function attachDaemonStream(input: AttachDaemonStreamInput): void {
+export async function attachDaemonStream(input: AttachDaemonStreamInput): Promise<void> {
   const { context, subscribers, req, res } = input;
   writeSseHeaders(res);
 
-  const { cursor, snapshot } = buildDaemonHello(context, input);
+  const { cursor, snapshot } = await buildDaemonHello(context, input);
   writeHello(res, cursor, snapshot);
 
   const lastEventId = parseLastEventIdHeader(req.headers);
@@ -53,29 +52,24 @@ export function attachDaemonStream(input: AttachDaemonStreamInput): void {
   });
 }
 
-export function buildDaemonHello(
+export async function buildDaemonHello(
   context: MonitorContext,
   options: DaemonStreamSnapshotOptions,
-): { cursor: number; snapshot: DaemonStreamSnapshot } {
+): Promise<{ cursor: number; snapshot: DaemonStreamSnapshot }> {
   const cursor = context.db.getMaxDaemonEventId();
   const stackSyncStatus = context.cwd ? loadSyncStatusForRouteSync(context.cwd) : { version: 1 as const };
   const stackSyncStatusWire = stackSyncStatus.last !== undefined || stackSyncStatus.current !== undefined
     ? ({ last: stackSyncStatus.last, current: stackSyncStatus.current } as DaemonStreamSnapshot['stackSyncStatus'])
     : undefined;
-  const queueItems = context.cwd && context.queuePaths
-    ? loadQueueItemsSync(context.queuePaths.queueDir, context.queuePaths.lockDir)
-    : [];
   const snapshot: DaemonStreamSnapshot = {
     cursor,
     liveness: buildHeartbeatObject(context, options),
     recentActivity: hydrateRecentDaemonActivity(context.db.getDaemonEventsAfter(Math.max(0, cursor - 20)), cursor),
-    runs: projectRunsForAcceptedSuccess(context.db.getRuns(), context.queuePaths?.queueDir),
-    queue: overlayQueueDispatchFailures(queueItems, context.db.getQueueDispatchFailureEvents(queueItems.map((item) => item.id))),
-    sessionMetadata: context.db.getSessionMetadataBatch(),
-    autoBuild: autoBuildStateToWire({
-      state: context.options.daemonState,
-      capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() },
-    }),
+    runs: projectRunsForContext(context),
+    queue: await projectQueueForContext(context),
+    sessionMetadata: projectSessionMetadataForContext(context),
+    autoBuild: projectAutoBuildForContext(context),
+    failedEnqueues: projectFailedEnqueuesForContext(context),
     stackLayers: context.cwd ? stackLayersToWire(context.cwd) : [],
     ...(stackSyncStatusWire !== undefined ? { stackSyncStatus: stackSyncStatusWire } : {}),
   };

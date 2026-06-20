@@ -530,7 +530,7 @@ export const QueueItemCapabilitiesSchema = Type.Object({ priority: QueueItemCapa
 export const QueueItemHoldSchema = Type.Object({ held: Type.Boolean(), reason: Type.Optional(Type.String()), heldAt: Type.Optional(Type.String()) });
 export const FailedEnqueueProvenanceSchema = Type.Object({ label: Type.String() }, { additionalProperties: false });
 export const FailedEnqueueRecoveryCommandSchema = Type.Object({ executable: Type.String(), args: Type.Array(Type.String()) }, { additionalProperties: false });
-export const FailedEnqueueInfoSchema = Type.Object({ runId: Type.String(), sessionId: Type.Optional(Type.String()), sourceLabel: Type.String(), provenance: Type.Optional(FailedEnqueueProvenanceSchema), failureReason: Type.String(), failedAt: Type.String(), canReenqueue: Type.Boolean(), disabledReason: Type.Optional(Type.String()), nextCommand: Type.Optional(FailedEnqueueRecoveryCommandSchema), resolvedAt: Type.Optional(Type.String()) }, { additionalProperties: false });
+export const FailedEnqueueInfoSchema = Type.Object({ runId: Type.String(), sessionId: Type.Optional(Type.String()), sourceLabel: Type.String(), provenance: Type.Optional(FailedEnqueueProvenanceSchema), failureReason: Type.String(), failedAt: Type.String(), canReenqueue: Type.Boolean(), disabledReason: Type.Optional(Type.String()), nextCommand: FailedEnqueueRecoveryCommandSchema, resolvedAt: Type.Optional(Type.String()) }, { additionalProperties: false });
 // --- eforge:endregion plan-01-client-contracts ---
 
 // --- eforge:region auto-build-schemas ---

@@ -77,7 +77,7 @@ export const DaemonQueueItemSchema = Type.Object({
   // Base recovery actions use an `appliedAt` marker; `accepted-success` uses the rich AcceptSuccessAppliedSummary shape (keyed by `acceptedAt`).
   // --- eforge:region plan-01-client-contracts ---
   hold: Type.Optional(QueueItemHoldSchema),
-  capabilities: Type.Optional(QueueItemCapabilitiesSchema),
+  capabilities: QueueItemCapabilitiesSchema,
   // --- eforge:endregion plan-01-client-contracts ---
   recoveryApplied: Type.Optional(Type.Union([
     Type.Object({ action: Type.Union([Type.Literal('retry'), Type.Literal('continue-repair'), Type.Literal('abandon')]), appliedAt: Type.String(), commitSha: Type.Optional(Type.String()) }),
@@ -122,7 +122,7 @@ export const DaemonStreamSnapshotSchema = Type.Object({
   autoBuild: DaemonAutoBuildSchema,
   stackLayers: Type.Array(StackLayerWireSchema),
   // --- eforge:region plan-01-client-contracts ---
-  failedEnqueues: Type.Optional(Type.Array(FailedEnqueueInfoSchema)),
+  failedEnqueues: Type.Array(FailedEnqueueInfoSchema),
   // --- eforge:endregion plan-01-client-contracts ---
   stackSyncStatus: Type.Optional(Type.Object({
     last: Type.Optional(Type.Object({

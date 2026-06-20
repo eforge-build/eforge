@@ -70,15 +70,17 @@ describe('reduceAutoBuildSupervisor', () => {
     expect(enabled.desired).toBe('enabled');
   });
 
-  it('wakes on queue mutation while desired enabled but not running', () => {
+  it('records queue mutation while paused without waking new launches', () => {
     const result = reduceAutoBuildSupervisor(
-      createAutoBuildSupervisorState({ desired: 'enabled', mode: 'paused' }),
+      createAutoBuildSupervisorState({ desired: 'enabled', mode: 'paused', scheduler: { alive: true, paused: true } }),
       { type: 'queue-mutation', source: 'queue', reason: 'enqueue', at },
     );
 
-    expect(result.state.mode).toBe('starting');
+    expect(result.state.mode).toBe('paused');
     expect(result.state.desired).toBe('enabled');
+    expect(result.state.scheduler.paused).toBe(true);
     expect(result.state.scheduler.lastMutationReason).toBe('enqueue');
+    expect(result.transition).toBeUndefined();
   });
 
   it('pauses on failure and resumes', () => {
@@ -264,6 +266,28 @@ describe('AutoBuildSupervisor', () => {
     expect(resumed.mode).toBe('running');
   });
 
+  it('explicit scheduler pause and resume preserve desired enabled state', () => {
+    const { controller, calls, events } = makeController();
+    controller.enable('start');
+    calls.length = 0;
+
+    const paused = controller.pauseScheduler('operator pause');
+    expect(calls).toEqual(['pause-scheduler']);
+    expect(paused.desired).toBe('enabled');
+    expect(paused.mode).toBe('paused');
+    expect(paused.scheduler?.paused).toBe(true);
+
+    const resumed = controller.resumeScheduler('operator resume');
+    expect(calls).toContain('resume-scheduler');
+    expect(resumed.desired).toBe('enabled');
+    expect(resumed.mode).toBe('running');
+    expect(resumed.scheduler?.paused).toBe(false);
+    expect(events.filter((e) => e.type === 'daemon:auto-build:transition')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nextMode: 'paused', reason: 'operator pause' }),
+      expect.objectContaining({ nextMode: 'running', reason: 'operator resume' }),
+    ]));
+  });
+
   it('enable while stopping restarts the watcher before returning to running', () => {
     const initialWatcher = { running: true, pid: 1234, sessionId: 'watcher-1' };
     const { controller, calls, events } = makeController(initialWatcher, {
@@ -318,7 +342,7 @@ describe('AutoBuildSupervisor', () => {
     expect(snapshot.scheduler?.lastMutationReason).toBe('enqueue');
   });
 
-  it('queue mutation repairs an enabled supervisor that is not running', () => {
+  it('queue mutation while paused records the reason without resuming or spawning work', () => {
     const { controller, calls } = makeController();
     controller.enable('start');
     controller.pauseOnFailure('build failed');
@@ -326,8 +350,10 @@ describe('AutoBuildSupervisor', () => {
 
     const snapshot = controller.notifyQueueMutation('enqueue');
     expect(calls).not.toContain('mutation:enqueue');
-    expect(calls).toContain('resume-scheduler');
-    expect(snapshot.mode).toBe('running');
+    expect(calls).not.toContain('resume-scheduler');
+    expect(calls).not.toContain('spawn-watcher');
+    expect(snapshot.mode).toBe('paused');
+    expect(snapshot.scheduler?.paused).toBe(true);
     expect(snapshot.scheduler?.lastMutationReason).toBe('enqueue');
   });
 

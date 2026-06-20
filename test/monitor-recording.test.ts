@@ -210,13 +210,14 @@ describe('enqueue:failed recording', () => {
       collected.push(event);
     }
 
-    // Input: 6 events. withRecording emits 2 daemon:run:upsert events:
+    // Input: 6 events. withRecording emits 2 daemon:run:upsert events and
+    // 1 daemon:failed-enqueue:upsert event:
     //   enqueue:start → insertRun → upsert(running)
-    //   enqueue:failed → updateRunStatus(failed) → upsert(failed)
-    //     (enqueueRunId is cleared after enqueue:failed to prevent double-fire)
-    //   session:end(failed): enqueueRunId is already cleared, no additional upsert
-    // Total collected: 6 + 2 = 8
-    expect(collected).toHaveLength(8);
+    //   enqueue:failed → updateRunStatus(failed) → upsert(failed) + failed-enqueue upsert
+    //   session:end(failed): run is already failed, no additional upsert
+    // Total collected: 6 + 3 = 9
+    expect(collected).toHaveLength(9);
+    expect(collected.some((event) => event.type === 'daemon:failed-enqueue:upsert')).toBe(true);
 
     // Find the enqueue run
     const runs = db.getRuns();

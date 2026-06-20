@@ -1,4 +1,4 @@
-import type { AutoBuildState, FailedEnqueueInfo, FailedEnqueueRecoveryCommand, QueueItem, RunInfo } from '../types.js';
+import type { AutoBuildState, FailedEnqueueInfo, FailedEnqueueRecoveryCommand, QueueItemWithCapabilities, RunInfo } from '../types.js';
 
 export type FailedEnqueuesResponse = FailedEnqueueInfo[];
 
@@ -9,7 +9,7 @@ export interface FailedEnqueueReenqueueRequest {
 export interface FailedEnqueueReenqueueResponse {
   enqueued: boolean;
   failedEnqueue: FailedEnqueueInfo;
-  queue: QueueItem[];
+  queue: QueueItemWithCapabilities[];
   runs: RunInfo[];
   newRunId?: string;
   disabledReason?: string;

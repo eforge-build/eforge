@@ -61,6 +61,8 @@ export interface AutoBuildController {
   enable(reason?: string): AutoBuildState;
   disable(reason?: string): AutoBuildState;
   notifyQueueMutation(reason?: AutoBuildQueueMutationReason): AutoBuildState;
+  pauseScheduler(reason?: string): AutoBuildState;
+  resumeScheduler(reason?: string): AutoBuildState;
   pauseOnFailure(reason: string): AutoBuildState;
   shutdown(reason?: string): AutoBuildState;
   reloadExtensions?(): AutoBuildState | Promise<AutoBuildState>;
@@ -234,6 +236,9 @@ export function reduceAutoBuildSupervisor(
 
     case 'queue-mutation': {
       if (state.desired !== 'enabled') return { state };
+      if (state.mode === 'paused' || state.scheduler.paused === true) {
+        return { state: { ...state, scheduler: { ...state.scheduler, lastMutationReason: action.reason } } };
+      }
       if (state.mode === 'running') {
         return {
           state: {
@@ -347,7 +352,13 @@ export class AutoBuildSupervisor implements AutoBuildController {
   notifyQueueMutation(reason: AutoBuildQueueMutationReason = 'external'): AutoBuildState {
     this.refreshRuntimeDetails();
     let beforeMode = this.state.mode;
+    const paused = this.state.mode === 'paused' || this.state.scheduler.paused === true;
     const liveScheduler = this.state.desired === 'enabled' && this.state.mode === 'running' && this.state.scheduler.alive && !this.state.scheduler.paused;
+
+    if (paused) {
+      this.apply({ type: 'queue-mutation', source: 'queue', reason, at: this.now() });
+      return this.getSnapshot();
+    }
 
     if (liveScheduler) {
       this.effects.emitSchedulerMutation?.(reason);
@@ -373,6 +384,22 @@ export class AutoBuildSupervisor implements AutoBuildController {
       this.apply({ type: 'started', source: 'watcher', reason: 'queue mutation wake', at: this.now(), watcher: this.readWatcher() });
     }
 
+    return this.getSnapshot();
+  }
+
+  pauseScheduler(reason = 'scheduler paused'): AutoBuildState {
+    this.refreshRuntimeDetails();
+    if (this.state.desired !== 'enabled') return this.getSnapshot();
+    this.effects.pauseScheduler?.();
+    this.apply({ type: 'scheduler-paused', source: this.source, reason, at: this.now() });
+    return this.getSnapshot();
+  }
+
+  resumeScheduler(reason = 'scheduler resumed'): AutoBuildState {
+    this.refreshRuntimeDetails();
+    if (this.state.desired !== 'enabled') return this.getSnapshot();
+    this.effects.resumeScheduler?.();
+    this.apply({ type: 'scheduler-resumed', source: this.source, reason, at: this.now() });
     return this.getSnapshot();
   }
 

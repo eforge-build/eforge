@@ -4,7 +4,14 @@ import { createMonitorContext } from '../context.js';
 import { openDatabase } from '../db.js';
 import { CONTROL_MONITOR_ROUTE_KEYS, createControlMonitorRoutes } from '../routes/control-monitor.js';
 
-const sensitive = ['keepAlive', 'enqueue', 'cancel', 'daemonStop', 'autoBuildGet', 'autoBuildSet', 'schedulerKick', 'queueDependencyOverride', 'recover', 'readRecoverySidecar', 'applyRecovery', 'acceptRecoverySuccessPreview', 'acceptRecoverySuccess', 'continueRepair', 'continueRepairEligibility', 'queueRecoveryAnalyze', 'queueRecoveryApply'];
+const sensitive = [
+  'keepAlive', 'enqueue', 'cancel', 'daemonStop', 'autoBuildGet', 'autoBuildSet', 'schedulerKick',
+  'schedulerPause', 'schedulerResume',
+  'queueDependencyOverride', 'queueHold', 'queueUnhold', 'queueCascadePreview', 'queueCascadeApply',
+  'recover', 'recoveryGuidancePrepare', 'readRecoverySidecar', 'applyRecovery', 'acceptRecoverySuccessPreview',
+  'acceptRecoverySuccess', 'continueRepair', 'continueRepairEligibility', 'queueRecoveryAnalyze', 'queueRecoveryApply',
+  'failedEnqueues', 'failedEnqueueReenqueue',
+];
 const intentionallyUngated: string[] = [];
 
 describe('control monitor route registration', () => {
@@ -18,6 +25,17 @@ describe('control monitor route registration', () => {
     expect(routes.find((route) => route.routeKey === 'autoBuildGet')?.pattern).toBe(routes.find((route) => route.routeKey === 'autoBuildSet')?.pattern);
     expect(routes.find((route) => route.routeKey === 'autoBuildGet')?.method).toBe('GET');
     expect(routes.find((route) => route.routeKey === 'autoBuildSet')?.method).toBe('POST');
+    expect(routes.map((route) => route.routeKey)).toEqual(expect.arrayContaining([
+      'recoveryGuidancePrepare',
+      'queueHold',
+      'queueUnhold',
+      'queueCascadePreview',
+      'queueCascadeApply',
+      'failedEnqueues',
+      'failedEnqueueReenqueue',
+      'schedulerPause',
+      'schedulerResume',
+    ]));
     for (const key of sensitive) expect(routes.find((route) => route.routeKey === key)?.security?.length).toBeGreaterThan(0);
     for (const key of intentionallyUngated) expect(routes.find((route) => route.routeKey === key)?.security).toBeUndefined();
     db.close();

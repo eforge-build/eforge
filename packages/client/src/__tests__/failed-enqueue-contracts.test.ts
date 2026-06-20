@@ -24,6 +24,7 @@ function snapshot(extra: Record<string, unknown> = {}) {
     recentActivity: [], runs: [], queue: [], sessionMetadata: {},
     autoBuild: { enabled: true, watcher: { running: false, pid: null, sessionId: null } },
     stackLayers: [],
+      failedEnqueues: [],
     ...extra,
   };
 }
@@ -52,8 +53,10 @@ describe('failed enqueue contracts', () => {
     const first = eventRegistry['daemon:failed-enqueue:upsert'].project!({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue }, state);
     const second = eventRegistry['daemon:failed-enqueue:upsert'].project!({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue: { ...failedEnqueue, failureReason: 'newer' } }, { ...state, ...first });
     expect(second?.failedEnqueues).toHaveLength(1);
+    const tied = eventRegistry['daemon:failed-enqueue:upsert'].project!({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:upsert', failedEnqueue: { ...failedEnqueue, runId: 'run-0' } }, { ...state, ...second });
+    expect(tied?.failedEnqueues?.map((item) => item.runId)).toEqual(['run-0', 'run-1']);
     const resolved = eventRegistry['daemon:failed-enqueue:resolved'].project!({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: '2026-06-19T11:00:00.000Z' }, { ...state, ...second });
-    expect(resolved?.failedEnqueues?.[0]?.resolvedAt).toBe('2026-06-19T11:00:00.000Z');
+    expect(resolved?.failedEnqueues).toEqual([]);
     expect(getEventSummary({ timestamp: failedEnqueue.failedAt, type: 'daemon:failed-enqueue:resolved', runId: 'run-1', resolvedAt: failedEnqueue.failedAt, newRunId: 'run-2' })).toContain('run-2');
   });
 });

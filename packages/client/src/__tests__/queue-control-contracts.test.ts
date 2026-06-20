@@ -19,6 +19,7 @@ function snapshot(queue: unknown[]) {
     recentActivity: [], runs: [], queue, sessionMetadata: {},
     autoBuild: { enabled: true, watcher: { running: false, pid: null, sessionId: null } },
     stackLayers: [],
+      failedEnqueues: [],
   };
 }
 

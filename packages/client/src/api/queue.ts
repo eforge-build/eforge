@@ -8,7 +8,7 @@ import { API_ROUTES, buildPath } from '../routes.js';
 import type {
   EnqueueResponse,
   CancelResponse,
-  QueueItem,
+  QueueItemWithCapabilities,
   RunInfo,
   RunSummary,
   RunState,
@@ -58,11 +58,11 @@ export function apiCancelIfRunning(opts: { cwd: string; sessionId: string }) {
 }
 
 export function apiGetQueue(opts: { cwd: string }) {
-  return daemonRequest<QueueItem[]>(opts.cwd, 'GET', API_ROUTES.queue);
+  return daemonRequest<QueueItemWithCapabilities[]>(opts.cwd, 'GET', API_ROUTES.queue);
 }
 
 export function apiGetQueueIfRunning(opts: { cwd: string }) {
-  return daemonRequestIfRunning<QueueItem[]>(opts.cwd, 'GET', API_ROUTES.queue);
+  return daemonRequestIfRunning<QueueItemWithCapabilities[]>(opts.cwd, 'GET', API_ROUTES.queue);
 }
 
 export function apiUpdateQueuePriority(opts: { cwd: string; prdId: string; priority: number }) {

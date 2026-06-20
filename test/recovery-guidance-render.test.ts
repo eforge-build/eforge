@@ -49,6 +49,18 @@ describe('recovery guidance rendering', () => {
     expect(section).toContain('.eforge/queue/failed/prd-1.recovery.json');
   });
 
+  it('redacts and bounds sidecar-derived evidence', () => {
+    const input = sidecar();
+    input.report.operatorSummary = 'failed with Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturePart123456 and npm_0123456789ABCDEFabcdef0123456789';
+    input.report.rootFailure = { planId: 'plan-01', message: '-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----' };
+
+    const section = renderRecoveryGuidanceSection({ sidecar: input, planId: 'plan-01', sidecarPath: 'failed/prd-1.recovery.json', prdId: 'prd-1', setName: 'demo-set', featureBranch: 'eforge/demo-set', baseBranch: 'main' });
+
+    expect(section).toContain('[REDACTED');
+    expect(section).not.toContain('npm_0123456789ABCDEFabcdef0123456789');
+    expect(section).not.toContain('BEGIN PRIVATE KEY');
+  });
+
   it('appends, replaces, deduplicates, and becomes idempotent', () => {
     const section = renderRecoveryGuidanceSection({ sidecar: sidecar(), planId: 'plan-01', sidecarPath: 'failed/prd-1.recovery.json', prdId: 'prd-1', setName: 'demo-set', featureBranch: 'eforge/demo-set', baseBranch: 'main' });
     const appended = patchRecoveryGuidanceSection('# Plan\n\nBody\n', section);

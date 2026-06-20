@@ -30,8 +30,10 @@ export interface PrepareRecoveryGuidanceOptions {
   trunkBranch?: string;
 }
 
+export type RecoveryGuidanceErrorKind = 'validation' | 'missing-sidecar' | 'preflight';
+
 export class RecoveryGuidanceError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly kind: RecoveryGuidanceErrorKind = 'validation') {
     super(message);
     this.name = 'RecoveryGuidanceError';
   }
@@ -52,11 +54,16 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
   try {
     projection = await readRecoverySidecarProjection(failedDir, options.prdId);
   } catch (err) {
-    throw new RecoveryGuidanceError((err as Error).message);
+    const code = (err as NodeJS.ErrnoException).code;
+    throw new RecoveryGuidanceError((err as Error).message, code === 'ENOENT' ? 'missing-sidecar' : 'validation');
   }
   const sidecar = projection.sidecar;
   const setName = options.setName ?? sidecar.setName;
-  validatePlanSetName(setName);
+  try {
+    validatePlanSetName(setName);
+  } catch (err) {
+    throw new RecoveryGuidanceError((err as Error).message, 'validation');
+  }
   validateSafeGitRef(setName, 'setName');
   if (options.setName !== undefined && options.setName !== sidecar.setName) {
     throw new RecoveryGuidanceError(`Requested setName '${options.setName}' does not match recovery sidecar setName '${sidecar.setName}'`);
@@ -76,8 +83,17 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
   for (const planId of rootPlanIds) assertSafePlanId(planId);
 
   const mergeWorktreePath = join(computeWorktreeBase(cwd, setName), '__merge__');
-  await ensureGuidanceMergeWorktree({ cwd, mergeWorktreePath, featureBranch });
-  const artifactLocation = await locateGuidanceArtifacts({ cwd, mergeWorktreePath, featureBranch, outputDir, setName });
+  try {
+    await ensureGuidanceMergeWorktree({ cwd, mergeWorktreePath, featureBranch });
+  } catch (err) {
+    throw new RecoveryGuidanceError((err as Error).message, 'preflight');
+  }
+  let artifactLocation: Awaited<ReturnType<typeof locateGuidanceArtifacts>>;
+  try {
+    artifactLocation = await locateGuidanceArtifacts({ cwd, mergeWorktreePath, featureBranch, outputDir, setName });
+  } catch (err) {
+    throw new RecoveryGuidanceError((err as Error).message, 'preflight');
+  }
   const rootPaths = rootPlanIds.map((planId) => join(outputDir, setName, `${planId}.md`));
 
   const preflight = await preflightTargets({ mergeWorktreePath, rootPlanIds, rootPaths, sidecar });
@@ -90,14 +106,18 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
   try {
     await assertNoPreexistingGuidanceTargetDiff({ mergeWorktreePath, targetPaths: rootPaths });
   } catch (err) {
-    throw new RecoveryGuidanceError((err as Error).message);
+    throw new RecoveryGuidanceError((err as Error).message, 'preflight');
   }
 
   let restoredPaths: string[] = [];
   if (artifactLocation.source !== 'merge-worktree') {
-    await materializeGuidanceArtifactsFromHistory({ mergeWorktreePath, artifactCommit: artifactLocation.artifactCommit, planSetRelPath: artifactLocation.planSetRelPath });
-    if (artifactLocation.source === 'branch-history') {
-      restoredPaths = await listGuidanceArtifactPathsAtCommit({ cwd, artifactCommit: artifactLocation.artifactCommit, planSetRelPath: artifactLocation.planSetRelPath });
+    try {
+      await materializeGuidanceArtifactsFromHistory({ mergeWorktreePath, artifactCommit: artifactLocation.artifactCommit, planSetRelPath: artifactLocation.planSetRelPath });
+      if (artifactLocation.source === 'branch-history') {
+        restoredPaths = await listGuidanceArtifactPathsAtCommit({ cwd, artifactCommit: artifactLocation.artifactCommit, planSetRelPath: artifactLocation.planSetRelPath });
+      }
+    } catch (err) {
+      throw new RecoveryGuidanceError((err as Error).message, 'preflight');
     }
   }
 
@@ -208,7 +228,7 @@ function responseBase(args: { options: PrepareRecoveryGuidanceOptions; setName: 
 }
 
 function assertSafeSegment(value: string, label: string): void {
-  if (!value || value.includes('/') || value.includes('\\') || value.includes('..')) throw new RecoveryGuidanceError(`Invalid ${label}: must not contain path separators or traversal sequences`);
+  if (!value || value.includes('/') || value.includes('\\') || value.includes('..') || /[\x00-\x1f\x7f]/.test(value)) throw new RecoveryGuidanceError(`Invalid ${label}: must not contain path separators, traversal sequences, or control characters`);
 }
 
 function assertSafePlanId(planId: string): void {
@@ -223,6 +243,7 @@ function normalizeRepoRelativeDir(value: string, label: string): string {
   if (!value || value.startsWith('/') || value.includes('\\')) throw new RecoveryGuidanceError(`Invalid ${label}: must be repo-relative`);
   const normalized = value.split('/').filter((part) => part.length > 0).join('/');
   if (!normalized || normalized.split('/').some((part) => part === '..' || part === '.')) throw new RecoveryGuidanceError(`Invalid ${label}: must not traverse outside the repository`);
+  if (/[:*?\[]/.test(normalized)) throw new RecoveryGuidanceError(`Invalid ${label}: must not contain Git pathspec metacharacters`);
   return normalized;
 }
 
@@ -244,6 +265,6 @@ async function assertExists(path: string, message: string): Promise<void> {
   try {
     await access(path, constants.F_OK);
   } catch {
-    throw new RecoveryGuidanceError(message);
+    throw new RecoveryGuidanceError(message, 'missing-sidecar');
   }
 }

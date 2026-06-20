@@ -1,4 +1,5 @@
 import type { RecoveryVerdictSidecar } from '@eforge-build/client';
+import { redactSecretLikeValues } from '../secret-redaction.js';
 
 const HEADING = '## Recovery Guidance';
 
@@ -90,15 +91,10 @@ function recoveryGuidanceSectionRanges(markdown: string): Array<{ start: number;
 }
 
 function formatSidecarEvidence(value: string): string {
-  return JSON.stringify(redactSecretLikeValues(value).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu, ' ').replace(/\r?\n/gu, ' ⏎ '));
-}
-
-function redactSecretLikeValues(value: string): string {
-  return value
-    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/=-]{16,}/giu, '$1[REDACTED]')
-    .replace(/\b((?:[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|authorization|api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*)\s*(?:=|:)\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s"',;]+)/giu, '$1[REDACTED]')
-    .replace(/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/gu, '[REDACTED_AWS_ACCESS_KEY]')
-    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/gu, '[REDACTED_GITHUB_TOKEN]');
+  const sanitized = redactSecretLikeValues(value)
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu, ' ')
+    .replace(/\r?\n/gu, ' ⏎ ');
+  return JSON.stringify(sanitized.length > 1000 ? `${sanitized.slice(0, 999)}…` : sanitized);
 }
 
 function findFailingPlan(sidecar: RecoveryVerdictSidecar, planId: string): RecoveryVerdictSidecar['boundedEvidence']['failingPlan'] | undefined {

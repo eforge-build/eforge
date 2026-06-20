@@ -125,6 +125,8 @@ describe('recovery guidance preparation guards', () => {
   it('rejects unsafe prd ids before reading sidecars or invoking git', async () => {
     const cwd = await tempDir();
     await expect(prepareRecoveryGuidance({ cwd, prdId: '../bad' })).rejects.toThrow(/Invalid prdId/);
+    await expect(prepareRecoveryGuidance({ cwd, prdId: 'prd-1\nModels-Used: injected' })).rejects.toThrow(/Invalid prdId/);
+    await expect(prepareRecoveryGuidance({ cwd, prdId: 'prd-1\u0000bad' })).rejects.toThrow(/Invalid prdId/);
   });
 
   it('rejects unsafe output directories before git worktree commands run', async () => {
@@ -132,6 +134,9 @@ describe('recovery guidance preparation guards', () => {
     await writeSidecar(cwd);
 
     await expect(prepareRecoveryGuidance({ cwd, prdId: PRD_ID, outputDir: '../outside' })).rejects.toThrow(/Invalid outputDir/);
+    await expect(prepareRecoveryGuidance({ cwd, prdId: PRD_ID, outputDir: ':(top)' })).rejects.toThrow(/Invalid outputDir/);
+    await expect(prepareRecoveryGuidance({ cwd, prdId: PRD_ID, outputDir: 'plans/*' })).rejects.toThrow(/Invalid outputDir/);
+    await expect(prepareRecoveryGuidance({ cwd, prdId: PRD_ID, outputDir: 'plans/[abc]' })).rejects.toThrow(/Invalid outputDir/);
     expect(existsSync(mergeWorktreePath(cwd))).toBe(false);
   });
 

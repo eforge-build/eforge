@@ -11,17 +11,7 @@ import {
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'DELETE', 'OPTIONS']);
 
-const CONTRACT_ONLY_ROUTE_KEYS = new Set([
-  'failedEnqueueReenqueue',
-  'failedEnqueues',
-  'queueCascadeApply',
-  'queueCascadePreview',
-  'queueHold',
-  'queueUnhold',
-  'recoveryGuidancePrepare',
-  'schedulerPause',
-  'schedulerResume',
-]);
+const CONTRACT_ONLY_ROUTE_KEYS = new Set<string>();
 
 describe('monitor route aggregation', () => {
   it('registers one route key for every client daemon route', async () => {

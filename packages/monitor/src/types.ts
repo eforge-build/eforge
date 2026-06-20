@@ -17,6 +17,8 @@ export interface MonitorServer {
 export interface WorkerTracker {
   spawnWorker(command: string, args: string[], onExit?: () => void): { sessionId: string; pid: number };
   cancelWorker(sessionId: string): boolean;
+  listWorkerSessions?(): string[];
+  cancelWorkerProcess?(sessionId: string): boolean;
 }
 
 export interface DaemonState {
@@ -58,7 +60,7 @@ export interface MonitorUiRoots {
 
 export interface MonitorStreamHub {
   attachSession(req: IncomingMessage, res: ServerResponse, id: string): void;
-  attachDaemon(req: IncomingMessage, res: ServerResponse): void;
+  attachDaemon(req: IncomingMessage, res: ServerResponse): void | Promise<void>;
   broadcast(eventName: string, data: string | EforgeEvent): void;
   subscriberCount(): number;
   stop(): void;
