@@ -27,6 +27,8 @@ import {
 import { applyLifecycleEvent } from './lifecycle.js';
 import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection } from './promote.js';
 import { toJsonSafeObject } from './json-safe.js';
+import { userActionError } from './action-errors.js';
+import { captureReadinessIssues, formatCaptureReadinessMessage } from './backlog-capture-guardrails.js';
 import { sessionPlanActions } from './session-plan-actions.js';
 import { recommendationActions } from './recommendation-actions.js';
 import { markRecommendationsStaleForBacklogMutation } from './recommendation-status.js';
@@ -41,7 +43,7 @@ const BoardInput = BoardActionInputSchema;
 const CaptureInput = Type.Object({
   id: Type.Optional(Type.String()), title: Type.String(), claim: Type.String(), evidence: Type.Optional(Type.String()),
   tags: Type.Optional(Type.Array(Type.String())), priority: Type.Optional(Type.String()), epic: Type.Optional(Type.String()),
-  dependsOn: Type.Optional(Type.Array(Type.String())), acceptanceCriteria: Type.Optional(Type.String()),
+  dependsOn: Type.Optional(Type.Array(Type.String())), acceptanceCriteria: Type.String(),
 });
 const EpicInput = Type.Object({ id: Type.Optional(Type.String()), title: Type.String(), body: Type.Optional(Type.String()), status: Type.Optional(Type.String()), priority: Type.Optional(Type.String()), tags: Type.Optional(Type.Array(Type.String())) });
 const UpdateInput = Type.Object({
@@ -108,9 +110,13 @@ const captureItem = defineExtensionAction({
   id: 'capture-item', title: 'Capture backlog item', description: 'Create a visible eforge-plan backlog item and write it to private eforge-plan storage.',
   inputSchema: CaptureInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
+    const readinessIssues = captureReadinessIssues(input);
+    if (readinessIssues.length > 0) {
+      throw userActionError(formatCaptureReadinessMessage(readinessIssues), { details: { issues: readinessIssues } });
+    }
     const id = await resolveNewItemId(ctx.cwd, input.id, input.title);
     const now = new Date().toISOString();
-    const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria ?? 'Missing acceptance criteria: add concrete, verifiable done conditions before build handoff.', ''].join('\n');
+    const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria, ''].join('\n');
     const item = await writeBacklogItem(ctx.cwd, { id, status: 'candidate', priority: input.priority, tags: input.tags ?? [], depends_on: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
     return toJsonSafeObject({ itemId: item.id, status: item.status, path: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
@@ -257,7 +263,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Remove planning agent task', content: 'Dismiss a non-running daemon-owned planning task from the workflow list.', action: { actionId: 'remove-planning-agent-task' } },
       { rendererId: 'action-form', title: 'Apply planning agent task result', content: 'Apply only selected generated recommendations, handoff drafts, or session-plan sections.', action: { actionId: 'apply-planning-agent-task-result' } },
       { rendererId: 'action-button', title: 'Open planning workstation', content: 'Return the generic planning entry URL for the eforge-plan workstation.', action: { actionId: 'open-planning-entry' } },
-      { rendererId: 'action-form', title: 'Capture item', content: 'Capture a candidate backlog item.', action: { actionId: 'capture-item' } },
+      { rendererId: 'action-form', title: 'Capture item', content: 'Capture a session-plan-ready candidate backlog item with concrete acceptance criteria.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
       { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy selected legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
       { rendererId: 'action-form', title: 'Fork recommendation to draft unit', content: 'Create an editable draft plan unit from a recommendation safe-to-parallelize lane.', action: { actionId: 'fork-recommendation-to-draft-unit' } },

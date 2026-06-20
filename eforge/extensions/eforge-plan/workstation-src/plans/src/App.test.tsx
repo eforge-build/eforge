@@ -11,7 +11,7 @@ function setBridge(bridge: EforgeBridge) {
 describe('App workstation surface', () => {
   beforeEach(() => { vi.resetModules(); });
 
-  it('renders the focus switcher (Roadmap/Board/Plans/Plan with AI) and activity rail, loading startup data through the bridge', async () => {
+  it('renders the focus switcher (Roadmap/Backlog/Plans) and activity rail, loading startup data through the bridge', async () => {
     const calls: Array<{ actionId: string; input: unknown }> = [];
     setBridge({
       version: 9,
@@ -29,11 +29,11 @@ describe('App workstation surface', () => {
 
     render(<App />);
 
-    // Roadmap / Board / Plans / Plan with AI are focuses on one surface, switched
-    // in the header. The board focus loads by default with its activity rail.
-    await waitFor(() => expect(screen.getByText('Board')).toBeTruthy());
+    // Roadmap / Backlog / Plans are focuses on one surface, switched in the
+    // header. The backlog focus loads by default with its activity rail; AI
+    // planning lives in that rail rather than a separate tab.
+    await waitFor(() => expect(screen.getByText('Backlog')).toBeTruthy());
     expect(screen.getByText('Roadmap')).toBeTruthy();
-    expect(screen.getByText('Plan with AI')).toBeTruthy();
     expect(screen.getByText('Planning activity')).toBeTruthy();
     expect(calls.map((call) => call.actionId)).toEqual(expect.arrayContaining(['get-roadmap-state', 'get-recommendations', 'list-board-compact', 'list-planning-artifacts', 'list-planning-agent-tasks']));
     expect(calls).toContainEqual({ actionId: 'list-planning-artifacts', input: { includeBoard: false } });

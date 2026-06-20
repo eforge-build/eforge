@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isGeneratedPlannerPrompt, planDisplayTitle } from './plan-title';
+import { isGeneratedPlannerPrompt, planDisplayTitle, selectionItemsLabel } from './plan-title';
 
 describe('plan-title', () => {
   it('detects the seeded planner prompt', () => {
@@ -24,5 +24,30 @@ describe('plan-title', () => {
     // must yield a non-empty label rather than an empty string.
     expect(planDisplayTitle(undefined, 'epic-')).toBe('epic-');
     expect(planDisplayTitle('Draft a session plan for x', '---')).toBe('Draft a session plan for x');
+  });
+
+  describe('selectionItemsLabel', () => {
+    const titles = new Map([
+      ['item-a', 'Add bounded auto-resume policy'],
+      ['item-b', 'Editable convergence drafts'],
+    ]);
+
+    it('names a single backlog item by its title', () => {
+      expect(selectionItemsLabel({ itemIds: ['item-a'] }, titles)).toBe('Add bounded auto-resume policy');
+    });
+
+    it('names the first item and counts the rest for multiple items', () => {
+      expect(selectionItemsLabel({ itemIds: ['item-a', 'item-b'] }, titles)).toBe('Add bounded auto-resume policy +1 more');
+    });
+
+    it('falls back to a count when titles are unavailable', () => {
+      expect(selectionItemsLabel({ itemIds: ['item-x', 'item-y'] }, titles)).toBe('2 backlog items');
+      expect(selectionItemsLabel({ itemIds: ['item-x'] })).toBe('1 backlog item');
+    });
+
+    it('returns null when there are no item ids so callers fall back to lane/epic refs', () => {
+      expect(selectionItemsLabel({ recommendationRef: 'group-x' }, titles)).toBeNull();
+      expect(selectionItemsLabel({ itemIds: [] }, titles)).toBeNull();
+    });
   });
 });

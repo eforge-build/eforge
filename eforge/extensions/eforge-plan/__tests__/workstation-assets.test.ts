@@ -17,8 +17,9 @@ const BOARD_FOCUS = `${SRC}/views/board-focus.tsx`;
 const SELECTION_RAIL = `${SRC}/views/selection-rail.tsx`;
 const BACKLOG_SELECTION_HOOK = `${SRC}/hooks/use-backlog-selection.ts`;
 const PLAN_CONTEXT_RAIL = `${SRC}/views/plan-context-rail.tsx`;
-const RECOMMENDATIONS_PANEL = `${SRC}/views/backlog/recommendations-panel.tsx`;
-const PLAN_WITH_AI_PANEL = `${SRC}/views/backlog/plan-with-ai-panel.tsx`;
+const RECOMMENDATIONS_RAIL = `${SRC}/views/recommendations-rail.tsx`;
+const ACTIVITY_RAIL = `${SRC}/views/activity-rail.tsx`;
+const PLANNING_TASK_DRAWER = `${SRC}/views/backlog/planning-task-drawer.tsx`;
 const TASK_WORKFLOWS_HOOK = `${SRC}/views/backlog/use-planning-task-workflows.ts`;
 const TASK_RESULT_PREVIEW = `${SRC}/views/backlog/planning-task-result-preview.tsx`;
 const BACKLOG_CURATION_PREVIEW = `${SRC}/views/backlog/backlog-curation-preview.tsx`;
@@ -72,7 +73,7 @@ describe('eforge-plan planning workstation assets', () => {
 
     expect(source).toContain('window.eforge');
     expect(source).toContain('invokeAction');
-    expect(source).toContain('Plan with AI');
+    expect(source).toContain('Planning activity');
     expect(source).toContain('Analyze all backlog');
     expect(source).toContain('Backlog curation');
     expect(source).toContain('backlogCurationDraft');
@@ -111,13 +112,17 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).not.toMatch(/fetch\s*\(/);
   });
 
-  it('monitor panel lists durable tasks without a free-form prompt-input start box', async () => {
-    const source = await readFile(PLAN_WITH_AI_PANEL, 'utf-8');
+  it('surfaces durable tasks in the activity rail and its drawer without a free-form prompt-input start box', async () => {
+    const [rail, drawer] = await Promise.all([
+      readFile(ACTIVITY_RAIL, 'utf-8'),
+      readFile(PLANNING_TASK_DRAWER, 'utf-8'),
+    ]);
 
-    expect(source).toContain('Plan with AI');
-    expect(source).toContain('PlanningTaskCard');
-    expect(source).not.toContain('setUserGoal');
-    expect(source).not.toContain('userGoal');
+    expect(rail).toContain('Planning activity');
+    expect(drawer).toContain('PlanningTaskCard');
+    const combined = `${rail}\n${drawer}`;
+    expect(combined).not.toContain('setUserGoal');
+    expect(combined).not.toContain('userGoal');
   });
 
   it('mock bridge supports the durable planning task workflow actions', async () => {
@@ -140,21 +145,21 @@ describe('eforge-plan planning workstation assets', () => {
   });
 
   it('keeps recommendation-only refresh out of the workstation primary UI', async () => {
-    const [hook, panel, bridge, boardFocus] = await Promise.all([
+    const [hook, rail, bridge, boardFocus] = await Promise.all([
       readFile(TASK_WORKFLOWS_HOOK, 'utf-8'),
-      readFile(RECOMMENDATIONS_PANEL, 'utf-8'),
+      readFile(RECOMMENDATIONS_RAIL, 'utf-8'),
       readFile(BRIDGE, 'utf-8'),
       readFile(BOARD_FOCUS, 'utf-8'),
     ]);
 
     expect(hook).not.toContain("'refresh-recommendations'");
-    expect(panel).not.toContain('onRefreshRecommendations');
-    expect(panel).not.toContain('Refresh recommendations');
+    expect(rail).not.toContain('onRefreshRecommendations');
+    expect(rail).not.toContain('Refresh recommendations');
     // The Roadmap focus owns the manual refresh action; keep it out of the
     // primary board surface covered by this regression.
     expect(bridge).toContain("case 'refresh-recommendations'");
     expect(boardFocus).not.toContain('refreshRecommendations');
-    expect(`${hook}\n${panel}\n${bridge}\n${boardFocus}`).not.toMatch(/build-queue/);
+    expect(`${hook}\n${rail}\n${bridge}\n${boardFocus}`).not.toMatch(/build-queue/);
   });
 
   it('keeps a stateful mock fixture set for running, failed, needs-input, and ready creation drafts', async () => {
