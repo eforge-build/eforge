@@ -26,6 +26,19 @@ describe('analyze-all-backlog action', () => {
     expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'invalid-mode' }).success).toBe(false);
   });
 
+  it('validates source-first item audit concurrency bounds', async () => {
+    for (const itemAuditConcurrency of [1, 4, 8]) {
+      expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'full-implementation-audit', itemAuditConcurrency }).success).toBe(true);
+    }
+    for (const itemAuditConcurrency of [0, -1, 1.5, 9]) {
+      expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'full-implementation-audit', itemAuditConcurrency }).success).toBe(false);
+    }
+
+    await withTempProject(async (cwd) => {
+      await expect(buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: { scanMode: 'full-implementation-audit', itemAuditConcurrency: 9 } })).rejects.toThrow(/itemAuditConcurrency/);
+    });
+  });
+
   it('starts a curation planning task with workflow purpose and no build queue side effect', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
@@ -72,6 +85,63 @@ describe('analyze-all-backlog action', () => {
 
       expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { scanMode } } } });
       expect(output.entry.scanMode).toBe(scanMode);
+    });
+  });
+
+  it('normalizes source-first concurrency into source-provider input and workflow entries only for full audit mode', async () => {
+    await withTempProject(async (cwd) => {
+      const starts: unknown[] = [];
+      const ctx = {
+        cwd,
+        signal: new AbortController().signal,
+        agentTasks: {
+          async start(request: unknown) {
+            starts.push(request);
+            return { task: { taskId: `task-${starts.length}`, kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' } };
+          },
+          async get() { throw new Error('not found'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        },
+      };
+
+      const full = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit' }, ctx as never) as { entry: { itemAuditConcurrency?: number } };
+      const delta = await analyzeAllBacklogAction.handler({ scanMode: 'delta', itemAuditConcurrency: 8 }, ctx as never) as { entry: { itemAuditConcurrency?: number } };
+
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { scanMode: 'full-implementation-audit', itemAuditConcurrency: 4 } } } });
+      expect(full.entry.itemAuditConcurrency).toBe(4);
+      expect(starts[1]).toMatchObject({ input: { sourceProvider: { input: { scanMode: 'delta' } } } });
+      expect((starts[1] as { input: { sourceProvider: { input: Record<string, unknown> } } }).input.sourceProvider.input).not.toHaveProperty('itemAuditConcurrency');
+      expect(delta.entry.itemAuditConcurrency).toBeUndefined();
+    });
+  });
+
+  it('reuses active source-first curation tasks only when normalized concurrency matches', async () => {
+    await withTempProject(async (cwd) => {
+      const started: unknown[] = [];
+      const tasks = new Map<string, { taskId: string; kind: string; status: string; createdAt: string; updatedAt: string }>();
+      const ctx = {
+        cwd,
+        signal: new AbortController().signal,
+        agentTasks: {
+          async start(request: unknown) {
+            const task = { taskId: `task-${started.length + 1}`, kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' };
+            started.push(request);
+            tasks.set(task.taskId, task);
+            return { task };
+          },
+          async get(taskId: string) { const task = tasks.get(taskId); if (!task) throw new Error('not found'); return { task }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        },
+      };
+
+      const first = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 2 }, ctx as never) as { task: { taskId: string } };
+      const second = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 3 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const firstAgain = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 2 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+
+      expect(second.task.taskId).not.toBe(first.task.taskId);
+      expect(second.reused).toBeUndefined();
+      expect(firstAgain).toMatchObject({ task: { taskId: first.task.taskId }, reused: true });
+      expect(started).toHaveLength(2);
     });
   });
 

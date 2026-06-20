@@ -226,7 +226,7 @@ function PatchCard({ patch, applied, fullAudit }: { patch: Patch; applied: boole
       {patch.sectionOperations && patch.sectionOperations.length > 0 && <div className="grid gap-1">{patch.sectionOperations.map((operation) => <details key={`${operation.heading}:${operation.action}`} className="border-l-2 border-border pl-2"><summary className="cursor-pointer text-xs text-muted-foreground">{sectionOperationLabel(operation.action)} · {operation.heading}</summary><SafeMarkdown markdown={operation.content} /></details>)}</div>}
       {(evidence.labels.length > 0 || fullAuditEvidence.length > 0) && (
         <div className="grid gap-1 rounded border border-primary/20 bg-primary/5 p-2 text-xs text-muted-foreground">
-          {evidence.labels.length > 0 && <p>{applied ? 'Applied closure metadata evidence:' : 'Proposed closure metadata evidence in this draft:'}</p>}
+          {evidence.labels.length > 0 && <p>{fullAudit ? 'Draft evidence labels (historical labels are navigation hints; current-source labels are closure evidence):' : applied ? 'Applied closure metadata evidence:' : 'Proposed closure metadata evidence in this draft:'}</p>}
           {evidence.labels.length > 0 && <div className="flex flex-wrap gap-1">{evidence.labels.map((label) => <span key={label} className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-text-bright">{label}</span>)}</div>}
           {fullAuditEvidence.length > 0 && <FullAuditEvidenceChips evidence={fullAuditEvidence} />}
           {evidence.prIds.length > 0 && <p>PR identifiers: {evidence.prIds.join(', ')}</p>}

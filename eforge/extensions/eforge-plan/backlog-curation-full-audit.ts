@@ -7,7 +7,8 @@ import { enrichPullRequests } from './shipped-evidence-pr.js';
 import { collectShippedEvidence } from './shipped-evidence.js';
 import { boundString, normalizeShippedEvidenceCaps } from './shipped-evidence-limits.js';
 import { exactItemIdMatch, normalizeSlug, titleTokenScore, tokenizeTitle } from './shipped-evidence-matching.js';
-import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic } from './shipped-evidence-types.js';
+import type { ShippedEvidenceCandidate, ShippedEvidenceCaps, ShippedEvidenceDiagnostic, GitDeltaAffectedItemCandidate } from './shipped-evidence-types.js';
+import { collectSourceFirstAuditResults, projectSourceFirstClosureCandidates, projectSourceFirstResultsForFingerprint, sourceFirstAuditSettings, type SourceFirstAuditResult, type SourceFirstCurrentEvidenceInput, type SourceFirstHistoricalHint } from './backlog-curation-source-first-audit.js';
 
 // --- eforge:region public-collection-types ---
 export interface FullImplementationAuditCaps {
@@ -67,6 +68,7 @@ export async function collectBacklogCurationFullImplementationAudit(input: {
   items: readonly BacklogItem[];
   traceSummaries: readonly TraceSummary[];
   caps?: Partial<FullImplementationAuditCaps & ShippedEvidenceCaps>;
+  itemAuditConcurrency?: number;
   enrichPullRequests?: boolean;
   signal?: AbortSignal;
 }): Promise<FullImplementationAuditResult> {
@@ -88,35 +90,50 @@ export async function collectBacklogCurationFullImplementationAudit(input: {
   const classified = await classifyBacklogCurationEvidence({ cwd: input.cwd, items: input.items, traceSummaries: input.traceSummaries, gitHistory: { records, diagnostics: gitHistory.diagnostics }, pullRequests: prEnrichment.pullRequests, caps: shippedCaps, diagnostics: gitHistory.diagnostics, signal: input.signal });
   const shipped = await collectShippedEvidence({ cwd: input.cwd, items: input.items, traceSummaries: input.traceSummaries, gitHistory: { records, diagnostics: gitHistory.diagnostics }, pullRequestEnrichment: prEnrichment, caps: shippedCaps, enrichPullRequests: true, signal: input.signal });
   diagnostics.push(...mapGitDiagnostics(shipped.diagnostics));
-  const closureCandidates = dedupeCandidates([...classified.shippedEvidenceCandidates, ...shipped.candidates])
+  const historicalClosureCandidates = dedupeCandidates([...classified.shippedEvidenceCandidates, ...shipped.candidates])
     .filter((candidate) => candidate.intent !== 'affected')
     .sort(byCandidate);
-  const items = input.items.map((item) => projectAuditItem(item, currentHits.filter((hit) => hit.itemId === item.id), closureCandidates.filter((candidate) => candidate.itemId === item.id), input.traceSummaries.find((summary) => summary.itemId === item.id), caps, diagnostics)).sort((a, b) => String(a.itemId).localeCompare(String(b.itemId)));
+  const historicalHints = buildHistoricalHints(historicalClosureCandidates, classified.affectedItemCandidates);
+  const sourceFirstResults = await collectSourceFirstAuditResults({
+    items: input.items.map((item) => ({ item, currentEvidence: currentHits.filter((hit) => hit.itemId === item.id).map(projectCurrentHitForSourceFirst), historicalHints: historicalHints.filter((hint) => hint.itemId === item.id), traceSummary: input.traceSummaries.find((summary) => summary.itemId === item.id) })),
+    itemAuditConcurrency: input.itemAuditConcurrency,
+    signal: input.signal,
+  });
+  const sourceFirstByItem = new Map(sourceFirstResults.map((result) => [result.itemId, result]));
+  const sourceFirstClosureCandidates = projectSourceFirstClosureCandidates(sourceFirstResults);
+  const items = input.items.map((item) => projectAuditItem(item, currentHits.filter((hit) => hit.itemId === item.id), historicalClosureCandidates.filter((candidate) => candidate.itemId === item.id), input.traceSummaries.find((summary) => summary.itemId === item.id), sourceFirstByItem.get(item.id), caps, diagnostics)).sort((a, b) => String(a.itemId).localeCompare(String(b.itemId)));
   const currentStateEvidenceTruncatedCount = items.reduce((sum, item) => sum + (typeof item.currentStateEvidenceTruncatedCount === 'number' ? item.currentStateEvidenceTruncatedCount : 0), 0);
   const boundedDiagnostics = diagnostics.slice(0, caps.diagnosticCount);
   const context = {
     schemaVersion: 1,
     guidance: [
-      'Full implementation audit covers every open backlog item in scope, but each evidence source is bounded by deterministic caps and available repository history.',
-      'Cite only supplied repository evidence, evidence prefixes, confidence values, and source metadata; do not invent repository evidence.',
-      'Use strong lifecycle/git/PR shipped or superseded candidates for closure proposals; route ambiguous candidates to skipped or needs-input guidance.',
-      'Treat current code, test, documentation, and current-file matches as implementation evidence for partial/ambiguous findings, not standalone closure evidence.',
+      'Source-first implementation audit covers every open backlog item in scope with bounded current-source excerpts and navigation-only historical hints.',
+      'Cite only supplied current-source citations, confidence values, and source metadata. Current source is the only closure authority; git history, PR metadata, lifecycle traces, branch hints, changed paths, and session-plan traces are navigation hints only.',
+      'Use source-shipped/source-superseded item results and current-source citations for closed-status proposals; route ambiguous or partial evidence to skipped, no-change, or recheck-note guidance.',
+      'Do not claim exhaustive validation beyond supplied bounded current-source citations and caps.',
     ],
+    settings: sourceFirstAuditSettings(input.itemAuditConcurrency),
     scope: { itemIds, openItemCount: itemIds.length },
     coverage: { auditedItemCount: itemIds.length, currentStateFileCount: new Set(currentHits.map((hit) => hit.path)).size, currentStateHitCount: currentHits.length, currentStateEvidenceTruncatedCount, gitHistoryCommitCount: records.length, pullRequestCount: prEnrichment.pullRequests.length },
     caps,
     items,
-    closureCandidates: closureCandidates.map(projectCandidate),
+    historicalHints: historicalHints.map(stripHintItemId),
+    sourceFirstResults,
+    closureCandidates: sourceFirstClosureCandidates,
     diagnostics: boundedDiagnostics,
   };
   const preview = {
     scope: context.scope,
     coverage: context.coverage,
     caps: context.caps,
+    settings: context.settings,
     diagnostics: boundedDiagnostics,
-    itemSummaries: items.map((item) => ({ itemId: item.itemId, candidateIntent: item.candidateIntent, evidenceCount: Array.isArray(item.evidence) ? item.evidence.length : 0, confidence: item.confidence, currentStateEvidenceTruncatedCount: item.currentStateEvidenceTruncatedCount, evidence: item.evidence, closureCandidates: item.closureCandidates })),
+    sourceFirstResults,
+    historicalHints: (context.historicalHints as SourceFirstHistoricalHint[]).slice(0, 50),
+    closureCandidates: sourceFirstClosureCandidates,
+    itemSummaries: items.map((item) => ({ itemId: item.itemId, candidateIntent: item.candidateIntent, evidenceCount: Array.isArray(item.evidence) ? item.evidence.length : 0, confidence: item.confidence, currentStateEvidenceTruncatedCount: item.currentStateEvidenceTruncatedCount, evidence: item.evidence, closureCandidates: item.closureCandidates, sourceFirstResult: item.sourceFirstResult })),
   };
-  return { context, preview, fingerprint: projectFullImplementationAuditForFingerprint(context), shippedEvidenceCandidates: closureCandidates, diagnostics: boundedDiagnostics };
+  return { context, preview, fingerprint: projectFullImplementationAuditForFingerprint(context), shippedEvidenceCandidates: [], diagnostics: boundedDiagnostics };
 }
 
 export function projectFullImplementationAuditForFingerprint(value: Record<string, unknown>): Record<string, unknown> {
@@ -125,7 +142,10 @@ export function projectFullImplementationAuditForFingerprint(value: Record<strin
     scope: value.scope,
     coverage: value.coverage,
     caps: value.caps,
-    items: (value.items as Array<Record<string, unknown>>).map((item) => ({ itemId: item.itemId, candidateIntent: item.candidateIntent, confidence: item.confidence, evidence: item.evidence })),
+    settings: value.settings,
+    sourceFirstResults: projectSourceFirstResultsForFingerprint((value.sourceFirstResults ?? []) as SourceFirstAuditResult[]),
+    historicalHints: value.historicalHints,
+    items: (value.items as Array<Record<string, unknown>>).map((item) => ({ itemId: item.itemId, candidateIntent: item.candidateIntent, confidence: item.confidence, evidence: item.evidence, sourceFirstResult: item.sourceFirstResult })),
     closureCandidates: value.closureCandidates,
     diagnostics: (value.diagnostics as Array<Record<string, unknown>>).map((diagnostic) => ({ code: diagnostic.code, severity: diagnostic.severity, path: diagnostic.path })),
   };
@@ -218,27 +238,48 @@ function matchCurrentFile(item: BacklogItem, path: string, text: string, caps: F
 // --- eforge:endregion current-state-file-scan ---
 
 // --- eforge:region item-candidate-projection ---
-function projectAuditItem(item: BacklogItem, hits: CurrentStateHit[], candidates: ShippedEvidenceCandidate[], trace: TraceSummary | undefined, caps: FullImplementationAuditCaps, diagnostics: FullImplementationAuditDiagnostic[]): Record<string, unknown> {
-  const closure = candidates.find((candidate) => candidate.confidence === 'strong') ?? candidates[0];
+type ItemHistoricalHint = SourceFirstHistoricalHint & { itemId: string };
+
+function buildHistoricalHints(candidates: readonly ShippedEvidenceCandidate[], affected: readonly GitDeltaAffectedItemCandidate[]): ItemHistoricalHint[] {
+  return [
+    ...candidates.map((candidate) => ({ itemId: candidate.itemId, source: candidate.evidenceSource, intent: candidate.intent, confidence: candidate.confidence, citation: candidate.citation, evidence: candidate.evidence, closureAuthority: false as const })),
+    ...affected.map((candidate) => ({ itemId: candidate.itemId, source: candidate.sourceLabel, intent: candidate.intent, confidence: candidate.confidence, citation: candidate.evidence, evidence: candidate.evidence, closureAuthority: false as const })),
+  ];
+}
+
+function stripHintItemId(hint: ItemHistoricalHint): SourceFirstHistoricalHint {
+  const { itemId: _itemId, ...rest } = hint;
+  return rest;
+}
+
+function projectCurrentHitForSourceFirst(hit: CurrentStateHit): SourceFirstCurrentEvidenceInput {
+  return { source: hit.evidenceSource, confidence: hit.confidence, matchedBy: hit.matchedBy, path: hit.path, excerpt: hit.excerpt };
+}
+
+function projectAuditItem(item: BacklogItem, hits: CurrentStateHit[], candidates: ShippedEvidenceCandidate[], trace: TraceSummary | undefined, sourceFirst: SourceFirstAuditResult | undefined, caps: FullImplementationAuditCaps, diagnostics: FullImplementationAuditDiagnostic[]): Record<string, unknown> {
   const pathBoundedHits = boundHitsPerCategoryPath(hits, caps.pathsPerCategory);
   const evidenceHits = pathBoundedHits.slice(0, caps.evidencePerItem);
   const evidence = evidenceHits.map((hit) => ({ source: hit.evidenceSource, confidence: hit.confidence, matchedBy: hit.matchedBy, path: hit.path, excerpt: hit.excerpt }));
   const truncatedCount = Math.max(0, hits.length - evidence.length);
   if (truncatedCount > 0) diagnostics.push({ code: 'evidence-cap-truncated', severity: 'info', message: `Full-audit current-state evidence capped for ${item.id}.` });
   const staleInvalid = isStaleOrInvalid(item);
-  const candidateIntent = closure?.intent === 'shipped' || closure?.intent === 'superseded' ? closure.intent
-    : closure?.intent === 'ambiguous-shipped' || closure?.intent === 'ambiguous-superseded' ? 'needs-input'
-      : hits.length > 0 ? 'partial-implementation' : staleInvalid ? 'stale-invalid' : 'no-change';
+  const candidateIntent = sourceFirst?.intent === 'source-shipped' ? 'shipped'
+    : sourceFirst?.intent === 'source-superseded' ? 'superseded'
+      : sourceFirst?.intent === 'partial' ? 'partial-implementation'
+        : sourceFirst?.intent === 'recheck-note' && hits.length === 0 ? 'recheck-note'
+          : hits.length > 0 ? 'partial-implementation' : staleInvalid ? 'stale-invalid' : 'no-change';
   return {
     itemId: item.id,
     title: item.title,
     candidateIntent,
-    confidence: closure?.confidence ?? (hits.length > 0 ? evidence[0]?.confidence ?? 'ambiguous' : staleInvalid ? 'ambiguous' : 'weak'),
-    matchedSignals: [...new Set([...hits.flatMap((hit) => hit.matchedBy), ...(closure?.matchedBy ?? [])])].sort(),
+    confidence: sourceFirst?.confidence ?? (hits.length > 0 ? evidence[0]?.confidence ?? 'ambiguous' : staleInvalid ? 'ambiguous' : 'weak'),
+    matchedSignals: [...new Set([...hits.flatMap((hit) => hit.matchedBy), ...candidates.flatMap((candidate) => candidate.matchedBy ?? [])])].sort(),
     evidence,
     currentStateEvidenceCount: hits.length,
     currentStateEvidenceTruncatedCount: truncatedCount,
-    closureCandidates: candidates.map(projectCandidate),
+    historicalHints: candidates.map(projectCandidate),
+    closureCandidates: sourceFirst === undefined ? [] : projectSourceFirstClosureCandidates([sourceFirst]),
+    ...(sourceFirst !== undefined && { sourceFirstResult: sourceFirst }),
     ...(trace !== undefined && { lifecycleTrace: { lifecycleState: trace.lifecycleState, hasActiveTrace: trace.hasActiveTrace, linkRowCount: trace.linkRows.length, landingRefCount: trace.landingRefs.length, prRefCount: trace.prRefs.length } }),
     guidance: guidanceFor(candidateIntent),
   };
@@ -261,6 +302,7 @@ function projectCandidate(candidate: ShippedEvidenceCandidate): Record<string, u
     intent: candidate.intent,
     source: candidate.evidenceSource,
     evidenceSource: candidate.evidenceSource,
+    closureAuthority: false,
     confidence: candidate.confidence,
     matchedBy: candidate.matchedBy ?? [],
     evidence: candidate.evidence,
@@ -299,11 +341,17 @@ function excerptFor(text: string, tokens: readonly string[], limit: number): str
 function redact(text: string): string {
   return text.replace(/-----BEGIN [^-]+PRIVATE KEY-----[\s\S]*?-----END [^-]+PRIVATE KEY-----/g, '[REDACTED PRIVATE KEY]')
     .replace(/\b(AKIA|ASIA)[A-Z0-9]{16}\b/g, '[REDACTED TOKEN]')
-    .replace(/\b(secret|token|api[_-]?key|password|passwd|authorization)\b\s*[:=]\s*[^\s'\"]+/gi, '$1=[REDACTED]');
+    .replace(/\b(authorization)(\s*:\s*)bearer\s+[^\s'\",;]+/gi, '$1$2Bearer [REDACTED]')
+    .replace(/\b((?:(?:export\s+)?(?:const|let|var)\s+)?[A-Za-z_$][\w$.-]*)(\s*[:=]\s*)(?:(["'])[^\s'\"]+\3|[^\s'\",;]+)/g, (match, key: string, separator: string, quote: string | undefined) => isSecretAssignmentKey(key) ? `${key}${separator}${quote ?? ''}[REDACTED]${quote ?? ''}` : match)
+    .replace(/\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g, '[REDACTED TOKEN]');
+}
+
+function isSecretAssignmentKey(key: string): boolean {
+  return /(?:secret|token|api[_-]?key|apikey|password|passwd)/i.test(key.replace(/^(?:export\s+)?(?:const|let|var)\s+/i, ''));
 }
 
 function shouldExclude(rel: string, name: string): boolean {
-  return EXCLUDED_DIRS.has(name) || rel.startsWith('.eforge/storage/extensions/eforge-plan/') || SECRET_PATH.test(rel);
+  return EXCLUDED_DIRS.has(name) || rel === '.eforge' || rel.startsWith('.eforge/') || SECRET_PATH.test(rel);
 }
 
 function isTextLike(path: string): boolean {

@@ -106,13 +106,14 @@ describe('eforge-plan README planner contract', () => {
     }
 
     expect(readme).toContain('{ "scanMode": "delta" }');
-    expect(readme).toContain('{ "scanMode": "full-implementation-audit" }');
-    expect(readme).toMatch(/`delta` is the normal workstation default/);
-    expect(readme).toMatch(/`full-implementation-audit` is an explicit opt-in mode/);
-    expect(readme).toMatch(/may take longer and use more context/);
-    expect(readme).toMatch(/comprehensive over open (backlog )?items/);
-    expect(readme).toMatch(/bounded by (configured )?caps (plus|and) available git\/PR history/);
-    expect(readme).toMatch(/Full-audit previews additionally expose server-provided audit coverage, caps, diagnostics, evidence source, and confidence metadata/);
+    expect(readme).toContain('{ "scanMode": "full-implementation-audit", "itemAuditConcurrency": 4 }');
+    expect(readme).toMatch(/Delta is the default/);
+    expect(readme).toMatch(/`full-implementation-audit` wire value is the workstation’s Source-first implementation audit/);
+    expect(readme).toMatch(/audits open items against current source/);
+    expect(readme).toMatch(/current source as the only closure authority/);
+    expect(readme).toMatch(/git\/PR\/lifecycle\/session history as navigation hints only/);
+    expect(readme).toMatch(/defaults item concurrency to `4`, and caps it at `8`/);
+    expect(readme).toMatch(/source-first coverage\/caps\/concurrency\/diagnostics\/per-item outcomes\/current-source citations\/historical navigation hints/);
     expect(readme).toMatch(/analyze-all-backlog[\s\S]*(starts or reuses|start or reuse)[\s\S]*daemon-owned[\s\S]*read-only/);
     expect(readme).toMatch(/Completed (backlog )?curation tasks? render(s)? a (read-only )?preview before mutation/i);
     expect(readme).toMatch(/item changes[\s\S]*epic changes[\s\S]*no-op rechecks[\s\S]*skipped cases[\s\S]*needs-input cases[\s\S]*generated recommendations/);

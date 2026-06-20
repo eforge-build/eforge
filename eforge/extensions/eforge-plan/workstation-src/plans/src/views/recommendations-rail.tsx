@@ -34,7 +34,7 @@ interface RecommendationsRailProps {
   selection: BacklogSelection;
   busy: boolean;
   /** Curate the backlog and regenerate recommendations. */
-  onAnalyze: (scanMode: BacklogCurationScanMode) => Promise<unknown>;
+  onAnalyze: (input: { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number }) => Promise<unknown>;
   /** Fork a recommendation lane into an editable draft plan unit. */
   onForkLane: (recommendationRef: string) => Promise<void>;
 }

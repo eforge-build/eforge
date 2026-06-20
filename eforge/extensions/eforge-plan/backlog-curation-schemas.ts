@@ -17,11 +17,16 @@ export function normalizeBacklogCurationScanMode(value: unknown): BacklogCuratio
 }
 
 export function backlogCurationScanModeLabel(scanMode: BacklogCurationScanMode): string {
-  return scanMode === 'full-implementation-audit' ? 'Full implementation audit' : 'Delta';
+  return scanMode === 'full-implementation-audit' ? 'Source-first implementation audit' : 'Delta';
 }
+
+export const DEFAULT_ITEM_AUDIT_CONCURRENCY = 4;
+export const MAX_ITEM_AUDIT_CONCURRENCY = 8;
+export const ItemAuditConcurrencySchema = Type.Integer({ minimum: 1, maximum: MAX_ITEM_AUDIT_CONCURRENCY, default: DEFAULT_ITEM_AUDIT_CONCURRENCY });
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
+  itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
 }, { additionalProperties: false });
 
 export const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
@@ -46,6 +51,7 @@ const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   // workflow entry type, so accept the full union it can statically carry.
   purpose: Type.Optional(Type.Union([Type.Literal('recommendation-refresh'), Type.Literal('backlog-curation')])),
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
+  itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
   sourceFingerprint: Type.Optional(SourceFingerprintSchema),
   appliedAt: Type.Optional(Type.String()),
   createdAt: Type.String(),
@@ -185,6 +191,43 @@ const BacklogCurationFullImplementationAuditEvidenceSummarySchema = Type.Object(
   matchedBy: Type.Optional(Type.Array(Type.String())),
   path: Type.Optional(Type.String()),
   excerpt: Type.Optional(Type.String()),
+  citations: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: JsonValueSchema }))),
+}, { additionalProperties: true });
+
+const SourceFirstAuditCitationSchema = Type.Object({
+  kind: Type.Union([Type.Literal('implementation'), Type.Literal('product-surface'), Type.Literal('supporting')]),
+  source: Type.String(),
+  confidence: Type.String(),
+  path: Type.Optional(Type.String()),
+  excerpt: Type.Optional(Type.String()),
+  matchedBy: Type.Optional(Type.Array(Type.String())),
+}, { additionalProperties: true });
+
+const SourceFirstHistoricalHintSchema = Type.Object({
+  source: Type.String(),
+  closureAuthority: Type.Literal(false),
+  intent: Type.Optional(Type.String()),
+  confidence: Type.Optional(Type.String()),
+  citation: Type.Optional(Type.String()),
+  evidence: Type.Optional(Type.String()),
+  path: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+
+const SourceFirstAuditDiagnosticSchema = Type.Object({
+  code: Type.String(),
+  severity: Type.Union([Type.Literal('info'), Type.Literal('warning')]),
+  message: Type.Optional(Type.String()),
+  path: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+
+const SourceFirstAuditResultSchema = Type.Object({
+  itemId: Type.String(),
+  intent: Type.Union([Type.Literal('source-shipped'), Type.Literal('source-superseded'), Type.Literal('partial'), Type.Literal('not-found'), Type.Literal('no-change'), Type.Literal('skipped'), Type.Literal('recheck-note')]),
+  confidence: Type.String(),
+  citations: Type.Array(SourceFirstAuditCitationSchema),
+  historicalHints: Type.Array(SourceFirstHistoricalHintSchema),
+  diagnostics: Type.Array(SourceFirstAuditDiagnosticSchema),
+  rationale: Type.String(),
 }, { additionalProperties: true });
 
 const BacklogCurationFullImplementationAuditItemSummarySchema = Type.Object({
@@ -194,6 +237,7 @@ const BacklogCurationFullImplementationAuditItemSummarySchema = Type.Object({
   confidence: Type.Optional(Type.String()),
   evidence: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditEvidenceSummarySchema)),
   closureCandidates: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditEvidenceSummarySchema)),
+  sourceFirstResult: Type.Optional(SourceFirstAuditResultSchema),
 }, { additionalProperties: true });
 
 export const BacklogCurationFullImplementationAuditPreviewSchema = Type.Object({
@@ -203,7 +247,11 @@ export const BacklogCurationFullImplementationAuditPreviewSchema = Type.Object({
   }, { additionalProperties: true })),
   coverage: Type.Optional(BacklogCurationFullImplementationAuditCoverageSchema),
   caps: Type.Optional(BacklogCurationFullImplementationAuditCapsSchema),
+  settings: Type.Optional(Type.Object({ itemAuditConcurrency: ItemAuditConcurrencySchema, maxItemAuditConcurrency: Type.Integer({ minimum: 1 }), closureAuthority: Type.String() }, { additionalProperties: true })),
   diagnostics: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditDiagnosticSchema)),
+  sourceFirstResults: Type.Optional(Type.Array(SourceFirstAuditResultSchema)),
+  historicalHints: Type.Optional(Type.Array(SourceFirstHistoricalHintSchema)),
+  closureCandidates: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditEvidenceSummarySchema)),
   itemSummaries: Type.Optional(Type.Array(BacklogCurationFullImplementationAuditItemSummarySchema)),
 }, { additionalProperties: true });
 
@@ -227,6 +275,7 @@ export const BacklogCurationSourcePreviewMetadataSchema = Type.Object({
   sourceFingerprint: SourceFingerprintSchema,
   generatedAt: Type.Optional(Type.String()),
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
+  itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
   fullImplementationAudit: Type.Optional(BacklogCurationFullImplementationAuditPreviewSchema),
 }, { additionalProperties: false });

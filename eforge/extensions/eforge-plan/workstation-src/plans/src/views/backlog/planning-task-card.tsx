@@ -48,7 +48,7 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
             {entry.purpose === 'recommendation-refresh' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-text-bright">Recommendation refresh</span>}
-            {entry.purpose === 'backlog-curation' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-text-bright">{curationScanModeLabel(entry.scanMode)}</span>}
+            {entry.purpose === 'backlog-curation' && <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-text-bright">{curationScanModeLabel(entry.scanMode)}{entry.scanMode === 'full-implementation-audit' && entry.itemAuditConcurrency !== undefined ? ` · concurrency ${entry.itemAuditConcurrency}` : ''}</span>}
             <TaskIdBadge taskId={entry.taskId} />
             {groupRef && <span className="max-w-full truncate" title={groupRef}>{groupRef}</span>}
             {entry.parentTaskId && <span title={entry.parentTaskId}>↳ {shortTaskId(entry.parentTaskId)}</span>}

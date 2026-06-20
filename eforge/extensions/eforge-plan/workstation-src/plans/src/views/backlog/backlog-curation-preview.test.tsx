@@ -67,11 +67,11 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('Removed item ids: add-import-preview')).toBeTruthy();
     expect(screen.getByText('Removed epic ids: planning')).toBeTruthy();
     expect(screen.getByText('Repositioned item ids: recommend-next-work: readyCandidates → recommendedNextSequence')).toBeTruthy();
-    expect(screen.getByText('Shipped evidence: lifecycle trace')).toBeTruthy();
-    expect(screen.getByText('Shipped evidence: inferred from git/PR history')).toBeTruthy();
-    expect(screen.getByText(/PR identifiers: #191/)).toBeTruthy();
-    expect(screen.getByText(/Commit identifiers: abcdef1234567890/)).toBeTruthy();
-    expect(screen.getByText('recommend-next-work has git and PR evidence from the merged recommendation workflow.')).toBeTruthy();
+    expect(screen.getAllByText('Shipped evidence: current source').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Shipped evidence: inferred from git/PR history')).toBeNull();
+    expect(screen.queryByText(/PR identifiers: #191/)).toBeNull();
+    expect(screen.queryByText(/Commit identifiers: abcdef1234567890/)).toBeNull();
+    expect(screen.getByText('recommend-next-work has current-source implementation and product-surface citations; PR history remains a navigation hint.')).toBeTruthy();
     expect(screen.getByText('Ambiguous shipped candidate: needs input')).toBeTruthy();
     expect(screen.getByText('Ambiguous superseded candidate: needs input')).toBeTruthy();
     expect(screen.getAllByText('Proposed closure metadata evidence in this draft:').length).toBeGreaterThan(0);
@@ -81,20 +81,21 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getAllByText(/traceability/).length).toBeGreaterThan(0);
   });
 
-  it('renders full-audit mode labels, warning, coverage, caps, diagnostics, and evidence chips', () => {
+  it('renders source-first mode labels, warning, coverage, caps, diagnostics, and evidence chips', () => {
     renderPreview({ entry: { ...entry, scanMode: 'full-implementation-audit' }, curationPreview: mockFullAuditBacklogCurationPreview });
 
-    expect(screen.getAllByText('Full implementation audit').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/may take longer and use more context/i).length).toBeGreaterThan(0);
-    expect(screen.getByText('Full implementation audit metadata')).toBeTruthy();
+    expect(screen.getAllByText('Source-first implementation audit').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/current source is the only closure authority/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('Source-first audit metadata')).toBeTruthy();
     expect(screen.getByText('Audited items')).toBeTruthy();
     expect(screen.getByText('6')).toBeTruthy();
+    expect(screen.getByText('Item audit concurrency')).toBeTruthy();
     expect(screen.getByText('File scan cap')).toBeTruthy();
     expect(screen.getByText('250')).toBeTruthy();
     expect(screen.getByText('pr-history-unavailable')).toBeTruthy();
     expect(screen.getByText(/Some pull request metadata was unavailable/)).toBeTruthy();
-    expect(screen.getByText('Git History · strong')).toBeTruthy();
-    expect(screen.getByText('Combined · strong')).toBeTruthy();
+    expect(screen.getAllByText(/Current Source · strong/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Historical navigation hints (not closure evidence)').length).toBeGreaterThan(0);
   });
 
   it('counts generated recommendations from the server projection instead of raw recommendations', () => {
