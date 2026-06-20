@@ -8,33 +8,48 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
-import type { Artifact, Detail, PlanData, PlanDetail, PlanSetDetail, Readiness } from '@/types';
+import type { Artifact, Detail, DraftPlanUnit, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { intersectsLens } from '@/lib/lens';
+import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
 import { PlanDetailCard } from './plans/plan-detail';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
+import { DraftUnitDetailCard } from './plans/draft-unit-detail';
 
 const bridge = getBridge();
 
 interface PlansViewProps {
   artifacts: Artifact[];
+  draftUnits: DraftPlanUnit[];
+  titles: Map<string, string>;
   onRefresh: () => Promise<void>;
+  onUpdateDraftUnit: (input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>;
+  onDeleteDraftUnit: (unitId: string) => Promise<void>;
+  onPromoteDraftUnit: (unitId: string) => Promise<PromoteDraftUnitResponse>;
   lensTag?: string;
   lensItemIds?: Set<string>;
 }
 
-export function PlansView({ artifacts, onRefresh, lensTag = '', lensItemIds }: PlansViewProps) {
+export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDraftUnit, onDeleteDraftUnit, onPromoteDraftUnit, lensTag = '', lensItemIds }: PlansViewProps) {
   const router = useRouter();
   const toast = useToast();
+  const nav = usePlanNavigation();
   const selectedKey = router.query.get('plan') ?? '';
   const selectPlan = React.useCallback((key: string) => {
     router.setQuery((params) => { if (key) params.set('plan', key); else params.delete('plan'); });
   }, [router]);
+  const selectedDraftId = parseDraftKey(selectedKey);
+  const selectedDraft = selectedDraftId !== null ? draftUnits.find((unit) => unit.unitId === selectedDraftId) ?? null : null;
+  // The key still names a draft but no unit matches it (deleted elsewhere, or a
+  // stale/shared URL): show an explicit gone state rather than a silent empty
+  // placeholder.
+  const staleDraft = selectedDraftId !== null && selectedDraft === null;
   const [detail, setDetail] = React.useState<Detail>(null);
   const [creating, setCreating] = React.useState(false);
 
   React.useEffect(() => {
-    if (!selectedKey) { setDetail(null); return; }
+    // Draft units render from in-memory state, not a detail fetch.
+    if (!selectedKey || parseDraftKey(selectedKey) !== null) { setDetail(null); return; }
     const artifact = artifacts.find((entry) => entry.key === selectedKey);
     let active = true;
     void (async () => {
@@ -76,6 +91,29 @@ export function PlansView({ artifacts, onRefresh, lensTag = '', lensItemIds }: P
           </CardHeader>
           <CardContent className="grid gap-2">
             {creating && <CreatePlanForm onClose={() => setCreating(false)} onCreated={onRefresh} />}
+            {draftUnits.length > 0 && (
+              <>
+                <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Drafts</span>
+                {draftUnits.map((unit) => {
+                  const key = draftKey(unit.unitId);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => selectPlan(key)}
+                      className={`rounded-md border p-3 text-left transition-colors hover:bg-accent ${selectedKey === key ? 'border-primary bg-accent' : 'border-border'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-text-bright">{unit.title}</span>
+                        <Badge variant={unit.status === 'promoted' ? 'default' : 'outline'}>{unit.status}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{unit.items.length} item{unit.items.length === 1 ? '' : 's'}{unit.sourceRecommendationRef ? ` · ${unit.sourceRecommendationRef}` : ''}</p>
+                    </button>
+                  );
+                })}
+                <span className="mt-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Plans</span>
+              </>
+            )}
             {artifacts.length === 0
               ? <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No planning artifacts found.</p>
               : artifacts.map((artifact) => {
@@ -103,7 +141,28 @@ export function PlansView({ artifacts, onRefresh, lensTag = '', lensItemIds }: P
       </aside>
 
       <section className="min-w-0">
-        {isPlanDetail(detail) && detail.plan
+        {selectedDraft
+          ? <DraftUnitDetailCard
+              key={selectedDraft.unitId}
+              unit={selectedDraft}
+              titles={titles}
+              onUpdate={onUpdateDraftUnit}
+              onDelete={async (id) => { await onDeleteDraftUnit(id); selectPlan(''); }}
+              onPromote={onPromoteDraftUnit}
+              onOpenItem={nav.openItem}
+              onOpenPlan={selectPlan}
+            />
+          : staleDraft
+          ? <Card>
+              <CardHeader>
+                <CardTitle>Draft not found</CardTitle>
+                <CardDescription>This draft plan unit no longer exists. It may have been deleted or promoted.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" size="sm" onClick={() => selectPlan('')}>Clear selection</Button>
+              </CardContent>
+            </Card>
+          : isPlanDetail(detail) && detail.plan
           ? <PlanDetailCard detail={{ ...detail, plan: detail.plan }} onApply={applyResult} onRefresh={onRefresh} onDeleted={async () => {
             setDetail(null);
             selectPlan('');

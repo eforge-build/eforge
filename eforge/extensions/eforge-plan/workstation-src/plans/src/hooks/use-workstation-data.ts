@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
-import type { Artifact, Board, CompactBoardResponse, GetRecommendationsResponse, JsonObject, PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
+import type { Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
@@ -16,8 +16,13 @@ export interface WorkstationDataState {
   recommendationFreshness: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   roadmapState: RoadmapStateResponse | null;
+  draftUnits: DraftPlanUnit[];
   saveRoadmapState: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
   refreshRecommendations: () => Promise<RefreshRecommendationsResponse>;
+  forkRecommendationToDraftUnit: (recommendationRef: string, title?: string) => Promise<DraftPlanUnit>;
+  updateDraftUnit: (input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>;
+  deleteDraftUnit: (unitId: string) => Promise<void>;
+  promoteDraftUnit: (unitId: string, options?: { session?: string; status?: 'active' | 'planned' }) => Promise<PromoteDraftUnitResponse>;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -34,6 +39,7 @@ export function useWorkstationData(): WorkstationDataState {
   const [recommendationFreshness, setRecommendationFreshness] = React.useState<RecommendationFreshnessView | null>(null);
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
   const [roadmapState, setRoadmapState] = React.useState<RoadmapStateResponse | null>(null);
+  const [draftUnits, setDraftUnits] = React.useState<DraftPlanUnit[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -41,11 +47,12 @@ export function useWorkstationData(): WorkstationDataState {
     setLoading(true);
     // Each source is loaded independently: a failure in one (e.g. optional
     // recommendations) must not blank the board or the artifact list.
-    const [boardResult, artifactsResult, recommendationsResult, roadmapResult] = await Promise.allSettled([
+    const [boardResult, artifactsResult, recommendationsResult, roadmapResult, draftUnitsResult] = await Promise.allSettled([
       bridge.invokeAction<CompactBoardResponse>('list-board-compact', { limit: INITIAL_BOARD_LIMIT, includeArchive: true }),
       bridge.invokeAction<{ artifacts?: Artifact[] }>('list-planning-artifacts', { includeBoard: false }),
       bridge.invokeAction<GetRecommendationsResponse>('get-recommendations', {}),
       bridge.invokeAction<RoadmapStateResponse>('get-roadmap-state', { includeLocalFocusContent: true }),
+      bridge.invokeAction<ListDraftUnitsResponse>('list-draft-units', {}),
     ]);
     const failures: string[] = [];
     const recommendationModel = recommendationsResult.status === 'fulfilled' ? recommendationsResult.value.recommendations ?? null : null;
@@ -61,6 +68,8 @@ export function useWorkstationData(): WorkstationDataState {
     } else failures.push(reason('recommendations', recommendationsResult.reason));
     if (roadmapResult.status === 'fulfilled') setRoadmapState(roadmapResult.value);
     else failures.push(reason('roadmap', roadmapResult.reason));
+    if (draftUnitsResult.status === 'fulfilled') setDraftUnits(draftUnitsResult.value.units ?? []);
+    else failures.push(reason('drafts', draftUnitsResult.reason));
     setError(failures.length > 0 ? failures.join(' · ') : null);
     setLoading(false);
   }, []);
@@ -113,9 +122,32 @@ export function useWorkstationData(): WorkstationDataState {
     return response;
   }, [refresh]);
 
+  const forkRecommendationToDraftUnit = React.useCallback(async (recommendationRef: string, title?: string) => {
+    const { unit } = await bridge.invokeAction<DraftUnitResponse>('fork-recommendation-to-draft-unit', { recommendationRef, ...(title ? { title } : {}) });
+    await refresh();
+    return unit;
+  }, [refresh]);
+
+  const updateDraftUnit = React.useCallback(async (input: UpdateDraftUnitInput) => {
+    const { unit } = await bridge.invokeAction<DraftUnitResponse>('update-draft-unit', input as unknown as JsonObject);
+    await refresh();
+    return unit;
+  }, [refresh]);
+
+  const deleteDraftUnit = React.useCallback(async (unitId: string) => {
+    await bridge.invokeAction('delete-draft-unit', { unitId });
+    await refresh();
+  }, [refresh]);
+
+  const promoteDraftUnit = React.useCallback(async (unitId: string, options?: { session?: string; status?: 'active' | 'planned' }) => {
+    const response = await bridge.invokeAction<PromoteDraftUnitResponse>('promote-draft-unit', { unitId, ...(options?.session ? { session: options.session } : {}), ...(options?.status ? { status: options.status } : {}) });
+    await refresh();
+    return response;
+  }, [refresh]);
+
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, saveRoadmapState, refreshRecommendations, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, draftUnits, saveRoadmapState, refreshRecommendations, forkRecommendationToDraftUnit, updateDraftUnit, deleteDraftUnit, promoteDraftUnit, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

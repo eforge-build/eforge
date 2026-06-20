@@ -1,4 +1,5 @@
-import { ArrowUpRight, Lightbulb } from 'lucide-react';
+import * as React from 'react';
+import { ArrowUpRight, GitFork, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RecommendationFreshnessBadge } from '@/components/recommendation-freshness';
@@ -35,6 +36,8 @@ interface RecommendationsRailProps {
   busy: boolean;
   /** Open the full planning workspace (Plan with AI focus). */
   onOpenPlanning: () => void;
+  /** Fork a recommendation lane into an editable draft plan unit. */
+  onForkLane: (recommendationRef: string) => Promise<void>;
 }
 
 /**
@@ -43,7 +46,9 @@ interface RecommendationsRailProps {
  * blocked chains, what-changed, per-item chips) lives in the Plan with AI focus,
  * one click away via the header link.
  */
-export function RecommendationsRail({ recommendations, status, freshness, selection, lensTag, lensItemIds, busy, onOpenPlanning }: RecommendationsRailProps) {
+export function RecommendationsRail({ recommendations, status, freshness, selection, lensTag, lensItemIds, busy, onOpenPlanning, onForkLane }: RecommendationsRailProps) {
+  const [forkingRef, setForkingRef] = React.useState<string | null>(null);
+  const fork = (ref: string) => { setForkingRef(ref); void onForkLane(ref).finally(() => setForkingRef(null)); };
   if (!recommendations && !status && !freshness) return null;
   const next = (recommendations?.recommendedNextSequence ?? []).slice(0, MAX_NEXT);
   const groups = recommendations?.safeParallelizableGroups ?? [];
@@ -121,6 +126,15 @@ export function RecommendationsRail({ recommendations, status, freshness, select
                         title="Toggle every item in this lane in the backlog selection"
                       >
                         Select
+                      </button>
+                      <button
+                        type="button"
+                        disabled={forkingRef !== null}
+                        onClick={() => fork(group.ref)}
+                        className="ml-auto inline-flex items-center gap-0.5 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        title="Fork this lane into an editable draft plan unit"
+                      >
+                        <GitFork className="h-3 w-3" /> {forkingRef === group.ref ? 'Forking…' : 'Fork to draft'}
                       </button>
                     </div>
                   </div>

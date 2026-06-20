@@ -5,7 +5,7 @@ import type { WorkstationDataState } from '@/hooks/use-workstation-data';
 import { useBacklogSelection } from '@/hooks/use-backlog-selection';
 import type { ApplyPlanningTaskResponse, JsonObject } from '@/types';
 import { collectLensTags, lensMatchingItemIds } from '@/lib/lens';
-import { buildItemPlanIndex } from '@/lib/plan-links';
+import { buildItemPlanIndex, draftKey, planKey } from '@/lib/plan-links';
 import { RoadmapContextRail, RoadmapFocus } from './roadmap/roadmap-panel';
 import { sourceSummary } from './roadmap/roadmap-view-model';
 import { LensBar } from './lens-bar';
@@ -49,7 +49,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const applyAndOpenPlan = React.useCallback(async (taskId: string, input: JsonObject): Promise<ApplyPlanningTaskResponse | null> => {
     const response = await workflows.apply(taskId, input);
     const session = response?.sessionPlanCreationDraft?.session;
-    if (session) router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', `plan:${session}`); });
+    if (session) router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', planKey(session)); });
     return response;
   }, [workflows, router]);
   const panelWorkflows = React.useMemo(() => ({ ...workflows, apply: applyAndOpenPlan }), [workflows, applyAndOpenPlan]);
@@ -63,6 +63,13 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const onSelectLens = React.useCallback((tag: string) => {
     router.setQuery((params) => { if (tag) params.set('lens', tag); else params.delete('lens'); });
   }, [router]);
+
+  // Fork a recommendation lane into an editable draft plan unit, then jump to it
+  // on the Plans focus so curation continues there.
+  const onForkLane = React.useCallback(async (recommendationRef: string) => {
+    const unit = await data.forkRecommendationToDraftUnit(recommendationRef);
+    router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', draftKey(unit.unitId)); });
+  }, [data, router]);
 
   // Reverse index of the plan->item linkage so a board card (and its drawer) can
   // show which plan(s) converged on it, mirroring the source refs a plan shows.
@@ -118,7 +125,17 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
               onRefreshRecommendations={data.refreshRecommendations}
             />
           ) : focus === 'plans' ? (
-            <PlansView artifacts={data.artifacts} onRefresh={data.refresh} lensTag={lensTag} lensItemIds={lensItemIds} />
+            <PlansView
+              artifacts={data.artifacts}
+              draftUnits={data.draftUnits}
+              titles={selection.titles}
+              onRefresh={data.refresh}
+              onUpdateDraftUnit={data.updateDraftUnit}
+              onDeleteDraftUnit={data.deleteDraftUnit}
+              onPromoteDraftUnit={(unitId) => data.promoteDraftUnit(unitId)}
+              lensTag={lensTag}
+              lensItemIds={lensItemIds}
+            />
           ) : focus === 'ai' ? (
             <PlanningFocus
               workflows={panelWorkflows}
@@ -168,6 +185,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
                 lensItemIds={lensItemIds}
                 busy={workflows.busy}
                 onOpenPlanning={() => setFocus('ai')}
+                onForkLane={onForkLane}
               />
               <ActivityRail workflows={workflows} />
             </>

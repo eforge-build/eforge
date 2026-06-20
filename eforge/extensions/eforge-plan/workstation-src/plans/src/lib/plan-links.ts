@@ -8,6 +8,27 @@ import { planDisplayTitle } from './plan-title';
 // helpers make it bidirectional and navigable so a plan's source chips jump to
 // the board card, and a board card knows which plan(s) converged on it.
 
+// Selection keys in the `plan` query param are prefixed by kind: `plan:<session>`
+// for a promoted/session plan artifact and `draft:<unitId>` for an in-memory
+// draft plan unit. Centralize the prefixes so the convention has one source.
+const DRAFT_PREFIX = 'draft:';
+const PLAN_PREFIX = 'plan:';
+
+/** Selection key for a draft plan unit, e.g. `draft:<unitId>`. */
+export function draftKey(unitId: string): string {
+  return `${DRAFT_PREFIX}${unitId}`;
+}
+
+/** Selection key for a session plan, e.g. `plan:<session>`. */
+export function planKey(session: string): string {
+  return `${PLAN_PREFIX}${session}`;
+}
+
+/** Returns the draft unit id when `key` is a draft selection, otherwise null. */
+export function parseDraftKey(key: string): string | null {
+  return key.startsWith(DRAFT_PREFIX) ? key.slice(DRAFT_PREFIX.length) : null;
+}
+
 /** Lightweight reference to a plan that covers a backlog item. */
 export interface PlanLink {
   /** Artifact key, e.g. `plan:2026-06-19-recovery-console-control`. */

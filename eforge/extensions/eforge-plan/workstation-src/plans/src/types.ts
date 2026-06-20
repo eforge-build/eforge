@@ -187,6 +187,10 @@ export interface RecommendationModel {
   rationaleAndAssumptions?: string[];
 }
 
+// Draft plan unit shapes live in a sibling module to keep this barrel under the
+// file-size cap; re-export so `@/types` stays the single import surface.
+export type { DraftPlanUnitProvenance, DraftPlanUnitItemOrigin, DraftPlanUnitItem, DraftPlanUnit, UpdateDraftUnitInput, ListDraftUnitsResponse, DraftUnitResponse, PromoteDraftUnitResponse } from './draft-unit-types';
+
 export type RecommendationStatusState = 'missing' | 'fresh' | 'stale';
 export interface RecommendationStaleReason {
   eventType?: string;
