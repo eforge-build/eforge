@@ -118,7 +118,6 @@ export function apiOverrideQueueDependencyIfRunning(opts: { cwd: string; prdId: 
 }
 
 
-// --- eforge:region plan-01-client-contracts ---
 export function apiHoldQueueItem(opts: { cwd: string; prdId: string; body?: QueueHoldRequest }) {
   return daemonRequest<QueueHoldResponse>(
     opts.cwd,
@@ -190,7 +189,6 @@ export function apiApplyQueueCascadeIfRunning(opts: { cwd: string; prdId: string
     opts.body,
   );
 }
-// --- eforge:endregion plan-01-client-contracts ---
 
 export function apiGetRuns(opts: { cwd: string }) {
   return daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);

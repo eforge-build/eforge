@@ -355,11 +355,9 @@ export const IGNORED_EVENT_TYPES = [
   'build:resume:start',
   'build:resume:ineligible',
   'build:resume:complete',
-  // --- eforge:region plan-01-client-contracts ---
   // Durable daemon-wide failed-enqueue projections are handled outside the per-run reducer.
   'daemon:failed-enqueue:upsert',
   'daemon:failed-enqueue:resolved',
-  // --- eforge:endregion plan-01-client-contracts ---
 ] as const;
 
 // ---------------------------------------------------------------------------

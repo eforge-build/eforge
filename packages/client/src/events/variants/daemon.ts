@@ -181,7 +181,6 @@ export const daemonEventVariants = [
     pid: Type.Number(),
   }),
 
-  // --- eforge:region plan-01-client-contracts ---
   Type.Object({
     type: Type.Literal('daemon:failed-enqueue:upsert'),
     failedEnqueue: FailedEnqueueInfoSchema,
@@ -192,7 +191,6 @@ export const daemonEventVariants = [
     resolvedAt: Type.String(),
     spawnedSessionId: Type.Optional(Type.String()),
   }),
-  // --- eforge:endregion plan-01-client-contracts ---
 
   // Daemon errors and warnings
   Type.Object({

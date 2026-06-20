@@ -66,7 +66,6 @@ export async function removeQueueItem(
   return await res.json() as QueueRemoveResponse;
 }
 
-// --- eforge:region plan-01-client-contracts ---
 export function holdQueueItem(
   prdId: string,
   body: QueueHoldRequest = {},
@@ -98,4 +97,3 @@ export function applyQueueCascade(
 ): Promise<QueueCascadeApplyResponse> {
   return postJson<QueueCascadeApplyResponse>(buildPath(API_ROUTES.queueCascadeApply, { prdId }), body, 'Queue cascade apply', init);
 }
-// --- eforge:endregion plan-01-client-contracts ---

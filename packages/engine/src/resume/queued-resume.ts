@@ -8,10 +8,8 @@ import {
 import { buildFailureSummary } from '../recovery/failure-summary.js';
 import { tryReadRecoverySidecarProjection } from '../recovery/sidecar-read.js';
 import { computeWorktreeBase } from '../worktree-ops.js';
-// --- eforge:region plan-03-engine-recovery-guidance ---
 import type { RecoveryGuidancePrepareResponse } from '@eforge-build/client';
 import { prepareRecoveryGuidance, recoveryGuidanceResumeBlocker } from '../recovery/guidance.js';
-// --- eforge:endregion plan-03-engine-recovery-guidance ---
 
 export interface QueuedCompiledResumeMetadata {
   prdId: string;
@@ -35,9 +33,7 @@ export interface PrepareQueuedCompiledResumeOptions extends ResolveQueuedCompile
   checkEligibility?: boolean;
 }
 
-// --- eforge:region plan-03-engine-recovery-guidance ---
 export type PrepareQueuedCompiledResumeResult = RequeueCompiledResumeResult & { recoveryGuidance?: RecoveryGuidancePrepareResponse };
-// --- eforge:endregion plan-03-engine-recovery-guidance ---
 
 export async function resolveQueuedCompiledResumeMetadata(
   options: ResolveQueuedCompiledResumeMetadataOptions,
@@ -108,7 +104,6 @@ export async function prepareFailedPrdForQueuedCompiledResume(
     }
   }
 
-  // --- eforge:region plan-03-engine-recovery-guidance ---
   let recoveryGuidance: RecoveryGuidancePrepareResponse;
   try {
     recoveryGuidance = await prepareRecoveryGuidance({
@@ -144,7 +139,6 @@ export async function prepareFailedPrdForQueuedCompiledResume(
       recoveryGuidance,
     };
   }
-  // --- eforge:endregion plan-03-engine-recovery-guidance ---
 
   const requeueResult = await requeueFailedPrdForCompiledResume({
     cwd: options.cwd,
@@ -155,9 +149,7 @@ export async function prepareFailedPrdForQueuedCompiledResume(
     baseBranch: metadata.baseBranch,
     ...(options.profileOverride !== undefined ? { profileOverride: options.profileOverride } : {}),
   });
-  // --- eforge:region plan-03-engine-recovery-guidance ---
   return { ...requeueResult, recoveryGuidance };
-  // --- eforge:endregion plan-03-engine-recovery-guidance ---
 }
 
 async function readResumeSetName(opts: { prdId: string; failedDir: string }): Promise<string> {

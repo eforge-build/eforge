@@ -12,7 +12,6 @@ export function apiSchedulerKick(opts: { cwd: string }): Promise<{ data: Schedul
   return daemonRequest<SchedulerKickResponse>(opts.cwd, 'POST', API_ROUTES.schedulerKick);
 }
 
-// --- eforge:region plan-01-client-contracts ---
 export function apiSchedulerPause(opts: { cwd: string }) {
   return daemonRequest<SchedulerPauseResponse>(opts.cwd, 'POST', API_ROUTES.schedulerPause);
 }
@@ -28,4 +27,3 @@ export function apiSchedulerResume(opts: { cwd: string }) {
 export function apiSchedulerResumeIfRunning(opts: { cwd: string }) {
   return daemonRequestIfRunning<SchedulerResumeResponse>(opts.cwd, 'POST', API_ROUTES.schedulerResume);
 }
-// --- eforge:endregion plan-01-client-contracts ---

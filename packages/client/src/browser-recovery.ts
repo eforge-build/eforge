@@ -113,7 +113,6 @@ export function fetchContinueRepairEligibility(
 }
 
 
-// --- eforge:region plan-01-client-contracts ---
 /** Prepare recovery-guidance artifacts for a failed PRD. */
 export function prepareRecoveryGuidance(
   body: RecoveryGuidancePrepareRequest,
@@ -121,4 +120,3 @@ export function prepareRecoveryGuidance(
 ): Promise<RecoveryGuidancePrepareResponse> {
   return postJson<RecoveryGuidancePrepareResponse>(API_ROUTES.recoveryGuidancePrepare, body, init);
 }
-// --- eforge:endregion plan-01-client-contracts ---

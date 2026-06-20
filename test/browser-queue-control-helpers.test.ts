@@ -115,7 +115,6 @@ describe('browser queue-control helpers — error surfacing', () => {
 });
 
 
-// --- eforge:region plan-01-client-contracts ---
 describe('browser queue-control helpers — hold and cascade route selection', () => {
   it('holdQueueItem and unholdQueueItem POST JSON bodies to encoded routes', async () => {
     nextResponse = { ok: true, status: 200, json: { status: 'held', item: { id: 'prd-7', title: 'PRD', status: 'pending', capabilities: { priority: { allowed: true }, remove: { allowed: true }, dependencyOverride: { allowed: true }, hold: { allowed: true }, unhold: { allowed: true }, cascadeRemove: { allowed: true }, cancel: { allowed: true }, cascadeCancel: { allowed: true } } } } };
@@ -145,4 +144,3 @@ describe('browser queue-control helpers — hold and cascade route selection', (
     await expect(previewQueueCascade('prd-9', { operation: 'cancel' })).rejects.toThrow('Queue cascade preview request failed (409): blocked');
   });
 });
-// --- eforge:endregion plan-01-client-contracts ---

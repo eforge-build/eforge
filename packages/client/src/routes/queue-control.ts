@@ -66,7 +66,6 @@ export interface QueueDependencyOverrideResponse {
   autoBuild?: AutoBuildState;
 }
 
-// --- eforge:region plan-01-client-contracts ---
 export interface QueueHoldRequest {
   reason?: string;
 }
@@ -170,4 +169,3 @@ export interface QueueCascadeApplyResponse {
   queue?: QueueItemWithCapabilities[];
   autoBuild?: AutoBuildState;
 }
-// --- eforge:endregion plan-01-client-contracts ---

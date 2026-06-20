@@ -167,7 +167,6 @@ export async function applyRecoveryContinueRepair(
     ...(result.recoveryGuidance?.commitSha !== undefined ? { commitSha: result.recoveryGuidance.commitSha } : {}),
   });
 
-  // --- eforge:region plan-03-engine-recovery-guidance ---
   const guidanceStatuses = result.recoveryGuidance?.plans.map((plan) => plan.status) ?? [];
   const guidanceDetail = guidanceStatuses.length > 0 && guidanceStatuses.every((status) => status === 'patched' || status === 'already-current')
     ? ` Recovery guidance ${guidanceStatuses.includes('patched') ? 'patched' : 'already current'}.`
@@ -180,7 +179,6 @@ export async function applyRecoveryContinueRepair(
       ? 'Continue-and-repair was already queued.'
       : 'Continue-and-repair queued.'}${guidanceDetail}`,
   };
-  // --- eforge:endregion plan-03-engine-recovery-guidance ---
 }
 
 /**

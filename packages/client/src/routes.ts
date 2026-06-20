@@ -105,7 +105,6 @@ export type {
   QueueCascadeApplyResponse,
 } from './routes/queue-control.js';
 
-// --- eforge:region plan-01-client-contracts ---
 export type {
   RecoveryGuidancePrepareRequest,
   RecoveryGuidancePatchStatus,
@@ -124,7 +123,6 @@ export type {
   SchedulerPauseResponse,
   SchedulerResumeResponse,
 } from './routes/scheduler.js';
-// --- eforge:endregion plan-01-client-contracts ---
 
 export type {
   PlaybookRunRequest,

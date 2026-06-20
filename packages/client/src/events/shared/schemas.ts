@@ -524,14 +524,12 @@ export const BuildFailureSummarySchema = Type.Object({
 // --- eforge:endregion agent-summary-schemas ---
 
 
-// --- eforge:region plan-01-client-contracts ---
 export const QueueItemCapabilitySchema = Type.Object({ allowed: Type.Boolean(), reason: Type.Optional(Type.String()) });
 export const QueueItemCapabilitiesSchema = Type.Object({ priority: QueueItemCapabilitySchema, remove: QueueItemCapabilitySchema, dependencyOverride: QueueItemCapabilitySchema, hold: QueueItemCapabilitySchema, unhold: QueueItemCapabilitySchema, cascadeRemove: QueueItemCapabilitySchema, cancel: QueueItemCapabilitySchema, cascadeCancel: QueueItemCapabilitySchema });
 export const QueueItemHoldSchema = Type.Object({ held: Type.Boolean(), reason: Type.Optional(Type.String()), heldAt: Type.Optional(Type.String()) });
 export const FailedEnqueueProvenanceSchema = Type.Object({ label: Type.String() }, { additionalProperties: false });
 export const FailedEnqueueRecoveryCommandSchema = Type.Object({ executable: Type.String(), args: Type.Array(Type.String()) }, { additionalProperties: false });
 export const FailedEnqueueInfoSchema = Type.Object({ runId: Type.String(), sessionId: Type.Optional(Type.String()), sourceLabel: Type.String(), provenance: Type.Optional(FailedEnqueueProvenanceSchema), failureReason: Type.String(), failedAt: Type.String(), canReenqueue: Type.Boolean(), disabledReason: Type.Optional(Type.String()), nextCommand: FailedEnqueueRecoveryCommandSchema, resolvedAt: Type.Optional(Type.String()) }, { additionalProperties: false });
-// --- eforge:endregion plan-01-client-contracts ---
 
 // --- eforge:region auto-build-schemas ---
 export const AutoBuildDesiredSchema = Type.Union([

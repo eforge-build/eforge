@@ -53,12 +53,10 @@ export const API_ROUTES = {
   queuePriority: '/api/queue/:prdId/priority',
   queueRemove: '/api/queue/:prdId',
   queueDependencyOverride: '/api/queue/:prdId/dependencies/override',
-  // --- eforge:region plan-01-client-contracts ---
   queueHold: '/api/queue/:prdId/hold',
   queueUnhold: '/api/queue/:prdId/unhold',
   queueCascadePreview: '/api/queue/:prdId/cascade/preview',
   queueCascadeApply: '/api/queue/:prdId/cascade/apply',
-  // --- eforge:endregion plan-01-client-contracts ---
   queueRecoveryAnalyze: '/api/queue/recovery/analyze',
   queueRecoveryApply: '/api/queue/recovery/apply',
   sessionMetadata: '/api/session-metadata',
@@ -70,9 +68,7 @@ export const API_ROUTES = {
   plans: '/api/plans/:runId',
   diff: '/api/diff/:sessionId/:planId',
   recover: '/api/recover',
-  // --- eforge:region plan-01-client-contracts ---
   recoveryGuidancePrepare: '/api/recover/guidance/prepare',
-  // --- eforge:endregion plan-01-client-contracts ---
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
   acceptRecoverySuccessPreview: '/api/recover/accept-success/preview',
@@ -80,12 +76,10 @@ export const API_ROUTES = {
   continueRepair: '/api/recover/continue-repair',
   continueRepairEligibility: '/api/recover/continue-repair/eligibility',
   schedulerKick: '/api/scheduler/kick',
-  // --- eforge:region plan-01-client-contracts ---
   failedEnqueues: '/api/enqueue/failed',
   failedEnqueueReenqueue: '/api/enqueue/failed/:runId/reenqueue',
   schedulerPause: '/api/scheduler/pause',
   schedulerResume: '/api/scheduler/resume',
-  // --- eforge:endregion plan-01-client-contracts ---
   playbookList: '/api/playbook/list',
   playbookShow: '/api/playbook/show',
   playbookSave: '/api/playbook/save',
