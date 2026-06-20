@@ -4,9 +4,9 @@
  * Each test builds a real git fixture, seeds the failed PRD + both sidecar files,
  * calls engine.applyRecovery(), then asserts post-conditions on the working tree.
  *
- * Per plan-02: queue state is filesystem-only (queue is gitignored). Recovery
- * operations no longer make git commits — commitSha is always '' (empty string)
- * for retry/continue-repair/abandon, and undefined for manual (noAction).
+ * Queue state is filesystem-only (queue is gitignored). Retry and continue-repair
+ * may create compiled-plan recovery-guidance commits; abandon returns an empty
+ * commitSha, and manual omits commitSha (noAction).
  *
  * Per AGENTS.md: no harness or git mocks — all tests use real git operations.
  */
@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile, mkdir, writeFile, access, readdir } from 'node:fs/promises';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { useTempDir } from './test-tmpdir.js';
 import { StubHarness } from './stub-harness.js';
@@ -166,6 +166,54 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+async function createFeatureBranchWithArtifacts(cwd: string, setName = 'test-set'): Promise<void> {
+  execFileSync('git', ['switch', '-c', `eforge/${setName}`], { cwd });
+  const planDir = join(cwd, 'eforge', 'plans', setName);
+  await mkdir(planDir, { recursive: true });
+  await writeFile(
+    join(planDir, 'orchestration.yaml'),
+    `name: ${setName}
+description: Recovery fixture
+base_branch: main
+mode: excursion
+validate: []
+plans:
+  - id: plan-01
+    name: Plan 01
+    depends_on: []
+    branch: ${setName}/plan-01
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile: []
+  defaultBuild: []
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: recovery
+`,
+    'utf-8',
+  );
+  await writeFile(join(planDir, 'plan-01.md'), '# Plan 01\n\nImplementation plan.\n', 'utf-8');
+  execFileSync('git', ['add', 'eforge'], { cwd });
+  execFileSync('git', ['commit', '-m', 'plan: compiled artifacts'], { cwd });
+  execFileSync('git', ['switch', 'main'], { cwd });
+}
+
+function mergeWorktreePlanPath(cwd: string, setName = 'test-set'): string {
+  return join(dirname(cwd), `${cwd.split('/').pop()}-${setName}-worktrees`, '__merge__', 'eforge', 'plans', setName, 'plan-01.md');
+}
+
 // ---------------------------------------------------------------------------
 // retry verdict
 // ---------------------------------------------------------------------------
@@ -177,15 +225,19 @@ describe('applyRecovery — retry', () => {
     const dir = makeTempDir();
     const prdId = 'test-retry-prd';
     seedGitRepo(dir);
+    await createFeatureBranchWithArtifacts(dir);
     await seedFailedPrd(dir, prdId, 'retry');
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
-    // Result shape — filesystem-only, no commit
     expect(result.verdict).toBe('retry');
     expect(result.noAction).toBe(false);
-    expect(result.commitSha).toBe('');
+    expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(result.detail).toMatch(/guidance/i);
+
+    const rootPlan = await readFile(mergeWorktreePlanPath(dir), 'utf-8');
+    expect((rootPlan.match(/^## Recovery Guidance$/gm) ?? [])).toHaveLength(1);
 
     // Working tree: queued PRD present
     expect(await pathExists(join(dir, '.eforge', 'queue', `${prdId}.md`))).toBe(true);
@@ -204,20 +256,22 @@ describe('applyRecovery — retry', () => {
     expect((completeEvent as Extract<EforgeEvent, { type: 'recovery:apply:complete' }>).noAction).toBe(false);
   });
 
-  it('does not create a new git commit (filesystem-only)', async () => {
+  it('creates a guidance commit without advancing the repo root HEAD', async () => {
     const dir = makeTempDir();
-    const prdId = 'test-retry-no-commit';
+    const prdId = 'test-retry-guidance-commit';
     seedGitRepo(dir);
+    await createFeatureBranchWithArtifacts(dir);
     await seedFailedPrd(dir, prdId, 'retry');
 
     const headBefore = await gitHeadSha(dir);
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
-    await driveGenerator(engine.applyRecovery(prdId));
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
-    // HEAD must not advance — no commit is made for filesystem-only queue operations
     const headAfter = await gitHeadSha(dir);
     expect(headAfter).toBe(headBefore);
+    expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(await readFile(mergeWorktreePlanPath(dir), 'utf-8')).toContain('## Recovery Guidance');
   });
 });
 
@@ -628,6 +682,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     const dir = makeTempDir();
     const prdId = 'compat-retry-metadata';
     seedGitRepo(dir);
+    await createFeatureBranchWithArtifacts(dir);
     await seedSidecarWithVerdictMetadata(dir, prdId, 'retry');
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
@@ -636,7 +691,7 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     // Must succeed — schema changes are backward-compatible
     expect(result.verdict).toBe('retry');
     expect(result.noAction).toBe(false);
-    expect(result.commitSha).toBe('');
+    expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it('applyRecovery — sidecar with verdictInvalidationReason is applied without error', async () => {
@@ -742,14 +797,14 @@ describe('applyRecovery — backward compatibility with optional verdict metadat
     );
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
     execFileSync('git', ['commit', '-m', `chore: seed legacy sidecar ${prdId}`], { cwd: dir });
+    await createFeatureBranchWithArtifacts(dir);
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([validRecoveryExtractorResponse()]) });
     const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
-    // Legacy sidecar must work exactly as before
     expect(result.verdict).toBe('retry');
     expect(result.noAction).toBe(false);
-    expect(result.commitSha).toBe('');
+    expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
   });
 });
 

@@ -88,8 +88,11 @@ async function assertExistingGuidanceWorktree(opts: { cwd: string; mergeWorktree
   const worktree = await findRegisteredWorktree(opts.cwd, expectedPath);
   if (!worktree) throw new Error(`Recovery guidance merge path is not registered as a worktree for this repository: ${opts.mergeWorktreePath}`);
   const expectedBranch = `refs/heads/${opts.featureBranch}`;
-  if (worktree.branch !== expectedBranch && worktree.head !== expectedHead) {
-    throw new Error(`Recovery guidance merge worktree is not checked out at ${opts.featureBranch}: ${opts.mergeWorktreePath}`);
+  if (worktree.branch !== expectedBranch) {
+    throw new Error(`Recovery guidance merge worktree is not checked out on ${opts.featureBranch}: ${opts.mergeWorktreePath}`);
+  }
+  if (worktree.head !== expectedHead) {
+    throw new Error(`Recovery guidance merge worktree HEAD does not match ${opts.featureBranch}: ${opts.mergeWorktreePath}`);
   }
 }
 

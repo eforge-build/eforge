@@ -2041,14 +2041,14 @@ export class EforgeEngine {
    *
    * Reads the recovery sidecar JSON written by `recover()`, validates the verdict,
    * and dispatches to one of four verdict-specific helpers:
-   *   - retry: moves the failed PRD back to the queue and removes sidecars
+   *   - retry: prepares recovery guidance, then moves the failed PRD back to the queue and removes sidecars
    *   - continue-repair: prepares recovery guidance, then queues the failed PRD through the compiled-artifact repair path
    *   - abandon: removes the failed PRD and both sidecars
    *   - manual: no-op, returns noAction: true
    *
-   * Queue mutations are filesystem-only. Continue-and-repair may also create a
-   * tracked compiled-plan guidance commit. Throws on missing sidecar,
-   * validation failure, or continue-and-repair/guidance eligibility failure.
+   * Queue mutations are filesystem-only. Retry and continue-and-repair may also
+   * create a tracked compiled-plan guidance commit. Throws on missing sidecar,
+   * validation failure, or retry/continue-and-repair guidance eligibility failure.
    */
   async *applyRecovery(
     prdId: string,
@@ -2109,8 +2109,13 @@ export class EforgeEngine {
 
       switch (verdict.verdict) {
         case 'retry': {
-          const { commitSha } = await applyRecoveryRetry(helperOptions);
-          result = { verdict: 'retry', noAction: false, commitSha };
+          const { commitSha, detail } = await applyRecoveryRetry(helperOptions);
+          result = {
+            verdict: 'retry',
+            noAction: false,
+            commitSha,
+            ...(detail !== undefined ? { detail } : {}),
+          };
           break;
         }
         case 'continue-repair': {
