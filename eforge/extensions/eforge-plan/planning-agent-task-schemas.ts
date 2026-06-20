@@ -19,7 +19,7 @@ import {
   PLANNING_TYPES,
 } from './schema.js';
 import { SessionPlanReadinessDetailSchema } from './session-plan-schemas.js';
-import { BacklogCurationApplyDetailsSchema, BacklogCurationPreviewDetailsSchema, BacklogCurationScanModeSchema } from './backlog-curation-schemas.js';
+import { BacklogCurationApplyDetailsSchema, BacklogCurationPreviewDetailsSchema, BacklogCurationScanModeSchema, ItemAuditConcurrencySchema } from './backlog-curation-schemas.js';
 
 const JsonObjectAdditionalProperties = { additionalProperties: JsonValueSchema } as const;
 
@@ -165,6 +165,7 @@ export const PlanningTaskWorkflowEntrySchema = Type.Object({
   includeRoadmap: Type.Optional(Type.Boolean()),
   purpose: Type.Optional(Type.Union([Type.Literal('recommendation-refresh'), Type.Literal('backlog-curation')])),
   scanMode: Type.Optional(BacklogCurationScanModeSchema),
+  itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
   sourceFingerprint: Type.Optional(Type.String()),
   appliedAt: Type.Optional(Type.String()),
   createdAt: Type.String(),

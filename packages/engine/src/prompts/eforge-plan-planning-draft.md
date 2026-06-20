@@ -86,8 +86,14 @@ When the requested output sections include `backlogCurationDraft`:
 - Do not claim that backlog records were written or updated. This task only drafts structured output; the extension applies validated patches later.
 - Do not mark work shipped, superseded, or stale without durable evidence text in the relevant patch.
 - Treat `source.gitDelta.affectedItemCandidates` as deterministic range-aware context from the baseline git-delta scan. Use it to understand affected open items, matched signals, commit hashes, PR numbers, branch hints, changed paths, and bounded excerpts; do not invent evidence or infer a closed status from an affected candidate alone.
-- Strong shipped-status and superseded-status item patches must cite compact evidence from `source.shippedEvidenceCandidates`; weak hints are intentionally omitted from the source context.
-- `source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.
+- In `scanMode: "full-implementation-audit"`, this is a source-first implementation audit. Current source is the only closure authority. Git history, PR metadata, lifecycle traces, branch hints, changed paths, and session-plan traces are navigation-only hints and must never justify `shipped` or `superseded` without matching current-source citations in `source.fullImplementationAudit.sourceFirstResults` / `closureCandidates`.
+- Source-first shipped-status patches must cite a strong `source-shipped` result and evidence text must start exactly with `Shipped evidence: current source — ...`.
+- Source-first superseded-status patches must cite a strong `source-superseded` result and evidence text must start exactly with `Superseded evidence: current source — ...`.
+- Source-first evidence must include compact current-source citations for both core implementation/replacement and product-surface wiring (export, route/action registry, command registration, UI surface, provider registry, or package entrypoint). If wiring is missing, classify as partial/recheck and keep the item open.
+- Do not ask top-level clarification questions for per-item source-first ambiguity. Use `skipped`, `needsInput`, `noOpRechecks`, or leave the item unchanged with a concise per-record rationale.
+- Do not claim exhaustive validation unless the supplied source-first caps, diagnostics, and current-source citations explicitly support that wording.
+- Outside source-first mode, strong shipped-status and superseded-status item patches may cite compact evidence from `source.shippedEvidenceCandidates`; weak hints are intentionally omitted from the source context.
+- Outside source-first mode, `source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.
 - Evidence entries for lifecycle-derived shipped patches must start exactly with `Shipped evidence: lifecycle trace — ...`.
 - Evidence entries for strong git/PR-inferred shipped patches must start exactly with `Shipped evidence: inferred from git/PR history — ...`.
 - Evidence entries for lifecycle-derived superseded patches must start exactly with `Superseded evidence: lifecycle trace — ...`.

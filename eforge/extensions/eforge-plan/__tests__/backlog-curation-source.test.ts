@@ -153,18 +153,55 @@ describe('backlog curation source', () => {
       expect(delta.source).not.toHaveProperty('fullImplementationAudit');
       expect(audit.scope).toEqual({ itemIds: ['alpha-crane-parser', 'beta-orbit-check', 'current-file-state', 'fresh-no-change', 'gamma-doc-guide', 'stale-cleanup'], openItemCount: 6 });
       expect(audit.coverage.auditedItemCount).toBe(6);
-      expect(audit.guidance.join(' ')).toMatch(/Cite only supplied repository evidence/i);
+      expect(audit.guidance.join(' ')).toMatch(/Cite only supplied current-source citations/i);
       expect((full.source.scanModeGuidance as { instruction: string }).instruction).not.toMatch(/not yet attached/i);
       expect(item('alpha-crane-parser')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'code-search', path: 'src/implementation.ts' })] });
       expect(item('beta-orbit-check')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'test-search', path: 'tests/implementation.test.ts' })] });
       expect(item('gamma-doc-guide')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'documentation-search', path: 'docs/implementation.md' })] });
       expect(item('current-file-state')).toMatchObject({ candidateIntent: 'partial-implementation', evidence: [expect.objectContaining({ source: 'current-file-state', path: 'src/current-file-state.ts' })] });
-      expect(item('stale-cleanup')).toMatchObject({ candidateIntent: 'stale-invalid', confidence: 'ambiguous', evidence: [] });
+      expect(item('stale-cleanup')).toMatchObject({ candidateIntent: 'stale-invalid', confidence: 'weak', evidence: [] });
       expect(item('fresh-no-change')).toMatchObject({ candidateIntent: 'no-change', confidence: 'weak', evidence: [] });
       expect((full.source.shippedEvidenceCandidates as Array<{ itemId: string }>).some((candidate) => candidate.itemId === 'alpha-crane-parser')).toBe(false);
 
       await writeBacklogCurationSourcePreviewMetadata(cwd, full);
       await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { scope: audit.scope, coverage: { auditedItemCount: 6 } } });
+    });
+  });
+
+  it('includes source-first concurrency, item results, and current-source closure metadata in fingerprints and preview metadata', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'source-first-widget', status: 'candidate', body: '# Source First Widget\n\n## Acceptance Criteria\n\n- Widget behavior is implemented and exported.\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'source-first-widget-core.ts'), 'class SourceFirstWidgetCore { run() { return "source-first-widget"; } }\n');
+      await writeFile(join(cwd, 'src', 'index.ts'), 'export { SourceFirstWidgetCore } from "./source-first-widget-core"; // source-first-widget\n');
+
+      const lowConcurrency = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', itemAuditConcurrency: 1, enrichPullRequests: false });
+      const defaultConcurrency = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', itemAuditConcurrency: 4, enrichPullRequests: false });
+      const audit = lowConcurrency.source.fullImplementationAudit as {
+        settings: Record<string, unknown>;
+        sourceFirstResults: Array<{ itemId: string; intent: string; citations: Array<{ kind: string; path?: string }> }>;
+        closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidenceSource: string; citations: Array<{ path?: string }> }>;
+      };
+
+      expect(lowConcurrency.sourceFingerprint).not.toBe(defaultConcurrency.sourceFingerprint);
+      expect(lowConcurrency.source).toMatchObject({ itemAuditConcurrency: 1 });
+      expect(audit.settings).toMatchObject({ itemAuditConcurrency: 1, maxItemAuditConcurrency: 8, closureAuthority: 'current-source-only' });
+      expect(audit.sourceFirstResults).toEqual(expect.arrayContaining([expect.objectContaining({
+        itemId: 'source-first-widget',
+        intent: 'source-shipped',
+        citations: expect.arrayContaining([expect.objectContaining({ kind: 'implementation', path: 'src/source-first-widget-core.ts' }), expect.objectContaining({ kind: 'product-surface', path: 'src/index.ts' })]),
+      })]));
+      expect(audit.closureCandidates).toEqual([expect.objectContaining({ itemId: 'source-first-widget', intent: 'shipped', confidence: 'strong', evidenceSource: 'current-source' })]);
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, lowConcurrency);
+      await expect(readBacklogCurationSourcePreviewMetadata(cwd, lowConcurrency.sourceFingerprint)).resolves.toMatchObject({
+        itemAuditConcurrency: 1,
+        fullImplementationAudit: {
+          settings: { itemAuditConcurrency: 1, closureAuthority: 'current-source-only' },
+          sourceFirstResults: expect.arrayContaining([expect.objectContaining({ itemId: 'source-first-widget', intent: 'source-shipped' })]),
+          closureCandidates: expect.arrayContaining([expect.objectContaining({ itemId: 'source-first-widget', intent: 'shipped', evidenceSource: 'current-source' })]),
+        },
+      });
     });
   });
 
@@ -217,7 +254,7 @@ describe('backlog curation source', () => {
       await mkdir(join(cwd, 'node_modules/pkg'), { recursive: true });
       await mkdir(join(cwd, 'dist'), { recursive: true });
       await mkdir(join(cwd, '.eforge/storage/extensions/eforge-plan/private'), { recursive: true });
-      await writeFile(join(cwd, 'src', 'secure-widget.ts'), 'Secure Widget secure-widget password=super-secret-token\n');
+      await writeFile(join(cwd, 'src', 'secure-widget.ts'), 'Secure Widget secure-widget password=super-secret-token\nconst apiKey = "sk-12345678901234567890"; // secure-widget\nGITHUB_TOKEN=ghp_123456789012345678901234567890123456 OPENAI_API_KEY: \'openai-secret-value\' Authorization: Bearer bearer-secret-token secure-widget\n');
       await writeFile(join(cwd, 'node_modules/pkg', 'secure-widget.ts'), 'Secure Widget secure-widget node_modules evidence\n');
       await writeFile(join(cwd, 'dist', 'secure-widget.ts'), 'Secure Widget secure-widget dist evidence\n');
       await writeFile(join(cwd, '.eforge/storage/extensions/eforge-plan/private', 'secure-widget.md'), 'Secure Widget secure-widget private backlog evidence\n');
@@ -227,9 +264,16 @@ describe('backlog curation source', () => {
       const audit = full.source.fullImplementationAudit as { items: Array<{ itemId: string; evidence: Array<{ path: string; excerpt: string }> }> };
       const evidence = audit.items.find((entry) => entry.itemId === 'secure-widget')?.evidence ?? [];
       const serialized = JSON.stringify(evidence);
+      const excerpt = evidence[0]?.excerpt ?? '';
 
       expect(evidence).toEqual([expect.objectContaining({ path: 'src/secure-widget.ts', excerpt: expect.stringContaining('password=[REDACTED]') })]);
+      expect(excerpt).toContain('const apiKey = "[REDACTED]"');
+      expect(excerpt).toContain('GITHUB_TOKEN=[REDACTED]');
+      expect(excerpt).toContain("OPENAI_API_KEY: '[REDACTED]'");
+      expect(excerpt).toContain('Authorization: Bearer [REDACTED]');
       expect(serialized).not.toContain('super-secret-token');
+      expect(serialized).not.toContain('bearer-secret-token');
+      expect(serialized).not.toContain('openai-secret-value');
       expect(serialized).not.toContain('node_modules');
       expect(serialized).not.toContain('dist evidence');
       expect(serialized).not.toContain('private backlog evidence');
@@ -237,7 +281,7 @@ describe('backlog curation source', () => {
     });
   });
 
-  it('projects full-audit PR-history and lifecycle closure evidence into item context and preview metadata', async () => {
+  it('projects full-audit PR-history and lifecycle signals as navigation-only source-first hints', async () => {
     await withTempProject(async (cwd) => {
       await initRepo(cwd);
       await writeFile(join(cwd, 'README.md'), 'base\n');
@@ -263,18 +307,18 @@ describe('backlog curation source', () => {
       process.env.PATH = `${fakeBin}${delimiter}${previousPath ?? ''}`;
       try {
         const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit' });
-        const audit = full.source.fullImplementationAudit as { closureCandidates: Array<Record<string, unknown>>; items: Array<{ itemId: string; lifecycleTrace?: Record<string, unknown> }> };
-        const prCandidate = audit.closureCandidates.find((candidate) => candidate.itemId === 'enriched-full-pr');
-        const lifecycleCandidate = audit.closureCandidates.find((candidate) => candidate.itemId === 'lifecycle-full' && candidate.evidenceSource === 'lifecycle');
+        const audit = full.source.fullImplementationAudit as { closureCandidates: Array<Record<string, unknown>>; items: Array<{ itemId: string; candidateIntent: string; lifecycleTrace?: Record<string, unknown>; historicalHints?: Array<Record<string, unknown>>; sourceFirstResult?: Record<string, unknown> }> };
+        const prItem = audit.items.find((entry) => entry.itemId === 'enriched-full-pr');
+        const lifecycleItem = audit.items.find((entry) => entry.itemId === 'lifecycle-full');
 
-        expect(prCandidate).toMatchObject({ itemId: 'enriched-full-pr', intent: 'shipped', confidence: 'strong', evidenceSource: 'combined', pr: { number: 333, title: 'Ship enriched full PR' } });
-        expect(lifecycleCandidate).toMatchObject({ itemId: 'lifecycle-full', intent: 'shipped', confidence: 'strong', evidenceSource: 'lifecycle' });
-        expect(audit.items.find((entry) => entry.itemId === 'lifecycle-full')).toMatchObject({ lifecycleTrace: { lifecycleState: 'shipped', landingRefCount: 1 } });
+        expect(audit.closureCandidates).toEqual([]);
+        expect(prItem).toMatchObject({ candidateIntent: 'partial-implementation', historicalHints: expect.arrayContaining([expect.objectContaining({ source: 'combined', confidence: 'strong', closureAuthority: false, pr: expect.objectContaining({ number: 333, title: 'Ship enriched full PR' }) })]) });
+        expect(lifecycleItem).toMatchObject({ candidateIntent: 'no-change', lifecycleTrace: { lifecycleState: 'shipped', landingRefCount: 1 }, historicalHints: expect.arrayContaining([expect.objectContaining({ source: 'lifecycle', confidence: 'strong', closureAuthority: false })]), sourceFirstResult: expect.objectContaining({ intent: 'not-found' }) });
 
         await writeBacklogCurationSourcePreviewMetadata(cwd, full);
         await expect(readBacklogCurationSourcePreviewMetadata(cwd, full.sourceFingerprint)).resolves.toMatchObject({ fullImplementationAudit: { itemSummaries: expect.arrayContaining([
-          expect.objectContaining({ itemId: 'enriched-full-pr', candidateIntent: 'shipped', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'combined', confidence: 'strong' })]) }),
-          expect.objectContaining({ itemId: 'lifecycle-full', candidateIntent: 'shipped', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'lifecycle', confidence: 'strong' })]) }),
+          expect.objectContaining({ itemId: 'enriched-full-pr', candidateIntent: 'partial-implementation', closureCandidates: [] }),
+          expect.objectContaining({ itemId: 'lifecycle-full', candidateIntent: 'no-change', closureCandidates: [] }),
         ]) } });
       } finally {
         process.env.PATH = previousPath;
@@ -301,7 +345,7 @@ describe('backlog curation source', () => {
     });
   });
 
-  it('routes ambiguous shipped and superseded full-audit matches to needs-input guidance', async () => {
+  it('keeps ambiguous shipped and superseded historical matches as navigation-only hints', async () => {
     await withTempProject(async (cwd) => {
       await initRepo(cwd);
       await writeFile(join(cwd, 'README.md'), 'base\n');
@@ -317,15 +361,13 @@ describe('backlog curation source', () => {
       await git(cwd, ['commit', '-m', 'obsolete ambiguous cleanup flow']);
 
       const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const audit = full.source.fullImplementationAudit as { closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidence: string }>; items: Array<{ itemId: string; candidateIntent: string; confidence: string; guidance: string }> };
+      const audit = full.source.fullImplementationAudit as { closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidence: string }>; items: Array<{ itemId: string; candidateIntent: string; confidence: string; guidance: string; historicalHints?: Array<Record<string, unknown>>; sourceFirstResult?: Record<string, unknown> }> };
       const review = audit.items.find((entry) => entry.itemId === 'review-flow-item');
       const cleanup = audit.items.find((entry) => entry.itemId === 'cleanup-flow-item');
 
-      expect(audit.closureCandidates.find((candidate) => candidate.itemId === 'review-flow-item' && candidate.intent === 'ambiguous-shipped')).toMatchObject({ intent: 'ambiguous-shipped', confidence: 'ambiguous', evidence: expect.stringMatching(/^Ambiguous shipped candidate: needs input/) });
-      expect(audit.closureCandidates.find((candidate) => candidate.itemId === 'cleanup-flow-item' && candidate.intent === 'ambiguous-superseded')).toMatchObject({ intent: 'ambiguous-superseded', confidence: 'ambiguous', evidence: expect.stringMatching(/^Ambiguous superseded candidate: needs input/) });
-      expect(review).toMatchObject({ candidateIntent: 'needs-input', confidence: 'ambiguous', guidance: expect.stringMatching(/skipped or needs-input/i) });
-      expect(cleanup).toMatchObject({ candidateIntent: 'needs-input', confidence: 'ambiguous', guidance: expect.stringMatching(/skipped or needs-input/i) });
-      expect(audit.closureCandidates.some((candidate) => candidate.confidence === 'strong' && (candidate.itemId === 'review-flow-item' || candidate.itemId === 'cleanup-flow-item'))).toBe(false);
+      expect(audit.closureCandidates).toEqual([]);
+      expect(review).toMatchObject({ candidateIntent: 'no-change', confidence: 'weak', guidance: expect.stringMatching(/No supplied repository evidence/), historicalHints: expect.arrayContaining([expect.objectContaining({ intent: 'ambiguous-shipped', confidence: 'ambiguous', closureAuthority: false })]), sourceFirstResult: expect.objectContaining({ intent: 'not-found' }) });
+      expect(cleanup).toMatchObject({ candidateIntent: 'no-change', confidence: 'weak', guidance: expect.stringMatching(/No supplied repository evidence/), historicalHints: expect.arrayContaining([expect.objectContaining({ intent: 'ambiguous-superseded', confidence: 'ambiguous', closureAuthority: false })]), sourceFirstResult: expect.objectContaining({ intent: 'not-found' }) });
     });
   });
 
@@ -357,7 +399,7 @@ describe('backlog curation source', () => {
     });
   });
 
-  it('finds strong shipped and superseded evidence before the accepted delta baseline only in full-audit mode', async () => {
+  it('keeps pre-baseline strong shipped and superseded history as source-first navigation hints only', async () => {
     await withTempProject(async (cwd) => {
       await initRepo(cwd);
       await writeFile(join(cwd, 'README.md'), 'base\n');
@@ -380,16 +422,14 @@ describe('backlog curation source', () => {
 
       const delta = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'delta', enrichPullRequests: false });
       const full = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const audit = full.source.fullImplementationAudit as { closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidence: string }> };
-      const closure = (id: string) => audit.closureCandidates.find((candidate) => candidate.itemId === id);
+      const audit = full.source.fullImplementationAudit as { closureCandidates: Array<{ itemId: string; intent: string; confidence: string; evidence: string }>; items: Array<{ itemId: string; candidateIntent: string; historicalHints?: Array<Record<string, unknown>>; sourceFirstResult?: Record<string, unknown> }> };
+      const item = (id: string) => audit.items.find((entry) => entry.itemId === id);
 
       expect((delta.source.shippedEvidenceCandidates as Array<{ itemId: string }>).some((candidate) => candidate.itemId === 'launch-widget' || candidate.itemId === 'obsolete-panel')).toBe(false);
-      expect(closure('launch-widget')).toMatchObject({ intent: 'shipped', confidence: 'strong', evidence: expect.stringMatching(/^Shipped evidence: inferred from git\/PR history/) });
-      expect(closure('obsolete-panel')).toMatchObject({ intent: 'superseded', confidence: 'strong', evidence: expect.stringMatching(/^Superseded evidence: inferred from git\/PR history/) });
-      expect(full.source.shippedEvidenceCandidates).toEqual(expect.arrayContaining([
-        expect.objectContaining({ itemId: 'launch-widget', intent: 'shipped', confidence: 'strong' }),
-        expect.objectContaining({ itemId: 'obsolete-panel', intent: 'superseded', confidence: 'strong' }),
-      ]));
+      expect(audit.closureCandidates).toEqual([]);
+      expect(item('launch-widget')).toMatchObject({ candidateIntent: 'partial-implementation', historicalHints: expect.arrayContaining([expect.objectContaining({ intent: 'shipped', confidence: 'strong', closureAuthority: false })]), sourceFirstResult: expect.objectContaining({ intent: 'partial' }) });
+      expect(item('obsolete-panel')).toMatchObject({ candidateIntent: 'partial-implementation', historicalHints: expect.arrayContaining([expect.objectContaining({ intent: 'superseded', confidence: 'strong', closureAuthority: false })]), sourceFirstResult: expect.objectContaining({ intent: 'partial' }) });
+      expect(full.source.shippedEvidenceCandidates).toEqual([]);
     });
   });
 

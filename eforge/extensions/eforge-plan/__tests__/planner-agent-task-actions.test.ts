@@ -864,6 +864,7 @@ describe('planning agent task actions', () => {
         includeRoadmap: true,
         purpose: 'backlog-curation',
         scanMode: 'full-implementation-audit',
+        itemAuditConcurrency: 6,
         sourceFingerprint: 'old-fingerprint',
       });
       let started: { input: Record<string, unknown> } | undefined;
@@ -880,9 +881,9 @@ describe('planning agent task actions', () => {
         }),
       });
 
-      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', scanMode: 'full-implementation-audit', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
+      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', scanMode: 'full-implementation-audit', itemAuditConcurrency: 6, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
-      expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'full-implementation-audit' } } });
+      expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'full-implementation-audit', itemAuditConcurrency: 6 } } });
       expect(started?.input.sourceText).toBeUndefined();
     });
   });
@@ -900,6 +901,7 @@ describe('planning agent task actions', () => {
         includeRoadmap: true,
         purpose: 'backlog-curation',
         scanMode: 'full-implementation-audit',
+        itemAuditConcurrency: 7,
         sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       });
       let started: { input: Record<string, unknown> } | undefined;
@@ -916,10 +918,10 @@ describe('planning agent task actions', () => {
         }),
       });
 
-      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', scanMode: 'full-implementation-audit', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
+      expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', scanMode: 'full-implementation-audit', itemAuditConcurrency: 7, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
       expect(started?.input.sourceText).toBeUndefined();
-      expect(started?.input).toMatchObject({ sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'full-implementation-audit', redraft: { parentTaskId: 'task-curation', steering: 'Prefer conservative status changes.', previousBacklogCurationDraft: expect.any(Object) } } } });
+      expect(started?.input).toMatchObject({ sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'full-implementation-audit', itemAuditConcurrency: 7, redraft: { parentTaskId: 'task-curation', steering: 'Prefer conservative status changes.', previousBacklogCurationDraft: expect.any(Object) } } } });
     });
   });
 
