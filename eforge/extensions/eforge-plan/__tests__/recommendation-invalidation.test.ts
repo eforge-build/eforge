@@ -108,7 +108,7 @@ describe('recommendation invalidation', () => {
 
   it('marks recommendations stale after capture, epic, item update, item promotion, and selection promotion mutations', async () => {
     const cases: Array<{ name: string; prepare?: (cwd: string) => Promise<void>; actionId: string; input: Record<string, unknown>; match: RegExp }> = [
-      { name: 'capture', actionId: 'eforge-plan:capture-item', input: { id: 'captured', title: 'Captured', claim: 'New work.' }, match: /capture-item|captured|backlog|mutation/i },
+      { name: 'capture', actionId: 'eforge-plan:capture-item', input: { id: 'captured', title: 'Add captured work item', claim: 'Add a captured work item so recommendation invalidation covers capture mutations.', acceptanceCriteria: 'The capture action succeeds and recommendation status records a stale backlog mutation.' }, match: /capture-item|captured|backlog|mutation/i },
       { name: 'epic', actionId: 'eforge-plan:upsert-epic', input: { id: 'epic-one', title: 'Epic One', body: '# Epic One\n\nChanged.\n' }, match: /upsert-epic|epic-one|backlog|mutation/i },
       { name: 'update', actionId: 'eforge-plan:update-item', input: { id: 'item-one', priority: 'high' }, match: /update-item|item-one|backlog|mutation/i },
       { name: 'promote item', actionId: 'eforge-plan:promote-item', input: { itemId: 'item-one', session: 'session-one' }, match: /promote-item|item-one|backlog|mutation/i },

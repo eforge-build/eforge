@@ -21,8 +21,6 @@ interface ItemCardProps {
   item: BoardItem;
   selected: boolean;
   relation?: CardRelation;
-  /** Active perspective tag; non-matching cards dim, the matching tag is accented. */
-  lensTag?: string;
   /** Plans that converged on this item, for the "Planned" deep link. */
   plannedIn?: PlanLink[];
   onOpenPlan?: (key: string) => void;
@@ -38,16 +36,14 @@ interface ItemCardProps {
  * opened from the corner affordance. Clicking the card body still toggles
  * selection for "Promote to a build plan".
  */
-export function ItemCard({ item, selected, relation = null, lensTag = '', plannedIn, onOpenPlan, onToggle, onOpenDetail, onHoverChange }: ItemCardProps) {
+export function ItemCard({ item, selected, relation = null, plannedIn, onOpenPlan, onToggle, onOpenDetail, onHoverChange }: ItemCardProps) {
   const accent = PRIORITY_COLOR[item.priority] ?? 'var(--prio-low)';
   const lifecycle = summaryLifecycleChip(item);
   // Selection ring wins over the hover-relation ring so promote flow state stays legible.
   const ring = selected ? 'ring-2 ring-primary' : relation ? RELATION_RING[relation] : '';
-  // A lens dims cards outside the active perspective; selection or a hover
-  // relation keeps a card lit so in-progress flows stay legible. Closed cards
-  // keep their own muting when no lens is active.
-  const outsideLens = Boolean(lensTag) && !item.tags.includes(lensTag);
-  const opacity = selected || relation ? '' : outsideLens ? 'opacity-40' : item.closed ? 'opacity-60' : '';
+  // Closed cards mute unless selected or in a hover relation, so in-progress
+  // flows stay legible.
+  const opacity = selected || relation ? '' : item.closed ? 'opacity-60' : '';
   return (
     <div
       id={`board-item-${item.id}`}
@@ -76,7 +72,7 @@ export function ItemCard({ item, selected, relation = null, lensTag = '', planne
 
       <MetaRow item={item} lifecycle={lifecycle} />
       <PlannedLink plans={plannedIn} onOpen={onOpenPlan} />
-      <ContextRow item={item} lensTag={lensTag} />
+      <ContextRow item={item} />
     </div>
   );
 }
@@ -122,15 +118,10 @@ function MetaRow({ item, lifecycle }: { item: BoardItem; lifecycle: { label: str
   return <div className="mt-1.5 flex flex-wrap gap-1 pl-4">{chips}</div>;
 }
 
-// Quiet single line for epic and tags - metadata, not state, so no color. When
-// a perspective lens is active, the matching tag is pulled to the front and
-// accented so a lit card shows why it belongs to the lens.
-function ContextRow({ item, lensTag }: { item: BoardItem; lensTag?: string }) {
-  const orderedTags = lensTag && item.tags.includes(lensTag)
-    ? [lensTag, ...item.tags.filter((tag) => tag !== lensTag)]
-    : item.tags;
-  const visibleTags = orderedTags.slice(0, MAX_VISIBLE_TAGS);
-  const hiddenTagCount = orderedTags.length - visibleTags.length;
+// Quiet single line for epic and tags - metadata, not state, so no color.
+function ContextRow({ item }: { item: BoardItem }) {
+  const visibleTags = item.tags.slice(0, MAX_VISIBLE_TAGS);
+  const hiddenTagCount = item.tags.length - visibleTags.length;
   if (!item.epicRef && item.tags.length === 0) return null;
   return (
     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 pl-4 text-2xs text-muted-foreground">
@@ -144,9 +135,9 @@ function ContextRow({ item, lensTag }: { item: BoardItem; lensTag?: string }) {
       )}
       {item.epicRef && visibleTags.length > 0 && <span className="text-muted-foreground/50">·</span>}
       {visibleTags.map((tag) => (
-        <span key={tag} className={tag === lensTag ? 'font-semibold text-[color:var(--lane-ready)]' : 'text-muted-foreground/80'}>{tag}</span>
+        <span key={tag} className="text-muted-foreground/80">{tag}</span>
       ))}
-      {hiddenTagCount > 0 && <span className="text-muted-foreground/60" title={orderedTags.slice(MAX_VISIBLE_TAGS).join(', ')}>+{hiddenTagCount}</span>}
+      {hiddenTagCount > 0 && <span className="text-muted-foreground/60" title={item.tags.slice(MAX_VISIBLE_TAGS).join(', ')}>+{hiddenTagCount}</span>}
     </div>
   );
 }

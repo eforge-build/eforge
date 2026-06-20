@@ -311,7 +311,7 @@ describe('eforge-plan backlog storage migration', () => {
   it('dispatches actions with private paths and legacy import side effects', async () => {
     await withTempProject(async (cwd) => {
       const registry = loadRegistry(cwd);
-      const capture = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:capture-item', input: { title: 'Captured Item', claim: 'Claim.' }, requestedBy: { host: 'pi' }, cwd, timeoutMs: 1000 });
+      const capture = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:capture-item', input: { title: 'Add captured item flow', claim: 'Add a captured backlog item flow for migration smoke coverage.', acceptanceCriteria: 'Captured item is written to private storage and reports the private path.' }, requestedBy: { host: 'pi' }, cwd, timeoutMs: 1000 });
       expect(capture).toMatchObject({ kind: 'success' });
       if (capture.kind !== 'success') throw new Error(capture.message);
       expect((capture.output as { path: string }).path).toMatch(/^\.eforge\/storage\/extensions\/eforge-plan\/backlog\/items\//);

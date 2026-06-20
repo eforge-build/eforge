@@ -10,7 +10,6 @@ import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
 import type { Artifact, Detail, DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
-import { intersectsLens } from '@/lib/lens';
 import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
 import { PlanDetailCard } from './plans/plan-detail';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
@@ -31,11 +30,9 @@ interface PlansViewProps {
   onSplitDraftUnit: (input: SplitDraftUnitInput) => Promise<SplitDraftUnitResponse>;
   onAdviseMergeDraftUnits: (unitIds: string[]) => Promise<DraftUnitAdvisory>;
   onAdviseSplitDraftUnit: (unitId: string, itemIds: string[]) => Promise<DraftUnitAdvisory>;
-  lensTag?: string;
-  lensItemIds?: Set<string>;
 }
 
-export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDraftUnit, onDeleteDraftUnit, onPromoteDraftUnit, onMergeDraftUnits, onSplitDraftUnit, onAdviseMergeDraftUnits, onAdviseSplitDraftUnit, lensTag = '', lensItemIds }: PlansViewProps) {
+export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDraftUnit, onDeleteDraftUnit, onPromoteDraftUnit, onMergeDraftUnits, onSplitDraftUnit, onAdviseMergeDraftUnits, onAdviseSplitDraftUnit }: PlansViewProps) {
   const router = useRouter();
   const toast = useToast();
   const nav = usePlanNavigation();
@@ -150,13 +147,11 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
             )}
             {artifacts.length === 0
               ? <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No planning artifacts found.</p>
-              : artifacts.map((artifact) => {
-                const inLens = Boolean(lensTag) && intersectsLens(artifact.sourceRefs?.sourceItemIds ?? artifact.sourceRefs?.itemIds, lensItemIds ?? new Set());
-                return (
+              : artifacts.map((artifact) => (
                 <button
                   key={artifact.key}
                   onClick={() => selectPlan(artifact.key)}
-                  className={`rounded-md border p-3 text-left transition-colors hover:bg-accent ${selectedKey === artifact.key ? 'border-primary bg-accent' : inLens ? 'border-[color:var(--lane-ready)]/50' : 'border-border'} ${lensTag && !inLens ? 'opacity-50' : ''}`}
+                  className={`rounded-md border p-3 text-left transition-colors hover:bg-accent ${selectedKey === artifact.key ? 'border-primary bg-accent' : 'border-border'}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium text-text-bright">{artifactTitle(artifact)}</span>
@@ -165,11 +160,9 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
                   <div className="mt-1 flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">{artifact.kind === 'plan-set' ? `${artifact.childCount ?? 0} child plans` : artifact.session}</p>
                     <ArtifactBuildChip artifact={artifact} />
-                    {inLens && <span className="rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1.5 py-0.5 text-2xs text-[color:var(--lane-ready)]">in {lensTag}</span>}
                   </div>
                 </button>
-                );
-              })}
+              ))}
           </CardContent>
         </Card>
       </aside>

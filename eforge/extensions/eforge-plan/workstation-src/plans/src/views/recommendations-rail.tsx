@@ -1,17 +1,18 @@
 import * as React from 'react';
-import { ArrowUpRight, GitFork, Lightbulb } from 'lucide-react';
+import { GitFork, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RecommendationFreshnessBadge } from '@/components/recommendation-freshness';
 import { formatRelativeTime } from '@/lib/format-time';
-import type { RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { BacklogCurationScanMode, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 import type { BacklogSelection } from '@/hooks/use-backlog-selection';
+import { AnalyzeBacklogControl } from './backlog/analyze-backlog-control';
 
 const MAX_NEXT = 5;
 
 // One-line freshness summary for the digest header area. The verbose reason and
-// fingerprints stay in the Plan with AI focus; here we keep it to a glance, with
-// the full reason available on hover.
+// fingerprints stay out of the rail; here we keep it to a glance, with the full
+// reason available on hover.
 function freshnessSummary(status: RecommendationStatus | null): { text: string; detail?: string } | null {
   if (!status) return null;
   const reason = status.reasons?.[0] ?? status.staleReasons?.[0];
@@ -31,27 +32,26 @@ interface RecommendationsRailProps {
   status: RecommendationStatus | null;
   freshness: RecommendationFreshnessView | null;
   selection: BacklogSelection;
-  lensTag: string;
-  lensItemIds: Set<string>;
   busy: boolean;
-  /** Open the full planning workspace (Plan with AI focus). */
-  onOpenPlanning: () => void;
+  /** Curate the backlog and regenerate recommendations. */
+  onAnalyze: (scanMode: BacklogCurationScanMode) => Promise<unknown>;
   /** Fork a recommendation lane into an editable draft plan unit. */
   onForkLane: (recommendationRef: string) => Promise<void>;
 }
 
 /**
- * Condensed recommendation digest for the context rail: just the next-up
- * sequence and the planning lanes, each actionable. The full model (rationale,
- * blocked chains, what-changed, per-item chips) lives in the Plan with AI focus,
- * one click away via the header link.
+ * The AI planning co-pilot for the Backlog focus. It triggers backlog analysis
+ * (which is what generates recommendations), then surfaces the next-up sequence
+ * and the planning lanes, each actionable, with blocked chains and rationale a
+ * disclosure away. The board stays the focal pane; this rides alongside it.
  */
-export function RecommendationsRail({ recommendations, status, freshness, selection, lensTag, lensItemIds, busy, onOpenPlanning, onForkLane }: RecommendationsRailProps) {
+export function RecommendationsRail({ recommendations, status, freshness, selection, busy, onAnalyze, onForkLane }: RecommendationsRailProps) {
   const [forkingRef, setForkingRef] = React.useState<string | null>(null);
   const fork = (ref: string) => { setForkingRef(ref); void onForkLane(ref).finally(() => setForkingRef(null)); };
-  if (!recommendations && !status && !freshness) return null;
   const next = (recommendations?.recommendedNextSequence ?? []).slice(0, MAX_NEXT);
   const groups = recommendations?.safeParallelizableGroups ?? [];
+  const chains = recommendations?.blockedChains ?? [];
+  const rationale = recommendations?.rationaleAndAssumptions ?? [];
   const label = (id: string) => selection.titles.get(id) ?? id;
   const freshnessLine = freshnessSummary(status);
 
@@ -61,15 +61,13 @@ export function RecommendationsRail({ recommendations, status, freshness, select
         <CardTitle className="flex items-center gap-2 text-sm">
           <Lightbulb className="h-4 w-4 text-[color:var(--lane-ready)]" /> Recommendations
           <RecommendationFreshnessBadge freshness={freshness} status={status} />
-          <button type="button" onClick={onOpenPlanning} className="ml-auto inline-flex items-center gap-0.5 text-2xs text-muted-foreground hover:text-foreground" title="Open the full planning workspace">
-            Open <ArrowUpRight className="h-3 w-3" />
-          </button>
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
+        <AnalyzeBacklogControl busy={busy} onAnalyze={onAnalyze} />
         {freshnessLine && <p className="text-2xs text-muted-foreground" title={freshnessLine.detail}>{freshnessLine.text}</p>}
         {next.length === 0 && groups.length === 0 && (
-          <p className="text-2xs text-muted-foreground">No planning guidance yet. Open planning to analyze the backlog.</p>
+          <p className="text-2xs text-muted-foreground">No planning guidance yet. Analyze the backlog to generate recommendations.</p>
         )}
 
         {next.length > 0 && (
@@ -100,15 +98,9 @@ export function RecommendationsRail({ recommendations, status, freshness, select
               {groups.map((group) => {
                 const title = group.title ?? group.ref;
                 const readyCount = group.itemIds.filter((id) => selection.readyIds.has(id)).length;
-                const lensCount = lensTag ? group.itemIds.filter((id) => lensItemIds.has(id)).length : 0;
                 return (
-                  <div key={group.ref} className={`rounded-md border p-2 ${lensTag && lensCount > 0 ? 'border-[color:var(--lane-ready)]/50' : 'border-border'}`}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="min-w-0 flex-1 truncate text-2xs font-semibold text-text-bright" title={title}>{title}</span>
-                      {lensTag && lensCount > 0 && (
-                        <span className="shrink-0 rounded border border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 px-1 text-2xs text-[color:var(--lane-ready)]" title={`${lensCount} tagged “${lensTag}”`}>{lensCount} in {lensTag}</span>
-                      )}
-                    </div>
+                  <div key={group.ref} className="rounded-md border border-border p-2">
+                    <span className="block min-w-0 truncate text-2xs font-semibold text-text-bright" title={title}>{title}</span>
                     <div className="mt-1.5 flex items-center gap-2">
                       <Button
                         size="sm"
@@ -142,6 +134,31 @@ export function RecommendationsRail({ recommendations, status, freshness, select
               })}
             </div>
           </div>
+        )}
+
+        {(chains.length > 0 || rationale.length > 0) && (
+          <details className="border-t border-border pt-2">
+            <summary className="cursor-pointer text-2xs text-muted-foreground">Blocked chains &amp; rationale</summary>
+            {chains.length > 0 && (
+              <ul className="mt-1.5 grid gap-1.5">
+                {chains.map((chain, index) => (
+                  <li key={chain.ref ?? index} className="text-2xs">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {chain.itemIds.map((id) => <span key={id} className="rounded border border-[color:var(--lane-blocked)]/30 bg-[color:var(--lane-blocked)]/10 px-1 text-[color:var(--lane-blocked)]">{label(id)}</span>)}
+                      <span className="text-muted-foreground">blocked by</span>
+                      {chain.blockedBy.map((id) => <span key={id} className="rounded border border-[color:var(--prio-medium)]/30 bg-[color:var(--prio-medium)]/10 px-1 text-[color:var(--prio-medium)]">{label(id)}</span>)}
+                    </div>
+                    {chain.rationale && <p className="mt-0.5 text-muted-foreground">{chain.rationale}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {rationale.length > 0 && (
+              <ul className="mt-1.5 list-disc pl-4 text-2xs text-muted-foreground">
+                {rationale.map((entry) => <li key={entry}>{entry}</li>)}
+              </ul>
+            )}
+          </details>
         )}
       </CardContent>
     </Card>

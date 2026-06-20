@@ -3,7 +3,7 @@ import { Loader2, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/toast';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
-import { isGeneratedPlannerPrompt } from '@/lib/plan-title';
+import { isGeneratedPlannerPrompt, selectionItemsLabel } from '@/lib/plan-title';
 import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry } from '@/types';
 import { curationScanModeLabel } from './backlog-curation-view-model';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
@@ -12,6 +12,8 @@ import type { RedraftInput } from './use-planning-task-workflows';
 interface PlanningTaskCardProps {
   item: PlanningAgentTaskListItem;
   busy: boolean;
+  /** Board id->title map so a task heading can name its backlog item(s). */
+  titles?: Map<string, string>;
   onCancel: (taskId: string) => Promise<void>;
   onRemove: (taskId: string) => Promise<void>;
   onRetry: (taskId: string) => Promise<void>;
@@ -27,11 +29,11 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: 'border-border text-muted-foreground',
 };
 
-export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRedraft, onApply }: PlanningTaskCardProps) {
+export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply }: PlanningTaskCardProps) {
   const { entry, task } = item;
   const status = task?.status ?? item.status ?? 'queued';
   const running = status === 'queued' || status === 'running';
-  const heading = planningHeading(item);
+  const heading = planningHeading(item, titles);
   const groupRef = entry.selection.recommendationRef ?? entry.selection.sourceRecommendationRef;
   const retryable = (status === 'failed' || status === 'cancelled') && item.available;
   const removable = !running;
@@ -94,22 +96,22 @@ export function PlanningTaskCard({ item, busy, onCancel, onRemove, onRetry, onRe
 // Prefer the real plan topic once a draft exists; otherwise show a readable
 // request (explicit goals, curation/refresh) or a compact selection label so the
 // card heading stays scannable instead of restating the whole prompt.
-function planningHeading(item: PlanningAgentTaskListItem): { title: string; full: string } {
+function planningHeading(item: PlanningAgentTaskListItem, titles?: Map<string, string>): { title: string; full: string } {
   const { entry, task } = item;
   const topic = task?.result?.sessionPlanCreationDraft?.topic?.trim();
   const derived = entry.derivedRequest?.trim() ?? '';
   if (topic && !isGeneratedPlannerPrompt(topic)) return { title: topic, full: topic };
   if (derived && !isGeneratedPlannerPrompt(derived)) return { title: derived, full: derived };
-  const fallback = `Plan ${selectionLabel(entry)}`;
+  const fallback = `Plan ${selectionLabel(entry, titles)}`;
   return { title: fallback, full: derived || fallback };
 }
 
-function selectionLabel(entry: PlanningTaskWorkflowEntry): string {
+function selectionLabel(entry: PlanningTaskWorkflowEntry, titles?: Map<string, string>): string {
   const group = entry.selection.recommendationRef ?? entry.selection.sourceRecommendationRef;
-  if (group) return group;
+  if (group) return `lane ${group}`;
+  const items = selectionItemsLabel(entry.selection, titles);
+  if (items) return items;
   if (entry.selection.epicId) return `epic ${entry.selection.epicId}`;
-  const count = entry.selection.itemIds?.length ?? 0;
-  if (count > 0) return `${count} backlog item${count === 1 ? '' : 's'}`;
   return shortTaskId(entry.taskId);
 }
 
@@ -137,9 +139,9 @@ function RunningProgress({ task }: { task?: PlanningAgentTaskRecord }) {
   const message = task?.metadata?.progressMessage;
   return (
     <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {message ?? 'Planning in progress…'}</span>
+      <span className="flex items-start gap-2"><Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" /> <span className="min-w-0 break-words">{message ?? 'Planning in progress…'}</span></span>
       {progress && (
-        <div className="grid gap-0.5">
+        <div className="grid gap-0.5 break-words">
           {progress.currentSection && <span>Current section: <span className="text-foreground">{progress.currentSection}</span></span>}
           {progress.coveredSections && progress.coveredSections.length > 0 && <span>Covered: {progress.coveredSections.join(', ')}</span>}
           {progress.remainingSections && progress.remainingSections.length > 0 && <span>Remaining: {progress.remainingSections.join(', ')}</span>}

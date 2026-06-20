@@ -18,7 +18,6 @@ import {
 
 interface BoardProps {
   board: BoardData;
-  lensTag?: string;
   itemPlanIndex?: Map<string, PlanLink[]>;
   onOpenPlan?: (key: string) => void;
   query: string;
@@ -54,7 +53,7 @@ function readExpandedColumns(): Set<string> {
   }
 }
 
-export function Board({ board, lensTag = '', itemPlanIndex, onOpenPlan, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onOpenEpic, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
+export function Board({ board, itemPlanIndex, onOpenPlan, query, onQuery, filter, onFilter, group, onGroup, epicFilter, onEpicFilter, selected, onToggle, onOpenDetail, onOpenEpic, onLoadMoreBoard, onLoadClosedLane }: BoardProps) {
   const allItems = board.items ?? [];
   const [hoverId, setHoverId] = React.useState<string | null>(null);
   const [expandedClosed, setExpandedClosed] = React.useState<Set<string>>(() => readExpandedColumns());
@@ -254,7 +253,6 @@ export function Board({ board, lensTag = '', itemPlanIndex, onOpenPlan, query, o
                             item={item}
                             selected={selected.has(item.id)}
                             relation={relationFor(item)}
-                            lensTag={lensTag}
                             plannedIn={itemPlanIndex?.get(item.id)}
                             onOpenPlan={onOpenPlan}
                             onToggle={onToggle}

@@ -1,38 +1,34 @@
 import * as React from 'react';
-import { ClipboardList, GitBranch, Map, Sparkles } from 'lucide-react';
+import { ClipboardList, GitBranch, Map } from 'lucide-react';
 import { useRouter } from '@/router';
 import type { WorkstationDataState } from '@/hooks/use-workstation-data';
 import { useBacklogSelection } from '@/hooks/use-backlog-selection';
 import type { ApplyPlanningTaskResponse, JsonObject } from '@/types';
-import { collectLensTags, lensMatchingItemIds } from '@/lib/lens';
 import { buildItemPlanIndex, draftKey, planKey } from '@/lib/plan-links';
 import { RoadmapContextRail, RoadmapFocus } from './roadmap/roadmap-panel';
 import { sourceSummary } from './roadmap/roadmap-view-model';
-import { LensBar } from './lens-bar';
 import { BoardFocus } from './board-focus';
 import { PlansView } from './plans-view';
-import { PlanningFocus } from './planning-focus';
 import { ActivityRail } from './activity-rail';
 import { RecommendationsRail } from './recommendations-rail';
 import { SelectionRail } from './selection-rail';
 import { PlanContextRail } from './plan-context-rail';
 import { usePlanningTaskWorkflows } from './backlog/use-planning-task-workflows';
 
-type Focus = 'roadmap' | 'board' | 'plans' | 'ai';
+type Focus = 'roadmap' | 'board' | 'plans';
 
 const FOCUSES: { id: Focus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'roadmap', label: 'Roadmap', icon: Map },
-  { id: 'board', label: 'Board', icon: GitBranch },
+  { id: 'board', label: 'Backlog', icon: GitBranch },
   { id: 'plans', label: 'Plans', icon: ClipboardList },
-  { id: 'ai', label: 'Plan with AI', icon: Sparkles },
 ];
 
 /**
- * Single planning workstation: a focal work pane (Roadmap / Board / Plans / Plan
- * with AI, switched in the header) beside a context rail that adapts to the
- * focus. One mental model with hierarchy - the work leads, guidance and context
- * support it. The rail is context for whatever you're focused on, not a fixed
- * board sidebar.
+ * Single planning workstation: a focal work pane (Roadmap / Backlog / Plans,
+ * switched in the header) beside a context rail that adapts to the focus. One
+ * mental model with hierarchy - the work leads, guidance and context support it.
+ * The Backlog rail is the AI planning co-pilot (analyze, recommendations,
+ * selection, activity); there is no separate planning tab.
  */
 export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const router = useRouter();
@@ -54,15 +50,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   }, [workflows, router]);
   const panelWorkflows = React.useMemo(() => ({ ...workflows, apply: applyAndOpenPlan }), [workflows, applyAndOpenPlan]);
 
-  // Perspective lens: an orthogonal view keyed off item tags. It highlights work
-  // under a perspective and dims the rest; it never removes items.
   const items = data.board.items ?? [];
-  const lensTag = router.query.get('lens') ?? '';
-  const lensTags = React.useMemo(() => collectLensTags(items, lensTag), [items, lensTag]);
-  const lensItemIds = React.useMemo(() => lensMatchingItemIds(items, lensTag), [items, lensTag]);
-  const onSelectLens = React.useCallback((tag: string) => {
-    router.setQuery((params) => { if (tag) params.set('lens', tag); else params.delete('lens'); });
-  }, [router]);
 
   // Fork a recommendation lane into an editable draft plan unit, then jump to it
   // on the Plans focus so curation continues there.
@@ -76,8 +64,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const itemPlanIndex = React.useMemo(() => buildItemPlanIndex(data.artifacts), [data.artifacts]);
 
   // The rail is context for the current focus. The Plans focus swaps the
-  // board-oriented cards for the open plan's lineage; the lens stays pinned so
-  // the rail reads as "lens + context", not a panel that teleports per tab.
+  // backlog co-pilot cards for the open plan's lineage.
   const selectedPlanKey = router.query.get('plan') ?? '';
   const selectedArtifact = React.useMemo(
     () => data.artifacts.find((entry) => entry.key === selectedPlanKey) ?? null,
@@ -87,9 +74,8 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const roadmapSummary = sourceSummary(data.roadmapState);
   const counts: Record<Focus, number> = {
     roadmap: roadmapSummary.local + roadmapSummary.configuredShared + roadmapSummary.discovered,
-    board: data.board.counts?.total ?? items.length,
+    board: data.board.counts?.open ?? items.length,
     plans: data.artifacts.length,
-    ai: workflows.items.length,
   };
 
   return (
@@ -137,26 +123,11 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
               onSplitDraftUnit={data.splitDraftUnit}
               onAdviseMergeDraftUnits={data.adviseMergeDraftUnits}
               onAdviseSplitDraftUnit={data.adviseSplitDraftUnit}
-              lensTag={lensTag}
-              lensItemIds={lensItemIds}
-            />
-          ) : focus === 'ai' ? (
-            <PlanningFocus
-              workflows={panelWorkflows}
-              selection={selection}
-              recommendations={data.recommendations}
-              recommendationStatus={data.recommendationStatus}
-              recommendationFreshness={data.recommendationFreshness}
-              activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
-              lensTag={lensTag}
-              lensItemIds={lensItemIds}
-              onForkLane={onForkLane}
             />
           ) : (
             <BoardFocus
               board={data.board}
               selection={selection}
-              lensTag={lensTag}
               itemPlanIndex={itemPlanIndex}
               onRefresh={data.refresh}
               onLoadMoreBoard={data.loadMoreBoard}
@@ -180,19 +151,16 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
           ) : (
             <>
               <SelectionRail selection={selection} busy={workflows.busy} />
-              <LensBar tags={lensTags} active={lensTag} matchCount={lensItemIds.size} onSelect={onSelectLens} />
               <RecommendationsRail
                 recommendations={data.recommendations}
                 status={data.recommendationStatus}
                 freshness={data.recommendationFreshness}
                 selection={selection}
-                lensTag={lensTag}
-                lensItemIds={lensItemIds}
                 busy={workflows.busy}
-                onOpenPlanning={() => setFocus('ai')}
+                onAnalyze={workflows.analyzeAllBacklog}
                 onForkLane={onForkLane}
               />
-              <ActivityRail workflows={workflows} />
+              <ActivityRail workflows={panelWorkflows} titles={selection.titles} />
             </>
           )}
         </aside>
@@ -202,5 +170,5 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
 }
 
 function readFocus(value: string | null): Focus {
-  return value === 'roadmap' || value === 'plans' || value === 'ai' ? value : 'board';
+  return value === 'roadmap' || value === 'plans' ? value : 'board';
 }

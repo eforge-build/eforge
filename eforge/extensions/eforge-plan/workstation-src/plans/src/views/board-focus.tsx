@@ -14,7 +14,6 @@ const STATUS_FILTERS: StatusFilter[] = ['all', 'open', 'ready', 'blocked', 'revi
 interface BoardFocusProps {
   board: BoardData;
   selection: BacklogSelection;
-  lensTag: string;
   itemPlanIndex: Map<string, PlanLink[]>;
   onRefresh: () => Promise<void>;
   onLoadMoreBoard?: () => Promise<void>;
@@ -26,7 +25,7 @@ interface BoardFocusProps {
  * drawers. Selection (the "Build plan" staging card) and planning controls live
  * in the rail, so the board is the clear focal point here.
  */
-export function BoardFocus({ board, selection, lensTag, itemPlanIndex, onRefresh, onLoadMoreBoard, onLoadClosedLane }: BoardFocusProps) {
+export function BoardFocus({ board, selection, itemPlanIndex, onRefresh, onLoadMoreBoard, onLoadClosedLane }: BoardFocusProps) {
   const router = useRouter();
   const nav = usePlanNavigation();
   // The item drawer is URL-driven (`?item=`) so a plan's source chip can deep
@@ -57,7 +56,6 @@ export function BoardFocus({ board, selection, lensTag, itemPlanIndex, onRefresh
     <div className="grid gap-4">
       <Board
         board={board}
-        lensTag={lensTag}
         itemPlanIndex={itemPlanIndex}
         onOpenPlan={nav.openPlan}
         query={query}
