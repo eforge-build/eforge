@@ -1,6 +1,12 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { EforgeEventSchema } from './root.js';
-import { AutoBuildDetailFields, StackLayerWireSchema } from './shared/schemas.js';
+import {
+  AutoBuildDetailFields,
+  FailedEnqueueInfoSchema,
+  QueueItemCapabilitiesSchema,
+  QueueItemHoldSchema,
+  StackLayerWireSchema,
+} from './shared/schemas.js';
 
 export const DaemonStreamLivenessSchema = Type.Object({
   type: Type.Literal('daemon:heartbeat'),
@@ -69,6 +75,10 @@ export const DaemonQueueItemSchema = Type.Object({
     }),
   ),
   // Base recovery actions use an `appliedAt` marker; `accepted-success` uses the rich AcceptSuccessAppliedSummary shape (keyed by `acceptedAt`).
+  // --- eforge:region plan-01-client-contracts ---
+  hold: Type.Optional(QueueItemHoldSchema),
+  capabilities: Type.Optional(QueueItemCapabilitiesSchema),
+  // --- eforge:endregion plan-01-client-contracts ---
   recoveryApplied: Type.Optional(Type.Union([
     Type.Object({ action: Type.Union([Type.Literal('retry'), Type.Literal('continue-repair'), Type.Literal('abandon')]), appliedAt: Type.String(), commitSha: Type.Optional(Type.String()) }),
     Type.Object({ action: Type.Literal('accepted-success'), acceptedAt: Type.String(), reasonCategory: Type.Union([Type.Literal('bad_acceptance_criterion'), Type.Literal('manual_verification_passed'), Type.Literal('external_or_inconclusive_criterion_waived'), Type.Literal('other')]), reason: Type.String(), cleanup: Type.Object({ status: Type.Union([Type.Literal('committed'), Type.Literal('noop')]), commitSha: Type.Optional(Type.String()) }), landing: Type.Object({ action: Type.Union([Type.Literal('pr'), Type.Literal('merge'), Type.Literal('leave')]), status: Type.Union([Type.Literal('complete'), Type.Literal('skipped'), Type.Literal('failed')]), prUrl: Type.Optional(Type.String()), mergeCommitSha: Type.Optional(Type.String()), branch: Type.Optional(Type.String()), reason: Type.Optional(Type.String()), autoMerge: Type.Optional(Type.Union([Type.Object({ status: Type.Literal('complete') }), Type.Object({ status: Type.Literal('skipped'), reason: Type.String() }), Type.Object({ status: Type.Literal('failed'), reason: Type.String() })])) }), dependents: Type.Object({ unblocked: Type.Array(Type.String()), remainedBlocked: Type.Array(Type.String()), notFound: Type.Array(Type.String()) }) }),
@@ -111,6 +121,9 @@ export const DaemonStreamSnapshotSchema = Type.Object({
   sessionMetadata: Type.Record(Type.String(), DaemonSessionMetadataItemSchema),
   autoBuild: DaemonAutoBuildSchema,
   stackLayers: Type.Array(StackLayerWireSchema),
+  // --- eforge:region plan-01-client-contracts ---
+  failedEnqueues: Type.Optional(Type.Array(FailedEnqueueInfoSchema)),
+  // --- eforge:endregion plan-01-client-contracts ---
   stackSyncStatus: Type.Optional(Type.Object({
     last: Type.Optional(Type.Object({
       id: Type.String(),

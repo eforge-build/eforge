@@ -23,6 +23,14 @@ import type {
   QueueRemoveResponse,
   QueueDependencyOverrideRequest,
   QueueDependencyOverrideResponse,
+  QueueHoldRequest,
+  QueueHoldResponse,
+  QueueUnholdRequest,
+  QueueUnholdResponse,
+  QueueCascadePreviewRequest,
+  QueueCascadePreviewResponse,
+  QueueCascadeApplyRequest,
+  QueueCascadeApplyResponse,
 } from '../routes.js';
 
 export function apiEnqueue(opts: { cwd: string; body: EnqueueRequest }) {
@@ -108,6 +116,81 @@ export function apiOverrideQueueDependencyIfRunning(opts: { cwd: string; prdId: 
     opts.body,
   );
 }
+
+
+// --- eforge:region plan-01-client-contracts ---
+export function apiHoldQueueItem(opts: { cwd: string; prdId: string; body: QueueHoldRequest }) {
+  return daemonRequest<QueueHoldResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueHold, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiHoldQueueItemIfRunning(opts: { cwd: string; prdId: string; body: QueueHoldRequest }) {
+  return daemonRequestIfRunning<QueueHoldResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueHold, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiUnholdQueueItem(opts: { cwd: string; prdId: string; body?: QueueUnholdRequest }) {
+  return daemonRequest<QueueUnholdResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueUnhold, { prdId: opts.prdId }),
+    opts.body ?? {},
+  );
+}
+
+export function apiUnholdQueueItemIfRunning(opts: { cwd: string; prdId: string; body?: QueueUnholdRequest }) {
+  return daemonRequestIfRunning<QueueUnholdResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueUnhold, { prdId: opts.prdId }),
+    opts.body ?? {},
+  );
+}
+
+export function apiPreviewQueueCascade(opts: { cwd: string; prdId: string; body: QueueCascadePreviewRequest }) {
+  return daemonRequest<QueueCascadePreviewResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadePreview, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiPreviewQueueCascadeIfRunning(opts: { cwd: string; prdId: string; body: QueueCascadePreviewRequest }) {
+  return daemonRequestIfRunning<QueueCascadePreviewResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadePreview, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiApplyQueueCascade(opts: { cwd: string; prdId: string; body: QueueCascadeApplyRequest }) {
+  return daemonRequest<QueueCascadeApplyResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadeApply, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+
+export function apiApplyQueueCascadeIfRunning(opts: { cwd: string; prdId: string; body: QueueCascadeApplyRequest }) {
+  return daemonRequestIfRunning<QueueCascadeApplyResponse>(
+    opts.cwd,
+    'POST',
+    buildPath(API_ROUTES.queueCascadeApply, { prdId: opts.prdId }),
+    opts.body,
+  );
+}
+// --- eforge:endregion plan-01-client-contracts ---
 
 export function apiGetRuns(opts: { cwd: string }) {
   return daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);

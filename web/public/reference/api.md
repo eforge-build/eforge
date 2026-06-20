@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
 
-Total routes: 85
+Total routes: 94
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -50,6 +50,8 @@ Total routes: 85
 | `extensionValidate` | `/api/extensions/validate` |
 | `extensionWorkstationAsset` | `/api/extensions/workstations/:workstationId/assets/:assetId` |
 | `extensionWorkstationFrame` | `/api/extensions/workstations/:workstationId/frame` |
+| `failedEnqueueReenqueue` | `/api/enqueue/failed/:runId/reenqueue` |
+| `failedEnqueues` | `/api/enqueue/failed` |
 | `health` | `/api/health` |
 | `keepAlive` | `/api/keep-alive` |
 | `modelList` | `/api/models/list` |
@@ -70,17 +72,24 @@ Total routes: 85
 | `profileUse` | `/api/profile/use` |
 | `projectContext` | `/api/project-context` |
 | `queue` | `/api/queue` |
+| `queueCascadeApply` | `/api/queue/:prdId/cascade/apply` |
+| `queueCascadePreview` | `/api/queue/:prdId/cascade/preview` |
 | `queueDependencyOverride` | `/api/queue/:prdId/dependencies/override` |
+| `queueHold` | `/api/queue/:prdId/hold` |
 | `queuePriority` | `/api/queue/:prdId/priority` |
 | `queueRecoveryAnalyze` | `/api/queue/recovery/analyze` |
 | `queueRecoveryApply` | `/api/queue/recovery/apply` |
 | `queueRemove` | `/api/queue/:prdId` |
+| `queueUnhold` | `/api/queue/:prdId/unhold` |
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
+| `recoveryGuidancePrepare` | `/api/recover/guidance/prepare` |
 | `runs` | `/api/runs` |
 | `runState` | `/api/run-state/:id` |
 | `runSummary` | `/api/run-summary/:id` |
 | `schedulerKick` | `/api/scheduler/kick` |
+| `schedulerPause` | `/api/scheduler/pause` |
+| `schedulerResume` | `/api/scheduler/resume` |
 | `sessionMetadata` | `/api/session-metadata` |
 | `sessionPlanCreate` | `/api/session-plan/create` |
 | `sessionPlanCreateFromPlaybook` | `/api/session-plan/create-from-playbook` |

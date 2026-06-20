@@ -21,6 +21,8 @@ import type {
   AcceptSuccessPreviewResponse,
   AcceptSuccessRequest,
   AcceptSuccessResponse,
+  RecoveryGuidancePrepareRequest,
+  RecoveryGuidancePrepareResponse,
 } from './routes.js';
 
 async function getJson<TResponse>(path: string, init?: RequestInit): Promise<TResponse> {
@@ -109,3 +111,14 @@ export function fetchContinueRepairEligibility(
   }
   return getJson<ContinueRepairEligibilityResponse>(`${API_ROUTES.continueRepairEligibility}?${params.toString()}`, init);
 }
+
+
+// --- eforge:region plan-01-client-contracts ---
+/** Prepare recovery-guidance artifacts for a failed PRD. */
+export function prepareRecoveryGuidance(
+  body: RecoveryGuidancePrepareRequest,
+  init?: RequestInit,
+): Promise<RecoveryGuidancePrepareResponse> {
+  return postJson<RecoveryGuidancePrepareResponse>(API_ROUTES.recoveryGuidancePrepare, body, init);
+}
+// --- eforge:endregion plan-01-client-contracts ---

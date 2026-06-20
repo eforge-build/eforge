@@ -10986,6 +10986,123 @@
           "type": "object",
           "required": [
             "type",
+            "failedEnqueue"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:failed-enqueue:upsert",
+              "type": "string"
+            },
+            "failedEnqueue": {
+              "type": "object",
+              "required": [
+                "runId",
+                "sourceLabel",
+                "failureReason",
+                "failedAt",
+                "canReenqueue"
+              ],
+              "properties": {
+                "runId": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "sourceLabel": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "object",
+                  "required": [
+                    "source"
+                  ],
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "flags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "profile": {
+                      "type": "string"
+                    },
+                    "landingAction": {
+                      "anyOf": [
+                        {
+                          "const": "pr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "merge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "leave",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "landingAutoMerge": {
+                      "type": "boolean"
+                    },
+                    "afterQueueId": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "failureReason": {
+                  "type": "string"
+                },
+                "failedAt": {
+                  "type": "string"
+                },
+                "canReenqueue": {
+                  "type": "boolean"
+                },
+                "disabledReason": {
+                  "type": "string"
+                },
+                "nextCommand": {
+                  "type": "string"
+                },
+                "resolvedAt": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runId",
+            "resolvedAt"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:failed-enqueue:resolved",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "resolvedAt": {
+              "type": "string"
+            },
+            "newRunId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source",
             "message"
           ],
@@ -24505,6 +24622,123 @@
                         "type": "object",
                         "required": [
                           "type",
+                          "failedEnqueue"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "daemon:failed-enqueue:upsert",
+                            "type": "string"
+                          },
+                          "failedEnqueue": {
+                            "type": "object",
+                            "required": [
+                              "runId",
+                              "sourceLabel",
+                              "failureReason",
+                              "failedAt",
+                              "canReenqueue"
+                            ],
+                            "properties": {
+                              "runId": {
+                                "type": "string"
+                              },
+                              "sessionId": {
+                                "type": "string"
+                              },
+                              "sourceLabel": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "object",
+                                "required": [
+                                  "source"
+                                ],
+                                "properties": {
+                                  "source": {
+                                    "type": "string"
+                                  },
+                                  "flags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "profile": {
+                                    "type": "string"
+                                  },
+                                  "landingAction": {
+                                    "anyOf": [
+                                      {
+                                        "const": "pr",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "merge",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "leave",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "landingAutoMerge": {
+                                    "type": "boolean"
+                                  },
+                                  "afterQueueId": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "failureReason": {
+                                "type": "string"
+                              },
+                              "failedAt": {
+                                "type": "string"
+                              },
+                              "canReenqueue": {
+                                "type": "boolean"
+                              },
+                              "disabledReason": {
+                                "type": "string"
+                              },
+                              "nextCommand": {
+                                "type": "string"
+                              },
+                              "resolvedAt": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "runId",
+                          "resolvedAt"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "daemon:failed-enqueue:resolved",
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "resolvedAt": {
+                            "type": "string"
+                          },
+                          "newRunId": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "type",
                           "source",
                           "message"
                         ],
@@ -26950,6 +27184,150 @@
                   }
                 }
               },
+              "hold": {
+                "type": "object",
+                "required": [
+                  "held"
+                ],
+                "properties": {
+                  "held": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "heldAt": {
+                    "type": "string"
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "object",
+                "required": [
+                  "priority",
+                  "remove",
+                  "dependencyOverride",
+                  "hold",
+                  "unhold",
+                  "cascadeRemove",
+                  "cancel",
+                  "cascadeCancel"
+                ],
+                "properties": {
+                  "priority": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "remove": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "dependencyOverride": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "hold": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "unhold": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "cascadeRemove": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "cancel": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "cascadeCancel": {
+                    "type": "object",
+                    "required": [
+                      "allowed"
+                    ],
+                    "properties": {
+                      "allowed": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
               "recoveryApplied": {
                 "anyOf": [
                   {
@@ -27597,6 +27975,90 @@
                 "type": "string"
               },
               "updatedAt": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "failedEnqueues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "runId",
+              "sourceLabel",
+              "failureReason",
+              "failedAt",
+              "canReenqueue"
+            ],
+            "properties": {
+              "runId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "sourceLabel": {
+                "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "landingAction": {
+                    "anyOf": [
+                      {
+                        "const": "pr",
+                        "type": "string"
+                      },
+                      {
+                        "const": "merge",
+                        "type": "string"
+                      },
+                      {
+                        "const": "leave",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "landingAutoMerge": {
+                    "type": "boolean"
+                  },
+                  "afterQueueId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "failureReason": {
+                "type": "string"
+              },
+              "failedAt": {
+                "type": "string"
+              },
+              "canReenqueue": {
+                "type": "boolean"
+              },
+              "disabledReason": {
+                "type": "string"
+              },
+              "nextCommand": {
+                "type": "string"
+              },
+              "resolvedAt": {
                 "type": "string"
               }
             }

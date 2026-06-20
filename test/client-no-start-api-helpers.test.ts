@@ -37,6 +37,15 @@ import {
   apiUpdateQueuePriorityIfRunning,
   apiRemoveQueueItemIfRunning,
   apiOverrideQueueDependencyIfRunning,
+  apiHoldQueueItemIfRunning,
+  apiUnholdQueueItemIfRunning,
+  apiPreviewQueueCascadeIfRunning,
+  apiApplyQueueCascadeIfRunning,
+  apiPrepareRecoveryGuidanceIfRunning,
+  apiGetFailedEnqueuesIfRunning,
+  apiReenqueueFailedEnqueueIfRunning,
+  apiSchedulerPauseIfRunning,
+  apiSchedulerResumeIfRunning,
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -145,6 +154,55 @@ function startTestServer(): Promise<TestServer> {
         return;
       }
 
+
+      if (method === 'POST' && url === buildPath(API_ROUTES.queueHold, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'held', item: { id: 'prd-1', title: 'PRD 1', status: 'pending', capabilities: { priority: { allowed: true }, remove: { allowed: true }, dependencyOverride: { allowed: true }, hold: { allowed: true }, unhold: { allowed: true }, cascadeRemove: { allowed: true }, cancel: { allowed: true }, cascadeCancel: { allowed: true } } } }));
+        return;
+      }
+
+      if (method === 'POST' && url === buildPath(API_ROUTES.queueUnhold, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'unheld', item: { id: 'prd-1', title: 'PRD 1', status: 'pending', capabilities: { priority: { allowed: true }, remove: { allowed: true }, dependencyOverride: { allowed: true }, hold: { allowed: true }, unhold: { allowed: true }, cascadeRemove: { allowed: true }, cancel: { allowed: true }, cascadeCancel: { allowed: true } } } }));
+        return;
+      }
+
+      if (method === 'POST' && url === buildPath(API_ROUTES.queueCascadePreview, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ target: { prdId: 'prd-1', title: 'PRD 1', status: 'pending', location: 'queue', dependsOn: [], depth: 0, effect: 'target-remove', blockers: [] }, dependents: [], safeStrategies: ['target-only'], warnings: [], blockers: [], expectedAffected: { token: 't', prdIds: ['prd-1'] } }));
+        return;
+      }
+
+      if (method === 'POST' && url === buildPath(API_ROUTES.queueCascadeApply, { prdId: 'prd-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ applied: true, operation: 'remove', strategy: 'target-only', target: { prdId: 'prd-1', previousStatus: 'pending', status: 'removed' }, dependents: [], warnings: [], blockers: [] }));
+        return;
+      }
+
+      if (method === 'POST' && url === API_ROUTES.recoveryGuidancePrepare) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ prdId: 'prd-1', setName: 'set', featureBranch: 'f', baseBranch: 'main', outputDir: 'out', sidecarPath: 'sidecar', sidecarGeneratedAt: 'now', plans: [] }));
+        return;
+      }
+
+      if (method === 'GET' && url === API_ROUTES.failedEnqueues) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify([]));
+        return;
+      }
+
+      if (method === 'POST' && url === buildPath(API_ROUTES.failedEnqueueReenqueue, { runId: 'run-1' })) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ enqueued: false, failedEnqueue: { runId: 'run-1', sourceLabel: 'prd.md', failureReason: 'boom', failedAt: 'now', canReenqueue: false }, queue: [], runs: [] }));
+        return;
+      }
+
+      if (method === 'POST' && (url === API_ROUTES.schedulerPause || url === API_ROUTES.schedulerResume)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ enabled: true, watcher: { running: false, pid: null, sessionId: null } }));
+        return;
+      }
+
       if (url === '/api/cancel/session-1') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
@@ -205,6 +263,15 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiUpdateQueuePriorityIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', priority: 3 }) },
   { name: 'apiRemoveQueueItemIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1' }) },
   { name: 'apiOverrideQueueDependencyIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', body: { dependencyId: 'parent-prd', reason: 'manual override' } }) },
+  { name: 'apiHoldQueueItemIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', body: { reason: 'manual' } }) },
+  { name: 'apiUnholdQueueItemIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1' }) },
+  { name: 'apiPreviewQueueCascadeIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', body: { operation: 'remove' } }) },
+  { name: 'apiApplyQueueCascadeIfRunning', opts: (cwd) => ({ cwd, prdId: 'prd-1', body: { operation: 'remove', strategy: 'target-only', expectedAffected: { token: 't', prdIds: ['prd-1'] }, confirmDependents: false } }) },
+  { name: 'apiPrepareRecoveryGuidanceIfRunning', opts: (cwd) => ({ cwd, body: { prdId: 'prd-1', setName: 'set' } }) },
+  { name: 'apiGetFailedEnqueuesIfRunning', opts: (cwd) => ({ cwd }) },
+  { name: 'apiReenqueueFailedEnqueueIfRunning', opts: (cwd) => ({ cwd, runId: 'run-1', body: { confirm: true } }) },
+  { name: 'apiSchedulerPauseIfRunning', opts: (cwd) => ({ cwd }) },
+  { name: 'apiSchedulerResumeIfRunning', opts: (cwd) => ({ cwd }) },
 
   { name: 'apiGetRunsIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiGetLatestRunFromRunsIfRunning', opts: (cwd) => ({ cwd }) },
@@ -552,6 +619,37 @@ describe('helper import discipline', () => {
       url: buildPath(API_ROUTES.queueDependencyOverride, { prdId: 'prd-1' }),
       bodyText: JSON.stringify(overrideBody),
     });
+
+    const holdBody = { reason: 'manual' };
+    await apiHoldQueueItemIfRunning({ cwd: tmpDir, prdId: 'prd-1', body: holdBody });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: buildPath(API_ROUTES.queueHold, { prdId: 'prd-1' }), bodyText: JSON.stringify(holdBody) });
+
+    await apiUnholdQueueItemIfRunning({ cwd: tmpDir, prdId: 'prd-1' });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: buildPath(API_ROUTES.queueUnhold, { prdId: 'prd-1' }), bodyText: JSON.stringify({}) });
+
+    const previewBody = { operation: 'remove' } as const;
+    await apiPreviewQueueCascadeIfRunning({ cwd: tmpDir, prdId: 'prd-1', body: previewBody });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: buildPath(API_ROUTES.queueCascadePreview, { prdId: 'prd-1' }), bodyText: JSON.stringify(previewBody) });
+
+    const applyBody = { operation: 'remove', strategy: 'target-only', expectedAffected: { token: 't', prdIds: ['prd-1'] }, confirmDependents: false } as const;
+    await apiApplyQueueCascadeIfRunning({ cwd: tmpDir, prdId: 'prd-1', body: applyBody });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: buildPath(API_ROUTES.queueCascadeApply, { prdId: 'prd-1' }), bodyText: JSON.stringify(applyBody) });
+
+    const guidanceBody = { prdId: 'prd-1', setName: 'set' };
+    await apiPrepareRecoveryGuidanceIfRunning({ cwd: tmpDir, body: guidanceBody });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: API_ROUTES.recoveryGuidancePrepare, bodyText: JSON.stringify(guidanceBody) });
+
+    await apiGetFailedEnqueuesIfRunning({ cwd: tmpDir });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'GET', url: API_ROUTES.failedEnqueues, bodyText: '' });
+
+    await apiReenqueueFailedEnqueueIfRunning({ cwd: tmpDir, runId: 'run-1', body: { confirm: true } });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: buildPath(API_ROUTES.failedEnqueueReenqueue, { runId: 'run-1' }), bodyText: JSON.stringify({ confirm: true }) });
+
+    await apiSchedulerPauseIfRunning({ cwd: tmpDir });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: API_ROUTES.schedulerPause, bodyText: '' });
+    await apiSchedulerResumeIfRunning({ cwd: tmpDir });
+    expect(testServer.requests.at(-1)).toEqual({ method: 'POST', url: API_ROUTES.schedulerResume, bodyText: '' });
+
   });
 
   it('(6g) queue-control helpers fail version verification before issuing the mutation request', async () => {

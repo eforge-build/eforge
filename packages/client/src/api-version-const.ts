@@ -30,5 +30,7 @@
  * (v71 is a case 1 bump: config show responses and config/profile
  * validation no longer include or accept the removed project/team extension
  * trust compatibility field.)
+ * (v72 is a case 2 bump: Console gates on client-owned queue controls,
+ * failed-enqueue projections, scheduler pause/resume, and recovery guidance.)
  */
-export const DAEMON_API_VERSION = 71; // v71: removed extension trust compatibility field from config contract.
+export const DAEMON_API_VERSION = 72; // v72: Console feature gate for queue controls, failed-enqueue projections, and recovery guidance.

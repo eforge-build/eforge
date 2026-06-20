@@ -22,7 +22,7 @@
 
 import type { EforgeEvent, StackLayerWire } from './events.js';
 import { normalizeTerminalQueueItem, projectEnqueueComplete, projectQueuePrdDiscovered, projectSchedulerDependencyBlocked, projectQueueDependencyOverridden, projectQueuePrdDispatchFailed } from './event-projections/queue.js';
-import type { RunInfo, QueueItem, AutoBuildState } from './types.js';
+import type { RunInfo, QueueItem, AutoBuildState, FailedEnqueueInfo } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Minimal state shape the project functions operate on.
@@ -60,6 +60,7 @@ export interface ProjectableState {
   } | null;
   /** Stack layer records keyed by prdId, or empty array when none have been recorded. */
   stackLayers: StackLayerWire[];
+  /** Durable failed-enqueue attention rows keyed by runId. */ failedEnqueues?: FailedEnqueueInfo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1671,6 +1672,10 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Orphaned build reaped: ${e.runId} (pid ${e.pid})`,
   },
+
+
+  'daemon:failed-enqueue:upsert': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.failedEnqueue.runId}: ${e.failedEnqueue.failureReason}`, project(event, state) { const existing = state.failedEnqueues ?? []; const withoutCurrent = existing.filter((item) => item.runId !== event.failedEnqueue.runId); return { failedEnqueues: [event.failedEnqueue, ...withoutCurrent].sort((a, b) => b.failedAt.localeCompare(a.failedAt)) }; } },
+  'daemon:failed-enqueue:resolved': { scope: 'daemon', persist: true, summary: (e) => `Failed enqueue ${e.runId} resolved${e.newRunId ? ` as ${e.newRunId}` : ''}`, project(event, state) { const existing = state.failedEnqueues ?? []; const idx = existing.findIndex((item) => item.runId === event.runId); if (idx === -1) return undefined; const failedEnqueues = [...existing]; failedEnqueues[idx] = { ...failedEnqueues[idx], resolvedAt: event.resolvedAt }; return { failedEnqueues }; } },
 
   // -------------------------------------------------------------------------
   // Daemon errors and warnings

@@ -2701,7 +2701,7 @@ A `modify` variant (mutating the diff inline) is intentionally absent. `modify` 
 
 ## Event types and `EventPattern` glob semantics
 
-All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`. The lower-level `@eforge-build/client/events` subpath also exports `DaemonStreamSnapshotSchema` for validating the daemon `stream:hello` snapshot shape.
+All event types are exposed through `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union and implemented in focused modules under `packages/client/src/events/`. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`. The lower-level `@eforge-build/client/events` subpath also exports `DaemonStreamSnapshotSchema` for validating the daemon `stream:hello` snapshot shape, including queue hold/capability metadata and failed-enqueue projections.
 
 Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 
@@ -4670,7 +4670,7 @@ than embedding literal path strings.
 
 Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
 
-Total routes: 85
+Total routes: 94
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -4709,6 +4709,8 @@ Total routes: 85
 | `extensionValidate` | `/api/extensions/validate` |
 | `extensionWorkstationAsset` | `/api/extensions/workstations/:workstationId/assets/:assetId` |
 | `extensionWorkstationFrame` | `/api/extensions/workstations/:workstationId/frame` |
+| `failedEnqueueReenqueue` | `/api/enqueue/failed/:runId/reenqueue` |
+| `failedEnqueues` | `/api/enqueue/failed` |
 | `health` | `/api/health` |
 | `keepAlive` | `/api/keep-alive` |
 | `modelList` | `/api/models/list` |
@@ -4729,17 +4731,24 @@ Total routes: 85
 | `profileUse` | `/api/profile/use` |
 | `projectContext` | `/api/project-context` |
 | `queue` | `/api/queue` |
+| `queueCascadeApply` | `/api/queue/:prdId/cascade/apply` |
+| `queueCascadePreview` | `/api/queue/:prdId/cascade/preview` |
 | `queueDependencyOverride` | `/api/queue/:prdId/dependencies/override` |
+| `queueHold` | `/api/queue/:prdId/hold` |
 | `queuePriority` | `/api/queue/:prdId/priority` |
 | `queueRecoveryAnalyze` | `/api/queue/recovery/analyze` |
 | `queueRecoveryApply` | `/api/queue/recovery/apply` |
 | `queueRemove` | `/api/queue/:prdId` |
+| `queueUnhold` | `/api/queue/:prdId/unhold` |
 | `readRecoverySidecar` | `/api/recovery/sidecar` |
 | `recover` | `/api/recover` |
+| `recoveryGuidancePrepare` | `/api/recover/guidance/prepare` |
 | `runs` | `/api/runs` |
 | `runState` | `/api/run-state/:id` |
 | `runSummary` | `/api/run-summary/:id` |
 | `schedulerKick` | `/api/scheduler/kick` |
+| `schedulerPause` | `/api/scheduler/pause` |
+| `schedulerResume` | `/api/scheduler/resume` |
 | `sessionMetadata` | `/api/session-metadata` |
 | `sessionPlanCreate` | `/api/session-plan/create` |
 | `sessionPlanCreateFromPlaybook` | `/api/session-plan/create-from-playbook` |
@@ -4787,7 +4796,7 @@ The JSON Schema also includes a `DaemonStreamSnapshot` definition for the
 
 ## Event Variants
 
-Total variants: 227
+Total variants: 229
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -4986,6 +4995,8 @@ Total variants: 227
 | `daemon:recovery:lock-removed` | `path`, `pid` |
 | `daemon:recovery:complete` | `durationMs`, `locksRemoved`, `runsFailed` |
 | `daemon:orphan:reaped` | `pid`, `planSet`, `runId`, `sessionId` |
+| `daemon:failed-enqueue:upsert` | `failedEnqueue` |
+| `daemon:failed-enqueue:resolved` | `newRunId`, `resolvedAt`, `runId` |
 | `daemon:warning` | `details`, `message`, `source` |
 | `daemon:error` | `message`, `source`, `stack` |
 | `queue:start` | `dir`, `prdCount` |
