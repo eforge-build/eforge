@@ -1,5 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, realpath, rm } from 'node:fs/promises';
+import { relative, resolve, sep } from 'node:path';
 import type { QueueCascadeRunningOwnership, RunInfo } from '@eforge-build/client';
 import { readPrdLockStatus } from '../prd-queue.js';
 import { QueueControlError } from './control.js';
@@ -62,14 +63,26 @@ export async function resolveRunningPrdOwnership(options: RunningOwnershipOption
   return { owned: true, sessionId, runId, pid: lock.pid };
 }
 
-function markerPath(cwd: string, prdId: string): string {
+async function markerPath(cwd: string, prdId: string, options: { createDir?: boolean } = {}): Promise<string> {
   assertSafePrdId(prdId);
-  return resolve(cwd, '.eforge', 'queue-cancellations', `${prdId}.json`);
+  const runtimeDir = resolve(cwd, '.eforge');
+  if (options.createDir) await mkdir(runtimeDir, { recursive: true });
+  const runtimeStat = await lstat(runtimeDir);
+  if (!runtimeStat.isDirectory() || runtimeStat.isSymbolicLink()) throw new QueueControlError('validation', `.eforge is not a real directory: ${runtimeDir}`);
+
+  const markerDir = resolve(runtimeDir, 'queue-cancellations');
+  if (options.createDir) await mkdir(markerDir, { recursive: true });
+  const markerDirStat = await lstat(markerDir);
+  if (!markerDirStat.isDirectory() || markerDirStat.isSymbolicLink()) throw new QueueControlError('validation', `Queue cancellation marker directory is not a real directory: ${markerDir}`);
+
+  const realMarkerDir = await realpath(markerDir);
+  const path = resolve(realMarkerDir, `${prdId}.json`);
+  const rel = relative(realMarkerDir, path);
+  if (rel === '' || rel.startsWith('..') || rel.includes(`..${sep}`)) throw new QueueControlError('validation', `Queue cancellation marker path escapes marker directory: ${path}`);
+  return path;
 }
 
 export async function requestQueuePrdCancellation(options: { cwd: string; prdId: string; reason?: string; sessionId?: string; runId?: string; pid?: number; now?: () => string }): Promise<QueuePrdCancellationMarker> {
-  const dir = resolve(options.cwd, '.eforge', 'queue-cancellations');
-  await mkdir(dir, { recursive: true });
   const marker: QueuePrdCancellationMarker = {
     prdId: options.prdId,
     ...(options.reason !== undefined ? { reason: options.reason } : {}),
@@ -78,7 +91,17 @@ export async function requestQueuePrdCancellation(options: { cwd: string; prdId:
     ...(options.pid !== undefined ? { pid: options.pid } : {}),
     requestedAt: options.now?.() ?? new Date().toISOString(),
   };
-  await writeFile(markerPath(options.cwd, options.prdId), `${JSON.stringify(marker, null, 2)}\n`, { encoding: 'utf-8', flag: 'wx' });
+  const path = await markerPath(options.cwd, options.prdId, { createDir: true });
+  let handle;
+  try {
+    handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    await handle.writeFile(`${JSON.stringify(marker, null, 2)}\n`, { encoding: 'utf-8' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'EEXIST') throw new QueueControlError('conflict', `Cancellation already requested for queue item '${options.prdId}'.`);
+    throw err;
+  } finally {
+    await handle?.close();
+  }
   return marker;
 }
 
@@ -89,18 +112,50 @@ function markerMatchesExpected(marker: QueuePrdCancellationMarker, options: { ex
   return options.expectedSessionId !== undefined || options.expectedRunId !== undefined || options.expectedPid !== undefined;
 }
 
+async function lstatRegularMarker(path: string): Promise<boolean> {
+  try {
+    const stat = await lstat(path);
+    if (stat.isSymbolicLink()) throw new QueueControlError('validation', `Queue cancellation marker is a symlink and cannot be consumed: ${path}`);
+    if (!stat.isFile()) throw new QueueControlError('validation', `Queue cancellation marker is not a regular file: ${path}`);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
 export async function removeQueuePrdCancellation(options: { cwd: string; prdId: string }): Promise<void> {
-  await rm(markerPath(options.cwd, options.prdId), { force: true });
+  let path: string;
+  try {
+    path = await markerPath(options.cwd, options.prdId);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return;
+    throw err;
+  }
+  if (await lstatRegularMarker(path)) await rm(path, { force: true });
 }
 
 export async function consumeQueuePrdCancellation(options: { cwd: string; prdId: string; expectedSessionId?: string; expectedRunId?: string; expectedPid?: number; now?: () => Date; maxAgeMs?: number }): Promise<QueuePrdCancellationMarker | null> {
-  const path = markerPath(options.cwd, options.prdId);
-  let raw: string;
+  let path: string;
   try {
-    raw = await readFile(path, 'utf-8');
+    path = await markerPath(options.cwd, options.prdId);
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
     throw err;
+  }
+  let raw: string;
+  let handle;
+  try {
+    if (!(await lstatRegularMarker(path))) return null;
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new QueueControlError('validation', `Queue cancellation marker is not a regular file: ${path}`);
+    raw = await handle.readFile('utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
+    throw err;
+  } finally {
+    await handle?.close();
   }
   await rm(path, { force: true });
   try {

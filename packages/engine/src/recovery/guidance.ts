@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { access, lstat, readFile, realpath, writeFile } from 'node:fs/promises';
+import { access, lstat, open, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { RecoveryGuidancePrepareResponse, RecoveryGuidancePatchedPlan, RecoveryVerdictSidecar } from '@eforge-build/client';
 import { forgeCommit } from '../git.js';
@@ -140,10 +140,11 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
   for (let i = 0; i < rootPlanIds.length; i++) {
     const planId = rootPlanIds[i]!;
     const planPath = rootPaths[i]!;
-    const raw = await readFile(resolve(mergeWorktreePath, planPath), 'utf-8');
+    const absPlanPath = resolve(mergeWorktreePath, planPath);
+    const { content: raw, identity: planIdentity } = await readSafeRegularFile(absPlanPath);
     const section = renderRecoveryGuidanceSection({ sidecar, planId, sidecarPath, featureBranch, baseBranch, setName, prdId: options.prdId });
     const patched = patchRecoveryGuidanceSection(raw, section);
-    if (patched.changed) await writeFile(resolve(mergeWorktreePath, planPath), patched.content, 'utf-8');
+    if (patched.changed) await writeSafeRegularFile(absPlanPath, patched.content, planIdentity);
     plans.push({ planId, path: planPath, status: patched.changed ? 'patched' : 'already-current' });
   }
 
@@ -201,6 +202,45 @@ async function unsafeRootTargets(opts: { mergeWorktreePath: string; rootPlanIds:
     }
   }
   return unsafe;
+}
+
+interface SafeFileIdentity {
+  dev: number;
+  ino: number;
+}
+
+async function readSafeRegularFile(path: string): Promise<{ content: string; identity: SafeFileIdentity }> {
+  const handle = await openGuidanceTarget(path, constants.O_RDONLY);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new RecoveryGuidanceError('Root failed compiled plan markdown artifact is not a safe regular file.', 'preflight');
+    return { content: await handle.readFile('utf-8'), identity: { dev: stat.dev, ino: stat.ino } };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function writeSafeRegularFile(path: string, content: string, expected: SafeFileIdentity): Promise<void> {
+  const handle = await openGuidanceTarget(path, constants.O_RDWR);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.dev !== expected.dev || stat.ino !== expected.ino) {
+      throw new RecoveryGuidanceError('Root failed compiled plan markdown artifact changed during guidance patching.', 'preflight');
+    }
+    await handle.truncate(0);
+    await handle.writeFile(content, 'utf-8');
+  } finally {
+    await handle.close();
+  }
+}
+
+async function openGuidanceTarget(path: string, flags: number): ReturnType<typeof open> {
+  try {
+    return await open(path, flags | constants.O_NOFOLLOW);
+  } catch (err) {
+    if (err instanceof RecoveryGuidanceError) throw err;
+    throw new RecoveryGuidanceError(`Root failed compiled plan markdown artifact could not be opened safely: ${(err as Error).message}`, 'preflight');
+  }
 }
 
 function isPathInside(root: string, target: string): boolean {

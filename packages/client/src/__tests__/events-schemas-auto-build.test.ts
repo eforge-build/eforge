@@ -89,7 +89,7 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
     });
   });
 
-  it('projects paused desired-enabled transitions as legacy enabled=false', () => {
+  it('projects paused desired-enabled transitions as enabled scheduler pauses', () => {
     const event = {
       type: 'daemon:auto-build:transition',
       timestamp: '2025-01-01T00:00:00.000Z',
@@ -110,10 +110,38 @@ describe('eventRegistry — daemon:auto-build:transition', () => {
 
     expect(eventRegistry['daemon:auto-build:transition'].project?.(event, state)).toMatchObject({
       autoBuild: {
-        enabled: false,
+        enabled: true,
         desired: 'enabled',
         mode: 'paused',
+        scheduler: { paused: true },
         reason: 'build failed',
+      },
+    });
+  });
+});
+
+describe('eventRegistry — daemon:auto-build:paused', () => {
+  it('projects compatibility pauses without disabling desired-enabled auto-build', () => {
+    const event = {
+      type: 'daemon:auto-build:paused',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      reason: 'build failed',
+    } as const;
+    const state = {
+      runs: [],
+      queue: [],
+      autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: 'watcher-1' } },
+      latestHeartbeat: null,
+      stackLayers: [],
+      failedEnqueues: [],
+    };
+
+    expect(eventRegistry['daemon:auto-build:paused'].project?.(event, state)).toMatchObject({
+      autoBuild: {
+        enabled: true,
+        desired: 'enabled',
+        mode: 'paused',
+        scheduler: { paused: true },
       },
     });
   });

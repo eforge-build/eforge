@@ -11,7 +11,7 @@ A named YAML file that selects the harness, model, and effort settings for eforg
 
 ## Auto-build
 
-The daemon mode that automatically processes queued PRDs when `prdQueue.autoBuild` is enabled. Auto-build can be disabled intentionally while staging work and pauses after failed builds until recovery is handled.
+The desired daemon mode that automatically processes queued PRDs when `prdQueue.autoBuild` is enabled. Disabling auto-build prevents automatic dispatch until it is enabled again. Scheduler pause is separate: it can stop new launches while leaving desired auto-build enabled.
 
 ## Build source
 
@@ -37,6 +37,10 @@ Workflow profiles selected by the planner. Errand handles small changes, Excursi
 
 The agent stage that judges proposed fixes against the original intent and accepts only strict improvements.
 
+## Failed enqueue
+
+A durable daemon attention item for an enqueue attempt that failed before producing a runnable queue file. Console shows the source label, reason, timestamp, fallback next command, disabled reason when re-enqueue is unavailable, and a confirmed re-enqueue action when source data still exists.
+
 ## Fixer
 
 The agent stage that applies reviewer suggestions as candidate changes before evaluation.
@@ -55,7 +59,7 @@ A TypeScript extension adapter that resolves `eforge://input/<adapter>/<id>` URI
 
 ## Console dashboard
 
-The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, and queue management. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
+The web UI running locally at `http://localhost:<port>/console/` (port range 4567-4667, deterministically assigned per project). Shows live build progress, token usage, cost, queue management, failed-enqueue attention, recovery guidance flows, scheduler pause/resume, and preview-first cascade controls. Root UI requests redirect to Console. See [Integrations - Console dashboard](/docs/integrations#console-dashboard).
 
 ## Playbook
 
@@ -85,9 +89,17 @@ The validation step after all plans merge. eforge runs `build.postMergeCommands`
 
 The `.eforge/queue/` directory where normalized PRDs wait for daemon processing. Queue state is runtime-only (gitignored) — queue mutations are filesystem operations and do not produce git commits. Each queued PRD includes an eforge-owned hidden canonical acceptance-criteria inventory; queued builds with missing, duplicated, or malformed inventory fail before orchestration and must be re-enqueued. Queue items can depend on earlier items with `depends_on`, can use numeric `priority` so lower-priority-number items run earlier within the same dependency wave, and can carry runtime-only hold frontmatter (`held`, `hold_reason`, `held_at`) that prevents scheduler dispatch without moving the file. `eforge queue remove <prdId>` deletes non-running pending, waiting, failed, or skipped queue files; failed removal also deletes matching recovery sidecars and live-dependent conflicts list dependent ids. The daemon API can remove a single dependency from a pending or waiting queue item, moves a waiting item to the queue root when no dependencies remain, and uses preview/apply cascade controls for dependent remove or cancel flows.
 
+## Queue hold
+
+Runtime-only queue frontmatter (`held`, `hold_reason`, `held_at`) on pending or waiting PRDs. Held rows keep their queue order and file location but scheduler ticks skip them until unheld. Console renders hold/unhold availability from daemon-authored queue capabilities.
+
 ## Queue priority
 
 An optional PRD frontmatter number. Lower numbers run before higher numbers within the same dependency wave; PRDs without `priority` run after prioritized items. `eforge queue priority <prdId> <priority>` mutates pending or waiting PRD frontmatter; failed and skipped items return conflict until recovery or requeue makes them runnable, and running items require daemon-owned cancellation instead of reprioritization.
+
+## Recovery guidance
+
+The canonical `## Recovery Guidance` section that eforge writes into failed root compiled plan artifacts before compiled-artifact continue/resume builders read them. Read-only recovery analysis does not mutate artifacts; explicit prepare/continue paths patch plan artifacts through engine git discipline.
 
 ## Recovery sidecar
 
@@ -100,6 +112,10 @@ The outcome of a recovery sidecar analysis: `retry`, `continue-repair`, `abandon
 ## Reviewer
 
 The blind review agent stage that evaluates a diff without the builder's reasoning or conversation context.
+
+## Scheduler pause
+
+A runtime launch gate for the daemon scheduler. Pausing the scheduler leaves desired auto-build enabled but prevents new queued builds from launching until resume; already-running builds continue unless explicitly cancelled.
 
 ## Session plan
 

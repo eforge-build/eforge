@@ -33,6 +33,7 @@ describe('queue cancellation ownership', () => {
     await requestQueuePrdCancellation({ cwd: dir, prdId: 'p', reason: 'operator', sessionId: 's', now: () => '2026-01-01T00:00:00.000Z' });
     const path = join(dir, '.eforge', 'queue-cancellations', 'p.json');
     expect(existsSync(path)).toBe(true);
+    await expect(requestQueuePrdCancellation({ cwd: dir, prdId: 'p' })).rejects.toMatchObject({ kind: 'conflict' });
     await expect(consumeQueuePrdCancellation({ cwd: dir, prdId: 'p', expectedSessionId: 's', now: () => new Date('2026-01-01T00:01:00.000Z') })).resolves.toMatchObject({ prdId: 'p', reason: 'operator', sessionId: 's' });
     await expect(consumeQueuePrdCancellation({ cwd: dir, prdId: 'p' })).resolves.toBeNull();
   });

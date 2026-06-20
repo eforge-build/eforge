@@ -10,8 +10,9 @@ Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) inte
 with one of the variant objects below. The `type` field discriminates the variant.
 
 The JSON Schema also includes a `DaemonStreamSnapshot` definition for the
-`stream:hello` snapshot; queue items in that snapshot expose the optional
-`dispatchFailure` projection populated from `queue:prd:dispatch-failed` events.
+`stream:hello` snapshot. The snapshot exposes `failedEnqueues` for durable
+failed-enqueue attention rows; queue items in that snapshot expose required
+`capabilities` plus optional `dispatchFailure` and `hold` projections populated from daemon-owned queue state.
 
 ## Event Variants
 
@@ -215,7 +216,7 @@ Total variants: 229
 | `daemon:recovery:complete` | `durationMs`, `locksRemoved`, `runsFailed` |
 | `daemon:orphan:reaped` | `pid`, `planSet`, `runId`, `sessionId` |
 | `daemon:failed-enqueue:upsert` | `failedEnqueue` |
-| `daemon:failed-enqueue:resolved` | `spawnedSessionId`, `resolvedAt`, `runId` |
+| `daemon:failed-enqueue:resolved` | `resolvedAt`, `runId`, `spawnedSessionId` |
 | `daemon:warning` | `details`, `message`, `source` |
 | `daemon:error` | `message`, `source`, `stack` |
 | `queue:start` | `dir`, `prdCount` |

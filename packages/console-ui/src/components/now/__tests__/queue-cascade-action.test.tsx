@@ -79,8 +79,9 @@ describe('QueueCascadeAction', () => {
     await waitFor(() => expect(onApplyCascade).toHaveBeenCalledWith('parent', expect.objectContaining({ strategy: 'cascade-dependents', confirmDependents: true } satisfies Partial<QueueCascadeApplyRequest>)));
   });
 
-  it('renders disabled reason from denied capability', () => {
-    renderAction({ capability: { allowed: false, reason: 'Remove denied by daemon' } });
+  it('renders disabled reason when all remove capabilities are denied', () => {
+    const denied = { allowed: false, reason: 'Remove denied by daemon' };
+    renderAction({ capability: denied, cascadeCapability: denied });
 
     expect((screen.getByRole('button', { name: 'Remove…' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Remove denied by daemon')).toBeDefined();

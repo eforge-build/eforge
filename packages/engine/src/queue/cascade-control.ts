@@ -75,6 +75,7 @@ async function toAffected(record: QueueControlRecord, depth: number, operation: 
   const blockers: string[] = [];
   if (operation === 'remove' && record.status === 'running') blockers.push(`Running queue item '${record.id}' cannot be removed.`);
   if (operation === 'cancel' && record.status === 'failed') blockers.push(`Failed queue item '${record.id}' cannot be cancelled; use remove or recovery.`);
+  if (operation === 'cancel' && record.status === 'skipped' && !dependent) blockers.push(`Skipped queue item '${record.id}' is already terminal and cannot be cancelled.`);
   if (operation === 'cancel' && record.status === 'running' && runningOwnership?.owned !== true) blockers.push(`Running queue item '${record.id}' cannot be cancelled: ${runningOwnership?.reason ?? 'missing ownership evidence'}`);
   return {
     prdId: record.id,
@@ -118,16 +119,7 @@ export async function previewQueueCascade(options: PreviewQueueCascadeOptions): 
     return { target: await toAffected(target, 0, options.operation, false, options.resolveRunningOwnership), dependents: [], safeStrategies: [], warnings: [], blockers: [`Queue item '${options.prdId}' appears in multiple queue locations.`], expectedAffected: { token: '', prdIds: [options.prdId] } };
   }
   const target = snapshot.byId.get(options.prdId);
-  if (!target) {
-    return {
-      target: { prdId: options.prdId, title: options.prdId, status: 'pending', location: 'queue', dependsOn: [], depth: 0, effect: 'refused', blockers: [`Queue item '${options.prdId}' was not found.`] },
-      dependents: [],
-      safeStrategies: [],
-      warnings: [],
-      blockers: [`Queue item '${options.prdId}' was not found.`],
-      expectedAffected: { token: '', prdIds: [options.prdId] },
-    };
-  }
+  if (!target) throw new QueueControlError('not-found', `Queue item '${options.prdId}' was not found.`);
   const dependentLinks = findCascadeDependents(options.prdId, snapshot.records);
   const affectedTarget = await toAffected(target, 0, options.operation, false, options.resolveRunningOwnership);
   const dependents = await Promise.all(dependentLinks.map((d) => toAffected(d.record, d.depth, options.operation, true, options.resolveRunningOwnership)));
@@ -155,6 +147,10 @@ function expectedMatches(a: QueueCascadeExpectedAffected, b: QueueCascadeExpecte
 
 function emptyResult(record: QueueControlRecord, status: QueueCascadeApplyItemResult['status'], reason?: string): QueueCascadeApplyItemResult {
   return { prdId: record.id, previousStatus: record.status, status, currentStatus: status, ...(reason ? { reason } : {}) };
+}
+
+function cancelResultChanged(result: QueueCascadeApplyItemResult): boolean {
+  return result.status === 'skipped' || result.status === 'cancelled';
 }
 
 async function removeRecord(record: QueueControlRecord, queueDir: string): Promise<QueueCascadeApplyItemResult> {
@@ -287,6 +283,11 @@ export async function applyQueueCascade(options: ApplyQueueCascadeOptions): Prom
     } else {
       targetResult = await applyCancelRecord(target, options);
       dependentResults = strategy === 'cascade-dependents' ? await Promise.all(dependents.map((d) => applyCancelRecord(d.record, options, target.id))) : [];
+      const unchanged = [targetResult, ...dependentResults].filter((result) => !cancelResultChanged(result));
+      if (unchanged.length > 0) {
+        const blockers = unchanged.map((result) => result.reason ?? `Queue item '${result.prdId}' was not cancelled.`);
+        return { applied: false, operation: options.operation, strategy, target: targetResult, dependents: dependentResults, warnings: preview.warnings, blockers };
+      }
     }
     return { applied: true, operation: options.operation, strategy, target: targetResult, dependents: dependentResults, warnings: preview.warnings, blockers: [] };
   } finally {

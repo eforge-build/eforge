@@ -33,7 +33,7 @@ function makeFailedEvent(prdId: string): EforgeEvent {
 }
 
 describe('maybePauseOnFailure', () => {
-  it('pauses auto-build on the first failed queue:prd:complete via the supervisor', () => {
+  it('pauses scheduler launches on the first failed queue:prd:complete via the supervisor', () => {
     const prdId = 'sample-prd';
     const pauseScheduler = vi.fn();
     const { daemonState, pauseEvents } = makeDaemonState(pauseScheduler);
@@ -46,7 +46,7 @@ describe('maybePauseOnFailure', () => {
     maybePauseOnFailure(makeFailedEvent(prdId), ctx);
 
     const snapshot = daemonState.autoBuildController.getSnapshot();
-    expect(snapshot.enabled).toBe(false);
+    expect(snapshot.enabled).toBe(true);
     expect(snapshot.desired).toBe('enabled');
     expect(snapshot.mode).toBe('paused');
     expect(pauseScheduler).toHaveBeenCalledTimes(1);

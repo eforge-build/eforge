@@ -29,17 +29,17 @@ export function renderRecoveryGuidanceSection(options: RenderRecoveryGuidanceSec
   return ensureSingleTrailingNewline([
     HEADING,
     '',
-    `- Failed PRD: ${prdId}`,
-    `- Root failed plan: ${planId}`,
+    `- Failed PRD: ${formatSidecarEvidence(prdId)}`,
+    `- Root failed plan: ${formatSidecarEvidence(planId)}`,
     `- Failure summary: ${formatSidecarEvidence(sidecar.report.operatorSummary)}`,
     ...failureDetails.map((detail) => `- Failure detail: ${formatSidecarEvidence(detail)}`),
     `- Recommended action: ${formatSidecarEvidence(sidecar.report.recommendedAction)}`,
     '- Remaining work:',
     ...remainingWork.map((item) => `  - ${item}`),
-    `- Retry/resume guidance: Continue ${planId} for failed PRD ${prdId} from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.`,
-    `- Sidecar generated at: ${sidecar.generatedAt}`,
-    `- Source sidecar: ${sidecarPath}`,
-    `- Source identity: prdId=${prdId}; setName=${setName}; featureBranch=${featureBranch}; baseBranch=${baseBranch}`,
+    `- Retry/resume guidance: Continue ${formatSidecarEvidence(planId)} for failed PRD ${formatSidecarEvidence(prdId)} from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.`,
+    `- Sidecar generated at: ${formatSidecarEvidence(sidecar.generatedAt)}`,
+    `- Source sidecar: ${formatSidecarEvidence(sidecarPath)}`,
+    `- Source identity: prdId=${formatSidecarEvidence(prdId)}; setName=${formatSidecarEvidence(setName)}; featureBranch=${formatSidecarEvidence(featureBranch)}; baseBranch=${formatSidecarEvidence(baseBranch)}`,
   ].join('\n'));
 }
 

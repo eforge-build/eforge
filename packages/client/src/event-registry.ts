@@ -1443,8 +1443,16 @@ const eventRegistry = {
     summary: (e) => `Auto-build paused: ${e.reason}`,
     project(_event, state) {
       if (!state.autoBuild) return undefined;
-      if (!state.autoBuild.enabled) return undefined;
-      return { autoBuild: { ...state.autoBuild, enabled: false } };
+      if (!state.autoBuild.enabled && state.autoBuild.desired !== 'enabled') return undefined;
+      return {
+        autoBuild: {
+          ...state.autoBuild,
+          enabled: true,
+          desired: 'enabled',
+          mode: 'paused',
+          scheduler: { ...(state.autoBuild.scheduler ?? { alive: false }), paused: true },
+        },
+      };
     },
   },
 
@@ -1611,15 +1619,16 @@ const eventRegistry = {
       `Auto-build ${e.previousMode} → ${e.nextMode} (${e.desired})${e.reason ? `: ${e.reason}` : ''}`,
     project(event, state) {
       if (!state.autoBuild) return undefined;
-      const enabled =
-        event.desired === 'enabled' &&
-        (event.nextMode === 'starting' || event.nextMode === 'running' || event.nextMode === 'restarting');
+      const enabled = event.desired === 'enabled';
       return {
         autoBuild: {
           ...state.autoBuild,
           enabled,
           desired: event.desired,
           mode: event.nextMode,
+          ...(event.nextMode === 'paused' && {
+            scheduler: { ...(state.autoBuild.scheduler ?? { alive: false }), paused: true },
+          }),
           lastTransition: {
             at: event.timestamp,
             previousMode: event.previousMode,

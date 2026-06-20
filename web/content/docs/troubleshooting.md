@@ -56,7 +56,7 @@ If the check reports broken internal links, update the link target in the releva
 
 ## Auto-build is disabled or paused
 
-If a PRD is queued but does not start, check whether daemon auto-build is disabled or paused. Auto-build starts from `prdQueue.autoBuild` in config, can be toggled at runtime through the host `eforge_auto_build` tool or Console, and pauses after a queued build fails so dependents do not cascade.
+If a PRD is queued but does not start, check whether daemon auto-build is disabled or the scheduler is paused. Auto-build starts from `prdQueue.autoBuild` in config and can be toggled at runtime through the host `eforge_auto_build` tool or Console. Scheduler pause is separate: it keeps desired auto-build enabled but prevents new launches until resume; already-running builds continue unless you explicitly cancel them. The daemon pauses launches after a queued build fails so dependents do not cascade.
 
 **Diagnose:**
 
@@ -66,8 +66,8 @@ If a PRD is queued but does not start, check whether daemon auto-build is disabl
 
 **Resume safely:**
 
-1. If auto-build paused because a build failed, run `/eforge:recover` first and apply the recovery verdict.
-2. Re-enable auto-build with `eforge_auto_build` `{ "action": "set", "enabled": true }` or Console.
+1. If the scheduler paused because a build failed, run `/eforge:recover` first and apply the recovery verdict, then resume the scheduler from Console.
+2. If auto-build is disabled, re-enable desired auto-build with `eforge_auto_build` `{ "action": "set", "enabled": true }` or Console.
 3. If you intentionally disabled auto-build to stage queue items, either re-enable it or run `eforge build --queue` / `eforge queue run --all` from the CLI.
 
 For persistent defaults, set `prdQueue.autoBuild: true` in `eforge/config.yaml`. If the watcher is slow to notice new PRDs, tune `prdQueue.watchPollIntervalMs` rather than manually editing queue files.
@@ -76,11 +76,11 @@ For persistent defaults, set `prdQueue.autoBuild: true` in `eforge/config.yaml`.
 
 Queue controls are safe runtime filesystem mutations under `.eforge/queue/` and produce no git commits. Use `eforge queue priority <prdId> <priority>` to update pending or waiting PRD frontmatter; lower numeric priority values run earlier within each dependency wave. Failed and skipped priority changes return conflict until recovery or requeue makes the item runnable.
 
-Use `eforge queue remove <prdId>` to delete a non-running pending, waiting, failed, or skipped queue item. Removing a failed item also deletes matching `.recovery.md` and `.recovery.json` sidecars. The daemon API's dependency override removes one dependency id from a pending or waiting queue item; it returns conflict for running, failed, or skipped items, or when the target does not list the requested dependency. Queue hold state is stored as runtime-only PRD frontmatter (`held`, `hold_reason`, `held_at`) on pending or waiting items; held items keep their file location and ordering metadata, but scheduler ticks skip them until they are unheld. Running items reject priority, hold, unhold, removal, and dependency override controls because active work is owned by its build session; daemon-owned cancellation requires live queue-lock and run/session ownership evidence.
+Use `eforge queue remove <prdId>` to delete a non-running pending, waiting, failed, or skipped queue item. Removing a failed item also deletes matching `.recovery.md` and `.recovery.json` sidecars. The daemon API's dependency override removes one dependency id from a pending or waiting queue item; it returns conflict for running, failed, or skipped items, or when the target does not list the requested dependency. Queue hold state is stored as runtime-only PRD frontmatter (`held`, `hold_reason`, `held_at`) on pending or waiting items; held items keep their file location and ordering metadata, but scheduler ticks skip them until they are unheld. Console renders hold/unhold, priority, remove, cascade, cancel, and disabled reasons from daemon-authored queue capabilities. Running items reject priority, hold, unhold, removal, and dependency override controls because active work is owned by its build session; daemon-owned cancellation requires live queue-lock and run/session ownership evidence.
 
-If removal reports live dependents, eforge failed closed because pending or waiting queue items still depend on the target. The conflict lists dependent ids for target-only removal. Cascade remove and cancel use a preview/apply flow that rechecks an expected affected token and requires explicit dependent confirmation before mutating dependents. If a queue file was moved or deleted between listing and mutation, refresh the queue view and retry against the current item id. After successful priority, removal, dependency override, hold, unhold, or cascade mutations, the daemon notifies the scheduler and the scheduler re-reads queue files before dispatch.
+If removal reports live dependents, eforge failed closed because pending or waiting queue items still depend on the target. The conflict lists dependent ids for target-only removal. Cascade remove and cancel use a preview/apply flow that rechecks an expected affected token and requires explicit dependent confirmation before mutating dependents. If a queue file was moved or deleted between listing and mutation, refresh the queue view and retry against the current item id. After successful priority, removal, dependency override, hold, unhold, or cascade mutations, the daemon notifies the scheduler; when the scheduler is not explicitly paused, it re-reads queue files before dispatch.
 
-Console exposes set-priority and confirmed remove actions on pending/waiting queue rows. MCP and Pi expose the same host tool names, `eforge_queue_priority` and `eforge_queue_remove`; priority applies to pending/waiting items and removal applies to non-running pending, waiting, failed, and skipped items.
+Console exposes set-priority, hold/unhold, disabled capability reasons, and preview-first cascade remove/cancel actions on eligible queue rows. MCP and Pi expose the existing host tool names, `eforge_queue_priority` and `eforge_queue_remove`; priority applies to pending/waiting items and removal applies to non-running pending, waiting, failed, and skipped items.
 
 ## Stack sync skipped, failed, or conflicted
 
@@ -104,9 +104,13 @@ Stacked PR landing has a separate recovery path: during `landing.action: pr`, ef
 
 If `outcome` is `failed` without a conflict, inspect the failed `providerCommands`, run the same git-spice command manually for more context, fix the repository state, and rerun with `--dry-run` before applying changes.
 
+## Recover a failed enqueue
+
+If enqueue formatting, source loading, or pre-queue validation fails before a runnable queue file exists, Console shows a durable **Enqueue failed** row in Needs attention. The row is keyed by run id and includes the source label, reason, timestamp, fallback next command, and any disabled reason. When the daemon still has enough source data, use the confirmed **Re-enqueue…** action; otherwise copy the fallback command and fix the source or validation issue first. A successful re-enqueue resolves the failed-enqueue row.
+
 ## Recover from a failed build
 
-When a queued build fails, auto-build pauses and the PRD is marked `failed` in the queue. Do not re-enqueue manually; use the recovery workflow instead.
+When a queued build fails, the scheduler pauses and the PRD is marked `failed` in the queue while desired auto-build remains enabled. Do not re-enqueue manually; use the recovery workflow instead.
 
 **Check for failed builds:**
 

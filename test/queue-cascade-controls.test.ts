@@ -68,6 +68,18 @@ describe('queue cascade controls', () => {
     expect(readFileSync(join(queueRoot(dir), 'skipped', 'b.md'), 'utf-8')).toContain('upstream a');
   });
 
+  it('refuses cancelling an already-skipped target but preserves skipped dependents as warnings', async () => {
+    const dir = tmp();
+    writePrd(dir, 'skipped', 'a');
+    const targetPreview = await previewQueueCascade({ cwd: dir, queueDir: queueRoot(dir), prdId: 'a', operation: 'cancel' });
+    expect(targetPreview.blockers).toContain("Skipped queue item 'a' is already terminal and cannot be cancelled.");
+    writePrd(dir, 'queue', 'root');
+    writePrd(dir, 'skipped', 'child', ['root']);
+    const dependentPreview = await previewQueueCascade({ cwd: dir, queueDir: queueRoot(dir), prdId: 'root', operation: 'cancel' });
+    expect(dependentPreview.blockers).toEqual([]);
+    expect(dependentPreview.warnings).toContain("Skipped dependent 'child' is already terminal and will not be changed.");
+  });
+
   it('refuses drifted or cross-operation expected affected tokens before mutation', async () => {
     const dir = tmp();
     const path = writePrd(dir, 'queue', 'a');

@@ -6,13 +6,21 @@ export interface FailedEnqueueReenqueueRequest {
   confirm: true;
 }
 
-export interface FailedEnqueueReenqueueResponse {
-  enqueued: boolean;
+interface FailedEnqueueReenqueueResponseBase {
   failedEnqueue: FailedEnqueueInfo;
   queue: QueueItemWithCapabilities[];
   runs: RunInfo[];
-  spawnedSessionId?: string;
-  disabledReason?: string;
-  nextCommand?: FailedEnqueueRecoveryCommand;
   autoBuild?: AutoBuildState;
 }
+
+export type FailedEnqueueReenqueueResponse = FailedEnqueueReenqueueResponseBase & (
+  | {
+    enqueued: true;
+    spawnedSessionId: string;
+  }
+  | {
+    enqueued: false;
+    disabledReason: string;
+    nextCommand?: FailedEnqueueRecoveryCommand;
+  }
+);

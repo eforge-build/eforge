@@ -46,12 +46,13 @@ export function createFailedEnqueueRoutes(context: MonitorContext): RouteDefinit
 }
 
 async function disabledResponse(context: MonitorContext, failedEnqueue: NonNullable<ReturnType<typeof projectFailedEnqueueByRunId>>, reason = failedEnqueue.disabledReason): Promise<FailedEnqueueReenqueueResponse> {
+  const disabledReason = reason ?? failedEnqueue.disabledReason ?? 'This failed enqueue cannot be re-enqueued.';
   return {
     enqueued: false,
-    failedEnqueue: { ...failedEnqueue, canReenqueue: false, disabledReason: reason ?? failedEnqueue.disabledReason },
+    failedEnqueue: { ...failedEnqueue, canReenqueue: false, disabledReason },
     queue: await projectQueueForContext(context),
     runs: projectRunsForContext(context),
-    disabledReason: reason ?? failedEnqueue.disabledReason,
+    disabledReason,
     ...(failedEnqueue.nextCommand ? { nextCommand: failedEnqueue.nextCommand } : {}),
     autoBuild: projectAutoBuildForContext(context),
   };

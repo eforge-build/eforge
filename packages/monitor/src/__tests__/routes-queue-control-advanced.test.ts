@@ -47,6 +47,8 @@ describe('advanced queue control routes', () => {
     expect((await harness.postJson(unholdPath('prd-1'), { reason: 'ignored' })).status).toBe(400);
     expect((await harness.postJson(previewPath('prd-1'), { operation: 'rename' })).status).toBe(400);
     expect((await harness.postJson(applyPath('prd-1'), { operation: 'remove' })).status).toBe(400);
+    expect((await harness.postJson(previewPath('missing'), { operation: 'remove' })).status).toBe(404);
+    expect((await harness.postJson(applyPath('missing'), { operation: 'remove', strategy: 'target-only', expectedAffected: { token: 'missing', prdIds: ['missing'] }, confirmDependents: false })).status).toBe(404);
   });
 
   it('holds and unholds pending queue items, returning capabilities and notifying only for mutations', async () => {
