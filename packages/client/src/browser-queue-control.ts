@@ -69,7 +69,7 @@ export async function removeQueueItem(
 // --- eforge:region plan-01-client-contracts ---
 export function holdQueueItem(
   prdId: string,
-  body: QueueHoldRequest,
+  body: QueueHoldRequest = {},
   init?: RequestInit,
 ): Promise<QueueHoldResponse> {
   return postJson<QueueHoldResponse>(buildPath(API_ROUTES.queueHold, { prdId }), body, 'Queue hold', init);

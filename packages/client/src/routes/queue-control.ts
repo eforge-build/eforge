@@ -144,6 +144,7 @@ export interface QueueCascadeApplyRequest {
   strategy: QueueCascadeStrategy;
   expectedAffected: QueueCascadeExpectedAffected;
   confirmDependents: boolean;
+  reason?: string;
 }
 
 export interface QueueCascadeApplyItemResult {
@@ -153,6 +154,8 @@ export interface QueueCascadeApplyItemResult {
   currentStatus?: QueueCascadeApplyResultStatus;
   reason?: string;
   sessionId?: string;
+  runId?: string;
+  pid?: number;
   removedSidecars?: string[];
 }
 

@@ -23,6 +23,9 @@ const prdFrontmatterSchema = z.object({
   priority: z.number().int().optional(),
   depends_on: z.array(z.string()).optional(),
   skip_reason: z.string().optional(),
+  held: z.boolean().optional(),
+  hold_reason: z.string().optional(),
+  held_at: z.string().optional(),
   profile: z.string().optional(),
   stack_id: z.string().optional(),
   stack_parent: z.string().optional(),
@@ -817,7 +820,7 @@ export function setQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fields
 }
 
 async function writeExistingFile(filePath: string, content: string): Promise<void> {
-  const fd = await open(filePath, 'r+');
+  const fd = await open(filePath, constants.O_RDWR | constants.O_NOFOLLOW);
   try { await fd.truncate(0); await fd.writeFile(content, 'utf-8'); }
   finally { await fd.close(); }
 }

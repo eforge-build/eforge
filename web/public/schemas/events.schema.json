@@ -10994,6 +10994,7 @@
               "type": "string"
             },
             "failedEnqueue": {
+              "additionalProperties": false,
               "type": "object",
               "required": [
                 "runId",
@@ -11012,44 +11013,14 @@
                 "sourceLabel": {
                   "type": "string"
                 },
-                "source": {
+                "provenance": {
+                  "additionalProperties": false,
                   "type": "object",
                   "required": [
-                    "source"
+                    "label"
                   ],
                   "properties": {
-                    "source": {
-                      "type": "string"
-                    },
-                    "flags": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "profile": {
-                      "type": "string"
-                    },
-                    "landingAction": {
-                      "anyOf": [
-                        {
-                          "const": "pr",
-                          "type": "string"
-                        },
-                        {
-                          "const": "merge",
-                          "type": "string"
-                        },
-                        {
-                          "const": "leave",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "landingAutoMerge": {
-                      "type": "boolean"
-                    },
-                    "afterQueueId": {
+                    "label": {
                       "type": "string"
                     }
                   }
@@ -11067,7 +11038,23 @@
                   "type": "string"
                 },
                 "nextCommand": {
-                  "type": "string"
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "executable",
+                    "args"
+                  ],
+                  "properties": {
+                    "executable": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
                 },
                 "resolvedAt": {
                   "type": "string"
@@ -24630,6 +24617,7 @@
                             "type": "string"
                           },
                           "failedEnqueue": {
+                            "additionalProperties": false,
                             "type": "object",
                             "required": [
                               "runId",
@@ -24648,44 +24636,14 @@
                               "sourceLabel": {
                                 "type": "string"
                               },
-                              "source": {
+                              "provenance": {
+                                "additionalProperties": false,
                                 "type": "object",
                                 "required": [
-                                  "source"
+                                  "label"
                                 ],
                                 "properties": {
-                                  "source": {
-                                    "type": "string"
-                                  },
-                                  "flags": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "profile": {
-                                    "type": "string"
-                                  },
-                                  "landingAction": {
-                                    "anyOf": [
-                                      {
-                                        "const": "pr",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "merge",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "const": "leave",
-                                        "type": "string"
-                                      }
-                                    ]
-                                  },
-                                  "landingAutoMerge": {
-                                    "type": "boolean"
-                                  },
-                                  "afterQueueId": {
+                                  "label": {
                                     "type": "string"
                                   }
                                 }
@@ -24703,7 +24661,23 @@
                                 "type": "string"
                               },
                               "nextCommand": {
-                                "type": "string"
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": [
+                                  "executable",
+                                  "args"
+                                ],
+                                "properties": {
+                                  "executable": {
+                                    "type": "string"
+                                  },
+                                  "args": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
                               },
                               "resolvedAt": {
                                 "type": "string"
@@ -27983,6 +27957,7 @@
         "failedEnqueues": {
           "type": "array",
           "items": {
+            "additionalProperties": false,
             "type": "object",
             "required": [
               "runId",
@@ -28001,44 +27976,14 @@
               "sourceLabel": {
                 "type": "string"
               },
-              "source": {
+              "provenance": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "source"
+                  "label"
                 ],
                 "properties": {
-                  "source": {
-                    "type": "string"
-                  },
-                  "flags": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "profile": {
-                    "type": "string"
-                  },
-                  "landingAction": {
-                    "anyOf": [
-                      {
-                        "const": "pr",
-                        "type": "string"
-                      },
-                      {
-                        "const": "merge",
-                        "type": "string"
-                      },
-                      {
-                        "const": "leave",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "landingAutoMerge": {
-                    "type": "boolean"
-                  },
-                  "afterQueueId": {
+                  "label": {
                     "type": "string"
                   }
                 }
@@ -28056,7 +28001,23 @@
                 "type": "string"
               },
               "nextCommand": {
-                "type": "string"
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "executable",
+                  "args"
+                ],
+                "properties": {
+                  "executable": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
               },
               "resolvedAt": {
                 "type": "string"

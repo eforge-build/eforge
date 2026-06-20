@@ -118,7 +118,7 @@ eforge stack sync
 eforge stack sync --dry-run
 ```
 
-For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands. CLI queue controls match host tools: priority applies to pending/waiting items, removal applies to non-running pending, waiting, failed, and skipped items, running items must be cancelled by session id through the existing cancel route, and failed removal cleans up recovery sidecars.
+For standalone use, run `/eforge:init` in Claude Code or Pi first to create `eforge/config.yaml` and an agent runtime profile. The CLI then reads the same config. Profile creation and switching are currently exposed through the Claude Code and Pi skills rather than standalone `eforge profile` subcommands. Documented CLI queue controls match host tools: priority applies to pending/waiting items, removal applies to non-running pending, waiting, failed, and skipped items, running queue-item cancellation requires daemon ownership evidence, and failed removal cleans up recovery sidecars.
 
 ## Extension host contributions
 

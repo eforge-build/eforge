@@ -65,6 +65,9 @@ import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from 
 import { inferStackParentFromDependencies } from './queue/stack-parent-inference.js';
 import { applyStackedDispatchValidation } from './queue/dispatch-validation.js';
 import { runQueuedPrdBuild } from './queue/build-single-prd.js';
+// --- eforge:region plan-02-engine-queue-controls ---
+import { classifyQueueChildExit, consumeQueuePrdCancellation } from './queue/cancellation.js';
+// --- eforge:endregion plan-02-engine-queue-controls ---
 import { beginQueuedResume, finalizeQueuedResumeSuccess, rollbackQueuedResume } from './queue/resume-cascade.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import type { ArtifactRegistry } from './artifacts/registry.js';
@@ -1119,6 +1122,9 @@ export class EforgeEngine {
         const wasAborted = abortController?.signal.aborted === true;
         const isAlreadyClaimed = exitCode === QueueExecExitCode.SkippedAlreadyClaimed;
         const needsRevision = exitCode === QueueExecExitCode.SkippedNeedsRevision;
+        // --- eforge:region plan-02-engine-queue-controls ---
+        const operatorCancellation = signal !== null ? await consumeQueuePrdCancellation({ cwd, prdId, expectedSessionId: prdSessionId, ...(child.pid !== undefined ? { expectedPid: child.pid } : {}) }) : null;
+        // --- eforge:endregion plan-02-engine-queue-controls ---
         let compiledResume: ReturnType<typeof getCompiledResumeFrontmatter>;
         try { compiledResume = getCompiledResumeFrontmatter(prd.frontmatter); } catch { compiledResume = undefined; }
         const isCompiledResumePrd = compiledResume !== undefined || prd.frontmatter.resume_mode !== undefined || prd.frontmatter.resume_from !== undefined || prd.frontmatter.resume_set_name !== undefined || prd.frontmatter.resume_feature_branch !== undefined || prd.frontmatter.resume_base_branch !== undefined;
@@ -1129,36 +1135,28 @@ export class EforgeEngine {
         let shouldCleanupCompleted = false;
         const shouldRelease = !isAlreadyClaimed;
 
+        // --- eforge:region plan-02-engine-queue-controls ---
+        const childExit = classifyQueueChildExit({ exitCode, signal, schedulerAborted: wasAborted, operatorCancellation });
+        status = childExit.status;
+        moveTo = childExit.moveTo;
+        shouldCleanupCompleted = childExit.shouldCleanupCompleted;
+        // --- eforge:endregion plan-02-engine-queue-controls ---
+
         if (isSignalKill && wasAborted) {
           // User-requested cancel (parent sent SIGTERM in response to abort).
           // Leave the PRD in queue/ so a subsequent run can pick it up;
           // don't mark it failed — that would trip the "don't retry failed
           // builds" behavior.
-          status = 'skipped';
-          moveTo = null;
+        } else if (isSignalKill && operatorCancellation) {
+          // Operator PRD cancellation is classified as skipped and moved to skipped/.
         } else if (isSignalKill) {
           // Unsolicited signal (OOM kill, SIGKILL from outside). Treat as failure.
-          status = 'failed';
-          moveTo = 'failed';
-        } else if (exitCode === QueueExecExitCode.Completed) {
-          status = 'completed';
-          moveTo = null;
-          shouldCleanupCompleted = true;
-        } else if (exitCode === QueueExecExitCode.Skipped) {
-          status = 'skipped';
-          moveTo = 'skipped';
         } else if (isAlreadyClaimed) {
           // Non-terminal: another process holds the claim. Return 'already-claimed'
           // so the scheduler keeps the PRD in running state without emitting a
           // terminal queue:prd:complete. Lock is NOT released (shouldRelease=false above).
-          status = 'already-claimed';
-          moveTo = null;
         } else if (needsRevision) {
-          status = 'skipped';
-          moveTo = null;
-        } else {
-          status = 'failed';
-          moveTo = 'failed';
+          // Needs revision leaves the file in queue/ for manual updates.
         }
 
         try {
@@ -1471,6 +1469,9 @@ export class EforgeEngine {
       for (const prd of orderedPrds) {
         if (abortController?.signal.aborted) break;
         const candidateState = prdState.get(prd.id);
+        // --- eforge:region plan-02-engine-queue-controls ---
+        if (candidateState?.status === 'pending' && prd.frontmatter.held === true) continue;
+        // --- eforge:endregion plan-02-engine-queue-controls ---
         if (candidateState?.status === 'pending') {
           const blockingDeps = candidateState.dependsOn.filter((dep) => isDependencyBlocking(dep, terminalIds, completionRegistry));
           if (blockingDeps.length > 0) {

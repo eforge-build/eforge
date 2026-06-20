@@ -119,21 +119,21 @@ export function apiOverrideQueueDependencyIfRunning(opts: { cwd: string; prdId: 
 
 
 // --- eforge:region plan-01-client-contracts ---
-export function apiHoldQueueItem(opts: { cwd: string; prdId: string; body: QueueHoldRequest }) {
+export function apiHoldQueueItem(opts: { cwd: string; prdId: string; body?: QueueHoldRequest }) {
   return daemonRequest<QueueHoldResponse>(
     opts.cwd,
     'POST',
     buildPath(API_ROUTES.queueHold, { prdId: opts.prdId }),
-    opts.body,
+    opts.body ?? {},
   );
 }
 
-export function apiHoldQueueItemIfRunning(opts: { cwd: string; prdId: string; body: QueueHoldRequest }) {
+export function apiHoldQueueItemIfRunning(opts: { cwd: string; prdId: string; body?: QueueHoldRequest }) {
   return daemonRequestIfRunning<QueueHoldResponse>(
     opts.cwd,
     'POST',
     buildPath(API_ROUTES.queueHold, { prdId: opts.prdId }),
-    opts.body,
+    opts.body ?? {},
   );
 }
 
