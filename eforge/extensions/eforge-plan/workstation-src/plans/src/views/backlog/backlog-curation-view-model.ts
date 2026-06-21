@@ -11,7 +11,7 @@ export interface CurationCounts {
 
 export interface DisplayRow { label: string; value: string; }
 
-export interface FullAuditEvidenceMatch { source: string; confidence: string; path?: string; excerpt?: string; matchedBy: string[]; }
+export interface FullAuditEvidenceMatch { source: string; confidence: string; path?: string; excerpt?: string; matchedBy: string[]; citations?: Array<{ path?: string; excerpt?: string; kind?: string }>; }
 
 // --- eforge:region curation-preview-metadata ---
 export interface CurationEvidencePreview {
@@ -89,10 +89,12 @@ export function normalizeCurationScanMode(value: BacklogCurationScanMode | undef
 }
 
 export function curationScanModeLabel(value: BacklogCurationScanMode | undefined): string {
-  return normalizeCurationScanMode(value) === 'full-implementation-audit' ? 'Full implementation audit' : 'Delta curation';
+  return normalizeCurationScanMode(value) === 'full-implementation-audit' ? 'Source-first implementation audit' : 'Delta curation';
 }
 
-export const FULL_AUDIT_WARNING = 'Full implementation audit may take longer and use more context. It is comprehensive over open items but bounded by caps and available git/PR history.';
+export const SOURCE_FIRST_DEFAULT_CONCURRENCY = 4;
+export const SOURCE_FIRST_MAX_CONCURRENCY = 8;
+export const FULL_AUDIT_WARNING = 'Source-first implementation audit checks open items against current source. Current source is the only closure authority; git, PR, lifecycle, and session history are navigation hints only, and ambiguous cases fail closed.';
 
 export function formatFullAuditCoverage(audit: BacklogCurationFullAuditPreview | undefined): DisplayRow[] {
   const coverage = audit?.coverage;
@@ -120,24 +122,35 @@ export function formatFullAuditCaps(audit: BacklogCurationFullAuditPreview | und
   ].filter((row): row is DisplayRow => Boolean(row));
 }
 
+export function formatFullAuditSettings(audit: BacklogCurationFullAuditPreview | undefined): DisplayRow[] {
+  const settings = audit?.settings;
+  if (!settings) return [];
+  return [
+    numberRow('Item audit concurrency', settings.itemAuditConcurrency),
+    numberRow('Maximum item audit concurrency', settings.maxItemAuditConcurrency),
+    settings.closureAuthority ? { label: 'Closure authority', value: settings.closureAuthority === 'current-source-only' ? 'current source only' : settings.closureAuthority } : undefined,
+  ].filter((row): row is DisplayRow => Boolean(row));
+}
+
 export function matchFullAuditEvidenceForPatch(audit: BacklogCurationFullAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }): FullAuditEvidenceMatch[] {
   if (patch.kind !== 'item' || !patch.id) return [];
   const summary = audit?.itemSummaries?.find((item) => item.itemId === patch.id);
   const targetClosedStatus = patch.metadata?.status === 'shipped' || patch.metadata?.status === 'superseded' ? patch.metadata.status : undefined;
-  const candidateEvidence = targetClosedStatus === undefined ? summary?.evidence ?? [] : (summary?.closureCandidates ?? []).filter((entry) => isStrongClosureCandidateForStatus(entry, targetClosedStatus));
+  const candidateEvidence = targetClosedStatus === undefined ? summary?.evidence ?? [] : (summary?.closureCandidates ?? []).filter((entry) => isStrongCurrentSourceClosureCandidateForStatus(entry, targetClosedStatus));
   if (candidateEvidence.length === 0) return [];
   const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
   return candidateEvidence.filter(hasDisplayableSourceConfidence).filter((entry) => evidenceMatchesDraft(entry, draftEvidence)).map((entry) => ({
     source: entry.source.trim(),
     confidence: entry.confidence.trim(),
-    path: entry.path,
-    excerpt: entry.excerpt,
+    path: entry.path ?? entry.citations?.find((citation) => citation.path)?.path,
+    excerpt: entry.excerpt ?? entry.citations?.find((citation) => citation.excerpt)?.excerpt,
     matchedBy: entry.matchedBy ?? [],
+    citations: entry.citations,
   }));
 }
 
-function isStrongClosureCandidateForStatus(entry: BacklogCurationFullAuditEvidenceSummary, status: 'shipped' | 'superseded'): boolean {
-  return entry.intent === status && entry.confidence.trim().toLowerCase() === 'strong';
+function isStrongCurrentSourceClosureCandidateForStatus(entry: BacklogCurationFullAuditEvidenceSummary, status: 'shipped' | 'superseded'): boolean {
+  return entry.intent === status && entry.confidence.trim().toLowerCase() === 'strong' && (entry.evidenceSource === 'current-source' || entry.source === 'current-source');
 }
 
 export function evidenceSourceLabel(source: string): string {
@@ -155,6 +168,10 @@ function evidenceMatchesDraft(entry: BacklogCurationFullAuditEvidenceSummary, dr
   if (entry.path && draftEvidence.includes(entry.path.toLowerCase())) return true;
   if (entry.evidence && draftEvidence.includes(entry.evidence.toLowerCase().slice(0, Math.min(entry.evidence.length, 80)))) return true;
   if (entry.citation && draftEvidence.includes(entry.citation.toLowerCase())) return true;
+  for (const citation of entry.citations ?? []) {
+    if (citation.path && draftEvidence.includes(citation.path.toLowerCase())) return true;
+    if (citation.excerpt && draftEvidence.includes(citation.excerpt.toLowerCase().slice(0, Math.min(citation.excerpt.length, 80)))) return true;
+  }
   return draftEvidence.includes(entry.source.toLowerCase());
 }
 
@@ -170,6 +187,8 @@ function bytesRow(label: string, value: number | undefined): DisplayRow | undefi
 }
 
 // --- eforge:region curation-preview-metadata ---
+const CURRENT_SOURCE_LABEL = 'Shipped evidence: current source';
+const SUPERSEDED_CURRENT_SOURCE_LABEL = 'Superseded evidence: current source';
 const LIFECYCLE_LABEL = 'Shipped evidence: lifecycle trace';
 const INFERRED_LABEL = 'Shipped evidence: inferred from git/PR history';
 const SUPERSEDED_LIFECYCLE_LABEL = 'Superseded evidence: lifecycle trace';
@@ -185,6 +204,8 @@ export function curationEvidencePreview(values: Array<string | undefined>): Cura
   const commitIds = new Set<string>();
   for (const value of values) {
     if (!value) continue;
+    if (value.includes(CURRENT_SOURCE_LABEL)) labelSet.add(CURRENT_SOURCE_LABEL);
+    if (value.includes(SUPERSEDED_CURRENT_SOURCE_LABEL)) labelSet.add(SUPERSEDED_CURRENT_SOURCE_LABEL);
     if (value.includes(LIFECYCLE_LABEL)) labelSet.add(LIFECYCLE_LABEL);
     if (value.includes(INFERRED_LABEL)) labelSet.add(INFERRED_LABEL);
     if (value.includes(SUPERSEDED_LIFECYCLE_LABEL)) labelSet.add(SUPERSEDED_LIFECYCLE_LABEL);
@@ -198,7 +219,7 @@ export function curationEvidencePreview(values: Array<string | undefined>): Cura
     COMMIT_PATTERN.lastIndex = 0;
     for (const match of value.matchAll(COMMIT_PATTERN)) if (match[1]) commitIds.add(match[1]);
   }
-  const labels = [LIFECYCLE_LABEL, INFERRED_LABEL, SUPERSEDED_LIFECYCLE_LABEL, SUPERSEDED_INFERRED_LABEL, AMBIGUOUS_LABEL, AMBIGUOUS_SUPERSEDED_LABEL].filter((label) => labelSet.has(label));
+  const labels = [CURRENT_SOURCE_LABEL, SUPERSEDED_CURRENT_SOURCE_LABEL, LIFECYCLE_LABEL, INFERRED_LABEL, SUPERSEDED_LIFECYCLE_LABEL, SUPERSEDED_INFERRED_LABEL, AMBIGUOUS_LABEL, AMBIGUOUS_SUPERSEDED_LABEL].filter((label) => labelSet.has(label));
   return { labels, prIds: [...prIds], commitIds: [...commitIds] };
 }
 

@@ -6,7 +6,7 @@ import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, no
 import { buildProspectiveCurationProjection, type ProspectiveCurationProjection, type RecommendationReferenceRecord as ProjectionReferenceRecord } from './backlog-curation-recommendation-overlay.js';
 // --- eforge:endregion shipped-evidence-context ---
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
-import { validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
+import { SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX, SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX, validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 import {
   assertSafeBacklogId,
@@ -25,23 +25,19 @@ import { DEFAULT_BACKLOG_CURATION_SCAN_MODE, type BacklogCurationApplyDetails, t
 import { readBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { RecommendationBlockedChainSchema, RecommendationItemRefSchema, RecommendationProfileSchema } from './schema.js';
 import type { BacklogRecommendationModel } from './schema.js';
-
 interface PlanningAgentTaskRecordLike {
   taskId: string;
   kind: string;
   status: string;
   result?: unknown;
 }
-
 type Draft = ReturnType<typeof parseDraft>;
 type ItemPatch = Draft['itemChanges'][number];
 type EpicPatch = Draft['epicChanges'][number];
 type Recheck = Draft['noOpRechecks'][number];
 type Patch = ItemPatch | EpicPatch;
-
 type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
-
 // --- eforge:region apply-entrypoint ---
 export async function applyBacklogCurationDraftFromTask(
   cwd: string,
@@ -61,10 +57,8 @@ export async function applyBacklogCurationDraftFromTask(
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
     ? await computeRecommendationSourceFingerprint(cwd)
     : undefined;
-
   for (const entry of prepared.changedItems) await replaceBacklogItemRecord(cwd, entry.snapshot.id, entry.frontmatter, entry.body);
   for (const entry of prepared.changedEpics) await replaceBacklogEpicRecord(cwd, entry.snapshot.id, entry.frontmatter, entry.body);
-
   const changedIds = [...prepared.changedItems.map((entry) => entry.snapshot.id), ...prepared.changedEpics.map((entry) => entry.snapshot.id)];
   let recommendationBlock: BacklogCurationApplyDetails['recommendations'];
   let recommendationStatus: BacklogCurationApplyDetails['recommendationStatus'];
@@ -100,7 +94,6 @@ export async function applyBacklogCurationDraftFromTask(
     ...(skipGeneratedRecommendations && { recommendationsSkipped: { reason: 'apply-curation-only', generatedRecommendationValidation: prepared.generatedRecommendationValidation } }),
   };
 }
-
 export async function previewBacklogCurationDraftFromTask(cwd: string, task: PlanningAgentTaskRecordLike, entry: PlanningTaskWorkflowEntry | undefined): Promise<BacklogCurationPreviewDetails> {
   try {
     const prepared = await prepareBacklogCurationDraftApply(cwd, task, entry, { skipGeneratedRecommendationErrors: true });
@@ -126,14 +119,12 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
   }
 }
 // --- eforge:endregion apply-entrypoint ---
-
 // --- eforge:region markdown-section-helpers ---
 export function applySectionOperations(body: string, operations: readonly { heading: string; action: 'replace' | 'append'; content: string }[]): string {
   let next = body;
   for (const operation of operations) next = applySectionOperation(next, operation);
   return next;
 }
-
 // --- eforge:endregion markdown-section-helpers ---
 
 // --- eforge:region validation-helpers ---
@@ -200,8 +191,9 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const prospectiveItems = new Map<string, ProspectiveItem>(openItemSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
   const prospectiveEpics = new Map<string, ProspectiveEpic>(openEpicSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
 
-  validateTargetsAndPreconditions(draft, items, epics, draft.sourceFingerprint);
-  validateFullImplementationAuditPatchMetadata(draft, sourceMetadata?.scanMode ?? entry.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE, sourceMetadata?.fullImplementationAudit);
+  const scanMode = sourceMetadata?.scanMode ?? entry.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE;
+  validateTargetsAndPreconditions(draft, items, epics, draft.sourceFingerprint, scanMode);
+  validateFullImplementationAuditPatchMetadata(draft, scanMode, sourceMetadata?.fullImplementationAudit);
   const effectiveRechecks = draft.noOpRechecks
     .map((recheck, index) => ({ recheck, target: prospectiveForRecheck(recheck, index, prospectiveItems, prospectiveEpics) }))
     .filter(({ target }) => shouldApplyRecheck(target));
@@ -288,10 +280,12 @@ function previewErrorsFromError(err: unknown): Array<{ path: string; message: st
 // --- eforge:region validation-helpers ---
 function validateFullImplementationAuditPatchMetadata(draft: Draft, scanMode: unknown, audit: BacklogCurationFullImplementationAuditPreview | undefined): void {
   if (scanMode !== 'full-implementation-audit') return;
-  if (draft.epicChanges.length > 0) throw validationError('backlogCurationDraft.epicChanges', 'Full implementation audit curation does not support epic patches because preview metadata only annotates item evidence. Route epic changes through delta curation or needs-input.');
+  if (draft.epicChanges.length > 0) throw validationError('backlogCurationDraft.epicChanges', 'Source-first implementation audit curation does not support epic patches because preview metadata only annotates item evidence. Route epic changes through delta curation or needs-input.');
   draft.itemChanges.forEach((patch, index) => {
-    if (matchFullAuditEvidenceForPatch(audit, patch).length === 0) {
-      throw validationError(`backlogCurationDraft.itemChanges[${index}].evidence`, `Full implementation audit item patch for ${patch.id} requires matching preview metadata with displayable source and confidence.`);
+    const targetClosedStatus = patch.metadata?.status === 'shipped' || patch.metadata?.status === 'superseded' ? patch.metadata.status : undefined;
+    if (targetClosedStatus !== undefined) validateSourceFirstClosedPatch(audit, patch, targetClosedStatus, `backlogCurationDraft.itemChanges[${index}]`);
+    else if (matchFullAuditEvidenceForPatch(audit, patch).length === 0) {
+      throw validationError(`backlogCurationDraft.itemChanges[${index}].evidence`, `Source-first implementation audit item patch for ${patch.id} requires matching preview metadata with displayable current-source evidence.`);
     }
   });
 }
@@ -301,20 +295,70 @@ type FullAuditEvidenceSummary = NonNullable<NonNullable<BacklogCurationFullImple
 function matchFullAuditEvidenceForPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }): FullAuditEvidenceSummary[] {
   if (patch.kind !== 'item' || !patch.id) return [];
   const summary = audit?.itemSummaries?.find((item) => item.itemId === patch.id);
-  const targetClosedStatus = patch.metadata?.status === 'shipped' || patch.metadata?.status === 'superseded' ? patch.metadata.status : undefined;
-  const candidateEvidence = targetClosedStatus === undefined ? summary?.evidence ?? [] : (summary?.closureCandidates ?? []).filter((entry) => isStrongClosureCandidateForStatus(entry, targetClosedStatus));
+  const candidateEvidence = summary?.evidence ?? [];
   if (candidateEvidence.length === 0) return [];
   const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
   return candidateEvidence.filter(hasDisplayableSourceConfidence).filter((entry) => evidenceMatchesDraft(entry, draftEvidence));
 }
 
+function validateSourceFirstClosedPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }, status: 'shipped' | 'superseded', path: string): void {
+  const requiredPrefix = status === 'shipped' ? SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX : SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX;
+  if ((patch.evidence ?? []).every((entry) => !entry.trim().startsWith(requiredPrefix))) throw validationError(`${path}.evidence`, `${status} status changes in source-first audit mode require evidence starting with ${requiredPrefix}`);
+  const candidates = sourceFirstClosureCandidatesForPatch(audit, patch, status);
+  const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
+  const matching = candidates.filter(hasDisplayableSourceConfidence).filter((entry) => sourceFirstEvidenceMatchesDraft(entry, draftEvidence));
+  if (matching.length === 0) throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires matching strong current-source closure preview metadata and a draft evidence citation from that metadata.`);
+  if (!matching.some((entry) => sourceFirstCandidateHasRequiredEvidenceRoles(entry, status))) throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires closure preview metadata with both core ${status === 'superseded' ? 'replacement' : 'implementation'} and product-surface wiring evidence.`);
+}
+
+function sourceFirstClosureCandidatesForPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string }, status: 'shipped' | 'superseded'): FullAuditEvidenceSummary[] {
+  if (patch.kind !== 'item' || !patch.id) return [];
+  const summary = audit?.itemSummaries?.find((item) => item.itemId === patch.id);
+  const summaryCandidates = (summary?.closureCandidates ?? []).filter((entry) => isStrongClosureCandidateForStatus(entry, status));
+  const topLevelCandidates = ((audit as BacklogCurationFullImplementationAuditPreview & { closureCandidates?: FullAuditEvidenceSummary[] } | undefined)?.closureCandidates ?? []).filter((entry) => ((entry as FullAuditEvidenceSummary & { itemId?: string }).itemId === patch.id) && isStrongClosureCandidateForStatus(entry, status));
+  return [...summaryCandidates, ...topLevelCandidates];
+}
+
 function isStrongClosureCandidateForStatus(entry: FullAuditEvidenceSummary, status: 'shipped' | 'superseded'): boolean {
-  const record = entry as FullAuditEvidenceSummary & { intent?: string };
-  return record.intent === status && entry.confidence.trim().toLowerCase() === 'strong';
+  const record = entry as FullAuditEvidenceSummary & { intent?: string; evidenceSource?: string };
+  return record.intent === status && record.evidenceSource === 'current-source' && entry.confidence.trim().toLowerCase() === 'strong';
+}
+
+function sourceFirstCandidateHasRequiredEvidenceRoles(entry: FullAuditEvidenceSummary, status: 'shipped' | 'superseded'): boolean {
+  const record = entry as FullAuditEvidenceSummary & { evidenceRoles?: unknown; citations?: unknown };
+  const roles = new Set(Array.isArray(record.evidenceRoles) ? record.evidenceRoles.filter((role): role is string => typeof role === 'string') : []);
+  const citations = Array.isArray(record.citations) ? record.citations as Array<Record<string, unknown>> : [];
+  const citationKinds = new Set(citations.map((citation) => trimmedString(citation.kind)).filter((kind): kind is string => kind !== undefined));
+  const implementationRole = status === 'superseded' ? 'replacement' : 'implementation';
+  const hasImplementation = roles.has(implementationRole) || roles.has('implementation') || citationKinds.has('implementation');
+  const hasProductSurface = roles.has('product-surface') || citationKinds.has('product-surface');
+  return hasImplementation && hasProductSurface;
 }
 
 function hasDisplayableSourceConfidence(entry: { source?: string; confidence?: string }): boolean {
   return typeof entry.source === 'string' && entry.source.trim().length > 0 && typeof entry.confidence === 'string' && entry.confidence.trim().length > 0;
+}
+
+function sourceFirstEvidenceMatchesDraft(entry: FullAuditEvidenceSummary, draftEvidence: string): boolean {
+  const record = entry as FullAuditEvidenceSummary & { citation?: string };
+  const citations = Array.isArray(record.citations) ? record.citations as Array<Record<string, unknown>> : [];
+  const path = trimmedString(entry.path);
+  const excerpt = trimmedString(entry.excerpt);
+  const citationText = trimmedString(record.citation);
+  if (path !== undefined && draftEvidence.includes(path.toLowerCase())) return true;
+  if (excerpt !== undefined && draftEvidence.includes(excerpt.toLowerCase().slice(0, Math.min(excerpt.length, 80)))) return true;
+  if (citationText !== undefined && draftEvidence.includes(citationText.toLowerCase())) return true;
+  return citations.some((citation) => {
+    const citationPath = trimmedString(citation.path);
+    return citationPath !== undefined && draftEvidence.includes(citationPath.toLowerCase());
+  }) || citations.some((citation) => {
+    const citationExcerpt = trimmedString(citation.excerpt);
+    return citationExcerpt !== undefined && draftEvidence.includes(citationExcerpt.toLowerCase().slice(0, Math.min(citationExcerpt.length, 80)));
+  });
+}
+
+function trimmedString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function evidenceMatchesDraft(entry: FullAuditEvidenceSummary, draftEvidence: string): boolean {
@@ -325,6 +369,9 @@ function evidenceMatchesDraft(entry: FullAuditEvidenceSummary, draftEvidence: st
   const record = entry as FullAuditEvidenceSummary & { evidence?: string; citation?: string };
   if (record.evidence && draftEvidence.includes(record.evidence.toLowerCase().slice(0, Math.min(record.evidence.length, 80)))) return true;
   if (record.citation && draftEvidence.includes(record.citation.toLowerCase())) return true;
+  const citations = Array.isArray(record.citations) ? record.citations as Array<Record<string, unknown>> : [];
+  if (citations.some((citation) => typeof citation.path === 'string' && draftEvidence.includes(citation.path.toLowerCase()))) return true;
+  if (citations.some((citation) => typeof citation.excerpt === 'string' && draftEvidence.includes(citation.excerpt.toLowerCase().slice(0, Math.min(citation.excerpt.length, 80))))) return true;
   return draftEvidence.includes(entry.source.toLowerCase());
 }
 // --- eforge:endregion validation-helpers ---
@@ -335,14 +382,14 @@ function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): vo
   if (!('result' in task)) throw validationError('task.result', `Planning task ${task.taskId} completed without a result.`);
 }
 
-function validateTargetsAndPreconditions(draft: Draft, items: Map<string, BacklogRecordSnapshot<BacklogItem>>, epics: Map<string, BacklogRecordSnapshot<BacklogEpic>>, sourceFingerprint: string): void {
+function validateTargetsAndPreconditions(draft: Draft, items: Map<string, BacklogRecordSnapshot<BacklogItem>>, epics: Map<string, BacklogRecordSnapshot<BacklogEpic>>, sourceFingerprint: string, scanMode: unknown): void {
   const seen = new Set<string>();
   for (const [kind, patches, snapshots, field] of [
     ['item', draft.itemChanges, items, 'backlogCurationDraft.itemChanges'],
     ['epic', draft.epicChanges, epics, 'backlogCurationDraft.epicChanges'],
   ] as const) {
     patches.forEach((patch, index) => {
-      validatePatchBasics(patch, `${field}[${index}]`);
+      validatePatchBasics(patch, `${field}[${index}]`, scanMode);
       validateTarget(kind, patch.id, seen, `${field}[${index}]`);
       validatePrecondition(patch.precondition, snapshots.get(patch.id), `${field}[${index}].precondition`, sourceFingerprint);
     });
@@ -353,7 +400,7 @@ function validateTargetsAndPreconditions(draft: Draft, items: Map<string, Backlo
   });
 }
 
-function validatePatchBasics(patch: Patch, path: string): void {
+function validatePatchBasics(patch: Patch, path: string, scanMode: unknown): void {
   if ((patch.rationale ?? '').trim().length === 0) throw validationError(`${path}.rationale`, 'Material curation patches require non-empty rationale.');
   for (const [index, operation] of (patch.sectionOperations ?? []).entries()) {
     if (!isValidSectionHeading(operation.heading)) throw validationError(`${path}.sectionOperations[${index}].heading`, 'Section headings must be non-empty single-line headings.');
@@ -365,7 +412,7 @@ function validatePatchBasics(patch: Patch, path: string): void {
   if ((status !== undefined && isBacklogStatus(status) && isClosedStatus(status)) || changesEvidence) {
     if ((patch.evidence ?? []).every((entry) => entry.trim().length === 0)) throw validationError(`${path}.evidence`, 'Closed-status transitions and Evidence section changes require durable evidence entries.');
   }
-  if ((status === 'shipped' || status === 'superseded') && !validateClosedStatusEvidencePrefix(status, patch.evidence)) {
+  if ((status === 'shipped' || status === 'superseded') && !validateClosedStatusEvidencePrefix(status, patch.evidence, { allowCurrentSource: scanMode === 'full-implementation-audit' })) {
     throw validationError(`${path}.evidence`, `${status} status changes require durable evidence with a matching ${status} evidence prefix.`);
   }
 }

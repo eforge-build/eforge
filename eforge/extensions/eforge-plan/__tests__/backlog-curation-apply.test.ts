@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyBacklogCurationDraftFromTask, applySectionOperations, previewBacklogCurationDraftFromTask } from '../backlog-curation-apply.js';
 import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
-import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
+import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
 import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { readDerivedRecommendationStatus, recordPlannerRecommendationApplied } from '../recommendation-status.js';
@@ -410,9 +410,32 @@ describe('backlog curation apply', () => {
       const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
 
       expect(preview.valid).toBe(false);
-      expect(preview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringContaining('source and confidence') })]);
-      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/source and confidence/);
+      expect(preview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringContaining('matching preview metadata with displayable current-source evidence') })]);
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching preview metadata with displayable current-source evidence/);
       expect(await readFile(resolveBacklogItemPath(cwd, 'unmatched-widget'), 'utf-8')).toBe(before);
+    });
+  });
+
+  it('rejects source-first closed-status patches supported only by historical or session-plan evidence in preview and apply', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'history-only-widget', status: 'planned', body: '# History Only Widget\n\n## Evidence\n\n- Prior\n' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const snapshot = await readBacklogItemSnapshot(cwd, 'history-only-widget');
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+
+      for (const evidence of [`${SHIPPED_GIT_PR_EVIDENCE_PREFIX} merge abc123`, `${SHIPPED_LIFECYCLE_EVIDENCE_PREFIX} trace row landed`, 'Shipped evidence: session plan — completed in prior session']) {
+        const task = curationTask(source.sourceFingerprint, {
+          itemChanges: [{ kind: 'item', id: 'history-only-widget', precondition: { kind: 'item', id: 'history-only-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported historical closure.', evidence: [evidence] }],
+          epicChanges: [],
+          noOpRechecks: [],
+        });
+        const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+
+        expect(preview.valid).toBe(false);
+        expect(preview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringMatching(/current source|matching shipped evidence prefix/i) })]);
+        await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/current source|matching shipped evidence prefix/i);
+      }
     });
   });
 
@@ -425,14 +448,33 @@ describe('backlog curation apply', () => {
       const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'partial-widget');
       const task = curationTask(source.sourceFingerprint, {
-        itemChanges: [{ kind: 'item', id: 'partial-widget', precondition: { kind: 'item', id: 'partial-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported closure from current state.', evidence: [`${SHIPPED_GIT_PR_EVIDENCE_PREFIX} src/partial-widget.ts`] }],
+        itemChanges: [{ kind: 'item', id: 'partial-widget', precondition: { kind: 'item', id: 'partial-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported closure from current state.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/partial-widget.ts`] }],
         epicChanges: [],
         noOpRechecks: [],
       });
 
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
 
-      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/source and confidence/);
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching strong current-source closure preview metadata/);
+    });
+  });
+
+  it('rejects source-first closure citations with only empty preview citation fields', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'empty-citation-widget', status: 'planned', body: '# Empty Citation Widget\n\n## Evidence\n\n- Prior\n' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      source.fullImplementationAuditPreview = { scope: { itemIds: ['empty-citation-widget'], openItemCount: 1 }, coverage: { auditedItemCount: 1 }, itemSummaries: [{ itemId: 'empty-citation-widget', candidateIntent: 'source-shipped', confidence: 'strong', closureCandidates: [{ source: 'current-source', confidence: 'strong', intent: 'shipped', evidenceSource: 'current-source', citations: [{ path: ' ', excerpt: ' ' }] }] }] };
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const snapshot = await readBacklogItemSnapshot(cwd, 'empty-citation-widget');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'empty-citation-widget', precondition: { kind: 'item', id: 'empty-citation-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported empty citation closure.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} current-source closure`] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching strong current-source closure preview metadata/);
     });
   });
 
@@ -444,14 +486,60 @@ describe('backlog curation apply', () => {
       const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'ambiguous-widget');
       const task = curationTask(source.sourceFingerprint, {
-        itemChanges: [{ kind: 'item', id: 'ambiguous-widget', precondition: { kind: 'item', id: 'ambiguous-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported ambiguous closure.', evidence: [`${SHIPPED_GIT_PR_EVIDENCE_PREFIX} Ambiguous shipped candidate: needs input.`] }],
+        itemChanges: [{ kind: 'item', id: 'ambiguous-widget', precondition: { kind: 'item', id: 'ambiguous-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported ambiguous closure.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} Ambiguous shipped candidate: needs input.`] }],
         epicChanges: [],
         noOpRechecks: [],
       });
 
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
 
-      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/source and confidence/);
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching strong current-source closure preview metadata/);
+    });
+  });
+
+  it('accepts source-first shipped and superseded patches with matching current-source preview metadata', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'rocket-launcher', status: 'planned', body: '# Rocket Launcher\n\n## Acceptance Criteria\n\n- Launcher is implemented and exported.\n' });
+      await writeBacklogItem(cwd, { id: 'legacy-panel', status: 'planned', body: '# Legacy Panel\n\n## Acceptance Criteria\n\n- Superseded replacement implementation is wired.\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'rocket-launcher.ts'), 'Rocket Launcher rocket-launcher core implementation is present.\n');
+      await writeFile(join(cwd, 'src', 'legacy-panel.ts'), 'Legacy Panel legacy-panel replacement implementation is present.\n');
+      await writeFile(join(cwd, 'src', 'rocket-entry.ts'), 'export { RocketLauncher } from "./rocket-launcher"; // rocket-launcher\n');
+      await writeFile(join(cwd, 'src', 'legacy-entry.ts'), 'export { LegacyPanel } from "./legacy-panel"; // legacy-panel\n');
+      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const shippedSnapshot = await readBacklogItemSnapshot(cwd, 'rocket-launcher');
+      const obsoleteSnapshot = await readBacklogItemSnapshot(cwd, 'legacy-panel');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [
+          { kind: 'item', id: 'rocket-launcher', precondition: { kind: 'item', id: 'rocket-launcher', bodySha256: shippedSnapshot!.bodySha256, recordSha256: shippedSnapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Close with source-first current-source metadata.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/rocket-launcher.ts and src/rocket-entry.ts`] },
+          { kind: 'item', id: 'legacy-panel', precondition: { kind: 'item', id: 'legacy-panel', bodySha256: obsoleteSnapshot!.bodySha256, recordSha256: obsoleteSnapshot!.recordSha256 }, metadata: { status: 'superseded' }, rationale: 'Close with source-first current-source metadata.', evidence: [`${SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/legacy-panel.ts and src/legacy-entry.ts`] },
+        ],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+      const mixedHistoricalEvidenceTask = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'rocket-launcher', precondition: { kind: 'item', id: 'rocket-launcher', bodySha256: shippedSnapshot!.bodySha256, recordSha256: shippedSnapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Do not mix historical hints into source-first closure evidence.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/rocket-launcher.ts and src/rocket-entry.ts`, `${SHIPPED_LIFECYCLE_EVIDENCE_PREFIX} historical lifecycle hint`] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+      const mixedPreview = await previewBacklogCurationDraftFromTask(cwd, mixedHistoricalEvidenceTask, entry);
+      expect(mixedPreview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringMatching(/matching shipped evidence prefix/i) })]);
+      await expect(applyBacklogCurationDraftFromTask(cwd, mixedHistoricalEvidenceTask, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching shipped evidence prefix/i);
+
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+      const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+
+      expect(preview.valid).toBe(true);
+      expect(preview.fullImplementationAudit?.itemSummaries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ itemId: 'rocket-launcher', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'current-source', confidence: 'strong', intent: 'shipped' })]) }),
+        expect.objectContaining({ itemId: 'legacy-panel', closureCandidates: expect.arrayContaining([expect.objectContaining({ source: 'current-source', confidence: 'strong', intent: 'superseded' })]) }),
+      ]));
+      expect(apply.changedItemIds).toEqual(expect.arrayContaining(['rocket-launcher', 'legacy-panel']));
+      expect((await readBacklogItem(cwd, 'rocket-launcher'))?.status).toBe('shipped');
+      expect((await readBacklogItem(cwd, 'legacy-panel'))?.status).toBe('superseded');
     });
   });
 

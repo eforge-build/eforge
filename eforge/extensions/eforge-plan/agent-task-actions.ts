@@ -19,6 +19,7 @@ import { buildRecommendationRefreshSource } from './recommendation-refresh.js';
 import { buildBacklogCurationRedraftContext } from './backlog-curation-source.js';
 import { BACKLOG_CURATION_SOURCE_PROVIDER } from './backlog-curation-actions.js';
 import { normalizeBacklogCurationScanMode, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
+import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
@@ -205,10 +206,11 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
     const parent = requireWorkflowEntry(await readPlanningTaskWorkflowIndex(ctx.cwd), input.taskId, 'retry');
     if (isBacklogCurationWorkflowEntry(parent)) {
       const scanMode = normalizeBacklogCurationScanMode(parent.scanMode);
+      const itemAuditConcurrency = concurrencyForScanMode(scanMode, parent.itemAuditConcurrency);
       return await startLinkedTask(ctx, {
         parent,
         derivedGoal: parent.derivedRequest,
-        sourceProvider: backlogCurationSourceProviderInput(scanMode),
+        sourceProvider: backlogCurationSourceProviderInput(scanMode, undefined, itemAuditConcurrency),
         requestedOutputSections: parent.requestedOutputSections,
       });
     }
@@ -248,10 +250,11 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
       : buildRedraftContext(parent, previous.task, input);
     if (isBacklogCurationWorkflowEntry(parent)) {
       const scanMode = normalizeBacklogCurationScanMode(parent.scanMode);
+      const itemAuditConcurrency = concurrencyForScanMode(scanMode, parent.itemAuditConcurrency);
       return await startLinkedTask(ctx, {
         parent,
         derivedGoal: parent.derivedRequest,
-        sourceProvider: backlogCurationSourceProviderInput(scanMode, redraft),
+        sourceProvider: backlogCurationSourceProviderInput(scanMode, redraft, itemAuditConcurrency),
         requestedOutputSections: parent.requestedOutputSections,
       });
     }
@@ -292,7 +295,7 @@ interface StartLinkedTaskParams {
   parent: PlanningTaskWorkflowEntry;
   derivedGoal: string;
   sourceText?: string;
-  sourceProvider?: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode; redraft?: Record<string, unknown> } };
+  sourceProvider?: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number; redraft?: Record<string, unknown> } };
   sourceFingerprint?: string;
   requestedOutputSections: RequestedOutputSections;
 }
@@ -328,6 +331,7 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
     includeRoadmap: parent.includeRoadmap,
     purpose: isRecommendationRefreshWorkflowEntry(parent) || isBacklogCurationWorkflowEntry(parent) ? parent.purpose : undefined,
     scanMode: isBacklogCurationWorkflowEntry(parent) ? normalizeBacklogCurationScanMode(parent.scanMode) : undefined,
+    itemAuditConcurrency: isBacklogCurationWorkflowEntry(parent) ? concurrencyForScanMode(normalizeBacklogCurationScanMode(parent.scanMode), parent.itemAuditConcurrency) : undefined,
     sourceFingerprint: params.sourceFingerprint ?? (params.sourceProvider === undefined ? parent.sourceFingerprint : undefined),
   }));
   return toJsonSafeObject({ task: response.task, entry });
@@ -367,11 +371,16 @@ interface BuildEntryParams {
   includeRoadmap?: boolean;
   purpose?: PlanningTaskWorkflowEntry['purpose'];
   scanMode?: BacklogCurationScanMode;
+  itemAuditConcurrency?: number;
   sourceFingerprint?: string;
 }
 
-function backlogCurationSourceProviderInput(scanMode: BacklogCurationScanMode, redraft?: Record<string, unknown>): typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode; redraft?: Record<string, unknown> } } {
-  return { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { scanMode, ...(redraft !== undefined && { redraft }) } };
+function backlogCurationSourceProviderInput(scanMode: BacklogCurationScanMode, redraft?: Record<string, unknown>, itemAuditConcurrency?: number): typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number; redraft?: Record<string, unknown> } } {
+  return { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { scanMode, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }), ...(redraft !== undefined && { redraft }) } };
+}
+
+function concurrencyForScanMode(scanMode: BacklogCurationScanMode, value: unknown): number | undefined {
+  return scanMode === 'full-implementation-audit' ? normalizeItemAuditConcurrency(value) : undefined;
 }
 
 function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
@@ -388,6 +397,7 @@ function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
     ...(params.includeRoadmap !== undefined && { includeRoadmap: params.includeRoadmap }),
     ...(params.purpose !== undefined && { purpose: params.purpose }),
     ...(params.scanMode !== undefined && { scanMode: params.scanMode }),
+    ...(params.itemAuditConcurrency !== undefined && { itemAuditConcurrency: params.itemAuditConcurrency }),
     ...(params.sourceFingerprint !== undefined && { sourceFingerprint: params.sourceFingerprint }),
     createdAt: new Date().toISOString(),
   };
