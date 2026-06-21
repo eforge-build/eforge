@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
 
-Total routes: 94
+Total routes: 95
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -50,6 +50,7 @@ Total routes: 94
 | `extensionValidate` | `/api/extensions/validate` |
 | `extensionWorkstationAsset` | `/api/extensions/workstations/:workstationId/assets/:assetId` |
 | `extensionWorkstationFrame` | `/api/extensions/workstations/:workstationId/frame` |
+| `failedEnqueueDismiss` | `/api/enqueue/failed/:runId/dismiss` |
 | `failedEnqueueReenqueue` | `/api/enqueue/failed/:runId/reenqueue` |
 | `failedEnqueues` | `/api/enqueue/failed` |
 | `health` | `/api/health` |
