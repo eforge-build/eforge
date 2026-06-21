@@ -1,4 +1,4 @@
-import { API_ROUTES, type FailedEnqueueReenqueueResponse } from '@eforge-build/client';
+import { API_ROUTES, type FailedEnqueueDismissResponse, type FailedEnqueueReenqueueResponse } from '@eforge-build/client';
 import type { MonitorContext } from '../context.js';
 import { defineRoute, type RouteDefinition } from '../http/router.js';
 import { sendJson, sendJsonError } from '../http/response.js';
@@ -40,6 +40,21 @@ export function createFailedEnqueueRoutes(context: MonitorContext): RouteDefinit
       recordFailedEnqueueResolved(context.db, runId, resolvedAt, spawned.sessionId);
       const resolved = projectFailedEnqueueByRunId(context.db, runId, { includeResolved: true }) ?? { ...failedEnqueue, resolvedAt, canReenqueue: false, disabledReason: 'This failed enqueue has already been re-enqueued.' };
       const response: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue: resolved, queue: await projectQueueForContext(context), runs: projectRunsForContext(context), spawnedSessionId: spawned.sessionId, autoBuild: projectAutoBuildForContext(context) };
+      sendJson(ctx.res, response);
+    } }),
+    defineRoute({ routeKey: 'failedEnqueueDismiss', method: 'POST', pattern: API_ROUTES.failedEnqueueDismiss, security: [localMutation('Failed enqueue dismiss')], async handler(ctx) {
+      const runId = ctx.params.runId;
+      if (!isSafeRouteId(runId)) return sendJsonError(ctx.res, 400, 'Invalid runId');
+      const parsed = await readJsonBody(ctx.req);
+      if (!parsed.ok) return sendInvalidJson(ctx.res, parsed.tooLarge);
+      if (!isPlainObject(parsed.value)) return sendJsonError(ctx.res, 400, 'Invalid request body: must be a JSON object');
+      if (parsed.value.confirm !== true) return sendJsonError(ctx.res, 400, 'Missing required field: confirm must be true');
+      const failedEnqueue = projectFailedEnqueueByRunId(context.db, runId, { includeResolved: true });
+      if (!failedEnqueue) return sendJsonError(ctx.res, 404, `Failed enqueue run not found: ${runId}`);
+      const resolvedAt = failedEnqueue.resolvedAt ?? new Date().toISOString();
+      if (!failedEnqueue.resolvedAt) recordFailedEnqueueResolved(context.db, runId, resolvedAt);
+      const resolved = projectFailedEnqueueByRunId(context.db, runId, { includeResolved: true }) ?? { ...failedEnqueue, resolvedAt, canReenqueue: false, disabledReason: 'This failed enqueue has been dismissed.' };
+      const response: FailedEnqueueDismissResponse = { dismissed: true, failedEnqueue: resolved, queue: await projectQueueForContext(context), runs: projectRunsForContext(context), autoBuild: projectAutoBuildForContext(context) };
       sendJson(ctx.res, response);
     } }),
   ];

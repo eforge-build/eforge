@@ -32,6 +32,8 @@ export type {
   FailedEnqueuesResponse,
   FailedEnqueueReenqueueRequest,
   FailedEnqueueReenqueueResponse,
+  FailedEnqueueDismissRequest,
+  FailedEnqueueDismissResponse,
   SchedulerPauseResponse,
   SchedulerResumeResponse,
   QueueHoldRequest,
@@ -62,7 +64,7 @@ export {
   previewQueueCascade,
   applyQueueCascade,
 } from './browser-queue-control.js';
-export { fetchFailedEnqueues, reenqueueFailedEnqueue } from './browser-failed-enqueue.js';
+export { fetchFailedEnqueues, reenqueueFailedEnqueue, dismissFailedEnqueue } from './browser-failed-enqueue.js';
 export { pauseScheduler, resumeScheduler } from './browser-scheduler.js';
 
 export {
@@ -197,7 +199,7 @@ export { apiStopDaemon, apiStopDaemonIfRunning } from './api/daemon.js';
 export { apiSchedulerKick, apiSchedulerPause, apiSchedulerPauseIfRunning, apiSchedulerResume, apiSchedulerResumeIfRunning } from './api/scheduler.js';
 export type { SchedulerKickResponse } from './api/scheduler.js';
 export { apiPrepareRecoveryGuidance, apiPrepareRecoveryGuidanceIfRunning } from './api/recovery-guidance.js';
-export { apiGetFailedEnqueues, apiGetFailedEnqueuesIfRunning, apiReenqueueFailedEnqueue, apiReenqueueFailedEnqueueIfRunning } from './api/failed-enqueue.js';
+export { apiGetFailedEnqueues, apiGetFailedEnqueuesIfRunning, apiReenqueueFailedEnqueue, apiReenqueueFailedEnqueueIfRunning, apiDismissFailedEnqueue, apiDismissFailedEnqueueIfRunning } from './api/failed-enqueue.js';
 
 export { apiRecover, apiRecoverIfRunning } from './api/recover.js';
 

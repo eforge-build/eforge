@@ -42,18 +42,34 @@ describe('FailedEnqueueRow', () => {
     expect(onReenqueue).toHaveBeenCalledWith(item);
   });
 
+  it('calls onDismiss only after the confirmation action is clicked and explains no work starts', () => {
+    const onDismiss = vi.fn();
+    const item = failed();
+    render(<ul><FailedEnqueueRow failedEnqueue={item} onDismiss={onDismiss} /></ul>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss…' }));
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText(/will not re-enqueue the source or start any work/i)).toBeDefined();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Dismiss' }));
+    expect(onDismiss).toHaveBeenCalledWith(item);
+  });
+
   it('renders disabled fallback reason and next command when one-click re-enqueue is unavailable', () => {
-    render(<ul><FailedEnqueueRow failedEnqueue={failed({ canReenqueue: false, disabledReason: 'Source data is unavailable.', nextCommand: { executable: 'eforge', args: ['history', 'show', 'run-1'] } })} /></ul>);
+    render(<ul><FailedEnqueueRow failedEnqueue={failed({ canReenqueue: false, disabledReason: 'Source data is unavailable.', nextCommand: { executable: 'eforge', args: ['history', 'show', 'run-1'] } })} onDismiss={vi.fn()} /></ul>);
 
     expect(screen.getByText(/Source data is unavailable/)).toBeDefined();
     expect(screen.getByText('eforge history show run-1')).toBeDefined();
     expect(screen.queryByRole('button', { name: /Re-enqueue/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Dismiss…' })).toBeDefined();
   });
 
   it('shows pending label and row-local errors', () => {
-    render(<ul><FailedEnqueueRow failedEnqueue={failed()} pending error="Daemon refused re-enqueue" onReenqueue={vi.fn()} /></ul>);
+    render(<ul><FailedEnqueueRow failedEnqueue={failed()} pending error="Daemon refused re-enqueue" onReenqueue={vi.fn()} onDismiss={vi.fn()} /></ul>);
 
     expect((screen.getByRole('button', { name: 'Re-enqueuing…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Dismiss…' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole('alert').textContent).toContain('Daemon refused re-enqueue');
   });
 });

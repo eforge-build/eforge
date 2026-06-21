@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { reenqueueFailedEnqueue, type FailedEnqueueInfo } from '@eforge-build/client/browser';
+import { dismissFailedEnqueue, reenqueueFailedEnqueue, type FailedEnqueueInfo } from '@eforge-build/client/browser';
 
 interface UseFailedEnqueueActionsInput {
   refreshQueue?: () => Promise<void> | void;
@@ -7,12 +7,14 @@ interface UseFailedEnqueueActionsInput {
   refreshFailedEnqueues?: () => Promise<void> | void;
 }
 
+type FailedEnqueueAction = 'reenqueue' | 'dismiss';
+
 export function useFailedEnqueueActions({ refreshQueue, refreshRuns, refreshFailedEnqueues }: UseFailedEnqueueActionsInput) {
-  const [pendingRunId, setPendingRunId] = React.useState<string | null>(null);
+  const [pending, setPending] = React.useState<{ runId: string; action: FailedEnqueueAction } | null>(null);
   const [errorsByRunId, setErrorsByRunId] = React.useState<Record<string, string>>({});
 
   const reenqueue = React.useCallback(async (failedEnqueue: FailedEnqueueInfo) => {
-    setPendingRunId(failedEnqueue.runId);
+    setPending({ runId: failedEnqueue.runId, action: 'reenqueue' });
     setErrorsByRunId((errors) => ({ ...errors, [failedEnqueue.runId]: '' }));
     try {
       const response = await reenqueueFailedEnqueue(failedEnqueue.runId, { confirm: true });
@@ -36,9 +38,30 @@ export function useFailedEnqueueActions({ refreshQueue, refreshRuns, refreshFail
         [failedEnqueue.runId]: err instanceof Error ? err.message : String(err),
       }));
     } finally {
-      setPendingRunId(null);
+      setPending(null);
     }
   }, [refreshFailedEnqueues, refreshQueue, refreshRuns]);
 
-  return { pendingRunId, errorsByRunId, reenqueue };
+  const dismiss = React.useCallback(async (failedEnqueue: FailedEnqueueInfo) => {
+    setPending({ runId: failedEnqueue.runId, action: 'dismiss' });
+    setErrorsByRunId((errors) => ({ ...errors, [failedEnqueue.runId]: '' }));
+    try {
+      await dismissFailedEnqueue(failedEnqueue.runId, { confirm: true });
+      setErrorsByRunId((errors) => {
+        const next = { ...errors };
+        delete next[failedEnqueue.runId];
+        return next;
+      });
+      await Promise.all([refreshQueue?.(), refreshRuns?.(), refreshFailedEnqueues?.()]);
+    } catch (err) {
+      setErrorsByRunId((errors) => ({
+        ...errors,
+        [failedEnqueue.runId]: err instanceof Error ? err.message : String(err),
+      }));
+    } finally {
+      setPending(null);
+    }
+  }, [refreshFailedEnqueues, refreshQueue, refreshRuns]);
+
+  return { pendingRunId: pending?.runId ?? null, pendingAction: pending?.action ?? null, errorsByRunId, reenqueue, dismiss };
 }

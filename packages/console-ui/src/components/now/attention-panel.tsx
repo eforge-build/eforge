@@ -37,8 +37,10 @@ interface AttentionPanelProps {
   };
   failedEnqueueControls?: {
     pendingRunId: string | null;
+    pendingAction?: 'reenqueue' | 'dismiss' | null;
     errorsByRunId: Record<string, string>;
     onReenqueue: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
+    onDismiss: (failedEnqueue: NonNullable<NowAttentionItem['failedEnqueue']>) => Promise<void> | void;
   };
 }
 
@@ -203,8 +205,10 @@ export function AttentionPanel({ items, hiddenCount, title = 'Attention', onReco
                 key={item.id}
                 failedEnqueue={item.failedEnqueue}
                 pending={failedEnqueueControls?.pendingRunId === item.failedEnqueue.runId}
+                pendingAction={failedEnqueueControls?.pendingAction}
                 error={failedEnqueueControls?.errorsByRunId[item.failedEnqueue.runId]}
                 onReenqueue={failedEnqueueControls?.onReenqueue}
+                onDismiss={failedEnqueueControls?.onDismiss}
               />
             ) : item.extensionTrust ? (
               <ExtensionTrustRow key={item.id} item={item} controls={extensionTrust} />

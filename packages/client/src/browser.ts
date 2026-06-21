@@ -57,6 +57,8 @@ export type {
   FailedEnqueuesResponse,
   FailedEnqueueReenqueueRequest,
   FailedEnqueueReenqueueResponse,
+  FailedEnqueueDismissRequest,
+  FailedEnqueueDismissResponse,
   SchedulerPauseResponse,
   SchedulerResumeResponse,
   QueueHoldRequest,
@@ -170,7 +172,7 @@ export {
   previewQueueCascade,
   applyQueueCascade,
 } from './browser-queue-control.js';
-export { fetchFailedEnqueues, reenqueueFailedEnqueue } from './browser-failed-enqueue.js';
+export { fetchFailedEnqueues, reenqueueFailedEnqueue, dismissFailedEnqueue } from './browser-failed-enqueue.js';
 export { pauseScheduler, resumeScheduler } from './browser-scheduler.js';
 
 export {

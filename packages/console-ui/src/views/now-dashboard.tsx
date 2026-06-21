@@ -139,8 +139,10 @@ export function NowDashboard({ projectState, activeSessions, onNavigate, refresh
             }}
             failedEnqueueControls={{
               pendingRunId: failedEnqueueActions.pendingRunId,
+              pendingAction: failedEnqueueActions.pendingAction,
               errorsByRunId: failedEnqueueActions.errorsByRunId,
               onReenqueue: failedEnqueueActions.reenqueue,
+              onDismiss: failedEnqueueActions.dismiss,
             }}
           />
           <ActiveBuildsGrid

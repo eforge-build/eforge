@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_ROUTES, buildPath } from '@eforge-build/client';
 import { startControlRouteHarness, type ControlRouteHarness } from './routes-control-harness.js';
 
@@ -10,6 +10,10 @@ const t2 = '2026-06-19T11:00:00.000Z';
 
 function reenqueuePath(runId: string): string {
   return buildPath(API_ROUTES.failedEnqueueReenqueue, { runId });
+}
+
+function dismissPath(runId: string): string {
+  return buildPath(API_ROUTES.failedEnqueueDismiss, { runId });
 }
 
 function insertFailedEnqueue(runId: string, options: { source?: string; error?: string; summary?: string } = {}): void {
@@ -31,6 +35,7 @@ describe('failed enqueue routes', () => {
 
     expect((await harness.rawGet(API_ROUTES.failedEnqueues, { host: 'evil.example' })).status).toBe(403);
     expect((await harness.rawPost(reenqueuePath('run-1'), JSON.stringify({ confirm: true }), { host: 'evil.example', 'content-type': 'application/json' })).status).toBe(403);
+    expect((await harness.rawPost(dismissPath('run-1'), JSON.stringify({ confirm: true }), { host: 'evil.example', 'content-type': 'application/json' })).status).toBe(403);
   });
 
   it('lists unresolved failed enqueue projections from durable DB state', async () => {
@@ -45,7 +50,7 @@ describe('failed enqueue routes', () => {
     ]);
   });
 
-  it('validates re-enqueue bodies and returns 404 for unknown run ids', async () => {
+  it('validates re-enqueue and dismiss bodies and returns 404 for unknown run ids', async () => {
     harness = await startControlRouteHarness();
 
     expect((await harness.postJson(reenqueuePath('run-1'), {})).status).toBe(400);
@@ -53,6 +58,9 @@ describe('failed enqueue routes', () => {
     expect((await harness.rawPost(reenqueuePath('run-1'), '{not-json', { 'content-type': 'application/json' })).status).toBe(400);
     expect((await harness.postJson(reenqueuePath('../bad'), { confirm: true })).status).toBe(400);
     expect((await harness.postJson(reenqueuePath('missing'), { confirm: true })).status).toBe(404);
+    expect((await harness.postJson(dismissPath('run-1'), {})).status).toBe(400);
+    expect((await harness.postJson(dismissPath('../bad'), { confirm: true })).status).toBe(400);
+    expect((await harness.postJson(dismissPath('missing'), { confirm: true })).status).toBe(404);
   });
 
   it('returns disabled metadata, queue, runs, and next command when source data is missing', async () => {
@@ -93,5 +101,21 @@ describe('failed enqueue routes', () => {
     await expect(res.json()).resolves.toMatchObject({ enqueued: true, spawnedSessionId: 'spawned-session-1' });
     const [eventRow] = harness.db.getDaemonEventsAfter(0).filter((row) => row.type === 'daemon:failed-enqueue:resolved');
     expect(JSON.parse(eventRow!.data)).toMatchObject({ runId: 'run-1', spawnedSessionId: 'spawned-session-1' });
+  });
+
+  it('dismisses a failed enqueue without spawning a worker', async () => {
+    const spawnWorker = vi.fn(() => ({ sessionId: 'should-not-spawn', pid: 123 }));
+    harness = await startControlRouteHarness({ serverOptions: { workerTracker: { spawnWorker, cancelWorker: () => false } } });
+    insertFailedEnqueue('run-1', { source: 'docs/prd.md', error: 'bad source' });
+
+    const res = await harness.postJson(dismissPath('run-1'), { confirm: true });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ dismissed: true, failedEnqueue: { runId: 'run-1', canReenqueue: false, resolvedAt: expect.any(String), disabledReason: expect.stringContaining('has been dismissed') } });
+    expect(spawnWorker).not.toHaveBeenCalled();
+    expect((await (await harness.get(API_ROUTES.failedEnqueues)).json())).toEqual([]);
+    const [eventRow] = harness.db.getDaemonEventsAfter(0).filter((row) => row.type === 'daemon:failed-enqueue:resolved');
+    expect(JSON.parse(eventRow!.data)).toMatchObject({ runId: 'run-1' });
+    expect(JSON.parse(eventRow!.data).spawnedSessionId).toBeUndefined();
   });
 });

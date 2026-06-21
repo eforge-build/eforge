@@ -1,5 +1,7 @@
 import { API_ROUTES, buildPath } from './routes.js';
 import type {
+  FailedEnqueueDismissRequest,
+  FailedEnqueueDismissResponse,
   FailedEnqueueReenqueueRequest,
   FailedEnqueueReenqueueResponse,
   FailedEnqueuesResponse,
@@ -35,4 +37,12 @@ export function reenqueueFailedEnqueue(
   init?: RequestInit,
 ): Promise<FailedEnqueueReenqueueResponse> {
   return postJson<FailedEnqueueReenqueueResponse>(buildPath(API_ROUTES.failedEnqueueReenqueue, { runId }), body, init);
+}
+
+export function dismissFailedEnqueue(
+  runId: string,
+  body: FailedEnqueueDismissRequest,
+  init?: RequestInit,
+): Promise<FailedEnqueueDismissResponse> {
+  return postJson<FailedEnqueueDismissResponse>(buildPath(API_ROUTES.failedEnqueueDismiss, { runId }), body, init);
 }

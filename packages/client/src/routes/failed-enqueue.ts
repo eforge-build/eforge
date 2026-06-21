@@ -6,6 +6,10 @@ export interface FailedEnqueueReenqueueRequest {
   confirm: true;
 }
 
+export interface FailedEnqueueDismissRequest {
+  confirm: true;
+}
+
 interface FailedEnqueueReenqueueResponseBase {
   failedEnqueue: FailedEnqueueInfo;
   queue: QueueItemWithCapabilities[];
@@ -24,3 +28,11 @@ export type FailedEnqueueReenqueueResponse = FailedEnqueueReenqueueResponseBase 
     nextCommand?: FailedEnqueueRecoveryCommand;
   }
 );
+
+export interface FailedEnqueueDismissResponse {
+  dismissed: true;
+  failedEnqueue: FailedEnqueueInfo;
+  queue: QueueItemWithCapabilities[];
+  runs: RunInfo[];
+  autoBuild?: AutoBuildState;
+}

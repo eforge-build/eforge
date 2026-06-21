@@ -78,6 +78,7 @@ export const API_ROUTES = {
   schedulerKick: '/api/scheduler/kick',
   failedEnqueues: '/api/enqueue/failed',
   failedEnqueueReenqueue: '/api/enqueue/failed/:runId/reenqueue',
+  failedEnqueueDismiss: '/api/enqueue/failed/:runId/dismiss',
   schedulerPause: '/api/scheduler/pause',
   schedulerResume: '/api/scheduler/resume',
   playbookList: '/api/playbook/list',

@@ -71,10 +71,18 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
   const saveMetadata = (input: MetadataInput) =>
     mutate('update-session-plan-metadata', { profile: input.profile, agentProfile: input.agentProfile, openQuestions: input.openQuestions }, 'Updated metadata.').then(() => undefined);
 
-  const checkReadiness = () => void mutate('check-session-plan-readiness', {}, 'Readiness checked.');
   const setReady = () => void mutate('set-session-plan-ready', {}, 'Marked ready.');
+  const readinessPasses = readiness.ready === true;
+  const statusReady = plan.status === 'ready';
+  const canMarkReady = readinessPasses && !statusReady;
+  const canHandoff = readinessPasses && statusReady;
+
+  React.useEffect(() => {
+    if (!canHandoff) setConfirmingHandoff(false);
+  }, [canHandoff]);
 
   const handoff = async () => {
+    if (!canHandoff) return;
     if (!confirmingHandoff) { setConfirmingHandoff(true); setConfirmingDelete(false); return; }
     setConfirmingHandoff(false);
     try {
@@ -105,9 +113,9 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
   const missingCount = (readiness.missingDimensions?.length ?? 0) + (readiness.acDiagnostics?.length ?? 0);
   const coveredCount = readiness.coveredDimensions?.length ?? 0;
   const totalCount = coveredCount + (readiness.missingDimensions?.length ?? 0) + (readiness.skippedDimensions?.length ?? 0);
-  const readinessSummary = readiness.ready
-    ? 'Ready to hand off'
-    : totalCount > 0 ? `${coveredCount}/${totalCount} covered · ${missingCount} to resolve` : 'Not started';
+  const readinessSummary = canHandoff
+    ? 'Ready for handoff'
+    : readinessPasses ? 'Checks pass · mark ready to hand off' : totalCount > 0 ? `${coveredCount}/${totalCount} covered · ${missingCount} to resolve` : 'Not started';
 
   return (
     <Card>
@@ -117,23 +125,29 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
           <CardDescription>{plan.session}</CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" disabled={locked} onClick={checkReadiness}>Check readiness</Button>
-          <Button size="sm" disabled={locked || !readiness.ready} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Set ready</Button>
+          {canMarkReady && <Button variant="secondary" size="sm" disabled={locked} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Mark ready</Button>}
           <Button variant={confirmingDelete ? 'destructive' : 'outline'} size="sm" disabled={locked} onClick={() => void deletePlan()} onBlur={() => setConfirmingDelete(false)}>
             <Trash2 className="h-4 w-4" /> {confirmingDelete ? 'Confirm delete' : 'Delete'}
           </Button>
-          <Button variant={confirmingHandoff ? 'destructive' : 'secondary'} size="sm" disabled={locked} onClick={() => void handoff()} onBlur={() => setConfirmingHandoff(false)}>
+          <Button
+            variant={confirmingHandoff ? 'destructive' : 'secondary'}
+            size="sm"
+            disabled={locked || !canHandoff}
+            title={canHandoff ? undefined : readinessPasses ? 'Mark ready before handoff.' : 'Resolve readiness issues before handoff.'}
+            onClick={() => void handoff()}
+            onBlur={() => setConfirmingHandoff(false)}
+          >
             {confirmingHandoff ? 'Confirm handoff' : 'Handoff'} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge>{plan.status}</Badge>
-          <Badge variant={readiness.ready ? 'default' : 'outline'}>{readiness.ready ? 'ready' : 'not ready'}</Badge>
+          {!statusReady && <Badge>{plan.status}</Badge>}
+          {!canHandoff && <Badge variant={readinessPasses ? 'default' : 'outline'}>{readinessPasses ? 'checks pass' : 'not ready'}</Badge>}
           {plan.planning_type && <Badge variant="outline">{plan.planning_type}</Badge>}
           {plan.planning_depth && <Badge variant="outline">{plan.planning_depth}</Badge>}
-          <span className={`ml-auto text-xs font-semibold ${readiness.ready ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
+          <span className={`ml-auto text-xs font-semibold ${canHandoff ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
         </div>
 
         <ReadinessChecklist plan={plan} readiness={readiness} disabled={locked} onSetSection={setSection} onSelectDimensions={selectDimensions} />

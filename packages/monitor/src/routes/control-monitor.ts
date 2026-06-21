@@ -43,6 +43,7 @@ export const CONTROL_MONITOR_ROUTE_KEYS = [
   'queueRecoveryApply',
   'failedEnqueues',
   'failedEnqueueReenqueue',
+  'failedEnqueueDismiss',
   'queue',
   'sessionMetadata',
   'runs',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { API_ROUTES, buildPath, type FailedEnqueueInfo, type FailedEnqueueReenqueueResponse } from '../index.js';
+import { API_ROUTES, buildPath, type FailedEnqueueDismissResponse, type FailedEnqueueInfo, type FailedEnqueueReenqueueResponse } from '../index.js';
 import { DAEMON_EVENT_TYPES, eventRegistry, getEventSummary, type ProjectableState } from '../event-registry.js';
 import { safeParseDaemonStreamSnapshot, safeParseEforgeEvent } from '../events.js';
 
@@ -33,8 +33,11 @@ describe('failed enqueue contracts', () => {
   it('exposes routes and response wire types', () => {
     expect(API_ROUTES.failedEnqueues).toBe('/api/enqueue/failed');
     expect(buildPath(API_ROUTES.failedEnqueueReenqueue, { runId: 'run/1' })).toBe('/api/enqueue/failed/run%2F1/reenqueue');
+    expect(buildPath(API_ROUTES.failedEnqueueDismiss, { runId: 'run/1' })).toBe('/api/enqueue/failed/run%2F1/dismiss');
     const response: FailedEnqueueReenqueueResponse = { enqueued: true, failedEnqueue, queue: [], runs: [], spawnedSessionId: 'session-2' };
+    const dismissResponse: FailedEnqueueDismissResponse = { dismissed: true, failedEnqueue: { ...failedEnqueue, canReenqueue: false, resolvedAt: '2026-06-19T11:00:00.000Z' }, queue: [], runs: [] };
     expect(response.spawnedSessionId).toBe('session-2');
+    expect(dismissResponse.dismissed).toBe(true);
   });
 
   it('parses snapshot and event schemas', () => {
