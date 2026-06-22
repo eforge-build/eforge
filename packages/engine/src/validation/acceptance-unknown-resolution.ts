@@ -230,7 +230,19 @@ function commandEvidenceMatches(record: ValidationCommandEvidence, evidence: Acc
   const commandText = evidence.argv.join(' ');
   if (record.command !== commandText) return false;
   if (typeof evidence.output !== 'string') return true;
-  return (record.output ?? '').includes(evidence.output);
+  return commandEvidenceText(record).includes(evidence.output);
+}
+
+function commandEvidenceText(record: ValidationCommandEvidence): string {
+  const output = record.output ?? '';
+  try {
+    const parsed = JSON.parse(output) as { stdout?: unknown; stderr?: unknown };
+    const stdout = typeof parsed.stdout === 'string' ? parsed.stdout : '';
+    const stderr = typeof parsed.stderr === 'string' ? parsed.stderr : '';
+    return `${output}\n${stdout}\n${stderr}`;
+  } catch {
+    return output;
+  }
 }
 
 function fileEvidenceMatches(pathValue: string, excerpt: string, verification: AcceptanceUnknownEvidenceVerificationOptions): boolean {

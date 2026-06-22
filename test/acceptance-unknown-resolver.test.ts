@@ -59,6 +59,20 @@ describe('acceptance unknown resolver parsing', () => {
     expect(merged.passed).toBe(false);
     expect(merged.verdicts[0]).toMatchObject({ verdict: 'fail', evidence: expect.stringContaining('git grep success') });
   });
+
+  it('verifies command evidence against recorded read-only command stdout', () => {
+    const parsed = parseAcceptanceUnknownResolverOutput(JSON.stringify({
+      verdicts: [{ criterion: 'ac-001', verdict: 'pass', evidence: { type: 'command', argv: ['git', 'grep', 'success'], output: 'src/cli.ts:success branch\n' } }],
+    }), UNKNOWN, {
+      commandEvidence: [{
+        command: 'git grep success',
+        exitCode: 0,
+        output: JSON.stringify({ exitCode: 0, stdout: 'src/cli.ts:success branch\n', stderr: '' }, null, 2),
+      }],
+    });
+
+    expect(parsed).toEqual([{ criterion: 'ac-001', verdict: 'pass', evidence: { type: 'command', argv: ['git', 'grep', 'success'], output: 'src/cli.ts:success branch' } }]);
+  });
 });
 
 describe('acceptance read-only command tool', () => {
