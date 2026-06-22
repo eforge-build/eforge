@@ -1,0 +1,59 @@
+name: extract-standalone-eforge-playbooks-extension
+description: Extract playbook workflow ownership into a standalone first-party
+  eforge-playbooks native extension and remove direct daemon/client/core Console
+  playbook surfaces.
+created: 2026-06-22
+status: draft
+mode: expedition
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+  - pnpm docs:check
+architecture:
+  status: complete
+modules:
+  foundation-queue-contract:
+    description: Add any producer-agnostic generic queue handoff fields needed by
+      extension-owned playbook runs, with tests for ctx.buildQueue.enqueue
+      behavior.
+    depends_on: []
+    status: pending
+  playbooks-extension:
+    description: Create and register the @eforge-build/eforge-playbooks extension
+      package with playbook actions, schemas, capabilities, optional eforge-plan
+      dependency, Console contribution, README, and package tests.
+    depends_on:
+      - foundation-queue-contract
+    status: pending
+  boundary-removal:
+    description: Remove direct playbook daemon/client/workflow-adapter surfaces and
+      update route/client tests to assert extension-owned boundaries.
+    depends_on:
+      - playbooks-extension
+    status: pending
+  host-migration:
+    description: Migrate CLI, MCP/Claude, Pi tools/commands, and playbook skills to
+      generic eforge-playbooks contribution invocation while preserving
+      user-facing workflows.
+    depends_on:
+      - playbooks-extension
+      - boundary-removal
+    status: pending
+  console-surface:
+    description: Remove the core Console Playbooks System section and rely on
+      eforge-playbooks extension Console contributions or workstation entries
+      for playbook management.
+    depends_on:
+      - playbooks-extension
+      - boundary-removal
+    status: pending
+  docs-and-regression-guards:
+    description: Update user/reference docs and add final boundary,
+      planning-dependency, extension-unavailable, package-registration, and
+      cross-host regression guards.
+    depends_on:
+      - host-migration
+      - console-surface
+    status: pending
