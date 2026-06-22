@@ -293,7 +293,8 @@ describe('loadDocPage', () => {
     const raw = readGuide('troubleshooting');
     const expectedSnippets = [
       'eforge daemon status',
-      'eforge daemon stop',
+      'eforge daemon restart',
+      'eforge daemon restart --force',
       'eforge daemon kill',
       'pnpm docs:generate',
       'pnpm docs:check',

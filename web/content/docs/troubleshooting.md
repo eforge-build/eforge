@@ -15,18 +15,16 @@ eforge assigns each project a deterministic port in the 4567-4667 range. If the 
 eforge daemon status
 ```
 
-**Stop the daemon and retry:**
+**Restart the daemon:**
 
 ```bash
-eforge daemon stop
-eforge daemon start
+eforge daemon restart
 ```
 
-`daemon stop` includes an active-build safety check: it refuses to stop while builds are running unless you pass `--force`. The `--force` flag bypasses the safety check:
+`daemon restart` stops the daemon before starting it again. The stop phase runs the active-build safety check: in interactive terminals it prompts before stopping active builds, while non-interactive runs proceed to avoid blocking scripts. The `--force` flag skips that check and prompt:
 
 ```bash
-eforge daemon stop --force
-eforge daemon start
+eforge daemon restart --force
 ```
 
 **Last resort - SIGKILL:**
@@ -35,9 +33,9 @@ eforge daemon start
 eforge daemon kill
 ```
 
-`daemon kill` sends SIGKILL to the daemon process and is the last resort when the daemon is unresponsive. Any in-progress builds will be interrupted. The `/eforge:restart` skill wraps this flow with an active-build check; use it from Claude Code or Pi for the safest restart path.
+`daemon kill` sends SIGKILL to the daemon process and is the last resort when the daemon is unresponsive. Any in-progress builds will be interrupted. Use `eforge daemon restart` or the `/eforge:restart` skill from Claude Code or Pi for an active-build safety check.
 
-After a force stop or kill, check `eforge daemon status` before starting a new build to confirm the daemon is healthy.
+After a forced restart or kill, check `eforge daemon status` before starting a new build to confirm the daemon is healthy.
 
 ## `pnpm docs:check` reports drift or broken links
 
