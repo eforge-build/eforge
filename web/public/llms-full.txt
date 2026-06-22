@@ -3726,7 +3726,7 @@ eforge daemon status
 eforge daemon restart
 ```
 
-`daemon restart` stops the daemon before starting it again. The stop phase includes an active-build safety check: it refuses to stop while builds are running unless you pass `--force`. The `--force` flag bypasses the safety check:
+`daemon restart` stops the daemon before starting it again. The stop phase runs the active-build safety check: in interactive terminals it prompts before stopping active builds, while non-interactive runs proceed to avoid blocking scripts. The `--force` flag skips that check and prompt:
 
 ```bash
 eforge daemon restart --force
