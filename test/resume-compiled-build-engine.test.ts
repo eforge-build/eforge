@@ -580,6 +580,41 @@ depends_on: ["${prdId}"]
     expect(md).toContain(baseBranch);
   });
 
+  it('refreshes sidecars for failed queued resume with acceptance-validation terminal evidence and no plan events', async () => {
+    const cwd = initRepo();
+    const prdId = 'acceptance-terminal-resume-prd';
+    const setName = 'acceptance-terminal-resume-set';
+    createFeatureBranchWithArtifacts(cwd, setName);
+    seedFailedQueuedResumePrd(cwd, prdId, setName);
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const runId = 'acceptance-terminal-resume-run';
+    const ts = '2026-01-01T00:00:00.000Z';
+    db.insertRun({ id: runId, planSet: setName, command: 'continue-repair', status: 'failed', startedAt: ts, cwd });
+    insertRecoverySelectionEvent(db, runId, 'build:resume:start', undefined, ts, { prdId, setName });
+    insertRecoverySelectionEvent(db, runId, 'prd_validation:complete', undefined, ts, { passed: true, gaps: [], completionPercent: 99 });
+    insertRecoverySelectionEvent(db, runId, 'acceptance_validation:complete', undefined, ts, { passed: false, verdicts: [{ criterion: 'C1', verdict: 'unknown', evidence: 'Needs resolver evidence.' }], source: 'prd' });
+    insertRecoverySelectionEvent(db, runId, 'build:terminal-failure', undefined, ts, { runId, failure: { scope: 'acceptance-validation', message: 'Acceptance criteria validation inconclusive', authoritative: true, sourceEventType: 'acceptance_validation:complete', acceptanceValidationPassed: false } });
+    insertRecoverySelectionEvent(db, runId, 'phase:end', undefined, ts, { runId, result: { status: 'failed', summary: 'Acceptance criteria validation failed' } });
+    db.close();
+
+    const result = await finalizeFailedQueuedResumeSidecars({
+      cwd,
+      prdId,
+      setName,
+      featureBranch: `eforge/${setName}`,
+      baseBranch: 'main',
+      agentRuntimes: new StubHarness([{ text: recoveryAnalystManualXml('acceptance-validation') }]),
+      config: DEFAULT_CONFIG,
+      resumeRunId: runId,
+    });
+
+    expect(result.status).toBe('refreshed');
+    const parsed = JSON.parse(readFileSync(join(cwd, '.eforge', 'queue', 'failed', `${prdId}.recovery.json`), 'utf-8')) as any;
+    expect(parsed.boundedEvidence.terminalFailure.scope).toBe('acceptance-validation');
+    expect(parsed.boundedEvidence.acceptanceValidation.passed).toBe(false);
+    expect(parsed.boundedEvidence.landedCommits.length).toBeGreaterThan(0);
+  });
+
   it('writes degraded manual sidecar for activated resume evidence without summarizable plan evidence', async () => {
     const cwd = initRepo();
     const prdId = 'degraded-evidence-prd';
