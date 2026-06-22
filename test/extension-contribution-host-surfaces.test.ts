@@ -27,6 +27,7 @@ describe('host contribution CLI surface', () => {
     expect(extension, 'extension command').toBeDefined();
     expect(contributions, 'extension contributions command group').toBeDefined();
     expect(commandNames(contributions)).toContain('list');
+    expect(commandNames(contributions)).toContain('show');
     expect(commandNames(contributions)).toContain('invoke');
   });
 
@@ -35,8 +36,14 @@ describe('host contribution CLI surface', () => {
 
     expect(source).toContain('listEforgeExtensionContributions');
     expect(source).toContain('invokeEforgeExtensionContribution');
+    expect(source).toContain('formatExtensionContributionListText');
+    expect(source).toContain('formatExtensionContributionDetailText');
     expect(source).toContain('formatExtensionContributionOutputText');
+    expect(source).toContain('createExtensionContributionFailedInvocationEnvelope');
+    expect(source).toContain('showExtensionContributionManifestEntry');
     expect(source).toContain('JSON.stringify(result, null, 2)');
+    expect(source).toContain('--include-schema');
+    expect(source).toContain('--include-diagnostics');
     expect(source).toContain('--input-json <json>');
     expect(source).toContain('--input-file <path>');
     expect(source).toContain("requestedBy: { host: 'cli' }");
@@ -76,19 +83,25 @@ describe('host contribution CLI surface', () => {
 });
 
 describe('host contribution MCP surface', () => {
-  it('registers a daemon-backed MCP tool for list and invoke with typed user errors', () => {
+  it('registers a daemon-backed MCP tool for list, show, and invoke with typed user errors', () => {
     const source = readRepoFile('packages/eforge/src/cli/mcp-extension-contributions.ts');
 
     expect(source).toContain('eforge_extension_contribution');
     expect(source).toContain('createDaemonTool');
     expect(source).toContain('listEforgeExtensionContributions');
     expect(source).toContain('invokeEforgeExtensionContribution');
+    expect(source).toContain('formatExtensionContributionListText');
+    expect(source).toContain('formatExtensionContributionDetailText');
     expect(source).toContain('formatExtensionContributionOutputText');
+    expect(source).toContain('createExtensionContributionFailedInvocationEnvelope');
+    expect(source).toContain('showExtensionContributionManifestEntry');
     expect(source).toContain('formatResponse');
     expect(source).toContain("host: 'mcp'");
     expect(source).toContain('McpUserError');
     expect(source).toContain('list');
+    expect(source).toContain('show');
     expect(source).toContain('invoke');
+    expect(source).not.toContain('JSON.stringify(payload');
     expect(source).not.toContain('/api/');
     expect(source).not.toContain('dispatchEforgeExtensionAction');
   });
@@ -114,12 +127,20 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain("host: 'pi'");
     expect(source).toContain('listEforgeExtensionContributionsIfRunning');
     expect(source).toContain('invokeEforgeExtensionContributionIfRunning');
+    expect(source).toContain('formatExtensionContributionListText');
+    expect(source).toContain('formatExtensionContributionDetailText');
     expect(source).toContain('formatExtensionContributionOutputText');
+    expect(source).toContain('showExtensionContributionManifestEntry');
+    expect(source).toContain('apiGetExtensionContributionManifestIfRunning');
+    expect(source).toContain('createExtensionContributionFailedInvocationEnvelope');
     expect(uxSource).toContain('formatExtensionContributionOutputText');
+    expect(uxSource).toContain('formatExtensionContributionFailedInvocationEnvelopeText');
     expect(source).toContain('DAEMON_NOT_RUNNING_GUIDANCE');
     expect(source).toContain('prepareContributionInput');
     expect(source).toContain('formatInvocationPanel');
+    expect(source).toContain('includeInputSchema: true');
     expect(source).not.toContain("ctx.ui.editor('eforge extensions - JSON input', '{}')");
+    expect(source).not.toContain('JSON.stringify(result, null, 2)');
     for (const contributionSource of [source, uxSource]) {
       expect(contributionSource).not.toContain('ensureDaemon');
       expect(contributionSource).not.toContain('daemonRequest(');

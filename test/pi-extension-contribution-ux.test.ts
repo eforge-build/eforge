@@ -140,7 +140,7 @@ describe('Pi extension contribution invocation panel formatting', () => {
     expect(arrayPanel.content).toContain('[\n  1,\n  2\n]');
   });
 
-  it('renders failure code, message, and details as fenced JSON', () => {
+  it('renders failed invocation summaries without raw error details', () => {
     const panel = formatInvocationPanel(result({
       ok: false,
       invocationId: 'invoke-failed',
@@ -149,6 +149,8 @@ describe('Pi extension contribution invocation panel formatting', () => {
 
     expect(panel.title).toBe('eforge extensions - Failure');
     expect(panel.content).toContain('invalid-input: Bad input');
-    expect(panel.content).toContain('```json\n{\n  "field": "name"\n}\n```');
+    expect(panel.content).toContain('Input summary: 0 keys [], serialized size 2 chars');
+    expect(panel.content).not.toContain('```json');
+    expect(panel.content).not.toContain('"field"');
   });
 });

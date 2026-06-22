@@ -1,12 +1,9 @@
 import {
-  type ExtensionActionInvokeFailureResponse,
   type ExtensionActionInvokeResponse,
   type ExtensionActionManifestEntry,
   type ExtensionActionOutputProfile,
-  type ExtensionContributionAvailability,
   type ExtensionActionRequestedBy,
-  type ExtensionActionSideEffect,
-  type ExtensionContributionDiagnostic,
+  type ExtensionContributionAvailability,
   type ExtensionContributionManifestResponse,
   type ExtensionDeepLinkManifestEntry,
   type ExtensionJsonObject,
@@ -18,124 +15,36 @@ import {
   apiInvokeExtensionAction,
   apiInvokeExtensionActionIfRunning,
 } from './extension-contributions.js';
+import {
+  EXTENSION_HOST_CONTRIBUTION_KINDS,
+  type ExtensionHostContributionDetailOptions,
+  type ExtensionHostContributionDetailResponse,
+  type ExtensionHostContributionEntry,
+  type ExtensionHostContributionFailedInvocationEnvelope,
+  type ExtensionHostContributionInputSummary,
+  type ExtensionHostContributionInvokeParams,
+  type ExtensionHostContributionInvokeResult,
+  type ExtensionHostContributionInvokeTarget,
+  type ExtensionHostContributionKind,
+  type ExtensionHostContributionListResponse,
+  type ExtensionHostContributionProjectionOptions,
+} from './extension-contribution-projection-types.js';
 
-export const EXTENSION_HOST_CONTRIBUTION_KINDS = ['action', 'command', 'deep-link'] as const;
-export type ExtensionHostContributionKind = typeof EXTENSION_HOST_CONTRIBUTION_KINDS[number];
-
-// --- eforge:region plan-01-shared-contribution-projection ---
-export type ExtensionHostContributionProjection = 'compact' | 'full';
-
-export interface ExtensionHostContributionProjectionOptions {
-  projection?: ExtensionHostContributionProjection;
-  kind?: ExtensionHostContributionKind | 'all';
-  extensionName?: string;
-  search?: string;
-  idPrefix?: string;
-  outputProfile?: ExtensionActionOutputProfile;
-  limit?: number;
-  offset?: number;
-  includeInputSchema?: boolean;
-  includeDiagnostics?: boolean;
-}
-
-export interface ExtensionHostContributionDetailOptions {
-  id: string;
-  kind?: ExtensionHostContributionKind;
-  projection?: ExtensionHostContributionProjection;
-  includeInputSchema?: boolean;
-  includeDiagnostics?: boolean;
-}
-
-export interface ExtensionHostContributionInputSummary {
-  inputKeys: string[];
-  inputKeyCount: number;
-  serializedInputSize: number;
-  omittedInputKeyCount?: number;
-  truncatedInputKeyCount?: number;
-}
-// --- eforge:endregion plan-01-shared-contribution-projection ---
-
-export interface ExtensionHostContributionEntry {
-  kind: ExtensionHostContributionKind;
-  id: string;
-  label: string;
-  description?: string;
-  extensionName: string;
-  extensionPath: string;
-  actionId?: string;
-  urlTemplate?: string;
-  actionBacked: boolean;
-  sideEffects?: ExtensionActionSideEffect[];
-  outputProfile?: ExtensionActionOutputProfile;
-  // --- eforge:region plan-01-shared-contribution-projection ---
-  hasInputSchema?: boolean;
-  requiredInputKeys?: string[];
-  inputPropertyKeys?: string[];
-  inputDefaultKeys?: string[];
-  // --- eforge:endregion plan-01-shared-contribution-projection ---
-  inputSchema?: ExtensionJsonObject;
-  inputDefaults?: ExtensionJsonObject;
-  availability?: ExtensionContributionAvailability;
-}
-
-export interface ExtensionHostContributionListResponse {
-  generatedAt: string;
-  entries: ExtensionHostContributionEntry[];
-  // --- eforge:region plan-01-shared-contribution-projection ---
-  diagnosticCount: number;
-  total: number;
-  returned: number;
-  offset: number;
-  limit?: number;
-  hasMore: boolean;
-  nextOffset?: number;
-  // --- eforge:endregion plan-01-shared-contribution-projection ---
-  diagnostics?: ExtensionContributionDiagnostic[];
-}
-
-// --- eforge:region plan-01-shared-contribution-projection ---
-export interface ExtensionHostContributionDetailResponse {
-  generatedAt: string;
-  entry: ExtensionHostContributionEntry;
-  diagnosticCount: number;
-  diagnostics?: ExtensionContributionDiagnostic[];
-}
-// --- eforge:endregion plan-01-shared-contribution-projection ---
-
-export interface ExtensionHostContributionInvokeParams {
-  kind?: ExtensionHostContributionKind;
-  id: string;
-  input?: ExtensionJsonObject;
-  requestedBy: ExtensionActionRequestedBy;
-}
-
-export interface ExtensionHostContributionInvokeTarget {
-  kind: ExtensionHostContributionKind;
-  id: string;
-  label: string;
-  extensionName: string;
-  extensionPath: string;
-  actionId: string;
-  requestedBy: ExtensionActionRequestedBy;
-  input: ExtensionJsonObject;
-  outputProfile?: ExtensionActionOutputProfile;
-}
-
-export interface ExtensionHostContributionInvokeResult {
-  target: ExtensionHostContributionInvokeTarget;
-  response: ExtensionActionInvokeResponse;
-}
-
-// --- eforge:region plan-01-shared-contribution-projection ---
-export interface ExtensionHostContributionFailedInvocationEnvelope {
-  ok: false;
-  invocationId: string;
-  target: Omit<ExtensionHostContributionInvokeTarget, 'input' | 'requestedBy'>;
-  requestedBy: ExtensionActionRequestedBy;
-  error: Pick<ExtensionActionInvokeFailureResponse['error'], 'code' | 'message'> & { messageTruncated?: boolean };
-  inputSummary: ExtensionHostContributionInputSummary;
-}
-// --- eforge:endregion plan-01-shared-contribution-projection ---
+export {
+  EXTENSION_HOST_CONTRIBUTION_KINDS,
+  type ExtensionHostContributionDetailOptions,
+  type ExtensionHostContributionDetailResponse,
+  type ExtensionHostContributionEntry,
+  type ExtensionHostContributionFailedInvocationEnvelope,
+  type ExtensionHostContributionInputSummary,
+  type ExtensionHostContributionInvokeParams,
+  type ExtensionHostContributionInvokeResult,
+  type ExtensionHostContributionInvokeTarget,
+  type ExtensionHostContributionKind,
+  type ExtensionHostContributionListResponse,
+  type ExtensionHostContributionProjection,
+  type ExtensionHostContributionProjectionOptions,
+} from './extension-contribution-projection-types.js';
 
 interface ResolveResult {
   target: ExtensionHostContributionInvokeTarget;

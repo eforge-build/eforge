@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -74,7 +74,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing and invoking extension-provided commands and deep links, including the optional [eforge-plan](/docs/eforge-plan) planning entry when that extension is loaded.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links with compact list output, including the optional [eforge-plan](/docs/eforge-plan) planning entry when that extension is loaded.
 
 ### Pi commands
 
@@ -113,7 +113,8 @@ eforge daemon start
 eforge daemon stop
 eforge daemon restart
 eforge extension list
-eforge extension contributions list
+eforge extension contributions list --kind command --search planning --limit 20
+eforge extension contributions show <id> --kind command --include-schema
 eforge extension contributions invoke <id> --kind command
 eforge stack sync
 eforge stack sync --dry-run
@@ -123,9 +124,9 @@ For standalone use, run `/eforge:init` in Claude Code or Pi first to create `efo
 
 ## Extension host contributions
 
-Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list`, CLI `eforge extension contributions invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same command and deep-link IDs. Optional first-party eforge-plan planning is discovered through this generic routing rather than through a kernel-owned planning command. Manifest entries also carry dependency/capability availability metadata; unavailable actions are rejected with error code `unavailable`.
+Native extensions can publish shared manifest metadata for actions, declarative Console panels, integration commands, and deep links. The same daemon-owned manifest feeds CLI `eforge extension contributions list|show|invoke`, MCP/Claude `eforge_extension_contribution`, Pi `eforge_extension_contribution`, and Pi `/eforge:extensions`, so hosts discover the same action, command, and deep-link IDs. Optional first-party eforge-plan planning is discovered through this generic routing rather than through a kernel-owned planning command. Manifest entries also carry dependency/capability availability metadata; unavailable actions are rejected with error code `unavailable`.
 
-Action-backed commands and deep links can be invoked generically through those host surfaces. Non-JSON host output is formatted for bounded display: exact `{ markdown: string }` outputs render as Markdown/plain text, oversized JSON is summarized with warnings and preserved identity/count/continuation fields, and rich/debug output profiles warn in coding-agent hosts. Use CLI `--json` or direct client/HTTP invocation only when you intentionally need the full raw action result. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; richer extension UI uses registered sandboxed workstations (`srcDoc` or daemon-owned `frameBundle` assets), not arbitrary parent-Console frontend bundles.
+Actions, action-backed commands, and action-backed deep links can be invoked generically through those host surfaces. Contribution list output is compact by default; use list filters and `show <id>` / `action: "show"` for focused detail, and opt into schemas, diagnostics, or full projections only when needed. Non-JSON host output is formatted for bounded display: exact `{ markdown: string }` outputs render as Markdown/plain text, oversized JSON is summarized with warnings and preserved identity/count/continuation fields, and rich/debug output profiles warn in coding-agent hosts. Use CLI `--json` or direct client/HTTP invocation only when you intentionally need the full raw action result. URL-only deep links are listable navigation entries for hosts that know how to open the URL, but they are not generic invocations unless the extension also supplies an action binding. Console contribution rendering stays inside `/console/system` and uses closed renderer IDs; richer extension UI uses registered sandboxed workstations (`srcDoc` or daemon-owned `frameBundle` assets), not arbitrary parent-Console frontend bundles.
 
 ## Daemon HTTP API
 

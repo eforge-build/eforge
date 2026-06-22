@@ -81,7 +81,7 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 
 Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension is available. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
 
-When eforge-plan is loaded and trusted, hosts can discover and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list` and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
+When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list --search planning`, `eforge extension contributions show eforge-plan:open-planning-entry --kind command`, and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
 
 ## What Happens Next
 

@@ -1,4 +1,6 @@
 import {
+  createExtensionContributionFailedInvocationEnvelope,
+  formatExtensionContributionFailedInvocationEnvelopeText,
   formatExtensionContributionOutputText,
   type ExtensionHostContributionEntry,
   type ExtensionHostContributionInvokeResult,
@@ -68,9 +70,10 @@ export function formatInvocationPanel(result: ExtensionHostContributionInvokeRes
       ].join('\n'),
     };
   }
+  const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
   return {
     title: 'eforge extensions - Failure',
-    content: [...header, formatFailureOutput(result.response.error)].join('\n'),
+    content: [...header, failureEnvelope ? formatExtensionContributionFailedInvocationEnvelopeText(failureEnvelope) : `${result.response.error.code}: ${result.response.error.message}`].join('\n'),
   };
 }
 
@@ -117,16 +120,6 @@ function firstEnumValue(schema: JsonObject): unknown {
 
 function firstSingleEnumValue(schema: JsonObject): unknown {
   return Array.isArray(schema.enum) && schema.enum.length === 1 ? schema.enum[0] : undefined;
-}
-
-function formatFailureOutput(error: { code: string; message: string; details?: unknown }): string {
-  const lines = [`${error.code}: ${error.message}`];
-  if (Object.prototype.hasOwnProperty.call(error, 'details')) lines.push('', fencedJson(error.details));
-  return lines.join('\n');
-}
-
-function fencedJson(value: unknown): string {
-  return ['```json', JSON.stringify(value, null, 2), '```'].join('\n');
 }
 
 function jsonSafeValue(value: unknown): unknown {
