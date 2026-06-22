@@ -256,6 +256,30 @@ describe('recovery guidance preparation with real git artifacts', () => {
     expect(legacyBody).not.toContain('## Recovery Guidance');
   });
 
+  it('treats terminal landing failures as no-op guidance instead of looking for landing.md', async () => {
+    const cwd = await initRepo();
+    await seedFeatureBranchWithArtifacts(cwd, {
+      'plan-a': '# Plan A\n',
+      'plan-dependent': '# Dependent\n',
+    });
+    await writeSidecar(cwd, {
+      boundedEvidence: {
+        ...makeSidecar().boundedEvidence,
+        plans: [
+          { planId: 'plan-a', status: 'completed', commitSha: 'abc123' },
+          { planId: 'landing', status: 'failed' },
+        ],
+        failingPlan: { planId: 'landing', errorMessage: 'Validation failed' },
+      },
+    });
+
+    const response = await prepareRecoveryGuidance({ cwd, prdId: PRD_ID });
+
+    expect(response.commitSha).toBeUndefined();
+    expect(response.plans).toEqual([{ planId: 'landing', path: `eforge/plans/${SET_NAME}/orchestration.yaml`, status: 'already-current', reason: 'Terminal failure scope is not a compiled plan; no plan guidance patch is required.' }]);
+    expect(recoveryGuidanceResumeBlocker(response)).toBeUndefined();
+  });
+
   it('returns artifact-missing without partially writing another root target', async () => {
     const cwd = await initRepo();
     await seedFeatureBranchWithArtifacts(cwd, { 'plan-a': '# Plan A\n' });
