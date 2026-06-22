@@ -170,13 +170,11 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply, applyE
       {/* Primary actions stay visible; the verbose summary/sections/assumptions
           collapse so a list of ready cards stays scannable. The card header
           already carries the plan topic, so it is not repeated here. */}
-      {/* --- eforge:region plan-04-workstation-session-plan-auto-apply --- */}
       {applyError && creationDraft && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive-foreground">
           {applyError.automatic ? 'Automatic session-plan creation failed' : 'Session-plan creation failed'}: <span className="break-words">{applyError.message}</span>. Manual creation remains available below after review.
         </div>
       )}
-      {/* --- eforge:endregion plan-04-workstation-session-plan-auto-apply --- */}
 
       {creationDraft && (
         <div className="flex flex-wrap items-center justify-between gap-2">

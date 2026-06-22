@@ -98,7 +98,6 @@ describe('PlanningTaskCard curation behavior', () => {
     expect(screen.getByRole('button', { name: 'Retry with preserved context' })).toBeTruthy();
   });
 
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   it('keeps cancelled and unavailable task messaging visible', () => {
     const { unmount } = renderCard(curationItem('cancelled'));
     expect(screen.getByText('Task cancelled.')).toBeTruthy();
@@ -129,5 +128,4 @@ describe('PlanningTaskCard curation behavior', () => {
     expect(screen.getAllByText(/Session plan already exists/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Create session plan' })).toBeTruthy();
   });
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 });

@@ -70,7 +70,6 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
 
       {running && <RunningProgress task={task} />}
 
-      {/* --- eforge:region plan-04-workstation-session-plan-auto-apply --- */}
       {applyError && (
         <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs">
           <p className="font-semibold text-destructive-foreground">{applyError.automatic ? 'Automatic session-plan creation failed.' : 'Session-plan creation failed.'}</p>
@@ -78,7 +77,6 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
           <p className="mt-1 text-muted-foreground">Review the draft below, resolve any collision or validation issue, then use Create session plan to retry manually.</p>
         </div>
       )}
-      {/* --- eforge:endregion plan-04-workstation-session-plan-auto-apply --- */}
 
       {status === 'failed' && (
         <div className="mt-2 grid gap-2">

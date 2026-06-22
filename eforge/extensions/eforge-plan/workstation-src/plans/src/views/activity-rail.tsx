@@ -145,9 +145,7 @@ function TaskRow({ item, busy, titles, applyError, onOpen, onCancel }: { item: P
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-bright" title={label}>{label}</span>
-        {/* --- eforge:region plan-04-workstation-session-plan-auto-apply --- */}
         {applyError && <span className="shrink-0 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive-foreground">Apply failed</span>}
-        {/* --- eforge:endregion plan-04-workstation-session-plan-auto-apply --- */}
         {isReviewable(item) && <span className="shrink-0 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">Review</span>}
         {status && <span className={`shrink-0 rounded border px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide ${STATUS_TONE[status]}`}>{status}</span>}
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

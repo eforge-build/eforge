@@ -37,7 +37,6 @@ export interface PlanningTaskWorkflowsApi {
   apply: (taskId: string, input: JsonObject) => Promise<ApplyPlanningTaskResponse | null>;
 }
 
-// --- eforge:region plan-04-workstation-session-plan-auto-apply ---
 type CreatedSessionPlanCallback = (draft: AppliedSessionPlanCreationDraft) => void;
 
 interface ApplyPlanningTaskOptions {
@@ -100,7 +99,6 @@ function withoutApplyError(errors: Record<string, PlanningTaskApplyError>, taskI
   delete next[taskId];
   return next;
 }
-// --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 
 function isRunning(item: PlanningAgentTaskListItem): boolean {
   const status = item.task?.status ?? item.status;
@@ -124,12 +122,10 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
   const [items, setItems] = React.useState<PlanningAgentTaskListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   const [applyErrors, setApplyErrors] = React.useState<Record<string, PlanningTaskApplyError>>({});
   const autoApplyInFlightRef = React.useRef<Set<string>>(new Set());
   const autoApplyAttemptedRef = React.useRef<Set<string>>(new Set());
   const autoAppliedRef = React.useRef<Set<string>>(new Set());
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 
   const reportError = React.useCallback((caught: unknown) => {
     toast.push(errorMessage(caught), 'error');
@@ -139,9 +135,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
     setLoading(true);
     try {
       const response = await bridge.invokeAction<ListPlanningAgentTasksResponse>('list-planning-agent-tasks', {});
-      // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       setItems((response.tasks ?? []).filter((item) => !autoAppliedRef.current.has(item.entry.taskId)));
-      // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
     } catch (caught) {
       reportError(caught);
     } finally {
@@ -221,9 +215,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
     try {
       const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('retry-planning-agent-task', { taskId });
       toast.push(`Retrying as ${response.task.taskId}.`, 'success');
-      // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
-      // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
       await reload();
     } catch (caught) {
       reportError(caught);
@@ -240,9 +232,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       if (input.steering && input.steering.trim().length > 0) payload.steering = input.steering.trim();
       const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('redraft-planning-agent-task', payload);
       toast.push(`Redrafting as ${response.task.taskId}.`, 'success');
-      // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
-      // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
       await reload();
     } catch (caught) {
       reportError(caught);
@@ -272,9 +262,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       const response = await bridge.invokeAction<RemovePlanningTaskResponse>('remove-planning-agent-task', { taskId });
       toast.push(response.removed ? `Removed ${response.taskId} from the planning task list.` : `${response.taskId} was not in the planning task list.`, 'success');
       setItems((prev) => prev.filter((existing) => existing.entry.taskId !== taskId));
-      // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
-      // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
       await reload();
     } catch (caught) {
       reportError(caught);
@@ -283,7 +271,6 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
     }
   }, [reload, reportError, toast]);
 
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   const applyPlanningTaskResult = React.useCallback(async (taskId: string, input: JsonObject, options: ApplyPlanningTaskOptions = {}): Promise<ApplyPlanningTaskResponse | null> => {
     if (!options.automatic) setBusy(true);
     try {
@@ -330,7 +317,6 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
     if (isSessionPlanCreationApplyInput(input) && autoApplyInFlightRef.current.has(taskId)) return null;
     return applyPlanningTaskResult(taskId, input);
   }, [applyPlanningTaskResult]);
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 
   return { items, loading, busy, applyErrors, reload, start, analyzeAllBacklog, retry, redraft, cancel, remove, apply };
 }

@@ -64,7 +64,6 @@ describe('PlanningTaskResultPreview session-plan creation confirmation', () => {
     expect(onApply).toHaveBeenCalledWith('task-creation', { applySessionPlanCreationDraft: {} });
   });
 
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   it('shows automatic apply failures while keeping manual creation available', () => {
     const onApply = vi.fn(async () => undefined);
     render(
@@ -89,5 +88,4 @@ describe('PlanningTaskResultPreview session-plan creation confirmation', () => {
 
     expect(onApply).toHaveBeenCalledWith('task-creation', { applySessionPlanCreationDraft: {} });
   });
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 });

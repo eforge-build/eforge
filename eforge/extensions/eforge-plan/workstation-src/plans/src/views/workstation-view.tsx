@@ -32,12 +32,10 @@ const FOCUSES: { id: Focus; label: string; icon: React.ComponentType<{ className
  */
 export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const router = useRouter();
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   const openCreatedSessionPlan = React.useCallback((draft: AppliedSessionPlanCreationDraft) => {
     router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', planKey(draft.session)); });
   }, [router]);
   const workflows = usePlanningTaskWorkflows(data.refresh, openCreatedSessionPlan);
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
   const selection = useBacklogSelection(data.board, workflows);
 
   // The "Analyze all backlog" trigger drives a backlog-curation task; while one

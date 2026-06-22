@@ -195,22 +195,18 @@ export {
 export {
   formatExtensionContributionOutput,
   formatExtensionContributionOutputText,
-  // --- eforge:region plan-01-shared-contribution-projection ---
   formatExtensionContributionDetail,
   formatExtensionContributionDetailText,
   formatExtensionContributionFailedInvocationEnvelope,
   formatExtensionContributionFailedInvocationEnvelopeText,
   formatExtensionContributionList,
   formatExtensionContributionListText,
-  // --- eforge:endregion plan-01-shared-contribution-projection ---
 } from './extension-contribution-output-formatting.js';
 export type {
   ExtensionContributionFormattedOutputKind,
   FormatExtensionContributionOutputOptions,
   FormattedExtensionContributionOutput,
-  // --- eforge:region plan-01-shared-contribution-projection ---
   FormatExtensionContributionHostTextOptions,
-  // --- eforge:endregion plan-01-shared-contribution-projection ---
 } from './extension-contribution-output-formatting.js';
 export type {
   ExtensionHostContributionDetailResponse,

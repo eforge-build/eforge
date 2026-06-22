@@ -91,7 +91,6 @@ export function formatExtensionContributionOutputText(
   return formatExtensionContributionOutput(output, options).text;
 }
 
-// --- eforge:region plan-01-shared-contribution-projection ---
 export interface FormatExtensionContributionHostTextOptions {
   maxChars?: number;
 }
@@ -212,7 +211,6 @@ function formatHostText(text: string, maxChars = DEFAULT_MAX_CHARS): FormattedEx
 function fencedJson(value: unknown): string {
   return `\`\`\`json\n${stringifyJson(value)}\n\`\`\``;
 }
-// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 function formatMarkdownOutput(markdown: string, warnings: string[], maxChars: number): FormattedExtensionContributionOutput {
   const rawLength = markdown.length;

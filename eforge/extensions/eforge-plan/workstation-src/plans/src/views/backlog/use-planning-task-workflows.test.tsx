@@ -55,7 +55,6 @@ const creationItem: PlanningAgentTaskListItem = {
   task: creationTask,
 };
 
-// --- eforge:region plan-04-workstation-session-plan-auto-apply ---
 function autoCreationItem(overrides: Partial<PlanningAgentTaskListItem> = {}): PlanningAgentTaskListItem {
   const taskRecord: PlanningAgentTaskRecord = {
     ...creationTask,
@@ -77,7 +76,6 @@ function applyCreationResponse(taskId = creationTask.taskId) {
     sessionPlanCreationDraft: { session: 'created-session', relativePath: '.eforge/session-plans/created-session.md', readiness: { ready: true, missingDimensions: [] } },
   };
 }
-// --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 
 async function loadHookWithWrapper() {
   const [{ usePlanningTaskWorkflows }, { ToastProvider }] = await Promise.all([
@@ -206,7 +204,6 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
   });
 
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   it('auto-applies eligible ready session-plan creation tasks once and opens the created plan', async () => {
     const onRefresh = vi.fn(async () => undefined);
     const onCreated = vi.fn();
@@ -387,5 +384,4 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     expect(result.current.applyErrors[creationTask.taskId]).toBeUndefined();
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'apply-planning-agent-task-result')).toHaveLength(2);
   });
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 });

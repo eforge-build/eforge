@@ -53,7 +53,6 @@ interface ResolveResult {
 
 type ActionLookup = Map<string, ExtensionActionManifestEntry>;
 
-// --- eforge:region plan-01-shared-contribution-projection ---
 const FAILED_INVOCATION_ERROR_MESSAGE_MAX_LENGTH = 1_000;
 const FAILED_INVOCATION_INPUT_KEY_MAX_COUNT = 20;
 const FAILED_INVOCATION_INPUT_KEY_MAX_LENGTH = 80;
@@ -65,7 +64,6 @@ type ExtensionHostContributionBaseEntry = Omit<
   ExtensionHostContributionEntry,
   'hasInputSchema' | 'requiredInputKeys' | 'inputPropertyKeys' | 'inputDefaultKeys'
 >;
-// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 export function summarizeExtensionContributionManifest(
   manifest: ExtensionContributionManifestResponse,
@@ -92,7 +90,6 @@ export function summarizeExtensionContributionManifest(
   };
 }
 
-// --- eforge:region plan-01-shared-contribution-projection ---
 export function showExtensionContributionManifestEntry(
   manifest: ExtensionContributionManifestResponse,
   options: ExtensionHostContributionDetailOptions,
@@ -168,7 +165,6 @@ function collectLongStringInputValues(value: unknown): string[] {
   if (value !== null && typeof value === 'object') return Object.values(value).flatMap((item) => collectLongStringInputValues(item));
   return [];
 }
-// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 export function resolveExtensionContributionInvocation(
   manifest: ExtensionContributionManifestResponse,
@@ -196,9 +192,7 @@ function resolveExtensionContributionInvocationWithInput(
 export async function listEforgeExtensionContributions(opts: {
   cwd: string;
   kind?: ExtensionHostContributionKind | 'all';
-  // --- eforge:region plan-01-shared-contribution-projection ---
 } & Omit<ExtensionHostContributionProjectionOptions, 'kind'>): Promise<ExtensionHostContributionListResponse> {
-  // --- eforge:endregion plan-01-shared-contribution-projection ---
   const manifest = await apiGetExtensionContributionManifest({ cwd: opts.cwd });
   return summarizeExtensionContributionManifest(manifest, { ...opts, kind: opts.kind });
 }
@@ -206,9 +200,7 @@ export async function listEforgeExtensionContributions(opts: {
 export async function listEforgeExtensionContributionsIfRunning(opts: {
   cwd: string;
   kind?: ExtensionHostContributionKind | 'all';
-  // --- eforge:region plan-01-shared-contribution-projection ---
 } & Omit<ExtensionHostContributionProjectionOptions, 'kind'>): Promise<ExtensionHostContributionListResponse | null> {
-  // --- eforge:endregion plan-01-shared-contribution-projection ---
   const manifest = await apiGetExtensionContributionManifestIfRunning({ cwd: opts.cwd });
   return manifest ? summarizeExtensionContributionManifest(manifest, { ...opts, kind: opts.kind }) : null;
 }
@@ -243,7 +235,6 @@ export async function invokeEforgeExtensionContributionIfRunning(opts: {
   return response ? { target, response } : null;
 }
 
-// --- eforge:region plan-01-shared-contribution-projection ---
 function buildContributionEntries(
   manifest: ExtensionContributionManifestResponse,
   options: ExtensionHostContributionProjectionOptions,
@@ -332,7 +323,6 @@ function normalizePositiveInteger(value: number | undefined, field: string): num
   if (!Number.isInteger(value) || value <= 0) throw new Error(`"${field}" must be a positive integer`);
   return value;
 }
-// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 function actionEntry(entry: ExtensionActionManifestEntry, options: ExtensionHostContributionProjectionOptions = {}): ExtensionHostContributionEntry {
   return projectEntry({
@@ -398,7 +388,6 @@ function deepLinkEntry(
   }, options);
 }
 
-// --- eforge:region plan-01-shared-contribution-projection ---
 function projectEntry(entry: ExtensionHostContributionBaseEntry, options: ExtensionHostContributionProjectionOptions): ExtensionHostContributionEntry {
   const includeInputSchema = shouldIncludeInputSchema(options);
   const includeDiagnostics = shouldIncludeDiagnostics(options);
@@ -461,7 +450,6 @@ function shouldIncludeInputSchema(options: ExtensionHostContributionProjectionOp
 function shouldIncludeDiagnostics(options: ExtensionHostContributionProjectionOptions): boolean {
   return options.projection === 'full' || options.includeDiagnostics === true;
 }
-// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 function buildActionLookup(entries: ExtensionActionManifestEntry[]): ActionLookup {
   return new Map(entries.map((entry) => [entry.id, entry]));
