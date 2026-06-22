@@ -18,7 +18,7 @@ export const runPlaybookAction = defineExtensionAction({
     if (input.mode !== undefined && input.mode !== playbook.mode) {
       throw invalidField('/mode', `Requested mode "${input.mode}" does not match playbook mode "${playbook.mode}".`);
     }
-    if (playbook.mode === 'planning') return planningRunResult(ctx, playbook.name, playbookToPlanSeed(playbook));
+    if (playbook.mode === 'planning') return planningRunResult(ctx, playbook.name, playbookToPlanSeed({ ...playbook, profile: input.profile ?? playbook.profile }));
 
     const compiled = playbookToBuildSource(playbook);
     const quality = analyzeAcceptanceCriteriaInBody(compiled.source);

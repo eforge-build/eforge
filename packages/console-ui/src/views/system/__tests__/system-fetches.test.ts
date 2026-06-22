@@ -116,6 +116,8 @@ describe('system-fetches', () => {
       },
     ];
 
+    expect(successfulGetCases.map((testCase) => testCase.name).join('\n')).not.toMatch(/Playbook/);
+
     for (const testCase of successfulGetCases) {
       globalThis.fetch = makeFetchMock(200, testCase.body);
       const result = await testCase.run();

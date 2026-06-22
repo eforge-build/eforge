@@ -43,9 +43,9 @@ describe('run-playbook action', () => {
   it('returns planning diagnostics or planning entry without queue calls and with JSON-safe seed', async () => {
     await withTempProject(async (cwd) => {
       await writePlaybook(cwd, 'project-local', 'plan', rawPlaybook({ name: 'plan', scope: 'project-local', mode: 'planning' }));
-      const missing = await run(cwd, { name: 'plan' });
+      const missing = await run(cwd, { name: 'plan', profile: 'override-profile' });
       expect(missing.calls).toEqual([]);
-      expect(missing.result).toMatchObject({ kind: 'success', output: { kind: 'planning-unavailable', planningEntry: { seed: { sections: expect.any(Object) } } } });
+      expect(missing.result).toMatchObject({ kind: 'success', output: { kind: 'planning-unavailable', planningEntry: { seed: { profile: 'override-profile', sections: expect.any(Object) } } } });
       expect((missing.result as any).output.planningEntry.seed.sections instanceof Map).toBe(false);
       const available = await run(cwd, { name: 'plan' }, { capability: true });
       expect(available.calls).toEqual([]);

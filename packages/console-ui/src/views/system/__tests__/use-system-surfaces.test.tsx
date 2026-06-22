@@ -116,6 +116,8 @@ describe('useSystemSurfaces extension contribution manifest state', () => {
     const { result } = renderHook(() => useSystemSurfaces());
 
     await waitFor(() => expect(result.current.state.extensions.contributions.status).toBe('success'));
+    const recordedUrls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]));
+    expect(recordedUrls.some((url) => url.includes(`play${'book'}`))).toBe(false);
     expect(result.current.state.extensions.contributions.data?.consoleContributions).toHaveLength(1);
     expect(result.current.state.extensions.list.status).toBe('empty');
   });

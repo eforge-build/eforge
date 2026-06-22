@@ -48,9 +48,11 @@ export function SystemViewContent({ state, onRefresh, projectState, extensionMan
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div>
           <h1 className="text-sm font-semibold text-foreground">System Configuration</h1>
+          {/* --- eforge:region plan-04-console-surface --- */}
           <p className="text-xs text-muted-foreground">
-            Daemon health, configuration, extensions, and model catalog.
+            Daemon health, configuration, extensions, extension-owned Console contributions, and model catalog.
           </p>
+          {/* --- eforge:endregion plan-04-console-surface --- */}
         </div>
         <div className="flex items-center gap-2">
           <Button

@@ -144,6 +144,7 @@ describe('SystemViewContent', () => {
     expect(screen.getAllByText('local-profile').length).toBeGreaterThan(0);
     expect(screen.getByText('17')).toBeDefined();
     expect(screen.queryByRole('heading', { name: 'Session Plans' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Playbooks' })).toBeNull();
   });
 
   it('calls onRefresh from the single refresh control', () => {
@@ -162,7 +163,9 @@ describe('SystemViewContent', () => {
 
     const extensionsHeading = screen.getByRole('heading', { name: 'Extensions' });
     const contributionsHeading = screen.getByRole('heading', { name: 'Extension Console contributions' });
+    const modelsHeading = screen.getByRole('heading', { name: 'Models' });
     expect(extensionsHeading.compareDocumentPosition(contributionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(contributionsHeading.compareDocumentPosition(modelsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('Demo contribution')).toBeDefined();
     expect(screen.getByText('Contribution body')).toBeDefined();
   });

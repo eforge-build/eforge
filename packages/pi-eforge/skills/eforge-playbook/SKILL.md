@@ -3,9 +3,7 @@ name: eforge-playbook
 description: Create, edit, run, list, and promote eforge playbooks — reusable recurring-workflow templates
 ---
 
-> **Note:** This skill invokes playbook behavior through the generic `eforge_extension_contribution` tool and the `eforge-playbooks:*` action surface.
-
-# eforge-playbook skill
+# /eforge:playbook
 
 Manage eforge playbooks — reusable templates for recurring workflows that eforge can invoke on demand. Playbooks live in one of three storage tiers:
 
@@ -188,7 +186,7 @@ Present the draft to the user for review. If entries were pre-filled from an efo
 3. Report the path returned by the daemon:
    > "Playbook saved to `{path}`."
 
-4. Offer next steps: run it via the Run branch with `{name}`, or promote it via the Promote branch if it was saved as project-local.
+4. Offer next steps: run it with `/eforge:playbook run {name}`, or promote it with `/eforge:playbook promote {name}` if it was saved as project-local.
 
 ---
 
@@ -441,10 +439,10 @@ Report the destination path returned by the daemon.
 
 Direct invocations with a name argument jump into the relevant branch with that item pre-selected and still confirm before acting:
 
-- `run docs-sync` — Run branch, pre-selects `docs-sync`, still offers wait-for-build if applicable.
-- `edit dependency-update` — Edit branch, pre-selects `dependency-update`.
-- `promote release-prep` — Promote branch, pre-selects `release-prep`.
-- `create` — Create branch, asks for the workflow description.
+- `/eforge:playbook run docs-sync` — Run branch, pre-selects `docs-sync`, still offers wait-for-build if applicable.
+- `/eforge:playbook edit dependency-update` — Edit branch, pre-selects `dependency-update`.
+- `/eforge:playbook promote release-prep` — Promote branch, pre-selects `release-prep`.
+- `/eforge:playbook create` — Create branch, asks for the workflow description.
 
 ---
 

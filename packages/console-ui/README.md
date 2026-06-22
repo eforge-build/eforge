@@ -10,7 +10,7 @@ The canonical route list lives in [`src/lib/navigation.ts`](src/lib/navigation.t
 |------|----------|-------------|
 | `/console/` | `now` | Now dashboard - active builds, queue, and live status |
 | `/console/builds/:detailId` | `buildDetail` | Build detail view for a session (legacy `/console/runs/:detailId` still resolves and canonicalizes to this path) |
-| `/console/system` | `system` | System - configuration, profiles, playbooks, extensions, and diagnostic surfaces |
+| `/console/system` | `system` | System - configuration, profiles, extensions, extension-owned Console contributions, and diagnostic surfaces |
 | `/console/workstations` | `workstations` | Workstations - extension-registered sandboxed iframe workstations |
 | `/console/workstations/:workstationId` | `workstationDetail` | Workstation detail route for a selected extension workstation |
 
