@@ -26,9 +26,7 @@ import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-buil
 import {
   readLockfile,
   isServerAlive,
-  isPidAlive,
   killPidIfAlive,
-  lockfilePath,
   removeLockfile,
   isAgentWorktreeCwd,
   apiListExtensions,
@@ -68,6 +66,15 @@ import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
 import { resolveAndValidateLandingFlags, CLILandingFlagError } from './landing-options.js';
 import { resolveAndValidateLandingAutoMergeFlags } from './landing-options.js';
+// --- eforge:region daemon-lifecycle-imports ---
+import {
+  addDaemonStartOptions,
+  addDaemonStopOptions,
+  setDaemonRestartAction,
+  setDaemonStartAction,
+  setDaemonStopAction,
+} from './daemon-lifecycle.js';
+// --- eforge:endregion daemon-lifecycle-imports ---
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -1403,186 +1410,31 @@ export function createProgram(abortController?: AbortController, version?: strin
     .command('daemon')
     .description('Manage persistent daemon server');
 
-  daemon
+  // --- eforge:region daemon-lifecycle-commands ---
+  setDaemonStartAction(addDaemonStartOptions(daemon
     .command('start')
-    .description('Start the persistent daemon server')
-    .option('--port <port>', 'Preferred port', parseInt)
-    .action(async (options: { port?: number }) => {
-      const cwd = process.cwd();
-      if (isAgentWorktreeCwd(cwd)) {
-        console.error(chalk.red(
-          `Refusing to start eforge daemon from agent worktree: ${cwd}. ` +
-          `Run eforge from the project root, not from inside a worktree.`,
-        ));
-        process.exit(2);
-      }
-      const dbPath = resolve(cwd, '.eforge', 'monitor.db');
-      const preferredPort = options.port ?? 4567;
+    .description('Start the persistent daemon server')));
 
-      // Check if daemon is already running
-      const existingLock = readLockfile(cwd);
-      if (existingLock) {
-        const alive = await isServerAlive(existingLock);
-        if (alive) {
-          console.log(chalk.yellow(`Daemon already running at http://localhost:${existingLock.port} (PID ${existingLock.pid})`));
-          process.exit(0);
-        }
-        // Stale lockfile — kill stale daemon before spawning
-        // SIGTERM first
-        killPidIfAlive(existingLock.pid);
-        // Wait 500ms for graceful shutdown
-        await new Promise((r) => setTimeout(r, 500));
-        // SIGKILL survivor
-        if (isPidAlive(existingLock.pid)) {
-          killPidIfAlive(existingLock.pid, 'SIGKILL');
-        }
-        removeLockfile(cwd);
-      }
-
-      // Spawn detached server-main with --persistent flag
-      const { fork } = await import('node:child_process');
-      const { fileURLToPath } = await import('node:url');
-
-      // Resolve via ESM import.meta.resolve: the monitor package's
-      // ./server-main export only declares an "import" condition, so CJS
-      // require.resolve (including createRequire) cannot match it.
-      let serverMainPath: string;
-      try {
-        serverMainPath = fileURLToPath(import.meta.resolve('@eforge-build/monitor/server-main'));
-      } catch {
-        console.error(chalk.red('Monitor server-main entry not found. Did you run `pnpm build`?'));
-        process.exit(1);
-      }
-
-      // Pass the CLI path through to the daemon so its in-process watcher
-      // can spawn `queue exec` children against the CLI (argv[1] in the
-      // daemon points at server-main.js, not the CLI).
-      const env = { ...process.env };
-      if (process.argv[1]) env.EFORGE_CLI_PATH = process.argv[1];
-
-      const child = fork(serverMainPath, [dbPath, String(preferredPort), cwd, '--persistent'], {
-        detached: true,
-        stdio: 'ignore',
-        execArgv: [...process.execArgv, '--disable-warning=ExperimentalWarning'],
-        env,
-      });
-
-      child.on('error', (err) => {
-        console.error(chalk.red(`Failed to start daemon: ${err.message}`));
-        process.exit(1);
-      });
-
-      child.unref();
-      child.disconnect?.();
-
-      // Wait for lockfile to appear
-      const maxRetries = 40;
-      const retryInterval = 250;
-      let lock: Awaited<ReturnType<typeof readLockfile>> = null;
-
-      for (let i = 0; i < maxRetries; i++) {
-        await new Promise((r) => setTimeout(r, retryInterval));
-        lock = readLockfile(cwd);
-        if (lock) {
-          const alive = await isServerAlive(lock);
-          if (alive) break;
-          lock = null;
-        }
-      }
-
-      if (!lock) {
-        console.error(chalk.red('Daemon failed to start within timeout'));
-        process.exit(1);
-      }
-
-      console.log(chalk.green(`Daemon started at http://localhost:${lock.port} (PID ${lock.pid})`));
-    });
-
-  daemon
+  setDaemonStopAction(addDaemonStopOptions(daemon
     .command('stop')
-    .description('Stop the persistent daemon server')
-    .option('--force', 'Skip active-build safety check')
-    .action(async (options: { force?: boolean }) => {
-      const cwd = process.cwd();
-      const lock = readLockfile(cwd);
+    .description('Stop the persistent daemon server')));
 
-      if (!lock) {
-        console.log(chalk.yellow('Daemon is not running'));
-        process.exit(0);
-      }
+  setDaemonRestartAction(addDaemonStopOptions(daemon
+    .command('restart')
+    .description('Restart the persistent daemon server')));
 
-      if (!isPidAlive(lock.pid)) {
-        removeLockfile(cwd);
-        console.log(chalk.yellow('Daemon was not running (stale lockfile removed)'));
-        process.exit(0);
-      }
+  setDaemonStartAction(addDaemonStartOptions(program
+    .command('ignite')
+    .description('Playful alias for `eforge daemon start`')));
 
-      // Safety valve: check for active builds unless --force
-      if (!options.force) {
-        let runningBuilds: { id: string; command: string; status: string }[] = [];
-        try {
-          const { openDatabase } = await import('@eforge-build/monitor/db');
-          const dbPath = resolve(cwd, '.eforge', 'monitor.db');
-          const db = openDatabase(dbPath);
-          runningBuilds = db.getRunningRuns();
-          db.close();
-        } catch {
-          // DB may not exist — no active builds
-        }
+  setDaemonStopAction(addDaemonStopOptions(program
+    .command('douse')
+    .description('Playful alias for `eforge daemon stop`')));
 
-        if (runningBuilds.length > 0) {
-          // Non-TTY stdin: auto-force to avoid blocking in scripts/daemon
-          const isTTY = process.stdin.isTTY === true;
-          if (!isTTY) {
-            // Auto-force in non-interactive mode
-          } else {
-            console.log(chalk.yellow(`Active builds (${runningBuilds.length}):`));
-            for (const build of runningBuilds) {
-              console.log(chalk.yellow(`  - ${build.id} (${build.command})`));
-            }
-            const readline = await import('node:readline/promises');
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-            try {
-              const answer = await rl.question(chalk.yellow('Stop daemon with active builds? [y/N] '));
-              if (answer.toLowerCase() !== 'y') {
-                console.log(chalk.dim('Aborted'));
-                process.exit(0);
-              }
-            } finally {
-              rl.close();
-            }
-          }
-        }
-      }
-
-      // Send SIGTERM to the daemon; its shutdown handler aborts the in-process
-      // watcher and tears down the lockfile.
-      try {
-        process.kill(lock.pid, 'SIGTERM');
-      } catch {
-        // Process may have already exited
-      }
-
-      // Wait for lockfile removal (daemon's shutdown handler removes it)
-      const maxRetries = 20; // 20 * 250ms = 5s
-      const retryInterval = 250;
-
-      for (let i = 0; i < maxRetries; i++) {
-        await new Promise((r) => setTimeout(r, retryInterval));
-        const stillExists = readLockfile(cwd);
-        if (!stillExists) {
-          console.log(chalk.green('Daemon stopped'));
-          process.exit(0);
-        }
-      }
-
-      // Force-kill escalation after 5s timeout
-      console.log(chalk.yellow('Daemon did not shut down gracefully, escalating to SIGKILL...'));
-      killPidIfAlive(lock.pid, 'SIGKILL');
-      removeLockfile(cwd);
-      console.log(chalk.green('Daemon force-stopped'));
-      process.exit(0);
-    });
+  setDaemonRestartAction(addDaemonStopOptions(program
+    .command('reignite')
+    .description('Playful alias for `eforge daemon restart`')));
+  // --- eforge:endregion daemon-lifecycle-commands ---
 
   daemon
     .command('status')

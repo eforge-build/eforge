@@ -3614,6 +3614,7 @@ eforge playbook list
 eforge daemon status
 eforge daemon start
 eforge daemon stop
+eforge daemon restart
 eforge extension list
 eforge extension contributions list
 eforge extension contributions invoke <id> --kind command
@@ -3719,18 +3720,16 @@ eforge assigns each project a deterministic port in the 4567-4667 range. If the 
 eforge daemon status
 ```
 
-**Stop the daemon and retry:**
+**Restart the daemon:**
 
 ```bash
-eforge daemon stop
-eforge daemon start
+eforge daemon restart
 ```
 
-`daemon stop` includes an active-build safety check: it refuses to stop while builds are running unless you pass `--force`. The `--force` flag bypasses the safety check:
+`daemon restart` stops the daemon before starting it again. The stop phase runs the active-build safety check: in interactive terminals it prompts before stopping active builds, while non-interactive runs proceed to avoid blocking scripts. The `--force` flag skips that check and prompt:
 
 ```bash
-eforge daemon stop --force
-eforge daemon start
+eforge daemon restart --force
 ```
 
 **Last resort - SIGKILL:**
@@ -3739,9 +3738,9 @@ eforge daemon start
 eforge daemon kill
 ```
 
-`daemon kill` sends SIGKILL to the daemon process and is the last resort when the daemon is unresponsive. Any in-progress builds will be interrupted. The `/eforge:restart` skill wraps this flow with an active-build check; use it from Claude Code or Pi for the safest restart path.
+`daemon kill` sends SIGKILL to the daemon process and is the last resort when the daemon is unresponsive. Any in-progress builds will be interrupted. Use `eforge daemon restart` or the `/eforge:restart` skill from Claude Code or Pi for an active-build safety check.
 
-After a force stop or kill, check `eforge daemon status` before starting a new build to confirm the daemon is healthy.
+After a forced restart or kill, check `eforge daemon status` before starting a new build to confirm the daemon is healthy.
 
 ## `pnpm docs:check` reports drift or broken links
 
@@ -4048,7 +4047,7 @@ An isolated git working tree used to build an individual plan without blocking o
 
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/eforge/src/cli/index.ts, packages/eforge/src/cli/queue-control.ts -->
+<!-- Source: packages/eforge/src/cli/index.ts, packages/eforge/src/cli/daemon-lifecycle.ts, packages/eforge/src/cli/queue-control.ts -->
 
 # eforge CLI Reference
 
@@ -4502,6 +4501,19 @@ Stop the persistent daemon server
 |------|-------------|
 | `--force` | Skip active-build safety check |
 
+#### `restart`
+
+**Full command:** `eforge daemon restart`
+
+Restart the persistent daemon server
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
+
 #### `status`
 
 **Full command:** `eforge daemon status`
@@ -4515,6 +4527,45 @@ Show daemon status
 
 Force-kill the daemon (SIGKILL)
 
+
+### `ignite`
+
+**Full command:** `eforge ignite`
+
+Playful alias for `eforge daemon start`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--port <port>` | Preferred port |
+
+### `douse`
+
+**Full command:** `eforge douse`
+
+Playful alias for `eforge daemon stop`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
+
+### `reignite`
+
+**Full command:** `eforge reignite`
+
+Playful alias for `eforge daemon restart`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
 
 ### `recover`
 
