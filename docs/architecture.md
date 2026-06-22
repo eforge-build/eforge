@@ -26,13 +26,17 @@ graph TD
     end
 
     subgraph Input ["@eforge-build/input"]
-        InputArtifacts["Playbooks / Session Plans<br/>bundled playbook adapter<br/>bundled session-planning adapter<br/>normalizeBuildSource"]
+        InputArtifacts["Playbooks / Session Plans<br/>pure playbook helpers<br/>bundled session-planning adapter<br/>normalizeBuildSource"]
     end
 
     subgraph Scopes ["@eforge-build/scopes"]
         ScopeDir["getScopeDirectory"]
         LayeredSingleton["resolveLayeredSingletons"]
         NamedSet["resolveNamedSet / listNamedSet"]
+    end
+
+    subgraph FirstPartyExtensions ["First-party extensions"]
+        PlaybooksExt["@eforge-build/eforge-playbooks"]
     end
 
     subgraph Engine ["Engine - packages/engine/"]
@@ -54,6 +58,7 @@ graph TD
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
     Monitor -->|"playbook + session-plan compatibility shims"| Input
+    FirstPartyExtensions -->|"playbook actions"| Input
     Plugin -->|"MCP tools"| EforgeEngine
     PiPkg -->|"native Pi tools"| EforgeEngine
     EforgeEngine --> Pipeline
@@ -81,6 +86,7 @@ flowchart TD
     engine["@eforge-build/engine"]
     scopes["@eforge-build/scopes"]
     extensionSdk["@eforge-build/extension-sdk"]
+    playbooksExt["@eforge-build/eforge-playbooks"]
 
     wrappers --> client
     wrappers --> input
@@ -96,6 +102,8 @@ flowchart TD
     input --> scopes
     input --> extensionSdk
     extensionSdk --> scopes
+    playbooksExt --> extensionSdk
+    playbooksExt --> input
 ```
 
 **Allowed dependency edges:**
@@ -105,8 +113,9 @@ flowchart TD
 - `extension-sdk` MAY depend on `scopes` for scoped path/storage helpers.
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
+- First-party extension packages MAY depend on `extension-sdk` and public input/scopes/client packages needed for their contribution contracts. The `@eforge-build/eforge-playbooks` package depends on `extension-sdk` and `input`.
 
-Playbook routes (`/api/playbook/*`, `/api/session-plan/create-from-playbook`) follow a `client` → `monitor compatibility shim` → `input bundled playbook adapter` → lower-level input helpers chain: route constants and response types live in `@eforge-build/client`, the daemon service keeps local HTTP error mapping, landing-action validation, queue dependency handling, profile lookup, acceptance-criteria inventory derivation, enqueue, and scheduler notification in `packages/monitor/`, and the bundled playbook adapter in `@eforge-build/input` owns playbook-domain list/load/save/write/move/copy/validate/compile/seed behavior before reaching lower-level playbook and session-plan helpers.
+Playbook routes (`/api/playbook/*`, `/api/session-plan/create-from-playbook`) follow a `client` → `monitor compatibility shim` → `input playbook helpers` chain during host migration: route constants and response types live in `@eforge-build/client`, and the daemon service keeps local HTTP error mapping, landing-action validation, queue dependency handling, profile lookup, acceptance-criteria inventory derivation, enqueue, and scheduler notification in `packages/monitor/`. The first-party `@eforge-build/eforge-playbooks` extension owns the native action/contribution surface for playbook list/load/save/write/move/copy/validate/compile/planning-handoff behavior, imports only public `@eforge-build/input` helpers for pure parser/storage/compiler behavior, and enqueues autonomous runs through `ctx.buildQueue.enqueue`.
 
 Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow a `client` → `monitor compatibility shim` → `input bundled session-planning adapter` → lower-level input helpers chain: `API_ROUTES.sessionPlan*` constants and response types live in `@eforge-build/client`, the daemon routes keep local HTTP security/request validation/error mapping in `packages/monitor/`, and the bundled session-planning adapter in `@eforge-build/input` owns session-plan domain behavior before reaching lower-level input helpers. The MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against the client constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
 
@@ -122,7 +131,7 @@ Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool f
 
 ### Monitor
 
-`packages/monitor/` provides the local web dashboard host. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves the Console React SPA over SSE at `/console/`, redirects root UI requests to Console, runs as a detached process, and survives CLI exit. Playbook daemon services lazily call the bundled playbook adapter from `@eforge-build/input`; session-plan and session-plan-set services lazily call the bundled session-planning adapter from `@eforge-build/input`, and session-plan source paths are adapter-normalized before reaching engine queue helpers.
+`packages/monitor/` provides the local web dashboard host. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves the Console React SPA over SSE at `/console/`, redirects root UI requests to Console, runs as a detached process, and survives CLI exit. Playbook daemon services remain compatibility shims around public `@eforge-build/input` playbook helpers while host migration proceeds; the first-party `@eforge-build/eforge-playbooks` extension owns the native playbook action/contribution surface. Session-plan and session-plan-set services lazily call the bundled session-planning adapter from `@eforge-build/input`, and session-plan source paths are adapter-normalized before reaching engine queue helpers.
 
 ### Plugin
 

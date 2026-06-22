@@ -160,7 +160,7 @@ The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match
 
 ### Bundled playbook workflow adapter
 
-`createPlaybookWorkflowAdapter()` returns the built-in adapter that bundles the three-tier playbook protocol behind one workflow-shaped boundary. It is internal to eforge's shipped playbook flow: daemon services use it as a compatibility shim for client-owned HTTP routes and wire response shapes while the engine still receives only normalized build source. It is not a native extension registration API for user-authored playbook extraction.
+`createPlaybookWorkflowAdapter()` returns the built-in adapter that bundles the three-tier playbook protocol behind one workflow-shaped boundary. It remains a compatibility shim for client-owned HTTP routes and wire response shapes while the engine still receives only normalized build source. The first-party `@eforge-build/eforge-playbooks` extension does not import this adapter; it uses the public pure playbook helpers in this package for parser, storage, validation, compiler, and planning-seed behavior. The adapter is not a native extension registration API for user-authored playbook extraction.
 
 The adapter descriptor is exported as `PLAYBOOK_WORKFLOW_ADAPTER_DESCRIPTOR`:
 

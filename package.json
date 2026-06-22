@@ -26,6 +26,7 @@
     "test:watch": "vitest",
     "type-check": "pnpm --filter @eforge-build/engine build && pnpm --filter @eforge-build/monitor build && pnpm --filter @eforge-build/eforge build && pnpm -r type-check",
     "type-check:eforge-plan": "pnpm --filter @eforge-build/eforge-plan type-check",
+    "type-check:eforge-playbooks": "pnpm --filter @eforge-build/eforge-playbooks type-check",
     "release": "node scripts/bump-version.mjs",
     "publish-all": "node scripts/publish-all.mjs",
     "docs:check-parity": "node scripts/check-skill-parity.mjs",
