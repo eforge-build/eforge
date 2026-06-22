@@ -9,11 +9,13 @@ import {
   EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
   EXTENSION_HOST_CONTRIBUTION_KINDS,
   clearApiVersionCache,
+  createExtensionContributionFailedInvocationEnvelope,
   invokeEforgeExtensionContribution,
   invokeEforgeExtensionContributionIfRunning,
   listEforgeExtensionContributions,
   listEforgeExtensionContributionsIfRunning,
   resolveExtensionContributionInvocation,
+  showExtensionContributionManifestEntry,
   summarizeExtensionContributionManifest,
   writeLockfile,
   type ExtensionContributionManifestResponse,
@@ -192,7 +194,10 @@ describe('extension contribution host dispatcher projection', () => {
     const summary = summarizeExtensionContributionManifest(manifest());
 
     expect(summary.generatedAt).toBe('2026-06-03T00:00:00.000Z');
-    expect(summary.diagnostics).toEqual([{ severity: 'warning', message: 'example diagnostic', code: 'example' }]);
+    expect(summary.diagnostics).toBeUndefined();
+    expect(summary.diagnosticCount).toBe(1);
+    expect(summary.total).toBe(7);
+    expect(summary.returned).toBe(7);
     expect(summary.entries.map((entry) => `${entry.kind}:${entry.id}`)).toEqual([
       'action:ext.run',
       'action:shared',
@@ -208,13 +213,29 @@ describe('extension contribution host dispatcher projection', () => {
       kind: 'command',
       actionId: 'ext.run',
       actionBacked: true,
+      sideEffects: ['daemon-state'],
       outputProfile: 'agent-compact',
-      inputDefaults: { fromDefault: true, override: 'default' },
+      hasInputSchema: true,
+      inputDefaultKeys: ['fromDefault', 'override'],
     });
   });
 
-  it('projects bound action schemas for action-backed host entries and preserves command-specific precedence', () => {
+  it('omits full input schemas by default while preserving compact input metadata', () => {
     const summary = summarizeExtensionContributionManifest(manifest());
+    const command = summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command');
+
+    expect(command?.inputSchema).toBeUndefined();
+    expect(command?.inputDefaults).toBeUndefined();
+    expect(command).toMatchObject({
+      hasInputSchema: true,
+      requiredInputKeys: ['fromCommand'],
+      inputPropertyKeys: ['fromCommand'],
+      inputDefaultKeys: ['fromDefault', 'override'],
+    });
+  });
+
+  it('projects bound action schemas for full host entries and preserves command-specific precedence', () => {
+    const summary = summarizeExtensionContributionManifest(manifest(), { includeInputSchema: true });
 
     expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'ext.deep')?.inputSchema).toEqual(boundActionSchema);
     expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'shared')?.inputSchema).toEqual(boundActionSchema);
@@ -246,6 +267,75 @@ describe('extension contribution host dispatcher projection', () => {
   it('filters summary entries by requested kind', () => {
     const summary = summarizeExtensionContributionManifest(manifest(), { kind: 'deep-link' });
     expect(summary.entries.map((entry) => entry.kind)).toEqual(['deep-link', 'deep-link', 'deep-link']);
+  });
+
+  it('includes full diagnostics only when requested, including empty diagnostics', () => {
+    const compact = summarizeExtensionContributionManifest(manifest());
+    const full = summarizeExtensionContributionManifest(manifest(), { includeDiagnostics: true });
+    const emptyDiagnostics = manifest();
+    emptyDiagnostics.diagnostics = [];
+
+    expect(compact.diagnostics).toBeUndefined();
+    expect(compact.diagnosticCount).toBe(1);
+    expect(full.diagnostics).toEqual([{ severity: 'warning', message: 'example diagnostic', code: 'example' }]);
+    expect(full.diagnosticCount).toBe(1);
+    expect(summarizeExtensionContributionManifest(emptyDiagnostics, { includeDiagnostics: true }).diagnostics).toEqual([]);
+    expect(showExtensionContributionManifestEntry(emptyDiagnostics, { kind: 'action', id: 'ext.run', includeDiagnostics: true }).diagnostics).toEqual([]);
+  });
+
+  it('filters summary entries by extension name, search, id prefix, and output profile', () => {
+    const value = manifest();
+    value.actions.push({
+      id: 'other.run',
+      localId: 'run',
+      extensionName: 'other-extension',
+      extensionPath: '/extensions/other',
+      title: 'Other action',
+      inputSchema: objectSchema,
+      outputProfile: 'debug-rich',
+    });
+
+    expect(summarizeExtensionContributionManifest(value, { extensionName: 'other-extension' }).entries.map((entry) => entry.id)).toEqual(['other.run']);
+    expect(summarizeExtensionContributionManifest(value, { search: 'open deep' }).entries.map((entry) => entry.id)).toEqual(['ext.deep']);
+    expect(summarizeExtensionContributionManifest(value, { idPrefix: 'ext.' }).entries.every((entry) => entry.id.startsWith('ext.'))).toBe(true);
+    expect(summarizeExtensionContributionManifest(value, { outputProfile: 'debug-rich' }).entries.map((entry) => entry.id)).toEqual(['other.run']);
+  });
+
+  it('rejects invalid projection option values at runtime', () => {
+    const contributionManifest = manifest();
+
+    expect(() => summarizeExtensionContributionManifest(contributionManifest, { kind: 'console' } as never)).toThrow('"kind" must be action, command, deep-link, or all');
+    expect(() => showExtensionContributionManifestEntry(contributionManifest, { id: 'ext.run', kind: 'all' } as never)).toThrow('"kind" must be action, command, or deep-link');
+    expect(() => summarizeExtensionContributionManifest(contributionManifest, { projection: 'tiny' } as never)).toThrow('"projection" must be compact or full');
+    expect(() => summarizeExtensionContributionManifest(contributionManifest, { outputProfile: 'raw-html' } as never)).toThrow('"outputProfile" must be agent-compact, agent-paginated, markdown, ui-rich, or debug-rich');
+    expect(() => summarizeExtensionContributionManifest(contributionManifest, { includeDiagnostics: 'yes' } as never)).toThrow('"includeDiagnostics" must be a boolean');
+    expect(() => summarizeExtensionContributionManifest(contributionManifest, { search: 123 } as never)).toThrow('"search" must be a string');
+  });
+
+  it('paginates filtered entries with deterministic continuation metadata', () => {
+    const summary = summarizeExtensionContributionManifest(manifest(), { limit: 2, offset: 2 });
+
+    expect(summary.entries.map((entry) => `${entry.kind}:${entry.id}`)).toEqual(['command:ext.command', 'command:shared']);
+    expect(summary.total).toBe(7);
+    expect(summary.returned).toBe(2);
+    expect(summary.offset).toBe(2);
+    expect(summary.limit).toBe(2);
+    expect(summary.hasMore).toBe(true);
+    expect(summary.nextOffset).toBe(4);
+    expect(() => summarizeExtensionContributionManifest(manifest(), { limit: 0 })).toThrow('"limit" must be a positive integer');
+  });
+
+  it('resolves one contribution detail with schema and diagnostics on demand', () => {
+    const detail = showExtensionContributionManifestEntry(manifest(), {
+      kind: 'command',
+      id: 'ext.command',
+      includeInputSchema: true,
+      includeDiagnostics: true,
+    });
+
+    expect(detail.entry.inputSchema).toEqual(commandSpecificSchema);
+    expect(detail.entry.inputDefaults).toEqual({ fromDefault: true, override: 'default' });
+    expect(detail.diagnostics).toEqual([{ severity: 'warning', message: 'example diagnostic', code: 'example' }]);
   });
 });
 
@@ -319,6 +409,35 @@ describe('extension contribution host dispatcher invocation', () => {
       input: {},
       requestedBy: { host: 'cli' },
     })).resolves.toMatchObject({ response: { ok: false, invocationId: 'invoke-failed', error: { code: 'invalid-input' } } });
+  });
+
+  it('creates a failed invocation envelope without echoing raw target input', async () => {
+    const largeValue = 'secret-large-value-'.repeat(200);
+    serverState = await startServer({ ok: false, invocationId: 'invoke-failed', error: { code: 'invalid-input', message: `Bad input ${largeValue} ${'x'.repeat(1200)}` } });
+    writeLockfile(tmpDir, { pid: process.pid, port: serverState.port, startedAt: new Date().toISOString() });
+    const longKey = `secret-key-${'x'.repeat(120)}`;
+
+    const result = await invokeEforgeExtensionContribution({
+      cwd: tmpDir,
+      kind: 'action',
+      id: 'ext.run',
+      input: { largeValue, [longKey]: true, other: 1 },
+      requestedBy: { host: 'cli' },
+    });
+    const envelope = createExtensionContributionFailedInvocationEnvelope(result);
+
+    expect(envelope).toMatchObject({
+      target: { kind: 'action', id: 'ext.run', actionId: 'ext.run' },
+      error: { code: 'invalid-input', messageTruncated: true },
+      inputSummary: { inputKeyCount: 3, truncatedInputKeyCount: 1 },
+    });
+    expect(envelope?.error.message.length).toBeLessThanOrEqual(1000);
+    expect(envelope?.error.message).toContain('[redacted input value]');
+    expect(envelope?.error.message).not.toContain(largeValue);
+    expect(envelope?.inputSummary.inputKeys.every((key) => key.length <= 80)).toBe(true);
+    expect(envelope?.inputSummary.serializedInputSize).toBeGreaterThan(largeValue.length);
+    expect(JSON.stringify(envelope)).not.toContain(largeValue);
+    expect(JSON.stringify(envelope)).not.toContain(longKey);
   });
 
   it('lists and invokes through IfRunning helpers without starting a daemon', async () => {

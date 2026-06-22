@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatExtensionContributionOutput } from '../extension-contribution-output-formatting.js';
+import {
+  formatExtensionContributionDetailText,
+  formatExtensionContributionFailedInvocationEnvelopeText,
+  formatExtensionContributionListText,
+  formatExtensionContributionOutput,
+} from '../extension-contribution-output-formatting.js';
+import type {
+  ExtensionHostContributionDetailResponse,
+  ExtensionHostContributionFailedInvocationEnvelope,
+  ExtensionHostContributionListResponse,
+} from '../api/extension-contribution-dispatch.js';
 
 describe('extension contribution output formatting', () => {
   it('renders exact markdown outputs as markdown text', () => {
@@ -99,5 +109,95 @@ describe('extension contribution output formatting', () => {
     expect(formatted.text.length).toBeLessThanOrEqual(400);
     expect(formatted.text).toContain('final host character budget');
     expect(formatted.text).not.toContain('x'.repeat(500));
+  });
+
+  it('formats compact contribution lists with pagination and input metadata', () => {
+    const response: ExtensionHostContributionListResponse = {
+      generatedAt: '2026-06-03T00:00:00.000Z',
+      diagnosticCount: 2,
+      total: 12,
+      returned: 1,
+      offset: 5,
+      limit: 1,
+      hasMore: true,
+      nextOffset: 6,
+      entries: [{
+        kind: 'command',
+        id: 'ext.command',
+        label: 'Run command',
+        extensionName: 'example',
+        extensionPath: '/extensions/example',
+        actionId: 'ext.run',
+        actionBacked: true,
+        outputProfile: 'agent-compact',
+        hasInputSchema: true,
+        requiredInputKeys: ['name'],
+        inputPropertyKeys: ['name', 'count'],
+        inputDefaultKeys: ['count'],
+      }],
+    };
+
+    const text = formatExtensionContributionListText(response, { maxChars: 800 });
+
+    expect(text).toContain('1 returned of 12 total');
+    expect(text).toContain('nextOffset 6');
+    expect(text).toContain('command:ext.command');
+    expect(text).toContain('required=name');
+    expect(text).toContain('properties=name,count');
+  });
+
+  it('formats contribution detail with schema only when present in the shared projection', () => {
+    const response: ExtensionHostContributionDetailResponse = {
+      generatedAt: '2026-06-03T00:00:00.000Z',
+      diagnosticCount: 0,
+      entry: {
+        kind: 'action',
+        id: 'ext.run',
+        label: 'Run',
+        extensionName: 'example',
+        extensionPath: '/extensions/example',
+        actionId: 'ext.run',
+        actionBacked: true,
+        hasInputSchema: true,
+        requiredInputKeys: ['name'],
+        inputPropertyKeys: ['name'],
+        inputDefaultKeys: [],
+        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+      },
+    };
+
+    const text = formatExtensionContributionDetailText(response, { maxChars: 1_200 });
+
+    expect(text).toContain('Extension contribution: action:ext.run');
+    expect(text).toContain('Input schema:');
+    expect(text).toContain('```json');
+    expect(text).toContain('"name"');
+  });
+
+  it('formats failure envelopes without raw input values', () => {
+    const largeValue = 'secret-large-value-'.repeat(200);
+    const envelope: ExtensionHostContributionFailedInvocationEnvelope = {
+      ok: false,
+      invocationId: 'invoke-1',
+      target: {
+        kind: 'action',
+        id: 'ext.run',
+        label: 'Run',
+        extensionName: 'example',
+        extensionPath: '/extensions/example',
+        actionId: 'ext.run',
+      },
+      requestedBy: { host: 'cli' },
+      error: { code: 'invalid-input', message: 'Bad input' },
+      inputSummary: { inputKeys: ['largeValue'], inputKeyCount: 1, serializedInputSize: JSON.stringify({ largeValue }).length },
+    };
+
+    const text = formatExtensionContributionFailedInvocationEnvelopeText(envelope);
+
+    expect(text).toContain('action:ext.run');
+    expect(text).toContain('invalid-input: Bad input');
+    expect(text).toContain('largeValue');
+    expect(text).toContain('serialized size');
+    expect(text).not.toContain(largeValue);
   });
 });
