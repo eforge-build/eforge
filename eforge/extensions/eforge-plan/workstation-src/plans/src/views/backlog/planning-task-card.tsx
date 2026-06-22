@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/toast';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { isGeneratedPlannerPrompt, selectionItemsLabel } from '@/lib/plan-title';
-import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry } from '@/types';
+import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -18,6 +18,7 @@ interface PlanningTaskCardProps {
   onRetry: (taskId: string) => Promise<void>;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
   onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
+  applyError?: PlanningTaskApplyError;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -28,7 +29,7 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: 'border-border text-muted-foreground',
 };
 
-export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply }: PlanningTaskCardProps) {
+export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, applyError }: PlanningTaskCardProps) {
   const { entry, task } = item;
   const status = task?.status ?? item.status ?? 'queued';
   const running = status === 'queued' || status === 'running';
@@ -69,6 +70,16 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
 
       {running && <RunningProgress task={task} />}
 
+      {/* --- eforge:region plan-04-workstation-session-plan-auto-apply --- */}
+      {applyError && (
+        <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs">
+          <p className="font-semibold text-destructive-foreground">{applyError.automatic ? 'Automatic session-plan creation failed.' : 'Session-plan creation failed.'}</p>
+          <p className="mt-1 break-words text-destructive-foreground">{applyError.message}</p>
+          <p className="mt-1 text-muted-foreground">Review the draft below, resolve any collision or validation issue, then use Create session plan to retry manually.</p>
+        </div>
+      )}
+      {/* --- eforge:endregion plan-04-workstation-session-plan-auto-apply --- */}
+
       {status === 'failed' && (
         <div className="mt-2 grid gap-2">
           <p className="text-xs text-destructive-foreground">{task?.errorMessage ?? task?.errorCode ?? 'Task failed.'}</p>
@@ -84,7 +95,7 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
       )}
 
       {status === 'completed' && task?.result && (
-        <PlanningTaskResultPreview item={item} busy={busy} onRedraft={onRedraft} onApply={onApply} />
+        <PlanningTaskResultPreview item={item} busy={busy} onRedraft={onRedraft} onApply={onApply} applyError={applyError} />
       )}
     </article>
   );

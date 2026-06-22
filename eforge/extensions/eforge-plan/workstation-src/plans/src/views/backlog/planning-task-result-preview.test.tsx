@@ -63,4 +63,31 @@ describe('PlanningTaskResultPreview session-plan creation confirmation', () => {
 
     expect(onApply).toHaveBeenCalledWith('task-creation', { applySessionPlanCreationDraft: {} });
   });
+
+  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+  it('shows automatic apply failures while keeping manual creation available', () => {
+    const onApply = vi.fn(async () => undefined);
+    render(
+      <PlanningTaskResultPreview
+        item={creationItem()}
+        busy={false}
+        onRedraft={vi.fn(async () => undefined)}
+        onApply={onApply}
+        applyError={{ taskId: 'task-creation', message: 'Session plan already exists', automatic: true }}
+      />,
+    );
+
+    expect(screen.getByText(/Automatic session-plan creation failed/)).toBeTruthy();
+    expect(screen.getByText(/Session plan already exists/)).toBeTruthy();
+    const create = screen.getByRole('button', { name: 'Create session plan' });
+    expect(create).toHaveProperty('disabled', false);
+
+    fireEvent.click(create);
+    const confirm = screen.getByRole('button', { name: 'Confirm create session plan' });
+    expect(confirm).toHaveProperty('disabled', false);
+    fireEvent.click(confirm);
+
+    expect(onApply).toHaveBeenCalledWith('task-creation', { applySessionPlanCreationDraft: {} });
+  });
+  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 });

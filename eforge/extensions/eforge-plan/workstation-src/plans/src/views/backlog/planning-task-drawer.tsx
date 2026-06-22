@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { X } from 'lucide-react';
-import type { JsonObject, PlanningAgentTaskListItem } from '@/types';
+import type { JsonObject, PlanningAgentTaskListItem, PlanningTaskApplyError } from '@/types';
 import { PlanningTaskCard } from './planning-task-card';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -14,6 +14,7 @@ interface PlanningTaskDrawerProps {
   onRetry: (taskId: string) => Promise<void>;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
   onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
+  applyError?: PlanningTaskApplyError;
   onClose: () => void;
 }
 
@@ -24,7 +25,7 @@ interface PlanningTaskDrawerProps {
  * the narrow rail. It reuses PlanningTaskCard verbatim, so there is no separate
  * result-rendering path to keep in sync.
  */
-export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, onClose }: PlanningTaskDrawerProps) {
+export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, applyError, onClose }: PlanningTaskDrawerProps) {
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKeyDown);
@@ -49,6 +50,7 @@ export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onR
           onRetry={onRetry}
           onRedraft={onRedraft}
           onApply={onApply}
+          applyError={applyError}
         />
       </div>
     </aside>

@@ -222,6 +222,19 @@ describe('eforge-plan compact backlog query actions', () => {
     });
   });
 
+  it('omits dependency id arrays from get-epic item summaries when requested', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const output = await invoke(cwd, 'get-epic', { id: 'epic-one', includeItemDependencies: false });
+
+      const child = (output.items as Array<Record<string, unknown>>).find((entry) => entry.id === 'child');
+      expect(child).toMatchObject({ id: 'child' });
+      expect(child).not.toHaveProperty('dependsOn');
+      expect(child).not.toHaveProperty('unresolvedDependsOn');
+    });
+  });
+
   it('applies search and compact board projection controls', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);

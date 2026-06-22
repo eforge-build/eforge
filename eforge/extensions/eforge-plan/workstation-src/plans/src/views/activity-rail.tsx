@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { selectionItemsLabel } from '@/lib/plan-title';
-import type { AgentTaskStatus, PlanningAgentTaskListItem, PlanningTaskWorkflowEntry } from '@/types';
+import type { AgentTaskStatus, PlanningAgentTaskListItem, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
 import type { PlanningTaskWorkflowsApi } from './backlog/use-planning-task-workflows';
 import { PlanningTaskDrawer } from './backlog/planning-task-drawer';
 
@@ -67,8 +67,10 @@ function taskLabel(entry: PlanningTaskWorkflowEntry, titles?: Map<string, string
  */
 export function ActivityRail({ workflows, titles }: ActivityRailProps) {
   const running = workflows.items.filter(isRunning);
-  const recent = workflows.items.filter((item) => !isRunning(item)).slice(0, RECENT_TERMINAL_LIMIT);
-  const visible = [...running, ...recent];
+  const applyFailed = workflows.items.filter((item) => !isRunning(item) && Boolean(workflows.applyErrors[item.entry.taskId]));
+  const pinnedIds = new Set([...running, ...applyFailed].map((item) => item.entry.taskId));
+  const recent = workflows.items.filter((item) => !isRunning(item) && !pinnedIds.has(item.entry.taskId)).slice(0, RECENT_TERMINAL_LIMIT);
+  const visible = [...running, ...applyFailed, ...recent];
 
   const [openTaskId, setOpenTaskId] = React.useState<string | null>(null);
   const openItem = openTaskId ? workflows.items.find((item) => item.entry.taskId === openTaskId) ?? null : null;
@@ -98,6 +100,7 @@ export function ActivityRail({ workflows, titles }: ActivityRailProps) {
                   item={item}
                   busy={workflows.busy}
                   titles={titles}
+                  applyError={workflows.applyErrors[item.entry.taskId]}
                   onOpen={() => setOpenTaskId(item.entry.taskId)}
                   onCancel={() => void workflows.cancel(item.entry.taskId)}
                 />
@@ -119,6 +122,7 @@ export function ActivityRail({ workflows, titles }: ActivityRailProps) {
           onRetry={workflows.retry}
           onRedraft={workflows.redraft}
           onApply={workflows.apply}
+          applyError={workflows.applyErrors[openItem.entry.taskId]}
           onClose={() => setOpenTaskId(null)}
         />
       )}
@@ -126,10 +130,10 @@ export function ActivityRail({ workflows, titles }: ActivityRailProps) {
   );
 }
 
-function TaskRow({ item, busy, titles, onOpen, onCancel }: { item: PlanningAgentTaskListItem; busy: boolean; titles?: Map<string, string>; onOpen: () => void; onCancel: () => void }) {
+function TaskRow({ item, busy, titles, applyError, onOpen, onCancel }: { item: PlanningAgentTaskListItem; busy: boolean; titles?: Map<string, string>; applyError?: PlanningTaskApplyError; onOpen: () => void; onCancel: () => void }) {
   const status = taskStatus(item);
   const label = taskLabel(item.entry, titles);
-  const message = item.task?.metadata?.progressMessage ?? item.staleReason;
+  const message = applyError?.message ?? item.task?.metadata?.progressMessage ?? item.staleReason;
   const time = formatRelativeTime(item.task?.startedAt ?? item.entry.createdAt);
   return (
     <div
@@ -141,6 +145,9 @@ function TaskRow({ item, busy, titles, onOpen, onCancel }: { item: PlanningAgent
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-bright" title={label}>{label}</span>
+        {/* --- eforge:region plan-04-workstation-session-plan-auto-apply --- */}
+        {applyError && <span className="shrink-0 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive-foreground">Apply failed</span>}
+        {/* --- eforge:endregion plan-04-workstation-session-plan-auto-apply --- */}
         {isReviewable(item) && <span className="shrink-0 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">Review</span>}
         {status && <span className={`shrink-0 rounded border px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide ${STATUS_TONE[status]}`}>{status}</span>}
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

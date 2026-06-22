@@ -376,6 +376,15 @@ export interface PlanningTaskWorkflowEntry {
   appliedAt?: string;
   createdAt: string;
 }
+// --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+export interface PlanningTaskApplyError {
+  taskId: string;
+  message: string;
+  automatic: boolean;
+  occurredAt?: string;
+}
+// --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
+
 export interface PlanningAgentTaskListItem {
   entry: PlanningTaskWorkflowEntry;
   available: boolean;

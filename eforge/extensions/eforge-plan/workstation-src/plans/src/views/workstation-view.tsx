@@ -3,7 +3,7 @@ import { ClipboardList, GitBranch, Map } from 'lucide-react';
 import { useRouter } from '@/router';
 import type { WorkstationDataState } from '@/hooks/use-workstation-data';
 import { useBacklogSelection } from '@/hooks/use-backlog-selection';
-import type { ApplyPlanningTaskResponse, JsonObject } from '@/types';
+import type { AppliedSessionPlanCreationDraft, ApplyPlanningTaskResponse, JsonObject } from '@/types';
 import { buildItemPlanIndex, draftKey, planKey } from '@/lib/plan-links';
 import { RoadmapContextRail, RoadmapFocus } from './roadmap/roadmap-panel';
 import { sourceSummary } from './roadmap/roadmap-view-model';
@@ -32,7 +32,12 @@ const FOCUSES: { id: Focus; label: string; icon: React.ComponentType<{ className
  */
 export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const router = useRouter();
-  const workflows = usePlanningTaskWorkflows(data.refresh);
+  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+  const openCreatedSessionPlan = React.useCallback((draft: AppliedSessionPlanCreationDraft) => {
+    router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', planKey(draft.session)); });
+  }, [router]);
+  const workflows = usePlanningTaskWorkflows(data.refresh, openCreatedSessionPlan);
+  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
   const selection = useBacklogSelection(data.board, workflows);
 
   // The "Analyze all backlog" trigger drives a backlog-curation task; while one
@@ -56,10 +61,9 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   // Plans focus so iteration continues there.
   const applyAndOpenPlan = React.useCallback(async (taskId: string, input: JsonObject): Promise<ApplyPlanningTaskResponse | null> => {
     const response = await workflows.apply(taskId, input);
-    const session = response?.sessionPlanCreationDraft?.session;
-    if (session) router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', planKey(session)); });
+    if (response?.sessionPlanCreationDraft) openCreatedSessionPlan(response.sessionPlanCreationDraft);
     return response;
-  }, [workflows, router]);
+  }, [workflows, openCreatedSessionPlan]);
   const panelWorkflows = React.useMemo(() => ({ ...workflows, apply: applyAndOpenPlan }), [workflows, applyAndOpenPlan]);
 
   const items = data.board.items ?? [];

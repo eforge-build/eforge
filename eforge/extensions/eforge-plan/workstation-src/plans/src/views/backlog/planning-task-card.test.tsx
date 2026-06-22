@@ -35,7 +35,7 @@ function curationItem(status: 'queued' | 'running' | 'completed' | 'failed' | 'c
   };
 }
 
-function renderCard(item: PlanningAgentTaskListItem) {
+function renderCard(item: PlanningAgentTaskListItem, applyError?: { taskId: string; message: string; automatic: boolean }) {
   return render(
     <ToastProvider>
       <PlanningTaskCard
@@ -46,6 +46,7 @@ function renderCard(item: PlanningAgentTaskListItem) {
         onRetry={vi.fn(async () => undefined)}
         onRedraft={vi.fn(async () => undefined)}
         onApply={vi.fn(async () => undefined)}
+        applyError={applyError}
       />
     </ToastProvider>,
   );
@@ -96,4 +97,37 @@ describe('PlanningTaskCard curation behavior', () => {
     renderCard(curationItem('failed'));
     expect(screen.getByRole('button', { name: 'Retry with preserved context' })).toBeTruthy();
   });
+
+  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+  it('keeps cancelled and unavailable task messaging visible', () => {
+    const { unmount } = renderCard(curationItem('cancelled'));
+    expect(screen.getByText('Task cancelled.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry with preserved context' })).toBeTruthy();
+    unmount();
+
+    const unavailable = curationItem('completed');
+    unavailable.available = false;
+    unavailable.staleReason = 'Task record is no longer available.';
+    renderCard(unavailable);
+    expect(screen.getByText('Task record is no longer available.')).toBeTruthy();
+  });
+
+  it('shows automatic apply errors alongside manual creation controls', () => {
+    const item = curationItem('completed');
+    item.entry.purpose = undefined;
+    item.entry.requestedOutputSections = ['sessionPlanCreationDraft'];
+    item.task!.result = {
+      summary: 'Ready.',
+      assumptionsOpenQuestions: [],
+      decision: 'ready',
+      sessionPlanCreationDraft: { session: 'created-session', topic: 'Created', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Scope.' }] },
+    };
+
+    renderCard(item, { taskId: item.entry.taskId, message: 'Session plan already exists', automatic: true });
+
+    expect(screen.getByText('Automatic session-plan creation failed.')).toBeTruthy();
+    expect(screen.getAllByText(/Session plan already exists/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Create session plan' })).toBeTruthy();
+  });
+  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 });

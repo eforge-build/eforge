@@ -109,6 +109,12 @@ describe('eforge-plan planning workstation assets', () => {
       expect(source).toContain(actionId);
     }
     expect(source).toContain('bridge.invokeAction');
+    // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+    expect(source).toContain('applySessionPlanCreationDraft: {}');
+    expect(source).toContain('suppressSuccessToast');
+    expect(source).toContain('autoApplyAttemptedRef');
+    expect(source).toContain('onCreatedSessionPlan');
+    // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
     expect(source).not.toMatch(/fetch\s*\(/);
   });
 
