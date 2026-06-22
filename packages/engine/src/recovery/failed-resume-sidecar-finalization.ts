@@ -79,7 +79,9 @@ export async function finalizeFailedQueuedResumeSidecars(options: FailedQueuedRe
 }
 
 function isTrustworthyResumeSummary(summary: BuildFailureSummary): boolean {
-  return summary.failingPlan.planId !== 'unknown' || summary.plans.length > 0;
+  if (summary.failingPlan.planId !== 'unknown' || summary.plans.length > 0) return true;
+  const terminal = summary.terminalFailure;
+  return Boolean(terminal?.authoritative && terminal.scope !== 'unknown');
 }
 
 async function writeCurrentSidecar(options: FailedQueuedResumeSidecarFinalizationOptions & { failedPrdDir: string; summary: BuildFailureSummary }): Promise<FailedQueuedResumeSidecarFinalizationResult> {
@@ -206,7 +208,7 @@ function inspectFailedResumeEvidence(dbPath: string, setName: string, resumeRunI
       if (!run) return { hasFailedResumeRun: false, hasActivationEvidence: false, hasSummarizableEvidence: false };
       const eventCounts = db.prepare(`SELECT
         SUM(CASE WHEN type IN ('build:resume:start', 'build:resume:artifacts') THEN 1 ELSE 0 END) AS activationCount,
-        SUM(CASE WHEN type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete') THEN 1 ELSE 0 END) AS summaryCount
+        SUM(CASE WHEN type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete', 'build:terminal-failure', 'acceptance_validation:complete', 'prd_validation:complete') THEN 1 ELSE 0 END) AS summaryCount
         FROM events WHERE run_id = ?`).get(run.id) as { activationCount: number | null; summaryCount: number | null } | undefined;
       return {
         hasFailedResumeRun: true,
