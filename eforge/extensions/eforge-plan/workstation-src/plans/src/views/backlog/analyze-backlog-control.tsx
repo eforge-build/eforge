@@ -1,69 +1,45 @@
 import * as React from 'react';
-import { Bot, Loader2 } from 'lucide-react';
+import { Bot, Info, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
-import type { BacklogCurationScanMode } from '@/types';
-import { curationScanModeLabel, FULL_AUDIT_WARNING, SOURCE_FIRST_DEFAULT_CONCURRENCY, SOURCE_FIRST_MAX_CONCURRENCY } from './backlog-curation-view-model';
+import { BACKLOG_ANALYSIS_HELP } from './backlog-curation-view-model';
 
 interface AnalyzeBacklogControlProps {
   /** A control mutation (this click's request) is in flight. */
   busy: boolean;
   /** A backlog-curation task is already queued/running - the trigger reflects that instead of inviting a duplicate. */
   analyzing: boolean;
-  onAnalyze: (input: { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number }) => Promise<unknown>;
+  onAnalyze: () => Promise<unknown>;
 }
 
-/**
- * Compact "Analyze backlog" trigger for the recommendations rail. Analysis is
- * what generates recommendations, so it lives with them rather than on a
- * separate planning surface. The scan mode picks between the default delta
- * curation and a broader full-implementation audit; the audit warning only
- * appears once that heavier mode is chosen.
- */
+/** Compact recommendations-rail trigger for server-owned backlog analysis. */
 export function AnalyzeBacklogControl({ busy, analyzing, onAnalyze }: AnalyzeBacklogControlProps) {
-  const [scanMode, setScanMode] = React.useState<BacklogCurationScanMode>('delta');
-  const [itemAuditConcurrency, setItemAuditConcurrency] = React.useState(SOURCE_FIRST_DEFAULT_CONCURRENCY);
-  const normalizedConcurrency = Math.min(SOURCE_FIRST_MAX_CONCURRENCY, Math.max(1, Math.trunc(itemAuditConcurrency || SOURCE_FIRST_DEFAULT_CONCURRENCY)));
+  const [helpOpen, setHelpOpen] = React.useState(false);
   // A queued/running curation task or an in-flight click both lock the trigger;
   // the running task wins the label so the control reads as "already working".
   const disabled = busy || analyzing;
   return (
-    <div className="grid gap-1.5 rounded-md border border-primary/30 bg-primary/5 p-2">
-      <Select
-        value={scanMode}
-        onChange={(event) => setScanMode(event.target.value as BacklogCurationScanMode)}
-        disabled={disabled}
-        className="h-7 w-full text-2xs"
-        aria-label="Backlog curation mode"
-      >
-        <option value="delta">{curationScanModeLabel('delta')}</option>
-        <option value="full-implementation-audit">{curationScanModeLabel('full-implementation-audit')}</option>
-      </Select>
+    <div className="relative flex items-center gap-1.5">
       <Button
         size="sm"
-        className="h-7 w-full gap-1 px-2 text-2xs"
+        className="h-7 flex-1 gap-1 px-2 text-2xs"
         disabled={disabled}
-        title={analyzing ? 'Backlog curation is already running - see Planning activity below' : 'Curate the backlog and regenerate recommendations'}
-        onClick={() => void onAnalyze(scanMode === 'full-implementation-audit' ? { scanMode, itemAuditConcurrency: normalizedConcurrency } : { scanMode })}
+        title={analyzing ? 'Backlog analysis is already running - see Planning activity below' : 'Analyze backlog and refresh recommendations'}
+        onClick={() => void onAnalyze()}
       >
-        {disabled ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />} {analyzing ? 'Analyzing backlog…' : 'Analyze all backlog'}
+        {disabled ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />} {analyzing ? 'Analyzing…' : 'Analyze backlog'}
       </Button>
-      {scanMode === 'full-implementation-audit' && (
-        <div className="grid gap-1 rounded border border-amber-400/40 bg-amber-400/10 p-1.5 text-2xs text-amber-100">
-          <p>{FULL_AUDIT_WARNING}</p>
-          <label className="grid gap-1 text-amber-50">
-            <span>Item audit concurrency (default {SOURCE_FIRST_DEFAULT_CONCURRENCY}, max {SOURCE_FIRST_MAX_CONCURRENCY})</span>
-            <input
-              type="number"
-              min={1}
-              max={SOURCE_FIRST_MAX_CONCURRENCY}
-              step={1}
-              value={itemAuditConcurrency}
-              disabled={disabled}
-              onChange={(event) => setItemAuditConcurrency(Number(event.target.value))}
-              className="h-7 rounded border border-amber-300/40 bg-background px-2 text-foreground"
-            />
-          </label>
+      <button
+        type="button"
+        aria-label="About backlog analysis"
+        aria-expanded={helpOpen}
+        className="grid h-7 w-7 place-items-center rounded border border-border text-muted-foreground hover:text-foreground"
+        onClick={() => setHelpOpen((open) => !open)}
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      {helpOpen && (
+        <div className="absolute right-0 top-8 z-20 w-72 rounded-md border border-border bg-card p-2 text-xs text-foreground shadow-lg">
+          {BACKLOG_ANALYSIS_HELP}
         </div>
       )}
     </div>

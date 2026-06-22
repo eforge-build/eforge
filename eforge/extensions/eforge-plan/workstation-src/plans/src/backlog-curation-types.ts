@@ -1,4 +1,4 @@
-import type { BacklogCurationDraft, BacklogCurationScanMode, RecommendationFreshnessView, RecommendationModel, RecommendationSummary } from './types';
+import type { BacklogCurationDraft, RecommendationFreshnessView, RecommendationModel, RecommendationSummary } from './types';
 
 export interface RecommendationReferenceValidationIssue { path: string; id: string; kind: 'item' | 'epic'; reason: 'unknown' | 'closed' | 'empty' | 'wrong-lane'; status?: string; title?: string; message: string; }
 export interface RecommendationReferenceValidationResult { valid: boolean; issues: RecommendationReferenceValidationIssue[]; }
@@ -16,7 +16,6 @@ export interface BacklogCurationFullAuditItemSummary { itemId: string; candidate
 export interface BacklogCurationFullAuditPreview { scope?: { itemIds: string[]; openItemCount?: number }; coverage?: { auditedItemCount: number; currentStateFileCount?: number; gitHistoryCommitCount?: number; pullRequestCount?: number }; caps?: { fileScanCount?: number; fileBytes?: number; evidencePerItem?: number; pathsPerCategory?: number; excerptBytes?: number; diagnosticCount?: number; gitCommitScanCount?: number; prEnrichmentCount?: number }; settings?: { itemAuditConcurrency?: number; maxItemAuditConcurrency?: number; closureAuthority?: string }; diagnostics?: BacklogCurationFullAuditDiagnostic[]; sourceFirstResults?: BacklogCurationSourceFirstResult[]; historicalHints?: BacklogCurationFullAuditHistoricalHint[]; closureCandidates?: BacklogCurationFullAuditEvidenceSummary[]; itemSummaries?: BacklogCurationFullAuditItemSummary[]; }
 export interface BacklogCurationPreviewDetails {
   valid: boolean;
-  scanMode?: BacklogCurationScanMode;
   itemChanges?: number;
   epicChanges?: number;
   noOpRechecks?: number;

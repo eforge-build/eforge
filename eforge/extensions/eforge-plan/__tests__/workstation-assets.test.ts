@@ -206,7 +206,8 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain("entry.purpose === 'recommendation-refresh'");
     expect(source).toContain('Recommendation refresh');
     expect(source).toContain("entry.purpose === 'backlog-curation'");
-    expect(source).toContain('curationScanModeLabel(entry.scanMode)');
+    expect(source).toContain('Backlog analysis');
+    expect(source).not.toContain('curationScanModeLabel');
   });
 
   it('promotes selected ready backlog items through a single AI planning task', async () => {

@@ -48,7 +48,7 @@ function isReviewable(item: PlanningAgentTaskListItem): boolean {
 // running task reads as what it is for rather than a generic count.
 function taskLabel(entry: PlanningTaskWorkflowEntry, titles?: Map<string, string>): string {
   if (entry.purpose === 'recommendation-refresh') return 'Recommendation refresh';
-  if (entry.purpose === 'backlog-curation') return entry.scanMode === 'full-implementation-audit' ? 'Backlog audit' : 'Backlog curation';
+  if (entry.purpose === 'backlog-curation') return 'Backlog audit';
   if (entry.session) return `Plan ${entry.session}`;
   const ref = entry.selection?.recommendationRef ?? entry.selection?.sourceRecommendationRef;
   if (ref) return `Plan lane ${ref}`;

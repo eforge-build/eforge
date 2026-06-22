@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mockBacklogCurationDraft, mockBacklogCurationPreview, mockFullAuditBacklogCurationPreview } from '@/fixtures/mock-data';
-import { curationEvidencePreview, curationScanModeLabel, effectiveRecommendationsFromProjection, formatFullAuditCaps, formatFullAuditCoverage, matchFullAuditEvidenceForPatch, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
+import { curationEvidencePreview, effectiveRecommendationsFromProjection, formatFullAuditCaps, formatFullAuditCoverage, matchFullAuditEvidenceForPatch, projectionMetadataDisplay, recommendationSummaryCounts } from './backlog-curation-view-model';
 
 describe('backlog curation view model', () => {
   it('extracts shipped evidence labels, PR identifiers, and commit identifiers', () => {
@@ -40,9 +40,7 @@ describe('backlog curation view model', () => {
     expect(recommendationSummaryCounts(display)).toMatchObject({ readyCandidates: 1, nextSequence: 1, safeParallelGroups: 1 });
   });
 
-  it('formats scan modes and full-audit metadata from server preview details', () => {
-    expect(curationScanModeLabel(undefined)).toBe('Delta curation');
-    expect(curationScanModeLabel('full-implementation-audit')).toBe('Source-first implementation audit');
+  it('formats full-audit metadata from server preview details', () => {
     expect(formatFullAuditCoverage(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'Audited items', value: '6' });
     expect(formatFullAuditCaps(mockFullAuditBacklogCurationPreview.fullImplementationAudit)).toContainEqual({ label: 'File scan cap', value: '250' });
   });

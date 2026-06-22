@@ -105,18 +105,16 @@ describe('eforge-plan README planner contract', () => {
       expect(readme).toContain(required);
     }
 
-    expect(readme).toContain('{ "scanMode": "delta" }');
-    expect(readme).toContain('{ "scanMode": "full-implementation-audit", "itemAuditConcurrency": 4 }');
-    expect(readme).toMatch(/Delta is the default/);
-    expect(readme).toMatch(/`full-implementation-audit` wire value is the workstation’s Source-first implementation audit/);
-    expect(readme).toMatch(/audits open items against current source/);
-    expect(readme).toMatch(/current source as the only closure authority/);
-    expect(readme).toMatch(/git\/PR\/lifecycle\/session history as navigation hints only/);
-    expect(readme).toMatch(/defaults item concurrency to `4`, and caps it at `8`/);
-    expect(readme).toMatch(/source-first coverage\/caps\/concurrency\/diagnostics\/per-item outcomes\/current-source citations\/historical navigation hints/);
+    expect(readme).not.toContain('scanMode');
+    expect(readme).not.toContain('full-implementation-audit');
+    expect(readme).toContain('`analyze-all-backlog` example input: `{}`');
+    expect(readme).toMatch(/audits open backlog items against current source/);
+    expect(readme).toMatch(/current source as the closure authority|current source is the closure authority/);
+    expect(readme).toMatch(/git\/PR\/lifecycle\/session history as navigation hints|history is a navigation hint/);
+    expect(readme).toMatch(/coverage, caps, diagnostics, concurrency settings, per-item outcomes, current-source citations, historical navigation hints/);
     expect(readme).toMatch(/analyze-all-backlog[\s\S]*(starts or reuses|start or reuse)[\s\S]*daemon-owned[\s\S]*read-only/);
     expect(readme).toMatch(/Completed (backlog )?curation tasks? render(s)? a (read-only )?preview before mutation/i);
-    expect(readme).toMatch(/item changes[\s\S]*epic changes[\s\S]*no-op rechecks[\s\S]*skipped cases[\s\S]*needs-input cases[\s\S]*generated recommendations/);
+    expect(readme).toMatch(/item changes[\s\S]*epic changes[\s\S]*no-op rechecks[\s\S]*unresolved exceptions[\s\S]*needs-input cases[\s\S]*generated recommendation details/);
     expect(readme).toMatch(/curation apply requires two in-app confirmation steps/i);
     expect(readme).toMatch(/applyBacklogCurationDraft\.previewAcknowledged[\s\S]*applyBacklogCurationDraft\.confirmApply[\s\S]*true/);
     expect(readme).toMatch(/Analyze-all and curation apply do not enqueue builds/);
@@ -138,7 +136,7 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toContain('Superseded evidence: inferred from git/PR history — ');
     expect(readme).toContain('Ambiguous shipped candidate: needs input — ');
     expect(readme).toContain('Ambiguous superseded candidate: needs input — ');
-    expect(readme).toMatch(/Ambiguous closure evidence is routed to skipped or needs-input rather than status changes/);
+    expect(readme).toMatch(/Ambiguous closure evidence is not enough for a closed-status patch/);
     expect(readme).toMatch(/prospective recommendation projection metadata/);
   });
 
@@ -247,12 +245,12 @@ describe('eforge-plan README planner contract', () => {
     const readme = await readFile(README, 'utf-8');
     const boundary = sectionBetween(readme, '## Planning workstation boundary', '');
 
-    expect(boundary).toMatch(/analyze-all-backlog` starts or reuses an active daemon-owned read-only `backlog-curation` planning task/);
+    expect(boundary).toMatch(/analyze-all-backlog` starts or reuses an active daemon-owned read-only source-first `backlog-curation` planning task/);
     expect(boundary).toMatch(/defers all-open-backlog curation source assembly to that background task/);
     expect(boundary).toMatch(/`backlogCurationDraft` plus `recommendations`/);
     expect(boundary).toMatch(/Planning activity monitor labels curation tasks and supports retry, redraft, cancel, remove, and apply/);
     expect(boundary).toMatch(/task result is read-only until the user previews it/);
-    expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, skipped cases, needs-input cases, generated recommendations/);
+    expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, unresolved exceptions, needs-input cases, generated recommendation details/);
     expect(boundary).toMatch(/preview-time invalid generated recommendation references/);
     expect(boundary).toMatch(/Invalid generated recommendations block normal curation apply/);
     expect(boundary).toMatch(/apply curation only while discarding generated recommendations with `applyCurationOnly`/);

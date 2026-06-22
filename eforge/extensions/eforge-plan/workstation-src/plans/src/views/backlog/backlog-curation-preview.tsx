@@ -6,7 +6,7 @@ import { getBridge } from '@/bridge';
 import { formatRelativeTime } from '@/lib/format-time';
 import type { BacklogCurationDraft, BacklogCurationPreviewDetails, JsonObject, PlanningTaskWorkflowEntry, RecommendationModel, RecommendationReferenceValidationResult } from '@/types';
 import type { RedraftInput } from './use-planning-task-workflows';
-import { abbreviateFingerprint, curationCounts, curationEvidencePreview, curationScanModeLabel, effectiveRecommendationsFromProjection, FULL_AUDIT_WARNING, idLabel, matchFullAuditEvidenceForPatch, metadataRows, normalizeCurationScanMode, projectionMetadataDisplay, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
+import { abbreviateFingerprint, curationCounts, curationEvidencePreview, effectiveRecommendationsFromProjection, idLabel, matchFullAuditEvidenceForPatch, metadataRows, projectionMetadataDisplay, recommendationSummaryCounts, sectionOperationLabel, validationIssueLabel } from './backlog-curation-view-model';
 import { RecommendationFreshnessBadge, RecommendationFreshnessLine } from '@/components/recommendation-freshness';
 import { BacklogCurationFullAuditPanel, FullAuditEvidenceChips } from './backlog-curation-full-audit-panel';
 import { BacklogCurationGitDeltaPanel } from './backlog-curation-git-delta-panel';
@@ -31,7 +31,6 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
   const [previewLoading, setPreviewLoading] = React.useState(curationPreview === undefined);
   const effectivePreview = curationPreview ?? loadedPreview ?? undefined;
   const projection = effectivePreview?.recommendationProjection;
-  const scanMode = normalizeCurationScanMode(effectivePreview?.scanMode ?? entry.scanMode);
   const displayRecommendations = effectiveRecommendationsFromProjection(projection);
   const projectionMetadata = projectionMetadataDisplay(projection);
   const counts = curationCounts(draft, projection);
@@ -69,19 +68,16 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
     <SubBlock className="mt-3 gap-3 pt-3 text-sm">
       <div className="grid gap-2">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-foreground">Backlog curation preview</h3>
-            <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">{curationScanModeLabel(scanMode)}</span>
-          </div>
+          <h3 className="text-sm font-semibold text-foreground">Backlog curation preview</h3>
           <p className="text-xs text-muted-foreground">Read-only draft from source {abbreviateFingerprint(draft.sourceFingerprint)}{draft.generatedAt ? ` · generated ${formatRelativeTime(draft.generatedAt)}` : ''}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <CountChip label="item changes" value={counts.itemChanges} />
           <CountChip label="epic changes" value={counts.epicChanges} />
           <CountChip label="no-op rechecks" value={counts.noOpRechecks} />
-          <CountChip label="skipped" value={counts.skipped} />
+          <CountChip label="unresolved exceptions" value={counts.skipped} />
           <CountChip label="needs input" value={counts.needsInput} />
-          <CountChip label="generated recommendations" value={counts.generatedRecommendations} />
+          <CountChip label="recommendation entries" value={counts.generatedRecommendations} />
         </div>
       </div>
 
@@ -91,7 +87,6 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
           <RecommendationFreshnessLine freshness={effectivePreview.recommendationFreshness} />
         </div>
       )}
-      {scanMode === 'full-implementation-audit' && <div className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-100">{FULL_AUDIT_WARNING}</div>}
       <BacklogCurationGitDeltaPanel gitDelta={effectivePreview?.gitDelta} />
       <BacklogCurationFullAuditPanel audit={effectivePreview?.fullImplementationAudit} />
       {previewLoading && <div className="rounded border border-border bg-card p-2 text-xs text-muted-foreground">Validating curation apply preconditions and effective recommendation projection…</div>}
@@ -129,7 +124,7 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
               </PreviewBlock>
             )}
             {draft.skipped.length > 0 && (
-              <PreviewBlock title="Skipped cases">
+              <PreviewBlock title="Unresolved exceptions">
                 <ul className="grid gap-1.5 text-xs text-muted-foreground">
                   {draft.skipped.map((entry, index) => <li key={`${entry.kind ?? 'record'}:${entry.id ?? index}`}><RecordLabel kind={entry.kind} id={entry.id} /> — {entry.reason}</li>)}
                 </ul>
@@ -256,17 +251,76 @@ function RecommendationValidationWarning({ validation }: { validation: Recommend
   );
 }
 
+// --- eforge:region recommendation-detail-preview ---
 function GeneratedRecommendations({ recommendations, metadata }: { recommendations: RecommendationModel; metadata: ReturnType<typeof projectionMetadataDisplay> }) {
   const counts = recommendationSummaryCounts(recommendations);
   return (
     <PreviewBlock title="Effective generated recommendations (read-only)">
-      <div className="grid gap-1.5 text-xs text-muted-foreground">
+      <div className="grid gap-2 text-xs text-muted-foreground">
         <p>{counts.activeWork} active work items · {counts.readyCandidates} ready candidates · {counts.nextSequence} next-sequence items · {counts.safeParallelGroups} safe-parallel groups · {counts.blockedChains} blocked chains</p>
         {metadata.removedItemIds.length > 0 && <p>Removed item ids: {metadata.removedItemIds.join(', ')}</p>}
         {metadata.removedEpicIds.length > 0 && <p>Removed epic ids: {metadata.removedEpicIds.join(', ')}</p>}
         {metadata.repositioned.length > 0 && <p>Repositioned item ids: {metadata.repositioned.join(', ')}</p>}
+        <RecommendationEntrySection title="Active work" entries={recommendations.activeWork ?? []} />
+        <RecommendationEntrySection title="Ready candidates" entries={recommendations.readyCandidates ?? []} />
+        <RecommendationEntrySection title="Recommended next sequence" entries={recommendations.recommendedNextSequence ?? []} />
+        <RecommendationGroupSection title="Safe-parallel groups" groups={recommendations.safeParallelizableGroups ?? []} />
+        <RecommendationBlockedChainSection chains={recommendations.blockedChains ?? []} />
         {recommendations.rationaleAndAssumptions && recommendations.rationaleAndAssumptions.length > 0 && <ul className="list-disc pl-4">{recommendations.rationaleAndAssumptions.map((entry) => <li key={entry}>{entry}</li>)}</ul>}
       </div>
     </PreviewBlock>
   );
 }
+
+function RecommendationEntrySection({ title, entries }: { title: string; entries: NonNullable<RecommendationModel['recommendedNextSequence']> }) {
+  if (entries.length === 0) return null;
+  return (
+    <details className="rounded border border-border p-2" open>
+      <summary className="cursor-pointer text-xs font-medium text-foreground">{title} ({entries.length})</summary>
+      <ul className="mt-1 grid gap-1.5">
+        {entries.map((entry, index) => (
+          <li key={`${entry.ref ?? entry.itemId}:${index}`}>
+            <span className="font-mono text-foreground">{entry.itemId}</span>{entry.title ? ` — ${entry.title}` : ''}{entry.rationale ? <span className="block">{entry.rationale}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function RecommendationGroupSection({ title, groups }: { title: string; groups: NonNullable<RecommendationModel['safeParallelizableGroups']> }) {
+  if (groups.length === 0) return null;
+  return (
+    <details className="rounded border border-border p-2" open>
+      <summary className="cursor-pointer text-xs font-medium text-foreground">{title} ({groups.length})</summary>
+      <ul className="mt-1 grid gap-1.5">
+        {groups.map((group) => (
+          <li key={group.ref}>
+            <span className="font-mono text-foreground">{group.ref}</span>{group.title ? ` — ${group.title}` : ''}
+            <span className="block">Items: {group.itemIds.join(', ') || 'none'}{group.epicIds && group.epicIds.length > 0 ? ` · Epics: ${group.epicIds.join(', ')}` : ''}{group.recommendedProfile ? ` · Profile: ${group.recommendedProfile}` : ''}</span>
+            {group.rationale ? <span className="block">{group.rationale}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function RecommendationBlockedChainSection({ chains }: { chains: NonNullable<RecommendationModel['blockedChains']> }) {
+  if (chains.length === 0) return null;
+  return (
+    <details className="rounded border border-border p-2" open>
+      <summary className="cursor-pointer text-xs font-medium text-foreground">Blocked chains ({chains.length})</summary>
+      <ul className="mt-1 grid gap-1.5">
+        {chains.map((chain, index) => (
+          <li key={`${chain.ref ?? chain.itemIds.join(',')}:${index}`}>
+            <span className="font-mono text-foreground">{chain.ref ?? `chain-${index + 1}`}</span>
+            <span className="block">Items: {chain.itemIds.join(', ') || 'none'} · Blocked by: {chain.blockedBy.join(', ') || 'none'}</span>
+            {chain.rationale ? <span className="block">{chain.rationale}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+// --- eforge:endregion recommendation-detail-preview ---

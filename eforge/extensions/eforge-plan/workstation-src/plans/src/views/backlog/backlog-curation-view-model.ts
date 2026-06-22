@@ -1,4 +1,4 @@
-import type { BacklogCurationDraft, BacklogCurationFullAuditEvidenceSummary, BacklogCurationFullAuditPreview, BacklogCurationRecommendationProjection, BacklogCurationScanMode, RecommendationModel, RecommendationReferenceValidationIssue } from '@/types';
+import type { BacklogCurationDraft, BacklogCurationFullAuditEvidenceSummary, BacklogCurationFullAuditPreview, BacklogCurationRecommendationProjection, RecommendationModel, RecommendationReferenceValidationIssue } from '@/types';
 
 export interface CurationCounts {
   itemChanges: number;
@@ -84,17 +84,7 @@ export function recommendationSummaryCounts(recommendations?: RecommendationMode
   return { activeWork, readyCandidates, nextSequence, safeParallelGroups, blockedChains, total: activeWork + readyCandidates + nextSequence + safeParallelGroups + blockedChains };
 }
 
-export function normalizeCurationScanMode(value: BacklogCurationScanMode | undefined): BacklogCurationScanMode {
-  return value === 'full-implementation-audit' ? 'full-implementation-audit' : 'delta';
-}
-
-export function curationScanModeLabel(value: BacklogCurationScanMode | undefined): string {
-  return normalizeCurationScanMode(value) === 'full-implementation-audit' ? 'Source-first implementation audit' : 'Delta curation';
-}
-
-export const SOURCE_FIRST_DEFAULT_CONCURRENCY = 4;
-export const SOURCE_FIRST_MAX_CONCURRENCY = 8;
-export const FULL_AUDIT_WARNING = 'Source-first implementation audit checks open items against current source. Current source is the only closure authority; git, PR, lifecycle, and session history are navigation hints only, and ambiguous cases fail closed.';
+export const BACKLOG_ANALYSIS_HELP = 'Checks open backlog items against current source, then prepares a reviewable curation draft and refreshed recommendations. Current source is the authority for shipped/superseded status; git, PR, lifecycle, and session history are navigation hints.';
 
 export function formatFullAuditCoverage(audit: BacklogCurationFullAuditPreview | undefined): DisplayRow[] {
   const coverage = audit?.coverage;

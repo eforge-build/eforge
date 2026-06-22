@@ -231,11 +231,15 @@ describe('backlog curation apply', () => {
   it('filters generated recommendations that reference records closed by the curation patch before writing', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'item-1.ts'), 'export class ItemOne { run() { return \"item-1\"; } }\n');
+      await writeFile(join(cwd, 'src', 'index.ts'), 'export { ItemOne } from \"./item-1\"; // item-1\n');
       const { source, entry } = await workflowEntry(cwd);
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
       const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
       const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-1', rationale: 'Ready after curation.' }], recommendedNextSequence: [{ itemId: 'item-1', rationale: 'Next.' }] };
       const task = curationTask(source.sourceFingerprint, {
-        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed with durable evidence.', evidence: ['Shipped evidence: inferred from git/PR history — shipped in prior work.'] }],
+        itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed with current-source evidence.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/item-1.ts and src/index.ts`] }],
         epicChanges: [],
         noOpRechecks: [],
       }, recommendations);
@@ -343,6 +347,9 @@ describe('backlog curation apply', () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'ship-me', status: 'candidate', body: '# Ship Me\n\n## Evidence\n\n- Prior\n' });
       await writeBacklogItem(cwd, { id: 'keep-me', status: 'candidate', body: '# Keep Me\n\n## Claim\n\nStill open.\n' });
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'ship-me.ts'), 'export class ShipMe { run() { return "ship-me"; } }\n');
+      await writeFile(join(cwd, 'src', 'index.ts'), 'export { ShipMe } from "./ship-me"; // ship-me\n');
       const { source, entry } = await workflowEntry(cwd);
       const snapshot = await readBacklogItemSnapshot(cwd, 'ship-me');
       const recommendations = {
@@ -351,7 +358,7 @@ describe('backlog curation apply', () => {
         recommendedNextSequence: [{ itemId: 'ship-me', rationale: 'Raw next stale target.' }],
       };
       const task = curationTask(source.sourceFingerprint, {
-        itemChanges: [{ kind: 'item', id: 'ship-me', precondition: { kind: 'item', id: 'ship-me', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed by durable evidence.', evidence: ['Shipped evidence: inferred from git/PR history — merged before this curation.'] }],
+        itemChanges: [{ kind: 'item', id: 'ship-me', precondition: { kind: 'item', id: 'ship-me', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Closed by current-source evidence.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/ship-me.ts and src/index.ts`] }],
         epicChanges: [],
         noOpRechecks: [],
       }, recommendations);
@@ -361,7 +368,6 @@ describe('backlog curation apply', () => {
       const apply = await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
       expect(preview.valid).toBe(true);
-      expect(preview.scanMode).toBe('delta');
       expect(preview.recommendationFreshness?.comparedSourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
       expect(preview.gitDelta).toMatchObject({ baseline: expect.any(Object) });
       expect(preview.recommendationProjection?.effectiveRecommendations).toEqual(apply.recommendations?.recommendations);
@@ -376,8 +382,8 @@ describe('backlog curation apply', () => {
       await writeBacklogItem(cwd, { id: 'partial-widget', status: 'candidate', body: '# Partial Widget\n\n## Evidence\n\n- Prior\n' });
       await mkdir(join(cwd, 'src'), { recursive: true });
       await writeFile(join(cwd, 'src', 'partial-widget.ts'), 'Partial Widget partial-widget is partly implemented.\n');
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'partial-widget');
       const task = curationTask(source.sourceFingerprint, {
         itemChanges: [{ kind: 'item', id: 'partial-widget', precondition: { kind: 'item', id: 'partial-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, sectionOperations: [{ heading: 'Evidence', action: 'append', content: '- Partial implementation evidence remains open from src/partial-widget.ts.' }], rationale: 'Append partial evidence without closure.', evidence: ['Partial implementation evidence remains open from src/partial-widget.ts.'] }],
@@ -388,7 +394,6 @@ describe('backlog curation apply', () => {
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
       const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
 
-      expect(preview.scanMode).toBe('full-implementation-audit');
       expect(preview.fullImplementationAudit).toMatchObject({ scope: { itemIds: ['partial-widget'], openItemCount: 1 }, coverage: { auditedItemCount: 1 }, itemSummaries: [expect.objectContaining({ itemId: 'partial-widget', candidateIntent: 'partial-implementation', evidenceCount: 1 })] });
     });
   });
@@ -396,13 +401,13 @@ describe('backlog curation apply', () => {
   it('rejects full-audit item patches without matching source and confidence preview metadata before writing', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'unmatched-widget', status: 'candidate', body: '# Unmatched Widget\n\n## Evidence\n\n- Prior\n' });
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'unmatched-widget');
       const before = await readFile(resolveBacklogItemPath(cwd, 'unmatched-widget'), 'utf-8');
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
       const task = curationTask(source.sourceFingerprint, {
-        itemChanges: [{ kind: 'item', id: 'unmatched-widget', precondition: { kind: 'item', id: 'unmatched-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Attempt unsupported full-audit curation.', evidence: ['Invented unsupported evidence.'] }],
+        itemChanges: [{ kind: 'item', id: 'unmatched-widget', precondition: { kind: 'item', id: 'unmatched-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Attempt unsupported full-audit closure.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} invented/current-source.ts`] }],
         epicChanges: [],
         noOpRechecks: [],
       });
@@ -410,8 +415,8 @@ describe('backlog curation apply', () => {
       const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
 
       expect(preview.valid).toBe(false);
-      expect(preview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringContaining('matching preview metadata with displayable current-source evidence') })]);
-      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching preview metadata with displayable current-source evidence/);
+      expect(preview.errors).toEqual([expect.objectContaining({ path: 'backlogCurationDraft.itemChanges[0].evidence', message: expect.stringContaining('matching strong current-source closure preview metadata') })]);
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching strong current-source closure preview metadata/);
       expect(await readFile(resolveBacklogItemPath(cwd, 'unmatched-widget'), 'utf-8')).toBe(before);
     });
   });
@@ -419,8 +424,8 @@ describe('backlog curation apply', () => {
   it('rejects source-first closed-status patches supported only by historical or session-plan evidence in preview and apply', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'history-only-widget', status: 'planned', body: '# History Only Widget\n\n## Evidence\n\n- Prior\n' });
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'history-only-widget');
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
 
@@ -444,8 +449,8 @@ describe('backlog curation apply', () => {
       await writeBacklogItem(cwd, { id: 'partial-widget', status: 'planned', body: '# Partial Widget\n\n## Evidence\n\n- Prior\n' });
       await mkdir(join(cwd, 'src'), { recursive: true });
       await writeFile(join(cwd, 'src', 'partial-widget.ts'), 'Partial Widget partial-widget is partly implemented.\n');
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'partial-widget');
       const task = curationTask(source.sourceFingerprint, {
         itemChanges: [{ kind: 'item', id: 'partial-widget', precondition: { kind: 'item', id: 'partial-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported closure from current state.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} src/partial-widget.ts`] }],
@@ -462,9 +467,9 @@ describe('backlog curation apply', () => {
   it('rejects source-first closure citations with only empty preview citation fields', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'empty-citation-widget', status: 'planned', body: '# Empty Citation Widget\n\n## Evidence\n\n- Prior\n' });
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
       source.fullImplementationAuditPreview = { scope: { itemIds: ['empty-citation-widget'], openItemCount: 1 }, coverage: { auditedItemCount: 1 }, itemSummaries: [{ itemId: 'empty-citation-widget', candidateIntent: 'source-shipped', confidence: 'strong', closureCandidates: [{ source: 'current-source', confidence: 'strong', intent: 'shipped', evidenceSource: 'current-source', citations: [{ path: ' ', excerpt: ' ' }] }] }] };
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'empty-citation-widget');
       const task = curationTask(source.sourceFingerprint, {
         itemChanges: [{ kind: 'item', id: 'empty-citation-widget', precondition: { kind: 'item', id: 'empty-citation-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported empty citation closure.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} current-source closure`] }],
@@ -481,9 +486,9 @@ describe('backlog curation apply', () => {
   it('rejects full-audit closed-status patches supported only by ambiguous closure metadata', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'ambiguous-widget', status: 'planned', body: '# Ambiguous Widget\n\n## Evidence\n\n- Prior\n' });
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
       source.fullImplementationAuditPreview = { scope: { itemIds: ['ambiguous-widget'], openItemCount: 1 }, coverage: { auditedItemCount: 1 }, itemSummaries: [{ itemId: 'ambiguous-widget', candidateIntent: 'needs-input', confidence: 'ambiguous', closureCandidates: [{ source: 'git-history', confidence: 'ambiguous', intent: 'ambiguous-shipped', evidence: 'Ambiguous shipped candidate: needs input.' }] }] };
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'ambiguous-widget');
       const task = curationTask(source.sourceFingerprint, {
         itemChanges: [{ kind: 'item', id: 'ambiguous-widget', precondition: { kind: 'item', id: 'ambiguous-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'shipped' }, rationale: 'Unsupported ambiguous closure.', evidence: [`${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} Ambiguous shipped candidate: needs input.`] }],
@@ -506,8 +511,8 @@ describe('backlog curation apply', () => {
       await writeFile(join(cwd, 'src', 'legacy-panel.ts'), 'Legacy Panel legacy-panel replacement implementation is present.\n');
       await writeFile(join(cwd, 'src', 'rocket-entry.ts'), 'export { RocketLauncher } from "./rocket-launcher"; // rocket-launcher\n');
       await writeFile(join(cwd, 'src', 'legacy-entry.ts'), 'export { LegacyPanel } from "./legacy-panel"; // legacy-panel\n');
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const shippedSnapshot = await readBacklogItemSnapshot(cwd, 'rocket-launcher');
       const obsoleteSnapshot = await readBacklogItemSnapshot(cwd, 'legacy-panel');
       const task = curationTask(source.sourceFingerprint, {
@@ -548,8 +553,8 @@ describe('backlog curation apply', () => {
       await writeBacklogItem(cwd, { id: 'partial-widget', status: 'candidate', body: '# Partial Widget\n\n## Evidence\n\n- Prior\n' });
       await mkdir(join(cwd, 'src'), { recursive: true });
       await writeFile(join(cwd, 'src', 'partial-widget.ts'), 'Partial Widget partial-widget is partly implemented.\n');
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'partial-widget');
       const recommendations = { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'partial-widget', rationale: 'Still open after partial evidence.' }] };
       const task = curationTask(source.sourceFingerprint, {
@@ -600,7 +605,7 @@ describe('backlog curation apply', () => {
 
       await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
-      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation:delta', sourceFingerprint: source.sourceFingerprint });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
     });
   });
 
@@ -609,8 +614,8 @@ describe('backlog curation apply', () => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
       await mkdir(join(cwd, 'src'), { recursive: true });
       await writeFile(join(cwd, 'src', 'item-1.ts'), 'item-1 implementation evidence.\n');
-      const source = await buildBacklogCurationSource(cwd, undefined, { scanMode: 'full-implementation-audit', enrichPullRequests: false });
-      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', scanMode: 'full-implementation-audit', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
       const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
       const task = curationTask(source.sourceFingerprint, {
         itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Ready to plan from full-audit metadata.', evidence: ['Implementation evidence from src/item-1.ts.'] }],
@@ -621,7 +626,7 @@ describe('backlog curation apply', () => {
       await writeBacklogCurationSourcePreviewMetadata(cwd, source);
       await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
 
-      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation:full-implementation-audit', sourceFingerprint: source.sourceFingerprint });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
     });
   });
 
@@ -643,7 +648,7 @@ describe('backlog curation apply', () => {
       expect(result.recommendationProjection?.validation.valid).toBe(false);
       expect(await readRecommendations(cwd)).toBeNull();
       expect(existsSync(resolveRecommendationsPathForCwd(cwd))).toBe(false);
-      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation:delta', sourceFingerprint: source.sourceFingerprint });
+      expect(await readAcceptedAnalysisBaseline(cwd)).toMatchObject({ taskId: 'task-1', passKind: 'backlog-curation', sourceFingerprint: source.sourceFingerprint });
     });
   });
 
@@ -718,30 +723,41 @@ describe('backlog curation apply', () => {
     }
   });
 
-  it('accepts matching shipped and superseded prefixes and leaves stale evidence prefix-free', async () => {
-    const cases = [
+  it('rejects historical closure prefixes in source-first mode but leaves stale evidence prefix-free', async () => {
+    const rejectedCases = [
       { id: 'shipped-lifecycle', status: 'shipped', evidence: `${SHIPPED_LIFECYCLE_EVIDENCE_PREFIX}trace row landed` },
       { id: 'shipped-git', status: 'shipped', evidence: `${SHIPPED_GIT_PR_EVIDENCE_PREFIX}merge abc123` },
       { id: 'superseded-lifecycle', status: 'superseded', evidence: `${SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX}trace row superseded` },
       { id: 'superseded-git', status: 'superseded', evidence: `${SUPERSEDED_GIT_PR_EVIDENCE_PREFIX}obsolete merge abc123` },
-      { id: 'stale-freeform', status: 'stale', evidence: 'Manual stale evidence remains valid without a closure prefix.' },
     ] as const;
 
-    for (const testCase of cases) {
+    for (const testCase of rejectedCases) {
       await withTempProject(async (cwd) => {
         await writeBacklogItem(cwd, { id: testCase.id, status: 'candidate', body: `# ${testCase.id}\n\n## Evidence\n\n- Prior\n` });
         const { source, entry } = await workflowEntry(cwd);
         const snapshot = await readBacklogItemSnapshot(cwd, testCase.id);
         const task = curationTask(source.sourceFingerprint, {
-          itemChanges: [{ kind: 'item', id: testCase.id, precondition: { kind: 'item', id: testCase.id, bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: testCase.status }, rationale: 'Matching evidence supports status change.', evidence: [testCase.evidence] }],
+          itemChanges: [{ kind: 'item', id: testCase.id, precondition: { kind: 'item', id: testCase.id, bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: testCase.status }, rationale: 'Historical evidence is navigation only in source-first mode.', evidence: [testCase.evidence] }],
           epicChanges: [],
           noOpRechecks: [],
         });
 
-        await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
-        expect((await readBacklogItem(cwd, testCase.id))?.status).toBe(testCase.status);
+        await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).rejects.toThrow(/matching .* evidence prefix|current source/i);
       });
     }
+
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'stale-freeform', status: 'candidate', body: '# stale-freeform\n\n## Evidence\n\n- Prior\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'stale-freeform');
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{ kind: 'item', id: 'stale-freeform', precondition: { kind: 'item', id: 'stale-freeform', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'stale' }, rationale: 'Manual stale evidence remains valid without a closure prefix.', evidence: ['Manual stale evidence remains valid without a closure prefix.'] }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+      await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+      expect((await readBacklogItem(cwd, 'stale-freeform'))?.status).toBe('stale');
+    });
   });
 
   it('supports section replace and append semantics', () => {

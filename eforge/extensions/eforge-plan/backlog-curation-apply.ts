@@ -21,7 +21,7 @@ import { computeRecommendationSourceFingerprint, computeRecommendationSourceFing
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
 import type { ApplyPlanningAgentTaskResultInput, PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
-import { DEFAULT_BACKLOG_CURATION_SCAN_MODE, type BacklogCurationApplyDetails, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationPreviewDetails, type BacklogCurationRecommendationProjection, type RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
+import { type BacklogCurationApplyDetails, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationPreviewDetails, type BacklogCurationRecommendationProjection, type RecommendationReferenceValidationResult } from './backlog-curation-schemas.js';
 import { readBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { RecommendationBlockedChainSchema, RecommendationItemRefSchema, RecommendationProfileSchema } from './schema.js';
 import type { BacklogRecommendationModel } from './schema.js';
@@ -74,7 +74,7 @@ export async function applyBacklogCurationDraftFromTask(
       recommendationStatus = await markRecommendationsStaleForBacklogMutation(cwd, 'backlog-curation', changedIds) ?? undefined;
     }
   }
-  await recordAcceptedAnalysisBaselineForApply(cwd, { taskId: task.taskId, passKind: 'backlog-curation', scanMode: entry?.scanMode ?? 'delta', sourceFingerprint: prepared.draft.sourceFingerprint });
+  await recordAcceptedAnalysisBaselineForApply(cwd, { taskId: task.taskId, passKind: 'backlog-curation', sourceFingerprint: prepared.draft.sourceFingerprint });
   await markPlanningTaskWorkflowEntryApplied(cwd, task.taskId, new Date().toISOString());
   return {
     itemChanges: prepared.draft.itemChanges.length,
@@ -101,10 +101,8 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
       readRecommendationFreshnessView(cwd, prepared.prospectiveRecommendationSourceFingerprint),
       readBacklogCurationSourcePreviewMetadata(cwd, prepared.draft.sourceFingerprint),
     ]);
-    const previewScanMode = sourceMetadata?.scanMode ?? entry?.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE;
     return {
       valid: prepared.generatedRecommendationValidation.valid,
-      scanMode: previewScanMode,
       itemChanges: prepared.draft.itemChanges.length,
       epicChanges: prepared.draft.epicChanges.length,
       noOpRechecks: prepared.effectiveRechecks.length,
@@ -191,9 +189,8 @@ async function prepareBacklogCurationDraftApply(cwd: string, task: PlanningAgent
   const prospectiveItems = new Map<string, ProspectiveItem>(openItemSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
   const prospectiveEpics = new Map<string, ProspectiveEpic>(openEpicSnapshots.map((snapshot) => [snapshot.id, { snapshot, frontmatter: { ...snapshot.frontmatter }, body: snapshot.body, changed: false }]));
 
-  const scanMode = sourceMetadata?.scanMode ?? entry.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE;
-  validateTargetsAndPreconditions(draft, items, epics, draft.sourceFingerprint, scanMode);
-  validateFullImplementationAuditPatchMetadata(draft, scanMode, sourceMetadata?.fullImplementationAudit);
+  validateTargetsAndPreconditions(draft, items, epics, draft.sourceFingerprint);
+  validateFullImplementationAuditPatchMetadata(draft, sourceMetadata?.fullImplementationAudit);
   const effectiveRechecks = draft.noOpRechecks
     .map((recheck, index) => ({ recheck, target: prospectiveForRecheck(recheck, index, prospectiveItems, prospectiveEpics) }))
     .filter(({ target }) => shouldApplyRecheck(target));
@@ -278,28 +275,14 @@ function previewErrorsFromError(err: unknown): Array<{ path: string; message: st
 // --- eforge:endregion recommendation-validation ---
 
 // --- eforge:region validation-helpers ---
-function validateFullImplementationAuditPatchMetadata(draft: Draft, scanMode: unknown, audit: BacklogCurationFullImplementationAuditPreview | undefined): void {
-  if (scanMode !== 'full-implementation-audit') return;
-  if (draft.epicChanges.length > 0) throw validationError('backlogCurationDraft.epicChanges', 'Source-first implementation audit curation does not support epic patches because preview metadata only annotates item evidence. Route epic changes through delta curation or needs-input.');
+function validateFullImplementationAuditPatchMetadata(draft: Draft, audit: BacklogCurationFullImplementationAuditPreview | undefined): void {
   draft.itemChanges.forEach((patch, index) => {
     const targetClosedStatus = patch.metadata?.status === 'shipped' || patch.metadata?.status === 'superseded' ? patch.metadata.status : undefined;
     if (targetClosedStatus !== undefined) validateSourceFirstClosedPatch(audit, patch, targetClosedStatus, `backlogCurationDraft.itemChanges[${index}]`);
-    else if (matchFullAuditEvidenceForPatch(audit, patch).length === 0) {
-      throw validationError(`backlogCurationDraft.itemChanges[${index}].evidence`, `Source-first implementation audit item patch for ${patch.id} requires matching preview metadata with displayable current-source evidence.`);
-    }
   });
 }
 
 type FullAuditEvidenceSummary = NonNullable<NonNullable<BacklogCurationFullImplementationAuditPreview['itemSummaries']>[number]['evidence']>[number];
-
-function matchFullAuditEvidenceForPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }): FullAuditEvidenceSummary[] {
-  if (patch.kind !== 'item' || !patch.id) return [];
-  const summary = audit?.itemSummaries?.find((item) => item.itemId === patch.id);
-  const candidateEvidence = summary?.evidence ?? [];
-  if (candidateEvidence.length === 0) return [];
-  const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
-  return candidateEvidence.filter(hasDisplayableSourceConfidence).filter((entry) => evidenceMatchesDraft(entry, draftEvidence));
-}
 
 function validateSourceFirstClosedPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string; evidence?: string[]; metadata?: { status?: string } }, status: 'shipped' | 'superseded', path: string): void {
   const requiredPrefix = status === 'shipped' ? SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX : SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX;
@@ -361,19 +344,6 @@ function trimmedString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function evidenceMatchesDraft(entry: FullAuditEvidenceSummary, draftEvidence: string): boolean {
-  if (draftEvidence.length === 0) return true;
-  const excerpt = entry.excerpt?.toLowerCase();
-  if (excerpt && draftEvidence.includes(excerpt.slice(0, Math.min(excerpt.length, 80)))) return true;
-  if (entry.path && draftEvidence.includes(entry.path.toLowerCase())) return true;
-  const record = entry as FullAuditEvidenceSummary & { evidence?: string; citation?: string };
-  if (record.evidence && draftEvidence.includes(record.evidence.toLowerCase().slice(0, Math.min(record.evidence.length, 80)))) return true;
-  if (record.citation && draftEvidence.includes(record.citation.toLowerCase())) return true;
-  const citations = Array.isArray(record.citations) ? record.citations as Array<Record<string, unknown>> : [];
-  if (citations.some((citation) => typeof citation.path === 'string' && draftEvidence.includes(citation.path.toLowerCase()))) return true;
-  if (citations.some((citation) => typeof citation.excerpt === 'string' && draftEvidence.includes(citation.excerpt.toLowerCase().slice(0, Math.min(citation.excerpt.length, 80))))) return true;
-  return draftEvidence.includes(entry.source.toLowerCase());
-}
 // --- eforge:endregion validation-helpers ---
 
 function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): void {
@@ -382,14 +352,14 @@ function assertCompletedPlanningDraftTask(task: PlanningAgentTaskRecordLike): vo
   if (!('result' in task)) throw validationError('task.result', `Planning task ${task.taskId} completed without a result.`);
 }
 
-function validateTargetsAndPreconditions(draft: Draft, items: Map<string, BacklogRecordSnapshot<BacklogItem>>, epics: Map<string, BacklogRecordSnapshot<BacklogEpic>>, sourceFingerprint: string, scanMode: unknown): void {
+function validateTargetsAndPreconditions(draft: Draft, items: Map<string, BacklogRecordSnapshot<BacklogItem>>, epics: Map<string, BacklogRecordSnapshot<BacklogEpic>>, sourceFingerprint: string): void {
   const seen = new Set<string>();
   for (const [kind, patches, snapshots, field] of [
     ['item', draft.itemChanges, items, 'backlogCurationDraft.itemChanges'],
     ['epic', draft.epicChanges, epics, 'backlogCurationDraft.epicChanges'],
   ] as const) {
     patches.forEach((patch, index) => {
-      validatePatchBasics(patch, `${field}[${index}]`, scanMode);
+      validatePatchBasics(patch, `${field}[${index}]`);
       validateTarget(kind, patch.id, seen, `${field}[${index}]`);
       validatePrecondition(patch.precondition, snapshots.get(patch.id), `${field}[${index}].precondition`, sourceFingerprint);
     });
@@ -400,7 +370,7 @@ function validateTargetsAndPreconditions(draft: Draft, items: Map<string, Backlo
   });
 }
 
-function validatePatchBasics(patch: Patch, path: string, scanMode: unknown): void {
+function validatePatchBasics(patch: Patch, path: string): void {
   if ((patch.rationale ?? '').trim().length === 0) throw validationError(`${path}.rationale`, 'Material curation patches require non-empty rationale.');
   for (const [index, operation] of (patch.sectionOperations ?? []).entries()) {
     if (!isValidSectionHeading(operation.heading)) throw validationError(`${path}.sectionOperations[${index}].heading`, 'Section headings must be non-empty single-line headings.');
@@ -412,7 +382,7 @@ function validatePatchBasics(patch: Patch, path: string, scanMode: unknown): voi
   if ((status !== undefined && isBacklogStatus(status) && isClosedStatus(status)) || changesEvidence) {
     if ((patch.evidence ?? []).every((entry) => entry.trim().length === 0)) throw validationError(`${path}.evidence`, 'Closed-status transitions and Evidence section changes require durable evidence entries.');
   }
-  if ((status === 'shipped' || status === 'superseded') && !validateClosedStatusEvidencePrefix(status, patch.evidence, { allowCurrentSource: scanMode === 'full-implementation-audit' })) {
+  if ((status === 'shipped' || status === 'superseded') && !validateClosedStatusEvidencePrefix(status, patch.evidence, { allowCurrentSource: true })) {
     throw validationError(`${path}.evidence`, `${status} status changes require durable evidence with a matching ${status} evidence prefix.`);
   }
 }

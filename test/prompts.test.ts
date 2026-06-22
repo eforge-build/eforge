@@ -63,11 +63,13 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('Recommendation target fields may reference only open item/epic ids.');
     expect(prompt).toContain('Treat closed dependencies as satisfied historical context, not active recommendation targets.');
     expect(prompt).toContain('`activeWork`, `readyCandidates`, `recommendedNextSequence`, `safeParallelizableGroups.itemIds`, `safeParallelizableGroups.epicIds`, `blockedChains.itemIds`, and `blockedChains.blockedBy` may reference only open targets.');
-    expect(prompt).toContain('Current source is the only closure authority.');
+    expect(prompt).toContain('this is an agentic source-first curation pass');
+    expect(prompt).toContain('ambiguous precomputed evidence is a lead to resolve, not a reason to skip');
     expect(prompt).toContain('Source-first shipped-status patches must cite a strong `source-shipped` result');
+    expect(prompt).toContain('Use `skipped` only for exceptional review failures');
     expect(prompt).toContain('`Shipped evidence: current source — ...`');
-    expect(prompt).toContain('Outside source-first mode, strong shipped-status and superseded-status item patches may cite compact evidence from `source.shippedEvidenceCandidates`');
-    expect(prompt).toContain('Outside source-first mode, `source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.');
+    expect(prompt).toContain('`source.shippedEvidenceCandidates` may include compact lifecycle/git/PR historical navigation hints');
+    expect(prompt).toContain('`source.shippedEvidenceCandidates[].evidenceSource` is one of `lifecycle`, `git-history`, `pr-history`, or `combined`.');
     expect(prompt).toContain('`Shipped evidence: lifecycle trace — ...`');
     expect(prompt).toContain('`Shipped evidence: inferred from git/PR history — ...`');
     expect(prompt).toContain('`Superseded evidence: lifecycle trace — ...`');

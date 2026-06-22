@@ -108,8 +108,9 @@ export async function collectBacklogCurationFullImplementationAudit(input: {
     schemaVersion: 1,
     guidance: [
       'Source-first implementation audit covers every open backlog item in scope with bounded current-source excerpts and navigation-only historical hints.',
-      'Cite only supplied current-source citations, confidence values, and source metadata. Current source is the only closure authority; git history, PR metadata, lifecycle traces, branch hints, changed paths, and session-plan traces are navigation hints only.',
-      'Use source-shipped/source-superseded item results and current-source citations for closed-status proposals; route ambiguous or partial evidence to skipped, no-change, or recheck-note guidance.',
+      'Current source is the closure authority for shipped/superseded status; git history, PR metadata, lifecycle traces, branch hints, changed paths, and session-plan traces are navigation hints used to interpret current source.',
+      'Treat ambiguous or partial evidence as a lead to resolve into actionable backlog curation, open follow-up recommendations, or true product-decision needs-input; use skipped only for exceptional review failures.',
+      'Use source-shipped/source-superseded item results and current-source citations for closed-status proposals; keep unproven closure items open but make the draft fix-forward.',
       'Do not claim exhaustive validation beyond supplied bounded current-source citations and caps.',
     ],
     settings: sourceFirstAuditSettings(input.itemAuditConcurrency),
@@ -313,10 +314,10 @@ function projectCandidate(candidate: ShippedEvidenceCandidate): Record<string, u
 }
 
 function guidanceFor(intent: string): string {
-  if (intent === 'partial-implementation') return 'Keep open; suggest evidence/recheck notes and remaining-work guidance rather than closure.';
-  if (intent === 'needs-input') return 'Ambiguous closure evidence must be routed to skipped or needs-input, not closed-status patches.';
+  if (intent === 'partial-implementation') return 'Keep open; turn partial evidence into concrete remaining-work curation or recommendations rather than a generic skip.';
+  if (intent === 'needs-input') return 'Use needs-input only for true product decisions after source/context review; do not close without current-source authority.';
   if (intent === 'stale-invalid') return 'Consider stale/invalid cleanup only with supplied metadata evidence.';
-  if (intent === 'no-change') return 'No supplied repository evidence supports mutation.';
+  if (intent === 'no-change') return 'No supplied repository evidence supports closure; omit if already fresh or recommend concrete next work if useful.';
   return 'Closure proposal requires the supplied strong evidence prefix and citation.';
 }
 

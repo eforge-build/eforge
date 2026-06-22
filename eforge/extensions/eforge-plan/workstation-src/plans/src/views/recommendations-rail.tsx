@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RecommendationFreshnessBadge } from '@/components/recommendation-freshness';
 import { formatRelativeTime } from '@/lib/format-time';
-import type { BacklogCurationScanMode, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 import type { BacklogSelection } from '@/hooks/use-backlog-selection';
 import { AnalyzeBacklogControl } from './backlog/analyze-backlog-control';
 
@@ -36,7 +36,7 @@ interface RecommendationsRailProps {
   /** A backlog-curation task is queued/running - the analyze trigger reflects it rather than inviting a duplicate. */
   analyzing: boolean;
   /** Curate the backlog and regenerate recommendations. */
-  onAnalyze: (input: { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number }) => Promise<unknown>;
+  onAnalyze: () => Promise<unknown>;
   /** Fork a recommendation lane into an editable draft plan unit. */
   onForkLane: (recommendationRef: string) => Promise<void>;
 }

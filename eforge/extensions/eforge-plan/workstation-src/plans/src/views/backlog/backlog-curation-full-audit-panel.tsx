@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { BacklogCurationFullAuditPreview } from '@/types';
-import { evidenceSourceLabel, formatFullAuditCaps, formatFullAuditCoverage, formatFullAuditSettings, FULL_AUDIT_WARNING } from './backlog-curation-view-model';
+import { evidenceSourceLabel, formatFullAuditCaps, formatFullAuditCoverage, formatFullAuditSettings } from './backlog-curation-view-model';
 import { SubBlock } from './sub-block';
 
 export function BacklogCurationFullAuditPanel({ audit }: { audit?: BacklogCurationFullAuditPreview }) {
@@ -12,8 +12,7 @@ export function BacklogCurationFullAuditPanel({ audit }: { audit?: BacklogCurati
   const itemSummaries = [...(audit.itemSummaries ?? [])].sort((left, right) => left.itemId.localeCompare(right.itemId));
 
   return (
-    <SubBlock title="Source-first audit metadata" className="gap-2">
-      <p className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-100">{FULL_AUDIT_WARNING}</p>
+    <SubBlock title="Analysis metadata" className="gap-2">
       {audit.scope && <p className="text-xs text-muted-foreground">Scope: {audit.scope.openItemCount ?? audit.scope.itemIds.length} open item{(audit.scope.openItemCount ?? audit.scope.itemIds.length) === 1 ? '' : 's'}{audit.scope.itemIds.length > 0 ? ` · ${audit.scope.itemIds.join(', ')}` : ''}</p>}
       {coverage.length > 0 && <Rows title="Coverage" rows={coverage} />}
       {settings.length > 0 && <Rows title="Concurrency and authority" rows={settings} />}
@@ -36,7 +35,7 @@ export function BacklogCurationFullAuditPanel({ audit }: { audit?: BacklogCurati
           <div className="mt-2 grid gap-2 text-xs text-muted-foreground">
             {itemSummaries.map((item) => (
               <div key={item.itemId} className="grid gap-1 rounded border border-border p-2">
-                <p><span className="font-mono text-foreground">{item.itemId}</span> · {item.candidateIntent}{item.sourceFirstResult?.intent ? ` · source-first ${item.sourceFirstResult.intent}` : ''}{item.confidence ? ` · confidence ${item.confidence}` : ''}{item.evidenceCount !== undefined ? ` · ${item.evidenceCount} evidence` : ''}</p>
+                <p><span className="font-mono text-foreground">{item.itemId}</span> · {item.candidateIntent}{item.sourceFirstResult?.intent ? ` · result ${item.sourceFirstResult.intent}` : ''}{item.confidence ? ` · confidence ${item.confidence}` : ''}{item.evidenceCount !== undefined ? ` · ${item.evidenceCount} evidence` : ''}</p>
                 {item.sourceFirstResult?.rationale && <p>{item.sourceFirstResult.rationale}</p>}
                 <CitationList title="Current-source citations" citations={item.sourceFirstResult?.citations ?? item.closureCandidates?.flatMap((candidate) => candidate.citations ?? []) ?? []} />
                 <HistoricalHints hints={item.historicalHints ?? item.sourceFirstResult?.historicalHints ?? []} />
