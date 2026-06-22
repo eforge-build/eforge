@@ -173,7 +173,12 @@ describe('eforge-plan extension registration', () => {
       'get-epic': 'agent-paginated',
       'search-items': 'agent-paginated',
       'list-board-compact': 'agent-paginated',
+      'capture-item': 'agent-compact',
+      'update-item': 'agent-compact',
     });
+    for (const actionId of ['search-items', 'get-item', 'get-epic', 'capture-item', 'update-item']) {
+      expect(actions.find((action) => action.id === actionId)?.description).toMatch(/agent|backlog/i);
+    }
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
     const listPlanningArtifactsInput = actions.find((action) => action.id === 'list-planning-artifacts')?.inputSchema as Record<string, unknown>;

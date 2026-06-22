@@ -32,6 +32,15 @@ function sectionBetween(readme: string, heading: string, nextHeading: string): s
 }
 
 describe('eforge-plan README planner contract', () => {
+  it('documents direct compact agent backlog workflow actions', async () => {
+    const readme = await readFile(README, 'utf-8');
+    const workflow = sectionBetween(readme, '## Direct agent backlog workflow', '## Storage model');
+
+    for (const actionId of ['search-items', 'get-item', 'get-epic', 'capture-item', 'update-item']) {
+      expect(workflow).toContain(actionId);
+    }
+  });
+
   it('documents private recommendations, promotion sources, planner boundaries, and non-goals', async () => {
     const readme = await readFile(README, 'utf-8');
 

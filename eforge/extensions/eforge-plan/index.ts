@@ -1,4 +1,5 @@
 import {
+  CONTRIBUTION_OUTPUT_PROFILES,
   Type,
   defineConsoleContribution,
   defineConsoleWorkstation,
@@ -107,8 +108,8 @@ const openPlanningEntry = defineExtensionAction({
 });
 
 const captureItem = defineExtensionAction({
-  id: 'capture-item', title: 'Capture backlog item', description: 'Create a visible eforge-plan backlog item and write it to private eforge-plan storage.',
-  inputSchema: CaptureInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
+  id: 'capture-item', title: 'Capture backlog item', description: 'Direct agent backlog workflow: create a visible eforge-plan backlog item and write it to private eforge-plan storage.',
+  inputSchema: CaptureInput, outputSchema: ActionObjectOutput, outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const readinessIssues = captureReadinessIssues(input);
     if (readinessIssues.length > 0) {
@@ -138,8 +139,8 @@ const upsertEpic = defineExtensionAction({
 });
 
 const updateItem = defineExtensionAction({
-  id: 'update-item', title: 'Update backlog item', description: 'Update visible eforge-plan item metadata in private storage while preserving Markdown body content.',
-  inputSchema: UpdateInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
+  id: 'update-item', title: 'Update backlog item', description: 'Direct agent backlog workflow: update visible eforge-plan item metadata in private storage while preserving Markdown body content.',
+  inputSchema: UpdateInput, outputSchema: ActionObjectOutput, outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const updates: Record<string, unknown> = { updated: new Date().toISOString() };
     if (input.status !== undefined) updates.status = normalizedStatus(input.status, 'candidate');

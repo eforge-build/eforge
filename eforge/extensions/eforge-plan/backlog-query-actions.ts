@@ -29,8 +29,8 @@ const CompactItemSchema = Type.Object({
   tags: Type.Array(Type.String()),
   lane: KanbanLaneSchema,
   reasons: Type.Array(Type.String()),
-  dependsOn: Type.Array(Type.String()),
-  unresolvedDependsOn: Type.Array(Type.String()),
+  dependsOn: Type.Optional(Type.Array(Type.String())),
+  unresolvedDependsOn: Type.Optional(Type.Array(Type.String())),
   activeTraceReasons: Type.Array(Type.String()),
   blocked: Type.Boolean(),
   ready: Type.Boolean(),
@@ -58,6 +58,11 @@ const PageInputFields = createContributionPaginationInputFields({ maxLimit: 100 
 const GetItemInputSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   includeBody: Type.Optional(Type.Boolean()),
+  includeEpic: Type.Optional(Type.Boolean()),
+  includeSections: Type.Optional(Type.Boolean()),
+  includeLifecycleRows: Type.Optional(Type.Boolean()),
+  includeDependencies: Type.Optional(Type.Boolean()),
+  includeDependents: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
 const GetItemOutputSchema = Type.Object({
@@ -65,20 +70,22 @@ const GetItemOutputSchema = Type.Object({
   item: Type.Object({
     ...CompactItemSchema.properties,
     path: Type.String(),
-    sections: Type.Record(Type.String(), Type.String()),
-    linkRows: Type.Array(CompactLifecycleLinkRowSchema),
-    failureEvidence: Type.Array(CompactLifecycleLinkRowSchema),
+    sections: Type.Optional(Type.Record(Type.String(), Type.String())),
+    linkRows: Type.Optional(Type.Array(CompactLifecycleLinkRowSchema)),
+    failureEvidence: Type.Optional(Type.Array(CompactLifecycleLinkRowSchema)),
     body: Type.Optional(Type.String()),
   }, { additionalProperties: false }),
   epic: Type.Optional(CompactEpicSchema),
-  dependencies: Type.Array(CompactItemSchema),
-  dependents: Type.Array(CompactItemSchema),
+  dependencies: Type.Optional(Type.Array(CompactItemSchema)),
+  dependents: Type.Optional(Type.Array(CompactItemSchema)),
 }, { additionalProperties: false });
 
 const GetEpicInputSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   includeBody: Type.Optional(Type.Boolean()),
   includeItems: Type.Optional(Type.Boolean()),
+  includeSections: Type.Optional(Type.Boolean()),
+  includeItemDependencies: Type.Optional(Type.Boolean()),
   ...PageInputFields,
 }, { additionalProperties: false });
 
@@ -87,7 +94,7 @@ const GetEpicOutputSchema = Type.Object({
   epic: Type.Object({
     ...CompactEpicSchema.properties,
     path: Type.String(),
-    sections: Type.Record(Type.String(), Type.String()),
+    sections: Type.Optional(Type.Record(Type.String(), Type.String())),
     body: Type.Optional(Type.String()),
   }, { additionalProperties: false }),
   items: Type.Array(CompactItemSchema),
@@ -104,12 +111,15 @@ const SearchItemsInputSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String())),
   includeArchive: Type.Optional(Type.Boolean()),
   searchBody: Type.Optional(Type.Boolean()),
+  includeEpics: Type.Optional(Type.Boolean()),
+  includeDependencies: Type.Optional(Type.Boolean()),
   ...PageInputFields,
 }, { additionalProperties: false });
 
 const SearchItemsOutputSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   items: Type.Array(CompactItemSchema),
+  epics: Type.Optional(Type.Array(CompactEpicSchema)),
   total: Type.Integer({ minimum: 0 }),
   limit: Type.Integer({ minimum: 1 }),
   offset: Type.Integer({ minimum: 0 }),
@@ -120,6 +130,9 @@ const ListBoardCompactInputSchema = Type.Object({
   lane: Type.Optional(KanbanLaneSchema),
   includeClosed: Type.Optional(Type.Boolean()),
   includeArchive: Type.Optional(Type.Boolean()),
+  includeEpics: Type.Optional(Type.Boolean()),
+  includeLaneCounts: Type.Optional(Type.Boolean()),
+  includeDependencies: Type.Optional(Type.Boolean()),
   ...PageInputFields,
 }, { additionalProperties: false });
 
@@ -137,16 +150,16 @@ const ListBoardCompactOutputSchema = Type.Object({
   total: Type.Integer({ minimum: 0 }),
   limit: Type.Integer({ minimum: 1 }),
   offset: Type.Integer({ minimum: 0 }),
-  lanes: Type.Array(Type.Object({
+  lanes: Type.Optional(Type.Array(Type.Object({
     lane: KanbanLaneSchema,
     title: Type.String(),
     count: Type.Integer({ minimum: 0 }),
     openCount: Type.Integer({ minimum: 0 }),
     closedCount: Type.Integer({ minimum: 0 }),
     pagination: Type.Optional(PageMetadataSchema),
-  }, { additionalProperties: false })),
-  epics: Type.Array(CompactEpicSchema),
-  counts: Type.Object({ total: Type.Integer({ minimum: 0 }), open: Type.Integer({ minimum: 0 }), closed: Type.Integer({ minimum: 0 }) }, { additionalProperties: false }),
+  }, { additionalProperties: false }))),
+  epics: Type.Optional(Type.Array(CompactEpicSchema)),
+  counts: Type.Optional(Type.Object({ total: Type.Integer({ minimum: 0 }), open: Type.Integer({ minimum: 0 }), closed: Type.Integer({ minimum: 0 }) }, { additionalProperties: false })),
   pagination: PageMetadataSchema,
 }, { additionalProperties: false });
 
@@ -162,7 +175,7 @@ export const backlogQueryActions = [
   defineExtensionAction({
     id: 'get-item',
     title: 'Get compact backlog item detail',
-    description: 'Read one backlog item with compact dependency/dependent summaries, lifecycle rows, and Markdown sections without listing the whole board.',
+    description: 'Read one backlog item without listing the whole board. Projection flags can omit or include the compact epic, Markdown sections, lifecycle rows, dependency/dependent summaries, and dependency id arrays on item summaries.',
     inputSchema: GetItemInputSchema,
     outputSchema: GetItemOutputSchema,
     outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact,
@@ -174,7 +187,7 @@ export const backlogQueryActions = [
   defineExtensionAction({
     id: 'get-epic',
     title: 'Get compact backlog epic detail',
-    description: 'Read one backlog epic and a paginated compact item list without returning board-wide payloads.',
+    description: 'Read one backlog epic without returning board-wide payloads. Projection flags can omit or include Markdown sections, the paginated compact item list, and dependency id arrays on item summaries.',
     inputSchema: GetEpicInputSchema,
     outputSchema: GetEpicOutputSchema,
     outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
@@ -186,7 +199,7 @@ export const backlogQueryActions = [
   defineExtensionAction({
     id: 'search-items',
     title: 'Search compact backlog items',
-    description: 'Search backlog items by text, epic, status, lane, or tags with bounded compact output for agent contexts.',
+    description: 'Search backlog items by text, epic, status, lane, or tags with bounded compact output. Projection flags can omit or include compact epic summaries and dependency id arrays on item summaries.',
     inputSchema: SearchItemsInputSchema,
     outputSchema: SearchItemsOutputSchema,
     outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
@@ -198,7 +211,7 @@ export const backlogQueryActions = [
   defineExtensionAction({
     id: 'list-board-compact',
     title: 'List compact eforge-plan board',
-    description: 'Return bounded open-first kanban item summaries with lane counts, total/open/closed counts, pagination metadata, and epic counts without full item bodies or rich board payloads.',
+    description: 'Return bounded open-first kanban item summaries without full item bodies or rich board payloads. Projection flags can omit or include compact epic summaries, lane/count aggregates, and dependency id arrays on item summaries.',
     inputSchema: ListBoardCompactInputSchema,
     outputSchema: ListBoardCompactOutputSchema,
     outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
@@ -220,16 +233,15 @@ async function getItemDetail(cwd: string, input: GetItemInput) {
   return {
     schemaVersion: 1 as const,
     item: {
-      ...compactItem(card),
+      ...compactItem(card, { includeDependencies: input.includeDependencies !== false }),
       path: resolveBacklogItemRelativePath(cwd, selected.id),
-      sections: Object.fromEntries(extractMarkdownSections(selected.body)),
-      linkRows: card.linkRows,
-      failureEvidence: card.failureEvidence,
+      ...(input.includeSections !== false ? { sections: Object.fromEntries(extractMarkdownSections(selected.body)) } : {}),
+      ...(input.includeLifecycleRows !== false ? { linkRows: card.linkRows, failureEvidence: card.failureEvidence } : {}),
       ...(input.includeBody ? { body: selected.body } : {}),
     },
-    ...(epic ? { epic: compactEpic(epic, items) } : {}),
-    dependencies: card.dependencies.filter((dependency) => !dependency.missing).map((dependency) => compactItem(cards.byId.get(dependency.id) ?? cardForRequiredItem(dependency.id, items, epics))),
-    dependents: card.dependents.filter((dependent) => !dependent.missing).map((dependent) => compactItem(cards.byId.get(dependent.id) ?? cardForRequiredItem(dependent.id, items, epics))),
+    ...(input.includeEpic !== false && epic ? { epic: compactEpic(epic, items) } : {}),
+    ...(input.includeDependencies !== false ? { dependencies: card.dependencies.filter((dependency) => !dependency.missing).map((dependency) => compactItem(cards.byId.get(dependency.id) ?? cardForRequiredItem(dependency.id, items, epics))) } : {}),
+    ...(input.includeDependents !== false ? { dependents: card.dependents.filter((dependent) => !dependent.missing).map((dependent) => compactItem(cards.byId.get(dependent.id) ?? cardForRequiredItem(dependent.id, items, epics), { includeDependencies: input.includeDependencies !== false })) } : {}),
   };
 }
 
@@ -243,10 +255,10 @@ async function getEpicDetail(cwd: string, input: GetEpicInput) {
     epic: {
       ...compactEpic(epic, items),
       path: resolveBacklogEpicRelativePath(cwd, epic.id),
-      sections: Object.fromEntries(extractMarkdownSections(epic.body)),
+      ...(input.includeSections !== false ? { sections: Object.fromEntries(extractMarkdownSections(epic.body)) } : {}),
       ...(input.includeBody ? { body: epic.body } : {}),
     },
-    items: page.entries.map(compactItem),
+    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeItemDependencies !== false })),
     totalItems: allEpicItems.length,
     limit: page.limit,
     offset: page.offset,
@@ -254,7 +266,7 @@ async function getEpicDetail(cwd: string, input: GetEpicInput) {
 }
 
 async function searchItems(cwd: string, input: SearchItemsInput) {
-  const [items, , cards] = await loadBoardCards(cwd, input.includeArchive);
+  const [items, epics, cards] = await loadBoardCards(cwd, input.includeArchive);
   const query = input.query?.trim().toLowerCase();
   const bodyById = input.searchBody ? new Map(items.map((item) => [item.id, item.body.toLowerCase()])) : new Map<string, string>();
   const filtered = cards.all.filter((card) => {
@@ -267,7 +279,14 @@ async function searchItems(cwd: string, input: SearchItemsInput) {
     return haystack.includes(query);
   });
   const page = paginate(filtered, input);
-  return { schemaVersion: 1 as const, items: page.entries.map(compactItem), total: filtered.length, limit: page.limit, offset: page.offset };
+  return {
+    schemaVersion: 1 as const,
+    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeDependencies !== false })),
+    ...(input.includeEpics === true ? { epics: compactEpicsForCards(page.entries, epics, items) } : {}),
+    total: filtered.length,
+    limit: page.limit,
+    offset: page.offset,
+  };
 }
 
 async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
@@ -285,17 +304,19 @@ async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
   const pagination = pageMetadata(page, filtered.length);
   return {
     schemaVersion: 1 as const,
-    items: page.entries.map(compactItem),
+    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeDependencies !== false })),
     total: filtered.length,
     limit: page.limit,
     offset: page.offset,
-    lanes: scopedLanes.map((lane) => laneSummary(lane, page, input.lane, selectedLaneFilteredTotal)),
-    epics: epics.filter((epic) => input.epic === undefined || epic.id === input.epic).map((epic) => compactEpic(epic, items)),
-    counts: {
-      total: scopedCards.length,
-      open: scopedCards.filter((card) => !card.closed).length,
-      closed: scopedCards.filter((card) => card.closed).length,
-    },
+    ...(input.includeLaneCounts !== false ? {
+      lanes: scopedLanes.map((lane) => laneSummary(lane, page, input.lane, selectedLaneFilteredTotal)),
+      counts: {
+        total: scopedCards.length,
+        open: scopedCards.filter((card) => !card.closed).length,
+        closed: scopedCards.filter((card) => card.closed).length,
+      },
+    } : {}),
+    ...(input.includeEpics !== false ? { epics: epics.filter((epic) => input.epic === undefined || epic.id === input.epic).map((epic) => compactEpic(epic, items)) } : {}),
     pagination,
   };
 }
@@ -313,7 +334,7 @@ async function loadBoardCards(cwd: string, includeArchive = false, epic?: string
   return [items, epics, { all: visibleCards, byId: new Map(board.items.map((card) => [card.id, card])), lanes: board.lanes }];
 }
 
-function compactItem(card: KanbanCard) {
+function compactItem(card: KanbanCard, options: { includeDependencies?: boolean } = {}) {
   return {
     id: card.id,
     title: card.title,
@@ -322,8 +343,10 @@ function compactItem(card: KanbanCard) {
     tags: card.tags,
     lane: card.lane,
     reasons: card.reasons,
-    dependsOn: card.dependencies.map((dependency) => dependency.id),
-    unresolvedDependsOn: card.unresolvedDependsOn,
+    ...(options.includeDependencies === false ? {} : {
+      dependsOn: card.dependencies.map((dependency) => dependency.id),
+      unresolvedDependsOn: card.unresolvedDependsOn,
+    }),
     activeTraceReasons: card.activeTraceReasons,
     blocked: card.blocked,
     ready: card.ready,
@@ -332,6 +355,11 @@ function compactItem(card: KanbanCard) {
     ...(card.epic ? { epic: card.epic } : {}),
     lifecycleState: card.lifecycleState,
   };
+}
+
+function compactEpicsForCards(cards: readonly KanbanCard[], epics: readonly BacklogEpic[], items: readonly BacklogItem[]) {
+  const epicIds = new Set(cards.map((card) => card.epic).filter((epic): epic is string => epic !== undefined));
+  return epics.filter((epic) => epicIds.has(epic.id)).map((epic) => compactEpic(epic, items));
 }
 
 function compactEpic(epic: BacklogEpic, items: readonly BacklogItem[]) {

@@ -13,7 +13,7 @@ The detailed, canonical product documentation lives in [`eforge/extensions/eforg
 
 Install `@eforge-build/eforge-plan` when you want first-party planning UX in addition to direct prompt, PRD, or file builds:
 
-- Project-local backlog capture, search, board rendering, epics, dependencies, and promotion.
+- Project-local backlog capture, search, board rendering, epics, dependencies, and promotion, with direct compact agent operations (`search-items`, `get-item`, `get-epic`, `capture-item`, and `update-item`) and projection flags for smaller payloads.
 - Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks.
 - A Console planning workstation for investigation-first planning and handoff.
 - Session-plan creation, readiness checks, and handoff into ordinary eforge builds.
