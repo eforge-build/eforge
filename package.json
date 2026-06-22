@@ -22,7 +22,7 @@
     "build:eforge-plan-workstation": "pnpm --filter @eforge-build/eforge-plan-workstation build",
     "storybook": "pnpm --filter @eforge-build/console-ui storybook",
     "storybook:build": "pnpm --filter @eforge-build/console-ui build-storybook",
-    "test": "node scripts/check-skill-parity.mjs && vitest run",
+    "test": "node scripts/check-skill-parity.mjs && vitest run --silent",
     "test:watch": "vitest",
     "type-check": "pnpm --filter @eforge-build/engine build && pnpm --filter @eforge-build/monitor build && pnpm --filter @eforge-build/eforge build && pnpm -r type-check",
     "type-check:eforge-plan": "pnpm --filter @eforge-build/eforge-plan type-check",
