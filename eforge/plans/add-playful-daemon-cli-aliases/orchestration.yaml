@@ -1,0 +1,55 @@
+name: add-playful-daemon-cli-aliases
+description: Add playful top-level daemon lifecycle aliases while preserving
+  canonical daemon commands and shared lifecycle handlers.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm test -- test/daemon-cli-aliases.test.ts
+  - pnpm type-check
+  - pnpm docs:check
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-daemon-cli-aliases
+    name: Add daemon lifecycle CLI aliases
+    depends_on: []
+    branch: add-playful-daemon-cli-aliases/plan-01-daemon-cli-aliases
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - validate
+    - test-write
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused user-facing CLI feature spanning command
+    registration, shared handler wiring, tests, and possible generated CLI docs,
+    so excursion is appropriate. A plan review helps catch alias/handler parity
+    and missing restart behavior before build. The build runs maintainability
+    validation after implementation, adds command-tree/dispatch tests, syncs
+    docs if help output changes, then reviews API behavior and test coverage
+    before executing tests. Review is standard strictness with two rounds
+    because the change is not security-sensitive but must preserve canonical
+    daemon behavior and option parity.
