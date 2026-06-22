@@ -1,0 +1,102 @@
+name: extract-standalone-eforge-playbooks-extension
+description: Extract playbook workflow ownership into a standalone first-party
+  eforge-playbooks native extension and remove direct daemon/client/core Console
+  playbook surfaces.
+created: 2026-06-22
+compiled: 2026-06-22
+mode: expedition
+base_branch: main
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-foundation-queue-contract
+    name: Add any producer-agnostic generic queue handoff fields needed by
+      extension-owned playbook runs, with tests for ctx.buildQueue.enqueue
+      behavior.
+    depends_on: []
+    branch: extract-standalone-eforge-playbooks-extension/foundation-queue-contract
+    build: &a1
+      - - implement
+        - doc-author
+      - - doc-sync
+        - test-write
+      - validate
+      - review-cycle
+      - test-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - api
+        - verify
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-playbooks-extension
+    name: Create and register the @eforge-build/eforge-playbooks extension package
+      with playbook actions, schemas, capabilities, optional eforge-plan
+      dependency, Console contribution, README, and package tests.
+    depends_on:
+      - plan-01-foundation-queue-contract
+    branch: extract-standalone-eforge-playbooks-extension/playbooks-extension
+    build: *a1
+    review: *a2
+  - id: plan-03-boundary-removal
+    name: Remove direct playbook daemon/client/workflow-adapter surfaces and update
+      route/client tests to assert extension-owned boundaries.
+    depends_on:
+      - plan-02-playbooks-extension
+    branch: extract-standalone-eforge-playbooks-extension/boundary-removal
+    build: *a1
+    review: *a2
+  - id: plan-04-console-surface
+    name: Remove the core Console Playbooks System section and rely on
+      eforge-playbooks extension Console contributions or workstation entries
+      for playbook management.
+    depends_on:
+      - plan-02-playbooks-extension
+      - plan-03-boundary-removal
+    branch: extract-standalone-eforge-playbooks-extension/console-surface
+    build: *a1
+    review: *a2
+  - id: plan-05-host-migration
+    name: Migrate CLI, MCP/Claude, Pi tools/commands, and playbook skills to generic
+      eforge-playbooks contribution invocation while preserving user-facing
+      workflows.
+    depends_on:
+      - plan-02-playbooks-extension
+      - plan-03-boundary-removal
+    branch: extract-standalone-eforge-playbooks-extension/host-migration
+    build: *a1
+    review: *a2
+  - id: plan-06-docs-and-regression-guards
+    name: Update user/reference docs and add final boundary, planning-dependency,
+      extension-unavailable, package-registration, and cross-host regression
+      guards.
+    depends_on:
+      - plan-05-host-migration
+      - plan-04-console-surface
+    branch: extract-standalone-eforge-playbooks-extension/docs-and-regression-guards
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is expedition-scale: it spans extension packaging,
+    daemon/client route removal, CLI/MCP/Pi/Claude integrations, Console UI,
+    docs, and broad tests with strict boundary requirements. Architecture and
+    module planning reduce cross-subsystem drift. The build pipeline includes
+    documentation authoring/sync, test generation/execution, the required
+    validate gate for loaded maintainability providers, and iterative review.
+    API and verify perspectives focus review on public contract migration,
+    route/helper removal, workspace/package registration, and build/config
+    correctness."

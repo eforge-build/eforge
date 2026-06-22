@@ -3,7 +3,8 @@ description: Extract playbook workflow ownership into a standalone first-party
   eforge-playbooks native extension and remove direct daemon/client/core Console
   playbook surfaces.
 created: 2026-06-22
-status: draft
+status: compiled
+compiled: "2026-06-22"
 mode: expedition
 validate:
   - pnpm maintainability:check
