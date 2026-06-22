@@ -265,16 +265,15 @@ Both playbook skills must:
 
 - Failed PRD: "extract-standalone-eforge-playbooks-extension"
 - Root failed plan: "plan-05-host-migration"
-- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for extract-standalone-eforge-playbooks-extension. artifact source: feature-branch; 8 landed commit(s); failing plan: plan-05-host-migration; feature branch: eforge/extract-standalone-eforge-playbooks-extension. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
-- Failure detail: "1 blocking issue outcome(s) remain after 3 review round(s) (1 unresolved, 0 need human review; 5 rejected, 0 under review)."
-- Failure detail: "1 blocking issue outcome(s) remain after 3 review round(s) (1 unresolved, 0 need human review; 5 rejected, 0 under review)."
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for extract-standalone-eforge-playbooks-extension. artifact source: feature-branch; 9 landed commit(s); failing plan: plan-05-host-migration; feature branch: eforge/extract-standalone-eforge-playbooks-extension. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "2 blocking issue outcome(s) remain after 3 review round(s) (2 unresolved, 0 need human review; 2 rejected, 0 under review)."
+- Failure detail: "2 blocking issue outcome(s) remain after 3 review round(s) (2 unresolved, 0 need human review; 2 rejected, 0 under review)."
 - Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair extract-standalone-eforge-playbooks-extension`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
 - Remaining work:
-  - "plan-05-host-migration: repair rejected review items, especially preserving CLI new/edit coverage and implementing/restoring those workflows through extension-owned contributions."
-  - "plan-05-host-migration: apply narrow fixes for planning-unavailable rendering in CLI and Pi without regressing existing planningEntry diagnostics."
-  - "plan-05-host-migration: avoid broad helper type reshapes unless backed by schema and current usage evidence."
-  - "plan-06-docs-and-regression-guards remains blocked until plan-05-host-migration succeeds."
+  - "plan-05-host-migration: add a real semantic type-check path for packages/pi-eforge without bumping its package version and without using --noCheck."
+  - "plan-05-host-migration: fix any resulting Pi type errors rather than masking them."
+  - "plan-06-docs-and-regression-guards: run after plan-05 is repaired, including docs, regression guards, final boundary audit, and validation commands."
 - Retry/resume guidance: Continue plan-05-host-migration for failed PRD extract-standalone-eforge-playbooks-extension from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
-- Sidecar generated at: 2026-06-22T21:56:37.193Z
+- Sidecar generated at: 2026-06-22T23:24:58.343Z
 - Source sidecar: .eforge/queue/failed/extract-standalone-eforge-playbooks-extension.recovery.json
 - Source identity: prdId=extract-standalone-eforge-playbooks-extension; setName=extract-standalone-eforge-playbooks-extension; featureBranch=eforge/extract-standalone-eforge-playbooks-extension; baseBranch=main
