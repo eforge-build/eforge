@@ -74,7 +74,7 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('window.eforge');
     expect(source).toContain('invokeAction');
     expect(source).toContain('Planning activity');
-    expect(source).toContain('Analyze all backlog');
+    expect(source).toContain('Analyze backlog');
     expect(source).toContain('Backlog curation');
     expect(source).toContain('backlogCurationDraft');
     expect(source).toContain('applyBacklogCurationDraft');

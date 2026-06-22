@@ -8,8 +8,9 @@ describe('BacklogCurationFullAuditPanel', () => {
   it('renders server-provided coverage, caps, diagnostics, and item summaries', () => {
     render(<BacklogCurationFullAuditPanel audit={mockFullAuditBacklogCurationPreview.fullImplementationAudit} />);
 
-    expect(screen.getByText('Source-first audit metadata')).toBeTruthy();
-    expect(screen.getByText(/current source is the only closure authority/i)).toBeTruthy();
+    expect(screen.getByText('Analysis metadata')).toBeTruthy();
+    expect(screen.getByText('Closure authority')).toBeTruthy();
+    expect(screen.getByText('current source only')).toBeTruthy();
     expect(screen.getByText('Audited items')).toBeTruthy();
     expect(screen.getByText('Item audit concurrency')).toBeTruthy();
     expect(screen.getByText('File scan cap')).toBeTruthy();

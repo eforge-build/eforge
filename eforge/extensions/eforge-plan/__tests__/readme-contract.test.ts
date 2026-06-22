@@ -127,7 +127,7 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/Invalid generated recommendations block normal curation apply/);
     expect(readme).toMatch(/apply curation only while discarding generated recommendations/);
     expect(readme).toMatch(/bounded git\/PR (shipped or superseded|history shipped) evidence/);
-    expect(readme).toMatch(/optional PR enrichment (is fail-closed|through `gh` is fail-closed and not required)/);
+    expect(readme).toMatch(/optional PR enrichment (is fail-closed|through `gh` is fail-closed and not required)/i);
     expect(readme).toContain('Shipped evidence: lifecycle trace');
     expect(readme).toContain('Shipped evidence: inferred from git/PR history');
     expect(readme).toContain('Shipped evidence: lifecycle trace — ');
@@ -175,7 +175,7 @@ describe('eforge-plan README planner contract', () => {
       expect(readme).toContain(code);
     }
     expect(readme).toMatch(/missing, invalid, unreachable, shallow, (and|or) no-git baseline states.*(fallback or unavailable coverage|produce fallback or unavailable coverage labels)/s);
-    expect(readme).toMatch(/optional PR enrichment through `gh`.*not required/s);
+    expect(readme).toMatch(/optional PR enrichment through `gh`.*not required/is);
     expect(readme).toMatch(/Deterministic git-delta matching considers item ids, titles, slugs, changed paths, branch hints, PR numbers\/titles\/bodies\/files, merge subjects, and bounded excerpts/);
 
     expect(readme).toMatch(/Preview and apply use the same prospective `recommendationProjection`/);
