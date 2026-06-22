@@ -16,6 +16,7 @@ function curationItem(status: 'queued' | 'running' | 'completed' | 'failed' | 'c
       selection: {},
       requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
       purpose: 'backlog-curation',
+      itemAuditConcurrency: 4,
       sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint,
       createdAt: '2026-06-07T00:30:00.000Z',
     },
@@ -54,7 +55,7 @@ describe('PlanningTaskCard curation behavior', () => {
   it('labels backlog curation tasks and hides generic recommendation apply', () => {
     renderCard(curationItem('completed'));
 
-    expect(screen.getAllByText('Delta curation').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Backlog analysis/).length).toBeGreaterThan(0);
     expect(screen.getByText('Backlog curation preview')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Apply recommendations' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();

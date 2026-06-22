@@ -189,7 +189,8 @@ describe('eforge-plan extension registration', () => {
     const refreshOutput = actions.find((action) => action.id === 'refresh-recommendations')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(refreshOutput)).toMatch(/task|entry|sourceFingerprint|recommendation-refresh/);
     const analyzeInput = actions.find((action) => action.id === 'analyze-all-backlog')?.inputSchema as Record<string, unknown>;
-    expect(JSON.stringify(analyzeInput)).toMatch(/scanMode|itemAuditConcurrency|full-implementation-audit/);
+    expect(JSON.stringify(analyzeInput)).toMatch(/itemAuditConcurrency/);
+    expect(JSON.stringify(analyzeInput)).not.toMatch(/scanMode|full-implementation-audit/);
     const analyzeOutput = actions.find((action) => action.id === 'analyze-all-backlog')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(analyzeOutput)).toMatch(/task|entry|sourceFingerprint|reused/);
     expect(JSON.stringify((analyzeOutput.properties as Record<string, unknown>).task)).not.toMatch(/result|backlogCurationDraft|recommendations/);

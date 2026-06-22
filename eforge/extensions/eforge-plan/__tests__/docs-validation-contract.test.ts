@@ -47,18 +47,18 @@ describe('plan-03 workstation docs validation contract', () => {
   it('keeps workstation documentation server-authoritative for overlay and freshness display', async () => {
     const { readme, workstation } = await docs();
 
-    expect(readme).toContain('{ "scanMode": "delta" }');
-    expect(readme).toContain('{ "scanMode": "full-implementation-audit", "itemAuditConcurrency": 4 }');
-    expect(readme).toMatch(/Source-first implementation audit.*audits open items against current source/s);
-    expect(readme).toMatch(/current source as the only closure authority/);
-    expect(readme).toMatch(/history as navigation hints only|git\/PR\/lifecycle\/session history as navigation hints only/);
-    expect(readme).toMatch(/defaults item concurrency to `4`, and caps it at `8`/);
+    expect(readme).not.toContain('scanMode');
+    expect(readme).not.toContain('full-implementation-audit');
+    expect(readme).toContain('`analyze-all-backlog` example input: `{}`');
+    expect(readme).toMatch(/audits open backlog items against current source/);
+    expect(readme).toMatch(/current source is the closure authority/);
+    expect(readme).toMatch(/history is a navigation hint|git\/PR\/lifecycle\/session history as navigation hints/);
     expect(workstation).toMatch(/Backlog curation preview and apply data is server-authoritative/);
     expect(workstation).toMatch(/`recommendationProjection` — the prospective overlay used by both preview and apply validation/);
-    expect(workstation).toMatch(/`recommendationProjection\.effectiveRecommendations` \/ `effectiveRecommendations` display counts/);
+    expect(workstation).toMatch(/`recommendationProjection\.effectiveRecommendations` \/ `effectiveRecommendations` display counts and expandable details/);
     expect(workstation).toMatch(/Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`/);
     expect(workstation).toMatch(/A recommendation model being present is not enough to show fresh/);
-    expect(workstation).toMatch(/Render the source-first mode label and warning copy that current source is the only closure authority/);
+    expect(workstation).toMatch(/primary \*\*Analyze backlog\*\* button plus optional help/);
     expect(workstation).toMatch(/The browser must not run local git, PR, or source searches/);
     expect(workstation).not.toMatch(/same-draft recommendation filtering|infer fresh from recommendations/i);
   });

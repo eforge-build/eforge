@@ -80,7 +80,7 @@ describe('eforge-plan README mature package and workflow contract', () => {
   it('documents mature curation dependencies without broad GitHub or active-trace assumptions', async () => {
     const text = await readme();
 
-    expect(text).toMatch(/optional PR enrichment through `gh`.*not required/s);
+    expect(text).toMatch(/optional PR enrichment through `gh`.*not required/is);
     expect(text).toMatch(/unavailable `gh`.*leave bounded git-only candidate evidence in place/s);
     expect(text).not.toMatch(/requires GitHub|requires `gh`|GitHub dependency is required/i);
     expect(text).toMatch(/Trace sidecars.*durable audit evidence/s);

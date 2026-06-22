@@ -12,7 +12,6 @@ const entry: PlanningTaskWorkflowEntry = {
   selection: {},
   requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
   purpose: 'backlog-curation',
-  scanMode: 'delta',
   sourceFingerprint: mockBacklogCurationDraft.sourceFingerprint,
   createdAt: '2026-06-07T00:30:00.000Z',
 };
@@ -51,7 +50,7 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText('Item changes')).toBeTruthy();
     expect(screen.getByText('Epic changes')).toBeTruthy();
     expect(screen.getByText('No-op rechecks')).toBeTruthy();
-    expect(screen.getByText('Skipped cases')).toBeTruthy();
+    expect(screen.getByText('Unresolved exceptions')).toBeTruthy();
     expect(screen.getByText('Needs-input cases')).toBeTruthy();
     expect(screen.getByText('recommendations stale')).toBeTruthy();
     expect(screen.getByText(/Recommendation source fingerprint drifted/i)).toBeTruthy();
@@ -63,6 +62,10 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getByText(/Affected candidates: 3/)).toBeTruthy();
     expect(screen.getByText('Effective generated recommendations (read-only)')).toBeTruthy();
     expect(screen.getByText('0 active work items · 1 ready candidates · 1 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeTruthy();
+    expect(screen.getByText('Ready candidates (1)')).toBeTruthy();
+    expect(screen.getByText('Recommended next sequence (1)')).toBeTruthy();
+    expect(screen.getByText('Safe-parallel groups (1)')).toBeTruthy();
+    expect(screen.getByText('Blocked chains (1)')).toBeTruthy();
     expect(screen.queryByText('0 active work items · 2 ready candidates · 2 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeNull();
     expect(screen.getByText('Removed item ids: add-import-preview')).toBeTruthy();
     expect(screen.getByText('Removed epic ids: planning')).toBeTruthy();
@@ -81,12 +84,11 @@ describe('BacklogCurationPreview', () => {
     expect(screen.getAllByText(/traceability/).length).toBeGreaterThan(0);
   });
 
-  it('renders source-first mode labels, warning, coverage, caps, diagnostics, and evidence chips', () => {
-    renderPreview({ entry: { ...entry, scanMode: 'full-implementation-audit' }, curationPreview: mockFullAuditBacklogCurationPreview });
+  it('renders audit coverage, caps, diagnostics, and evidence chips without mode chrome', () => {
+    renderPreview({ curationPreview: mockFullAuditBacklogCurationPreview });
 
-    expect(screen.getAllByText('Source-first implementation audit').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/current source is the only closure authority/i).length).toBeGreaterThan(0);
-    expect(screen.getByText('Source-first audit metadata')).toBeTruthy();
+    expect(screen.queryByText('Source-first implementation audit')).toBeNull();
+    expect(screen.getByText('Analysis metadata')).toBeTruthy();
     expect(screen.getByText('Audited items')).toBeTruthy();
     expect(screen.getByText('6')).toBeTruthy();
     expect(screen.getByText('Item audit concurrency')).toBeTruthy();
@@ -117,9 +119,9 @@ describe('BacklogCurationPreview', () => {
       },
     });
 
-    expect(screen.getByText('4 generated recommendations')).toBeTruthy();
+    expect(screen.getByText('4 recommendation entries')).toBeTruthy();
     expect(screen.getByText('0 active work items · 1 ready candidates · 1 next-sequence items · 1 safe-parallel groups · 1 blocked chains')).toBeTruthy();
-    expect(screen.queryByText('2 generated recommendations')).toBeNull();
+    expect(screen.queryByText('2 recommendation entries')).toBeNull();
   });
 
   it('renders invalid generated recommendation references and disables normal confirm', () => {

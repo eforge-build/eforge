@@ -23,7 +23,6 @@ const item: PlanningAgentTaskListItem = {
     selection: {},
     requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
     purpose: 'backlog-curation',
-    scanMode: 'delta',
     sourceFingerprint: 'fingerprint',
     createdAt: 'now',
   },
@@ -89,17 +88,17 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
 
     let returnedTaskId: string | undefined;
-    await act(async () => { returnedTaskId = (await result.current.analyzeAllBacklog({ scanMode: 'delta' }))?.taskId; });
+    await act(async () => { returnedTaskId = (await result.current.analyzeAllBacklog({ itemAuditConcurrency: 4 }))?.taskId; });
 
     expect(returnedTaskId).toBe('task-curation');
-    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'delta' });
+    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { itemAuditConcurrency: 4 });
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
     expect(onRefresh).not.toHaveBeenCalled();
   });
 
-  it('sends full implementation audit scan mode when selected', async () => {
+  it('can send advanced item audit concurrency without a scan mode', async () => {
     const onRefresh = vi.fn(async () => undefined);
-    const fullEntry = { ...item.entry, scanMode: 'full-implementation-audit' as const, taskId: 'task-curation-full' };
+    const fullEntry = { ...item.entry, taskId: 'task-curation-full' };
     const fullTask = { ...task, taskId: 'task-curation-full' };
     const invokeAction = vi.fn(async (actionId: string) => {
       if (actionId === 'list-planning-agent-tasks') return { tasks: [] };
@@ -112,9 +111,9 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('list-planning-agent-tasks', {}));
 
-    await act(async () => { await result.current.analyzeAllBacklog({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 6 }); });
+    await act(async () => { await result.current.analyzeAllBacklog({ itemAuditConcurrency: 6 }); });
 
-    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { scanMode: 'full-implementation-audit', itemAuditConcurrency: 6 });
+    expect(invokeAction).toHaveBeenCalledWith('analyze-all-backlog', { itemAuditConcurrency: 6 });
   });
 
   it('reloads task list when polling observes terminal task status', async () => {

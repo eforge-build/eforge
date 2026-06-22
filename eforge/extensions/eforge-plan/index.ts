@@ -247,7 +247,7 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
-      { rendererId: 'action-button', title: 'Analyze all backlog', content: 'Curate backlog records in default delta mode and refresh recommendations; open the workstation to opt into full implementation audit.', action: { actionId: 'analyze-all-backlog' } },
+      { rendererId: 'action-button', title: 'Analyze all backlog', content: 'Curate backlog records with source-first analysis and refresh recommendations.', action: { actionId: 'analyze-all-backlog' } },
       { rendererId: 'action-form', title: 'Get backlog item', content: 'Read one compact backlog item detail with sections and lifecycle rows without listing the board.', action: { actionId: 'get-item' } },
       { rendererId: 'action-form', title: 'Get backlog epic', content: 'Read one compact backlog epic detail and paginated item summaries.', action: { actionId: 'get-epic' } },
       { rendererId: 'action-form', title: 'Search backlog items', content: 'Search compact backlog item summaries with bounded output.', action: { actionId: 'search-items' } },

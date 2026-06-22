@@ -19,23 +19,22 @@ async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 }
 
 describe('analyze-all-backlog action', () => {
-  it('validates scan-mode input with delta as the backward-compatible default', () => {
+  it('validates analyze-all input without a scan mode parameter', () => {
     expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, {}).success).toBe(true);
-    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'delta' }).success).toBe(true);
-    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'full-implementation-audit' }).success).toBe(true);
+    expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'delta' }).success).toBe(false);
     expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'invalid-mode' }).success).toBe(false);
   });
 
   it('validates source-first item audit concurrency bounds', async () => {
     for (const itemAuditConcurrency of [1, 4, 8]) {
-      expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'full-implementation-audit', itemAuditConcurrency }).success).toBe(true);
+      expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { itemAuditConcurrency }).success).toBe(true);
     }
     for (const itemAuditConcurrency of [0, -1, 1.5, 9]) {
-      expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'full-implementation-audit', itemAuditConcurrency }).success).toBe(false);
+      expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { itemAuditConcurrency }).success).toBe(false);
     }
 
     await withTempProject(async (cwd) => {
-      await expect(buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: { scanMode: 'full-implementation-audit', itemAuditConcurrency: 9 } })).rejects.toThrow(/itemAuditConcurrency/);
+      await expect(buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: { itemAuditConcurrency: 9 } })).rejects.toThrow(/itemAuditConcurrency/);
     });
   });
 
@@ -59,13 +58,13 @@ describe('analyze-all-backlog action', () => {
       const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint?: string };
       expect(output.sourceFingerprint).toBeUndefined();
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'delta' } } } });
+      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
-      expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', scanMode: 'delta', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
+      expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', itemAuditConcurrency: 4, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
     });
   });
 
-  it.each(['delta', 'full-implementation-audit'] as const)('puts explicit %s scan mode into the deferred source-provider input and workflow entry', async (scanMode) => {
+  it('omits scan mode from the deferred source-provider input and workflow entry', async () => {
     await withTempProject(async (cwd) => {
       const starts: unknown[] = [];
       const ctx = {
@@ -74,21 +73,21 @@ describe('analyze-all-backlog action', () => {
         agentTasks: {
           async start(request: unknown) {
             starts.push(request);
-            return { task: { taskId: `task-${scanMode}`, kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' } };
+            return { task: { taskId: 'task-backlog-analysis', kind: 'eforge-plan.planning-draft', status: 'queued', createdAt: 'now', updatedAt: 'now' } };
           },
           async get() { throw new Error('not found'); },
           async cancel() { throw new Error('unexpected cancel'); },
         },
       };
 
-      const output = await analyzeAllBacklogAction.handler({ scanMode }, ctx as never) as { entry: { scanMode?: string } };
+      const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { entry: { scanMode?: string } };
 
-      expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { scanMode } } } });
-      expect(output.entry.scanMode).toBe(scanMode);
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { itemAuditConcurrency: 4 } } } });
+      expect(output.entry.scanMode).toBeUndefined();
     });
   });
 
-  it('normalizes source-first concurrency into source-provider input and workflow entries only for full audit mode', async () => {
+  it('normalizes source-first concurrency into source-provider input and workflow entries', async () => {
     await withTempProject(async (cwd) => {
       const starts: unknown[] = [];
       const ctx = {
@@ -104,14 +103,13 @@ describe('analyze-all-backlog action', () => {
         },
       };
 
-      const full = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit' }, ctx as never) as { entry: { itemAuditConcurrency?: number } };
-      const delta = await analyzeAllBacklogAction.handler({ scanMode: 'delta', itemAuditConcurrency: 8 }, ctx as never) as { entry: { itemAuditConcurrency?: number } };
+      const full = await analyzeAllBacklogAction.handler({}, ctx as never) as { entry: { itemAuditConcurrency?: number } };
+      const custom = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 8 }, ctx as never) as { entry: { itemAuditConcurrency?: number } };
 
-      expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { scanMode: 'full-implementation-audit', itemAuditConcurrency: 4 } } } });
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { input: { itemAuditConcurrency: 4 } } } });
       expect(full.entry.itemAuditConcurrency).toBe(4);
-      expect(starts[1]).toMatchObject({ input: { sourceProvider: { input: { scanMode: 'delta' } } } });
-      expect((starts[1] as { input: { sourceProvider: { input: Record<string, unknown> } } }).input.sourceProvider.input).not.toHaveProperty('itemAuditConcurrency');
-      expect(delta.entry.itemAuditConcurrency).toBeUndefined();
+      expect(starts[1]).toMatchObject({ input: { sourceProvider: { input: { itemAuditConcurrency: 8 } } } });
+      expect(custom.entry.itemAuditConcurrency).toBe(8);
     });
   });
 
@@ -134,9 +132,9 @@ describe('analyze-all-backlog action', () => {
         },
       };
 
-      const first = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 2 }, ctx as never) as { task: { taskId: string } };
-      const second = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 3 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
-      const firstAgain = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit', itemAuditConcurrency: 2 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const first = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 2 }, ctx as never) as { task: { taskId: string } };
+      const second = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 3 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const firstAgain = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 2 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
 
       expect(second.task.taskId).not.toBe(first.task.taskId);
       expect(second.reused).toBeUndefined();
@@ -174,8 +172,8 @@ describe('analyze-all-backlog action', () => {
       };
 
       await analyzeAllBacklogAction.handler({}, ctx as never);
-      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { scanMode: 'delta' } } } });
-      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: { scanMode: 'delta' } });
+      expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
+      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: {} });
       const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
 
       expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', evidenceSource: 'git-history' })]);
@@ -190,7 +188,7 @@ describe('analyze-all-backlog action', () => {
       const { sourceText } = await buildBacklogCurationTaskSource({
         cwd,
         signal: new AbortController().signal,
-        input: { scanMode: 'delta', redraft: { parentTaskId: 'task-parent', steering: 'Close PR-linked items automatically when evidence is strong.' } },
+        input: { redraft: { parentTaskId: 'task-parent', steering: 'Close PR-linked items automatically when evidence is strong.' } },
       });
       const packet = JSON.parse(sourceText) as { redraft?: Record<string, unknown> };
       expect(packet.redraft).toMatchObject({ parentTaskId: 'task-parent', steering: 'Close PR-linked items automatically when evidence is strong.' });
@@ -223,7 +221,7 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
-  it('reuses queued/running curation tasks only when the scan mode matches', async () => {
+  it('reuses queued/running curation tasks only when source-first concurrency matches', async () => {
     await withTempProject(async (cwd) => {
       const started: unknown[] = [];
       const tasks = new Map<string, { taskId: string; kind: string; status: string; createdAt: string; updatedAt: string }>();
@@ -242,15 +240,15 @@ describe('analyze-all-backlog action', () => {
         },
       };
 
-      const delta = await analyzeAllBacklogAction.handler({ scanMode: 'delta' }, ctx as never) as { task: { taskId: string }; reused?: boolean };
-      const deltaAgain = await analyzeAllBacklogAction.handler({}, ctx as never) as { task: { taskId: string }; reused?: boolean };
-      const full = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit' }, ctx as never) as { task: { taskId: string }; reused?: boolean };
-      const fullAgain = await analyzeAllBacklogAction.handler({ scanMode: 'full-implementation-audit' }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const first = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 4 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const firstAgain = await analyzeAllBacklogAction.handler({}, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const second = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 5 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
+      const secondAgain = await analyzeAllBacklogAction.handler({ itemAuditConcurrency: 5 }, ctx as never) as { task: { taskId: string }; reused?: boolean };
 
-      expect(deltaAgain).toMatchObject({ task: { taskId: delta.task.taskId }, reused: true });
-      expect(full.task.taskId).not.toBe(delta.task.taskId);
-      expect(full.reused).toBeUndefined();
-      expect(fullAgain).toMatchObject({ task: { taskId: full.task.taskId }, reused: true });
+      expect(firstAgain).toMatchObject({ task: { taskId: first.task.taskId }, reused: true });
+      expect(second.task.taskId).not.toBe(first.task.taskId);
+      expect(second.reused).toBeUndefined();
+      expect(secondAgain).toMatchObject({ task: { taskId: second.task.taskId }, reused: true });
       expect(started).toHaveLength(2);
     });
   });

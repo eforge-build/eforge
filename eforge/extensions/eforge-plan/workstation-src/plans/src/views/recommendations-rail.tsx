@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RecommendationFreshnessBadge } from '@/components/recommendation-freshness';
 import { formatRelativeTime } from '@/lib/format-time';
-import type { BacklogCurationScanMode, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 import type { BacklogSelection } from '@/hooks/use-backlog-selection';
 import { AnalyzeBacklogControl } from './backlog/analyze-backlog-control';
 
@@ -33,8 +33,10 @@ interface RecommendationsRailProps {
   freshness: RecommendationFreshnessView | null;
   selection: BacklogSelection;
   busy: boolean;
+  /** A backlog-curation task is queued/running - the analyze trigger reflects it rather than inviting a duplicate. */
+  analyzing: boolean;
   /** Curate the backlog and regenerate recommendations. */
-  onAnalyze: (input: { scanMode: BacklogCurationScanMode; itemAuditConcurrency?: number }) => Promise<unknown>;
+  onAnalyze: () => Promise<unknown>;
   /** Fork a recommendation lane into an editable draft plan unit. */
   onForkLane: (recommendationRef: string) => Promise<void>;
 }
@@ -45,7 +47,7 @@ interface RecommendationsRailProps {
  * and the planning lanes, each actionable, with blocked chains and rationale a
  * disclosure away. The board stays the focal pane; this rides alongside it.
  */
-export function RecommendationsRail({ recommendations, status, freshness, selection, busy, onAnalyze, onForkLane }: RecommendationsRailProps) {
+export function RecommendationsRail({ recommendations, status, freshness, selection, busy, analyzing, onAnalyze, onForkLane }: RecommendationsRailProps) {
   const [forkingRef, setForkingRef] = React.useState<string | null>(null);
   const fork = (ref: string) => { setForkingRef(ref); void onForkLane(ref).finally(() => setForkingRef(null)); };
   const next = (recommendations?.recommendedNextSequence ?? []).slice(0, MAX_NEXT);
@@ -64,7 +66,7 @@ export function RecommendationsRail({ recommendations, status, freshness, select
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
-        <AnalyzeBacklogControl busy={busy} onAnalyze={onAnalyze} />
+        <AnalyzeBacklogControl busy={busy} analyzing={analyzing} onAnalyze={onAnalyze} />
         {freshnessLine && <p className="text-2xs text-muted-foreground" title={freshnessLine.detail}>{freshnessLine.text}</p>}
         {next.length === 0 && groups.length === 0 && (
           <p className="text-2xs text-muted-foreground">No planning guidance yet. Analyze the backlog to generate recommendations.</p>
@@ -83,7 +85,7 @@ export function RecommendationsRail({ recommendations, status, freshness, select
                     className={`flex w-full items-center gap-2 rounded border px-1.5 py-1 text-left transition-colors hover:border-primary ${selection.selected.has(entry.itemId) ? 'border-primary bg-primary/10' : 'border-border'}`}
                   >
                     <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[color:var(--lane-ready)]/20 text-2xs font-bold text-[color:var(--lane-ready)]">{index + 1}</span>
-                    <span className="line-clamp-2 text-2xs leading-snug text-foreground">{label(entry.itemId)}</span>
+                    <span className="line-clamp-2 min-w-0 break-words text-2xs leading-snug text-foreground">{label(entry.itemId)}</span>
                   </button>
                 </li>
               ))}

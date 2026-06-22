@@ -8,24 +8,11 @@ import {
 } from '@eforge-build/client';
 import { BacklogStatusSchema, JsonValueSchema, RecommendationBlockedChainSchema, RecommendationDerivedStatusSchema, RecommendationItemRefSchema, RecommendationProfileSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
-export const BACKLOG_CURATION_SCAN_MODES = ['delta', 'full-implementation-audit'] as const;
-export const DEFAULT_BACKLOG_CURATION_SCAN_MODE = 'delta' as const;
-export const BacklogCurationScanModeSchema = Type.Union(BACKLOG_CURATION_SCAN_MODES.map((value) => Type.Literal(value)) as [ReturnType<typeof Type.Literal>, ReturnType<typeof Type.Literal>]);
-
-export function normalizeBacklogCurationScanMode(value: unknown): BacklogCurationScanMode {
-  return value === 'full-implementation-audit' ? 'full-implementation-audit' : DEFAULT_BACKLOG_CURATION_SCAN_MODE;
-}
-
-export function backlogCurationScanModeLabel(scanMode: BacklogCurationScanMode): string {
-  return scanMode === 'full-implementation-audit' ? 'Source-first implementation audit' : 'Delta';
-}
-
 export const DEFAULT_ITEM_AUDIT_CONCURRENCY = 4;
 export const MAX_ITEM_AUDIT_CONCURRENCY = 8;
 export const ItemAuditConcurrencySchema = Type.Integer({ minimum: 1, maximum: MAX_ITEM_AUDIT_CONCURRENCY, default: DEFAULT_ITEM_AUDIT_CONCURRENCY });
 
 export const AnalyzeAllBacklogInputSchema = Type.Object({
-  scanMode: Type.Optional(BacklogCurationScanModeSchema),
   itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
 }, { additionalProperties: false });
 
@@ -50,7 +37,6 @@ const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   // produces 'backlog-curation' entries, but the stored value is the generic
   // workflow entry type, so accept the full union it can statically carry.
   purpose: Type.Optional(Type.Union([Type.Literal('recommendation-refresh'), Type.Literal('backlog-curation')])),
-  scanMode: Type.Optional(BacklogCurationScanModeSchema),
   itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
   sourceFingerprint: Type.Optional(SourceFingerprintSchema),
   appliedAt: Type.Optional(Type.String()),
@@ -274,7 +260,6 @@ export const BacklogCurationGitDeltaPreviewSchema = Type.Object({
 export const BacklogCurationSourcePreviewMetadataSchema = Type.Object({
   sourceFingerprint: SourceFingerprintSchema,
   generatedAt: Type.Optional(Type.String()),
-  scanMode: Type.Optional(BacklogCurationScanModeSchema),
   itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
   gitDelta: Type.Optional(BacklogCurationGitDeltaPreviewSchema),
   fullImplementationAudit: Type.Optional(BacklogCurationFullImplementationAuditPreviewSchema),
@@ -282,7 +267,6 @@ export const BacklogCurationSourcePreviewMetadataSchema = Type.Object({
 
 export const BacklogCurationPreviewDetailsSchema = Type.Object({
   valid: Type.Boolean(),
-  scanMode: Type.Optional(BacklogCurationScanModeSchema),
   itemChanges: Type.Optional(Type.Integer({ minimum: 0 })),
   epicChanges: Type.Optional(Type.Integer({ minimum: 0 })),
   noOpRechecks: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -325,7 +309,6 @@ export const BacklogCurationApplyDetailsSchema = Type.Object({
   // --- eforge:endregion recommendation-validation ---
 }, { additionalProperties: false });
 
-export type BacklogCurationScanMode = Static<typeof BacklogCurationScanModeSchema>;
 export type AnalyzeAllBacklogInput = Static<typeof AnalyzeAllBacklogInputSchema>;
 export type AnalyzeAllBacklogOutput = Static<typeof AnalyzeAllBacklogOutputSchema>;
 export type AnalyzeAllBacklogTaskSummary = Static<typeof AnalyzeAllBacklogTaskSummarySchema>;

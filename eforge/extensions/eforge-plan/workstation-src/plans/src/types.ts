@@ -5,8 +5,6 @@ export type JsonObject = ExtensionJsonObject;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
 
-export type BacklogCurationScanMode = 'delta' | 'full-implementation-audit';
-
 export interface EforgeBridge {
   version?: number;
   invokeAction<TOutput = unknown>(actionId: string, input?: JsonObject): Promise<TOutput>;
@@ -373,7 +371,6 @@ export interface PlanningTaskWorkflowEntry {
   planningDepth?: string;
   includeRoadmap?: boolean;
   purpose?: 'recommendation-refresh' | 'backlog-curation';
-  scanMode?: BacklogCurationScanMode;
   itemAuditConcurrency?: number;
   sourceFingerprint?: string;
   appliedAt?: string;

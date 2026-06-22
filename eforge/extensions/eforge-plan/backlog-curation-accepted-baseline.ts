@@ -1,5 +1,4 @@
 import { collectBacklogCurationGitDelta, writeAcceptedAnalysisBaseline } from './backlog-curation-git-delta.js';
-import { normalizeBacklogCurationScanMode, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
 
 type AcceptedAnalysisBaselineApplyInput = {
   taskId: string;
@@ -7,7 +6,7 @@ type AcceptedAnalysisBaselineApplyInput = {
   acceptedAt?: string;
 } & (
   | { passKind: 'recommendation-refresh' }
-  | { passKind: 'backlog-curation'; scanMode?: BacklogCurationScanMode }
+  | { passKind: 'backlog-curation' }
 );
 
 export async function recordAcceptedAnalysisBaselineForApply(cwd: string, input: AcceptedAnalysisBaselineApplyInput): Promise<void> {
@@ -28,6 +27,5 @@ export async function recordAcceptedAnalysisBaselineForApply(cwd: string, input:
 }
 
 function acceptedBaselinePassKind(input: AcceptedAnalysisBaselineApplyInput): string {
-  if (input.passKind === 'recommendation-refresh') return 'recommendation-refresh';
-  return `backlog-curation:${normalizeBacklogCurationScanMode(input.scanMode)}`;
+  return input.passKind;
 }

@@ -35,6 +35,18 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   const workflows = usePlanningTaskWorkflows(data.refresh);
   const selection = useBacklogSelection(data.board, workflows);
 
+  // The "Analyze all backlog" trigger drives a backlog-curation task; while one
+  // is queued/running it should read as working rather than invite a duplicate.
+  // `workflows.busy` only covers the in-flight click, so derive the durable
+  // running state from the task list the activity rail already polls.
+  const curationRunning = React.useMemo(
+    () => workflows.items.some((item) => {
+      const status = item.task?.status ?? item.status;
+      return (status === 'queued' || status === 'running') && item.entry.purpose === 'backlog-curation';
+    }),
+    [workflows.items],
+  );
+
   const focus: Focus = readFocus(router.query.get('focus'));
   const setFocus = React.useCallback((next: Focus) => {
     router.setQuery((params) => { if (next === 'board') params.delete('focus'); else params.set('focus', next); });
@@ -136,7 +148,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
           )}
         </div>
 
-        <aside className="grid gap-3 lg:sticky lg:top-[5.5rem]">
+        <aside className="grid min-w-0 gap-3 lg:sticky lg:top-[5.5rem]">
           {focus === 'roadmap' ? (
             <RoadmapContextRail
               state={data.roadmapState}
@@ -157,6 +169,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
                 freshness={data.recommendationFreshness}
                 selection={selection}
                 busy={workflows.busy}
+                analyzing={curationRunning}
                 onAnalyze={workflows.analyzeAllBacklog}
                 onForkLane={onForkLane}
               />

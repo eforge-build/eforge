@@ -20,7 +20,7 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 // --- eforge:endregion shipped-evidence-context ---
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
-import { BacklogCurationFullImplementationAuditPreviewSchema, BacklogCurationGitDeltaPreviewSchema, BacklogCurationScanModeSchema, normalizeBacklogCurationScanMode, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationGitDeltaPreview, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
+import { BacklogCurationFullImplementationAuditPreviewSchema, BacklogCurationGitDeltaPreviewSchema, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationGitDeltaPreview } from './backlog-curation-schemas.js';
 import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
 
 export interface BacklogCurationSourceBuild {
@@ -33,7 +33,6 @@ export interface BacklogCurationSourceBuild {
 export interface BacklogCurationSourcePreviewMetadata {
   sourceFingerprint: string;
   generatedAt?: string;
-  scanMode?: BacklogCurationScanMode;
   itemAuditConcurrency?: number;
   gitDelta?: BacklogCurationGitDeltaPreview;
   fullImplementationAudit?: BacklogCurationFullImplementationAuditPreview;
@@ -54,7 +53,6 @@ export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
 
 interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
-  scanMode?: BacklogCurationScanMode;
   itemAuditConcurrency?: number;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
@@ -85,12 +83,10 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
     return null;
   }
   const gitDelta = parsed.gitDelta === undefined ? undefined : safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, parsed.gitDelta);
-  const scanMode = parsed.scanMode === undefined ? undefined : safeParseWithSchema(BacklogCurationScanModeSchema, parsed.scanMode);
   const fullImplementationAudit = parsed.fullImplementationAudit === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, parsed.fullImplementationAudit);
   return {
     sourceFingerprint,
     ...(typeof parsed.generatedAt === 'string' && { generatedAt: parsed.generatedAt }),
-    ...(scanMode?.success && { scanMode: scanMode.data }),
     ...(parsed.itemAuditConcurrency !== undefined && { itemAuditConcurrency: normalizeItemAuditConcurrency(parsed.itemAuditConcurrency) }),
     ...(gitDelta?.success && { gitDelta: gitDelta.data }),
     ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
@@ -99,8 +95,7 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
-  const scanMode = normalizeBacklogCurationScanMode(options.scanMode);
-  const itemAuditConcurrency = scanMode === 'full-implementation-audit' ? normalizeItemAuditConcurrency(options.itemAuditConcurrency) : undefined;
+  const itemAuditConcurrency = normalizeItemAuditConcurrency(options.itemAuditConcurrency);
   const [itemSnapshots, epicSnapshots, recommendationProjection, recommendations] = await Promise.all([
     listBacklogItemSnapshots(cwd),
     listBacklogEpicSnapshots(cwd),
@@ -121,15 +116,12 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
   const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
   gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
-  const fullImplementationAudit = scanMode === 'full-implementation-audit'
-    ? await collectBacklogCurationFullImplementationAudit({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, caps: { ...options.shippedEvidenceCaps, ...options.fullImplementationAuditCaps }, itemAuditConcurrency, enrichPullRequests: options.enrichPullRequests, signal: options.signal })
-    : undefined;
-  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification, fullImplementationAudit?.shippedEvidenceCandidates, scanMode !== 'full-implementation-audit');
+  const fullImplementationAudit = await collectBacklogCurationFullImplementationAudit({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, caps: { ...options.shippedEvidenceCaps, ...options.fullImplementationAuditCaps }, itemAuditConcurrency, enrichPullRequests: options.enrichPullRequests, signal: options.signal });
+  const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification, fullImplementationAudit.shippedEvidenceCandidates, true);
   throwIfAborted(options.signal);
   const dependencyDetails = buildDependencyDetails(openItemSnapshots.map((snapshot) => snapshot.record), itemSnapshots.map((snapshot) => snapshot.record));
   const fingerprintProjection = {
     schemaVersion: 1,
-    scanMode,
     ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }),
     recommendationSourceProjection: projectRecommendationSourceForFingerprint(recommendationProjection),
     roadmapContext: projectRoadmapContextForFingerprint(roadmapContext),
@@ -149,9 +141,8 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   const source = {
     schemaVersion: 1,
     purpose: 'backlog-curation',
-    scanMode,
     ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }),
-    scanModeGuidance: buildScanModeGuidance(scanMode),
+    curationGuidance: buildCurationGuidance(),
     sourceFingerprint,
     generatedAt: new Date().toISOString(),
     openItems,
@@ -459,12 +450,10 @@ function resolveBacklogCurationSourcePreviewMetadataPath(cwd: string, sourceFing
 
 function previewMetadataFromSource(source: BacklogCurationSourceBuild): BacklogCurationSourcePreviewMetadata {
   const gitDelta = safeParseWithSchema(BacklogCurationGitDeltaPreviewSchema, source.source.gitDelta);
-  const scanMode = normalizeBacklogCurationScanMode(source.source.scanMode);
   const fullImplementationAudit = source.fullImplementationAuditPreview === undefined ? undefined : safeParseWithSchema(BacklogCurationFullImplementationAuditPreviewSchema, source.fullImplementationAuditPreview);
   return {
     sourceFingerprint: source.sourceFingerprint,
     ...(typeof source.source.generatedAt === 'string' && { generatedAt: source.source.generatedAt }),
-    scanMode,
     ...(source.source.itemAuditConcurrency !== undefined && { itemAuditConcurrency: normalizeItemAuditConcurrency(source.source.itemAuditConcurrency) }),
     ...(gitDelta.success && { gitDelta: gitDelta.data }),
     ...(fullImplementationAudit?.success && { fullImplementationAudit: fullImplementationAudit.data }),
@@ -494,16 +483,9 @@ function boundString(value: string, limit: number, onTruncate: () => void): stri
   return `${value.slice(0, Math.max(0, limit - 16))}\n…[truncated]`;
 }
 
-function buildScanModeGuidance(scanMode: BacklogCurationScanMode): Record<string, unknown> {
-  if (scanMode === 'full-implementation-audit') {
-    return {
-      mode: scanMode,
-      instruction: 'Audit every open backlog item against bounded source-first current-source evidence. Current source is the only closure authority; historical git/PR/lifecycle/session signals are navigation hints only. Route unsupported or ambiguous closure claims to skipped, no-change, or recheck-note guidance instead of top-level questions.',
-    };
-  }
+function buildCurationGuidance(): Record<string, unknown> {
   return {
-    mode: scanMode,
-    instruction: 'Use the accepted-analysis git delta, backlog records, recommendations, roadmap context, traces, and bounded shipped evidence to curate changed or stale backlog records conservatively.',
+    instruction: 'Audit every open backlog item as agentic source-first curation. Current source is the closure authority for shipped/superseded status; historical git/PR/lifecycle/session signals are navigation hints. Treat ambiguous evidence as a lead to resolve into actionable backlog changes, recommendations, or true product-decision needs-input; use skipped only for exceptional review failures.',
   };
 }
 
@@ -517,8 +499,7 @@ function buildSourceText(source: Record<string, unknown>): string {
   const minimal = {
     schemaVersion: source.schemaVersion,
     purpose: source.purpose,
-    scanMode: source.scanMode,
-    scanModeGuidance: source.scanModeGuidance,
+    curationGuidance: source.curationGuidance,
     sourceFingerprint: source.sourceFingerprint,
     generatedAt: source.generatedAt,
     openItems: (source.openItems as Array<Record<string, unknown>>).map(minimalRecord),

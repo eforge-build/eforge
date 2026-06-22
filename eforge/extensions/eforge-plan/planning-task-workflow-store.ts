@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type PlanningTaskWorkflowIndex } from './planning-agent-task-schemas.js';
-import { DEFAULT_BACKLOG_CURATION_SCAN_MODE, DEFAULT_ITEM_AUDIT_CONCURRENCY, MAX_ITEM_AUDIT_CONCURRENCY, normalizeBacklogCurationScanMode, type BacklogCurationScanMode } from './backlog-curation-schemas.js';
+import { DEFAULT_ITEM_AUDIT_CONCURRENCY, MAX_ITEM_AUDIT_CONCURRENCY } from './backlog-curation-schemas.js';
 
 const EXTENSION_NAME = 'eforge-plan';
 const INDEX_SEGMENTS = ['planning-tasks', 'index.json'] as const;
@@ -134,18 +134,14 @@ export function isBacklogCurationWorkflowEntry(entry: PlanningTaskWorkflowEntry)
   return entry.purpose === BACKLOG_CURATION_WORKFLOW_PURPOSE;
 }
 
-export function listBacklogCurationWorkflowEntries(index: PlanningTaskWorkflowIndex, sourceFingerprint?: string, scanMode?: BacklogCurationScanMode, itemAuditConcurrency?: number): PlanningTaskWorkflowEntry[] {
-  return listPlanningTaskWorkflowEntries(index).filter((entry) => {
-    const entryScanMode = normalizeBacklogCurationScanMode(entry.scanMode ?? DEFAULT_BACKLOG_CURATION_SCAN_MODE);
-    return isBacklogCurationWorkflowEntry(entry)
-      && (sourceFingerprint === undefined || entry.sourceFingerprint === sourceFingerprint)
-      && (scanMode === undefined || entryScanMode === scanMode)
-      && (scanMode !== 'full-implementation-audit' || itemAuditConcurrency === undefined || normalizeStoredItemAuditConcurrency(entry.itemAuditConcurrency) === normalizeStoredItemAuditConcurrency(itemAuditConcurrency));
-  });
+export function listBacklogCurationWorkflowEntries(index: PlanningTaskWorkflowIndex, sourceFingerprint?: string, itemAuditConcurrency?: number): PlanningTaskWorkflowEntry[] {
+  return listPlanningTaskWorkflowEntries(index).filter((entry) => isBacklogCurationWorkflowEntry(entry)
+    && (sourceFingerprint === undefined || entry.sourceFingerprint === sourceFingerprint)
+    && (itemAuditConcurrency === undefined || normalizeStoredItemAuditConcurrency(entry.itemAuditConcurrency) === normalizeStoredItemAuditConcurrency(itemAuditConcurrency)));
 }
 
-export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string, scanMode?: BacklogCurationScanMode, itemAuditConcurrency?: number): PlanningTaskWorkflowEntry | undefined {
-  return listBacklogCurationWorkflowEntries(index, sourceFingerprint, scanMode, itemAuditConcurrency)[0];
+export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string, itemAuditConcurrency?: number): PlanningTaskWorkflowEntry | undefined {
+  return listBacklogCurationWorkflowEntries(index, sourceFingerprint, itemAuditConcurrency)[0];
 }
 
 function normalizeStoredItemAuditConcurrency(value: unknown): number {
