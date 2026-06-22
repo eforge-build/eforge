@@ -82,6 +82,7 @@ describe('EforgeEngine.enqueue postMerge queue metadata', () => {
 
   it.each([
     { name: 'non-string entries', postMerge: ['pnpm build', 42] as unknown as string[] },
+    { name: 'blank strings', postMerge: ['pnpm build', '   '] },
     { name: 'control characters', postMerge: ['pnpm build\npnpm test'] },
   ])('rejects $name in postMerge commands without writing a queued PRD', async ({ postMerge }) => {
     const tmpDir = makeTempDir();
