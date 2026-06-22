@@ -15,7 +15,6 @@ import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
-import { registerPlaybookCommand } from './playbook.js';
 import { registerExtensionContributionCommands } from './extension-contributions.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
@@ -1680,7 +1679,6 @@ export function createProgram(abortController?: AbortController, version?: strin
       },
     );
 
-  registerPlaybookCommand(program);
 
   // MCP proxy command — runs the stdio MCP server that bridges to the daemon
   program

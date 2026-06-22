@@ -307,14 +307,6 @@ const noStartRouteHelperCases: RouteHelperCase[] = [
   { name: 'apiUntrustExtensionIfRunning', opts: (cwd) => ({ cwd, body: { name: 'example' } }) },
   { name: 'apiGetExtensionContributionManifestIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiInvokeExtensionActionIfRunning', opts: (cwd) => ({ cwd, body: { actionId: 'example.action', input: {}, requestedBy: { host: 'cli' } } }) },
-  { name: 'apiPlaybookListIfRunning', opts: (cwd) => ({ cwd }) },
-  { name: 'apiPlaybookShowIfRunning', opts: (cwd) => ({ cwd, name: 'ship-it' }) },
-  { name: 'apiPlaybookSaveIfRunning', opts: (cwd) => ({ cwd, body: { scope: 'project-local', playbook: {} } }) },
-  { name: 'apiPlaybookRunIfRunning', opts: (cwd) => ({ cwd, body: { name: 'ship-it' } }) },
-  { name: 'apiPlaybookPromoteIfRunning', opts: (cwd) => ({ cwd, body: { name: 'ship-it' } }) },
-  { name: 'apiPlaybookDemoteIfRunning', opts: (cwd) => ({ cwd, body: { name: 'ship-it' } }) },
-  { name: 'apiPlaybookValidateIfRunning', opts: (cwd) => ({ cwd, body: { raw: '---\nname: ship-it\n---\n' } }) },
-  { name: 'apiPlaybookCopyIfRunning', opts: (cwd) => ({ cwd, body: { name: 'ship-it', targetScope: 'project-local' } }) },
   { name: 'apiSessionPlanListIfRunning', opts: (cwd) => ({ cwd }) },
   { name: 'apiSessionPlanShowIfRunning', opts: (cwd) => ({ cwd, session: 'session-1' }) },
   { name: 'apiSessionPlanCreateIfRunning', opts: (cwd) => ({ cwd, body: { session: 'session-1' } }) },
@@ -486,6 +478,8 @@ describe('daemonRequestIfRunning — API version verification', () => {
 
 describe('helper import discipline', () => {
   it('(6) exports all Pi-facing *IfRunning route helpers and they are passive with no lockfile', async () => {
+    expect(noStartRouteHelperCases.some(({ name }) => name.startsWith('apiPlaybook'))).toBe(false);
+
     for (const { name, opts } of noStartRouteHelperCases) {
       const result = await invokeClientHelper(name, opts(tmpDir));
       expect(result, `${name} should return null when no daemon lockfile exists`).toBeNull();

@@ -53,9 +53,6 @@ function makeState(overrides: Partial<SystemSurfacesState> = {}): SystemSurfaces
       validate: success({ valid: true, extensions: [], diagnostics: [] }),
       contributions: empty(emptyManifest()),
     },
-    playbooks: {
-      list: empty({ playbooks: [], warnings: [] }),
-    },
     models: {
       catalogs: {
         pi: {
@@ -81,7 +78,6 @@ function makeState(overrides: Partial<SystemSurfacesState> = {}): SystemSurfaces
     config: { ...state.config, ...overrides.config },
     profiles: { ...state.profiles, ...overrides.profiles },
     extensions: { ...state.extensions, ...overrides.extensions },
-    playbooks: { ...state.playbooks, ...overrides.playbooks },
     models: { ...state.models, ...overrides.models },
   };
 }

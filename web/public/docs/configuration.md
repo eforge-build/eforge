@@ -311,7 +311,7 @@ profile: docs-heavy    # Optional — omit to allow router/active-profile/defaul
 Keep all documentation in sync with the latest code changes.
 ```
 
-**Precedence**: the playbook `profile` field overrides the project's active-profile marker and any registered profile router. `eforge playbook run` does not accept a runtime profile override; edit the playbook frontmatter to change its profile. For session-plan builds, an explicit `--profile` flag or enqueue request field overrides the session plan's inherited `agent_profile`.
+**Precedence**: an optional `profile` field on the `eforge-playbooks:run-playbook` action input overrides the playbook frontmatter for that run. When no action input override is supplied, the playbook `profile` field overrides the project's active-profile marker and any registered profile router. For session-plan builds, an explicit `--profile` flag or enqueue request field overrides the session plan's inherited `agent_profile`.
 
 **Validation timing**: the named profile is validated at execution time, not when the playbook is saved. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
 

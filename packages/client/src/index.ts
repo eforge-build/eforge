@@ -238,54 +238,6 @@ export {
   apiApplyQueueRecoveryIfRunning,
 } from './api/queue-recovery.js';
 
-export {
-  apiPlaybookList,
-  apiPlaybookListIfRunning,
-  apiPlaybookShow,
-  apiPlaybookShowIfRunning,
-  apiPlaybookSave,
-  apiPlaybookSaveIfRunning,
-  apiPlaybookRun,
-  apiPlaybookRunIfRunning,
-  apiPlaybookPromote,
-  apiPlaybookPromoteIfRunning,
-  apiPlaybookDemote,
-  apiPlaybookDemoteIfRunning,
-  apiPlaybookValidate,
-  apiPlaybookValidateIfRunning,
-  apiPlaybookCopy,
-  apiPlaybookCopyIfRunning,
-} from './api/playbook.js';
-
-export type {
-  PlaybookScope,
-  PlaybookArtifactSource,
-  PlaybookMode,
-  PlaybookShadow,
-  PlaybookListEntry,
-  PlaybookData,
-  PlaybookFrontmatterFields,
-  PlaybookBodyFields,
-  PlaybookSaveBody,
-  PlaybookListResponse,
-  PlaybookShowResponse,
-  PlaybookSaveResponse,
-  PlaybookPromoteResponse,
-  PlaybookDemoteResponse,
-  PlaybookValidateResponse,
-  PlaybookCopyResponse,
-} from './api/playbook.js';
-
-export type {
-  PlaybookRunRequest,
-  PlaybookRunResponse,
-  PlaybookRunEnqueuedResponse,
-  PlaybookRunRequiresAgentResponse,
-  PlaybookRunPlanningUnavailableResponse,
-  PlaybookPlanningEntryMetadata,
-  PlaybookPlanningRequiredCapability,
-  PlaybookPlanningUnavailableDiagnostic,
-} from './routes.js';
 
 export type { StackLayersResponse } from './routes.js';
 export { apiGetStackLayers, apiGetStackLayersIfRunning } from './api/stack.js';
@@ -330,8 +282,6 @@ export {
   apiSessionPlanReadinessIfRunning,
   apiSessionPlanMigrateLegacy,
   apiSessionPlanMigrateLegacyIfRunning,
-  apiSessionPlanCreateFromPlaybook,
-  apiSessionPlanCreateFromPlaybookIfRunning,
 } from './api/session-plan.js';
 
 export type {
@@ -357,8 +307,6 @@ export type {
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
   SessionPlanMigrateLegacyResponse,
-  SessionPlanCreateFromPlaybookRequest,
-  SessionPlanCreateFromPlaybookResponse,
 } from './api/session-plan.js';
 
 export {

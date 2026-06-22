@@ -573,7 +573,7 @@ profile: docs-heavy    # Optional — omit to allow router/active-profile/defaul
 Keep all documentation in sync with the latest code changes.
 ```
 
-**Precedence**: the playbook `profile` field overrides the project's active-profile marker and any registered profile router. `eforge playbook run` does not accept a runtime profile override; edit the playbook frontmatter to change its profile. For session-plan builds, an explicit `--profile` flag or enqueue request field overrides the session plan's inherited `agent_profile`.
+**Precedence**: an optional `profile` field on the `eforge-playbooks:run-playbook` action input overrides the playbook frontmatter for that run. When no action input override is supplied, the playbook `profile` field overrides the project's active-profile marker and any registered profile router. For session-plan builds, an explicit `--profile` flag or enqueue request field overrides the session plan's inherited `agent_profile`.
 
 **Validation timing**: the named profile is validated at execution time, not when the playbook is saved. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
 
@@ -847,12 +847,12 @@ Native eforge extensions are distinct from other extensibility mechanisms in the
 | Claude Code plugins | Claude Code plugin package | Claude Code host | Slash commands, MCP proxy wiring, Claude Code UX |
 | Pi extensions | Pi extension package | Pi host | Native Pi commands, tools, and TUI surfaces |
 | Shell hooks | YAML + shell command | eforge hook runner | Fire-and-forget notifications/integrations |
-| Playbooks/session plans | Markdown input artifacts | `@eforge-build/input` then engine queue | Reusable build sources and planning artifacts |
+| Playbooks/session plans | Markdown input artifacts | `@eforge-build/input`, first-party extensions, then engine queue | Reusable build sources and planning artifacts |
 | Profile toolbelts | YAML MCP server bundles | agent runtime registry | Declarative project MCP server selection |
 
 Toolbelts answer "which project MCP servers from `.mcp.json` should this tier expose?" Extensions answer "what should eforge do when something happens?" and may contribute TypeScript-defined tools per agent run. Toolbelts do not filter extension-contributed tools, engine-internal custom tools, or harness built-ins. Extensions should not redefine toolbelts or act as a hidden profile/config layer.
 
-Playbooks and session plans are handled by bundled internal workflow adapters in `@eforge-build/input`. The playbook adapter owns shipped playbook-domain behavior across project-local, project-team, and user scopes; session plans remain project-local Markdown files under `.eforge/session-plans/` and are handled by the bundled session-planning adapter. These adapters are built in so the daemon can remain a compatibility shim around client-owned HTTP routes and wire shapes while the engine receives normalized build source. Native extensions do not register custom playbook or session-plan extraction workflows in the current release. User-authored session-plan extraction remains unsupported, and user-authored playbook extraction remains unsupported.
+Playbooks and session plans are reusable input artifacts built on `@eforge-build/input`. The first-party `@eforge-build/eforge-playbooks` extension owns shipped playbook management actions, planning-mode handoff metadata, and autonomous queue handoff across project-local, project-team, and user scopes while using the pure input playbook helpers for parsing, storage, validation, and compilation. Session plans remain project-local Markdown files under `.eforge/session-plans/` and are handled by the bundled session-planning adapter. Native extensions do not currently register custom playbook or session-plan extraction workflows. Custom playbook extraction remains deferred, custom session-plan extraction remains deferred, user-authored session-plan extraction remains unsupported, user-authored playbook extraction remains unsupported, and user-authored native workflow registration remains future/deferred work.
 
 ## Extension user workflow
 
@@ -3077,7 +3077,7 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 **`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from optional [eforge-plan](/docs/eforge-plan) and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` list/show/invoke or the eforge-plan workstation deep link; the extension owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
 
-When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
+When you invoke the `eforge-playbooks:run-playbook` extension action for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 
 Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded as generic queued PRD `postMerge` metadata only when an autonomous playbook is converted directly to build source.
 
@@ -3141,7 +3141,7 @@ profile: browser-ui
 ---
 ```
 
-**Precedence:** the playbook `profile` field overrides the project's active-profile marker and any registered profile router. `eforge playbook run` does not accept a runtime profile override; edit the playbook frontmatter to change its profile.
+**Precedence:** an optional `profile` field on the `eforge-playbooks:run-playbook` action input overrides the playbook frontmatter for that run. When no action input override is supplied, the playbook `profile` field overrides the project's active-profile marker and any registered profile router.
 
 **Validation timing:** the named profile is validated at execution time, not when the playbook is saved.
 
@@ -3157,13 +3157,13 @@ profile: browser-ui
 
 The skill gathers the workflow description, infers a scope (project-team, project-local, or user) from the description, asks for the mode, optionally ties it to a profile, drafts the playbook content, validates it, and saves.
 
-From the CLI:
+From the CLI, invoke the generic extension action:
 
 ```bash
-eforge playbook new --scope project-team --name docs-sync --description "Keep docs current"
+eforge extension contributions invoke eforge-playbooks:save-playbook --kind action --input-json '{"scope":"project-team","raw":"---\nname: docs-sync\ndescription: Keep docs current\nscope: project-team\nmode: autonomous\n---\n\n## Goal\nKeep docs current"}'
 ```
 
-The CLI scaffold is non-interactive and creates an autonomous playbook. Use `--scope user`, `--scope project-team`, or `--scope project-local`; add `--profile <name>` when the playbook should pin a runtime profile.
+The action validates and saves the playbook. Use `scope` values `user`, `project-team`, or `project-local`; include `profile` in the playbook frontmatter when the playbook should pin a runtime profile.
 
 ## Run a playbook
 
@@ -3177,14 +3177,11 @@ The skill lists available playbooks and lets you pick by number. For autonomous 
 /eforge:playbook run docs-sync
 ```
 
-From the CLI:
+From the CLI, invoke the generic extension action:
 
 ```bash
-eforge playbook run docs-sync
-eforge play docs-sync       # shorthand
+eforge extension contributions invoke eforge-playbooks:run-playbook --kind action --input-json '{"name":"docs-sync"}'
 ```
-
-`eforge play` is a shorthand for `eforge playbook run`.
 
 After a successful autonomous enqueue, the daemon returns `{ kind: 'enqueued', id }` and the build appears in Console. Planning playbooks instead return eforge-plan planning entry metadata or unavailable capability diagnostics.
 
@@ -3197,7 +3194,7 @@ After a successful autonomous enqueue, the daemon returns `{ kind: 'enqueued', i
 From the CLI:
 
 ```bash
-eforge playbook list
+eforge extension contributions invoke eforge-playbooks:list-playbooks --kind action
 ```
 
 Output groups playbooks by scope tier and marks shadowed entries.
@@ -3210,10 +3207,11 @@ Output groups playbooks by scope tier and marks shadowed entries.
 
 The skill loads the playbook and walks through each section (mode, profile, Goal, Out of scope, Acceptance criteria, Notes for the planner) one at a time, asking whether to update each.
 
-From the CLI:
+From the CLI, load and save through the generic extension actions:
 
 ```bash
-eforge playbook edit docs-sync
+eforge extension contributions invoke eforge-playbooks:show-playbook --kind action --input-json '{"name":"docs-sync"}'
+eforge extension contributions invoke eforge-playbooks:save-playbook --kind action --input-json '{...}'
 ```
 
 ## Promote and demote playbooks
@@ -3227,8 +3225,8 @@ Move a project-local playbook to project-team scope so the whole team benefits:
 Or from the CLI:
 
 ```bash
-eforge playbook promote release-prep
-eforge playbook demote release-prep     # move back to project-local
+eforge extension contributions invoke eforge-playbooks:promote-playbook --kind action --input-json '{"name":"release-prep"}'
+eforge extension contributions invoke eforge-playbooks:demote-playbook --kind action --input-json '{"name":"release-prep"}'
 ```
 
 After promotion, the playbook moves into the committed project-team directory. The CLI stages the promoted file with `git add`; review and commit it with the rest of your change. Demotion moves it back to project-local scope, where it shadows any team version of the same name.
@@ -3238,7 +3236,7 @@ After promotion, the playbook moves into the committed project-team directory. T
 For autonomous playbooks, you can schedule a playbook to run after an in-flight build completes. The skill offers this when active queue items exist. From the CLI:
 
 ```bash
-eforge playbook run docs-sync --after <queue-id>
+eforge extension contributions invoke eforge-playbooks:run-playbook --kind action --input-json '{"name":"docs-sync","afterQueueId":"<queue-id>"}'
 ```
 
 ## Where to look next
@@ -4643,84 +4641,6 @@ Continue and repair build from preserved compiled artifacts
 | `--cwd <cwd>` | Working directory override |
 | `--verbose` | Print additional queued metadata |
 
-### `playbook`
-
-**Full command:** `eforge playbook`
-
-Manage playbooks
-
-
-#### `list`
-
-**Full command:** `eforge playbook list`
-
-List all available playbooks with source and shadow chain
-
-
-#### `new`
-
-**Full command:** `eforge playbook new`
-
-Scaffold a new playbook (non-interactive, for scripts)
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--scope <scope>` | Playbook scope: user \| project-team \| project-local |
-| `--name <name>` | Playbook name (kebab-case) |
-| `--description <description>` | Short description of the playbook |
-| `--from <file>` | Read body content from this file (used as the Goal section) |
-| `--profile <name>` | Agent runtime profile to use when this playbook is run |
-
-#### `edit`
-
-**Full command:** `eforge playbook edit`
-
-Open a playbook in $EDITOR, validate, and save to the same tier
-
-
-#### `run`
-
-**Full command:** `eforge playbook run`
-
-Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return generic eforge-plan planning entry metadata or unavailable diagnostics
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
-
-#### `promote`
-
-**Full command:** `eforge playbook promote`
-
-Promote a playbook from project-local to project-team (stages with git add)
-
-
-#### `demote`
-
-**Full command:** `eforge playbook demote`
-
-Demote a playbook from project-team to project-local (.eforge/playbooks/)
-
-
-### `play`
-
-**Full command:** `eforge play`
-
-Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns eforge-plan planning entry metadata or unavailable diagnostics
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
-
 ### `mcp-proxy`
 
 **Full command:** `eforge mcp-proxy`
@@ -4773,7 +4693,7 @@ than embedding literal path strings.
 
 Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
 
-Total routes: 95
+Total routes: 86
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -4820,14 +4740,6 @@ Total routes: 95
 | `modelList` | `/api/models/list` |
 | `modelProviders` | `/api/models/providers` |
 | `plans` | `/api/plans/:runId` |
-| `playbookCopy` | `/api/playbook/copy` |
-| `playbookDemote` | `/api/playbook/demote` |
-| `playbookList` | `/api/playbook/list` |
-| `playbookPromote` | `/api/playbook/promote` |
-| `playbookRun` | `/api/playbook/run` |
-| `playbookSave` | `/api/playbook/save` |
-| `playbookShow` | `/api/playbook/show` |
-| `playbookValidate` | `/api/playbook/validate` |
 | `profileCreate` | `/api/profile/create` |
 | `profileDelete` | `/api/profile/:name` |
 | `profileList` | `/api/profile/list` |
@@ -4855,7 +4767,6 @@ Total routes: 95
 | `schedulerResume` | `/api/scheduler/resume` |
 | `sessionMetadata` | `/api/session-metadata` |
 | `sessionPlanCreate` | `/api/session-plan/create` |
-| `sessionPlanCreateFromPlaybook` | `/api/session-plan/create-from-playbook` |
 | `sessionPlanList` | `/api/session-plan/list` |
 | `sessionPlanMigrateLegacy` | `/api/session-plan/migrate-legacy` |
 | `sessionPlanReadiness` | `/api/session-plan/readiness` |
@@ -5371,7 +5282,7 @@ Playbook and session-plan host tools prepare or manage optional workflow artifac
 
 ## MCP tools (Claude Code)
 
-Total tools: 20
+Total tools: 19
 
 | Tool name | Description |
 |-----------|-------------|
@@ -5391,14 +5302,13 @@ Total tools: 20
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue from scratch (retry), queue continue-and-repair from preserved artifacts, archive (abandon), or report manual no-action. |
 | `eforge_continue_repair` | Queue a continue-and-repair build from preserved compiled artifacts for scheduler dispatch. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. |
-| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook's frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require the eforge-plan capability and return generic planning entry metadata for eforge_extension_contribution / the eforge-plan workstation deep link when available, or { kind: "planning-unavailable", requiredCapability, diagnostics } when unavailable; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback. |
-| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook's content (requires playbook_name) — for full interactive planning, discover/invoke the generic eforge-plan planning entry via eforge_extension_contribution or open the eforge-plan workstation deep link. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. Requires stacking.enabled: true in eforge/config.yaml. When active builds are running, check the outcome field: 'skipped' means no sync was performed (default activeBuildPolicy), 'deferred' means the sync was blocked by active builds and recorded for potential retry (requires activeBuildPolicy: 'defer'). |
 | `eforge_extension_contribution` | List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. List supports kind, extensionName, search, idPrefix, outputProfile, limit, offset, includeInputSchema, includeDiagnostics, and full; show supports id, kind, includeInputSchema, includeDiagnostics, and full. Failed invocations return a summarized error envelope without target.input. Distinct from eforge_extension extension management. |
 
 ## Native tools (Pi extension)
 
-Total tools: 21
+Total tools: 20
 
 | Tool name | Description |
 |-----------|-------------|
@@ -5419,8 +5329,7 @@ Total tools: 21
 | `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
 | `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon and completes synchronously — no worker subprocess is spawned. Response shape includes verdict: 'retry' \| 'continue-repair' \| 'abandon' \| 'manual'. retry starts fresh, continue-repair queues preserved compiled artifacts for repair, abandon archives the failed PRD, and manual returns noAction: true without mutation. |
 | `eforge_continue_repair` | Queue a continue-and-repair build from preserved compiled artifacts. Use when a failed PRD has eligible compiled artifacts and should continue from them with repair work. Returns queued metadata including PRD id, set name, branches, moved descendants, and optional profile; no sessionId or pid is returned. Always confirm with the user before calling this tool. |
-| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook's frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require the eforge-plan capability and return generic planning entry metadata for eforge_extension_contribution / the eforge-plan workstation deep link when available, or { kind: "planning-unavailable", requiredCapability, diagnostics } when unavailable; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback. |
-| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook's content (requires playbook_name) — for full interactive planning, discover/invoke the generic eforge-plan planning entry via eforge_extension_contribution or open the eforge-plan workstation deep link. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
 | `eforge_stack_sync` | Synchronize the git-spice stack for the current project. Runs the stack sync operation via the eforge daemon and returns a structured report. Set dryRun: true to preview what commands would run without executing them. When active builds are running, the sync may be deferred — check the outcome field in the response and retry when active builds complete, or use activeBuildPolicy: 'defer' to get a retryable deferred result instead of skipping. |
 | `eforge_extension_contribution` | List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. List supports kind, extensionName, search, idPrefix, outputProfile, limit, offset, includeInputSchema, includeDiagnostics, and full; show supports id, kind, includeInputSchema, includeDiagnostics, and full. Failed invocations return a summarized error envelope without target.input. Distinct from eforge_extension extension management. |
 

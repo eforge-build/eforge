@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   selectProfileCounts,
   selectExtensionDiagnosticCounts,
-  selectPlaybookModeCounts,
   selectConfigSourceRows,
   selectModelTotals,
   selectExtensionContributionManifestSummary,
@@ -18,7 +17,6 @@ import type {
   ExtensionScope,
   ExtensionTrust,
   ExtensionTrustState,
-  PlaybookListEntry,
   ConfigShowVerboseResponse,
   ModelInfo,
 } from '@eforge-build/client/browser';
@@ -187,31 +185,6 @@ describe('extensionTrustActionLabel', () => {
     expect(extensionTrustActionLabel(makeExtension({ scope: 'project-team', trustState: 'changed' }))).toBe('Re-trust');
     expect(extensionTrustActionLabel(makeExtension({ scope: 'project-team', trustState: 'untrusted' }))).toBe('Trust');
     expect(extensionTrustActionLabel(makeExtension({ scope: 'project-team', trust: 'untrusted' }))).toBe('Trust');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Playbook mode selectors
-// ---------------------------------------------------------------------------
-
-describe('selectPlaybookModeCounts', () => {
-  it('returns zero counts for empty array', () => {
-    const result = selectPlaybookModeCounts([]);
-    expect(result.autonomous).toBe(0);
-    expect(result.planning).toBe(0);
-    expect(result.total).toBe(0);
-  });
-
-  it('counts playbooks by mode', () => {
-    const playbooks: PlaybookListEntry[] = [
-      { name: 'auto-1', description: '', scope: 'project-local', mode: 'autonomous', source: 'project-local', shadows: [], path: '/a' },
-      { name: 'plan-1', description: '', scope: 'user', mode: 'planning', source: 'user', shadows: [], path: '/b' },
-      { name: 'auto-2', description: '', scope: 'project-team', mode: 'autonomous', source: 'project-team', shadows: [], path: '/c' },
-    ];
-    const result = selectPlaybookModeCounts(playbooks);
-    expect(result.autonomous).toBe(2);
-    expect(result.planning).toBe(1);
-    expect(result.total).toBe(3);
   });
 });
 

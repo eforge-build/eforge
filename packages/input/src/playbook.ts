@@ -16,16 +16,16 @@
  *   serializePlaybook    — serialize a Playbook back to markdown
  *   listPlaybooks        — merged listing with source labels, shadow chains, and mode
  *   loadPlaybook         — highest-precedence copy for a given name
- *   validatePlaybook     — pure schema validation (used by daemon endpoint)
+ *   validatePlaybook     — pure schema validation for extension-owned workflows
  *   writePlaybook        — atomic write to the target tier directory
  *   movePlaybook         — move between tiers (git mv when both in repo, else rename)
  *   copyPlaybookToScope  — copy to a different tier with updated scope frontmatter
  *   playbookToBuildSource — format an autonomous playbook as ordinary build source
  *   playbookToPlanSeed   — extract plan-seed data from a planning playbook
  *
- * Planning-mode playbooks are valid artifacts but `POST /api/playbook/run` does not
- * execute them directly — it returns a `requires-agent` response so first-party clients
- * can hand control to an interactive agent (e.g. the eforge-plan planning entry or /eforge:playbook run).
+ * Planning-mode playbooks are valid artifacts, but execution is owned by extension
+ * actions that can hand control to an interactive planning agent (for example the
+ * eforge-plan planning entry or /eforge:playbook run).
  */
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -56,6 +56,10 @@ const execFileAsync = promisify(execFile);
 export const playbookScopeSchema = z.enum(['user', 'project-team', 'project-local']);
 export type PlaybookScope = z.output<typeof playbookScopeSchema>;
 
+const postMergeCommandSchema = z.string()
+  .refine((command) => command.trim().length > 0, 'postMerge commands must be non-empty strings')
+  .refine((command) => !/[\x00-\x1F\x7F]/.test(command), 'postMerge commands must not contain control characters or newlines');
+
 /**
  * Frontmatter schema for a playbook file.
  */
@@ -80,7 +84,7 @@ export const playbookFrontmatterSchema = z.object({
    */
   profile: z.string().optional(),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */
-  postMerge: z.array(z.string()).optional(),
+  postMerge: z.array(postMergeCommandSchema).optional(),
 });
 
 export type PlaybookFrontmatter = z.output<typeof playbookFrontmatterSchema>;
@@ -345,7 +349,7 @@ export function serializePlaybook(playbook: Playbook): string {
   const fmLines = Object.entries(fm)
     .map(([k, v]) => {
       if (Array.isArray(v)) {
-        return `${k}:\n${v.map((item) => `  - ${item}`).join('\n')}`;
+        return `${k}:\n${v.map((item) => `  - ${JSON.stringify(item)}`).join('\n')}`;
       }
       return `${k}: ${v}`;
     })
@@ -375,7 +379,7 @@ export function serializePlaybook(playbook: Playbook): string {
 
 /**
  * Validate a raw playbook file string without writing or loading from disk.
- * Used by the daemon's `/api/playbook/validate` endpoint.
+ * Used by extension-owned validation workflows before writing playbook files.
  */
 export function validatePlaybook(
   raw: string,

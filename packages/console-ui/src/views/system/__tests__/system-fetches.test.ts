@@ -12,7 +12,6 @@ import {
   fetchSystemExtensionList,
   fetchSystemExtensionValidate,
   fetchSystemExtensionContributionManifest,
-  fetchSystemPlaybookList,
   fetchSystemModelProviders,
   fetchSystemModelList,
   trustSystemExtension,
@@ -114,12 +113,6 @@ describe('system-fetches', () => {
         body: { schemaVersion: 1, generatedAt: '2026-01-01T00:00:00.000Z', actions: [], consoleContributions: [], consoleWorkstations: [], integrationCommands: [], deepLinks: [], diagnostics: [] },
         run: fetchSystemExtensionContributionManifest,
         assertUrl: (url) => expect(url).toBe(API_ROUTES.extensionContributionManifest),
-      },
-      {
-        name: 'fetchSystemPlaybookList',
-        body: { playbooks: [], warnings: [] },
-        run: fetchSystemPlaybookList,
-        assertUrl: (url) => expect(url).toBe(API_ROUTES.playbookList),
       },
     ];
 

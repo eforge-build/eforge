@@ -11,7 +11,6 @@ import { ProfilesSection } from './profiles-section';
 import { ExtensionsSection } from './extensions-section';
 import type { ExtensionManagementControls } from './use-extension-management-mutations';
 import { ExtensionContributionsSection } from './extension-contributions-section';
-import { PlaybooksSection } from './playbooks-section';
 import { ModelsSection } from './models-section';
 import { StackArtifactsSection } from './stack-artifacts-section';
 import { StackSyncSection } from './stack-sync-section';
@@ -50,7 +49,7 @@ export function SystemViewContent({ state, onRefresh, projectState, extensionMan
         <div>
           <h1 className="text-sm font-semibold text-foreground">System Configuration</h1>
           <p className="text-xs text-muted-foreground">
-            Daemon health, configuration, extensions, playbooks, and model catalog.
+            Daemon health, configuration, extensions, and model catalog.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -101,9 +100,6 @@ export function SystemViewContent({ state, onRefresh, projectState, extensionMan
           manifest={state.extensions.contributions}
         />
 
-        <PlaybooksSection
-          list={state.playbooks.list}
-        />
 
         <ModelsSection
           catalogs={state.models.catalogs}

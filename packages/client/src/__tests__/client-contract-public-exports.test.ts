@@ -150,10 +150,10 @@ describe('client contract public exports', () => {
     expect(eventSchemas.FailedEnqueueInfoSchema).toBeDefined();
   });
 
-  it('bumps the daemon API version for enqueue postMerge contract changes', () => {
-    expect(client.DAEMON_API_VERSION).toBe(75);
-    expect(browser.DAEMON_API_VERSION).toBe(75);
+  it('bumps the daemon API version for direct playbook boundary removal', () => {
+    expect(client.DAEMON_API_VERSION).toBe(76);
+    expect(browser.DAEMON_API_VERSION).toBe(76);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('enqueue postMerge commands');
+    expect(source).toContain('removes direct playbook/create-from-playbook daemon APIs');
   });
 });

@@ -36,7 +36,7 @@ Inspect `$ARGUMENTS`:
 
 ## Step 2: No-Args Menu
 
-Call `mcp__eforge__eforge_playbook { action: "list" }` to fetch the current playbook inventory. Use the result to determine which branches to show:
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` to fetch the current playbook inventory. Use the result to determine which branches to show:
 
 **Always shown:**
 - **1. Create** — draft and save a new playbook
@@ -177,11 +177,11 @@ Present the draft to the user for review. If entries were pre-filled from an efo
 
 ### 3.5: Validate and save
 
-1. Call `mcp__eforge__eforge_playbook { action: "validate", raw: "<draft-markdown>" }` before saving.
+1. Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:validate-playbook", input: { raw: "<draft-markdown>" } }` before saving.
    - If `ok: false`, surface the errors **verbatim** and ask the user to fix them. Loop back to Step 3.4 with the errors highlighted. Do NOT write the file.
    - If `ok: true`, proceed.
 
-2. Call `mcp__eforge__eforge_playbook { action: "save", scope: "<scope>", playbook: { frontmatter: {...}, body: {...} } }`.
+2. Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:save-playbook", input: { scope: "<scope>", playbook: { frontmatter: {...}, body: {...} } } }`.
 
 3. Report the path returned by the daemon:
    > "Playbook saved to `{path}`."
@@ -196,7 +196,7 @@ Walk through an existing playbook section-by-section and save the updated versio
 
 ### 4.1: Pick a playbook
 
-Call `mcp__eforge__eforge_playbook { action: "list" }`. Print a numbered list:
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }`. Print a numbered list:
 
 ```
   1. docs-sync           [project-team]
@@ -219,11 +219,11 @@ If the selected playbook is **shadowed by** a more-specific tier (e.g., the user
 > 2. Edit the **original** (project-team — shadowed, not active)
 > 3. Copy the original to project-local and edit (creates a new shadow)"
 
-If the user picks option 3, call `POST /api/playbook/copy` with `{ name: "<name>", targetScope: "project-local" }` via the daemon client before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so future invocations resolve to the new shadow. Then proceed with the edit loop using the copied version.
+If the user picks option 3, call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:copy-playbook", input: { name: "<name>", targetScope: "project-local" } }` before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so future invocations resolve to the new shadow. Then proceed with the edit loop using the copied version.
 
 ### 4.3: Load the playbook
 
-Call `mcp__eforge__eforge_playbook { action: "show", name: "<name>" }` (resolved to the tier the user chose).
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:show-playbook", input: { name: "<name>" } }` (resolved to the tier the user chose).
 
 ### 4.4: Section-by-section walkthrough
 
@@ -260,7 +260,7 @@ Same numbered-list approach as Step 4.1. If a name was provided via `$ARGUMENTS`
 
 ### 5.2: Load the playbook
 
-Call `mcp__eforge__eforge_playbook { action: "show", name: "<name>" }` to get the full playbook content including mode, Goal, Acceptance criteria, and Notes for the planner.
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:show-playbook", input: { name: "<name>" } }` to get the full playbook content including mode, Goal, Acceptance criteria, and Notes for the planner.
 
 **Branch on `mode`:**
 
@@ -339,12 +339,12 @@ Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 **Enqueue:**
 
 For **project default** (`landingActionOverride = undefined`), omit `landingAction` from the call body:
-- **Run now**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>" }`.
-- **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>" }`.
+- **Run now**: Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`.
+- **Wait for build**: Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>", afterQueueId: "<resolved-id>" } }`.
 
 For **explicit selections** (`landingActionOverride` is set), include `landingAction`:
-- **Run now**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", landingAction: "<landingActionOverride>" }`.
-- **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>", afterQueueId: "<resolved-id>", landingAction: "<landingActionOverride>" }`.
+- **Run now**: Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>", landingAction: "<landingActionOverride>" } }`.
+- **Wait for build**: Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>", afterQueueId: "<resolved-id>", landingAction: "<landingActionOverride>" } }`.
 
 The `afterQueueId` is the internal queue id resolved above — never the title and never typed by the user.
 
@@ -361,7 +361,7 @@ Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from 
 
 Planning-mode playbook continuation is owned by eforge-plan. Do not create a session plan directly and do not enqueue. Instead:
 
-1. **Check the capability through the playbook run response**: Call `mcp__eforge__eforge_playbook { action: "run", name: "<name>" }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-mode-playbook` capability.
+1. **Check the capability through the playbook run response**: Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-mode-playbook` capability.
    - If the response is `{ kind: "planning-unavailable", requiredCapability, diagnostics }`, show the required capability and diagnostics verbatim. Tell the user to load, trust, and reload eforge-plan before continuing.
    - If the response is `{ kind: "requires-agent", planningEntry, requiredCapability }`, continue with the generic planning entry metadata.
 
@@ -377,7 +377,7 @@ Planning-mode playbook continuation is owned by eforge-plan. Do not create a ses
 
 ## Branch: List (Step 6)
 
-Call `mcp__eforge__eforge_playbook { action: "list" }` and render a formatted read-only listing.
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` and render a formatted read-only listing.
 
 For each playbook, show:
 - Name
@@ -395,7 +395,7 @@ Move a project-local playbook to project-team so the whole team benefits from it
 
 ### 7.1: Pick a project-local playbook
 
-Call `mcp__eforge__eforge_playbook { action: "list" }` and filter for `source: "project-local"` entries. Present as a numbered list. If none exist, tell the user.
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` and filter for `source: "project-local"` entries. Present as a numbered list. If none exist, tell the user.
 
 ### 7.2: Shadow trade-off notice
 
@@ -407,7 +407,7 @@ Ask: "Proceed with promotion?"
 
 ### 7.3: Promote
 
-Call `mcp__eforge__eforge_playbook { action: "promote", name: "<name>" }`.
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:promote-playbook", input: { name: "<name>" } }`.
 
 Report the destination path returned by the daemon.
 
@@ -419,7 +419,7 @@ Move a project-team playbook back to project-local (personal shadow, not shared)
 
 ### 8.1: Pick a project-team playbook
 
-Call `mcp__eforge__eforge_playbook { action: "list" }` and filter for `source: "project-team"` entries. Present as a numbered list. If none exist, tell the user.
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` and filter for `source: "project-team"` entries. Present as a numbered list. If none exist, tell the user.
 
 ### 8.2: Shadow trade-off notice
 
@@ -429,7 +429,7 @@ Ask: "Proceed with demotion?"
 
 ### 8.3: Demote
 
-Call `mcp__eforge__eforge_playbook { action: "demote", name: "<name>" }`.
+Call `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:demote-playbook", input: { name: "<name>" } }`.
 
 Report the destination path returned by the daemon.
 
@@ -448,7 +448,7 @@ Direct invocations with a name argument jump into the relevant branch with that 
 
 ## Validation Rules
 
-Every save path (Create and Edit) must pass `mcp__eforge__eforge_playbook { action: "validate", raw: "<markdown>" }` before the daemon writes anything to disk. On failure:
+Every save path (Create and Edit) must pass `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:validate-playbook", input: { raw: "<markdown>" } }` before the daemon writes anything to disk. On failure:
 
 1. Surface the daemon's error messages **verbatim** — do not paraphrase.
 2. Show the user exactly which section or field caused the error.

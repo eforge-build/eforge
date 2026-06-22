@@ -3,7 +3,8 @@ import { Type, type Static } from '@eforge-build/extension-sdk';
 const Scope = Type.Union([Type.Literal('user'), Type.Literal('project-team'), Type.Literal('project-local')]);
 const Mode = Type.Union([Type.Literal('autonomous'), Type.Literal('planning')]);
 const Name = Type.String({ minLength: 1, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' });
-const StringArray = Type.Array(Type.String());
+const PostMergeCommand = Type.String({ pattern: '^[^\\x00-\\x1F\\x7F]*\\S[^\\x00-\\x1F\\x7F]*$' });
+const StringArray = Type.Array(PostMergeCommand);
 
 export const SourceSchema = Type.Object({ source: Scope, path: Type.String() }, { additionalProperties: false });
 export const ShadowSchema = Type.Object({ source: Scope, path: Type.String() }, { additionalProperties: false });

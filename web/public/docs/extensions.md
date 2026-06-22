@@ -21,12 +21,12 @@ Native eforge extensions are distinct from other extensibility mechanisms in the
 | Claude Code plugins | Claude Code plugin package | Claude Code host | Slash commands, MCP proxy wiring, Claude Code UX |
 | Pi extensions | Pi extension package | Pi host | Native Pi commands, tools, and TUI surfaces |
 | Shell hooks | YAML + shell command | eforge hook runner | Fire-and-forget notifications/integrations |
-| Playbooks/session plans | Markdown input artifacts | `@eforge-build/input` then engine queue | Reusable build sources and planning artifacts |
+| Playbooks/session plans | Markdown input artifacts | `@eforge-build/input`, first-party extensions, then engine queue | Reusable build sources and planning artifacts |
 | Profile toolbelts | YAML MCP server bundles | agent runtime registry | Declarative project MCP server selection |
 
 Toolbelts answer "which project MCP servers from `.mcp.json` should this tier expose?" Extensions answer "what should eforge do when something happens?" and may contribute TypeScript-defined tools per agent run. Toolbelts do not filter extension-contributed tools, engine-internal custom tools, or harness built-ins. Extensions should not redefine toolbelts or act as a hidden profile/config layer.
 
-Playbooks and session plans are handled by bundled internal workflow adapters in `@eforge-build/input`. The playbook adapter owns shipped playbook-domain behavior across project-local, project-team, and user scopes; session plans remain project-local Markdown files under `.eforge/session-plans/` and are handled by the bundled session-planning adapter. These adapters are built in so the daemon can remain a compatibility shim around client-owned HTTP routes and wire shapes while the engine receives normalized build source. Native extensions do not register custom playbook or session-plan extraction workflows in the current release. User-authored session-plan extraction remains unsupported, and user-authored playbook extraction remains unsupported.
+Playbooks and session plans are reusable input artifacts built on `@eforge-build/input`. The first-party `@eforge-build/eforge-playbooks` extension owns shipped playbook management actions, planning-mode handoff metadata, and autonomous queue handoff across project-local, project-team, and user scopes while using the pure input playbook helpers for parsing, storage, validation, and compilation. Session plans remain project-local Markdown files under `.eforge/session-plans/` and are handled by the bundled session-planning adapter. Native extensions do not currently register custom playbook or session-plan extraction workflows. Custom playbook extraction remains deferred, custom session-plan extraction remains deferred, user-authored session-plan extraction remains unsupported, user-authored playbook extraction remains unsupported, and user-authored native workflow registration remains future/deferred work.
 
 ## Extension user workflow
 

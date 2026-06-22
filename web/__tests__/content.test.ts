@@ -167,7 +167,7 @@ describe('loadDocPage', () => {
         'Guided Toolbelt Presets',
       ],
       profiles: ['.eforge/profiles/', 'eforge/profiles/', '~/.config/eforge/profiles/', 'eforge build --profile'],
-      playbooks: ['mode: autonomous', 'mode: planning', 'eforge playbook run', 'eforge playbook promote'],
+      playbooks: ['mode: autonomous', 'mode: planning', 'eforge-playbooks:run-playbook', 'eforge-playbooks:promote-playbook'],
       'eforge-plan': ['optional first-party', 'Revise with AI', 'planRevisionTurn', 'backlogCurationDraft'],
       extensions: ['eforge extension install', 'trust', 'onEvent', 'registerInputSource', 'registerAction', 'registerConsoleWorkstation', 'LLM-first extension authoring checklist', 'fetchExtensionContributionManifest', 'not sandboxed'],
       'extensions-api': ['defineExtension', 'EventPattern', 'defineExtensionTool', 'registerConsoleContribution', 'defineConsoleWorkstation', 'SDK stability and migration guidance', 'Runtime support status'],
@@ -347,10 +347,10 @@ describe('loadDocPage', () => {
       '/eforge:playbook create',
       '/eforge:playbook run',
       '/eforge:playbook list',
-      'eforge playbook new',
-      'eforge playbook run',
-      'eforge playbook promote',
-      'eforge playbook demote',
+      'eforge-playbooks:save-playbook',
+      'eforge-playbooks:run-playbook',
+      'eforge-playbooks:promote-playbook',
+      'eforge-playbooks:demote-playbook',
     ]) {
       expect(playbooks, `Expected playbooks guide to mention ${snippet}`).toContain(snippet);
     }

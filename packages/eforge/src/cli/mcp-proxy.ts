@@ -899,101 +899,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
 
 
-  // Tool: eforge_playbook
-  createDaemonTool(server, cwd, {
-    name: 'eforge_playbook',
-    description: 'Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook\'s frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require the eforge-plan capability and return generic planning entry metadata for eforge_extension_contribution / the eforge-plan workstation deep link when available, or { kind: "planning-unavailable", requiredCapability, diagnostics } when unavailable; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback.',
-    schema: {
-      action: z.enum(['list', 'show', 'save', 'run', 'promote', 'demote', 'validate']).describe(
-        'Operation to perform on playbooks',
-      ),
-      name: z.string().optional().describe('Playbook name (required for "show", "run", "promote", "demote")'),
-      scope: z.enum(['user', 'project-team', 'project-local']).optional().describe(
-        'Target scope for "save" (determines which tier directory to write to)',
-      ),
-      playbook: z.object({
-        frontmatter: z.object({
-          name: z.string(),
-          description: z.string(),
-          scope: z.enum(['user', 'project-team', 'project-local']),
-          mode: z.enum(['autonomous', 'planning']),
-          profile: z.string().optional().describe('Optional agent runtime profile name. Leaving it empty allows profile-router selection, then active-profile/default fallback.'),
-          postMerge: z.array(z.string()).optional(),
-        }),
-        body: z.object({
-          goal: z.string(),
-          outOfScope: z.string().optional().default(''),
-          acceptanceCriteria: z.string().optional().default(''),
-          plannerNotes: z.string().optional().default(''),
-        }),
-      }).optional().describe('Playbook content (required for "save")'),
-      afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].'),
-      landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe("Landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR, 'merge' auto-merges, 'leave' commits without merging."),
-      landingAutoMerge: z.boolean().optional().describe("When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge for this playbook run. When false, explicitly disable auto-merge. Omit to use the project default. Only applies to autonomous playbooks via 'run'."),
-      raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
-    },
-    handler: async ({ action, name, scope, playbook, afterQueueId, landingAction, landingAutoMerge, raw }, { cwd: toolCwd }) => {
-      const { resolveAndValidateLandingFlags: resolvePlaybookFlags, CLILandingFlagError: PlaybookLandingFlagError } = await import('./landing-options.js');
-      let resolvedPlaybookLandingAction: 'pr' | 'merge' | 'leave' | undefined;
-      try {
-        resolvedPlaybookLandingAction = resolvePlaybookFlags({ landingAction });
-      } catch (err) {
-        if (err instanceof PlaybookLandingFlagError) throw new McpUserError({ error: err.message });
-        throw err;
-      }
-      if (action === 'list') {
-        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.playbookList);
-        return data;
-      }
-
-      if (action === 'show') {
-        if (!name) throw new Error('"name" is required when action is "show"');
-        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.playbookShow}?name=${encodeURIComponent(name)}`);
-        return data;
-      }
-
-      if (action === 'save') {
-        if (!scope) throw new Error('"scope" is required when action is "save"');
-        if (!playbook) throw new Error('"playbook" is required when action is "save"');
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookSave, { scope, playbook });
-        return data;
-      }
-
-      if (action === 'run') {
-        if (!name) throw new Error('"name" is required when action is "run"');
-        const body: Record<string, unknown> = { name };
-        if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        if (resolvedPlaybookLandingAction !== undefined) body.landingAction = resolvedPlaybookLandingAction;
-        if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookRun, body);
-        return data;
-      }
-
-      if (action === 'promote') {
-        if (!name) throw new Error('"name" is required when action is "promote"');
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookPromote, { name });
-        return data;
-      }
-
-      if (action === 'demote') {
-        if (!name) throw new Error('"name" is required when action is "demote"');
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookDemote, { name });
-        return data;
-      }
-
-      // action === 'validate'
-      if (!raw) throw new Error('"raw" is required when action is "validate"');
-      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookValidate, { raw });
-      return data;
-    },
-  });
-
-
-
   // Tool: eforge_session_plan
   createDaemonTool(server, cwd, {
     name: 'eforge_session_plan',
-    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook\'s content (requires playbook_name) — for full interactive planning, discover/invoke the generic eforge-plan planning entry via eforge_extension_contribution or open the eforge-plan workstation deep link. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued.',
+    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     schema: {
       action: z.enum([
         'list-active',
@@ -1005,10 +914,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         'select-dimensions',
         'readiness',
         'migrate-legacy',
-        'create-from-playbook',
       ]).describe('Operation to perform on session plans'),
-      session: z.string().optional().describe('Session ID (required for all actions except "list-active" and "create-from-playbook")'),
-      topic: z.string().optional().describe('Session topic (required for "create"; optional override for "create-from-playbook")'),
+      session: z.string().optional().describe('Session ID (required for all actions except "list-active")'),
+      topic: z.string().optional().describe('Session topic (required for "create")'),
       dimension: z.string().optional().describe('Dimension name in kebab-case (required for "set-section" and "skip-dimension")'),
       content: z.string().optional().describe('Dimension content (required for "set-section")'),
       reason: z.string().optional().describe('Reason for skipping (required for "skip-dimension")'),
@@ -1016,10 +924,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       planning_type: z.enum(['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown']).optional().describe('Planning work type (optional for "create" and "select-dimensions")'),
       planning_depth: z.enum(['quick', 'focused', 'deep']).optional().describe('Planning depth (optional for "create" and "select-dimensions")'),
       open: z.boolean().optional().describe('When true, best-effort opens the resulting session plan file in the user\'s default application after a session is created or shown.'),
-      playbook_name: z.string().optional().describe('Playbook name to seed from (required for "create-from-playbook")'),
       agent_profile: z.string().optional().describe('Optional agent runtime profile name inherited from a planning-mode playbook\'s profile field. Not validated at create time; used when the session plan is enqueued. Pass when creating a session plan from a playbook that has a profile set.'),
     },
-    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, playbook_name, agent_profile }, { cwd: toolCwd }) => {
+    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, agent_profile }, { cwd: toolCwd }) => {
       if (action === 'list-active') {
         const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.sessionPlanList);
         return data;
@@ -1095,14 +1002,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanMigrateLegacy, { session });
         return data;
       }
-
-      // action === 'create-from-playbook'
-      if (!playbook_name) throw new Error('"playbook_name" is required when action is "create-from-playbook"');
-      const cfpBody: Record<string, unknown> = { playbook_name };
-      if (session !== undefined) cfpBody.session = session;
-      if (topic !== undefined) cfpBody.topic = topic;
-      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanCreateFromPlaybook, cfpBody);
-      return data;
     },
   });
 

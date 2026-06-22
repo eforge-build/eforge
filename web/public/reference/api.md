@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
 
-Total routes: 95
+Total routes: 86
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -58,14 +58,6 @@ Total routes: 95
 | `modelList` | `/api/models/list` |
 | `modelProviders` | `/api/models/providers` |
 | `plans` | `/api/plans/:runId` |
-| `playbookCopy` | `/api/playbook/copy` |
-| `playbookDemote` | `/api/playbook/demote` |
-| `playbookList` | `/api/playbook/list` |
-| `playbookPromote` | `/api/playbook/promote` |
-| `playbookRun` | `/api/playbook/run` |
-| `playbookSave` | `/api/playbook/save` |
-| `playbookShow` | `/api/playbook/show` |
-| `playbookValidate` | `/api/playbook/validate` |
 | `profileCreate` | `/api/profile/create` |
 | `profileDelete` | `/api/profile/:name` |
 | `profileList` | `/api/profile/list` |
@@ -93,7 +85,6 @@ Total routes: 95
 | `schedulerResume` | `/api/scheduler/resume` |
 | `sessionMetadata` | `/api/session-metadata` |
 | `sessionPlanCreate` | `/api/session-plan/create` |
-| `sessionPlanCreateFromPlaybook` | `/api/session-plan/create-from-playbook` |
 | `sessionPlanList` | `/api/session-plan/list` |
 | `sessionPlanMigrateLegacy` | `/api/session-plan/migrate-legacy` |
 | `sessionPlanReadiness` | `/api/session-plan/readiness` |

@@ -87,7 +87,6 @@ function installSystemFetch(manifestState: { value: ExtensionContributionManifes
       [API_ROUTES.profileShow, { active: null, source: 'none', resolved: { profile: null } }],
       [API_ROUTES.extensionList, { extensions: [], diagnostics: [], totals: emptyTotals() }],
       [API_ROUTES.extensionValidate, { valid: true, extensions: [], diagnostics: [] }],
-      [API_ROUTES.playbookList, { playbooks: [], warnings: [] }],
       [API_ROUTES.modelProviders, { providers: [] }],
       [API_ROUTES.modelList, { models: [] }],
     ]);
