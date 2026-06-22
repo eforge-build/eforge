@@ -78,6 +78,10 @@ import {
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
+function collectRepeatableOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function buildConfigOverrides(options: { maxConcurrentBuilds?: number; plugins?: boolean }): Partial<EforgeConfig> | undefined {
   const overrides: Partial<EforgeConfig> = {};
   if (options.maxConcurrentBuilds !== undefined) overrides.maxConcurrentBuilds = options.maxConcurrentBuilds;
@@ -482,6 +486,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
     .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
+    .option('--post-merge <command>', 'Per-enqueue post-merge validation command (repeatable)', collectRepeatableOption, [])
     .action(
       async (
         source: string,
@@ -493,6 +498,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           landingAction?: string;
           landingAutoMerge?: boolean;
           after?: string;
+          postMerge?: string[];
         },
       ) => {
         let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
@@ -567,6 +573,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               verbose: options.verbose,
               abortController,
               ...(effectiveProfile && { profile: effectiveProfile }),
+              ...(options.postMerge !== undefined && options.postMerge.length > 0 && { postMerge: options.postMerge }),
               ...(resolvedLandingAction && { landingAction: resolvedLandingAction }),
               ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
               ...(options.after !== undefined && { afterQueueId: options.after }),

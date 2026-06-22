@@ -364,7 +364,7 @@ build:
   maxValidationRetries: 2
 ```
 
-`build.postMergeCommands` run in order after the merge. `build.postMergeCommandTimeoutMs` is the wall-clock timeout for each command in milliseconds (default 300000, five minutes). On failure, a validation-fixer agent attempts repairs up to `build.maxValidationRetries` times (default 2). When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
+`build.postMergeCommands` run in order after the merge. Queued PRD `postMerge` metadata, when present, is appended after the configured commands for that build. `build.postMergeCommandTimeoutMs` is the wall-clock timeout for each command in milliseconds (default 300000, five minutes). On failure, a validation-fixer agent attempts repairs up to `build.maxValidationRetries` times (default 2). When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
 

@@ -17,7 +17,7 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 
-Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
+Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded as generic queued PRD `postMerge` metadata only when an autonomous playbook is converted directly to build source.
 
 ## Scope tiers
 
@@ -63,7 +63,7 @@ Focus on packages/ and web/content/. Cross-check against generated reference.
 
 **Optional frontmatter fields:**
 - `profile` - agent runtime profile name to use when the playbook runs
-- `postMerge` - list of post-merge commands to forward to the build
+- `postMerge` - list of post-merge commands to forward as queued PRD metadata for autonomous builds
 
 ## Use a profile with a playbook
 

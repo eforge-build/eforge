@@ -4,6 +4,8 @@ export interface EnqueueRequest {
   flags?: string[];
   /** Override the active profile for this build (profile name, validated at enqueue time). */
   profile?: string;
+  /** Producer-agnostic per-enqueue post-merge validation commands to persist with the queued PRD. */
+  postMerge?: string[];
   /** Override the project-level landing action for this build. */
   landingAction?: 'pr' | 'merge' | 'leave';
   /** When true, enable GitHub PR auto-merge after PR creation (requires the effective landing action to be 'pr', whether supplied via landingAction or resolved from project config). */

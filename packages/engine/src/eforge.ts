@@ -585,6 +585,7 @@ export class EforgeEngine {
         depends_on: dependsOn,
         ...(intoWaiting && { intoWaiting: true }),
         ...(options.profile !== undefined && { profile: options.profile }),
+        ...(options.postMerge !== undefined && { postMerge: options.postMerge }),
         ...(options.landingAction !== undefined && { landingAction: options.landingAction }),
         ...(options.landingAutoMerge !== undefined && { landingAutoMerge: options.landingAutoMerge }),
         ...(options.stack_id !== undefined && { stack_id: options.stack_id }),
@@ -858,6 +859,10 @@ export class EforgeEngine {
 
       // Create and run orchestrator
       const signal = abortController?.signal;
+      const effectivePostMergeCommands = [
+        ...(config.build.postMergeCommands ?? []),
+        ...(options.postMergeCommands ?? []),
+      ];
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
       const effectiveLandingAction = options.landingAction ?? this.config.landing.action;
       if (options.landingAutoMerge === true && effectiveLandingAction !== 'pr') {
@@ -869,7 +874,7 @@ export class EforgeEngine {
         repoRoot: cwd,
         planRunner,
         signal,
-        postMergeCommands: config.build.postMergeCommands,
+        postMergeCommands: effectivePostMergeCommands,
         validateCommands: orchConfig.validate,
         postMergeCommandTimeoutMs: config.build.postMergeCommandTimeoutMs,
         validationFixer,

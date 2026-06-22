@@ -150,10 +150,10 @@ describe('client contract public exports', () => {
     expect(eventSchemas.FailedEnqueueInfoSchema).toBeDefined();
   });
 
-  it('bumps the daemon API version for failed-enqueue dismiss contract changes', () => {
-    expect(client.DAEMON_API_VERSION).toBe(74);
-    expect(browser.DAEMON_API_VERSION).toBe(74);
+  it('bumps the daemon API version for enqueue postMerge contract changes', () => {
+    expect(client.DAEMON_API_VERSION).toBe(75);
+    expect(browser.DAEMON_API_VERSION).toBe(75);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('failed-enqueue dismiss action');
+    expect(source).toContain('enqueue postMerge commands');
   });
 });

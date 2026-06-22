@@ -6,7 +6,7 @@ import type { ApiRouteKey, RouteDefinition } from '../http/router.js';
 import { createRouter } from '../http/router.js';
 import { createMonitorContext, type MonitorContext } from '../context.js';
 import { openDatabase, type MonitorDB } from '../db.js';
-import type { MonitorStreamHub } from '../types.js';
+import type { MonitorStreamHub, StartServerOptions } from '../types.js';
 import { createExtensionContentRoutes } from '../routes/extension-content.js';
 
 export interface RouteHarness {
@@ -22,10 +22,10 @@ export interface RouteHarness {
   close(): Promise<void>;
 }
 
-export async function startContentRouteHarness(options: { cwd?: string; routes?: (context: MonitorContext) => RouteDefinition[] } = {}): Promise<RouteHarness> {
+export async function startContentRouteHarness(options: { cwd?: string; routes?: (context: MonitorContext) => RouteDefinition[]; serverOptions?: StartServerOptions } = {}): Promise<RouteHarness> {
   const cwd = options.cwd ?? await mkdtemp(join(tmpdir(), 'eforge-routes-'));
   const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-  const context = await createMonitorContext(db, 0, { cwd });
+  const context = await createMonitorContext(db, 0, { cwd, ...options.serverOptions });
   const streams: MonitorStreamHub = { attachSession() {}, attachDaemon() {}, broadcast() {}, subscriberCount: () => 0, stop() {} };
   const routes = (options.routes ?? createExtensionContentRoutes)(context);
   const router = createRouter({ monitor: context, streams, routes });

@@ -93,7 +93,7 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 4. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 5. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 6. **Merge** - Completed plans merge back to your branch in topological order.
-7. **Validation** - Post-merge validation runs your configured commands. On failure, a validation-fixer agent attempts repairs.
+7. **Validation** - Post-merge validation runs configured commands plus any queued PRD `postMerge` commands. On failure, a validation-fixer agent attempts repairs.
 
 ## Where to Look Next
 
@@ -237,7 +237,7 @@ Configure the landing action via `landing.action` (values: `pr`, `merge`, `leave
 
 ## Validation
 
-During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. Structured provider failures can be repaired before review: narrow issues use the review-fixer path, while `repairClass: 'structural'` issues route to an in-build validation-fixer path with evaluator-gated checkpoints. After all plans merge, eforge runs your configured `postMergeCommands` (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
+During each plan build, extensions may contribute validation providers that run in the per-plan `validate` stage after implementation and before review. Structured provider failures can be repaired before review: narrow issues use the review-fixer path, while `repairClass: 'structural'` issues route to an in-build validation-fixer path with evaluator-gated checkpoints. After all plans merge, eforge runs your configured `postMergeCommands` plus any queued PRD `postMerge` commands (compile, test, lint, etc.). On post-merge failure, a validation-fixer agent attempts repairs up to a configurable retry limit. This is the last line of defense before a build is marked complete and the landing action executes.
 
 ## Stacked PRs
 
@@ -626,7 +626,7 @@ build:
   maxValidationRetries: 2
 ```
 
-`build.postMergeCommands` run in order after the merge. `build.postMergeCommandTimeoutMs` is the wall-clock timeout for each command in milliseconds (default 300000, five minutes). On failure, a validation-fixer agent attempts repairs up to `build.maxValidationRetries` times (default 2). When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
+`build.postMergeCommands` run in order after the merge. Queued PRD `postMerge` metadata, when present, is appended after the configured commands for that build. `build.postMergeCommandTimeoutMs` is the wall-clock timeout for each command in milliseconds (default 300000, five minutes). On failure, a validation-fixer agent attempts repairs up to `build.maxValidationRetries` times (default 2). When retries are exhausted, the build is marked failed. See [Troubleshooting - Validation-fixer retries exhausted](/docs/troubleshooting#validation-fixer-retries-exhausted) for recovery steps.
 
 Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
 
@@ -1242,7 +1242,7 @@ const searchItems = defineExtensionAction({
 
 ### Daemon-owned agent tasks from actions
 
-Action handlers can inspect immutable dependency and capability availability through `ctx.dependencies` and `ctx.capabilities`, start/read/cancel daemon-owned single-shot agent tasks through `ctx.agentTasks`, and submit trusted build-queue handoffs through `ctx.buildQueue.enqueue({ source, ... })`, which uses the same daemon queue path as `POST /api/enqueue` and performs session-plan submission bookkeeping. Actions that enqueue should declare the `build-queue` side effect. Dependency/capability lookup reports availability only and does not invoke another extension. The action never imports provider SDKs or `AgentHarness`; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events. Task records are stored under `.eforge/storage/agent-tasks`, and task events include only sanitized metadata rather than raw task input, prompt context, or result payloads.
+Action handlers can inspect immutable dependency and capability availability through `ctx.dependencies` and `ctx.capabilities`, start/read/cancel daemon-owned single-shot agent tasks through `ctx.agentTasks`, and submit trusted build-queue handoffs through `ctx.buildQueue.enqueue({ source, ... })`, which uses the same daemon queue path as `POST /api/enqueue`, validates producer-agnostic metadata such as `postMerge` command arrays, and performs session-plan submission bookkeeping. Actions that enqueue should declare the `build-queue` side effect. Dependency/capability lookup reports availability only and does not invoke another extension. The action never imports provider SDKs or `AgentHarness`; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events. Task records are stored under `.eforge/storage/agent-tasks`, and task events include only sanitized metadata rather than raw task input, prompt context, or result payloads.
 
 The MVP task runner is intentionally narrow. It resolves the existing `planner` role and enforces read-only agent tools for the run. Extensions cannot supply arbitrary raw prompt templates, register custom task kinds, expose multi-turn chat, or bypass the daemon-owned task lifecycle. The first supported task kind is a single-shot planning-draft task; extension-specific UI and higher-level eforge-plan actions can build on this boundary without owning the agent runtime directly.
 
@@ -1807,7 +1807,7 @@ The SDK also exposes registration methods for extension-authored actions and hos
 
 Registers an extension-authored action handler. Action handlers run as trusted unsandboxed Node code. Action inputs require object-root TypeBox input schemas (`Type.Object(...)`). Action handlers must return JSON-safe outputs; optional output schemas are validated before eforge reports a successful invocation. Actions may declare an optional `outputProfile` (`agent-compact`, `agent-paginated`, `markdown`, `ui-rich`, or `debug-rich`) as manifest metadata so hosts can choose safe formatting without changing invocation success/failure response shapes. CLI non-`--json`, MCP/Claude, Pi, and Console previews use that metadata when formatting invocation output: exact `{ markdown: string }` outputs render as Markdown/plain text, oversized JSON is summarized with warnings while preserving identity fields, counts, omitted counts, and cursor/offset hints, and `ui-rich`/`debug-rich` outputs warn in coding-agent hosts even when they fit. Broad list/search/board-style action registrations remain valid, but validation emits warning diagnostics when they lack limit, cursor/page, projection controls, or their declared output schema contains array-shaped output without an explicit profile.
 
-Action contexts include dependency/capability lookup plus daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` expose immutable availability data only; they do not invoke another extension. `ctx.agentTasks` starts, reads, and cancels supported single-shot agent tasks; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events, and extensions never import provider SDKs or `AgentHarness`. `ctx.buildQueue.enqueue({ source, ... })` submits normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping. The MVP task runner resolves the `planner` role and enforces read-only tools. Product-specific output sections, transcript storage, annotations, and preview/apply semantics belong to the extension using the task API rather than to the daemon task API itself. Extensions cannot provide arbitrary raw prompt templates, register custom task kinds, or implement multi-turn chat through this API.
+Action contexts include dependency/capability lookup plus daemon-owned APIs. `ctx.dependencies` and `ctx.capabilities` expose immutable availability data only; they do not invoke another extension. `ctx.agentTasks` starts, reads, and cancels supported single-shot agent tasks; the daemon owns task persistence, profile/runtime resolution, cancellation, and lifecycle events, and extensions never import provider SDKs or `AgentHarness`. `ctx.buildQueue.enqueue({ source, ... })` submits normalized build source through the same daemon queue path as `POST /api/enqueue`, including session-plan submission bookkeeping and producer-agnostic queue metadata such as `postMerge` command arrays. The MVP task runner resolves the `planner` role and enforces read-only tools. Product-specific output sections, transcript storage, annotations, and preview/apply semantics belong to the extension using the task API rather than to the daemon task API itself. Extensions cannot provide arbitrary raw prompt templates, register custom task kinds, or implement multi-turn chat through this API.
 
 #### `registerConsoleContribution(contribution)`
 
@@ -2586,7 +2586,7 @@ interface ExtensionBuildQueueApi {
 }
 ```
 
-`enqueue` follows the daemon enqueue route semantics: it validates profile/landing/dependency fields, spawns the enqueue worker, returns `{ sessionId, pid, autoBuild }`, and applies built-in session-plan submission bookkeeping when the source is a flat session plan under `.eforge/session-plans/`. Actions using it should declare `build-queue` in `sideEffects`.
+`enqueue` follows the daemon enqueue route semantics: it validates profile/landing/dependency fields and `postMerge` command arrays, spawns the enqueue worker, returns `{ sessionId, pid, autoBuild }`, and applies built-in session-plan submission bookkeeping when the source is a flat session plan under `.eforge/session-plans/`. Per-enqueue `postMerge` commands are persisted as queued PRD metadata and appended after configured `build.postMergeCommands` for that build. Actions using it should declare `build-queue` in `sideEffects`.
 
 **`ExtensionLogger`:**
 
@@ -3079,7 +3079,7 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 When you call `eforge_playbook { action: "run" }` for a planning playbook, the daemon returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
 
-Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded only when an autonomous playbook is converted directly to build source.
+Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded as generic queued PRD `postMerge` metadata only when an autonomous playbook is converted directly to build source.
 
 ## Scope tiers
 
@@ -3125,7 +3125,7 @@ Focus on packages/ and web/content/. Cross-check against generated reference.
 
 **Optional frontmatter fields:**
 - `profile` - agent runtime profile name to use when the playbook runs
-- `postMerge` - list of post-merge commands to forward to the build
+- `postMerge` - list of post-merge commands to forward as queued PRD metadata for autonomous builds
 
 ## Use a profile with a playbook
 
@@ -3877,7 +3877,7 @@ If a lock file persists after a confirmed full daemon restart, check whether ano
 
 ## Validation-fixer retries exhausted
 
-After all plans merge, eforge runs `build.postMergeCommands` and calls a validation-fixer agent on failure. The fixer retries up to `build.maxValidationRetries` times (default: 2). When retries are exhausted, the build is marked `failed`.
+After all plans merge, eforge runs `build.postMergeCommands` plus any queued PRD `postMerge` commands and calls a validation-fixer agent on failure. The fixer retries up to `build.maxValidationRetries` times (default: 2). When retries are exhausted, the build is marked `failed`.
 
 **Adjust the retry budget:**
 
@@ -3993,7 +3993,7 @@ The durable provenance guarantee is Git history, not the final tree. Squash or r
 
 ## Post-merge validation
 
-The validation step after all plans merge. eforge runs `build.postMergeCommands` with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
+The validation step after all plans merge. eforge runs `build.postMergeCommands` plus any queued PRD `postMerge` commands with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
 
 ## Queue
 
@@ -4080,6 +4080,7 @@ Normalize input and add it to the PRD queue
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 | `--after <queue-id>` | Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact |
+| `--post-merge <command>` | Per-enqueue post-merge validation command (repeatable) |
 
 ### `build`
 

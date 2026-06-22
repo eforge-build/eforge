@@ -189,7 +189,7 @@ monitor:
   retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
 ```
 
-Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
+Each command in `postMergeCommands`, queued PRD `postMerge` metadata, and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
 
 ## Workflow Presets
 
@@ -267,7 +267,7 @@ build:
 
 Direct PR base sync is a later mutating publication gate for direct non-stacked `landing.action: pr` builds. After all plans merge and before validation, eforge fetches `origin/<baseBranch>` and rebases the artifact branch onto that fetched base. Immediately before PR creation, eforge fetches the base again; if it advanced after validation, eforge performs a bounded resync plus command validation and PRD/acceptance validation retry before attempting the PR again. If the retry budget is exhausted or sync cannot complete, landing fails closed with `landing:skipped` rather than opening a stale PR.
 
-`build.postMergeCommands` runs after all plans merge and handles validation (type-check, tests, etc.). These settings are independent.
+`build.postMergeCommands` runs after all plans merge and handles validation (type-check, tests, etc.). Queued PRD `postMerge` metadata is appended after the configured commands for that build. These settings are independent.
 
 Stacked PR landing does not use the direct non-stacked PR base sync path. Instead, it stays behind the stack provider boundary: eforge runs provider repo sync, branch restack, and a remote-base freshness proof for the branch being submitted. Manual `eforge stack sync` remains the separate whole-stack maintenance path after trunk or parent branches move.
 
@@ -279,7 +279,7 @@ By default, build success requires both command validation (type-check, tests, e
 
 ### `build.validation.allowNoCommands`
 
-When all plans merge and the combined set of planner-generated `validateCommands` plus `postMergeCommands` is empty, the build fails with `validation:complete passed:false`. Set `allowNoCommands: true` with a non-empty `noCommandsReason` to allow such builds to pass:
+When all plans merge and the combined set of planner-generated `validateCommands`, configured `postMergeCommands`, and queued PRD `postMerge` commands is empty, the build fails with `validation:complete passed:false`. Set `allowNoCommands: true` with a non-empty `noCommandsReason` to allow such builds to pass:
 
 ```yaml
 build:

@@ -28,6 +28,7 @@ Normalize input and add it to the PRD queue
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 | `--after <queue-id>` | Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact |
+| `--post-merge <command>` | Per-enqueue post-merge validation command (repeatable) |
 
 ### `build`
 

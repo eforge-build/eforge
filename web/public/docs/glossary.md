@@ -83,7 +83,7 @@ The durable provenance guarantee is Git history, not the final tree. Squash or r
 
 ## Post-merge validation
 
-The validation step after all plans merge. eforge runs `build.postMergeCommands` with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
+The validation step after all plans merge. eforge runs `build.postMergeCommands` plus any queued PRD `postMerge` commands with `build.postMergeCommandTimeoutMs`; on failure it can invoke the validation-fixer up to `build.maxValidationRetries` times.
 
 ## Queue
 

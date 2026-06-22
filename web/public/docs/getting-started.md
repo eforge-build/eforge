@@ -91,7 +91,7 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 4. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 5. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 6. **Merge** - Completed plans merge back to your branch in topological order.
-7. **Validation** - Post-merge validation runs your configured commands. On failure, a validation-fixer agent attempts repairs.
+7. **Validation** - Post-merge validation runs configured commands plus any queued PRD `postMerge` commands. On failure, a validation-fixer agent attempts repairs.
 
 ## Where to Look Next
 

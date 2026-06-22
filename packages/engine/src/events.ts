@@ -100,6 +100,8 @@ export interface BuildOptions {
   landingAction?: 'pr' | 'merge' | 'leave';
   /** Per-run PR auto-merge intent. Resolved against `landing.pr.autoMerge` policy. */
   landingAutoMerge?: boolean;
+  /** Per-PRD post-merge validation commands supplied by queue metadata. */
+  postMergeCommands?: string[];
 }
 
 export interface EnqueueOptions {
@@ -109,6 +111,8 @@ export interface EnqueueOptions {
   abortController?: AbortController;
   /** Override profile name to persist in PRD frontmatter for per-build profile binding. */
   profile?: string;
+  /** Producer-agnostic per-enqueue post-merge validation commands to persist with the queued PRD. */
+  postMerge?: string[];
   /** Override the configured landing action for this enqueued build. */
   landingAction?: 'pr' | 'merge' | 'leave';
   /** Per-run PR auto-merge intent. Resolved against `landing.pr.autoMerge` policy. */
