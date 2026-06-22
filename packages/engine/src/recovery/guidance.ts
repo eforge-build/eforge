@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
-import { access, lstat, open, realpath } from 'node:fs/promises';
+import { access, lstat, open, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import type { RecoveryGuidancePrepareResponse, RecoveryGuidancePatchedPlan, RecoveryVerdictSidecar } from '@eforge-build/client';
 import { forgeCommit } from '../git.js';
 import { validatePlanSetName } from '../plan.js';
@@ -94,17 +95,14 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
   } catch (err) {
     throw new RecoveryGuidanceError((err as Error).message, 'preflight');
   }
-  const rootPaths = rootPlanIds.map((planId) => join(outputDir, setName, `${planId}.md`));
-
-  const preflight = await preflightTargets({ mergeWorktreePath, rootPlanIds, rootPaths, sidecar });
-  if (preflight !== undefined) return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: preflight });
+  const candidateRootPaths = rootPlanIds.map((planId) => join(outputDir, setName, `${planId}.md`));
 
   if (!artifactLocation) {
-    return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: rootPlanIds.map((planId, index) => ({ planId, path: rootPaths[index]!, status: 'artifact-missing', reason: 'Compiled plan artifacts were not found in the merge worktree, feature branch tip, or feature branch history.' })) });
+    return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: rootPlanIds.map((planId, index) => ({ planId, path: candidateRootPaths[index]!, status: 'artifact-missing', reason: 'Compiled plan artifacts were not found in the merge worktree, feature branch tip, or feature branch history.' })) });
   }
 
   try {
-    await assertNoPreexistingGuidanceTargetDiff({ mergeWorktreePath, targetPaths: rootPaths });
+    await assertNoPreexistingGuidanceTargetDiff({ mergeWorktreePath, targetPaths: candidateRootPaths });
   } catch (err) {
     throw new RecoveryGuidanceError((err as Error).message, 'preflight');
   }
@@ -121,25 +119,42 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
     }
   }
 
+  const orchRelPath = join(artifactLocation.planSetRelPath, 'orchestration.yaml');
+  const compiledPlanIds = await readCompiledPlanIds(resolve(mergeWorktreePath, orchRelPath));
+  const isNonPlanRoot = (planId: string) => !compiledPlanIds.has(planId) && isKnownNonPlanRecoveryScope(planId);
+  const patchRootPlanIds = rootPlanIds.filter((planId) => !isNonPlanRoot(planId));
+  const nonPlanRoots = rootPlanIds.filter(isNonPlanRoot).map((planId) => ({
+    planId,
+    path: orchRelPath,
+    status: 'already-current' as const,
+    reason: 'Terminal failure scope is not a compiled plan; no plan guidance patch is required.',
+  }));
+  const patchRootPaths = patchRootPlanIds.map((planId) => join(outputDir, setName, `${planId}.md`));
+
+  const preflight = await preflightTargets({ rootPlanIds: patchRootPlanIds, rootPaths: patchRootPaths, sidecar });
+  if (preflight !== undefined) return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: orderGuidancePlans(rootPlanIds, [...preflight, ...nonPlanRoots]) });
+
   const missing = [] as RecoveryGuidancePatchedPlan[];
-  for (let i = 0; i < rootPlanIds.length; i++) {
-    if (!(await gitPathExists(mergeWorktreePath, rootPaths[i]!))) {
-      missing.push({ planId: rootPlanIds[i]!, path: rootPaths[i]!, status: 'artifact-missing', reason: 'Root failed compiled plan markdown artifact is missing.' });
+  for (let i = 0; i < patchRootPlanIds.length; i++) {
+    if (!(await gitPathExists(mergeWorktreePath, patchRootPaths[i]!))) {
+      missing.push({ planId: patchRootPlanIds[i]!, path: patchRootPaths[i]!, status: 'artifact-missing', reason: 'Root failed compiled plan markdown artifact is missing.' });
     }
   }
   if (missing.length > 0) {
-    return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: rootPlanIds.map((planId, index) => missing.find((item) => item.planId === planId) ?? { planId, path: rootPaths[index]!, status: 'blocked', reason: 'Recovery guidance was not applied because another root target is missing.' }) });
+    const blocked = patchRootPlanIds.map((planId, index) => missing.find((item) => item.planId === planId) ?? { planId, path: patchRootPaths[index]!, status: 'blocked' as const, reason: 'Recovery guidance was not applied because another root target is missing.' });
+    return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: orderGuidancePlans(rootPlanIds, [...blocked, ...nonPlanRoots]) });
   }
 
-  const unsafe = await unsafeRootTargets({ mergeWorktreePath, rootPlanIds, rootPaths });
+  const unsafe = await unsafeRootTargets({ mergeWorktreePath, rootPlanIds: patchRootPlanIds, rootPaths: patchRootPaths });
   if (unsafe.length > 0) {
-    return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: rootPlanIds.map((planId, index) => unsafe.find((item) => item.planId === planId) ?? { planId, path: rootPaths[index]!, status: 'blocked', reason: 'Recovery guidance was not applied because another root target is unsafe.' }) });
+    const blocked = patchRootPlanIds.map((planId, index) => unsafe.find((item) => item.planId === planId) ?? { planId, path: patchRootPaths[index]!, status: 'blocked' as const, reason: 'Recovery guidance was not applied because another root target is unsafe.' });
+    return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: orderGuidancePlans(rootPlanIds, [...blocked, ...nonPlanRoots]) });
   }
 
   const plans: RecoveryGuidancePatchedPlan[] = [];
-  for (let i = 0; i < rootPlanIds.length; i++) {
-    const planId = rootPlanIds[i]!;
-    const planPath = rootPaths[i]!;
+  for (let i = 0; i < patchRootPlanIds.length; i++) {
+    const planId = patchRootPlanIds[i]!;
+    const planPath = patchRootPaths[i]!;
     const absPlanPath = resolve(mergeWorktreePath, planPath);
     const { content: raw, identity: planIdentity } = await readSafeRegularFile(absPlanPath);
     const section = renderRecoveryGuidanceSection({ sidecar, planId, sidecarPath, featureBranch, baseBranch, setName, prdId: options.prdId });
@@ -148,14 +163,14 @@ export async function prepareRecoveryGuidance(options: PrepareRecoveryGuidanceOp
     plans.push({ planId, path: planPath, status: patched.changed ? 'patched' : 'already-current' });
   }
 
-  const commitPaths = uniqueSorted([...restoredPaths, ...rootPaths]);
+  const commitPaths = uniqueSorted([...restoredPaths, ...patchRootPaths]);
   let commitSha: string | undefined;
-  if (await hasAnyDiff(mergeWorktreePath, commitPaths)) {
+  if (commitPaths.length > 0 && await hasAnyDiff(mergeWorktreePath, commitPaths)) {
     await forgeCommit(mergeWorktreePath, `recovery(${options.prdId}): add compiled plan guidance`, { paths: commitPaths });
     commitSha = await currentHead(mergeWorktreePath);
   }
 
-  return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans, commitSha });
+  return responseBase({ options, setName, featureBranch, baseBranch, outputDir, sidecarPath, sidecar, plans: orderGuidancePlans(rootPlanIds, [...plans, ...nonPlanRoots]), commitSha });
 }
 
 export function recoveryGuidanceResumeBlocker(response: RecoveryGuidancePrepareResponse): string | undefined {
@@ -164,7 +179,28 @@ export function recoveryGuidanceResumeBlocker(response: RecoveryGuidancePrepareR
   return blocked ? `Recovery guidance for ${blocked.planId} is ${blocked.status}${blocked.reason ? `: ${blocked.reason}` : ''}` : undefined;
 }
 
-function preflightTargets(opts: { mergeWorktreePath: string; rootPlanIds: string[]; rootPaths: string[]; sidecar: RecoveryVerdictSidecar }): Promise<RecoveryGuidancePatchedPlan[] | undefined> {
+async function readCompiledPlanIds(orchestrationPath: string): Promise<Set<string>> {
+  try {
+    const raw = await readFile(orchestrationPath, 'utf-8');
+    const data = parseYaml(raw) as { plans?: Array<{ id?: unknown }> } | null;
+    const ids = Array.isArray(data?.plans)
+      ? data.plans.map((plan) => plan.id).filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+    return new Set(ids);
+  } catch (err) {
+    throw new RecoveryGuidanceError(`Recovery guidance could not read compiled orchestration plan ids: ${(err as Error).message}`, 'preflight');
+  }
+}
+
+function orderGuidancePlans(rootPlanIds: string[], plans: RecoveryGuidancePatchedPlan[]): RecoveryGuidancePatchedPlan[] {
+  return rootPlanIds.flatMap((planId) => plans.filter((plan) => plan.planId === planId));
+}
+
+function isKnownNonPlanRecoveryScope(planId: string): boolean {
+  return planId === 'landing' || planId === 'validation' || planId === 'prd-validation' || planId === 'acceptance-validation';
+}
+
+function preflightTargets(opts: { rootPlanIds: string[]; rootPaths: string[]; sidecar: RecoveryVerdictSidecar }): Promise<RecoveryGuidancePatchedPlan[] | undefined> {
   const blocked = opts.rootPlanIds.flatMap((planId, index) => {
     const evidence = opts.sidecar.boundedEvidence.plans.find((plan) => plan.planId === planId);
     if (evidence?.status === 'blocked' || evidence?.status === 'skipped') {
