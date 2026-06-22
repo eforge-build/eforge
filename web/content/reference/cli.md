@@ -1,5 +1,5 @@
 <!-- Generated file. Do not edit. -->
-<!-- Source: packages/eforge/src/cli/index.ts, packages/eforge/src/cli/queue-control.ts -->
+<!-- Source: packages/eforge/src/cli/index.ts, packages/eforge/src/cli/daemon-lifecycle.ts, packages/eforge/src/cli/queue-control.ts -->
 
 # eforge CLI Reference
 
@@ -453,6 +453,19 @@ Stop the persistent daemon server
 |------|-------------|
 | `--force` | Skip active-build safety check |
 
+#### `restart`
+
+**Full command:** `eforge daemon restart`
+
+Restart the persistent daemon server
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
+
 #### `status`
 
 **Full command:** `eforge daemon status`
@@ -466,6 +479,45 @@ Show daemon status
 
 Force-kill the daemon (SIGKILL)
 
+
+### `ignite`
+
+**Full command:** `eforge ignite`
+
+Playful alias for `eforge daemon start`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--port <port>` | Preferred port |
+
+### `douse`
+
+**Full command:** `eforge douse`
+
+Playful alias for `eforge daemon stop`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
+
+### `reignite`
+
+**Full command:** `eforge reignite`
+
+Playful alias for `eforge daemon restart`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
 
 ### `recover`
 

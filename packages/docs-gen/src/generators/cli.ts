@@ -79,7 +79,11 @@ export async function generateCli(opts: {
   const program = buildEforgeCommand();
 
   const header = buildProvenanceHeader({
-    sourceFiles: ['packages/eforge/src/cli/index.ts', 'packages/eforge/src/cli/queue-control.ts'],
+    sourceFiles: [
+      'packages/eforge/src/cli/index.ts',
+      'packages/eforge/src/cli/daemon-lifecycle.ts',
+      'packages/eforge/src/cli/queue-control.ts',
+    ],
   });
 
   const lines: string[] = [

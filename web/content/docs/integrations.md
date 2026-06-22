@@ -111,6 +111,7 @@ eforge playbook list
 eforge daemon status
 eforge daemon start
 eforge daemon stop
+eforge daemon restart
 eforge extension list
 eforge extension contributions list
 eforge extension contributions invoke <id> --kind command
