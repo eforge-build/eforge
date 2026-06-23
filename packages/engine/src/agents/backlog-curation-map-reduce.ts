@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { TObject } from '@sinclair/typebox';
 import {
   BACKLOG_CURATION_FINDING_MAX_BYTES,
   BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
@@ -14,6 +15,7 @@ import {
   type BacklogCurationMapReduceFinding,
   type BacklogCurationMapReduceItemPacket,
   type BacklogCurationMapReduceReducerInput,
+  type BacklogCurationMapReduceRuntimeIdentity,
   type EforgePlanPlanningDraftResult,
 } from '@eforge-build/client';
 import type { AgentHarness, CustomTool, SdkPassthroughConfig } from '../harness.js';
@@ -38,6 +40,7 @@ export interface BacklogCurationItemAuditTaskOptions extends SdkPassthroughConfi
   harness: AgentHarness;
   cwd: string;
   packet: BacklogCurationMapReduceItemPacket;
+  runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity;
   verbose?: boolean;
   abortController?: AbortController;
   maxTurns?: number;
@@ -66,19 +69,25 @@ interface ReducerAttemptResult {
 
 const ITEM_AUDIT_SUBMIT_TOOL_NAME = 'submit_eforge_plan_backlog_item_finding';
 
+function itemAuditSubmissionSchema(): TObject {
+  const required = BacklogCurationMapReduceFindingSchema.required?.filter((field) => field !== 'runtimeIdentity');
+  return { ...BacklogCurationMapReduceFindingSchema, ...(required !== undefined && { required }) };
+}
+
 export async function* runBacklogCurationItemAuditTask(
   options: BacklogCurationItemAuditTaskOptions,
 ): AsyncGenerator<EforgeEvent, BacklogCurationMapReduceFinding> {
   const packet = validatePacket(options.packet);
   const packetSha256 = sha256Json(packet);
   let submitted: BacklogCurationMapReduceFinding | undefined;
-  const submitTool = createItemAuditSubmitTool(packet, packetSha256, (finding) => { submitted = finding; });
+  const submitTool = createItemAuditSubmitTool(packet, packetSha256, options.runtimeIdentity, (finding) => { submitted = finding; });
   const progressTool = createPlanningProgressTool(options.onProgress);
   const prompt = await loadPrompt('eforge-plan-backlog-curation-item-audit', {
     itemId: packet.itemId,
     sourceFingerprint: packet.sourceFingerprint,
     packetSha256,
     promptVersion: BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
+    runtimeIdentityJson: JSON.stringify(options.runtimeIdentity, null, 2),
     packetJson: JSON.stringify(packet, null, 2),
     submitTool: options.harness.effectiveCustomToolName(ITEM_AUDIT_SUBMIT_TOOL_NAME),
     progressTool: options.harness.effectiveCustomToolName(PLANNING_PROGRESS_TOOL_NAME),
@@ -159,15 +168,18 @@ export const createBoundedBacklogCurationReducerNeedsInputResult = boundedNeedsI
 function createItemAuditSubmitTool(
   packet: BacklogCurationMapReduceItemPacket,
   packetSha256: string,
+  runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity,
   accept: (finding: BacklogCurationMapReduceFinding) => void,
 ): CustomTool {
   let accepted = false;
   return {
     name: ITEM_AUDIT_SUBMIT_TOOL_NAME,
     description: 'Submit the compact backlog curation finding for the single supplied item packet. This is the only accepted output channel.',
-    inputSchema: BacklogCurationMapReduceFindingSchema,
+    inputSchema: itemAuditSubmissionSchema(),
     handler: async (input: unknown) => {
-      const parsed = safeParseBacklogCurationMapReduceFinding(input);
+      const submission = safeParseWithSchema(itemAuditSubmissionSchema(), input);
+      if (!submission.success) return `Submission rejected: ${boundedRejectionMessage(submission.error.message)}\nFix the finding and call ${ITEM_AUDIT_SUBMIT_TOOL_NAME} again.`;
+      const parsed = safeParseBacklogCurationMapReduceFinding({ ...submission.data, runtimeIdentity });
       if (!parsed.success) return `Submission rejected: ${boundedRejectionMessage(parsed.error.message)}\nFix the finding and call ${ITEM_AUDIT_SUBMIT_TOOL_NAME} again.`;
       const mismatch = validateFindingAgainstPacket(parsed.data, packet, packetSha256);
       if (mismatch !== undefined) return mismatch;

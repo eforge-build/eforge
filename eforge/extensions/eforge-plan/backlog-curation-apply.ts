@@ -116,6 +116,37 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
     return { valid: false, errors: previewErrorsFromError(err) };
   }
 }
+// --- eforge:region plan-03-daemon-map-reduce-integration ---
+export async function validateBacklogCurationPlanningDraftResult(cwd: string, result: unknown, context?: { sourceFingerprint?: string }): Promise<string[]> {
+  try {
+    const expectedSourceFingerprint = context?.sourceFingerprint;
+    const rawResult = result as Record<string, unknown> | undefined;
+    const rawDraft = rawResult?.backlogCurationDraft as { sourceFingerprint?: unknown } | undefined;
+    if (expectedSourceFingerprint !== undefined && rawDraft?.sourceFingerprint !== undefined && rawDraft.sourceFingerprint !== expectedSourceFingerprint) {
+      return [`backlogCurationDraft.sourceFingerprint: Curation draft source fingerprint must match ${expectedSourceFingerprint}.`];
+    }
+    await prepareBacklogCurationDraftApply(cwd, {
+      taskId: 'backlog-curation-reducer-validation',
+      kind: 'eforge-plan.planning-draft',
+      status: 'completed',
+      result,
+    }, {
+      taskId: 'backlog-curation-reducer-validation',
+      originalRequest: '',
+      derivedRequest: 'Analyze and curate all open eforge-plan backlog records.',
+      selection: {},
+      requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
+      includeRoadmap: true,
+      purpose: 'backlog-curation',
+      ...(expectedSourceFingerprint !== undefined && { sourceFingerprint: expectedSourceFingerprint }),
+      createdAt: new Date().toISOString(),
+    }, { skipGeneratedRecommendationErrors: false });
+    return [];
+  } catch (err) {
+    return previewErrorsFromError(err).map((error) => `${error.path}: ${error.message}`);
+  }
+}
+// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 // --- eforge:endregion apply-entrypoint ---
 // --- eforge:region markdown-section-helpers ---
 export function applySectionOperations(body: string, operations: readonly { heading: string; action: 'replace' | 'append'; content: string }[]): string {

@@ -1,6 +1,9 @@
 import { safeParseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
+// --- eforge:region plan-03-daemon-map-reduce-integration ---
+import { validateBacklogCurationPlanningDraftResult } from './backlog-curation-apply.js';
+// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 import { ItemAuditConcurrencySchema } from './backlog-curation-schemas.js';
 import type { BacklogCurationMapReduceSourceBundle } from '@eforge-build/client';
 
@@ -13,6 +16,16 @@ export {
   writeBacklogCurationItemAuditCache,
 } from './backlog-curation-item-audit-cache.js';
 // --- eforge:endregion plan-01-curation-packets-cache ---
+
+// --- eforge:region plan-03-daemon-map-reduce-integration ---
+export {
+  buildBacklogCurationReducerInput,
+} from './backlog-curation-packets.js';
+
+export {
+  validateBacklogCurationPlanningDraftResult,
+};
+// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 
 export async function buildSource(context: { cwd: string; signal: AbortSignal; input?: { itemAuditConcurrency?: unknown; redraft?: unknown } }): Promise<{ sourceText: string; backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle }> {
   const itemAuditConcurrency = parseSourceProviderItemAuditConcurrency(context.input?.itemAuditConcurrency);

@@ -3,6 +3,7 @@ import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAge
 import { toJsonSafeObject } from './json-safe.js';
 import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogInput, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
 import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
+import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import {
   BACKLOG_CURATION_WORKFLOW_PURPOSE,
   listBacklogCurationWorkflowEntries,
@@ -36,23 +37,27 @@ export const analyzeAllBacklogAction = defineExtensionAction({
   async handler(input: AnalyzeAllBacklogInput, ctx) {
     throwIfAborted(ctx.signal);
     const itemAuditConcurrency = normalizeItemAuditConcurrency(input.itemAuditConcurrency);
-    return await runAnalyzeStartExclusive(ctx.cwd, itemAuditConcurrency, async () => {
-      const active = await findActiveBacklogCurationTask(ctx, itemAuditConcurrency);
-      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, ...(active.entry.sourceFingerprint !== undefined && { sourceFingerprint: active.entry.sourceFingerprint }), reused: true });
+    const source = await buildBacklogCurationSource(ctx.cwd, undefined, { signal: ctx.signal, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) });
+    await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, source);
+    const { sourceFingerprint } = source;
+    return await runAnalyzeStartExclusive(ctx.cwd, sourceFingerprint, itemAuditConcurrency, async () => {
+      const active = await findActiveBacklogCurationTask(ctx, sourceFingerprint, itemAuditConcurrency);
+      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, sourceFingerprint, reused: true });
       throwIfAborted(ctx.signal);
       const response = await startBacklogCurationTask(ctx, itemAuditConcurrency);
-      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, undefined, undefined, itemAuditConcurrency));
-      return toJsonSafeObject({ task: compactTask(response.task), entry });
+      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, sourceFingerprint, undefined, itemAuditConcurrency));
+      return toJsonSafeObject({ task: compactTask(response.task), entry, sourceFingerprint });
     });
   },
 });
 
 export async function findActiveBacklogCurationTask(
   ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>,
+  sourceFingerprint: string,
   itemAuditConcurrency?: number,
 ): Promise<{ task: ExtensionAgentTaskRecord; entry: PlanningTaskWorkflowEntry } | undefined> {
   const index = await readPlanningTaskWorkflowIndex(ctx.cwd);
-  for (const entry of listBacklogCurationWorkflowEntries(index, undefined, itemAuditConcurrency)) {
+  for (const entry of listBacklogCurationWorkflowEntries(index, sourceFingerprint, itemAuditConcurrency)) {
     if (entry.appliedAt !== undefined) continue;
     try {
       const response = await ctx.agentTasks.get(entry.taskId);
@@ -94,8 +99,8 @@ async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditCo
   return await (ctx.agentTasks.start as unknown as (request: AnalyzeAllStartRequest) => Promise<{ task: ExtensionAgentTaskRecord }>)(request);
 }
 
-function runAnalyzeStartExclusive<T>(cwd: string, itemAuditConcurrency: number | undefined, task: () => Promise<T>): Promise<T> {
-  const key = `${cwd}\0analyze-all-backlog\0${itemAuditConcurrency ?? 'default'}`;
+function runAnalyzeStartExclusive<T>(cwd: string, sourceFingerprint: string, itemAuditConcurrency: number | undefined, task: () => Promise<T>): Promise<T> {
+  const key = `${cwd}\0analyze-all-backlog\0${sourceFingerprint}\0${itemAuditConcurrency ?? 'default'}`;
   const prior = analyzeStartChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
   let chain: Promise<unknown>;

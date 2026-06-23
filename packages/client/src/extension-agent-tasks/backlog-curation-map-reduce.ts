@@ -135,7 +135,7 @@ export const BacklogCurationMapReduceItemPacketSchema = Type.Object({
   diagnostics: Type.Array(BacklogCurationMapReduceCapDiagnosticSchema, { maxItems: BACKLOG_CURATION_DIAGNOSTICS_PER_PACKET_MAX }),
 }, { additionalProperties: false });
 
-export const BacklogCurationMapReduceFindingSchema = Type.Object({
+const BacklogCurationMapReduceFindingProperties = {
   schemaVersion: Type.Literal(BACKLOG_CURATION_MAP_REDUCE_SCHEMA_VERSION),
   itemId: EforgePlanPlanningBacklogSafeIdSchema,
   sourceFingerprint: EforgePlanPlanningSha256HexSchema,
@@ -149,14 +149,21 @@ export const BacklogCurationMapReduceFindingSchema = Type.Object({
   citations: Type.Array(BacklogCurationMapReduceCitationSchema, { maxItems: BACKLOG_CURATION_CITATIONS_PER_ITEM_MAX }),
   recommendationSignals: Type.Array(BacklogCurationMapReduceRecommendationSignalSchema, { maxItems: BACKLOG_CURATION_RECOMMENDATION_SIGNALS_PER_ITEM_MAX }),
   diagnostics: Type.Array(BacklogCurationMapReduceDiagnosticSchema, { maxItems: BACKLOG_CURATION_DIAGNOSTICS_PER_PACKET_MAX }),
+} as const;
+
+export const BacklogCurationMapReduceFindingSchema = Type.Object(BacklogCurationMapReduceFindingProperties, { additionalProperties: false });
+
+export const BacklogCurationMapReduceFindingSubmissionSchema = Type.Object({
+  ...BacklogCurationMapReduceFindingProperties,
+  runtimeIdentity: Type.Optional(BacklogCurationMapReduceRuntimeIdentitySchema),
 }, { additionalProperties: false });
 
 export function safeParseBacklogCurationMapReduceFinding(value: unknown): SafeParseResult<BacklogCurationMapReduceFinding> {
   const parsed = safeParseWithSchema(BacklogCurationMapReduceFindingSchema, value);
   if (!parsed.success) return parsed;
-  const bytes = Buffer.byteLength(JSON.stringify(parsed.data), 'utf-8');
+  const bytes = utf8ByteLength(JSON.stringify(parsed.data));
   if (bytes <= BACKLOG_CURATION_FINDING_MAX_BYTES) return parsed;
-  return { success: false, error: { message: `(root): Finding is ${bytes} bytes; cap is ${BACKLOG_CURATION_FINDING_MAX_BYTES}.`, errors: [{ path: '', message: `Finding is ${bytes} bytes; cap is ${BACKLOG_CURATION_FINDING_MAX_BYTES}.` }] } };
+  return semanticError('', `Finding is ${bytes} bytes; cap is ${BACKLOG_CURATION_FINDING_MAX_BYTES}.`);
 }
 
 export function isBacklogCurationMapReduceFinding(value: unknown): value is BacklogCurationMapReduceFinding {
@@ -201,6 +208,8 @@ export const BacklogCurationMapReduceReducerInputSchema = Type.Object({
 export function safeParseBacklogCurationMapReduceReducerInput(value: unknown): SafeParseResult<BacklogCurationMapReduceReducerInput> {
   const parsed = safeParseWithSchema(BacklogCurationMapReduceReducerInputSchema, value);
   if (!parsed.success) return parsed;
+  const fingerprintResult = validateReducerInputFingerprints(parsed.data, '');
+  if (!fingerprintResult.success) return fingerprintResult;
   for (const [index, outcome] of parsed.data.outcomes.entries()) {
     const findingResult = validateOutcomeFinding(outcome, `outcomes/${index}/finding`);
     if (!findingResult.success) return findingResult;
@@ -222,6 +231,10 @@ export const BacklogCurationMapReduceSourceBundleSchema = Type.Object({
 export function safeParseBacklogCurationMapReduceSourceBundle(value: unknown): SafeParseResult<BacklogCurationMapReduceSourceBundle> {
   const parsed = safeParseWithSchema(BacklogCurationMapReduceSourceBundleSchema, value);
   if (!parsed.success) return parsed;
+  const fingerprintResult = validateSourceBundleFingerprints(parsed.data);
+  if (!fingerprintResult.success) return fingerprintResult;
+  const coverageResult = validateSourceBundleItemCoverage(parsed.data);
+  if (!coverageResult.success) return coverageResult;
   for (const [index, outcome] of parsed.data.degradedOutcomes.entries()) {
     const findingResult = validateOutcomeFinding(outcome, `degradedOutcomes/${index}/finding`);
     if (!findingResult.success) return findingResult;
@@ -231,11 +244,78 @@ export function safeParseBacklogCurationMapReduceSourceBundle(value: unknown): S
   return parsed;
 }
 
+function validateSourceBundleItemCoverage(bundle: BacklogCurationMapReduceSourceBundle): SafeParseResult<BacklogCurationMapReduceSourceBundle> {
+  const coveredCount = bundle.packets.length + bundle.degradedOutcomes.length;
+  if (coveredCount > BACKLOG_CURATION_PACKET_MAX_COUNT) return semanticError('', `packets plus degradedOutcomes cover ${coveredCount} items; cap is ${BACKLOG_CURATION_PACKET_MAX_COUNT}.`);
+  if (bundle.globalContext.itemCount !== bundle.globalContext.openItemIds.length) return semanticError('globalContext/itemCount', `itemCount must match openItemIds length ${bundle.globalContext.openItemIds.length}.`);
+  if (coveredCount !== bundle.globalContext.itemCount) return semanticError('', `packets plus degradedOutcomes cover ${coveredCount} items; expected ${bundle.globalContext.itemCount}.`);
+
+  const expectedIds = new Set(bundle.globalContext.openItemIds);
+  if (expectedIds.size !== bundle.globalContext.openItemIds.length) return semanticError('globalContext/openItemIds', 'openItemIds must not contain duplicate item ids.');
+  const seen = new Set<string>();
+  for (const [index, packet] of bundle.packets.entries()) {
+    const duplicatePath = addCoveredItem(seen, expectedIds, packet.itemId, `packets/${index}/itemId`);
+    if (duplicatePath !== undefined) return duplicatePath;
+  }
+  for (const [index, outcome] of bundle.degradedOutcomes.entries()) {
+    const duplicatePath = addCoveredItem(seen, expectedIds, outcome.itemId, `degradedOutcomes/${index}/itemId`);
+    if (duplicatePath !== undefined) return duplicatePath;
+  }
+  return { success: true, data: bundle };
+}
+
+function addCoveredItem(seen: Set<string>, expectedIds: Set<string>, itemId: string, path: string): SafeParseResult<never> | undefined {
+  if (!expectedIds.has(itemId)) return semanticError(path, 'item id is not present in globalContext.openItemIds.');
+  if (seen.has(itemId)) return semanticError(path, 'item id is duplicated across packets and degradedOutcomes.');
+  seen.add(itemId);
+  return undefined;
+}
+
 function validateOutcomeFinding<T extends BacklogCurationMapReduceItemOutcome>(outcome: T, path: string): SafeParseResult<T> {
   if (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding') return { success: true, data: outcome };
   const finding = safeParseBacklogCurationMapReduceFinding(outcome.finding);
-  if (finding.success) return { success: true, data: outcome };
-  return prefixSafeParseError(finding, path);
+  if (!finding.success) return prefixSafeParseError(finding, path);
+  if (outcome.finding.sourceFingerprint !== outcome.sourceFingerprint) return semanticError(`${path}/sourceFingerprint`, `sourceFingerprint must match ${outcome.sourceFingerprint}.`);
+  return { success: true, data: outcome };
+}
+
+function validateReducerInputFingerprints(input: BacklogCurationMapReduceReducerInput, basePath: string): SafeParseResult<BacklogCurationMapReduceReducerInput> {
+  const prefix = basePath ? `${basePath}/` : '';
+  if (input.globalContext.sourceFingerprint !== input.sourceFingerprint) return semanticError(`${prefix}globalContext/sourceFingerprint`, `sourceFingerprint must match ${input.sourceFingerprint}.`);
+  for (const [index, outcome] of input.outcomes.entries()) {
+    if (outcome.sourceFingerprint !== input.sourceFingerprint) return semanticError(`${prefix}outcomes/${index}/sourceFingerprint`, `sourceFingerprint must match ${input.sourceFingerprint}.`);
+    if ((outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding') && outcome.finding.sourceFingerprint !== input.sourceFingerprint) {
+      return semanticError(`${prefix}outcomes/${index}/finding/sourceFingerprint`, `sourceFingerprint must match ${input.sourceFingerprint}.`);
+    }
+  }
+  return { success: true, data: input };
+}
+
+function validateSourceBundleFingerprints(bundle: BacklogCurationMapReduceSourceBundle): SafeParseResult<BacklogCurationMapReduceSourceBundle> {
+  if (bundle.globalContext.sourceFingerprint !== bundle.sourceFingerprint) return semanticError('globalContext/sourceFingerprint', `sourceFingerprint must match ${bundle.sourceFingerprint}.`);
+  for (const [index, packet] of bundle.packets.entries()) {
+    if (packet.sourceFingerprint !== bundle.sourceFingerprint) return semanticError(`packets/${index}/sourceFingerprint`, `sourceFingerprint must match ${bundle.sourceFingerprint}.`);
+    if (packet.precondition.sourceFingerprint !== bundle.sourceFingerprint) return semanticError(`packets/${index}/precondition/sourceFingerprint`, `sourceFingerprint must match ${bundle.sourceFingerprint}.`);
+  }
+  for (const [index, outcome] of bundle.degradedOutcomes.entries()) {
+    if (outcome.sourceFingerprint !== bundle.sourceFingerprint) return semanticError(`degradedOutcomes/${index}/sourceFingerprint`, `sourceFingerprint must match ${bundle.sourceFingerprint}.`);
+    if ((outcome.outcome === 'cache-hit' || outcome.outcome === 'audited-finding') && outcome.finding.sourceFingerprint !== bundle.sourceFingerprint) {
+      return semanticError(`degradedOutcomes/${index}/finding/sourceFingerprint`, `sourceFingerprint must match ${bundle.sourceFingerprint}.`);
+    }
+  }
+  if (bundle.reducerInput.sourceFingerprint !== bundle.sourceFingerprint) return semanticError('reducerInput/sourceFingerprint', `sourceFingerprint must match ${bundle.sourceFingerprint}.`);
+  const reducerResult = validateReducerInputFingerprints(bundle.reducerInput, 'reducerInput');
+  if (!reducerResult.success) return reducerResult;
+  return { success: true, data: bundle };
+}
+
+function semanticError(path: string, message: string): SafeParseResult<never> {
+  return { success: false, error: { message: `${path || '(root)'}: ${message}`, errors: [{ path, message }] } };
+}
+
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).length;
+  return unescape(encodeURIComponent(value)).length;
 }
 
 function prefixSafeParseError<T>(result: SafeParseResult<T>, path: string): SafeParseResult<never> {

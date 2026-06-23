@@ -8,6 +8,11 @@ You are auditing exactly one validated backlog item packet for map/reduce backlo
 - Source fingerprint: {{sourceFingerprint}}
 - Packet SHA-256: {{packetSha256}}
 - Prompt version: {{promptVersion}}
+- Runtime identity (server-owned; do not submit this field):
+
+```json
+{{runtimeIdentityJson}}
+```
 
 ## Packet JSON
 
@@ -26,6 +31,7 @@ You MAY call `{{progressTool}}` for telemetry-only progress. Progress never repl
 - Do not include raw evidence dumps, raw item bodies, or unrelated context in your output.
 - Keep the finding compact. Use citations and recommendation signals only when they are directly useful to the reducer.
 - Preserve `itemId`, `sourceFingerprint`, `bodySha256`, `packetSha256`, and `promptVersion` exactly.
+- Do not include `runtimeIdentity`; the runner injects the authoritative runtime identity.
 
 ## Output contract
 
@@ -37,7 +43,6 @@ You MUST call `{{submitTool}}` exactly once with a compact finding matching the 
 - `packetSha256`: `{{packetSha256}}`
 - `bodySha256`: copy exactly from the packet
 - `promptVersion`: `{{promptVersion}}`
-- `runtimeIdentity`: provider/model metadata for this agent run
 - `disposition`: one of `change`, `recheck`, `skip`, or `needs-input`
 - `summary` and `rationale`: concise, no raw evidence
 - `citations`, `recommendationSignals`, and `diagnostics`: bounded arrays only
