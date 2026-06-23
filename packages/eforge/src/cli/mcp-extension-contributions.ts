@@ -66,32 +66,38 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
           }),
         } satisfies ContributionToolEnvelope;
       }
-      if (!params.id) throw new Error(`"id" is required when action is "${params.action}"`);
-      if (params.kind === 'all') throw new Error('"kind: all" is only valid when action is "list"');
+      if (!params.id) throw invalidContributionRequest(`"id" is required when action is "${params.action}"`);
+      if (params.kind === 'all') throw invalidContributionRequest('"kind: all" is only valid when action is "list"');
       if (params.action === 'show') {
         const manifest = await apiGetExtensionContributionManifest({ cwd: toolCwd });
-        return {
-          action: params.action,
-          result: showExtensionContributionManifestEntry(manifest, {
-            id: params.id,
-            kind: params.kind as ExtensionHostContributionKind | undefined,
-            includeInputSchema: params.includeInputSchema,
-            includeDiagnostics: params.includeDiagnostics,
-            projection: projectionFromFullFlag(params.full),
-          }),
-        } satisfies ContributionToolEnvelope;
+        try {
+          return {
+            action: params.action,
+            result: showExtensionContributionManifestEntry(manifest, {
+              id: params.id,
+              kind: params.kind as ExtensionHostContributionKind | undefined,
+              includeInputSchema: params.includeInputSchema,
+              includeDiagnostics: params.includeDiagnostics,
+              projection: projectionFromFullFlag(params.full),
+            }),
+          } satisfies ContributionToolEnvelope;
+        } catch (err) {
+          throw invalidContributionRequest((err as Error).message);
+        }
       }
-      const result = await invokeEforgeExtensionContribution({
-        cwd: toolCwd,
-        kind: params.kind as ExtensionHostContributionKind | undefined,
-        id: params.id,
-        input: params.input as ExtensionJsonObject | undefined,
-        requestedBy: { host: 'mcp' },
-      });
-      if (!result.response.ok) {
-        throw new McpUserError(createExtensionContributionFailedInvocationEnvelope(result) ?? result.response.error);
+      try {
+        const result = await invokeEforgeExtensionContribution({
+          cwd: toolCwd,
+          kind: params.kind as ExtensionHostContributionKind | undefined,
+          id: params.id,
+          input: params.input as ExtensionJsonObject | undefined,
+          requestedBy: { host: 'mcp' },
+        });
+        return { action: params.action, result } satisfies ContributionToolEnvelope;
+      } catch (err) {
+        if (isContributionRequestError(err)) throw invalidContributionRequest((err as Error).message);
+        throw err;
       }
-      return { action: params.action, result } satisfies ContributionToolEnvelope;
     },
     formatResponse: formatContributionToolResponse,
   });
@@ -99,6 +105,15 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
 
 function projectionFromFullFlag(full: boolean | undefined): ExtensionHostContributionProjection | undefined {
   return full ? 'full' : undefined;
+}
+
+function invalidContributionRequest(message: string): McpUserError {
+  return new McpUserError({ code: 'invalid-request', message });
+}
+
+function isContributionRequestError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /^("|Unknown extension|Ambiguous extension|Deep link )/.test(err.message);
 }
 
 function formatContributionToolResponse(data: unknown): McpToolResult {

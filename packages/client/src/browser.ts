@@ -209,6 +209,7 @@ export type {
   FormatExtensionContributionHostTextOptions,
 } from './extension-contribution-output-formatting.js';
 export type {
+  ExtensionHostContributionDetailOptions,
   ExtensionHostContributionDetailResponse,
   ExtensionHostContributionEntry,
   ExtensionHostContributionFailedInvocationEnvelope,
@@ -216,6 +217,7 @@ export type {
   ExtensionHostContributionKind,
   ExtensionHostContributionListResponse,
   ExtensionHostContributionProjection,
+  ExtensionHostContributionProjectionOptions,
 } from './api/extension-contribution-dispatch.js';
 // --- eforge:region extension-agent-task-contracts ---
 export * from './extension-agent-tasks.js';

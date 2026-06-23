@@ -67,7 +67,7 @@ describe('compact board adapter', () => {
     const withDone = mergeCompactLanePage(initial, {
       ...donePage,
       pagination: donePagination,
-      lanes: donePage.lanes.map((lane) => lane.lane === 'done' ? { ...lane, pagination: donePagination } : lane),
+      lanes: (donePage.lanes ?? []).map((lane) => lane.lane === 'done' ? { ...lane, pagination: donePagination } : lane),
     }, mockRecommendations, { scope: 'lane', lane: 'done' });
 
     const globalPage = getMockCompactBoard({ limit: 2, offset: 2 });

@@ -337,6 +337,21 @@ describe('extension contribution host dispatcher projection', () => {
     expect(detail.entry.inputDefaults).toEqual({ fromDefault: true, override: 'default' });
     expect(detail.diagnostics).toEqual([{ severity: 'warning', message: 'example diagnostic', code: 'example' }]);
   });
+
+  it('treats full projection as shorthand for schemas and diagnostics', () => {
+    const summary = summarizeExtensionContributionManifest(manifest(), { projection: 'full' });
+
+    expect(summary.diagnostics).toEqual([{ severity: 'warning', message: 'example diagnostic', code: 'example' }]);
+    expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'ext.command')?.inputSchema).toEqual(commandSpecificSchema);
+  });
+
+  it('infers unambiguous detail kind and preserves ambiguity checks', () => {
+    const detail = showExtensionContributionManifestEntry(manifest(), { id: 'ext.deep' });
+
+    expect(detail.entry).toMatchObject({ kind: 'deep-link', id: 'ext.deep', actionId: 'ext.run' });
+    expect(detail.entry.inputSchema).toBeUndefined();
+    expect(() => showExtensionContributionManifestEntry(manifest(), { id: 'shared' })).toThrow('Ambiguous extension contribution id "shared"; pass kind action, command, or deep-link');
+  });
 });
 
 describe('extension contribution host dispatcher invocation', () => {
@@ -434,6 +449,29 @@ describe('extension contribution host dispatcher invocation', () => {
     expect(envelope?.error.message.length).toBeLessThanOrEqual(1000);
     expect(envelope?.error.message).toContain('[redacted input value]');
     expect(envelope?.error.message).not.toContain(largeValue);
+
+    const escapedValue = 'secret "escaped" value '.repeat(20);
+    const escapedEnvelope = createExtensionContributionFailedInvocationEnvelope({
+      ...result,
+      target: { ...result.target, input: { escapedValue } },
+      response: { ok: false, invocationId: 'escaped', error: { code: 'invalid-input', message: `Bad input ${JSON.stringify(escapedValue)}` } },
+    });
+    expect(escapedEnvelope?.error.message).toContain('[redacted input value]');
+    expect(escapedEnvelope?.error.message).not.toContain(escapedValue);
+
+    const truncatedEnvelope = createExtensionContributionFailedInvocationEnvelope({
+      ...result,
+      response: { ok: false, invocationId: 'truncated', error: { code: 'invalid-input', message: `Bad input ${largeValue.slice(0, 120)}` } },
+    });
+    expect(truncatedEnvelope?.error.message).toContain('omitted because it echoed request input');
+    expect(truncatedEnvelope?.error.message).not.toContain(largeValue.slice(0, 120));
+
+    const misalignedEnvelope = createExtensionContributionFailedInvocationEnvelope({
+      ...result,
+      response: { ok: false, invocationId: 'misaligned', error: { code: 'invalid-input', message: `Bad input ${largeValue.slice(10, 130)}` } },
+    });
+    expect(misalignedEnvelope?.error.message).toContain('omitted because it echoed request input');
+    expect(misalignedEnvelope?.error.message).not.toContain(largeValue.slice(10, 130));
     expect(envelope?.inputSummary.inputKeys.every((key) => key.length <= 80)).toBe(true);
     expect(envelope?.inputSummary.serializedInputSize).toBeGreaterThan(largeValue.length);
     expect(JSON.stringify(envelope)).not.toContain(largeValue);
@@ -464,6 +502,8 @@ describe('extension contribution local resolution errors', () => {
     for (const input of [null, [], 'text', 1, true]) {
       expect(() => resolveExtensionContributionInvocation(contributionManifest, { kind: 'action', id: 'ext.run', input, requestedBy: { host: 'cli' } })).toThrow('"input" must be a JSON object');
     }
+    expect(() => resolveExtensionContributionInvocation(contributionManifest, { kind: 'console', id: 'ext.run', input: {}, requestedBy: { host: 'cli' } } as never)).toThrow('"kind" must be action, command, or deep-link');
+    expect(() => resolveExtensionContributionInvocation(contributionManifest, { kind: 'action', id: 'ext.run', input: {}, requestedBy: { host: 'unknown' } } as never)).toThrow('"requestedBy" is invalid');
     expect(() => resolveExtensionContributionInvocation(contributionManifest, { kind: 'action', id: 'missing', input: {}, requestedBy: { host: 'cli' } })).toThrow('Unknown extension action "missing"');
     expect(() => resolveExtensionContributionInvocation(contributionManifest, { kind: 'command', id: 'missing', input: {}, requestedBy: { host: 'cli' } })).toThrow('Unknown extension integration command "missing"');
     expect(() => resolveExtensionContributionInvocation(contributionManifest, { kind: 'deep-link', id: 'missing', input: {}, requestedBy: { host: 'cli' } })).toThrow('Unknown extension deep link "missing"');

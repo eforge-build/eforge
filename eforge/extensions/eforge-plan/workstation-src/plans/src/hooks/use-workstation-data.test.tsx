@@ -223,5 +223,5 @@ function bridgeWithDefaults(custom: (actionId: string, input?: unknown) => unkno
 function withDonePagination(response: CompactBoardResponse, hasMore: boolean): CompactBoardResponse {
   const nextOffset = response.offset + response.items.length;
   const pagination = { limit: response.limit, offset: response.offset, returned: response.items.length, hasMore, ...(hasMore ? { nextOffset } : {}) };
-  return { ...response, total: 2, pagination, lanes: response.lanes.map((lane) => lane.lane === 'done' ? { ...lane, count: 2, closedCount: 2, pagination } : lane) };
+  return { ...response, total: 2, pagination, lanes: (response.lanes ?? []).map((lane) => lane.lane === 'done' ? { ...lane, count: 2, closedCount: 2, pagination } : lane) };
 }

@@ -175,9 +175,21 @@ function renderFailureEnvelope(envelope: ExtensionHostContributionFailedInvocati
     `Extension: ${envelope.target.extensionName}`,
     `Requested by: ${envelope.requestedBy.host}`,
     `Error: ${envelope.error.code}: ${envelope.error.message}`,
-    `Input summary: ${envelope.inputSummary.inputKeyCount} keys [${envelope.inputSummary.inputKeys.join(', ')}], serialized size ${envelope.inputSummary.serializedInputSize} chars`,
+    `Input summary: ${renderFailureInputSummary(envelope.inputSummary)}`,
   ].join('\n');
 }
+
+// --- eforge:region plan-01-shared-contribution-projection ---
+function renderFailureInputSummary(inputSummary: ExtensionHostContributionFailedInvocationEnvelope['inputSummary']): string {
+  const details = [
+    `${inputSummary.inputKeyCount} keys [${inputSummary.inputKeys.join(', ')}]`,
+    `serialized size ${inputSummary.serializedInputSize} chars`,
+    inputSummary.omittedInputKeyCount ? `${inputSummary.omittedInputKeyCount} omitted keys` : undefined,
+    inputSummary.truncatedInputKeyCount ? `${inputSummary.truncatedInputKeyCount} truncated keys` : undefined,
+  ];
+  return details.filter((detail): detail is string => detail !== undefined).join(', ');
+}
+// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 function renderContributionEntrySummary(entry: ExtensionHostContributionEntry): string {
   return [
@@ -185,6 +197,7 @@ function renderContributionEntrySummary(entry: ExtensionHostContributionEntry): 
     `— ${entry.label}`,
     `[${entry.extensionName}]`,
     entry.actionId ? `action=${entry.actionId}` : 'action=none',
+    entry.urlTemplate ? `url=${entry.urlTemplate}` : undefined,
     `actionBacked=${entry.actionBacked}`,
     entry.outputProfile ? `output=${entry.outputProfile}` : undefined,
     entry.sideEffects?.length ? `sideEffects=${entry.sideEffects.join(',')}` : undefined,

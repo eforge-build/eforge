@@ -189,7 +189,13 @@ describe('extension contribution output formatting', () => {
       },
       requestedBy: { host: 'cli' },
       error: { code: 'invalid-input', message: 'Bad input' },
-      inputSummary: { inputKeys: ['largeValue'], inputKeyCount: 1, serializedInputSize: JSON.stringify({ largeValue }).length },
+      inputSummary: {
+        inputKeys: ['largeValue'],
+        inputKeyCount: 3,
+        serializedInputSize: JSON.stringify({ largeValue }).length,
+        omittedInputKeyCount: 1,
+        truncatedInputKeyCount: 1,
+      },
     };
 
     const text = formatExtensionContributionFailedInvocationEnvelopeText(envelope);
@@ -198,6 +204,8 @@ describe('extension contribution output formatting', () => {
     expect(text).toContain('invalid-input: Bad input');
     expect(text).toContain('largeValue');
     expect(text).toContain('serialized size');
+    expect(text).toContain('1 omitted keys');
+    expect(text).toContain('1 truncated keys');
     expect(text).not.toContain(largeValue);
   });
 });

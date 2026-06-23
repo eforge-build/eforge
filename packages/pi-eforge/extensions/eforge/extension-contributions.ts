@@ -139,11 +139,11 @@ async function handleCommand(ctx: UIContext, rawArgs: string): Promise<void> {
   const branch = args.split(/\s+/, 1)[0];
   const rest = args.slice(branch.length).trim();
   if (branch === 'list') {
-    await showList(ctx, parseListArgs(rest));
+    await listFromArgs(ctx, rest);
     return;
   }
   if (branch === 'show') {
-    await showDetail(ctx, parseShowArgs(rest));
+    await showFromArgs(ctx, rest);
     return;
   }
   if (branch === 'invoke') {
@@ -151,6 +151,36 @@ async function handleCommand(ctx: UIContext, rawArgs: string): Promise<void> {
     return;
   }
   await showInfoPanel(ctx, 'eforge extensions', 'Usage: `/eforge:extensions list`, `/eforge:extensions show <id>`, or `/eforge:extensions invoke <id> [json]`.');
+}
+
+async function listFromArgs(ctx: UIContext, rest: string): Promise<void> {
+  let options: ContributionListOptions;
+  try {
+    options = parseListArgs(rest);
+  } catch (err) {
+    await showInfoPanel(ctx, 'eforge extensions - Invalid Input', err instanceof Error ? err.message : String(err));
+    return;
+  }
+  try {
+    await showList(ctx, options);
+  } catch (err) {
+    await showInfoPanel(ctx, 'eforge extensions - Error', err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function showFromArgs(ctx: UIContext, rest: string): Promise<void> {
+  let options: ContributionShowOptions;
+  try {
+    options = parseShowArgs(rest);
+  } catch (err) {
+    await showInfoPanel(ctx, 'eforge extensions - Invalid Input', err instanceof Error ? err.message : String(err));
+    return;
+  }
+  try {
+    await showDetail(ctx, options);
+  } catch (err) {
+    await showInfoPanel(ctx, 'eforge extensions - Error', err instanceof Error ? err.message : String(err));
+  }
 }
 
 async function showList(ctx: UIContext, options: ContributionListOptions = {}): Promise<void> {

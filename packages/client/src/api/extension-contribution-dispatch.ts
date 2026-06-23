@@ -2,6 +2,7 @@ import {
   type ExtensionActionInvokeResponse,
   type ExtensionActionManifestEntry,
   type ExtensionActionOutputProfile,
+  ExtensionActionRequestedBySchema,
   type ExtensionActionRequestedBy,
   type ExtensionContributionAvailability,
   type ExtensionContributionManifestResponse,
@@ -15,13 +16,12 @@ import {
   apiInvokeExtensionAction,
   apiInvokeExtensionActionIfRunning,
 } from './extension-contributions.js';
+import { formatSchemaError, safeParseWithSchema } from '../schema-utils.js';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
   type ExtensionHostContributionDetailOptions,
   type ExtensionHostContributionDetailResponse,
   type ExtensionHostContributionEntry,
-  type ExtensionHostContributionFailedInvocationEnvelope,
-  type ExtensionHostContributionInputSummary,
   type ExtensionHostContributionInvokeParams,
   type ExtensionHostContributionInvokeResult,
   type ExtensionHostContributionInvokeTarget,
@@ -29,6 +29,15 @@ import {
   type ExtensionHostContributionListResponse,
   type ExtensionHostContributionProjectionOptions,
 } from './extension-contribution-projection-types.js';
+import {
+  createExtensionContributionFailedInvocationEnvelope,
+  summarizeExtensionContributionInvocationInput,
+} from './extension-contribution-failure-envelope.js';
+
+export {
+  createExtensionContributionFailedInvocationEnvelope,
+  summarizeExtensionContributionInvocationInput,
+};
 
 export {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
@@ -53,10 +62,6 @@ interface ResolveResult {
 
 type ActionLookup = Map<string, ExtensionActionManifestEntry>;
 
-const FAILED_INVOCATION_ERROR_MESSAGE_MAX_LENGTH = 1_000;
-const FAILED_INVOCATION_INPUT_KEY_MAX_COUNT = 20;
-const FAILED_INVOCATION_INPUT_KEY_MAX_LENGTH = 80;
-const FAILED_INVOCATION_INPUT_VALUE_REDACTION_MIN_LENGTH = 80;
 const EXTENSION_HOST_CONTRIBUTION_PROJECTIONS = ['compact', 'full'] as const;
 const EXTENSION_ACTION_OUTPUT_PROFILES: ExtensionActionOutputProfile[] = ['agent-compact', 'agent-paginated', 'markdown', 'ui-rich', 'debug-rich'];
 
@@ -65,6 +70,7 @@ type ExtensionHostContributionBaseEntry = Omit<
   'hasInputSchema' | 'requiredInputKeys' | 'inputPropertyKeys' | 'inputDefaultKeys'
 >;
 
+// --- eforge:region public-dispatch-api ---
 export function summarizeExtensionContributionManifest(
   manifest: ExtensionContributionManifestResponse,
   options: ExtensionHostContributionProjectionOptions = {},
@@ -111,61 +117,6 @@ export function showExtensionContributionManifestEntry(
 
 export const getExtensionContributionManifestEntry = showExtensionContributionManifestEntry;
 
-export function summarizeExtensionContributionInvocationInput(input: ExtensionJsonObject): ExtensionHostContributionInputSummary {
-  const serialized = JSON.stringify(input) ?? '{}';
-  const rawInputKeys = Object.keys(input).sort((left, right) => left.localeCompare(right));
-  const inputKeys = rawInputKeys
-    .slice(0, FAILED_INVOCATION_INPUT_KEY_MAX_COUNT)
-    .map((key) => truncateForHostEnvelope(key, FAILED_INVOCATION_INPUT_KEY_MAX_LENGTH));
-  const truncatedInputKeyCount = rawInputKeys.filter((key) => key.length > FAILED_INVOCATION_INPUT_KEY_MAX_LENGTH).length;
-  const omittedInputKeyCount = Math.max(0, rawInputKeys.length - inputKeys.length);
-  return {
-    inputKeys,
-    inputKeyCount: rawInputKeys.length,
-    serializedInputSize: serialized.length,
-    ...(omittedInputKeyCount > 0 && { omittedInputKeyCount }),
-    ...(truncatedInputKeyCount > 0 && { truncatedInputKeyCount }),
-  };
-}
-
-export function createExtensionContributionFailedInvocationEnvelope(
-  result: ExtensionHostContributionInvokeResult,
-): ExtensionHostContributionFailedInvocationEnvelope | undefined {
-  if (result.response.ok) return undefined;
-  const { input: _input, requestedBy, ...target } = result.target;
-  const redactedMessage = redactInputValuesFromHostEnvelopeError(result.response.error.message, result.target.input);
-  const errorMessage = truncateForHostEnvelope(redactedMessage, FAILED_INVOCATION_ERROR_MESSAGE_MAX_LENGTH);
-  return {
-    ok: false,
-    invocationId: result.response.invocationId,
-    target,
-    requestedBy,
-    error: {
-      code: result.response.error.code,
-      message: errorMessage,
-      ...(errorMessage.length < redactedMessage.length && { messageTruncated: true }),
-    },
-    inputSummary: summarizeExtensionContributionInvocationInput(result.target.input),
-  };
-}
-
-function truncateForHostEnvelope(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
-}
-
-function redactInputValuesFromHostEnvelopeError(message: string, input: ExtensionJsonObject): string {
-  return collectLongStringInputValues(input)
-    .reduce((redacted, value) => redacted.split(value).join('[redacted input value]'), message);
-}
-
-function collectLongStringInputValues(value: unknown): string[] {
-  if (typeof value === 'string') return value.length >= FAILED_INVOCATION_INPUT_VALUE_REDACTION_MIN_LENGTH ? [value] : [];
-  if (Array.isArray(value)) return value.flatMap((item) => collectLongStringInputValues(item));
-  if (value !== null && typeof value === 'object') return Object.values(value).flatMap((item) => collectLongStringInputValues(item));
-  return [];
-}
-
 export function resolveExtensionContributionInvocation(
   manifest: ExtensionContributionManifestResponse,
   params: ExtensionHostContributionInvokeParams,
@@ -175,6 +126,9 @@ export function resolveExtensionContributionInvocation(
 
 function validateExtensionContributionInvocationParams(params: ExtensionHostContributionInvokeParams): ExtensionJsonObject {
   if (typeof params.id !== 'string' || params.id.trim().length === 0) throw new Error('"id" is required when action is "invoke"');
+  if (params.kind !== undefined && !EXTENSION_HOST_CONTRIBUTION_KINDS.includes(params.kind)) throw new Error('"kind" must be action, command, or deep-link');
+  const requestedBy = safeParseWithSchema(ExtensionActionRequestedBySchema, params.requestedBy);
+  if (!requestedBy.success) throw new Error(`"requestedBy" is invalid: ${formatSchemaError(requestedBy.error)}`);
   return normalizeInput(params.input);
 }
 
@@ -235,6 +189,9 @@ export async function invokeEforgeExtensionContributionIfRunning(opts: {
   return response ? { target, response } : null;
 }
 
+// --- eforge:endregion public-dispatch-api ---
+
+// --- eforge:region contribution-projection ---
 function buildContributionEntries(
   manifest: ExtensionContributionManifestResponse,
   options: ExtensionHostContributionProjectionOptions,
@@ -455,6 +412,9 @@ function buildActionLookup(entries: ExtensionActionManifestEntry[]): ActionLooku
   return new Map(entries.map((entry) => [entry.id, entry]));
 }
 
+// --- eforge:endregion contribution-projection ---
+
+// --- eforge:region contribution-resolution ---
 function inferKind(manifest: ExtensionContributionManifestResponse, id: string): ExtensionHostContributionKind {
   const matches: ExtensionHostContributionKind[] = [];
   if (manifest.actions.some((entry) => entry.id === id)) matches.push('action');
@@ -568,6 +528,9 @@ function combineContributionAvailability(
   return entryAvailability ?? actionAvailability;
 }
 
+// --- eforge:endregion contribution-resolution ---
+
+// --- eforge:region dispatch-helpers ---
 function unavailableResponse(message: string): ExtensionActionInvokeResponse {
   return {
     ok: false,
@@ -583,3 +546,4 @@ function normalizeInput(input: ExtensionJsonObject | undefined): ExtensionJsonOb
   }
   return value;
 }
+// --- eforge:endregion dispatch-helpers ---
