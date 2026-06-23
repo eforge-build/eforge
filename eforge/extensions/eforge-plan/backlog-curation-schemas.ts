@@ -5,11 +5,9 @@ import {
   EforgePlanPlanningRequestedOutputSectionSchema,
   ExtensionAgentTaskIdSchema,
   ExtensionAgentTaskStatusSchema,
-  // --- eforge:region plan-01-curation-packets-cache ---
   BacklogCurationMapReduceCapDiagnosticSchema,
   BacklogCurationMapReduceDiagnosticSchema,
   BacklogCurationMapReduceSourceBundleSchema,
-  // --- eforge:endregion plan-01-curation-packets-cache ---
 } from '@eforge-build/client';
 import { BacklogStatusSchema, JsonValueSchema, RecommendationBlockedChainSchema, RecommendationDerivedStatusSchema, RecommendationItemRefSchema, RecommendationProfileSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
@@ -23,11 +21,9 @@ export const AnalyzeAllBacklogInputSchema = Type.Object({
 
 export const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
 
-// --- eforge:region plan-01-curation-packets-cache ---
 export const BacklogCurationProviderMapReduceBundleSchema = BacklogCurationMapReduceSourceBundleSchema;
 export const BacklogCurationProviderDiagnosticSchema = BacklogCurationMapReduceDiagnosticSchema;
 export const BacklogCurationProviderCapDiagnosticSchema = BacklogCurationMapReduceCapDiagnosticSchema;
-// --- eforge:endregion plan-01-curation-packets-cache ---
 
 const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,

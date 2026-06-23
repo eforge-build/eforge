@@ -8,9 +8,7 @@ import {
   safeParseBacklogCurationMapReduceSourceBundle,
   safeParseExtensionAgentTaskStartRequest,
   type EforgePlanPlanningDraftResult,
-  // --- eforge:region plan-03-daemon-map-reduce-integration ---
   type BacklogCurationMapReduceSourceBundle,
-  // --- eforge:endregion plan-03-daemon-map-reduce-integration ---
   type ExtensionAgentTaskCancelResponse,
   type ExtensionAgentTaskGetResponse,
   type ExtensionAgentTaskKind,
@@ -30,7 +28,6 @@ import {
   emitAgentTaskStart,
   sanitizeMetadata,
 } from './agent-task-events.js';
-// --- eforge:region plan-03-daemon-map-reduce-integration ---
 import {
   buildBacklogCurationRuntimeIdentity,
   isBacklogCurationMapReduceBundle,
@@ -38,7 +35,6 @@ import {
   runBacklogCurationMapReduceTask,
   type BacklogCurationMapReduceProviderHooks,
 } from './backlog-curation-map-reduce-runner.js';
-// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 import {
   AgentTaskStoreError,
   assertValidAgentTaskId,
@@ -160,7 +156,6 @@ export class ExtensionAgentTaskService {
     const agentRuntimes = await resolveAgentRuntimes(this.context.options.agentRuntimes, config, buildAgentRuntimeRegistry, singletonRegistry);
     const { harness, toolbeltSummary } = agentRuntimes.forRoleResolved('planner');
     const plannerConfig = resolveAgentConfig('planner', config, undefined, toolbeltSummary);
-    // --- eforge:region plan-03-daemon-map-reduce-integration ---
     if (isEforgePlanCurationMapReduceTask(deferredSource, options.owner)) {
       return await runBacklogCurationMapReduceTask({
         ...plannerConfig,
@@ -177,7 +172,6 @@ export class ExtensionAgentTaskService {
         sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
       });
     }
-    // --- eforge:endregion plan-03-daemon-map-reduce-integration ---
     let sawProgress = false;
     const task = runEforgePlanPlanningDraftTask({
       ...plannerConfig,
@@ -375,14 +369,12 @@ function countOutputSections(result: EforgePlanPlanningDraftResult): number {
 type DeferredSourceProviderSpec = NonNullable<ExtensionAgentTaskStartRequest['input']['sourceProvider']>;
 type DeferredSourceProviderHandler = (context: { cwd: string; input: Record<string, unknown>; signal: AbortSignal }) => Promise<unknown> | unknown;
 
-// --- eforge:region plan-03-daemon-map-reduce-integration ---
 interface ResolvedDeferredSourceInput {
   input: ExtensionAgentTaskStartRequest['input'];
   sourceText?: string;
   structuredSource?: unknown;
   providerHooks?: BacklogCurationMapReduceProviderHooks;
 }
-// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 
 async function runDeferredSourceProvider(options: { cwd: string; owner: ExtensionAgentTaskOwner; provider: DeferredSourceProviderSpec; signal: AbortSignal }): Promise<{ sourceText: string; structuredSource?: unknown; providerHooks: BacklogCurationMapReduceProviderHooks }> {
   throwIfSourceProviderAborted(options.signal);
@@ -394,7 +386,6 @@ async function runDeferredSourceProvider(options: { cwd: string; owner: Extensio
   if (!isRecord(result) || typeof result.sourceText !== 'string') {
     throw new AgentTaskServiceError(`Deferred source provider ${options.provider.module} did not return { sourceText: string }`, 500);
   }
-  // --- eforge:region plan-03-daemon-map-reduce-integration ---
   const parsedStructuredSource = result.backlogCurationMapReduce === undefined ? undefined : safeParseBacklogCurationMapReduceSourceBundle(result.backlogCurationMapReduce);
   if (parsedStructuredSource !== undefined && !parsedStructuredSource.success) {
     throw new AgentTaskServiceError(`Invalid backlogCurationMapReduce source: ${parsedStructuredSource.error.message}`, 500);
@@ -404,7 +395,6 @@ async function runDeferredSourceProvider(options: { cwd: string; owner: Extensio
     ...(parsedStructuredSource?.success === true && { structuredSource: parsedStructuredSource.data }),
     providerHooks: resolveBacklogCurationMapReduceProviderHooks(moduleExports),
   };
-  // --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 }
 
 async function resolveProviderModulePath(extensionPath: string, moduleSpecifier: string): Promise<string> {
@@ -455,7 +445,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-// --- eforge:region plan-03-daemon-map-reduce-integration ---
 function isEforgePlanCurationMapReduceTask(source: ResolvedDeferredSourceInput, owner: ExtensionAgentTaskOwner | undefined): source is ResolvedDeferredSourceInput & { structuredSource: BacklogCurationMapReduceSourceBundle; providerHooks: BacklogCurationMapReduceProviderHooks } {
   if (source.structuredSource === undefined || source.providerHooks === undefined || !isBacklogCurationMapReduceBundle(source.structuredSource)) return false;
   const bundle = source.structuredSource;
@@ -470,7 +459,6 @@ function sourceProviderItemAuditConcurrency(request: ExtensionAgentTaskStartRequ
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
-// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 
 function throwIfSourceProviderAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new Error('Deferred source provider was aborted.');

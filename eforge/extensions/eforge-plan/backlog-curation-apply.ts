@@ -115,7 +115,6 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
     return { valid: false, errors: previewErrorsFromError(err) };
   }
 }
-// --- eforge:region plan-03-daemon-map-reduce-integration ---
 export async function validateBacklogCurationPlanningDraftResult(cwd: string, result: unknown, context?: { sourceFingerprint?: string }): Promise<string[]> {
   try {
     const expectedSourceFingerprint = context?.sourceFingerprint;
@@ -146,7 +145,6 @@ export async function validateBacklogCurationPlanningDraftResult(cwd: string, re
     return previewErrorsFromError(err).map((error) => `${error.path}: ${error.message}`);
   }
 }
-// --- eforge:endregion plan-03-daemon-map-reduce-integration ---
 // --- eforge:endregion apply-entrypoint ---
 // --- eforge:region markdown-section-helpers ---
 export function applySectionOperations(body: string, operations: readonly { heading: string; action: 'replace' | 'append'; content: string }[]): string {

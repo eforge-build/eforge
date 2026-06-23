@@ -41,9 +41,7 @@ export const planningDraftSubmissionToolSchema = Type.Object({
   assumptionsOpenQuestions: Type.Array(Type.String()),
   nextSteps: Type.Optional(Type.Array(Type.String())),
   recommendations: Type.Optional(Type.Object({}, { additionalProperties: true })),
-  // --- eforge:region plan-02-engine-item-audit-reducer ---
   backlogCurationDraft: Type.Optional(EforgePlanPlanningBacklogCurationDraftSchema),
-  // --- eforge:endregion plan-02-engine-item-audit-reducer ---
   handoffDraft: Type.Optional(Type.Object({}, { additionalProperties: true })),
   handoffDrafts: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: true }), { minItems: 1 })),
   planDrafts: Type.Optional(Type.Array(Type.Object({

@@ -5,9 +5,7 @@ import {
 import { EforgePlanPlanningPlanRevisionTurnSchema } from './extension-agent-tasks/plan-revision.js';
 export * from './extension-agent-tasks/common.js';
 export * from './extension-agent-tasks/backlog-curation.js';
-// --- eforge:region plan-01-curation-packets-cache ---
 export * from './extension-agent-tasks/backlog-curation-map-reduce.js';
-// --- eforge:endregion plan-01-curation-packets-cache ---
 export * from './extension-agent-tasks/plan-revision.js';
 import { formatSchemaError, parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
 
