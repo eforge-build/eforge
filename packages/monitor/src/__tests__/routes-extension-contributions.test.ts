@@ -40,6 +40,7 @@ export default function extension(eforge) {
   eforge.registerAction({ id: 'bad-output', title: 'Bad output', inputSchema: empty, handler() { return undefined; } });
   eforge.registerAction({ id: 'schema-output', title: 'Schema output', inputSchema: empty, outputSchema: Type.Object({ ok: Type.Boolean() }), handler() { return { ok: 'no' }; } });
   eforge.registerAction({ id: 'slow', title: 'Slow', inputSchema: empty, async handler() { await new Promise((resolve) => setTimeout(resolve, 50)); return { ok: true }; } });
+  eforge.registerAction({ id: 'enqueue-build', title: 'Enqueue build', inputSchema: empty, async handler(_input, ctx) { return await ctx.buildQueue.enqueue({ source: 'prd.md', postMerge: ['pnpm build'], landingAction: 'leave' }); } });
   eforge.registerConsoleContribution({ id: 'panel', title: 'Panel', blocks: [{ rendererId: 'text', content: 'Hello' }] });
   eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', srcDoc: '<h1>Board</h1>', allowedActions: ['echo'] });
   eforge.registerIntegrationCommand({ id: 'cmd', label: 'Echo command', action: { actionId: 'echo' } });
@@ -127,6 +128,25 @@ describe('extension contribution routes', () => {
         ok: false,
         error: { code: 'invalid-input', message: 'Select exactly one backlog source.', details: [{ selectorCount: 2 }] },
       });
+    } finally { await harness.close(); }
+  });
+
+  it('forwards generic build queue enqueue fields from extension actions to the worker', async () => {
+    const spawned: Array<{ command: string; args: string[] }> = [];
+    const harness = await startContentRouteHarness({
+      serverOptions: {
+        workerTracker: {
+          spawnWorker: (command, args) => { spawned.push({ command, args }); return { sessionId: 'enqueue-session', pid: 77 }; },
+          cancelWorker: () => false,
+        },
+      },
+    });
+    try {
+      await seedExtension(harness.cwd, extensionSource);
+      const { res, body } = await invoke(harness, await actionIdFor(harness, 'enqueue-build'), {});
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ ok: true, output: { sessionId: 'enqueue-session', pid: 77, autoBuild: false } });
+      expect(spawned).toEqual([{ command: 'enqueue', args: ['prd.md', '--post-merge', 'pnpm build', '--landing-action', 'leave'] }]);
     } finally { await harness.close(); }
   });
 

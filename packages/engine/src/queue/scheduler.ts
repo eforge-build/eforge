@@ -6,7 +6,7 @@
  * plus `queue:prd:complete` events forwarded from the watcher's event pump.
  *
  * Inputs arrive via a Node EventEmitter bus:
- *   - `queue:mutation` — injected by HTTP routes (enqueue, playbook-enqueue, apply-recovery, kick)
+ *   - `queue:mutation` — injected by HTTP routes (enqueue, apply-recovery, kick)
  *   - `queue:prd:complete` — forwarded from the watcher pump after each build finishes
  *
  * Bus subscriptions are registered in `start()` so callers can attach listeners
@@ -60,7 +60,7 @@ export type QueueSchedulerChildStatus = 'completed' | 'failed' | 'skipped' | 'al
 
 /** Events the scheduler reacts to on the bus. */
 export type SchedulerInputEvent =
-  | { type: 'queue:mutation'; reason: 'enqueue' | 'playbook-enqueue' | 'apply-recovery' | 'external'; timestamp: string }
+  | { type: 'queue:mutation'; reason: 'enqueue' | 'apply-recovery' | 'external'; timestamp: string }
   | { type: 'queue:prd:complete'; prdId: string; status: 'completed' | 'failed' | 'skipped'; timestamp: string };
 
 /**

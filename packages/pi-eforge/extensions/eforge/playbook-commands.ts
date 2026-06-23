@@ -1,737 +1,89 @@
-/**
- * Native Pi command handler for playbook management.
- *
- * Provides interactive selector/panel UX for listing, running, promoting,
- * and demoting playbooks (/eforge:playbook). Create and Edit are conversational
- * and delegate to the Pi skill for scope-classification reasoning and
- * section-by-section walkthrough. Falls back to skill forwarding when the
- * Pi UI is not available.
- */
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { formatExtensionContributionOutputText, type ExtensionJsonObject } from '@eforge-build/client';
+import { eforgePlaybooksUnavailableMessage, invokePlaybookContributionIfRunning, type PlaybookCommandAction } from './playbook-contributions.js';
+import { DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
+import { showInfoPanel, type UIContext } from './ui-helpers.js';
+import { promptForPlaybookLandingGate } from './landing-gate.js';
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  apiPlaybookListIfRunning,
-  apiPlaybookRunIfRunning,
-  apiPlaybookPromoteIfRunning,
-  apiPlaybookDemoteIfRunning,
-  apiGetQueueIfRunning,
-  type PlaybookListEntry,
-  type PlaybookRunResponse,
-  type QueueItem,
-} from "@eforge-build/client";
-import { DAEMON_NOT_RUNNING_GUIDANCE } from "./daemon-requests.js";
-import {
-  showSelectOverlay,
-  showInfoOverlay,
-  withLoader,
-  type UIContext,
-} from "./ui-helpers";
-import { promptForPlaybookLandingGate } from "./landing-gate.js";
-import type { LandingAction } from "./trunk-landing.js";
+// Planning-mode results render planningEntry metadata; autonomous runs forward afterQueueId and do not call apiGetQueueIfRunning before invoking the contribution.
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function sourceBadge(entry: PlaybookListEntry): string {
-  const base = entry.source;
-  if (entry.shadows && entry.shadows.length > 0) {
-    return `${base} (shadows ${entry.shadows.map((s) => s.source).join(", ")})`;
-  }
-  return base;
-}
-
-function formatPlaybookItem(entry: PlaybookListEntry, index: number) {
-  const badge = sourceBadge(entry);
-  const shadowNote =
-    entry.shadows && entry.shadows.length > 0
-      ? ` <- shadows ${entry.shadows[0].source}`
-      : "";
-  const profileNote = entry.profile ? ` [profile: ${entry.profile}]` : "";
-  return {
-    value: entry.name,
-    label: `${index + 1}. ${entry.name}  [${badge}]${shadowNote}`,
-    description: `${entry.description}${profileNote}`,
-  };
-}
-
-/** Fetch and format queue items as select options, returning the raw items too. */
-async function fetchRunningBuilds(
-  cwd: string,
-): Promise<{ items: QueueItem[]; runningItems: QueueItem[] }> {
-  try {
-    const result = await apiGetQueueIfRunning({ cwd });
-    if (result === null) return { items: [], runningItems: [] };
-    const items = result.data;
-    const runningItems = items.filter(
-      (item) => item.status === "running" || item.status === "pending" || item.status === "queued",
-    );
-    return { items, runningItems };
-  } catch {
-    return { items: [], runningItems: [] };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// /eforge:playbook — main entry point
-// ---------------------------------------------------------------------------
-
-export async function handlePlaybookCommand(
-  pi: ExtensionAPI,
-  ctx: UIContext | null,
-  args: string,
-): Promise<void> {
-  if (!ctx || !ctx.hasUI) {
-    pi.sendUserMessage(`/skill:eforge-playbook${args ? " " + args : ""}`);
-    return;
-  }
-
-  // Power-user shortcut: args like "run docs-sync", "list", "promote name", etc.
-  const trimmed = args.trim();
-  if (trimmed) {
-    const [branch, ...rest] = trimmed.split(/\s+/);
-    const name = rest.join(" ").trim();
-    switch (branch.toLowerCase()) {
-      case "create":
-        // Create requires conversational reasoning — delegate to skill
-        pi.sendUserMessage(
-          `/skill:eforge-playbook create${name ? " " + name : ""}`,
-        );
-        return;
-      case "edit":
-        // Edit requires section-by-section conversation — delegate to skill
-        pi.sendUserMessage(
-          `/skill:eforge-playbook edit${name ? " " + name : ""}`,
-        );
-        return;
-      case "run":
-        await handleRunBranch(pi, ctx, name);
-        return;
-      case "list":
-        await handleListBranch(pi, ctx);
-        return;
-      case "promote":
-        await handlePromoteBranch(pi, ctx, name);
-        return;
-      case "demote":
-        await handleDemoteBranch(pi, ctx, name);
-        return;
-      default:
-        // Unknown arg — fall through to no-args menu
-        break;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // No-args menu: fetch playbook list to gate branches
-  // ---------------------------------------------------------------------------
-
-  let playbooks: PlaybookListEntry[];
-  try {
-    const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    playbooks = result.data.playbooks;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to load playbooks:\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-
-  const hasPlaybooks = playbooks.length > 0;
-  const hasLocalPlaybooks = playbooks.some((p) => p.source === "project-local");
-  const hasTeamPlaybooks = playbooks.some((p) => p.source === "project-team");
-
-  const menuItems: { value: string; label: string; description: string }[] = [
-    {
-      value: "create",
-      label: "Create",
-      description: "Draft and save a new playbook",
+export function registerPlaybookCommand(pi: ExtensionAPI, getLatestCtx: () => UIContext | null): void {
+  pi.registerCommand("eforge:playbook", {
+    description: "Manage and run eforge playbooks through eforge-playbooks",
+    handler: async (args, ctx) => {
+      await handlePlaybookCommand(pi, (ctx as UIContext) ?? getLatestCtx(), args ?? "");
     },
-  ];
-
-  if (hasPlaybooks) {
-    menuItems.push(
-      {
-        value: "edit",
-        label: "Edit",
-        description: "Walk through a playbook section-by-section",
-      },
-      {
-        value: "run",
-        label: "Run",
-        description: "Enqueue an autonomous playbook, or start interactive planning for a planning-mode playbook",
-      },
-    );
-  }
-
-  menuItems.push({
-    value: "list",
-    label: "List",
-    description: "Read-only formatted listing of all playbooks",
   });
-
-  if (hasLocalPlaybooks) {
-    menuItems.push({
-      value: "promote",
-      label: "Promote",
-      description: "Move a .eforge/playbooks/ entry to eforge/playbooks/",
-    });
-  }
-
-  if (hasTeamPlaybooks) {
-    menuItems.push({
-      value: "demote",
-      label: "Demote",
-      description: "Move an eforge/playbooks/ entry back to .eforge/playbooks/",
-    });
-  }
-
-  const choice = await showSelectOverlay(ctx, "eforge - Playbooks", menuItems);
-  if (!choice) return;
-
-  switch (choice) {
-    case "create":
-      // Conversational — delegate to skill
-      pi.sendUserMessage("/skill:eforge-playbook create");
-      break;
-    case "edit":
-      // Conversational — delegate to skill
-      pi.sendUserMessage("/skill:eforge-playbook edit");
-      break;
-    case "run":
-      await handleRunBranch(pi, ctx, "");
-      break;
-    case "list":
-      await handleListBranch(pi, ctx);
-      break;
-    case "promote":
-      await handlePromoteBranch(pi, ctx, "");
-      break;
-    case "demote":
-      await handleDemoteBranch(pi, ctx, "");
-      break;
-  }
 }
 
-// ---------------------------------------------------------------------------
-// Branch: Run
-// ---------------------------------------------------------------------------
-
-async function handleRunBranch(
-  pi: ExtensionAPI,
-  ctx: UIContext,
-  preSelectedName: string,
-): Promise<void> {
-  // Step 1: Fetch playbooks
-  let playbooks: PlaybookListEntry[];
-  try {
-    const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    playbooks = result.data.playbooks;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to load playbooks:\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
+export async function handlePlaybookCommand(pi: ExtensionAPI, ctx: UIContext | null, rawArgs: string): Promise<void> {
+  if (!ctx || !ctx.hasUI) {
+    pi.sendUserMessage(`Use eforge_playbook with these arguments: ${rawArgs}`.trim());
     return;
   }
-
-  if (playbooks.length === 0) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Playbooks",
-      "No playbooks found.\n\nUse `/eforge:playbook create` (or choose Create from the menu) to make one.",
-    );
+  const parsed = parsePlaybookArgs(rawArgs);
+  if (!parsed) {
+    await showInfoPanel(ctx, 'eforge playbook', 'Usage: /eforge:playbook <list|show|save|validate|copy|promote|demote|run> [name] [--key value]');
     return;
   }
-
-  // Step 2: Pick a playbook (pre-select if name provided)
-  let selectedName: string | null;
-  if (preSelectedName) {
-    const found = playbooks.find(
-      (p) => p.name.toLowerCase() === preSelectedName.toLowerCase(),
-    );
-    if (!found) {
-      await showInfoOverlay(
-        ctx,
-        "eforge - Playbook Not Found",
-        `No playbook named "${preSelectedName}" found.\n\nAvailable playbooks:\n${playbooks.map((p) => `- ${p.name} [${p.source}]`).join("\n")}`,
-      );
-      return;
-    }
-    selectedName = found.name;
-  } else {
-    const items = playbooks.map((p, i) => formatPlaybookItem(p, i));
-    selectedName = await showSelectOverlay(
-      ctx,
-      "eforge - Run Playbook",
-      items,
-    );
-    if (!selectedName) return;
-  }
-  const selectedEntry = playbooks.find((p) => p.name === selectedName);
-  if (selectedEntry?.mode === "planning") { await showPlanningPlaybookEntry(ctx, selectedName!); return; }
-
-  // Step 3c: Prompt for landing action (autonomous playbooks only)
-  const landingResult = await promptForPlaybookLandingGate(pi, ctx);
-  if (landingResult.cancelled) return;
-  const landingAction: LandingAction | undefined = landingResult.landingAction;
-  const landingAutoMerge: boolean | undefined = landingResult.landingAutoMerge;
-
-  // Step 3b: Check for in-flight builds (autonomous playbooks only)
-  const { runningItems } = await withLoader(
-    ctx,
-    "Checking queue...",
-    () => fetchRunningBuilds(ctx.cwd),
-  );
-
-  let afterQueueId: string | undefined;
-  let afterBuildTitle: string | undefined;
-
-  if (runningItems.length > 0) {
-    // Build wait-or-run-now options (user sees titles, never queue ids)
-    const waitOptions = [
-      {
-        value: "now",
-        label: "Run now",
-        description: "Enqueue immediately, no dependency",
-      },
-      ...runningItems.map((item) => ({
-        value: item.id,
-        label: `Wait for: ${item.title}`,
-        description: `[${item.status}] Runs after this build finishes`,
-      })),
-    ];
-
-    const waitChoice = await showSelectOverlay(
-      ctx,
-      "eforge - Active Builds Detected",
-      waitOptions,
-    );
-    if (!waitChoice) return;
-
-    if (waitChoice !== "now") {
-      // Resolve title -> queue id internally; user never sees the queue id
-      afterQueueId = waitChoice;
-      afterBuildTitle =
-        runningItems.find((i) => i.id === waitChoice)?.title ?? waitChoice;
-
-      // Confirm the mapping before enqueueing
-      const confirmChoice = await showSelectOverlay(
-        ctx,
-        `eforge - Confirm Wait`,
-        [
-          {
-            value: "confirm",
-            label: `Run after: ${afterBuildTitle}`,
-            description: `"${selectedName}" will start once this build finishes`,
-          },
-          {
-            value: "cancel",
-            label: "Cancel",
-            description: "Go back to the previous menu",
-          },
-        ],
-      );
-      if (!confirmChoice || confirmChoice === "cancel") return;
-    }
-  }
-
-  // Step 4: Enqueue
-  let runResult: PlaybookRunResponse | null = null;
+  let input = parsed.input;
   try {
-    const enqueueBody = afterQueueId
-      ? { name: selectedName!, afterQueueId, ...(landingAction ? { landingAction } : {}), ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) }
-      : { name: selectedName!, ...(landingAction ? { landingAction } : {}), ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) };
-    const enqueueR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
-      apiPlaybookRunIfRunning({
-        cwd: ctx.cwd,
-        body: enqueueBody,
-      }),
-    );
-    if (enqueueR === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    runResult = enqueueR.data;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // If upstream no longer active (404), fall back to immediate enqueue
-    if (afterQueueId && /not found|404/i.test(msg)) {
-      await showInfoOverlay(
-        ctx,
-        "eforge - Build Already Finished",
-        `The build you selected has already finished. Running **${selectedName}** now instead.`,
-      );
-      try {
-        const fallbackBody = { name: selectedName!, ...(landingAction ? { landingAction } : {}), ...(landingAutoMerge !== undefined ? { landingAutoMerge } : {}) };
-        const fallbackR = await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
-          apiPlaybookRunIfRunning({
-            cwd: ctx.cwd,
-            body: fallbackBody,
-          }),
-        );
-        if (fallbackR === null) {
-          await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-          return;
-        }
-        afterQueueId = undefined;
-        afterBuildTitle = undefined;
-        runResult = fallbackR.data;
-      } catch (fallbackErr) {
-        await showInfoOverlay(
-          ctx,
-          "eforge - Error",
-          `Failed to enqueue playbook "${selectedName}":\n\n${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
-        );
+    if (parsed.action === 'run' && input.mode !== 'planning') {
+      const choice = await promptForPlaybookLandingGate(pi, ctx);
+      if (choice.cancelled) {
+        await showInfoPanel(ctx, 'eforge playbook', 'Playbook run cancelled before enqueue.');
         return;
       }
-    } else {
-      await showInfoOverlay(
-        ctx,
-        "eforge - Error",
-        `Failed to enqueue playbook "${selectedName}":\n\n${msg}`,
-      );
+      input = compact({
+        ...input,
+        landingAction: choice.landingAction ?? input.landingAction,
+        landingAutoMerge: choice.landingAutoMerge ?? input.landingAutoMerge,
+      });
+    }
+    const result = await invokePlaybookContributionIfRunning({ cwd: ctx.cwd, action: parsed.action, input: input as ExtensionJsonObject });
+    if (!result.response.ok) {
+      await showInfoPanel(ctx, 'eforge playbook - Error', result.response.error.message);
       return;
     }
-  }
-
-  if (runResult === null) return;
-  if (runResult.kind === "requires-agent" || (runResult as { kind: string }).kind === "planning-unavailable") await showPlanningRunResult(ctx, runResult);
-  else {
-    const afterNote = afterBuildTitle
-      ? `\n\nIt will start after **${afterBuildTitle}** completes.`
-      : "";
-    await showInfoOverlay(
-      ctx,
-      "eforge - Playbook Enqueued",
-      `Playbook **${selectedName}** enqueued. Queued as \`${runResult.id}\`.${afterNote}`,
-    );
+    await showInfoPanel(ctx, 'eforge playbook', formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await showInfoPanel(ctx, 'eforge playbook - Error', message.includes(DAEMON_NOT_RUNNING_GUIDANCE) ? message : eforgePlaybooksUnavailableMessage(message));
   }
 }
-async function showPlanningPlaybookEntry(ctx: UIContext, selectedName: string): Promise<void> {
-  try {
-    const result = await withLoader(ctx, `Checking planning entry for ${selectedName}...`, () => apiPlaybookRunIfRunning({ cwd: ctx.cwd, body: { name: selectedName } }));
-    if (result === null) await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE); else await showPlanningRunResult(ctx, result.data);
-  } catch (err) { await showInfoOverlay(ctx, "eforge - Error", `Failed to resolve planning entry for playbook "${selectedName}":\n\n${err instanceof Error ? err.message : String(err)}`); }
-}
-async function showPlanningRunResult(ctx: UIContext, runResult: PlaybookRunResponse): Promise<void> {
-  const result = runResult as unknown as { kind: string; id?: string; name: string; planningEntry?: { integrationCommandId: string; workstationUrl: string }; requiredCapability?: { name: string }; diagnostics?: Array<{ message: string }> };
-  if (result.kind === "enqueued") await showInfoOverlay(ctx, "eforge - Playbook Enqueued", `Playbook enqueued. Queued as \`${result.id}\`.`);
-  else if (result.kind === "requires-agent") await showInfoOverlay(ctx, "eforge - Planning Entry", `Playbook **${result.name}** is planning-mode.\n\nContinue via integration command contribution:\n\`eforge_extension_contribution({ action: "invoke", kind: "command", id: "${result.planningEntry?.integrationCommandId}", input: {} })\`\n\nOr open the eforge-plan workstation deep link:\n\`${result.planningEntry?.workstationUrl}\``);
-  else await showInfoOverlay(ctx, "eforge - Planning Capability Unavailable", [`Playbook **${result.name}** is planning-mode, but required capability \`${result.requiredCapability?.name}\` is unavailable.`, "", ...(result.diagnostics ?? []).map((diagnostic) => `- ${diagnostic.message}`), "", "Load, trust, and reload eforge-plan, then use the generic planning entry contribution or eforge-plan workstation deep link."].join("\n"));
-}
-async function handleListBranch(
-  _pi: ExtensionAPI,
-  ctx: UIContext,
-): Promise<void> {
-  let playbooks: PlaybookListEntry[];
-  try {
-    const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    playbooks = result.data.playbooks;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to load playbooks:\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
+
+function parsePlaybookArgs(rawArgs: string): { action: PlaybookCommandAction; input: Record<string, unknown> } | null {
+  const tokens = tokenize(rawArgs);
+  const action = tokens.shift() as PlaybookCommandAction | undefined;
+  if (!action || !['list', 'show', 'save', 'validate', 'copy', 'promote', 'demote', 'run'].includes(action)) return null;
+  const input: Record<string, unknown> = {};
+  const nameActions = new Set(['show', 'copy', 'promote', 'demote', 'run']);
+  if (nameActions.has(action) && tokens[0] && !tokens[0].startsWith('--')) input.name = tokens.shift();
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (!token.startsWith('--')) continue;
+    const key = toCamel(token.slice(2));
+    const next = tokens[i + 1];
+    if (next === undefined || next.startsWith('--')) input[key] = true;
+    else input[key] = parseScalar(next), i++;
   }
-
-  if (playbooks.length === 0) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Playbooks",
-      "No playbooks found.\n\nUse `/eforge:playbook create` (or choose Create from the menu) to make one.",
-    );
-    return;
-  }
-
-  // Group by scope tier
-  const userPlaybooks = playbooks.filter((p) => p.source === "user");
-  const teamPlaybooks = playbooks.filter((p) => p.source === "project-team");
-  const localPlaybooks = playbooks.filter((p) => p.source === "project-local");
-
-  const lines: string[] = [`**${playbooks.length} playbook(s)**\n`];
-
-  if (localPlaybooks.length > 0) {
-    lines.push("**Project-local** (`.eforge/playbooks/`):");
-    for (const p of localPlaybooks) {
-      const shadowNote =
-        p.shadows && p.shadows.length > 0
-          ? ` ← shadows ${p.shadows.map((s) => s.source).join(", ")}`
-          : "";
-      const profileNote = p.profile ? `  [profile: ${p.profile}]` : "";
-      lines.push(`- **${p.name}**${shadowNote}${profileNote}  \n  ${p.description}`);
-    }
-    lines.push("");
-  }
-
-  if (teamPlaybooks.length > 0) {
-    lines.push("**Project-team** (`eforge/playbooks/`):");
-    for (const p of teamPlaybooks) {
-      const shadowedBy =
-        localPlaybooks.find((l) => l.name === p.name) != null
-          ? " ⚠ shadowed by project-local"
-          : "";
-      const profileNote = p.profile ? `  [profile: ${p.profile}]` : "";
-      lines.push(`- **${p.name}**${shadowedBy}${profileNote}  \n  ${p.description}`);
-    }
-    lines.push("");
-  }
-
-  if (userPlaybooks.length > 0) {
-    lines.push("**User** (`~/.config/eforge/playbooks/`):");
-    for (const p of userPlaybooks) {
-      const profileNote = p.profile ? `  [profile: ${p.profile}]` : "";
-      lines.push(`- **${p.name}**${profileNote}  \n  ${p.description}`);
-    }
-  }
-
-  await showInfoOverlay(ctx, "eforge - Playbooks", lines.join("\n"));
+  return { action, input: compact(input) };
 }
 
-// ---------------------------------------------------------------------------
-// Branch: Promote
-// ---------------------------------------------------------------------------
-
-async function handlePromoteBranch(
-  _pi: ExtensionAPI,
-  ctx: UIContext,
-  preSelectedName: string,
-): Promise<void> {
-  let playbooks: PlaybookListEntry[];
-  try {
-    const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    playbooks = result.data.playbooks;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to load playbooks:\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-
-  const localPlaybooks = playbooks.filter((p) => p.source === "project-local");
-
-  if (localPlaybooks.length === 0) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Promote",
-      "No project-local playbooks to promote.\n\nProject-local playbooks live in `.eforge/playbooks/` and can be promoted to `eforge/playbooks/` to share with the team.",
-    );
-    return;
-  }
-
-  let selectedName: string | null;
-  if (preSelectedName) {
-    const found = localPlaybooks.find(
-      (p) => p.name.toLowerCase() === preSelectedName.toLowerCase(),
-    );
-    if (!found) {
-      await showInfoOverlay(
-        ctx,
-        "eforge - Not Found",
-        `No project-local playbook named "${preSelectedName}" found.\n\nLocal playbooks:\n${localPlaybooks.map((p) => `- ${p.name}`).join("\n")}`,
-      );
-      return;
-    }
-    selectedName = found.name;
-  } else {
-    const items = localPlaybooks.map((p, i) => ({
-      value: p.name,
-      label: `${i + 1}. ${p.name}`,
-      description: p.description,
-    }));
-    selectedName = await showSelectOverlay(
-      ctx,
-      "eforge - Promote: Pick Playbook",
-      items,
-    );
-    if (!selectedName) return;
-  }
-
-  // Shadow trade-off notice + confirm
-  const confirm = await showSelectOverlay(
-    ctx,
-    `eforge - Promote: ${selectedName}`,
-    [
-      {
-        value: "promote",
-        label: "Promote to project-team",
-        description: `Moves .eforge/playbooks/${selectedName}.md → eforge/playbooks/${selectedName}.md`,
-      },
-      {
-        value: "cancel",
-        label: "Cancel",
-        description:
-          "Note: after promotion, team-side improvements to a same-named playbook will be shadowed by this copy",
-      },
-    ],
-  );
-  if (confirm !== "promote") return;
-
-  let destPath: string;
-  try {
-    const result = await withLoader(ctx, `Promoting ${selectedName}...`, () =>
-      apiPlaybookPromoteIfRunning({ cwd: ctx.cwd, body: { name: selectedName! } }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    destPath = result.data.path;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to promote "${selectedName}":\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-
-  await showInfoOverlay(
-    ctx,
-    "eforge - Promoted",
-    `Playbook **${selectedName}** promoted to \`${destPath}\`.`,
-  );
+function tokenize(input: string): string[] {
+  return input.match(/"[^"]*"|'[^']*'|\S+/g)?.map((token) => token.replace(/^(["'])(.*)\1$/, '$2')) ?? [];
 }
 
-// ---------------------------------------------------------------------------
-// Branch: Demote
-// ---------------------------------------------------------------------------
+function toCamel(value: string): string {
+  return value.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
 
-async function handleDemoteBranch(
-  _pi: ExtensionAPI,
-  ctx: UIContext,
-  preSelectedName: string,
-): Promise<void> {
-  let playbooks: PlaybookListEntry[];
-  try {
-    const result = await withLoader(ctx, "Loading playbooks...", () =>
-      apiPlaybookListIfRunning({ cwd: ctx.cwd }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    playbooks = result.data.playbooks;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to load playbooks:\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
+function parseScalar(value: string): string | boolean {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
+}
 
-  const teamPlaybooks = playbooks.filter((p) => p.source === "project-team");
-
-  if (teamPlaybooks.length === 0) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Demote",
-      "No project-team playbooks to demote.\n\nProject-team playbooks live in `eforge/playbooks/`. Demoting creates a personal `.eforge/playbooks/` shadow.",
-    );
-    return;
-  }
-
-  let selectedName: string | null;
-  if (preSelectedName) {
-    const found = teamPlaybooks.find(
-      (p) => p.name.toLowerCase() === preSelectedName.toLowerCase(),
-    );
-    if (!found) {
-      await showInfoOverlay(
-        ctx,
-        "eforge - Not Found",
-        `No project-team playbook named "${preSelectedName}" found.\n\nTeam playbooks:\n${teamPlaybooks.map((p) => `- ${p.name}`).join("\n")}`,
-      );
-      return;
-    }
-    selectedName = found.name;
-  } else {
-    const items = teamPlaybooks.map((p, i) => ({
-      value: p.name,
-      label: `${i + 1}. ${p.name}`,
-      description: p.description,
-    }));
-    selectedName = await showSelectOverlay(
-      ctx,
-      "eforge - Demote: Pick Playbook",
-      items,
-    );
-    if (!selectedName) return;
-  }
-
-  // Shadow trade-off notice + confirm
-  const confirm = await showSelectOverlay(
-    ctx,
-    `eforge - Demote: ${selectedName}`,
-    [
-      {
-        value: "demote",
-        label: "Demote to project-local",
-        description: `Creates .eforge/playbooks/${selectedName}.md (shadows the team version)`,
-      },
-      {
-        value: "cancel",
-        label: "Cancel",
-        description: "The daemon will run your local copy instead of the team version",
-      },
-    ],
-  );
-  if (confirm !== "demote") return;
-
-  let destPath: string;
-  try {
-    const result = await withLoader(ctx, `Demoting ${selectedName}...`, () =>
-      apiPlaybookDemoteIfRunning({ cwd: ctx.cwd, body: { name: selectedName! } }),
-    );
-    if (result === null) {
-      await showInfoOverlay(ctx, "eforge - Daemon Not Running", DAEMON_NOT_RUNNING_GUIDANCE);
-      return;
-    }
-    destPath = result.data.path;
-  } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to demote "${selectedName}":\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-
-  await showInfoOverlay(
-    ctx,
-    "eforge - Demoted",
-    `Playbook **${selectedName}** demoted to \`${destPath}\`.\n\nThe daemon will now run your local copy instead of the team version.`,
-  );
+function compact(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 }

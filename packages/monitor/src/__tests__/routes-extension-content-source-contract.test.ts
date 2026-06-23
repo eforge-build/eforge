@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -6,8 +6,6 @@ const ROUTE_ROOT = join(process.cwd(), 'packages/monitor/src/routes');
 const CONTENT_ROUTE_FILES = [
   'extension-content.ts',
   'content-validation.ts',
-  'playbooks.ts',
-  'playbook-service.ts',
   'session-plans.ts',
   'session-plan-service.ts',
   'session-plan-sets.ts',
@@ -102,25 +100,18 @@ describe('extension content route source contracts', () => {
     }
   });
 
-  it('keeps playbook services behind the bundled workflow adapter', () => {
-    const service = readRouteFile('playbook-service.ts');
-    expect(service).toContain("await import('@eforge-build/input')");
-    expect(service).toContain('createPlaybookWorkflowAdapter');
-    expect(service).toMatch(/\.scoped\.(?:list|load|save|write|move|promote|demote|copy|validateRaw|compileAutonomous|seedPlanningSessionPlan)\b/);
-    for (const helperName of [
-      'listPlaybooks',
-      'loadPlaybook',
-      'writePlaybook',
-      'movePlaybook',
-      'copyPlaybookToScope',
-      'validatePlaybook',
-      'playbookToBuildSource',
-      'createSessionPlanFromPlaybookSeed',
-      'resolveSessionPlanPath',
-      'writeSessionPlan',
-    ]) {
-      expect(service, helperName).not.toMatch(new RegExp(`\\b(?:const|let|var)\\s*\\{[^}]*${helperName}[^}]*\\}\\s*=\\s*await\\s+import`));
-      expect(service, helperName).not.toMatch(new RegExp(`\\b${helperName}\\s*\\(`));
+  it('does not keep direct playbook route/service modules or workflow-adapter references', () => {
+    expect(existsSync(join(ROUTE_ROOT, 'playbooks.ts'))).toBe(false);
+    expect(existsSync(join(ROUTE_ROOT, 'playbook-service.ts'))).toBe(false);
+    const directAdapterName = ['create', 'Playbook', 'Workflow', 'Adapter'].join('');
+    const directSessionPlanRouteKey = ['session', 'Plan', 'Create', 'From', 'Playbook'].join('');
+
+    for (const file of CONTENT_ROUTE_FILES) {
+      const source = readRouteFile(file);
+      expect(source, file).not.toContain(directAdapterName);
+      expect(source, file).not.toContain('createPlaybookRoutes');
+      expect(source, file).not.toContain(directSessionPlanRouteKey);
+      expect(source, file).not.toMatch(/\bplaybook(?:List|Show|Save|Run|Promote|Demote|Validate|Copy)\b/);
     }
   });
 

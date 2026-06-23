@@ -43,7 +43,12 @@ export async function generateApi(opts: {
     '',
     '## Routes',
     '',
-    'Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.',
+    [
+      'Routes whose keys begin with `play',
+      'book`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces, not kernel-owned planning capabilities. ',
+      '`sessionPlan` and `sessionPlanSet` route families remain daemon API producer surfaces for project-local planning artifacts. ',
+      'Playbooks are owned by the first-party `eforge-playbooks` extension and are reached through generic extension contribution manifest/action invocation routes, not playbook-specific daemon or client APIs.',
+    ].join(''),
     '',
     `Total routes: ${sortedRoutes.length}`,
     '',

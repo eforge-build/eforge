@@ -19,11 +19,13 @@ export async function prepareEnqueueRequest(context: MonitorContext, body: Recor
   const explicitLandingAction = validateLandingAction(body.landingAction);
   const explicitLandingAutoMerge = await validateLandingAutoMerge(context, body.landingAutoMerge, explicitLandingAction);
   const validatedAfterQueueId = await validateAfterQueueId(context, body.afterQueueId);
+  const validatedPostMerge = validatePostMergeCommands(body.postMerge);
   const explicitProfileName = await validateExplicitProfile(context, body.profile);
   const inheritedAgentProfile = await discoverInheritedAgentProfile(context, body.source);
   if (explicitProfileName === undefined && inheritedAgentProfile) await validateProfile(context, inheritedAgentProfile, `Inherited agent profile '${inheritedAgentProfile}' not found`);
 
   const args = [body.source, ...(Array.isArray(body.flags) ? body.flags.filter((flag): flag is string => typeof flag === 'string') : [])];
+  for (const command of validatedPostMerge) args.push('--post-merge', command);
   const effectiveProfile = explicitProfileName ?? inheritedAgentProfile;
   if (effectiveProfile) args.push('--profile', effectiveProfile);
   if (explicitLandingAction) args.push('--landing-action', explicitLandingAction);
@@ -31,6 +33,20 @@ export async function prepareEnqueueRequest(context: MonitorContext, body: Recor
   else if (explicitLandingAutoMerge === false) args.push('--no-landing-auto-merge');
   if (validatedAfterQueueId) args.push('--after', validatedAfterQueueId);
   return { source: body.source, args };
+}
+
+function validatePostMergeCommands(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new HttpRouteError(400, 'Invalid field: postMerge must be an array of command strings');
+  return value.map((command) => {
+    if (typeof command !== 'string' || command.trim().length === 0) {
+      throw new HttpRouteError(400, 'Invalid field: postMerge commands must be non-empty strings');
+    }
+    if (/[\x00-\x1f\x7f]/.test(command)) {
+      throw new HttpRouteError(400, 'Invalid field: postMerge commands must not contain control characters or newlines');
+    }
+    return command;
+  });
 }
 
 function validateLandingAction(value: unknown): LandingActionValue | undefined {

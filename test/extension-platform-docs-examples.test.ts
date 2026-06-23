@@ -154,9 +154,11 @@ describe('extension platform docs and examples', () => {
     }
   });
 
-  it('keeps deferred extension boundaries explicit', () => {
+  it('keeps deferred extension boundaries explicit while allowing first-party eforge-playbooks', () => {
     for (const path of ['docs/extensions.md', 'web/content/docs/extensions.md']) {
       const contents = read(path);
+      expect(contents).toContain('eforge-playbooks');
+      expect(contents).toMatch(/first-party[^.\n]*eforge-playbooks|eforge-playbooks[^.\n]*first-party/i);
       for (const expected of [
         /raw extension-owned HTTP routes?[^.\n]*(?:unsupported|deferred|not supported)|(?:unsupported|deferred|not supported)[^.\n]*raw extension-owned HTTP routes?/i,
         /arbitrary Console JavaScript[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*arbitrary Console JavaScript/i,
@@ -164,8 +166,8 @@ describe('extension platform docs and examples', () => {
         /private Console (?:React\/components\/CSS|modules|imports?)[^.\n]*(?:unsupported|not supported|must not)|(?:unsupported|not supported|must not)[^.\n]*private Console (?:React\/components\/CSS|modules|imports?)/i,
         /parent-Console plugins?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*parent-Console plugins?/i,
         /independently loaded frontend plugins?[^.\n]*(?:deferred|unsupported|not supported)|(?:deferred|unsupported|not supported)[^.\n]*independently loaded frontend plugins?/i,
-        /session-plan extraction[^.\n]*(?:deferred|future|not shipped|unsupported|not supported|do not register)|(?:deferred|future|not shipped|unsupported|not supported|do not register)[^.\n]*session-plan extraction/i,
-        /playbook extraction[^.\n]*(?:deferred|future|not shipped|unsupported|not supported|do not register)|(?:deferred|future|not shipped|unsupported|not supported|do not register)[^.\n]*playbook extraction/i,
+        /user-authored[^.\n]*session-plan extraction[^.\n]*(?:deferred|future|not shipped|unsupported|not supported|do not register)|(?:deferred|future|not shipped|unsupported|not supported|do not register)[^.\n]*user-authored[^.\n]*session-plan extraction/i,
+        /user-authored[^.\n]*playbook extraction[^.\n]*(?:deferred|future|not shipped|unsupported|not supported|do not register)|(?:deferred|future|not shipped|unsupported|not supported|do not register)[^.\n]*user-authored[^.\n]*playbook extraction/i,
       ]) {
         expect(contents, `${path} should match ${expected}`).toMatch(expected);
       }
@@ -221,6 +223,8 @@ describe('extension platform docs and examples', () => {
     expect(apiReference).toContain('extensionActionInvoke');
     expect(apiReference).toContain('extensionWorkstationFrame');
     expect(apiReference).toContain('extensionWorkstationAsset');
+    expect(apiReference).not.toContain('/api/' + 'playbook');
+    expect(apiReference).not.toMatch(/^\|\s*playbook\w*\s*\|/m);
 
     const eventsReference = read('web/content/reference/events.md');
     for (const eventType of [

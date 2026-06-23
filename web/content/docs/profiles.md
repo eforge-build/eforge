@@ -121,7 +121,7 @@ The active profile sets the baseline. Other mechanisms can override it in specif
 
 1. **Explicit `--profile` flag** - `eforge build --profile <name>` or the enqueue `profile` field overrides the active-profile marker for that single build.
 2. **PRD frontmatter `profile:`** - a profile set directly in a PRD file takes absolute precedence; no profile router is consulted.
-3. **Playbook `profile:` frontmatter** - overrides the active-profile marker and any profile router when the playbook runs. See [Playbooks](/docs/playbooks).
+3. **Playbook `profile:` frontmatter** - applied by `eforge-playbooks:run-playbook` before generic queue handoff; it overrides the active-profile marker and any profile router for autonomous runs and is included in eforge-plan handoff metadata for planning runs. See [Playbooks](/docs/playbooks).
 4. **Registered profile router** - an extension can register a `selectBuildProfile` function that selects a profile per-PRD from queue context. Routers run only when no explicit profile is set in the PRD frontmatter. See [Extensions API - registerProfileRouter](/docs/extensions-api).
 5. **Active-profile marker** - the fallback when no higher-precedence mechanism applies.
 6. **Engine defaults** - used when no profile is configured at all.

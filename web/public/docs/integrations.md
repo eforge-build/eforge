@@ -5,7 +5,7 @@ description: How to use eforge from Claude Code, Pi, the standalone CLI, extensi
 
 # Integrations
 
-eforge can be driven from three host surfaces: the Claude Code plugin, the Pi extension, and the standalone CLI. All three talk to the same daemon and share the same core queue and profiles. Optional workflow surfaces such as playbooks, session-plan compatibility tools, and first-party extensions prepare or route build source around the kernel. This page covers how each surface works and how to connect eforge to external systems.
+eforge can be driven from three host surfaces: the Claude Code plugin, the Pi extension, and the standalone CLI. All three talk to the same daemon and share the same core queue and profiles. Optional workflow surfaces such as `eforge-playbooks`, session-plan compatibility tools, and first-party extensions prepare or route build source around the kernel. This page covers how each surface works and how to connect eforge to external systems.
 
 ## Claude Code plugin
 
@@ -33,7 +33,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), `eforge_playbook` compatibility over `eforge-playbooks:*` contributions, existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -42,7 +42,7 @@ All eforge workflows are available as slash commands:
 | Command | Purpose |
 |---------|---------|
 | `/eforge:build` | Enqueue a build from a prompt, PRD, file path, or optional session-plan artifact |
-| `/eforge:playbook` | Optional workflow command to create, run, list, edit, promote, or demote playbooks |
+| `/eforge:playbook` | Optional workflow command over `eforge-playbooks:*` contributions to create, run, list, edit, copy, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
 | `/eforge:workflow` | Choose or reconfigure landing action, PR auto-merge policy, stacking, and automatic stack sync |
@@ -74,7 +74,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links with compact list output, including the optional [eforge-plan](/docs/eforge-plan) planning entry when that extension is loaded.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`; `eforge_playbook` delegates to `eforge-playbooks:*` through generic contribution invocation. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links with compact list output, including optional [eforge-plan](/docs/eforge-plan) planning entries and `eforge-playbooks` contributions when those extensions are loaded.
 
 ### Pi commands
 
@@ -97,7 +97,7 @@ npm install -g @eforge-build/eforge
 npx @eforge-build/eforge build "Add rate limiting to the API"
 ```
 
-Daemon management, playbook commands, extension commands, and one-off build profile overrides are available from the CLI:
+Daemon management, playbook compatibility commands, extension commands, and one-off build profile overrides are available from the CLI. Playbook commands call `eforge-playbooks:*` through the generic extension contribution dispatcher:
 
 ```bash
 eforge build "Add dark mode toggle"
@@ -130,7 +130,7 @@ Actions, action-backed commands, and action-backed deep links can be invoked gen
 
 ## Daemon HTTP API
 
-The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; queue and recovery helpers include hold/unhold, queue cascade preview/apply, failed-enqueue list/re-enqueue, recovery-guidance preparation, and scheduler pause/resume. Browser/Console integrations should use `holdQueueItem`, `unholdQueueItem`, `previewQueueCascade`, `applyQueueCascade`, `fetchFailedEnqueues`, `reenqueueFailedEnqueue`, `prepareRecoveryGuidance`, `pauseScheduler`, `resumeScheduler`, `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; queue and recovery helpers include hold/unhold, queue cascade preview/apply, failed-enqueue list/re-enqueue, recovery-guidance preparation, and scheduler pause/resume. Direct playbook-specific daemon routes are absent: integrations must discover `eforge-playbooks:*` through the generic extension contribution manifest and invoke actions through generic extension action routes. Browser/Console integrations should use `holdQueueItem`, `unholdQueueItem`, `previewQueueCascade`, `applyQueueCascade`, `fetchFailedEnqueues`, `reenqueueFailedEnqueue`, `prepareRecoveryGuidance`, `pauseScheduler`, `resumeScheduler`, `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 

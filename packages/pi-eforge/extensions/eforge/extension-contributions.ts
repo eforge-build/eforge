@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { StringEnum } from '@earendil-works/pi-ai';
-import { Type } from '@sinclair/typebox';
+import { Type } from 'typebox';
 import type { SelectItem } from '@earendil-works/pi-tui';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
@@ -17,6 +17,7 @@ import {
   type ExtensionHostContributionDetailResponse,
   type ExtensionHostContributionKind,
   type ExtensionHostContributionProjection,
+  type ExtensionJsonObject,
 } from '@eforge-build/client';
 import { DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { formatInvocationPanel, prepareContributionInput } from './extension-contribution-ux.js';
@@ -95,7 +96,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
         cwd: ctx.cwd,
         kind: params.kind as ExtensionHostContributionKind | undefined,
         id: params.id,
-        input: normalizeInput(params.input),
+        input: normalizeInput(params.input) as ExtensionJsonObject,
         requestedBy: { host: 'pi' },
       });
       if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
@@ -288,7 +289,7 @@ async function invokeAndShow(
         cwd: ctx.cwd,
         id,
         kind,
-        input,
+        input: input as ExtensionJsonObject,
         requestedBy: { host: 'pi' },
       }),
     );
@@ -448,7 +449,11 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function textResult(text: string): { content: { type: 'text'; text: string }[] } {
-  return { content: [{ type: 'text', text }] };
+function jsonResult(data: unknown): { content: { type: 'text'; text: string }[]; details: unknown } {
+  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }], details: data };
+}
+
+function textResult(text: string): { content: { type: 'text'; text: string }[]; details: { text: string } } {
+  return { content: [{ type: 'text', text }], details: { text } };
 }
 // --- eforge:endregion contribution-helpers ---

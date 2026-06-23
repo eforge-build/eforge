@@ -14,66 +14,18 @@ import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 import { loadArtifactRegistry, hasUsableArtifact } from './artifacts/registry.js';
 import { loadCompletionRegistry, lookupCompletion } from './artifacts/completions.js';
 import { appendAcceptanceCriteriaInventoryBlock, type CanonicalAcceptanceCriteriaInventory } from './validation/acceptance-criteria-inventory.js';
+import {
+  getCompiledResumeFrontmatter,
+  parseFrontmatter,
+  serializeFrontmatterFieldValue,
+  validatePostMergeCommands,
+  validatePrdFrontmatter,
+} from './prd-frontmatter.js';
+import type { CompiledResumeFrontmatter, PrdFrontmatter, QueuedPrdFrontmatterFieldValue } from './prd-frontmatter.js';
+export { getCompiledResumeFrontmatter, validatePrdFrontmatter };
+export type { CompiledResumeFrontmatter, PrdFrontmatter, QueuedPrdFrontmatterFieldValue };
 
 const exec = promisify(execFile);
-
-const prdFrontmatterSchema = z.object({
-  title: z.string(),
-  created: z.string().optional(),
-  priority: z.number().int().optional(),
-  depends_on: z.array(z.string()).optional(),
-  skip_reason: z.string().optional(),
-  held: z.boolean().optional(),
-  hold_reason: z.string().optional(),
-  held_at: z.string().optional(),
-  profile: z.string().optional(),
-  stack_id: z.string().optional(),
-  stack_parent: z.string().optional(),
-  stack_provider: z.literal('git-spice').optional(),
-  landing: z.enum(['pr', 'merge', 'leave']).optional(),
-  landing_auto_merge: z.boolean().optional(),
-  resume_mode: z.literal('compiled').optional(),
-  resume_from: z.string().min(1).optional(),
-  resume_set_name: z.string().min(1).optional(),
-  resume_feature_branch: z.string().min(1).optional(),
-  resume_base_branch: z.string().min(1).optional(),
-});
-
-export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
-
-export interface CompiledResumeFrontmatter {
-  mode: 'compiled';
-  sourcePrdId: string;
-  setName: string;
-  featureBranch: string;
-  baseBranch: string;
-}
-
-export function getCompiledResumeFrontmatter(frontmatter: PrdFrontmatter): CompiledResumeFrontmatter | undefined {
-  const fields = {
-    resume_mode: frontmatter.resume_mode,
-    resume_from: frontmatter.resume_from,
-    resume_set_name: frontmatter.resume_set_name,
-    resume_feature_branch: frontmatter.resume_feature_branch,
-    resume_base_branch: frontmatter.resume_base_branch,
-  };
-  const present = Object.values(fields).filter((value) => value !== undefined);
-  if (present.length === 0) return undefined;
-  if (present.length !== 5) {
-    const missing = Object.entries(fields)
-      .filter(([, value]) => value === undefined)
-      .map(([key]) => key)
-      .join(', ');
-    throw new Error(`Incomplete compiled resume frontmatter; missing: ${missing}`);
-  }
-  return {
-    mode: fields.resume_mode,
-    sourcePrdId: fields.resume_from,
-    setName: fields.resume_set_name,
-    featureBranch: fields.resume_feature_branch,
-    baseBranch: fields.resume_base_branch,
-  } as CompiledResumeFrontmatter;
-}
 
 export interface QueuedPrd {
   id: string;
@@ -82,73 +34,6 @@ export interface QueuedPrd {
   content: string;
   lastCommitHash: string;
   lastCommitDate: string;
-}
-
-/**
- * Extract YAML frontmatter from a markdown file.
- * Returns the parsed object or null if no frontmatter found.
- */
-function parseFrontmatter(content: string): Record<string, unknown> | null {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return null;
-
-  // Simple YAML key-value parser (avoids full YAML dep for frontmatter)
-  const lines = match[1].split('\n');
-  const result: Record<string, unknown> = {};
-
-  for (const line of lines) {
-    const kvMatch = line.match(/^(\w[\w_]*)\s*:\s*(.*)/);
-    if (!kvMatch) continue;
-    const [, key, rawValue] = kvMatch;
-    const value = rawValue.trim();
-
-    // Handle arrays (inline [a, b] syntax)
-    if (value.startsWith('[') && value.endsWith(']')) {
-      const inner = value.slice(1, -1).trim();
-      result[key] = inner ? inner.split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')) : [];
-    }
-    // Handle numbers
-    else if (/^-?\d+$/.test(value)) {
-      result[key] = parseInt(value, 10);
-    }
-    // Handle booleans
-    else if (value === 'true' || value === 'false') {
-      result[key] = value === 'true';
-    }
-    // Handle quoted strings
-    else if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      result[key] = value.slice(1, -1);
-    }
-    // Plain string
-    else {
-      result[key] = value;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Validate PRD frontmatter against the Zod schema.
- * Returns success/error result from safeParse.
- * Rejects the legacy `onSuccess` field with a migration error.
- */
-export function validatePrdFrontmatter(data: unknown): z.ZodSafeParseResult<PrdFrontmatter> {
-  if (data && typeof data === 'object' && 'onSuccess' in (data as object)) {
-    return {
-      success: false as const,
-      error: new z.ZodError([{
-        code: z.ZodIssueCode.custom,
-        path: ['onSuccess'],
-        message:
-          'PRD frontmatter "onSuccess" is removed. Use "landing: pr|merge|leave" instead. ' +
-          'Replace onSuccess: merge-to-base-branch → landing: merge, ' +
-          'onSuccess: issue-pr → landing: pr, ' +
-          'onSuccess: leave-branch → landing: leave.',
-      }]),
-    } as z.ZodSafeParseResult<PrdFrontmatter>;
-  }
-  return prdFrontmatterSchema.safeParse(data);
 }
 
 /**
@@ -657,6 +542,8 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     slug = `${baseSlug}-${suffix}`;
   }
 
+  const validatedPostMerge = validatePostMergeCommands(postMerge);
+
   // Build frontmatter
   const created = new Date().toISOString().split('T')[0];
   const frontmatter: PrdFrontmatter = {
@@ -670,8 +557,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     ...(stack_provider !== undefined && { stack_provider }),
     ...(landingAction !== undefined && { landing: landingAction }),
     ...(landingAutoMerge !== undefined && { landing_auto_merge: landingAutoMerge }),
+    ...(validatedPostMerge !== undefined && validatedPostMerge.length > 0 && { postMerge: validatedPostMerge }),
   };
-  const frontmatterResult = prdFrontmatterSchema.safeParse(frontmatter);
+  const frontmatterResult = validatePrdFrontmatter(frontmatter);
   if (!frontmatterResult.success) {
     throw new Error(`Invalid PRD frontmatter: ${z.prettifyError(frontmatterResult.error)}`);
   }
@@ -687,8 +575,8 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (depends_on !== undefined && depends_on.length > 0) {
     fmLines.push(`depends_on: [${depends_on.map((d) => `"${d}"`).join(', ')}]`);
   }
-  if (postMerge !== undefined && postMerge.length > 0) {
-    fmLines.push(`postMerge:\n${postMerge.map((cmd) => `  - ${cmd}`).join('\n')}`);
+  if (validatedPostMerge !== undefined && validatedPostMerge.length > 0) {
+    fmLines.push(`postMerge:\n${validatedPostMerge.map((cmd) => `  - ${JSON.stringify(cmd)}`).join('\n')}`);
   }
   if (profile !== undefined) {
     fmLines.push(`profile: ${profile}`);
@@ -747,8 +635,6 @@ export async function setQueuedPrdProfile(
     frontmatter: { ...updated.frontmatter, profile },
   };
 }
-
-export type QueuedPrdFrontmatterFieldValue = string | number | boolean | string[];
 
 export async function deleteQueuedPrdFrontmatterFieldsExistingOnly(prd: QueuedPrd, fieldNames: string[]): Promise<QueuedPrd> {
   const content = prd.content;
@@ -824,14 +710,6 @@ async function writeExistingFile(filePath: string, content: string): Promise<voi
   try { await fd.truncate(0); await fd.writeFile(content, 'utf-8'); }
   finally { await fd.close(); }
 }
-
-function serializeFrontmatterFieldValue(value: QueuedPrdFrontmatterFieldValue): string {
-  if (Array.isArray(value)) return `[${value.map((item) => JSON.stringify(assertSafeFrontmatterString(item))).join(', ')}]`;
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return typeof value === 'number' ? String(value) : assertSafeFrontmatterString(value);
-}
-
-function assertSafeFrontmatterString(value: string): string { if (/[\x00-\x1f\x7f]/.test(value)) throw new Error('PRD frontmatter string values must not contain control characters or newlines'); return value; }
 
 async function setQueuedPrdFrontmatterString(
   prd: QueuedPrd,

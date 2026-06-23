@@ -5,7 +5,7 @@ description: Install eforge and run your first delegated build.
 
 # Getting Started
 
-eforge turns normalized build source into reviewed, validated code changes. For your first build, start directly from a prompt, PRD, or file path; optional workflow surfaces such as playbooks, session plans, and first-party planning extensions can prepare build source before it reaches the same kernel.
+eforge turns normalized build source into reviewed, validated code changes. For your first build, start directly from a prompt, PRD, or file path; optional workflow surfaces such as first-party `eforge-playbooks`, session plans, and first-party planning extensions can prepare build source before it reaches the same kernel.
 
 ## Prerequisites
 
@@ -79,7 +79,7 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 
 ## Optional planning and workflow surfaces
 
-Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension is available. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
+Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts owned by the first-party `eforge-playbooks` extension: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension provides the `eforge.plan.planning-mode-playbook` capability. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
 
 When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list --search planning`, `eforge extension contributions show eforge-plan:open-planning-entry --kind command`, and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
 
@@ -91,7 +91,7 @@ When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke 
 4. **Building** - Builder agents implement each plan in isolated git worktrees, in parallel where the dependency graph allows.
 5. **Review** - Blind reviewers evaluate each plan's output without builder context. A fixer applies suggestions; an evaluator accepts only strict improvements.
 6. **Merge** - Completed plans merge back to your branch in topological order.
-7. **Validation** - Post-merge validation runs your configured commands. On failure, a validation-fixer agent attempts repairs.
+7. **Validation** - Post-merge validation runs configured commands plus any queued PRD `postMerge` commands. On failure, a validation-fixer agent attempts repairs.
 
 ## Where to Look Next
 

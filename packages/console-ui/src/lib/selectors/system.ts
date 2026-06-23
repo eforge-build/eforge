@@ -9,7 +9,6 @@ import type {
   ExtensionListResponse,
   ExtensionContributionManifestResponse,
   ConsoleContributionRendererId,
-  PlaybookListEntry,
   ConfigShowVerboseResponse,
   ModelInfo,
 } from '@eforge-build/client/browser';
@@ -146,27 +145,6 @@ export function selectExtensionsNeedingTrust(
  */
 export function extensionTrustActionLabel(ext: ExtensionEntry): 'Trust' | 'Re-trust' {
   return ext.trustState === 'changed' ? 'Re-trust' : 'Trust';
-}
-
-// ---------------------------------------------------------------------------
-// Playbook selectors
-// ---------------------------------------------------------------------------
-
-export interface PlaybookModeCounts {
-  autonomous: number;
-  planning: number;
-  total: number;
-}
-
-/** Count playbooks by execution mode. */
-export function selectPlaybookModeCounts(playbooks: PlaybookListEntry[]): PlaybookModeCounts {
-  let autonomous = 0;
-  let planning = 0;
-  for (const p of playbooks) {
-    if (p.mode === 'autonomous') autonomous++;
-    else if (p.mode === 'planning') planning++;
-  }
-  return { autonomous, planning, total: playbooks.length };
 }
 
 // ---------------------------------------------------------------------------

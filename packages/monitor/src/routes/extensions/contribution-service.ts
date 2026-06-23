@@ -19,6 +19,7 @@ import {
 // --- eforge:region extension-agent-task-context ---
 import type { ExtensionAgentTaskService } from './agent-task-service.js';
 // --- eforge:endregion extension-agent-task-context ---
+import { isHttpRouteError } from '../../http/route-errors.js';
 import { prepareEnqueueRequest, markSessionPlanSubmittedAfterEnqueue } from '../enqueue-service.js';
 
 export interface LoadedContributionRuntime {
@@ -166,10 +167,36 @@ async function enqueueFromExtensionAction(context: MonitorContext, body: Enqueue
   if (context.options.config && (!context.options.config.agents?.tiers || Object.keys(context.options.config.agents.tiers).length === 0)) {
     throw new Error('No agent tiers configured. Add agents.tiers entries (each with harness + model + effort) to eforge/config.yaml');
   }
-  const prepared = await prepareEnqueueRequest(context, body as unknown as Record<string, unknown>);
+  let prepared: Awaited<ReturnType<typeof prepareEnqueueRequest>>;
+  try {
+    prepared = await prepareEnqueueRequest(context, body as unknown as Record<string, unknown>);
+  } catch (err) {
+    if (isHttpRouteError(err) && err.status >= 400 && err.status < 500) {
+      throw new ExtensionActionInputValidationError(err.message, [{ path: enqueueValidationPath(err.message), message: err.message, status: err.status }]);
+    }
+    throw err;
+  }
   const result = workerTracker.spawnWorker('enqueue', prepared.args);
   await markSessionPlanSubmittedAfterEnqueue(context, prepared.source, result.sessionId);
   return { sessionId: result.sessionId, pid: result.pid, autoBuild: autoBuildStateToWire({ state: context.options.daemonState, capacity: { runningCount: context.getRunningBuildCount(), limit: context.getSchedulerLimit() } }).enabled };
+}
+
+class ExtensionActionInputValidationError extends Error {
+  readonly details: Array<{ path: string; message: string; status: number }>;
+
+  constructor(message: string, details: Array<{ path: string; message: string; status: number }>) {
+    super(message);
+    this.name = 'ExtensionActionInputValidationError';
+    this.details = details;
+  }
+}
+
+function enqueueValidationPath(message: string): string {
+  const match = /^Invalid field: ([A-Za-z0-9.[\]-]+)/.exec(message)
+    ?? /^Missing required field: ([A-Za-z0-9.[\]-]+)/.exec(message)
+    ?? /^Field "([^"]+)"/.exec(message)
+    ?? /^([A-Za-z0-9.[\]-]+):/.exec(message);
+  return match?.[1] ?? '';
 }
 
 function getActionTimeoutMs(config: { extensions: unknown }): number {

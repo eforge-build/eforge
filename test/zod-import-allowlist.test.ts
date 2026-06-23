@@ -43,8 +43,9 @@ const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
   // This is the only permitted Zod import in engine source after plan-03.
   'packages/engine/src/harnesses/claude-sdk.ts',
 
-  // engine — config and prd-queue (deferred to a follow-up PRD)
+  // engine — config and prd frontmatter/queue schemas (deferred to a follow-up PRD)
   'packages/engine/src/config.ts',
+  'packages/engine/src/prd-frontmatter.ts',
   'packages/engine/src/prd-queue.ts',
   // engine — artifact registry uses Zod for runtime validation of
   // builds.json (intentional: engine-owned runtime state, not wire protocol)

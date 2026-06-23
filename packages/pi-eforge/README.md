@@ -22,12 +22,12 @@ Then, in your project:
 
 ## What this package provides
 
-- Native Pi tools for eforge daemon operations, including `eforge_extension_contribution` for compact `list`, focused `show`, and safe `invoke` of extension-provided actions, integration commands, and action-backed deep links with bounded shared formatting and summarized failed-invocation envelopes
-- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), extension contribution browsing (`/eforge:extensions` list/show/invoke without dumping raw manifests by default), and playbook management (`/eforge:playbook`) with interactive TUI panels and selectors
+- Native Pi tools for eforge daemon operations, including `eforge_extension_contribution` for compact `list`, focused `show`, and safe `invoke` of extension-provided actions, integration commands, and action-backed deep links with bounded shared Markdown/JSON formatting and summarized failed-invocation envelopes
+- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), extension contribution browsing (`/eforge:extensions` list/show/invoke without dumping raw manifests by default), and `eforge-playbooks`-backed playbook management (`/eforge:playbook`) with interactive TUI panels and selectors
 - Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:update`)
 - Generic contribution discovery/detail/invocation and workstation routing; when the eforge-plan extension is loaded/trusted, these can surface its planning entry and workstation deep link (for example `/console/workstations/eforge-plan%3Aplanning-workstation`)
 - The `/eforge:extend` skill for assisted eforge TypeScript extension authoring
-- The `/eforge:playbook` skill for creating, editing, running, and managing reusable automation playbooks
+- The `/eforge:playbook` skill for creating, editing, running, and managing reusable automation playbooks through `eforge-playbooks:*` contributions
 - The `/eforge:recover` skill for reviewing and acting on failed-PRD recovery verdicts
 - The `/eforge:stack:sync` skill and `eforge_stack_sync` tool for manually synchronizing the git-spice stack, previewing with `--dry-run`, interpreting sync reports (including deferred outcomes and retry-deferred triggers when active builds overlap the stack), and recovering from manual sync conflicts (requires git-spice installed and `git-spice repo init` run in the repository)
 - The `/eforge:workflow` skill for configuring the eforge workflow preset (landing action, stacking, PR settings, and daemon-owned after-build sync via `stacking.sync.afterBuild`) through a native Pi select-overlay wizard, including `/eforge:workflow:init` (initial setup) and `/eforge:workflow:reconfigure` (change the active preset)

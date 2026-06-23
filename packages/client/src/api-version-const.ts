@@ -36,5 +36,8 @@
  * instead of a misleading run-id-shaped worker-tracker id.)
  * (v74 is a case 2 bump: Console depends on the failed-enqueue dismiss action
  * to clear stale attention rows without re-enqueuing work.)
+ * (v75 is a case 1 bump: enqueue requests can carry postMerge commands that
+ * stale daemons would silently drop.)
+ * (v76 is a case 1 bump: removes direct daemon APIs for playbooks and related session-plan derivation.)
  */
-export const DAEMON_API_VERSION = 74; // v74: failed-enqueue dismiss action clears stale attention rows.
+export const DAEMON_API_VERSION = 76; // v76: removes direct daemon APIs for playbooks and related session-plan derivation.

@@ -4,8 +4,9 @@ Reusable build-input protocols for eforge - playbook and session-plan artifacts 
 
 ## Consumers
 
-- `@eforge-build/monitor` - daemon playbook and session-plan compatibility routes backed by bundled input workflow adapters, plus adapter-backed normalization for session-plan source paths before enqueue
-- `@eforge-build/eforge` - in-process adapter-backed normalization for CLI build commands that accept session plans or playbooks as input
+- `@eforge-build/monitor` - session-plan compatibility routes backed by input session-planning helpers, plus normalization for session-plan source paths before enqueue
+- `@eforge-build/eforge-playbooks` - first-party extension-owned playbook management/run actions backed by the pure playbook helpers
+- `@eforge-build/eforge` - in-process normalization for CLI build commands that accept session plans as input
 - Future wrapper apps that need to compile playbooks or session plans to build source independently of the daemon
 
 ## Dependencies
@@ -31,7 +32,7 @@ Playbooks are Markdown files with YAML frontmatter encoding a reusable build int
 - `movePlaybook(name, opts)` - move a playbook between scope tiers
 - `copyPlaybookToScope(name, opts)` - copy a playbook to a target scope
 - `playbookToBuildSource(playbook)` - compile an autonomous playbook to ordinary build source for the engine queue
-- `playbookToPlanSeed(playbook)` - extract static plan-seed data (Goal, Out of scope, Acceptance criteria, Notes) from a planning playbook. Used by the `create-from-playbook` session-plan action as a static template/scratch helper. This is not the planning-playbook Run path — planning playbook runs check the eforge-plan planning capability and return generic planning entry metadata for the eforge-plan workstation, which performs active codebase investigation before creating a session plan.
+- `playbookToPlanSeed(playbook)` - extract static plan-seed data (Goal, Out of scope, Acceptance criteria, Notes) from a planning playbook. Used as a static template/scratch helper by extension-owned planning workflows. This is not the planning-playbook Run path — planning playbook runs check the eforge-plan planning capability and return generic planning entry metadata for the eforge-plan workstation, which performs active codebase investigation before creating a session plan.
 
 ### Session plans
 
@@ -158,21 +159,9 @@ This is a read-only protocol. It does **not** create, add, update, or delete pla
 
 The matcher contract is `**/.eforge/session-plans/*.md`. Paths that do not match this pattern are returned unchanged.
 
-### Bundled playbook workflow adapter
+### Playbook artifact helpers
 
-`createPlaybookWorkflowAdapter()` returns the built-in adapter that bundles the three-tier playbook protocol behind one workflow-shaped boundary. It is internal to eforge's shipped playbook flow: daemon services use it as a compatibility shim for client-owned HTTP routes and wire response shapes while the engine still receives only normalized build source. It is not a native extension registration API for user-authored playbook extraction.
-
-The adapter descriptor is exported as `PLAYBOOK_WORKFLOW_ADAPTER_DESCRIPTOR`:
-
-```ts
-{
-  id: 'builtin:playbooks',
-  kind: 'workflow-input-adapter',
-  sourceScopes: ['project-local', 'project-team', 'user'],
-}
-```
-
-The adapter exposes a `scoped` surface for list/load/save/write/move/promote/demote/copy, raw validation, autonomous compilation, and planning session-plan seed creation. Daemon services keep HTTP error mapping, landing-action validation, queue dependency handling, profile lookup, acceptance-criteria inventory derivation, enqueue, and scheduler notification outside this package.
+`@eforge-build/input` exposes pure playbook artifact helpers for parsing, serialization, storage, validation, autonomous build-source compilation, and planning seed extraction. It does not export playbook run orchestration or daemon compatibility surfaces. Shipped playbook behavior is owned by the first-party `@eforge-build/eforge-playbooks` extension, which uses these helpers and performs action-level orchestration, planning-mode handoff, profile handling, and generic queue enqueue outside this package.
 
 ### Bundled session-planning workflow adapter
 

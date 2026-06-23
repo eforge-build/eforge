@@ -191,6 +191,25 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(@types/node@25.9.1)(jsdom@29.1.1)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
+  eforge/extensions/eforge-playbooks:
+    dependencies:
+      '@eforge-build/extension-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/extension-sdk
+      '@eforge-build/input':
+        specifier: workspace:*
+        version: link:../../../packages/input
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/client:
     dependencies:
       '@sinclair/typebox':
@@ -585,6 +604,9 @@ importers:
       '@sinclair/typebox':
         specifier: '*'
         version: 0.34.49
+      typebox:
+        specifier: ^1.1.38
+        version: 1.1.38
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

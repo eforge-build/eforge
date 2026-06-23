@@ -165,22 +165,6 @@ export interface SessionPlanMigrateLegacyRequest {
   session: string;
 }
 
-// ---------------------------------------------------------------------------
-// Session-plan create-from-playbook route request/response interfaces
-// ---------------------------------------------------------------------------
-
-/** Request body for POST /api/session-plan/create-from-playbook */
-export interface SessionPlanCreateFromPlaybookRequest {
-  playbook_name: string;
-  session?: string;
-  topic?: string;
-}
-
-/** Response for POST /api/session-plan/create-from-playbook */
-export interface SessionPlanCreateFromPlaybookResponse {
-  session: string;
-  path: string;
-}
 
 /** Response for POST /api/session-plan/migrate-legacy */
 export interface SessionPlanMigrateLegacyResponse {

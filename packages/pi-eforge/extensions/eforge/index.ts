@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -77,16 +77,18 @@ import type {
   VersionResponse,
   EforgeExtensionActionHelpers,
   ContinueRepairRequest,
+  ExtensionJsonObject,
 } from '@eforge-build/client';
 import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
-import { handlePlaybookCommand } from './playbook-commands';
 import { handleRestartCommand } from './restart-command';
 import { handleStatusCommand } from './status-command';
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
 import { handleStackSyncCommand } from './stack-sync-command';
 import { registerExtensionContributionTool, registerExtensionContributionsCommand } from './extension-contributions';
+import { invokePlaybookContributionIfRunning, eforgePlaybooksUnavailableMessage, type PlaybookCommandAction } from './playbook-contributions';
+import { registerPlaybookCommand } from './playbook-commands';
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type LandingAction,
@@ -135,8 +137,16 @@ function yamlQuote(value: string): string {
   return value;
 }
 
-function jsonResult(data: unknown): { content: { type: "text"; text: string }[] } {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+function jsonResult(data: unknown): { content: { type: "text"; text: string }[]; details: unknown } {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], details: data };
+}
+
+function compactPlaybookToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}
+
+function playbookToolFailure(message: string, code: 'invalid-request' | 'daemon-unavailable' | 'unavailable' = 'invalid-request') {
+  return { ok: false, invocationId: 'pi-playbook-tool', error: { code, message } };
 }
 
 function withMonitorUrl(
@@ -1522,7 +1532,22 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
 
       // Compute profile name (use skill-supplied name if present, otherwise derive)
-      const profileName = params.profile?.name ?? deriveProfileName(resolvedSpec);
+      const derivedProfileSpec = {
+        agents: {
+          tiers: Object.fromEntries(
+            (['max', 'balanced', 'fast'] as const).map((tier) => {
+              const runtimeName = resolvedSpec.tiers?.[tier]?.agentRuntime ?? resolvedSpec.defaultAgentRuntime;
+              const runtime = resolvedSpec.agentRuntimes[runtimeName] ?? resolvedSpec.agentRuntimes[resolvedSpec.defaultAgentRuntime];
+              return [tier, {
+                harness: 'pi' as const,
+                pi: runtime?.pi,
+                model: resolvedSpec.models?.[tier]?.id,
+              }];
+            }),
+          ),
+        },
+      };
+      const profileName = params.profile?.name ?? deriveProfileName(derivedProfileSpec);
 
       // Build agents block
       const agentsBlock: Record<string, unknown> = {};
@@ -1804,202 +1829,26 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
 
   // ------------------------------------------------------------------
-  // Tool: eforge_playbook
-  // ------------------------------------------------------------------
-  pi.registerTool({
-    name: "eforge_playbook",
-    label: "eforge playbook",
-    description:
-      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source, shadow chain, mode, and profile; "show" returns a single playbook\'s frontmatter, body, mode, and profile; "save" validates and writes a playbook to the target tier; "run" loads a playbook and runs it — autonomous playbooks are enqueued as a PRD (returns { kind: "enqueued", id }), planning playbooks require the eforge-plan capability and return generic planning entry metadata for eforge_extension_contribution / the eforge-plan workstation deep link when available, or { kind: "planning-unavailable", requiredCapability, diagnostics } when unavailable; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. The optional "profile" frontmatter field names an agent runtime profile to use when the playbook runs; leaving it empty allows profile-router selection, then active-profile/default fallback.',
-    parameters: Type.Object({
-      action: StringEnum(["list", "show", "save", "run", "promote", "demote", "validate"] as const, {
-        description: "Operation to perform on playbooks",
-      }),
-      name: Type.Optional(
-        Type.String({
-          description: 'Playbook name (required for "show", "run", "promote", "demote")',
-        }),
-      ),
-      scope: Type.Optional(
-        StringEnum(["user", "project-team", "project-local"] as const, {
-          description: 'Target scope for "save" (determines which tier directory to write to)',
-        }),
-      ),
-      playbook: Type.Optional(
-        Type.Object({
-          frontmatter: Type.Object({
-            name: Type.String(),
-            description: Type.String(),
-            scope: StringEnum(["user", "project-team", "project-local"] as const),
-            mode: StringEnum(["autonomous", "planning"] as const),
-            profile: Type.Optional(Type.String({ description: 'Optional agent runtime profile name. Leaving it empty allows profile-router selection, then active-profile/default fallback.' })),
-            postMerge: Type.Optional(Type.Array(Type.String())),
-          }),
-          body: Type.Object({
-            goal: Type.String(),
-            outOfScope: Type.Optional(Type.String()),
-            acceptanceCriteria: Type.Optional(Type.String()),
-            plannerNotes: Type.Optional(Type.String()),
-          }),
-        }, {
-          description: 'Playbook content (required for "save")',
-        }),
-      ),
-      afterQueueId: Type.Optional(
-        Type.String({
-          description: 'Queue entry ID to depend on (optional, "run" only for autonomous playbooks). When set, the new PRD will have dependsOn: [afterQueueId].',
-        }),
-      ),
-      landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'] as const, {
-        description: "Override the project-level landing action for this run (optional, 'run' only for autonomous playbooks). 'pr' opens a PR targeting the resolved base branch. 'merge' auto-merges. 'leave' commits and exits without merging or opening a PR.",
-      })),
-      landingAutoMerge: Type.Optional(Type.Boolean({
-        description: "When true and landingAction is 'pr' (or default), enable GitHub PR auto-merge for this playbook run. When false, explicitly disable auto-merge. Omit to use the project default. Only applies to autonomous playbooks via 'run'.",
-      })),
-      raw: Type.Optional(
-        Type.String({
-          description: 'Raw Markdown playbook string (required for "validate")',
-        }),
-      ),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, scope, playbook, afterQueueId, landingAction, landingAutoMerge, raw } = params;
-
-      if (action === "list") {
-        const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.playbookList);
-        return jsonResult(data);
-      }
-
-      if (action === "show") {
-        if (!name) throw new Error('"name" is required when action is "show"');
-        const { data } = await requireDaemon(
-          ctx.cwd,
-          "GET",
-          `${API_ROUTES.playbookShow}?name=${encodeURIComponent(name)}`,
-        );
-        return jsonResult(data);
-      }
-
-      if (action === "save") {
-        if (!scope) throw new Error('"scope" is required when action is "save"');
-        if (!playbook) throw new Error('"playbook" is required when action is "save"');
-        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookSave, { scope, playbook });
-        return jsonResult(data);
-      }
-
-      if (action === "run") {
-        if (!name) throw new Error('"name" is required when action is "run"');
-        const body: Record<string, unknown> = { name };
-        if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
-        if (landingAction !== undefined) body.landingAction = landingAction;
-        if (landingAutoMerge !== undefined) body.landingAutoMerge = landingAutoMerge;
-        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookRun, body);
-        return jsonResult(data);
-      }
-
-      if (action === "promote") {
-        if (!name) throw new Error('"name" is required when action is "promote"');
-        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookPromote, { name });
-        return jsonResult(data);
-      }
-
-      if (action === "demote") {
-        if (!name) throw new Error('"name" is required when action is "demote"');
-        const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookDemote, { name });
-        return jsonResult(data);
-      }
-
-      // action === "validate"
-      if (!raw) throw new Error('"raw" is required when action is "validate"');
-      const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.playbookValidate, { raw });
-      return jsonResult(data);
-    },
-
-    renderCall(args, theme) {
-      const action = typeof args.action === "string" ? args.action : "?";
-      const name = typeof args.name === "string" ? args.name : "";
-      const suffix = name ? ` ${name}` : "";
-      return new Text(
-        theme.fg("toolTitle", theme.bold(`eforge playbook ${action}${suffix}`)),
-        0,
-        0,
-      );
-    },
-
-    renderResult(result, _options, theme) {
-      const text = result.content[0];
-      if (!text || text.type !== "text") {
-        return new Text(theme.fg("muted", "No data"), 0, 0);
-      }
-      try {
-        const data = JSON.parse(text.text) as Record<string, unknown>;
-        const lines: string[] = [];
-
-        if (Array.isArray((data as { playbooks?: unknown }).playbooks)) {
-          const playbooks = (data as { playbooks: Array<{ name: string; description: string; source: string; profile?: string }> }).playbooks;
-          lines.push(theme.fg("accent", `${playbooks.length} playbook(s)`));
-          for (const p of playbooks) {
-            const source = theme.fg("dim", ` [${p.source}]`);
-            const profileNote = p.profile ? theme.fg("dim", ` [profile: ${p.profile}]`) : "";
-            lines.push(`  ${theme.fg("text", p.name)}${source}${profileNote}  ${theme.fg("muted", p.description)}`);
-          }
-        } else if ((data as { kind?: unknown }).kind === "enqueued") {
-          lines.push(theme.fg("success", "✓ Enqueued: ") + theme.fg("accent", String((data as { id: string }).id)));
-        } else if ((data as { kind?: unknown }).kind === "requires-agent") {
-          const d = data as { planningEntry?: { integrationCommandId?: string; workstationUrl?: string }; message: string };
-          lines.push(theme.fg("warning", "⚡ Planning playbook uses eforge-plan entry"));
-          if (d.planningEntry?.integrationCommandId) lines.push(theme.fg("dim", `  contribution: ${d.planningEntry.integrationCommandId}`));
-          if (d.planningEntry?.workstationUrl) lines.push(theme.fg("dim", `  workstation: ${d.planningEntry.workstationUrl}`));
-        } else if ((data as { kind?: unknown }).kind === "planning-unavailable") {
-          const d = data as { requiredCapability?: { name: string }; diagnostics?: Array<{ message: string }> };
-          lines.push(theme.fg("error", `✗ Missing capability: ${d.requiredCapability?.name ?? "eforge.plan.planning-mode-playbook"}`));
-          for (const diagnostic of d.diagnostics ?? []) lines.push(theme.fg("dim", `  ${diagnostic.message}`));
-        } else if ((data as { path?: unknown }).path) {
-          lines.push(theme.fg("success", "✓ ") + theme.fg("text", String((data as { path: string }).path)));
-        } else if ((data as { ok?: unknown }).ok !== undefined) {
-          const ok = (data as { ok: boolean }).ok;
-          const errors = (data as { errors?: string[] }).errors ?? [];
-          if (ok) {
-            lines.push(theme.fg("success", "✓ Valid"));
-          } else {
-            lines.push(theme.fg("error", "✗ Invalid"));
-            for (const err of errors) {
-              lines.push(`  ${theme.fg("warning", err)}`);
-            }
-          }
-        } else {
-          lines.push(theme.fg("muted", text.text.slice(0, 200)));
-        }
-        return new Text(lines.join("\n"), 0, 0);
-      } catch {
-        return new Text(theme.fg("muted", text.text.slice(0, 200)), 0, 0);
-      }
-    },
-  });
-
-
-
-  // ------------------------------------------------------------------
   // Tool: eforge_session_plan
   // ------------------------------------------------------------------
   pi.registerTool({
     name: "eforge_session_plan",
     label: "eforge session-plan",
     description:
-      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape; "create-from-playbook" creates a static session plan template pre-seeded with a planning-mode playbook\'s content (requires playbook_name) — for full interactive planning, discover/invoke the generic eforge-plan planning entry via eforge_extension_contribution or open the eforge-plan workstation deep link. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. The optional "agent_profile" field on "create" inherits an agent runtime profile from a planning-mode playbook; it is not validated at create time and is used when the session plan is enqueued.',
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     parameters: Type.Object({
       action: StringEnum(
-        ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy", "create-from-playbook"] as const,
+        ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy"] as const,
         { description: "Operation to perform on session plans" },
       ),
       session: Type.Optional(
         Type.String({
-          description: 'Session ID (required for all actions except "list-active" and "create-from-playbook")',
+          description: 'Session ID (required for all actions except "list-active")',
         }),
       ),
       topic: Type.Optional(
         Type.String({
-          description: 'Session topic (required for "create"; optional override for "create-from-playbook")',
+          description: 'Session topic (required for "create")',
         }),
       ),
       dimension: Type.Optional(
@@ -2037,11 +1886,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'When true, best-effort opens the resulting session plan file in the user\'s default application after a session is created or shown.',
         }),
       ),
-      playbook_name: Type.Optional(
-        Type.String({
-          description: 'Playbook name to seed from (required for "create-from-playbook")',
-        }),
-      ),
       agent_profile: Type.Optional(
         Type.String({
           description: 'Optional agent runtime profile name inherited from a planning-mode playbook\'s profile field. Not validated at create time; used when the session plan is enqueued. Pass when creating a session plan from a playbook that has a profile set.',
@@ -2049,7 +1893,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, playbook_name, agent_profile } = params;
+      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open, agent_profile } = params;
 
       if (action === "list-active") {
         const { data } = await requireDaemon(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
@@ -2135,13 +1979,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         return jsonResult(data);
       }
 
-      // action === "create-from-playbook"
-      if (!playbook_name) throw new Error('"playbook_name" is required when action is "create-from-playbook"');
-      const cfpBody: Record<string, unknown> = { playbook_name };
-      if (session !== undefined) cfpBody.session = session;
-      if (topic !== undefined) cfpBody.topic = topic;
-      const { data } = await requireDaemon(ctx.cwd, "POST", API_ROUTES.sessionPlanCreateFromPlaybook, cfpBody);
-      return jsonResult(data);
+      throw new Error(`Unsupported session-plan action: ${String(action)}`);
     },
 
     renderCall(args, theme) {
@@ -2223,6 +2061,60 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
 
   // ------------------------------------------------------------------
+  // Tool: eforge_playbook
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_playbook",
+    label: "eforge playbook",
+    description: "Compatibility facade for eforge playbook actions through eforge-playbooks command contributions.",
+    parameters: Type.Object({
+      action: StringEnum(['list', 'show', 'save', 'validate', 'copy', 'promote', 'demote', 'run'], { description: 'Playbook action to perform' }),
+      name: Type.Optional(Type.String({ description: 'Playbook name (required for show, copy, promote, demote, and run)' })),
+      scope: Type.Optional(Type.String({ description: 'Scope for list/show/save/validate/run' })),
+      sourceScope: Type.Optional(Type.String({ description: 'Source scope for copy' })),
+      targetScope: Type.Optional(Type.String({ description: 'Target scope for copy (required for copy)' })),
+      raw: Type.Optional(Type.String({ description: 'Raw playbook Markdown for save/validate' })),
+      overwrite: Type.Optional(Type.Boolean({ description: 'Overwrite an existing playbook on save/copy' })),
+      mode: Type.Optional(Type.String({ description: 'Expected playbook mode for list/run' })),
+      profile: Type.Optional(Type.String({ description: 'Agent profile override for run' })),
+      includeShadowed: Type.Optional(Type.Boolean({ description: 'Include shadowed playbooks when listing' })),
+      afterQueueId: Type.Optional(Type.String({ description: 'Queue run after an upstream queue item' })),
+      landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], { description: 'Landing action override for autonomous run' })),
+      landingAutoMerge: Type.Optional(Type.Boolean({ description: 'Enable or disable PR auto-merge for autonomous run' })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const action = params.action as PlaybookCommandAction;
+      const requireName = ['show', 'copy', 'promote', 'demote', 'run'].includes(action);
+      if (requireName && !params.name) return jsonResult(playbookToolFailure('"name" is required for this playbook action'));
+      if (action === 'copy' && !params.targetScope) return jsonResult(playbookToolFailure('"targetScope" is required when action is "copy"'));
+      if (action === 'save' && !params.scope) return jsonResult(playbookToolFailure('"scope" is required when action is "save"'));
+      const input = compactPlaybookToolInput({
+        name: params.name,
+        scope: params.scope,
+        sourceScope: params.sourceScope,
+        targetScope: params.targetScope,
+        raw: params.raw,
+        overwrite: params.overwrite,
+        mode: params.mode,
+        profile: params.profile,
+        includeShadowed: params.includeShadowed,
+        afterQueueId: params.afterQueueId,
+        landingAction: params.landingAction,
+        landingAutoMerge: params.landingAutoMerge,
+      });
+      try {
+        const result = await invokePlaybookContributionIfRunning({ cwd: ctx.cwd, action, input: input as ExtensionJsonObject });
+        if (!result.response.ok) return jsonResult(result.response);
+        return jsonResult(result.response.output);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const daemonUnavailable = message.includes(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(playbookToolFailure(daemonUnavailable ? message : eforgePlaybooksUnavailableMessage(message), daemonUnavailable ? 'daemon-unavailable' : 'unavailable'));
+      }
+    },
+  });
+
+  // ------------------------------------------------------------------
   // Command aliases — map /eforge:* to /skill:eforge-*
   // Pi has no programmatic skill invocation API, so we delegate via
   // sendUserMessage which injects the skill command as user input.
@@ -2252,6 +2144,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       });
     },
   });
+
+  // Native /eforge:playbook registration lives in playbook-commands.ts: pi.registerCommand("eforge:playbook".
+  registerPlaybookCommand(pi, () => _latestCtx);
 
   const skillCommands: Array<{
     name: string;
@@ -2319,13 +2214,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
-
-  pi.registerCommand("eforge:playbook", {
-    description: "Create, edit, run, list, and promote eforge playbooks",
-    handler: async (args) => {
-      await handlePlaybookCommand(pi, _latestCtx, args ?? "");
-    },
-  });
 
   registerExtensionContributionsCommand(pi, () => _latestCtx);
 

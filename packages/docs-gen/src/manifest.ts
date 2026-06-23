@@ -47,7 +47,7 @@ export const LLMS_MANIFEST: LlmsManifest = {
     'eforge is an autonomous build-and-review kernel for code generation. ' +
     'It accepts normalized build source from direct prompts, PRD files, file inputs, or optional producer surfaces; ' +
     'plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; ' +
-    'and merges to the base branch. Playbooks, session plans, and first-party planning extensions are optional ' +
+    'and merges to the base branch. Playbooks are owned by the first-party eforge-playbooks extension; session plans and first-party planning extensions are optional ' +
     'workflow or host surfaces around the kernel. The daemon keeps a persistent HTTP server for queue management ' +
     'and live SSE event streaming.',
   guides: [
@@ -90,7 +90,7 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Playbooks guide',
       url: '/docs/playbooks.md',
-      description: 'Create, manage, and run optional workflow playbooks that prepare or normalize build source',
+      description: 'Create, manage, and run optional workflow playbooks through first-party eforge-playbooks extension actions',
       category: 'optional-workflow',
     },
     {
@@ -120,7 +120,7 @@ export const LLMS_MANIFEST: LlmsManifest = {
     {
       title: 'Glossary',
       url: '/docs/glossary.md',
-      description: 'eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook',
+      description: 'eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, playbook, and first-party extension ownership',
       category: 'reference',
     },
   ],

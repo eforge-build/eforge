@@ -168,7 +168,7 @@ If a lock file persists after a confirmed full daemon restart, check whether ano
 
 ## Validation-fixer retries exhausted
 
-After all plans merge, eforge runs `build.postMergeCommands` and calls a validation-fixer agent on failure. The fixer retries up to `build.maxValidationRetries` times (default: 2). When retries are exhausted, the build is marked `failed`.
+After all plans merge, eforge runs `build.postMergeCommands` plus any queued PRD `postMerge` commands and calls a validation-fixer agent on failure. The fixer retries up to `build.maxValidationRetries` times (default: 2). When retries are exhausted, the build is marked `failed`.
 
 **Adjust the retry budget:**
 
