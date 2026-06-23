@@ -29,9 +29,11 @@ import type {
   VersionResponse,
   EforgeExtensionActionHelpers,
   ContinueRepairRequest,
+  ExtensionJsonObject,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 import { registerExtensionContributionMcpTool } from './mcp-extension-contributions.js';
+import { invokePlaybookContributionForHost, type PlaybookCommandAction } from './playbook-contributions.js';
 
 declare const EFORGE_VERSION: string;
 
@@ -897,6 +899,50 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   });
 
 
+
+  // Tool: eforge_playbook
+  createDaemonTool(server, cwd, {
+    name: 'eforge_playbook',
+    description: 'Compatibility facade for eforge playbook actions. Delegates to eforge-playbooks command contributions. Actions: list, show, save, validate, copy, promote, demote, run.',
+    schema: {
+      action: z.enum(['list', 'show', 'save', 'validate', 'copy', 'promote', 'demote', 'run']).describe('Playbook action to perform'),
+      name: z.string().optional().describe('Playbook name (required for show, copy, promote, demote, and run)'),
+      scope: z.string().optional().describe('Scope for list/show/save/validate/run'),
+      sourceScope: z.string().optional().describe('Source scope for copy'),
+      targetScope: z.string().optional().describe('Target scope for copy (required for copy)'),
+      raw: z.string().optional().describe('Raw playbook Markdown for save/validate'),
+      overwrite: z.boolean().optional().describe('Overwrite an existing playbook on save/copy'),
+      mode: z.string().optional().describe('Expected playbook mode for list/run'),
+      profile: z.string().optional().describe('Agent profile override for run'),
+      includeShadowed: z.boolean().optional().describe('Include shadowed playbooks when listing'),
+      afterQueueId: z.string().optional().describe('Queue run after an upstream queue item'),
+      landingAction: z.enum(['pr', 'merge', 'leave']).optional().describe('Landing action override for autonomous run'),
+      landingAutoMerge: z.boolean().optional().describe('Enable or disable PR auto-merge for autonomous run'),
+    },
+    handler: async ({ action, name, scope, sourceScope, targetScope, raw, overwrite, mode, profile, includeShadowed, afterQueueId, landingAction, landingAutoMerge }, { cwd: toolCwd }) => {
+      const requireName = ['show', 'copy', 'promote', 'demote', 'run'].includes(action);
+      if (requireName && !name) throw new Error('"name" is required for this playbook action');
+      if (action === 'copy' && !targetScope) throw new Error('"targetScope" is required when action is "copy"');
+      if (action === 'save' && !scope) throw new Error('"scope" is required when action is "save"');
+      const input = Object.fromEntries(Object.entries({
+        name,
+        scope,
+        sourceScope,
+        targetScope,
+        raw,
+        overwrite,
+        mode,
+        profile,
+        includeShadowed,
+        afterQueueId,
+        landingAction,
+        landingAutoMerge,
+      }).filter(([, value]) => value !== undefined)) as ExtensionJsonObject;
+      const result = await invokePlaybookContributionForHost({ cwd: toolCwd, action: action as PlaybookCommandAction, input, host: 'mcp' });
+      if (!result.response.ok) throw new McpUserError(result);
+      return result.response.output;
+    },
+  });
 
 
   // Tool: eforge_session_plan

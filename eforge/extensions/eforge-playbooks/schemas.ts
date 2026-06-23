@@ -114,12 +114,17 @@ export const PlanSeedSchema = Type.Object({
 }, { additionalProperties: false });
 export const RequiredCapabilitySchema = Type.Object({ name: Type.String(), version: Type.String() }, { additionalProperties: false });
 export const PlanningEntrySchema = Type.Object({
-  actionId: Type.String(),
-  integrationCommandId: Type.String(),
-  deepLinkId: Type.String(),
-  workstationId: Type.String(),
-  workstationUrl: Type.String(),
+  contributionId: Type.Literal('eforge-plan:open-planning-entry'),
+  actionId: Type.Literal('eforge-plan:open-planning-entry'),
+  integrationCommandId: Type.Optional(Type.Literal('eforge-plan:open-planning-entry')),
+  deepLinkId: Type.Literal('eforge-plan:planning-workstation'),
+  workstationId: Type.Literal('eforge-plan:planning-workstation'),
+  workstationUrl: Type.Literal('/console/workstations/eforge-plan%3Aplanning-workstation'),
   seed: PlanSeedSchema,
+  source: Type.Object({
+    extension: Type.Literal('eforge-playbooks'),
+    playbook: Type.String({ minLength: 1 }),
+  }, { additionalProperties: false }),
 }, { additionalProperties: false });
 const DiagnosticSchema = Type.Object({
   code: Type.String(),

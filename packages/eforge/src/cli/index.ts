@@ -18,6 +18,7 @@ import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQue
 import { registerExtensionContributionCommands } from './extension-contributions.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
+import { registerPlaybookCommands } from './playbook.js';
 // --- eforge:region host-queue-controls ---
 import { registerQueueControlCommands } from './queue-control.js';
 // --- eforge:endregion host-queue-controls ---
@@ -473,6 +474,8 @@ export function createProgram(abortController?: AbortController, version?: strin
     .name('eforge')
     .description('Autonomous plan-build-review CLI for code generation')
     .version(version ?? EFORGE_VERSION);
+
+  registerPlaybookCommands(program);
 
   program
     .command('enqueue <source>')

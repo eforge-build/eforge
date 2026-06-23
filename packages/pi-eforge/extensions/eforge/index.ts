@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -77,6 +77,7 @@ import type {
   VersionResponse,
   EforgeExtensionActionHelpers,
   ContinueRepairRequest,
+  ExtensionJsonObject,
 } from '@eforge-build/client';
 import { handleBuildCommand } from './build-command';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
@@ -86,6 +87,8 @@ import { handleStatusCommand } from './status-command';
 import { handleWorkflowCommand, handleWorkflowInitCommand, handleWorkflowReconfigureCommand } from './workflow-wizard';
 import { handleStackSyncCommand } from './stack-sync-command';
 import { registerExtensionContributionTool, registerExtensionContributionsCommand } from './extension-contributions';
+import { invokePlaybookContributionIfRunning, eforgePlaybooksUnavailableMessage, type PlaybookCommandAction } from './playbook-contributions';
+import { registerPlaybookCommand } from './playbook-commands';
 import { showSelectPanel, type UIContext } from './ui-helpers';
 import {
   type LandingAction,
@@ -134,8 +137,16 @@ function yamlQuote(value: string): string {
   return value;
 }
 
-function jsonResult(data: unknown): { content: { type: "text"; text: string }[] } {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+function jsonResult(data: unknown): { content: { type: "text"; text: string }[]; details: unknown } {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], details: data };
+}
+
+function compactPlaybookToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}
+
+function playbookToolFailure(message: string, code: 'invalid-request' | 'daemon-unavailable' | 'unavailable' = 'invalid-request') {
+  return { ok: false, invocationId: 'pi-playbook-tool', error: { code, message } };
 }
 
 function withMonitorUrl(
@@ -1521,7 +1532,22 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
 
       // Compute profile name (use skill-supplied name if present, otherwise derive)
-      const profileName = params.profile?.name ?? deriveProfileName(resolvedSpec);
+      const derivedProfileSpec = {
+        agents: {
+          tiers: Object.fromEntries(
+            (['max', 'balanced', 'fast'] as const).map((tier) => {
+              const runtimeName = resolvedSpec.tiers?.[tier]?.agentRuntime ?? resolvedSpec.defaultAgentRuntime;
+              const runtime = resolvedSpec.agentRuntimes[runtimeName] ?? resolvedSpec.agentRuntimes[resolvedSpec.defaultAgentRuntime];
+              return [tier, {
+                harness: 'pi' as const,
+                pi: runtime?.pi,
+                model: resolvedSpec.models?.[tier]?.id,
+              }];
+            }),
+          ),
+        },
+      };
+      const profileName = params.profile?.name ?? deriveProfileName(derivedProfileSpec);
 
       // Build agents block
       const agentsBlock: Record<string, unknown> = {};
@@ -1953,7 +1979,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         return jsonResult(data);
       }
 
-
+      throw new Error(`Unsupported session-plan action: ${String(action)}`);
     },
 
     renderCall(args, theme) {
@@ -2035,6 +2061,60 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
 
   // ------------------------------------------------------------------
+  // Tool: eforge_playbook
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_playbook",
+    label: "eforge playbook",
+    description: "Compatibility facade for eforge playbook actions through eforge-playbooks command contributions.",
+    parameters: Type.Object({
+      action: StringEnum(['list', 'show', 'save', 'validate', 'copy', 'promote', 'demote', 'run'], { description: 'Playbook action to perform' }),
+      name: Type.Optional(Type.String({ description: 'Playbook name (required for show, copy, promote, demote, and run)' })),
+      scope: Type.Optional(Type.String({ description: 'Scope for list/show/save/validate/run' })),
+      sourceScope: Type.Optional(Type.String({ description: 'Source scope for copy' })),
+      targetScope: Type.Optional(Type.String({ description: 'Target scope for copy (required for copy)' })),
+      raw: Type.Optional(Type.String({ description: 'Raw playbook Markdown for save/validate' })),
+      overwrite: Type.Optional(Type.Boolean({ description: 'Overwrite an existing playbook on save/copy' })),
+      mode: Type.Optional(Type.String({ description: 'Expected playbook mode for list/run' })),
+      profile: Type.Optional(Type.String({ description: 'Agent profile override for run' })),
+      includeShadowed: Type.Optional(Type.Boolean({ description: 'Include shadowed playbooks when listing' })),
+      afterQueueId: Type.Optional(Type.String({ description: 'Queue run after an upstream queue item' })),
+      landingAction: Type.Optional(StringEnum(['pr', 'merge', 'leave'], { description: 'Landing action override for autonomous run' })),
+      landingAutoMerge: Type.Optional(Type.Boolean({ description: 'Enable or disable PR auto-merge for autonomous run' })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const action = params.action as PlaybookCommandAction;
+      const requireName = ['show', 'copy', 'promote', 'demote', 'run'].includes(action);
+      if (requireName && !params.name) return jsonResult(playbookToolFailure('"name" is required for this playbook action'));
+      if (action === 'copy' && !params.targetScope) return jsonResult(playbookToolFailure('"targetScope" is required when action is "copy"'));
+      if (action === 'save' && !params.scope) return jsonResult(playbookToolFailure('"scope" is required when action is "save"'));
+      const input = compactPlaybookToolInput({
+        name: params.name,
+        scope: params.scope,
+        sourceScope: params.sourceScope,
+        targetScope: params.targetScope,
+        raw: params.raw,
+        overwrite: params.overwrite,
+        mode: params.mode,
+        profile: params.profile,
+        includeShadowed: params.includeShadowed,
+        afterQueueId: params.afterQueueId,
+        landingAction: params.landingAction,
+        landingAutoMerge: params.landingAutoMerge,
+      });
+      try {
+        const result = await invokePlaybookContributionIfRunning({ cwd: ctx.cwd, action, input: input as ExtensionJsonObject });
+        if (!result.response.ok) return jsonResult(result.response);
+        return jsonResult(result.response.output);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const daemonUnavailable = message.includes(DAEMON_NOT_RUNNING_GUIDANCE);
+        return jsonResult(playbookToolFailure(daemonUnavailable ? message : eforgePlaybooksUnavailableMessage(message), daemonUnavailable ? 'daemon-unavailable' : 'unavailable'));
+      }
+    },
+  });
+
+  // ------------------------------------------------------------------
   // Command aliases — map /eforge:* to /skill:eforge-*
   // Pi has no programmatic skill invocation API, so we delegate via
   // sendUserMessage which injects the skill command as user input.
@@ -2064,6 +2144,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       });
     },
   });
+
+  // Native /eforge:playbook registration lives in playbook-commands.ts: pi.registerCommand("eforge:playbook".
+  registerPlaybookCommand(pi, () => _latestCtx);
 
   const skillCommands: Array<{
     name: string;

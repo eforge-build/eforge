@@ -1,6 +1,7 @@
 import type { ExtensionActionContext, ExtensionAvailabilityDiagnostic } from '@eforge-build/extension-sdk';
 import type { PlaybookPlanSeed } from '@eforge-build/input';
 import {
+  EXTENSION_NAME,
   PLANNING_ENTRY_ACTION_ID,
   PLANNING_ENTRY_COMMAND_ID,
   PLANNING_ENTRY_DEEP_LINK_ID,
@@ -27,13 +28,15 @@ export function requiredPlanningCapability() {
 
 export function planningEntry(seed: PlaybookPlanSeed) {
   return {
+    contributionId: PLANNING_ENTRY_ACTION_ID,
     actionId: PLANNING_ENTRY_ACTION_ID,
     integrationCommandId: PLANNING_ENTRY_COMMAND_ID,
     deepLinkId: PLANNING_ENTRY_DEEP_LINK_ID,
     workstationId: PLANNING_WORKSTATION_ID,
     workstationUrl: PLANNING_WORKSTATION_URL,
     seed: projectPlanSeed(seed),
-  };
+    source: { extension: EXTENSION_NAME, playbook: seed.seededFrom },
+  } as const;
 }
 
 export function planningRunResult(ctx: ExtensionActionContext, name: string, seed: PlaybookPlanSeed) {

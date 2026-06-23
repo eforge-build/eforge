@@ -13,6 +13,24 @@ Manage eforge playbooks — reusable templates for recurring workflows that efor
 
 A lower-tier playbook with the same name **shadows** a higher-tier one. eforge always resolves the most-specific tier.
 
+## Tool boundary
+
+Playbook management and run behavior is owned by the `eforge-playbooks` extension. The `eforge_playbook` compatibility tool is safe to use for normal playbook workflows, but it delegates to `eforge-playbooks:*` generic extension contributions rather than direct daemon playbook routes.
+
+Use the compatibility tool first when it is available, for example:
+
+- `eforge_playbook { action: "list" }`
+- `eforge_playbook { action: "run", name: "docs-sync" }`
+- `eforge_playbook { action: "copy", name: "docs-sync", targetScope: "project-local" }`
+
+If the compatibility tool is unavailable or you need to inspect the extension boundary directly, use generic contribution invocation with integration commands:
+
+- `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:list-playbooks", input: {} }`
+- `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "docs-sync" } }`
+- `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:copy-playbook", input: { name: "docs-sync", targetScope: "project-local" } }`
+
+If a playbook contribution cannot be resolved, tell the user: `eforge-playbooks extension is unavailable. Install, trust, and reload eforge-playbooks, then retry.` Include any original contribution error text after that guidance.
+
 ## Playbook Modes
 
 Every playbook has a `mode` field in its frontmatter:
@@ -36,7 +54,7 @@ Inspect `$ARGUMENTS`:
 
 ## Step 2: No-Args Menu
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` to fetch the current playbook inventory. Use the result to determine which branches to show:
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:list-playbooks", input: {} }` to fetch the current playbook inventory. Use the result to determine which branches to show:
 
 **Always shown:**
 - **1. Create** — draft and save a new playbook
@@ -177,13 +195,13 @@ Present the draft to the user for review. If entries were pre-filled from an efo
 
 ### 3.5: Validate and save
 
-1. Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:validate-playbook", input: { raw: "<draft-markdown>" } }` before saving.
+1. Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:validate-playbook", input: { raw: "<draft-markdown>" } }` before saving.
    - If `ok: false`, surface the errors **verbatim** and ask the user to fix them. Loop back to Step 3.4 with the errors highlighted. Do NOT write the file.
    - If `ok: true`, proceed.
 
-2. Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:save-playbook", input: { scope: "<scope>", playbook: { frontmatter: {...}, body: {...} } } }`.
+2. Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:save-playbook", input: { scope: "<scope>", playbook: { frontmatter: {...}, body: {...} } } }`.
 
-3. Report the path returned by the daemon:
+3. Report the path returned by the extension action:
    > "Playbook saved to `{path}`."
 
 4. Offer next steps: run it with `/eforge:playbook run {name}`, or promote it with `/eforge:playbook promote {name}` if it was saved as project-local.
@@ -196,7 +214,7 @@ Walk through an existing playbook section-by-section and save the updated versio
 
 ### 4.1: Pick a playbook
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }`. Print a numbered list:
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:list-playbooks", input: {} }`. Print a numbered list:
 
 ```
   1. docs-sync           [project-team]
@@ -219,11 +237,11 @@ If the selected playbook is **shadowed by** a more-specific tier (e.g., the user
 > 2. Edit the **original** (project-team — shadowed, not active)
 > 3. Copy the original to project-local and edit (creates a new shadow)"
 
-If the user picks option 3, call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:copy-playbook", input: { name: "<name>", targetScope: "project-local" } }` before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so future invocations resolve to the new shadow. Then proceed with the edit loop using the copied version.
+If the user picks option 3, call `eforge_playbook { action: "copy", name: "<name>", targetScope: "project-local" }` before entering the section-by-section edit loop. This atomically copies the playbook to the project-local tier so future invocations resolve to the new shadow. Then proceed with the edit loop using the copied version.
 
 ### 4.3: Load the playbook
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:show-playbook", input: { name: "<name>" } }` (resolved to the tier the user chose).
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:show-playbook", input: { name: "<name>" } }` (resolved to the tier the user chose).
 
 ### 4.4: Section-by-section walkthrough
 
@@ -260,7 +278,7 @@ Same numbered-list approach as Step 4.1. If a name was provided via `$ARGUMENTS`
 
 ### 5.2: Load the playbook
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:show-playbook", input: { name: "<name>" } }` to get the full playbook content including mode, Goal, Acceptance criteria, and Notes for the planner.
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:show-playbook", input: { name: "<name>" } }` to get the full playbook content including mode, Goal, Acceptance criteria, and Notes for the planner.
 
 **Branch on `mode`:**
 
@@ -339,12 +357,12 @@ Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 **Enqueue:**
 
 For **project default** (`landingActionOverride = undefined`), omit `landingAction` from the call body:
-- **Run now**: Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`.
-- **Wait for build**: Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>", afterQueueId: "<resolved-id>" } }`.
+- **Run now**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`.
+- **Wait for build**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>", afterQueueId: "<resolved-id>" } }`.
 
 For **explicit selections** (`landingActionOverride` is set), include `landingAction`:
-- **Run now**: Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>", landingAction: "<landingActionOverride>" } }`.
-- **Wait for build**: Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>", afterQueueId: "<resolved-id>", landingAction: "<landingActionOverride>" } }`.
+- **Run now**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>", landingAction: "<landingActionOverride>" } }`.
+- **Wait for build**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>", afterQueueId: "<resolved-id>", landingAction: "<landingActionOverride>" } }`.
 
 The `afterQueueId` is the internal queue id resolved above — never the title and never typed by the user.
 
@@ -361,7 +379,7 @@ Then re-enqueue without `afterQueueId`, preserving `landingActionOverride` from 
 
 Planning-mode playbook continuation is owned by eforge-plan. Do not create a session plan directly and do not enqueue. Instead:
 
-1. **Check the capability through the playbook run response**: Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-mode-playbook` capability.
+1. **Check the capability through the playbook run response**: Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:run-playbook", input: { name: "<name>" } }`. This does not enqueue planning-mode playbooks. It checks the required `eforge.plan.planning-mode-playbook` capability.
    - If the response is `{ kind: "planning-unavailable", requiredCapability, diagnostics }`, show the required capability and diagnostics verbatim. Tell the user to load, trust, and reload eforge-plan before continuing.
    - If the response is `{ kind: "requires-agent", planningEntry, requiredCapability }`, continue with the generic planning entry metadata.
 
@@ -377,7 +395,7 @@ Planning-mode playbook continuation is owned by eforge-plan. Do not create a ses
 
 ## Branch: List (Step 6)
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` and render a formatted read-only listing.
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:list-playbooks", input: {} }` and render a formatted read-only listing.
 
 For each playbook, show:
 - Name
@@ -395,7 +413,7 @@ Move a project-local playbook to project-team so the whole team benefits from it
 
 ### 7.1: Pick a project-local playbook
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` and filter for `source: "project-local"` entries. Present as a numbered list. If none exist, tell the user.
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:list-playbooks", input: {} }` and filter for `source: "project-local"` entries. Present as a numbered list. If none exist, tell the user.
 
 ### 7.2: Shadow trade-off notice
 
@@ -407,9 +425,9 @@ Ask: "Proceed with promotion?"
 
 ### 7.3: Promote
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:promote-playbook", input: { name: "<name>" } }`.
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:promote-playbook", input: { name: "<name>" } }`.
 
-Report the destination path returned by the daemon.
+Report the destination path returned by the extension action.
 
 ---
 
@@ -419,7 +437,7 @@ Move a project-team playbook back to project-local (personal shadow, not shared)
 
 ### 8.1: Pick a project-team playbook
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:list-playbooks", input: {} }` and filter for `source: "project-team"` entries. Present as a numbered list. If none exist, tell the user.
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:list-playbooks", input: {} }` and filter for `source: "project-team"` entries. Present as a numbered list. If none exist, tell the user.
 
 ### 8.2: Shadow trade-off notice
 
@@ -429,9 +447,9 @@ Ask: "Proceed with demotion?"
 
 ### 8.3: Demote
 
-Call `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:demote-playbook", input: { name: "<name>" } }`.
+Call `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:demote-playbook", input: { name: "<name>" } }`.
 
-Report the destination path returned by the daemon.
+Report the destination path returned by the extension action.
 
 ---
 
@@ -448,9 +466,9 @@ Direct invocations with a name argument jump into the relevant branch with that 
 
 ## Validation Rules
 
-Every save path (Create and Edit) must pass `eforge_extension_contribution { action: "invoke", kind: "action", id: "eforge-playbooks:validate-playbook", input: { raw: "<markdown>" } }` before the daemon writes anything to disk. On failure:
+Every save path (Create and Edit) must pass `eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-playbooks:validate-playbook", input: { raw: "<markdown>" } }` before the extension action writes anything to disk. On failure:
 
-1. Surface the daemon's error messages **verbatim** — do not paraphrase.
+1. Surface the extension action's error messages **verbatim** — do not paraphrase.
 2. Show the user exactly which section or field caused the error.
 3. Ask the user to fix the content.
 4. Re-validate before trying to save again.
@@ -463,9 +481,10 @@ Every save path (Create and Edit) must pass `eforge_extension_contribution { act
 | Condition | Action |
 |-----------|--------|
 | No playbooks exist | Tell the user and offer Create |
-| Playbook name not found | Surface daemon error, list available playbooks |
+| Playbook name not found | Surface extension action error, list available playbooks |
 | Validation failure | Show errors verbatim, do not save |
 | Queue list fails | Skip wait-for-build offer, enqueue immediately and note the queue check failed |
+| `eforge-playbooks` unavailable | Tell the user to install, trust, and reload `eforge-playbooks`, then retry; include the original contribution error text. |
 
 <!-- parity-skip-start -->
 | Tool connection failure | The daemon is not running. Tell the user to start it with `eforge_daemon { action: "start" }`, `/eforge:restart`, or `eforge daemon start`. |

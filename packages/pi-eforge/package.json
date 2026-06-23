@@ -19,6 +19,9 @@
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "type-check": "pnpm --filter @eforge-build/client build && pnpm --filter @eforge-build/scopes build && pnpm --filter @eforge-build/extension-sdk build && pnpm --filter @eforge-build/engine build && tsc --noEmit"
+  },
   "pi": {
     "extensions": [
       "./extensions/eforge"
@@ -31,7 +34,8 @@
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
-    "@sinclair/typebox": "*"
+    "@sinclair/typebox": "*",
+    "typebox": "*"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-coding-agent": {
@@ -45,11 +49,15 @@
     },
     "@sinclair/typebox": {
       "optional": false
+    },
+    "typebox": {
+      "optional": false
     }
   },
   "dependencies": {
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
+    "typebox": "^1.1.38",
     "yaml": "^2.9.0"
   },
   "author": "Schaake Solutions LLC",
