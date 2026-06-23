@@ -42,8 +42,11 @@ describe('host contribution CLI surface', () => {
     expect(source).toContain('createExtensionContributionFailedInvocationEnvelope');
     expect(source).toContain('showExtensionContributionManifestEntry');
     expect(source).toContain('JSON.stringify(result, null, 2)');
-    expect(source).toContain('--include-schema');
-    expect(source).toContain('--include-diagnostics');
+    for (const option of ['--kind <kind>', '--extension-name <name>', '--search <text>', '--id-prefix <prefix>', '--output-profile <profile>', '--limit <number>', '--offset <number>', '--include-schema', '--include-diagnostics', '--full']) {
+      expect(source).toContain(option);
+    }
+    expect(source).toContain('show <id>');
+    expect(source).toContain('projectionFromFullFlag(options.full)');
     expect(source).toContain('--input-json <json>');
     expect(source).toContain('--input-file <path>');
     expect(source).toContain("requestedBy: { host: 'cli' }");
@@ -98,6 +101,10 @@ describe('host contribution MCP surface', () => {
     expect(source).toContain('formatResponse');
     expect(source).toContain("host: 'mcp'");
     expect(source).toContain('McpUserError');
+    expect(source).toContain('new McpUserError(failureEnvelope');
+    for (const schemaField of ['extensionName', 'search', 'idPrefix', 'outputProfile', 'limit', 'offset', 'includeInputSchema', 'includeDiagnostics', 'full']) {
+      expect(source).toContain(schemaField);
+    }
     expect(source).toContain('list');
     expect(source).toContain('show');
     expect(source).toContain('invoke');
@@ -128,6 +135,7 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain('listEforgeExtensionContributionsIfRunning');
     expect(source).toContain('invokeEforgeExtensionContributionIfRunning');
     expect(source).toContain('formatExtensionContributionListText');
+    expect(source).toContain('formatExtensionContributionListText(result)');
     expect(source).toContain('formatExtensionContributionDetailText');
     expect(source).toContain('formatExtensionContributionOutputText');
     expect(source).toContain('showExtensionContributionManifestEntry');
@@ -139,6 +147,9 @@ describe('host contribution Pi surface', () => {
     expect(source).toContain('prepareContributionInput');
     expect(source).toContain('formatInvocationPanel');
     expect(source).toContain('includeInputSchema: true');
+    for (const schemaField of ['extensionName', 'search', 'idPrefix', 'outputProfile', 'limit', 'offset', 'includeInputSchema', 'includeDiagnostics', 'full']) {
+      expect(source).toContain(schemaField);
+    }
     expect(source).not.toContain("ctx.ui.editor('eforge extensions - JSON input', '{}')");
     expect(source).not.toContain('JSON.stringify(result, null, 2)');
     for (const contributionSource of [source, uxSource]) {

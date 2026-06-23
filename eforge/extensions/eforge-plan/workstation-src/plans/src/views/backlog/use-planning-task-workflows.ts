@@ -18,6 +18,35 @@ import type {
 
 const bridge = getBridge();
 const POLL_MS = 1600;
+const AUTO_APPLY_ATTEMPT_STORAGE_PREFIX = 'eforge-plan:auto-apply-attempted:';
+
+function autoApplyAttemptKey(taskId: string): string {
+  return `${AUTO_APPLY_ATTEMPT_STORAGE_PREFIX}${taskId}`;
+}
+
+function hasPersistedAutoApplyAttempt(taskId: string): boolean {
+  try {
+    return window.localStorage.getItem(autoApplyAttemptKey(taskId)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function persistAutoApplyAttempt(taskId: string): void {
+  try {
+    window.localStorage.setItem(autoApplyAttemptKey(taskId), new Date().toISOString());
+  } catch {
+    // Best-effort only: in-memory guards still prevent retry loops during this mount.
+  }
+}
+
+function clearPersistedAutoApplyAttempt(taskId: string): void {
+  try {
+    window.localStorage.removeItem(autoApplyAttemptKey(taskId));
+  } catch {
+    // Best-effort only.
+  }
+}
 
 export interface RedraftInput { answers?: string[]; steering?: string; }
 export interface AnalyzeBacklogInput { itemAuditConcurrency?: number; }
@@ -218,6 +247,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
     try {
       const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('retry-planning-agent-task', { taskId });
       toast.push(`Retrying as ${response.task.taskId}.`, 'success');
+      clearPersistedAutoApplyAttempt(taskId);
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
       await reload();
     } catch (caught) {
@@ -235,6 +265,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       if (input.steering && input.steering.trim().length > 0) payload.steering = input.steering.trim();
       const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('redraft-planning-agent-task', payload);
       toast.push(`Redrafting as ${response.task.taskId}.`, 'success');
+      clearPersistedAutoApplyAttempt(taskId);
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
       await reload();
     } catch (caught) {
@@ -294,7 +325,9 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
         if (!options.automatic) reportError(caught);
         return null;
       }
+
       if (!options.suppressSuccessToast) toast.push(`Applied generated output from ${response.taskId}.`, 'success');
+      if (!options.automatic) clearPersistedAutoApplyAttempt(taskId);
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
       // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       autoApplyFailedRef.current.delete(taskId);
@@ -306,11 +339,21 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       }
       try {
         await onRefresh();
+      } catch (caught) {
+        reportError(caught);
+      }
+      try {
         await reload();
       } catch (caught) {
         reportError(caught);
       }
-      if (createdDraft !== undefined && options.automatic) onCreatedSessionPlan?.(createdDraft);
+      if (createdDraft !== undefined && options.automatic) {
+        try {
+          onCreatedSessionPlan?.(createdDraft);
+        } catch (caught) {
+          reportError(caught);
+        }
+      }
       return response;
     } finally {
       if (!options.automatic) setBusy(false);
@@ -321,8 +364,9 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
     for (const item of items) {
       const taskId = item.entry.taskId;
       if (!isAutoApplyCreationTask(item)) continue;
-      if (autoAppliedRef.current.has(taskId) || autoApplyAttemptedRef.current.has(taskId) || autoApplyInFlightRef.current.has(taskId) || autoApplyFailedRef.current.has(taskId)) continue;
+      if (autoAppliedRef.current.has(taskId) || autoApplyAttemptedRef.current.has(taskId) || autoApplyInFlightRef.current.has(taskId) || autoApplyFailedRef.current.has(taskId) || hasPersistedAutoApplyAttempt(taskId)) continue;
       autoApplyAttemptedRef.current.add(taskId);
+      persistAutoApplyAttempt(taskId);
       autoApplyInFlightRef.current.add(taskId);
       void applyPlanningTaskResult(taskId, { applySessionPlanCreationDraft: {} }, { automatic: true, suppressSuccessToast: true })
         .finally(() => { autoApplyInFlightRef.current.delete(taskId); });

@@ -144,7 +144,7 @@ function renderContributionList(response: ExtensionHostContributionListResponse)
     `Diagnostics: ${response.diagnosticCount}${response.diagnostics ? ' included' : ' hidden'}`,
     `Page: offset ${response.offset}${response.limit !== undefined ? `, limit ${response.limit}` : ''}${response.hasMore ? `, nextOffset ${response.nextOffset}` : ', complete'}`,
   ];
-  const entries = response.entries.map((entry) => `- ${renderContributionEntrySummary(entry)}`);
+  const entries = response.entries.flatMap(renderContributionListEntry);
   const diagnostics = response.diagnostics?.map((diagnostic) => `  - ${diagnostic.severity}: ${diagnostic.code}: ${diagnostic.message}`) ?? [];
   return [...header, ...entries, ...(diagnostics.length > 0 ? ['Diagnostics detail:', ...diagnostics] : [])].join('\n');
 }
@@ -191,6 +191,13 @@ function renderFailureInputSummary(inputSummary: ExtensionHostContributionFailed
 }
 // --- eforge:endregion plan-01-shared-contribution-projection ---
 
+function renderContributionListEntry(entry: ExtensionHostContributionEntry): string[] {
+  const lines = [`- ${renderContributionEntrySummary(entry)}`];
+  if (entry.inputSchema) lines.push('  Input schema:', indentBlock(fencedJson(entry.inputSchema), '  '));
+  if (entry.inputDefaults) lines.push('  Input defaults:', indentBlock(fencedJson(entry.inputDefaults), '  '));
+  return lines;
+}
+
 function renderContributionEntrySummary(entry: ExtensionHostContributionEntry): string {
   return [
     `${entry.kind}:${entry.id}`,
@@ -224,6 +231,10 @@ function formatHostText(text: string, maxChars = DEFAULT_MAX_CHARS): FormattedEx
 
 function fencedJson(value: unknown): string {
   return `\`\`\`json\n${stringifyJson(value)}\n\`\`\``;
+}
+
+function indentBlock(text: string, prefix: string): string {
+  return text.split('\n').map((line) => `${prefix}${line}`).join('\n');
 }
 
 function formatMarkdownOutput(markdown: string, warnings: string[], maxChars: number): FormattedExtensionContributionOutput {

@@ -4,7 +4,6 @@ import {
   apiGetExtensionContributionManifest,
   createExtensionContributionFailedInvocationEnvelope,
   formatExtensionContributionDetailText,
-  formatExtensionContributionFailedInvocationEnvelopeText,
   formatExtensionContributionListText,
   formatExtensionContributionOutputText,
   invokeEforgeExtensionContribution,
@@ -31,7 +30,7 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
   createDaemonTool(server, cwd, {
     name: 'eforge_extension_contribution',
     description:
-      'List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. Distinct from eforge_extension extension management.',
+      'List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. List supports kind, extensionName, search, idPrefix, outputProfile, limit, offset, includeInputSchema, includeDiagnostics, and full; show supports id, kind, includeInputSchema, includeDiagnostics, and full. Failed invocations return a summarized error envelope without target.input. Distinct from eforge_extension extension management.',
     schema: {
       action: z.enum(['list', 'show', 'invoke']).describe('List host contributions, show one contribution, or invoke one contribution'),
       kind: z.enum(['action', 'command', 'deep-link', 'all']).optional().describe('Contribution kind. Use "all" only when listing all contributions.'),
@@ -93,6 +92,7 @@ export function registerExtensionContributionMcpTool(server: McpServer, cwd: str
           input: params.input as ExtensionJsonObject | undefined,
           requestedBy: { host: 'mcp' },
         });
+        if (!result.response.ok) throw contributionInvocationFailed(result);
         return { action: params.action, result } satisfies ContributionToolEnvelope;
       } catch (err) {
         if (isContributionRequestError(err)) throw invalidContributionRequest((err as Error).message);
@@ -111,6 +111,28 @@ function invalidContributionRequest(message: string): McpUserError {
   return new McpUserError({ code: 'invalid-request', message });
 }
 
+// --- eforge:region plan-02-host-contribution-surfaces ---
+function contributionInvocationFailed(result: ExtensionHostContributionInvokeResult): McpUserError {
+  const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
+  return new McpUserError(failureEnvelope ?? {
+    ok: false,
+    invocationId: result.response.ok ? 'unknown' : result.response.invocationId,
+    target: {
+      kind: result.target.kind,
+      id: result.target.id,
+      label: result.target.label,
+      extensionName: result.target.extensionName,
+      extensionPath: result.target.extensionPath,
+      actionId: result.target.actionId,
+      outputProfile: result.target.outputProfile,
+    },
+    requestedBy: result.target.requestedBy,
+    error: result.response.ok ? { code: 'unknown', message: 'Unknown contribution invocation failure' } : result.response.error,
+    inputSummary: { inputKeys: [], inputKeyCount: 0, serializedInputSize: 0 },
+  });
+}
+// --- eforge:endregion plan-02-host-contribution-surfaces ---
+
 function isContributionRequestError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   return /^("|Unknown extension|Ambiguous extension|Deep link )/.test(err.message);
@@ -125,13 +147,7 @@ function formatContributionToolResponse(data: unknown): McpToolResult {
   }
   if (isToolEnvelope(data) && data.action === 'invoke') {
     const { result } = data;
-    if (!result.response.ok) {
-      const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
-      return {
-        content: [{ type: 'text', text: failureEnvelope ? formatExtensionContributionFailedInvocationEnvelopeText(failureEnvelope) : result.response.error.message }],
-        isError: true,
-      };
-    }
+    if (!result.response.ok) throw contributionInvocationFailed(result);
     const text = [
       `Invocation: ${result.response.invocationId}`,
       `Target: ${result.target.kind}:${result.target.id}`,

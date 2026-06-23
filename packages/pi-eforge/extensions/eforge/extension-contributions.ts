@@ -53,7 +53,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
     name: 'eforge_extension_contribution',
     label: 'eforge extension contribution',
     description:
-      'List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. Distinct from eforge_extension extension management.',
+      'List, show, and invoke extension-provided actions, integration commands, and action-backed deep links with compact formatted output by default. List supports kind, extensionName, search, idPrefix, outputProfile, limit, offset, includeInputSchema, includeDiagnostics, and full; show supports id, kind, includeInputSchema, includeDiagnostics, and full. Failed invocations return a summarized error envelope without target.input. Distinct from eforge_extension extension management.',
     parameters: Type.Object({
       action: StringEnum(TOOL_ACTIONS, { description: 'List host contributions, show one contribution, or invoke one contribution' }),
       kind: Type.Optional(StringEnum(TOOL_KINDS, { description: 'Contribution kind. Use "all" only when listing all contributions.' })),
