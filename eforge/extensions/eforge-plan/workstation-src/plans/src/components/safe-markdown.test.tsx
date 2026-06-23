@@ -3,7 +3,6 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SafeMarkdown } from './safe-markdown';
 
-// --- eforge:region plan-03-safe-mermaid-markdown ---
 const mermaidMock = vi.hoisted(() => ({
   initialize: vi.fn(),
   parse: vi.fn(),
@@ -11,10 +10,8 @@ const mermaidMock = vi.hoisted(() => ({
 }));
 
 vi.mock('mermaid', () => ({ default: mermaidMock }));
-// --- eforge:endregion plan-03-safe-mermaid-markdown ---
 
 describe('SafeMarkdown', () => {
-  // --- eforge:region plan-03-safe-mermaid-markdown ---
   beforeEach(() => {
     mermaidMock.initialize.mockReset();
     mermaidMock.parse.mockReset();
@@ -24,7 +21,6 @@ describe('SafeMarkdown', () => {
       svg: `<svg data-render-id="${id}" role="img"><text>${source.includes('Beta') ? 'Beta diagram' : 'Alpha diagram'}</text></svg>`,
     }));
   });
-  // --- eforge:endregion plan-03-safe-mermaid-markdown ---
 
   it('renders GFM markdown as HTML', () => {
     const { container } = render(<SafeMarkdown markdown={'# Title\n\n- one\n- two\n\n`code`'} />);
@@ -67,7 +63,6 @@ describe('SafeMarkdown', () => {
     expect(wrapper?.querySelector('table')).not.toBeNull();
   });
 
-  // --- eforge:region plan-03-safe-mermaid-markdown ---
   it('renders valid Mermaid fences as sanitized SVG content', async () => {
     const { container } = render(<SafeMarkdown markdown={'Before\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\nAfter'} />);
 
@@ -135,5 +130,4 @@ describe('SafeMarkdown', () => {
     expect(container.querySelector('text')?.getAttribute('onclick')).toBeNull();
     expect(container.querySelector('text')?.getAttribute('style')).toBeNull();
   });
-  // --- eforge:endregion plan-03-safe-mermaid-markdown ---
 });

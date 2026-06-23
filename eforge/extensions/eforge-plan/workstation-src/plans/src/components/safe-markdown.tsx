@@ -10,7 +10,6 @@ interface SafeMarkdownProps {
   className?: string;
 }
 
-// --- eforge:region plan-03-safe-mermaid-markdown ---
 const MERMAID_PLACEHOLDER_CLASS = 'plan-mermaid-placeholder';
 const RESOURCE_LOADING_TAGS = ['img', 'picture', 'source', 'video', 'audio', 'object', 'embed', 'svg', 'style', 'link'];
 const RESOURCE_LOADING_ATTRS = ['poster', 'src', 'srcset', 'style'];
@@ -67,7 +66,6 @@ function mountMermaidDiagrams(container: HTMLElement, mermaidBlocks: string[]): 
   });
   return roots;
 }
-// --- eforge:endregion plan-03-safe-mermaid-markdown ---
 
 /**
  * Renders untrusted markdown as sanitized HTML inside a `plan-prose`
@@ -80,7 +78,6 @@ function mountMermaidDiagrams(container: HTMLElement, mermaidBlocks: string[]): 
  */
 export function SafeMarkdown({ markdown, className }: SafeMarkdownProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
-  // --- eforge:region plan-03-safe-mermaid-markdown ---
   const rendered = React.useMemo(() => renderMarkdown(markdown), [markdown]);
 
   React.useEffect(() => {
@@ -93,7 +90,6 @@ export function SafeMarkdown({ markdown, className }: SafeMarkdownProps) {
       roots.forEach((root) => root.unmount());
     };
   }, [rendered]);
-  // --- eforge:endregion plan-03-safe-mermaid-markdown ---
 
   return (
     <div
