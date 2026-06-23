@@ -20,11 +20,11 @@ interface Props {
 export function AnnotatablePlanSection({ plan, dimension, content, disabled, defaultOpen = false, onSaveSection, onSelectAnnotationTarget }: Props) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedTarget, setSelectedTarget] = React.useState<PlanRevisionAnnotationTarget | null>(null);
-  const [focusedBlock, setFocusedBlock] = React.useState<HTMLElement | null>(null);
+  const [focusedBlockTarget, setFocusedBlockTarget] = React.useState<PlanRevisionAnnotationTarget | null>(null);
   const [expanded, setExpanded] = React.useState(defaultOpen);
   const [editing, setEditing] = React.useState(false);
   const title = titleCase(dimension);
-  const hasFocusedBlock = Boolean(focusedBlock && rootRef.current?.contains(focusedBlock));
+  const hasFocusedBlock = Boolean(focusedBlockTarget);
 
   const refreshSelection = React.useCallback(() => {
     const root = rootRef.current;
@@ -58,18 +58,18 @@ export function AnnotatablePlanSection({ plan, dimension, content, disabled, def
     setExpanded(defaultOpen);
     setEditing(false);
     setSelectedTarget(null);
-    setFocusedBlock(null);
+    setFocusedBlockTarget(null);
   }, [plan.session, dimension, defaultOpen]);
 
   React.useEffect(() => {
     setSelectedTarget(null);
-    setFocusedBlock(null);
+    setFocusedBlockTarget(null);
   }, [content]);
 
   React.useEffect(() => {
     if (!expanded || editing) {
       setSelectedTarget(null);
-      setFocusedBlock(null);
+      setFocusedBlockTarget(null);
     }
   }, [editing, expanded]);
 
@@ -79,15 +79,12 @@ export function AnnotatablePlanSection({ plan, dimension, content, disabled, def
     setSelectedTarget(null);
   };
 
-  const currentBlockTarget = () => {
-    const root = rootRef.current;
-    const block = focusedBlock && root?.contains(focusedBlock) ? focusedBlock : null;
-    return root ? buildBlockAnnotationTarget(block, root, dimension, `${title} focused block`) : null;
-  };
+  const currentBlockTarget = () => focusedBlockTarget;
 
   const selectBlock = (event: React.FocusEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
+    const root = rootRef.current;
     const element = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-plan-annotation-block]');
-    if (element && rootRef.current?.contains(element)) setFocusedBlock(element);
+    if (element && root?.contains(element)) setFocusedBlockTarget(buildBlockAnnotationTarget(element, root, dimension, `${title} focused block`));
   };
 
   const saveSection = async (nextContent: string) => {
