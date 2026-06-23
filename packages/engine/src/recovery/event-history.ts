@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit } from '../events.js';
 import { classifyAgentTerminalSubtype } from '../harness.js';
 import { findAuthoritativeTerminalEvent, reconstructPlanMaps, buildPlanSummaries, extractValidationCommands, extractLandingInfo, extractReviewFailureDetails, extractPlanErrorMap, buildAuthoritativeFragment, detectLegacyFallbackFragment, extractAuthoritativeAcceptanceValidation, parseAcceptanceValidationPayload } from './terminal-failure-history.js';
+import { enrichPlanMapsWithPriorMergedEvidence } from './plan-evidence-enrichment.js';
 
 export interface SynthesizeOptions {
   setName: string;
@@ -41,7 +42,7 @@ function selectRunForEventHistory(db: DatabaseSync, setName: string, runId?: str
          SELECT 1
          FROM events e
          WHERE e.run_id = r.id
-           AND e.type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete')
+           AND e.type IN ('plan:status:change', 'plan:build:failed', 'plan:merge:complete', 'build:terminal-failure', 'acceptance_validation:complete', 'prd_validation:complete')
        )
      ORDER BY r.started_at DESC, r.id DESC
      LIMIT 1`,
@@ -127,6 +128,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
           // Authoritative terminal events are the source of truth here; PRD-validation
           // preference applies only in the no-authoritative legacy fallback below.
           const maps = reconstructPlanMaps(db, runId);
+          enrichPlanMapsWithPriorMergedEvidence(db, setName, { id: runId, startedAt: run.startedAt }, maps);
           const valStartRow = db.prepare(`SELECT id FROM events WHERE run_id = ? AND type = 'validation:start' AND id <= ? ORDER BY id DESC LIMIT 1`).get(runId, failedPhaseRow.id) as { id: number } | undefined;
           const valCmds = extractValidationCommands(db, runId, valStartRow?.id ?? 0, failedPhaseRow.id);
           const landingInfo = extractLandingInfo(db, runId, failedPhaseRow.id);
