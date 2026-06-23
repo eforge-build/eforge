@@ -1,10 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdir, writeFile, readFile, rm, access, readdir } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
-import { startServer, type WorkerTracker, type MonitorServer } from '@eforge-build/monitor/server';
+import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
 
 
@@ -176,48 +175,4 @@ describe('POST /api/enqueue — session-plan auto-submit', () => {
     expect(calls).toHaveLength(0);
   });
 });
-
-// ---------------------------------------------------------------------------
-// POST /api/session-plan/create-from-playbook
-// ---------------------------------------------------------------------------
-
-/** Build a valid planning-mode playbook raw string. */
-function validPlanningPlaybookRaw(opts: { name?: string; description?: string; profile?: string } = {}): string {
-  const name = opts.name ?? 'my-planning';
-  const description = opts.description ?? 'Plan the my-planning feature';
-  return [
-    '---',
-    `name: ${name}`,
-    `description: ${description}`,
-    'scope: project-team',
-    'mode: planning',
-    ...(opts.profile ? [`profile: ${opts.profile}`] : []),
-    '---',
-    '',
-    '## Goal',
-    '',
-    'Plan and implement the feature.',
-    '',
-    '## Acceptance criteria',
-    '',
-    'Feature works as expected.',
-  ].join('\n');
-}
-
-/** Build a valid autonomous-mode playbook raw string. */
-function validAutonomousPlaybookRaw(opts: { name?: string } = {}): string {
-  const name = opts.name ?? 'my-auto';
-  return [
-    '---',
-    `name: ${name}`,
-    'description: Autonomous feature implementation',
-    'scope: project-team',
-    'mode: autonomous',
-    '---',
-    '',
-    '## Goal',
-    '',
-    'Implement the feature autonomously.',
-  ].join('\n');
-}
 

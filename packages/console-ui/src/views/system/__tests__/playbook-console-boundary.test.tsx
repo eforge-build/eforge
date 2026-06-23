@@ -124,15 +124,17 @@ describe('playbook Console ownership boundary', () => {
 
   it('keeps core Console source free of direct playbook ownership tokens', () => {
     const root = consoleSrcRoot;
+    const playbookToken = 'Playbook';
+    const playbooksToken = 'playbooks';
     const forbiddenTokens = [
-      'PlaybooksSection',
-      'fetchSystemPlaybookList',
-      'API_ROUTES.playbook',
-      'PlaybookListResponse',
-      'PlaybookListEntry',
-      'selectPlaybookModeCounts',
-      'playbooks.list',
-      'state.playbooks',
+      `${playbookToken}sSection`,
+      `fetchSystem${playbookToken}List`,
+      `API_ROUTES.${'playbook'}`,
+      `${playbookToken}ListResponse`,
+      `${playbookToken}ListEntry`,
+      `select${playbookToken}ModeCounts`,
+      `${playbooksToken}.list`,
+      `state.${playbooksToken}`,
     ];
 
     const offenders = collectSourceFiles(root).flatMap((file) => {
