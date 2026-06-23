@@ -136,6 +136,7 @@ Promote a playbook
 
 | Flag | Description |
 |------|-------------|
+| `--overwrite <boolean>` | Overwrite target playbook |
 | `--json` | Output JSON |
 
 #### `demote`
@@ -149,6 +150,7 @@ Demote a playbook
 
 | Flag | Description |
 |------|-------------|
+| `--overwrite <boolean>` | Overwrite target playbook |
 | `--json` | Output JSON |
 
 #### `run`
