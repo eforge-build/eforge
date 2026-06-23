@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { Bot, Info, Loader2 } from 'lucide-react';
+import { Bot, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { BACKLOG_ANALYSIS_HELP } from './backlog-curation-view-model';
 
 interface AnalyzeBacklogControlProps {
@@ -26,7 +27,7 @@ export function AnalyzeBacklogControl({ busy, analyzing, onAnalyze }: AnalyzeBac
         title={analyzing ? 'Backlog analysis is already running - see Planning activity below' : 'Analyze backlog and refresh recommendations'}
         onClick={() => void onAnalyze()}
       >
-        {disabled ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />} {analyzing ? 'Analyzing…' : 'Analyze backlog'}
+        {disabled ? <Spinner className="h-3 w-3" /> : <Bot className="h-3 w-3" />} {analyzing ? 'Analyzing…' : 'Analyze backlog'}
       </Button>
       <button
         type="button"

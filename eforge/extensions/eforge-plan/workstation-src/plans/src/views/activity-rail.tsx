@@ -2,7 +2,10 @@ import * as React from 'react';
 import { Activity, ChevronRight, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RailCard } from '@/components/ui/rail-card';
+import { ToneChip } from '@/components/ui/tone-chip';
+import { EmptyState } from '@/components/ui/empty-state';
+import { agentTaskTone } from '@/lib/tone';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { selectionItemsLabel } from '@/lib/plan-title';
 import type { AgentTaskStatus, PlanningAgentTaskListItem, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
@@ -13,14 +16,6 @@ import { PlanningTaskDrawer } from './backlog/planning-task-drawer';
 // always-shown running ones. The rail is a glanceable status digest; opening a
 // task reveals its full result and controls in a drawer.
 const RECENT_TERMINAL_LIMIT = 4;
-
-const STATUS_TONE: Record<AgentTaskStatus, string> = {
-  queued: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-  running: 'border-[color:var(--lane-progress)]/40 text-[color:var(--lane-progress)] bg-[color:var(--lane-progress)]/10',
-  completed: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10',
-  failed: 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)] bg-[color:var(--lane-blocked)]/10',
-  cancelled: 'border-border text-muted-foreground',
-};
 
 interface ActivityRailProps {
   workflows: PlanningTaskWorkflowsApi;
@@ -82,31 +77,29 @@ export function ActivityRail({ workflows, titles }: ActivityRailProps) {
 
   return (
     <div className="grid gap-3" aria-label="Workstation activity">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Activity className="h-4 w-4 text-primary" /> Planning activity
-            {running.length > 0 && <Badge variant="outline" className="ml-auto">{running.length} running</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          {workflows.loading && visible.length === 0
-            ? <p className="text-xs text-muted-foreground">Loading tasks…</p>
-            : visible.length === 0
-              ? <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">No planning tasks yet.</p>
-              : visible.map((item) => (
-                <TaskRow
-                  key={item.entry.taskId}
-                  item={item}
-                  busy={workflows.busy}
-                  titles={titles}
-                  applyError={workflows.applyErrors[item.entry.taskId]}
-                  onOpen={() => setOpenTaskId(item.entry.taskId)}
-                  onCancel={() => void workflows.cancel(item.entry.taskId)}
-                />
-              ))}
-        </CardContent>
-      </Card>
+      <RailCard
+        icon={Activity}
+        iconClassName="text-primary"
+        title="Planning activity"
+        action={running.length > 0 ? <Badge variant="outline" className="ml-auto">{running.length} running</Badge> : undefined}
+        contentClassName="grid gap-2"
+      >
+        {workflows.loading && visible.length === 0
+          ? <p className="text-xs text-muted-foreground">Loading tasks…</p>
+          : visible.length === 0
+            ? <EmptyState className="p-2 text-xs">No planning tasks yet.</EmptyState>
+            : visible.map((item) => (
+              <TaskRow
+                key={item.entry.taskId}
+                item={item}
+                busy={workflows.busy}
+                titles={titles}
+                applyError={workflows.applyErrors[item.entry.taskId]}
+                onOpen={() => setOpenTaskId(item.entry.taskId)}
+                onCancel={() => void workflows.cancel(item.entry.taskId)}
+              />
+            ))}
+      </RailCard>
 
       <p className="px-1 text-2xs leading-relaxed text-muted-foreground">
         Builds run in the global queue (see the top bar). Open a plan to follow its build.
@@ -145,9 +138,9 @@ function TaskRow({ item, busy, titles, applyError, onOpen, onCancel }: { item: P
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-bright" title={label}>{label}</span>
-        {applyError && <span className="shrink-0 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-2xs text-destructive-foreground">Apply failed</span>}
-        {isReviewable(item) && <span className="shrink-0 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-2xs text-text-bright">Review</span>}
-        {status && <span className={`shrink-0 rounded border px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide ${STATUS_TONE[status]}`}>{status}</span>}
+        {applyError && <ToneChip tone="destructive" className="shrink-0">Apply failed</ToneChip>}
+        {isReviewable(item) && <ToneChip tone="accent" className="shrink-0">Review</ToneChip>}
+        {status && <ToneChip tone={agentTaskTone(status)} className="shrink-0 uppercase tracking-wide">{status}</ToneChip>}
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       </div>
       <div className="mt-1 flex items-center gap-2 text-2xs text-muted-foreground">

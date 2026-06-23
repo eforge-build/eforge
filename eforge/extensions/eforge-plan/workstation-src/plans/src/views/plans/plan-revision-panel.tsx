@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { Bot, Loader2, RefreshCw, Send } from 'lucide-react';
+import { Bot, RefreshCw, Send } from 'lucide-react';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import type { PlanData } from '@/types';
 import { PlanRevisionThread } from './plan-revision-thread';
@@ -34,7 +35,7 @@ export function PlanRevisionPanel({ plan, api, rail = false }: Props) {
       <div className="grid gap-3 text-sm">
         {!api.initialized && <div><Button size="sm" variant="outline" disabled={api.loading} onClick={() => void api.ensureSession()}>Start or resume revision session</Button></div>}
         <label className="grid gap-1 text-xs"><span className="font-medium">Ask the AI for plan revisions or answers</span><Textarea value={message} disabled={disabled} onChange={(event) => setMessage(event.target.value)} placeholder="Tighten the scope, explain tradeoffs, or revise acceptance criteria…" /></label>
-        {running && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> The AI is revising this plan. Its changes apply automatically when it finishes; plan edits and new requests are paused until then.</p>}
+        {running && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner /> The AI is revising this plan. Its changes apply automatically when it finishes; plan edits and new requests are paused until then.</p>}
         <div><Button size="sm" disabled={disabled || message.trim().length === 0} onClick={() => void submit()}><Send className="h-4 w-4" /> Send to AI</Button></div>
         <PlanRevisionThread turns={turns} busy={api.busy} onCancel={api.cancel} onRetry={api.retry} onRedraft={api.redraft} />
       </div>

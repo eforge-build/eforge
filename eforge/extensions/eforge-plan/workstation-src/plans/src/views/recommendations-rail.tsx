@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { GitFork, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RailCard } from '@/components/ui/rail-card';
 import { RecommendationFreshnessBadge } from '@/components/recommendation-freshness';
 import { formatRelativeTime } from '@/lib/format-time';
 import type { RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
@@ -58,14 +58,13 @@ export function RecommendationsRail({ recommendations, status, freshness, select
   const freshnessLine = freshnessSummary(status);
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <Lightbulb className="h-4 w-4 text-[color:var(--lane-ready)]" /> Recommendations
-          <RecommendationFreshnessBadge freshness={freshness} status={status} />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+    <RailCard
+      icon={Lightbulb}
+      iconClassName="text-[color:var(--lane-ready)]"
+      title="Recommendations"
+      action={<RecommendationFreshnessBadge freshness={freshness} status={status} />}
+      contentClassName="grid gap-3"
+    >
         <AnalyzeBacklogControl busy={busy} analyzing={analyzing} onAnalyze={onAnalyze} />
         {freshnessLine && <p className="text-2xs text-muted-foreground" title={freshnessLine.detail}>{freshnessLine.text}</p>}
         {next.length === 0 && groups.length === 0 && (
@@ -105,8 +104,7 @@ export function RecommendationsRail({ recommendations, status, freshness, select
                     <span className="block min-w-0 truncate text-2xs font-semibold text-text-bright" title={title}>{title}</span>
                     <div className="mt-1.5 flex items-center gap-2">
                       <Button
-                        size="sm"
-                        className="h-6 px-2 text-2xs"
+                        size="xs"
                         disabled={busy || readyCount === 0}
                         title={readyCount === 0 ? 'No items in this lane are ready to plan.' : 'Start an AI planning task for this lane’s ready items.'}
                         onClick={() => void selection.planLane(group.itemIds, group.ref)}
@@ -162,7 +160,6 @@ export function RecommendationsRail({ recommendations, status, freshness, select
             )}
           </details>
         )}
-      </CardContent>
-    </Card>
+    </RailCard>
   );
 }

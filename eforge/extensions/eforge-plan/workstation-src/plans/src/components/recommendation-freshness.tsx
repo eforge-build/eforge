@@ -1,11 +1,7 @@
 import * as React from 'react';
+import { ToneChip } from '@/components/ui/tone-chip';
+import { recommendationStateTone } from '@/lib/tone';
 import type { RecommendationFreshnessView, RecommendationStatus, RecommendationStatusState } from '@/types';
-
-const BADGE_TONE: Record<RecommendationStatusState, string> = {
-  missing: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-  fresh: 'border-[color:var(--lane-ready)]/40 text-[color:var(--lane-ready)] bg-[color:var(--lane-ready)]/10',
-  stale: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-};
 
 export function abbreviateSourceFingerprint(value: string | undefined): string {
   if (!value) return 'unknown';
@@ -19,7 +15,7 @@ export function recommendationFreshnessState(freshness?: RecommendationFreshness
 export function RecommendationFreshnessBadge({ freshness, status, prefix }: { freshness?: RecommendationFreshnessView | null; status?: RecommendationStatus | null; prefix?: string }) {
   const state = recommendationFreshnessState(freshness, status);
   if (!state) return null;
-  return <span className={`rounded border px-1.5 py-0.5 text-2xs uppercase tracking-wide ${BADGE_TONE[state]}`}>{prefix ? `${prefix} ${state}` : state}</span>;
+  return <ToneChip tone={recommendationStateTone(state)} className="font-normal uppercase tracking-wide">{prefix ? `${prefix} ${state}` : state}</ToneChip>;
 }
 
 export function RecommendationFreshnessLine({ freshness, status }: { freshness?: RecommendationFreshnessView | null; status?: RecommendationStatus | null }) {

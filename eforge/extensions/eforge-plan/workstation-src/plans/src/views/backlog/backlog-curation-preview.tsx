@@ -11,6 +11,7 @@ import { RecommendationFreshnessBadge, RecommendationFreshnessLine } from '@/com
 import { BacklogCurationFullAuditPanel, FullAuditEvidenceChips } from './backlog-curation-full-audit-panel';
 import { BacklogCurationGitDeltaPanel } from './backlog-curation-git-delta-panel';
 import { SubBlock } from './sub-block';
+import { toneClass } from '@/lib/tone';
 import { focusBoardItem } from '@/lib/focus-board-item';
 
 interface BacklogCurationPreviewProps {
@@ -135,7 +136,7 @@ export function BacklogCurationPreview({ taskId, entry, draft, recommendations, 
                 <ul className="grid gap-1.5 text-xs text-muted-foreground">
                   {draft.needsInput.map((entry, index) => {
                     const evidence = curationEvidencePreview([entry.reason, entry.question]);
-                    return <li key={`${entry.kind ?? 'record'}:${entry.id ?? index}`}><span className="text-foreground"><RecordLabel kind={entry.kind} id={entry.id} />:</span> {evidence.labels.map((label) => <span key={label} className="mr-1 rounded border border-amber-400/40 bg-amber-400/10 px-1 text-amber-200">{label}</span>)}{entry.question}{entry.reason ? ` — ${entry.reason}` : ''}</li>;
+                    return <li key={`${entry.kind ?? 'record'}:${entry.id ?? index}`}><span className="text-foreground"><RecordLabel kind={entry.kind} id={entry.id} />:</span> {evidence.labels.map((label) => <span key={label} className={`mr-1 rounded border px-1 ${toneClass('warn')}`}>{label}</span>)}{entry.question}{entry.reason ? ` — ${entry.reason}` : ''}</li>;
                   })}
                 </ul>
               </PreviewBlock>

@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { ClipboardList, PanelRightOpen } from 'lucide-react';
+import { ToneChip } from '@/components/ui/tone-chip';
+import type { Tone } from '@/lib/tone';
 import type { BoardItem } from '@/types';
 import type { PlanLink } from '@/lib/plan-links';
 import { shortId } from './board-model';
@@ -100,20 +102,20 @@ function PlannedLink({ plans, onOpen }: { plans?: PlanLink[]; onOpen?: (key: str
 }
 
 // Badge row: only states worth color. Rendered only when something is present.
-function MetaRow({ item, lifecycle }: { item: BoardItem; lifecycle: { label: string; className: string } | null }) {
+function MetaRow({ item, lifecycle }: { item: BoardItem; lifecycle: { label: string; tone: Tone } | null }) {
   const blockingCount = item.dependencies.filter((dep) => dep.blocking).length;
   const chips: React.ReactNode[] = [];
-  if (item.recRank !== undefined) chips.push(<Badge key="rec" className="border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 text-[color:var(--lane-ready)]">Next {item.recRank}</Badge>);
+  if (item.recRank !== undefined) chips.push(<ToneChip key="rec" tone="info" className="font-medium">Next {item.recRank}</ToneChip>);
   if (item.blocked) {
     chips.push(
-      <Badge key="blocked" className="border-border text-muted-foreground">
+      <ToneChip key="blocked" tone="neutral" className="font-medium">
         <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--lane-blocked)]" />
         {blockingCount > 0 ? `Blocked by ${blockingCount}` : 'Blocked'}
-      </Badge>,
+      </ToneChip>,
     );
   }
-  if (item.reviewDue) chips.push(<Badge key="review" className="border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)]">Review due</Badge>);
-  if (lifecycle) chips.push(<Badge key="lifecycle" className={lifecycle.className}>{lifecycle.label}</Badge>);
+  if (item.reviewDue) chips.push(<ToneChip key="review" tone="warn" className="font-medium">Review due</ToneChip>);
+  if (lifecycle) chips.push(<ToneChip key="lifecycle" tone={lifecycle.tone} className="font-medium">{lifecycle.label}</ToneChip>);
   if (chips.length === 0) return null;
   return <div className="mt-1.5 flex flex-wrap gap-1 pl-4">{chips}</div>;
 }
@@ -140,8 +142,4 @@ function ContextRow({ item }: { item: BoardItem }) {
       {hiddenTagCount > 0 && <span className="text-muted-foreground/60" title={item.tags.slice(MAX_VISIBLE_TAGS).join(', ')}>+{hiddenTagCount}</span>}
     </div>
   );
-}
-
-function Badge({ children, className }: { children: React.ReactNode; className: string }) {
-  return <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${className}`}>{children}</span>;
 }

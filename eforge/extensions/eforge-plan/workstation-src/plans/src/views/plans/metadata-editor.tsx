@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { Loader2, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import type { PlanData } from '@/types';
@@ -72,7 +73,7 @@ function MetadataForm({ plan, onSave, onClose }: { plan: PlanData; onSave: (inpu
       <Input value={agentProfile} placeholder="(inherited)" onChange={(event) => setAgentProfile(event.target.value)} />
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" disabled={saving} onClick={() => void submit()}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save
+          {saving ? <Spinner /> : null} Save
         </Button>
         <Button size="sm" variant="ghost" disabled={saving} onClick={onClose}>Cancel</Button>
       </div>

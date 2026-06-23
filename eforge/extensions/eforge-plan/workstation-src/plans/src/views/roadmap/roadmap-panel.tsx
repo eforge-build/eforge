@@ -1,9 +1,13 @@
 import * as React from 'react';
-import { FileText, Loader2, RefreshCw, Save, Undo2 } from 'lucide-react';
+import { FileText, RefreshCw, Save, Undo2 } from 'lucide-react';
 import { useToast } from '@/components/toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RailCard } from '@/components/ui/rail-card';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { ToneChip } from '@/components/ui/tone-chip';
+import type { Tone } from '@/lib/tone';
 import type { PlanningAgentTaskRecord, RecommendationFreshnessView, RecommendationStatus, RefreshRecommendationsResponse, RoadmapSourceProjection, RoadmapStateResponse, UpdateRoadmapStateRequest } from '@/types';
 import { activeRefreshRunning, displayLabel, formatBytes, groupSources, localFocusEditState, refreshDisabledReason, sourceKindLabel, sourceStatusText, sourceSummary } from './roadmap-view-model';
 
@@ -89,7 +93,7 @@ export function RoadmapFocus({ state, recommendationStatus, recommendationFreshn
           <Button size="sm" disabled={!edit.canSave || localContentTruncated} onClick={() => void save()}><Save className="h-4 w-4" /> Save local focus</Button>
           <Button size="sm" variant="outline" disabled={!edit.dirty || saving} onClick={() => setDraft(saved)}><Undo2 className="h-4 w-4" /> Reset</Button>
           <Button size="sm" variant="outline" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Refresh recommendations from saved roadmap state.'} onClick={() => void refreshRecommendations()}>
-            {refreshing || refreshRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh recommendations from roadmap
+            {refreshing || refreshRunning ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Refresh recommendations from roadmap
           </Button>
           {disabledReason && <span className="text-xs text-muted-foreground">{disabledReason}</span>}
         </div>
@@ -120,24 +124,27 @@ export function RoadmapContextRail({ state, loading, recommendationStatus, recom
   const refreshRunning = activeRefreshRunning(activeRecommendationRefreshTask);
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <FileText className="h-4 w-4 text-primary" /> Roadmap sources
-          <Button size="sm" variant="outline" className="ml-auto h-7 px-2 text-2xs" disabled={loading} onClick={() => void onReloadRoadmap()}>
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Reload
-          </Button>
-        </CardTitle>
+    <RailCard
+      icon={FileText}
+      iconClassName="text-primary"
+      title="Roadmap sources"
+      action={
+        <Button size="xs" variant="outline" className="ml-auto" disabled={loading} onClick={() => void onReloadRoadmap()}>
+          {loading ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />} Reload
+        </Button>
+      }
+      headerExtra={
         <div className="mt-2 flex flex-wrap gap-1">
           <Chip>{summary.local} local</Chip>
           <Chip>{summary.configuredShared} configured shared</Chip>
           <Chip>{summary.discovered} discovered</Chip>
           {summary.conflicts > 0 && <Chip tone="warn">{summary.conflicts} conflicts</Chip>}
           {recommendationState && <Chip tone={recommendationState === 'fresh' ? 'good' : 'warn'}>recommendations {recommendationState}</Chip>}
-          {refreshRunning && <Chip tone="good"><Loader2 className="h-3 w-3 animate-spin" /> refreshing</Chip>}
+          {refreshRunning && <Chip tone="good"><Spinner className="h-3 w-3" /> refreshing</Chip>}
         </div>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+      }
+      contentClassName="grid gap-3"
+    >
         {!state ? <p className="text-xs text-muted-foreground">Roadmap state has not loaded yet.</p> : (
           <>
             <section className="grid gap-3">
@@ -162,8 +169,7 @@ export function RoadmapContextRail({ state, loading, recommendationStatus, recom
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+    </RailCard>
   );
 }
 
@@ -198,12 +204,8 @@ function MetadataList({ title, items, tone }: { title: string; items: string[]; 
   return <div><h4 className={`mb-1 text-2xs font-semibold uppercase tracking-wide ${tone === 'warn' ? 'text-[color:var(--prio-medium)]' : 'text-muted-foreground'}`}>{title}</h4><ul className="list-disc pl-4 text-muted-foreground">{items.map((item) => <li key={item}>{item}</li>)}</ul></div>;
 }
 
-const CHIP_TONE: Record<string, string> = {
-  default: 'border-border bg-background/60 text-muted-foreground',
-  good: 'border-[color:var(--lane-ready)]/40 bg-[color:var(--lane-ready)]/10 text-[color:var(--lane-ready)]',
-  warn: 'border-[color:var(--prio-medium)]/40 bg-[color:var(--prio-medium)]/10 text-[color:var(--prio-medium)]',
-};
+const CHIP_TONE: Record<string, Tone> = { default: 'neutral', good: 'info', warn: 'warn' };
 
 function Chip({ children, tone = 'default' }: { children: React.ReactNode; tone?: string }) {
-  return <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs ${CHIP_TONE[tone] ?? CHIP_TONE.default}`}>{children}</span>;
+  return <ToneChip tone={CHIP_TONE[tone] ?? 'neutral'} className="font-normal">{children}</ToneChip>;
 }

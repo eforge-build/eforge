@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { Loader2, RotateCcw, StopCircle } from 'lucide-react';
+import { RotateCcw, StopCircle } from 'lucide-react';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
@@ -51,7 +52,7 @@ export function PlanRevisionThread({ turns, busy, onCancel, onRetry, onRedraft }
           {turn.staleReason && <span>{turn.staleReason}</span>}
         </div>
         <div className="rounded-md bg-secondary/40 p-2 text-sm"><strong>You:</strong> {turn.userMessage}</div>
-        {running && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{progress ?? 'Working on this revision…'}</p>}
+        {running && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner />{progress ?? 'Working on this revision…'}</p>}
         {!running && progress && <p className="text-xs text-muted-foreground">{progress}</p>}
         {running && <div><Button size="sm" variant="outline" disabled={busy} onClick={() => void onCancel(turn)}><StopCircle className="h-4 w-4" /> Cancel</Button></div>}
         {(kind === 'failed' || kind === 'cancelled') && <div className="grid gap-2"><p className="text-xs text-destructive-foreground">{task?.errorMessage ?? 'Revision turn did not complete.'}</p><div><Button size="sm" variant="outline" disabled={busy} onClick={() => void onRetry(turn)}><RotateCcw className="h-4 w-4" /> Retry with preserved context</Button></div></div>}

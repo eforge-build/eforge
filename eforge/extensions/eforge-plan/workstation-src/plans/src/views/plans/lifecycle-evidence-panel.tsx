@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import type { LifecycleLinkRow, PlanData, PlanDetail } from '@/types';
 
 // A plan converges from backlog items and (later) fans out into a build. The
@@ -23,7 +24,8 @@ const BUILD_KINDS = new Set(['queue-prd', 'build-run', 'build-session', 'pr', 'l
 export function PlanBuildTracePanel({ plan, detail }: { plan: PlanData; detail?: PlanDetail }) {
   const rows = (detail?.lifecycle?.linkRows ?? plan.linkRows ?? plan.lifecycleLinks ?? []).filter((row) => BUILD_KINDS.has(row.kind));
   const lifecycleState = detail?.lifecycle?.lifecycleState ?? plan.lifecycleState;
-  const knownItemIds = new Set(resolveSourceRefs(plan, detail)?.sourceItemIds ?? resolveSourceRefs(plan, detail)?.itemIds ?? []);
+  const sourceRefs = resolveSourceRefs(plan, detail);
+  const knownItemIds = new Set(sourceRefs?.sourceItemIds ?? sourceRefs?.itemIds ?? []);
 
   return (
     <section>
@@ -32,9 +34,9 @@ export function PlanBuildTracePanel({ plan, detail }: { plan: PlanData; detail?:
         {lifecycleState && <Badge variant="outline" className="capitalize">{lifecycleState}</Badge>}
       </div>
       {rows.length === 0 ? (
-        <p className="mt-2 rounded border border-dashed border-border p-2 text-xs text-muted-foreground">
+        <EmptyState className="mt-2 p-2 text-xs">
           Not queued for a build yet. Queue, run, PR, and landing activity appears here after handoff.
-        </p>
+        </EmptyState>
       ) : (
         <div className="mt-2 grid gap-1">
           {rows.map((row, index) => <EvidenceRow key={`${row.kind}-${row.stage ?? ''}-${index}`} row={row} knownItemIds={knownItemIds} />)}

@@ -47,8 +47,19 @@ function planLink(artifact: Artifact): PlanLink {
   };
 }
 
-function sourceItemIds(artifact: Artifact): string[] {
+/** Backlog item ids a plan names as its source, tolerating both ref shapes. */
+export function sourceItemIds(artifact: Artifact): string[] {
   return artifact.sourceRefs?.sourceItemIds ?? artifact.sourceRefs?.itemIds ?? [];
+}
+
+/** Source epic ids for a plan, tolerating both ref shapes. */
+export function sourceEpicIds(artifact: Artifact): string[] {
+  return artifact.sourceRefs?.sourceEpicIds ?? artifact.sourceRefs?.epicIds ?? [];
+}
+
+/** A plan's build/lifecycle state, preferring the lifecycle projection. */
+export function planBuildState(artifact: Artifact): string | undefined {
+  return artifact.lifecycleState ?? artifact.status;
 }
 
 /**

@@ -32,6 +32,7 @@ function renderPlan(plan: Partial<PlanData>) {
         onApply={vi.fn()}
         onRefresh={vi.fn(async () => undefined)}
         onDeleted={vi.fn(async () => undefined)}
+        onClose={vi.fn()}
       />
     </ToastProvider>,
   );

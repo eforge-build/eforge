@@ -1,6 +1,8 @@
-import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { RefreshCw, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ErrorBox } from '@/components/ui/error-box';
+import { Spinner } from '@/components/ui/spinner';
 import { ToastProvider } from '@/components/toast';
 import { RouterProvider } from '@/router';
 import { useWorkstationData } from '@/hooks/use-workstation-data';
@@ -29,14 +31,14 @@ function Shell() {
           <div className="flex items-center gap-2">
             <Badge variant="outline">{data.bridgeVersion ? `bridge v${data.bridgeVersion}` : 'mock bridge'}</Badge>
             <Button variant="outline" size="sm" onClick={() => void data.refresh()} disabled={data.loading}>
-              {data.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh
+              {data.loading ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Refresh
             </Button>
           </div>
         </div>
       </header>
 
       <main className="p-4">
-        {data.error && <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive-foreground">{data.error}</p>}
+        {data.error && <ErrorBox className="mb-3 rounded-md p-3 text-sm">{data.error}</ErrorBox>}
         <WorkstationView data={data} />
       </main>
     </div>

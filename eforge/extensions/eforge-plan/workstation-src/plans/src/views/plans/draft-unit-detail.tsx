@@ -1,9 +1,11 @@
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ClipboardList, Loader2, Plus, Rocket, Scissors, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardList, Plus, Rocket, Scissors, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/toast';
@@ -127,7 +129,7 @@ export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromot
             <div className="flex items-center gap-2">
               {unit.sourceRecommendationRef && <span className="text-2xs text-muted-foreground">lane: {unit.sourceRecommendationRef}</span>}
               {!promoted && (
-                <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" disabled={busy} aria-expanded={picking} onClick={() => setPicking((value) => !value)}>
+                <Button size="xs" variant="ghost" disabled={busy} aria-expanded={picking} onClick={() => setPicking((value) => !value)}>
                   <Plus className="h-3 w-3" /> Add items
                 </Button>
               )}
@@ -137,7 +139,7 @@ export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromot
             <AddItemPicker candidates={candidates} disabled={busy} onAdd={(id) => void run(() => onUpdate({ unitId: unit.unitId, addItemIds: [id] }))} />
           )}
           {unit.items.length === 0
-            ? <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No items. Remove leaves nothing to promote.</p>
+            ? <EmptyState className="p-3 text-xs">No items. Remove leaves nothing to promote.</EmptyState>
             : <ul className="grid gap-1">
                 {unit.items.map((item, index) => (
                   <li key={item.itemId} className="flex items-center gap-2 rounded-md border border-border p-2">
@@ -147,9 +149,9 @@ export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromot
                     <Badge variant={item.origin === 'recommendation' ? 'secondary' : 'outline'} className="shrink-0 text-2xs">{item.origin === 'recommendation' ? 'AI' : 'you'}</Badge>
                     {!promoted && (
                       <div className="flex shrink-0 items-center gap-0.5">
-                        <Button size="icon" variant="ghost" className="h-6 w-6" disabled={busy || index === 0} title="Move up" onClick={() => reorder(index, -1)}><ArrowUp className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-6 w-6" disabled={busy || index === unit.items.length - 1} title="Move down" onClick={() => reorder(index, 1)}><ArrowDown className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-6 w-6 text-[color:var(--lane-blocked)]" disabled={busy} title="Remove from unit" onClick={() => void run(() => onUpdate({ unitId: unit.unitId, removeItemIds: [item.itemId] }))}><X className="h-3 w-3" /></Button>
+                        <Button size="icon-xs" variant="ghost" disabled={busy || index === 0} title="Move up" onClick={() => reorder(index, -1)}><ArrowUp className="h-3 w-3" /></Button>
+                        <Button size="icon-xs" variant="ghost" disabled={busy || index === unit.items.length - 1} title="Move down" onClick={() => reorder(index, 1)}><ArrowDown className="h-3 w-3" /></Button>
+                        <Button size="icon-xs" variant="ghost" className="text-[color:var(--lane-blocked)]" disabled={busy} title="Remove from unit" onClick={() => void run(() => onUpdate({ unitId: unit.unitId, removeItemIds: [item.itemId] }))}><X className="h-3 w-3" /></Button>
                       </div>
                     )}
                   </li>
@@ -163,7 +165,7 @@ export function DraftUnitDetailCard({ unit, titles, onUpdate, onDelete, onPromot
 
         <div className="flex flex-wrap items-center gap-2 border-t pt-3">
           <Button disabled={busy || promoted || unit.items.length === 0} onClick={promote} title={unit.items.length === 0 ? 'Add at least one item before promoting.' : 'Promote plan-first into a session plan.'}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />} Promote to a build plan
+            {busy ? <Spinner /> : <Rocket className="h-4 w-4" />} Promote to a build plan
           </Button>
           {canSplit && (
             <Button variant="outline" disabled={busy} aria-expanded={splitting} onClick={() => setSplitting((value) => !value)} title="Split this unit's items into two units.">
