@@ -82,6 +82,27 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('Place items that your same draft proposes as `planned` or `candidate`');
   });
 
+  it('includes optional Mermaid guidance for planning drafts', async () => {
+    const prompt = await loadPrompt('eforge-plan-planning-draft', {
+      topic: 'Architecture flow',
+      session: 'session-diagram',
+      planningType: 'architecture',
+      planningDepth: 'focused',
+      requestedOutputSections: 'sessionPlanCreationDraft',
+      sourceText: 'source',
+      existingSessionPlan: 'none',
+      progressTool: 'progress',
+      submitTool: 'submit',
+      resultSchema: 'type: object',
+      sessionPlanCreationReadiness: '{}',
+    });
+
+    expect(prompt).toContain('fenced `mermaid` diagrams');
+    expect(prompt).toContain('only when a diagram would clarify flows, dependencies, architecture, or sequencing');
+    expect(prompt).toContain('Mermaid diagrams are optional');
+    expect(prompt).toContain('do not treat diagrams as required for every generated plan');
+  });
+
   it('includes exact-id and no-alias guidance for session-plan creation drafts', async () => {
     const prompt = await loadPrompt('eforge-plan-planning-draft', {
       topic: 'Fast UX bugfix group',
@@ -108,6 +129,8 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('copy `resolved.planningType` and `resolved.planningDepth`');
     expect(prompt).toContain('use exactly `resolved.requiredDimensions`');
     expect(prompt).toContain('cover or explicitly skip every required id');
+    expect(prompt).toContain('becomes the persisted `## Executive Summary`');
+    expect(prompt).toContain('fast scope review and sign-off');
     expect(prompt).toContain('emit `needs-input`');
     expect(prompt).toMatch(/Do not submit.*Goal.*Scope.*Context and Evidence.*Implementation Plan.*Validation.*Risks and Guardrails/s);
   });

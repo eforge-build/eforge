@@ -119,7 +119,7 @@ A runtime launch gate for the daemon scheduler. Pausing the scheduler leaves des
 
 ## Session plan
 
-A driver-side planning artifact created by the generic eforge-plan planning entry under `.eforge/session-plans/`. It captures planning type/depth, scope, acceptance criteria, risks, assumptions, skipped dimensions, readiness, and other dimensions before `/eforge:build` converts a ready file into build source.
+A driver-side planning artifact created by the generic eforge-plan planning entry under `.eforge/session-plans/`. It captures planning type/depth, an optional executive summary, scope, acceptance criteria, risks, assumptions, skipped dimensions, readiness, and other dimensions before `/eforge:build` converts a ready file into build source.
 
 ## Tier
 

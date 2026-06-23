@@ -166,6 +166,43 @@ status: planning
     expect(() => normalizeBuildSource({ sourcePath, content })).toThrow();
   });
 
+  it('preserves executive summary ordering before readiness sections', () => {
+    const sourcePath = '/project/.eforge/session-plans/my-plan.md';
+    const content = `---
+session: 2026-04-01-my-feature
+topic: "My Feature"
+status: planning
+planning_type: feature
+planning_depth: focused
+required_dimensions:
+  - scope
+  - acceptance-criteria
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
+profile: null
+---
+
+# My Feature
+
+## Executive Summary
+
+Review this first.
+
+## Scope
+
+Implement the feature.
+
+## Acceptance Criteria
+
+Feature works as expected.
+`;
+
+    const result = normalizeBuildSource({ sourcePath, content });
+
+    expect(result.content.indexOf('## Executive Summary')).toBeLessThan(result.content.indexOf('## Scope'));
+  });
+
   it('result sourcePath is unchanged (not rewritten)', () => {
     const sourcePath = '/project/.eforge/session-plans/my-plan.md';
     const content = makeValidSessionPlan();

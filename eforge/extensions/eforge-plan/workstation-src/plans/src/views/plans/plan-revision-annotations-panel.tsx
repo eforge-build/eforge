@@ -44,7 +44,7 @@ export function PlanRevisionAnnotationsPanel({ plan, api, disabled }: Props) {
           return (
             <article key={annotation.annotationId} className="grid gap-2 rounded-md border bg-background/80 p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <input id={`select-${annotation.annotationId}`} type="checkbox" checked={selectedIds.includes(annotation.annotationId)} onChange={(event) => toggle(annotation.annotationId, event.target.checked)} />
+                <input id={`select-${annotation.annotationId}`} aria-label={`Select annotation ${shortAnnotationId(annotation.annotationId)} for revision`} type="checkbox" checked={selectedIds.includes(annotation.annotationId)} onChange={(event) => toggle(annotation.annotationId, event.target.checked)} />
                 <label htmlFor={`select-${annotation.annotationId}`} className="text-xs font-medium">Include annotation {shortAnnotationId(annotation.annotationId)} in selected revision set</label>
                 <Badge variant="outline">{annotation.target.kind}</Badge>
                 <span className="text-xs text-muted-foreground">{targetLabel(annotation)}</span>
@@ -57,18 +57,18 @@ export function PlanRevisionAnnotationsPanel({ plan, api, disabled }: Props) {
                 <div className="grid gap-2">
                   <Textarea aria-label={`Note for annotation ${shortAnnotationId(annotation.annotationId)}`} value={draft} disabled={api.busy} onChange={(event) => setDraft(event.target.value)} />
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" disabled={api.busy} onClick={() => void api.updateAnnotation({ annotationId: annotation.annotationId, body: draft.trim() }).then((result) => { if (result) setEditingId(null); })}><Check className="h-4 w-4" /> Save note</Button>
-                    <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>Cancel</Button>
+                    <Button size="sm" aria-label={`Save note for annotation ${shortAnnotationId(annotation.annotationId)}`} disabled={api.busy} onClick={() => void api.updateAnnotation({ annotationId: annotation.annotationId, body: draft.trim() }).then((result) => { if (result) setEditingId(null); })}><Check className="h-4 w-4" /> Save note</Button>
+                    <Button size="sm" variant="outline" aria-label={`Cancel editing annotation ${shortAnnotationId(annotation.annotationId)}`} onClick={() => setEditingId(null)}>Cancel</Button>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm">{annotation.body?.trim() || <span className="text-muted-foreground">No note</span>}</p>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" disabled={api.busy || disabled} onClick={() => { setEditingId(annotation.annotationId); setDraft(annotation.body ?? ''); }}><Edit3 className="h-4 w-4" /> Edit note</Button>
-                <Button size="sm" variant="outline" disabled={api.busy || disabled} onClick={() => void api.resolveAnnotation(annotation.annotationId)}>Resolve</Button>
-                <Button size="sm" variant="outline" disabled={api.busy || disabled} onClick={() => void api.dismissAnnotation(annotation.annotationId)}><X className="h-4 w-4" /> Dismiss</Button>
-                <Button size="sm" variant="destructive" disabled={api.busy || disabled} onClick={() => void api.deleteAnnotation(annotation.annotationId)}><Trash2 className="h-4 w-4" /> Delete</Button>
+                <Button size="sm" variant="outline" aria-label={`Edit note for annotation ${shortAnnotationId(annotation.annotationId)}`} disabled={api.busy || disabled} onClick={() => { setEditingId(annotation.annotationId); setDraft(annotation.body ?? ''); }}><Edit3 className="h-4 w-4" /> Edit note</Button>
+                <Button size="sm" variant="outline" aria-label={`Resolve annotation ${shortAnnotationId(annotation.annotationId)}`} disabled={api.busy || disabled} onClick={() => void api.resolveAnnotation(annotation.annotationId)}>Resolve</Button>
+                <Button size="sm" variant="outline" aria-label={`Dismiss annotation ${shortAnnotationId(annotation.annotationId)}`} disabled={api.busy || disabled} onClick={() => void api.dismissAnnotation(annotation.annotationId)}><X className="h-4 w-4" /> Dismiss</Button>
+                <Button size="sm" variant="destructive" aria-label={`Delete annotation ${shortAnnotationId(annotation.annotationId)}`} disabled={api.busy || disabled} onClick={() => void api.deleteAnnotation(annotation.annotationId)}><Trash2 className="h-4 w-4" /> Delete</Button>
               </div>
             </article>
           );
@@ -76,7 +76,7 @@ export function PlanRevisionAnnotationsPanel({ plan, api, disabled }: Props) {
       </div>
       <div className="sticky bottom-2 z-10 grid gap-2 rounded-md border bg-background p-3 shadow">
         <div className="flex flex-wrap items-center gap-2 text-xs"><Badge>{annotations.length} open annotations</Badge><span className="text-muted-foreground">Revise with selected annotation context.</span></div>
-        <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={includeOpenAnnotations} onChange={(event) => setIncludeOpenAnnotations(event.target.checked)} /> Include all open annotations</label>
+        <label className="flex items-center gap-2 text-xs"><input aria-label="Include all open annotations" type="checkbox" checked={includeOpenAnnotations} onChange={(event) => setIncludeOpenAnnotations(event.target.checked)} /> Include all open annotations</label>
         <label className="grid gap-1 text-xs"><span className="font-medium">Optional steering</span><Textarea value={steering} maxLength={MAX_STEERING_TEXT + 1} disabled={api.busy || api.loading || disabled} onChange={(event) => setSteering(event.target.value)} placeholder="Tell the AI how to use these annotations…" /></label>
         {disabledReason && <p className="text-xs text-muted-foreground">{disabledReason}</p>}
         <div><Button size="sm" disabled={Boolean(disabledReason)} onClick={() => void submit()}><Send className="h-4 w-4" /> Revise with AI from annotations</Button></div>

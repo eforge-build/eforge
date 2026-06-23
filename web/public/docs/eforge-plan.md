@@ -16,7 +16,7 @@ Install `@eforge-build/eforge-plan` when you want first-party planning UX in add
 - Project-local backlog capture, search, board rendering, epics, dependencies, and promotion, with direct compact agent operations (`search-items`, `get-item`, `get-epic`, `capture-item`, and `update-item`) and projection flags for smaller payloads (epics, lane counts, sections, lifecycle rows, dependencies, dependents, and body text remain opt-in or omittable where supported).
 - Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks.
 - A Console planning workstation for investigation-first planning and handoff.
-- Session-plan creation, including one automatic apply attempt for eligible ready creation drafts, visible failed apply attempts, readiness checks, and handoff into ordinary eforge builds.
+- Session-plan creation, including one automatic apply attempt for eligible ready creation drafts, persistence of the task summary as a leading `## Executive Summary`, visible failed apply attempts, readiness checks, and handoff into ordinary eforge builds.
 - Revise with AI workflows for existing flat session plans, including durable annotations and revision turns.
 
 These are extension-owned product semantics, not kernel behavior. The engine receives the resulting normalized build source the same way it receives a prompt, PRD file, playbook output, or wrapper-app artifact.
@@ -42,7 +42,7 @@ eforge extension reload
 
 `eforge-plan` runs as trusted extension code in the daemon process. Its private planning state lives under `.eforge/storage/extensions/eforge-plan/`, including backlog records, recommendation models, backlog curation previews, planning task indexes, lifecycle traces, accepted-analysis baselines, and plan revision threads. Treat that directory as local/private project metadata.
 
-Session plans created for handoff live under `.eforge/session-plans/` and are submitted to eforge as build source when ready. They are local and gitignored; committed build provenance is still the engine's artifact-branch PRD and plan records.
+Session plans created for handoff live under `.eforge/session-plans/` and are submitted to eforge as build source when ready. AI-created session plans preserve the task summary as a leading `## Executive Summary` before readiness dimensions. They are local and gitignored; committed build provenance is still the engine's artifact-branch PRD and plan records.
 
 ## Product semantics owned here
 
@@ -52,7 +52,7 @@ Session plans created for handoff live under `.eforge/session-plans/` and are su
 - Generated recommendations and recommendation freshness/staleness projection.
 - `planRevisionTurn` output for Revise with AI, including answer-only and patch-bearing turns.
 - Annotation-backed revision sessions and durable quote-context targets.
-- Daemon-owned `ctx.agentTasks` execution boundaries: the extension owns product storage and apply semantics, including one-attempt workstation auto-apply for eligible ready `sessionPlanCreationDraft` tasks, while the daemon owns task records, status, cancellation, and sanitized results.
+- Daemon-owned `ctx.agentTasks` execution boundaries: the extension owns product storage and apply semantics, including one-attempt workstation auto-apply for eligible ready `sessionPlanCreationDraft` tasks and summary-to-Executive-Summary persistence, while the daemon owns task records, status, cancellation, and sanitized results.
 - Workstation routing, planning-entry contributions, and backlog promotion UX.
 
 `eforge-plan` does not turn the daemon into a generic multi-turn chat runtime. Its planning and revision workflows are bounded extension UX built on daemon-owned single-shot tasks.

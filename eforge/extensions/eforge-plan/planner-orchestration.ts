@@ -217,6 +217,7 @@ interface ResolvedSessionPlanCreationDraft {
   session: string;
   selection: ApplyPlanningAgentTaskCreationDraftSelection;
   openQuestions?: string[];
+  executiveSummary?: string;
 }
 
 function resolveSessionPlanCreationDraft(result: Record<string, unknown>, selection: ApplyPlanningAgentTaskCreationDraftSelection): ResolvedSessionPlanCreationDraft {
@@ -228,7 +229,8 @@ function resolveSessionPlanCreationDraft(result: Record<string, unknown>, select
   if (session.length === 0) throw userActionError('Session-plan creation draft requires a non-empty target session id.', { path: 'applySessionPlanCreationDraft.session' });
   const openQuestions = selection.openQuestions ?? (Array.isArray(result.assumptionsOpenQuestions) ? result.assumptionsOpenQuestions.filter((value): value is string => typeof value === 'string') : undefined);
   const topic = conciseTopic(draft.topic, session);
-  return { draft: { ...draft, topic }, session, selection, ...(openQuestions !== undefined && { openQuestions }) };
+  const executiveSummary = typeof result.summary === 'string' ? result.summary.trim() : '';
+  return { draft: { ...draft, topic }, session, selection, ...(openQuestions !== undefined && { openQuestions }), ...(executiveSummary.length > 0 && { executiveSummary }) };
 }
 
 // Keep generated seed prompts out of persisted plan topics; mirror
@@ -254,6 +256,7 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
   } else {
     await planning.flat.create({ cwd, session, topic: draft.topic, planningType, planningDepth });
     await planning.flat.selectDimensions({ cwd, session, planningType, planningDepth });
+    if (resolved.executiveSummary !== undefined) await planning.flat.setSection({ cwd, session, dimension: 'executive-summary', content: resolved.executiveSummary });
     for (const section of draft.sections) {
       await planning.flat.setSection({ cwd, session, dimension: section.dimension, content: section.content });
     }
@@ -291,6 +294,7 @@ async function replaceAbandonedSessionPlanCreationDraft(cwd: string, resolved: R
   const { draft, session } = resolved;
   let plan = createSessionPlan({ session, topic: draft.topic, planningType, planningDepth });
   plan = setSessionPlanDimensions(plan, { planningType, planningDepth });
+  if (resolved.executiveSummary !== undefined) plan = setSessionPlanSection(plan, 'executive-summary', resolved.executiveSummary);
   for (const section of draft.sections) {
     plan = setSessionPlanSection(plan, section.dimension, section.content);
   }

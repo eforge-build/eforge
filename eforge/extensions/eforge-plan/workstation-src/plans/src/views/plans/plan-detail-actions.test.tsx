@@ -6,10 +6,12 @@ import type { EforgeBridge, PlanData, PlanDetail } from '@/types';
 import { PlanDetailCard } from './plan-detail';
 
 const sections = {
+  'executive summary': 'Summary first.',
   'problem-statement': 'Problem',
   scope: 'Scope',
   'acceptance-criteria': 'Done means it works.',
 };
+const readinessSections = Object.keys(sections).filter((section) => section !== 'executive summary');
 
 function renderPlan(plan: Partial<PlanData>) {
   const invokeAction = vi.fn(async (actionId: string) => {
@@ -23,15 +25,15 @@ function renderPlan(plan: Partial<PlanData>) {
     status: 'planning',
     planning_type: 'feature',
     planning_depth: 'focused',
-    required_dimensions: Object.keys(sections),
+    required_dimensions: readinessSections,
     sections,
     ...plan,
   };
   const detail: PlanDetail & { plan: PlanData } = {
     plan: fullPlan,
-    readiness: { ready: true, coveredDimensions: Object.keys(sections), missingDimensions: [], skippedDimensions: [] },
+    readiness: { ready: true, coveredDimensions: readinessSections, missingDimensions: [], skippedDimensions: [] },
   };
-  render(<ToastProvider><PlanDetailCard detail={detail} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} /></ToastProvider>);
+  render(<ToastProvider><PlanDetailCard detail={detail} revision={{ busy: false, loading: false, hasRunningTurn: false } as any} locked={false} onSelectAnnotationTarget={vi.fn()} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} /></ToastProvider>);
   return { invokeAction };
 }
 
@@ -44,6 +46,7 @@ describe('PlanDetailCard handoff actions', () => {
     expect(screen.getByRole('button', { name: /Mark ready/i })).toBeTruthy();
     expect((screen.getByRole('button', { name: /Handoff/i }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Checks pass · mark ready to hand off/i)).toBeTruthy();
+    expect(screen.getByText('Summary first.').compareDocumentPosition(screen.getByText('Readiness')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('enables handoff without duplicate ready badges once the plan is ready', () => {

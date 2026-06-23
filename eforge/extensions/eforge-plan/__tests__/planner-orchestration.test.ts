@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile, readdir, readFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
+import { createSessionPlanningWorkflowAdapter, normalizeBuildSource, sessionPlanToBuildSource } from '@eforge-build/input';
 import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { applyCompletedPlanningAgentTaskResult, applyPlannerResult, preparePlannerContext } from '../planner-orchestration.js';
 import { parseMarkdownRecord, readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
@@ -282,8 +282,16 @@ describe('planner orchestration', () => {
       expect(loaded.plan.open_questions).toEqual(['Custom open question']);
       expect(loaded.plan.required_dimensions.length).toBeGreaterThan(0);
       const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'new-session.md'), 'utf-8');
+      expect(loaded.plan.sections.get('executive summary')).toBe('Drafted a plan.');
+      expect(result.sessionPlanCreationDraft?.readiness.coveredDimensions).not.toContain('executive-summary');
+      expect(markdown).toContain('## Executive Summary\n\nDrafted a plan.');
+      expect(markdown.indexOf('## Executive Summary')).toBeLessThan(markdown.indexOf('## Problem Statement'));
       expect(markdown).toContain('Generated scope content.');
       expect(markdown).not.toContain('status: submitted');
+      const buildSource = sessionPlanToBuildSource(loaded.plan);
+      expect(buildSource.indexOf('## Executive Summary')).toBeLessThan(buildSource.indexOf('## Problem Statement'));
+      const normalized = normalizeBuildSource({ sourcePath: join(cwd, '.eforge', 'session-plans', 'new-session.md'), content: markdown });
+      expect(normalized.content.indexOf('## Executive Summary')).toBeLessThan(normalized.content.indexOf('## Problem Statement'));
     });
   });
 
@@ -395,6 +403,21 @@ describe('planner orchestration', () => {
         'root-cause',
       ]);
       expect(existsSync(join(cwd, '.eforge', 'session-plans', 'group-fast-ux-bugfixes.md'))).toBe(true);
+    });
+  });
+
+  it('rejects executive-summary as a readiness section id before writing a session plan', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await expect(applyCompletedPlanningAgentTaskResult(cwd, bugfixCreationDraftTask('bad-summary-section', [
+        { dimension: 'executive-summary', content: 'Summary belongs in the top-level task summary.' },
+        { dimension: 'problem-statement', content: 'Grouped fast UX fixes regress dashboard refresh behavior.' },
+        { dimension: 'reproduction-steps', content: 'Open the dashboard, apply a filter, and refresh.' },
+        { dimension: 'root-cause', content: 'Filter state is reset before the refresh callback reads it.' },
+        { dimension: 'acceptance-criteria', content: '- Dashboard preserves selected filters after refresh.' },
+        { dimension: 'assumptions-and-validation', content: 'Validate with targeted UI coverage and a smoke check.' },
+      ]), { taskId: 'task-creation', applySessionPlanCreationDraft: {} })).rejects.toThrow(/unknown dimension ids: executive-summary/);
+      expect(existsSync(join(cwd, '.eforge', 'session-plans', 'bad-summary-section.md'))).toBe(false);
     });
   });
 
@@ -635,6 +658,8 @@ describe('planner orchestration', () => {
       expect(result.sessionPlanCreationDraft).toMatchObject({ session: 'abandoned-session', relativePath: '.eforge/session-plans/abandoned-session.md' });
       expect(loaded.plan.status).toBe('planning');
       expect(raw).toContain('status: planning');
+      expect(raw).toContain('## Executive Summary\n\nDrafted a plan.');
+      expect(raw.indexOf('## Executive Summary')).toBeLessThan(raw.indexOf('## Problem Statement'));
       expect(raw).toContain('Generated scope content.');
       expect(raw).not.toContain('Old abandoned content.');
     });

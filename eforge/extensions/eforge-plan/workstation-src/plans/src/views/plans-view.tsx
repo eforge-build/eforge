@@ -11,7 +11,7 @@ import { useRouter } from '@/router';
 import type { Artifact, Detail, DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
-import { PlanDetailCard } from './plans/plan-detail';
+import { PlanDetailWorkspace } from './plans/plan-detail-workspace';
 import { PlanSetDetailCard } from './plans/plan-set-detail';
 import { DraftUnitDetailCard } from './plans/draft-unit-detail';
 import { DraftMergePanel } from './plans/draft-merge-panel';
@@ -92,8 +92,10 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
     });
   }, []);
 
+  const selectedArtifact = artifacts.find((entry) => entry.key === selectedKey) ?? null;
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+    <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)_20rem] lg:items-start">
       <aside className="grid content-start gap-4">
         <Card>
           <CardHeader className="flex-row items-start justify-between gap-3">
@@ -167,48 +169,57 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
         </Card>
       </aside>
 
-      <section className="min-w-0">
-        {merging && mergeUnits.length >= 2
-          ? <DraftMergePanel
-              units={mergeUnits}
-              onAdvise={onAdviseMergeDraftUnits}
-              onMerge={onMergeDraftUnits}
-              onClose={exitMergeMode}
-              onOpenUnit={(key) => { exitMergeMode(); selectPlan(key); }}
-            />
-          : selectedDraft
-          ? <DraftUnitDetailCard
-              key={selectedDraft.unitId}
-              unit={selectedDraft}
-              titles={titles}
-              onUpdate={onUpdateDraftUnit}
-              onDelete={async (id) => { await onDeleteDraftUnit(id); selectPlan(''); }}
-              onPromote={onPromoteDraftUnit}
-              onSplit={onSplitDraftUnit}
-              onAdviseSplit={onAdviseSplitDraftUnit}
-              onOpenItem={nav.openItem}
-              onOpenPlan={selectPlan}
-            />
-          : staleDraft
-          ? <Card>
-              <CardHeader>
-                <CardTitle>Draft not found</CardTitle>
-                <CardDescription>This draft plan unit no longer exists. It may have been deleted or promoted.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" size="sm" onClick={() => selectPlan('')}>Clear selection</Button>
-              </CardContent>
-            </Card>
-          : isPlanDetail(detail) && detail.plan
-          ? <PlanDetailCard detail={{ ...detail, plan: detail.plan }} onApply={applyResult} onRefresh={onRefresh} onDeleted={async () => {
+      {isPlanDetail(detail) && detail.plan && !merging && !selectedDraft && !staleDraft ? (
+        <PlanDetailWorkspace
+          detail={{ ...detail, plan: detail.plan }}
+          artifact={selectedArtifact}
+          titles={titles}
+          onApply={applyResult}
+          onRefresh={onRefresh}
+          onDeleted={async () => {
             setDetail(null);
             selectPlan('');
             await onRefresh();
-          }} />
-          : detail
-            ? <PlanSetDetailCard detail={detail as PlanSetDetail} />
-            : <Card><CardHeader><CardTitle>Details</CardTitle><CardDescription>Select an artifact to inspect it.</CardDescription></CardHeader></Card>}
-      </section>
+          }}
+        />
+      ) : (
+        <section className="min-w-0 lg:col-span-2">
+          {merging && mergeUnits.length >= 2
+            ? <DraftMergePanel
+                units={mergeUnits}
+                onAdvise={onAdviseMergeDraftUnits}
+                onMerge={onMergeDraftUnits}
+                onClose={exitMergeMode}
+                onOpenUnit={(key) => { exitMergeMode(); selectPlan(key); }}
+              />
+            : selectedDraft
+            ? <DraftUnitDetailCard
+                key={selectedDraft.unitId}
+                unit={selectedDraft}
+                titles={titles}
+                onUpdate={onUpdateDraftUnit}
+                onDelete={async (id) => { await onDeleteDraftUnit(id); selectPlan(''); }}
+                onPromote={onPromoteDraftUnit}
+                onSplit={onSplitDraftUnit}
+                onAdviseSplit={onAdviseSplitDraftUnit}
+                onOpenItem={nav.openItem}
+                onOpenPlan={selectPlan}
+              />
+            : staleDraft
+            ? <Card>
+                <CardHeader>
+                  <CardTitle>Draft not found</CardTitle>
+                  <CardDescription>This draft plan unit no longer exists. It may have been deleted or promoted.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" size="sm" onClick={() => selectPlan('')}>Clear selection</Button>
+                </CardContent>
+              </Card>
+            : detail
+              ? <PlanSetDetailCard detail={detail as PlanSetDetail} />
+              : <Card><CardHeader><CardTitle>Details</CardTitle><CardDescription>Select an artifact to inspect it.</CardDescription></CardHeader></Card>}
+        </section>
+      )}
     </div>
   );
 }
