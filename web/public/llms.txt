@@ -2,7 +2,7 @@
 
 > eforge is a build-engine kernel that turns normalized build source into reviewed, validated code.
 
-eforge is an autonomous build-and-review kernel for code generation. It accepts normalized build source from direct prompts, PRD files, file inputs, or optional producer surfaces; plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; and merges to the base branch. Playbooks, session plans, and first-party planning extensions are optional workflow or host surfaces around the kernel. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
+eforge is an autonomous build-and-review kernel for code generation. It accepts normalized build source from direct prompts, PRD files, file inputs, or optional producer surfaces; plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; and merges to the base branch. Playbooks are owned by the first-party eforge-playbooks extension; session plans and first-party planning extensions are optional workflow or host surfaces around the kernel. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
 
 ## Core kernel guides
 
@@ -13,7 +13,7 @@ eforge is an autonomous build-and-review kernel for code generation. It accepts 
 
 ## Optional workflow guides
 
-- [Playbooks guide](/docs/playbooks.md): Create, manage, and run optional workflow playbooks that prepare or normalize build source
+- [Playbooks guide](/docs/playbooks.md): Create, manage, and run optional workflow playbooks through first-party eforge-playbooks extension actions
 - [Stacked PRs](/docs/stacking.md): Configure git-spice-backed artifact branch stacks and PR targeting
 
 ## Extension platform guides
@@ -35,7 +35,7 @@ eforge is an autonomous build-and-review kernel for code generation. It accepts 
 
 ## Reference guides
 
-- [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
+- [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, playbook, and first-party extension ownership
 
 ## Canonical reference
 

@@ -9,6 +9,188 @@ Autonomous plan-build-review CLI for code generation.
 
 ## Commands
 
+### `playbook`
+
+**Full command:** `eforge playbook`
+
+Manage eforge playbooks through eforge-playbooks host contributions
+
+
+#### `list`
+
+**Full command:** `eforge playbook list`
+
+List playbooks
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Filter by scope |
+| `--mode <mode>` | Filter by mode |
+| `--include-shadowed` | Include shadowed playbooks |
+| `--json` | Output JSON |
+
+#### `show`
+
+**Full command:** `eforge playbook show`
+
+Show a playbook
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Resolve from an exact scope |
+| `--json` | Output JSON |
+
+#### `new`
+
+**Full command:** `eforge playbook new`
+
+Create a playbook in $EDITOR
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Target scope |
+| `--mode <mode>` | Playbook mode |
+| `--profile <profile>` | Agent profile |
+| `--json` | Output JSON |
+
+#### `edit`
+
+**Full command:** `eforge playbook edit`
+
+Edit a playbook in $EDITOR
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Resolve from an exact scope |
+| `--json` | Output JSON |
+
+#### `save`
+
+**Full command:** `eforge playbook save`
+
+Save a playbook
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Target scope |
+| `--raw <markdown>` | Raw playbook Markdown |
+| `--file <path>` | Read raw playbook Markdown from a file |
+| `--overwrite <boolean>` | Overwrite existing playbook |
+| `--json` | Output JSON |
+
+#### `validate`
+
+**Full command:** `eforge playbook validate`
+
+Validate raw playbook Markdown
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--raw <markdown>` | Raw playbook Markdown |
+| `--file <path>` | Read raw playbook Markdown from a file |
+| `--scope <scope>` | Validation scope |
+| `--json` | Output JSON |
+
+#### `copy`
+
+**Full command:** `eforge playbook copy`
+
+Copy a playbook to another scope
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--target-scope <scope>` | Target scope |
+| `--source-scope <scope>` | Source scope |
+| `--overwrite <boolean>` | Overwrite target playbook |
+| `--json` | Output JSON |
+
+#### `promote`
+
+**Full command:** `eforge playbook promote`
+
+Promote a playbook
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--overwrite <boolean>` | Overwrite target playbook |
+| `--json` | Output JSON |
+
+#### `demote`
+
+**Full command:** `eforge playbook demote`
+
+Demote a playbook
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--overwrite <boolean>` | Overwrite target playbook |
+| `--json` | Output JSON |
+
+#### `run`
+
+**Full command:** `eforge playbook run`
+
+Run a playbook
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Resolve from an exact scope |
+| `--mode <mode>` | Expected playbook mode |
+| `--profile <profile>` | Agent profile override |
+| `--after <queue-id>` | Queue after an upstream queue item |
+| `--landing-action <action>` | Landing action: pr, merge, or leave |
+| `--landing-auto-merge <boolean>` | Enable or disable PR auto-merge |
+| `--json` | Output JSON |
+
+### `play`
+
+**Full command:** `eforge play`
+
+Alias for eforge playbook run <name>
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Resolve from an exact scope |
+| `--mode <mode>` | Expected playbook mode |
+| `--profile <profile>` | Agent profile override |
+| `--after <queue-id>` | Queue after an upstream queue item |
+| `--landing-action <action>` | Landing action: pr, merge, or leave |
+| `--landing-auto-merge <boolean>` | Enable or disable PR auto-merge |
+| `--json` | Output JSON |
+
 ### `enqueue`
 
 **Full command:** `eforge enqueue`
@@ -28,6 +210,7 @@ Normalize input and add it to the PRD queue
 | `--landing-auto-merge` | Enable PR auto-merge for this build |
 | `--no-landing-auto-merge` | Disable PR auto-merge for this build |
 | `--after <queue-id>` | Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact |
+| `--post-merge <command>` | Per-enqueue post-merge validation command (repeatable) |
 
 ### `build`
 
@@ -589,84 +772,6 @@ Continue and repair build from preserved compiled artifacts
 | `--profile <name>` | Override active profile for this continue-and-repair build |
 | `--cwd <cwd>` | Working directory override |
 | `--verbose` | Print additional queued metadata |
-
-### `playbook`
-
-**Full command:** `eforge playbook`
-
-Manage playbooks
-
-
-#### `list`
-
-**Full command:** `eforge playbook list`
-
-List all available playbooks with source and shadow chain
-
-
-#### `new`
-
-**Full command:** `eforge playbook new`
-
-Scaffold a new playbook (non-interactive, for scripts)
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--scope <scope>` | Playbook scope: user \| project-team \| project-local |
-| `--name <name>` | Playbook name (kebab-case) |
-| `--description <description>` | Short description of the playbook |
-| `--from <file>` | Read body content from this file (used as the Goal section) |
-| `--profile <name>` | Agent runtime profile to use when this playbook is run |
-
-#### `edit`
-
-**Full command:** `eforge playbook edit`
-
-Open a playbook in $EDITOR, validate, and save to the same tier
-
-
-#### `run`
-
-**Full command:** `eforge playbook run`
-
-Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return generic eforge-plan planning entry metadata or unavailable diagnostics
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
-
-#### `promote`
-
-**Full command:** `eforge playbook promote`
-
-Promote a playbook from project-local to project-team (stages with git add)
-
-
-#### `demote`
-
-**Full command:** `eforge playbook demote`
-
-Demote a playbook from project-team to project-local (.eforge/playbooks/)
-
-
-### `play`
-
-**Full command:** `eforge play`
-
-Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns eforge-plan planning entry metadata or unavailable diagnostics
-
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only |
 
 ### `mcp-proxy`
 

@@ -532,7 +532,7 @@ async function main(): Promise<void> {
     return schedulerControl?.isAlive() ?? false;
   }
 
-  function emitSchedulerMutation(reason: 'enqueue' | 'playbook-enqueue' | 'apply-recovery' | 'external'): void {
+  function emitSchedulerMutation(reason: 'enqueue' | 'apply-recovery' | 'external'): void {
     schedulerInject?.({
       type: 'queue:mutation',
       reason,

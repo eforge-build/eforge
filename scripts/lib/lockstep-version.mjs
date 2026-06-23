@@ -15,6 +15,7 @@ export const LOCKSTEP_PACKAGE_PATHS = [
   "packages/client/package.json",
   "packages/engine/package.json",
   "eforge/extensions/eforge-plan/package.json",
+  "eforge/extensions/eforge-playbooks/package.json",
   "packages/extension-sdk/package.json",
   "packages/input/package.json",
   "packages/monitor/package.json",

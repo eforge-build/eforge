@@ -20,7 +20,6 @@ export type AutoBuildSupervisorSource =
 
 export type AutoBuildQueueMutationReason =
   | 'enqueue'
-  | 'playbook-enqueue'
   | 'apply-recovery'
   | 'external';
 

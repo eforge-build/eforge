@@ -516,6 +516,7 @@ async function* runBuildPhase(
     ...(stackProvider !== undefined && { stackProvider }),
     ...(resolvedLandingAction !== undefined && { landingAction: resolvedLandingAction }),
     ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
+    ...(prd.frontmatter.postMerge !== undefined && { postMergeCommands: prd.frontmatter.postMerge }),
   }))) {
     yield { ...event, sessionId: prdSessionId } as EforgeEvent;
     if (event.type === 'phase:end' && event.result.status === 'failed') buildFailed = true;

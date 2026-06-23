@@ -26,13 +26,17 @@ graph TD
     end
 
     subgraph Input ["@eforge-build/input"]
-        InputArtifacts["Playbooks / Session Plans<br/>bundled playbook adapter<br/>bundled session-planning adapter<br/>normalizeBuildSource"]
+        InputArtifacts["Playbooks / Session Plans<br/>pure playbook helpers<br/>session-planning helpers<br/>normalizeBuildSource"]
     end
 
     subgraph Scopes ["@eforge-build/scopes"]
         ScopeDir["getScopeDirectory"]
         LayeredSingleton["resolveLayeredSingletons"]
         NamedSet["resolveNamedSet / listNamedSet"]
+    end
+
+    subgraph FirstPartyExtensions ["First-party extensions"]
+        PlaybooksExt["@eforge-build/eforge-playbooks"]
     end
 
     subgraph Engine ["Engine - packages/engine/"]
@@ -53,7 +57,8 @@ graph TD
     PiPkg -->|"daemon client"| Client
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
-    Monitor -->|"playbook + session-plan compatibility shims"| Input
+    Monitor -->|"session-plan compatibility shims"| Input
+    FirstPartyExtensions -->|"playbook actions"| Input
     Plugin -->|"MCP tools"| EforgeEngine
     PiPkg -->|"native Pi tools"| EforgeEngine
     EforgeEngine --> Pipeline
@@ -81,6 +86,7 @@ flowchart TD
     engine["@eforge-build/engine"]
     scopes["@eforge-build/scopes"]
     extensionSdk["@eforge-build/extension-sdk"]
+    playbooksExt["@eforge-build/eforge-playbooks"]
 
     wrappers --> client
     wrappers --> input
@@ -96,6 +102,8 @@ flowchart TD
     input --> scopes
     input --> extensionSdk
     extensionSdk --> scopes
+    playbooksExt --> extensionSdk
+    playbooksExt --> input
 ```
 
 **Allowed dependency edges:**
@@ -105,10 +113,11 @@ flowchart TD
 - `extension-sdk` MAY depend on `scopes` for scoped path/storage helpers.
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
+- First-party extension packages MAY depend on `extension-sdk` and public input/scopes/client packages needed for their contribution contracts. The `@eforge-build/eforge-playbooks` package depends on `extension-sdk` and `input`.
 
-Playbook routes (`/api/playbook/*`, `/api/session-plan/create-from-playbook`) follow a `client` → `monitor compatibility shim` → `input bundled playbook adapter` → lower-level input helpers chain: route constants and response types live in `@eforge-build/client`, the daemon service keeps local HTTP error mapping, landing-action validation, queue dependency handling, profile lookup, acceptance-criteria inventory derivation, enqueue, and scheduler notification in `packages/monitor/`, and the bundled playbook adapter in `@eforge-build/input` owns playbook-domain list/load/save/write/move/copy/validate/compile/seed behavior before reaching lower-level playbook and session-plan helpers.
+Playbook-specific daemon and client APIs are removed. Playbook behavior is exposed through generic extension contribution invocation, with host compatibility surfaces using the extension's integration commands: the first-party `@eforge-build/eforge-playbooks` extension owns the action/contribution surface for playbook list/load/save/write/move/copy/validate/compile/planning-handoff behavior, imports only public `@eforge-build/input` helpers for pure parser/storage/compiler behavior, and enqueues autonomous runs through `ctx.buildQueue.enqueue`.
 
-Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow a `client` → `monitor compatibility shim` → `input bundled session-planning adapter` → lower-level input helpers chain: `API_ROUTES.sessionPlan*` constants and response types live in `@eforge-build/client`, the daemon routes keep local HTTP security/request validation/error mapping in `packages/monitor/`, and the bundled session-planning adapter in `@eforge-build/input` owns session-plan domain behavior before reaching lower-level input helpers. The MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against the client constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
+Session-plan routes and the `eforge_session_plan` tool follow a `client` → `monitor compatibility shim` → `input session-planning helpers` → lower-level input helpers chain: `API_ROUTES.sessionPlan*` constants and response types live in `@eforge-build/client`, the daemon routes keep local HTTP security/request validation/error mapping in `packages/monitor/`, and the bundled session-planning adapter in `@eforge-build/input` owns session-plan domain behavior before reaching lower-level input helpers. The MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against the client constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
 
 **Why:** Keeping the engine input-agnostic means future wrapper apps can reuse `@eforge-build/input` protocols without pulling in engine internals.
 
@@ -122,15 +131,15 @@ Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool f
 
 ### Monitor
 
-`packages/monitor/` provides the local web dashboard host. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves the Console React SPA over SSE at `/console/`, redirects root UI requests to Console, runs as a detached process, and survives CLI exit. Playbook daemon services lazily call the bundled playbook adapter from `@eforge-build/input`; session-plan and session-plan-set services lazily call the bundled session-planning adapter from `@eforge-build/input`, and session-plan source paths are adapter-normalized before reaching engine queue helpers.
+`packages/monitor/` provides the local web dashboard host. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves the Console React SPA over SSE at `/console/`, redirects root UI requests to Console, runs as a detached process, and survives CLI exit. Direct playbook daemon services are removed; the first-party `@eforge-build/eforge-playbooks` extension owns the native playbook action/contribution surface. Session-plan and session-plan-set services lazily call the bundled session-planning adapter from `@eforge-build/input`, and session-plan source paths are adapter-normalized before reaching engine queue helpers.
 
 ### Plugin
 
-`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, extension management, extension contribution discovery/detail/invocation, playbook, session-plan, and daemon operations. The `/eforge:init` skill drives project onboarding interactively (harness, provider, model selection via a Quick or Mix-and-match flow), then calls `eforge_init` as a pure persister - the tool accepts a fully-assembled `profile` object and writes config to disk. The tool does not elicit input itself.
+`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, extension management, extension contribution discovery/detail/invocation, session-plan, and daemon operations; playbook behavior is reached through `eforge_extension_contribution` and the first-party `eforge-playbooks` actions rather than direct playbook daemon tools. The `/eforge:playbook` skill guides create, edit, run, list, promote, and demote workflows through that generic contribution surface. The `/eforge:init` skill drives project onboarding interactively (harness, provider, model selection via a Quick or Mix-and-match flow), then calls `eforge_init` as a pure persister - the tool accepts a fully-assembled `profile` object and writes config to disk. The tool does not elicit input itself.
 
 ### Pi Package
 
-`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, extension management, extension contribution discovery/detail/invocation, playbook, session-plan, and daemon management. Native Pi commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), extension contribution browsing (`/eforge:extensions` list/show/invoke with compact list output), and playbook management (`/eforge:playbook`) with interactive TUI panels and selectors; variable-length read-only content is shown in scrollable panels, while compact choices use keyboard-driven selectors. Skill-based slash commands (`/eforge:init`, `/eforge:extend`, `/eforge:recover`, `/eforge:update`) provide host guidance where conversational reasoning is required; planning entry is discovered through generic eforge-plan extension contributions, workstation routing, and deep links rather than a host-owned slash command. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and Console all dispatch off the same constants so a route rename surfaces as a type error.
+`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, extension management, extension contribution discovery/detail/invocation, session-plan, and daemon management; playbook behavior is reached through `eforge_extension_contribution` and the first-party `eforge-playbooks` actions rather than direct playbook daemon tools. Native Pi commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile:new`), config viewing (`/eforge:config`), status dashboards (`/eforge:status`), safe daemon restarts (`/eforge:restart`), build source review (`/eforge:build`), and extension contribution browsing (`/eforge:extensions` list/show/invoke with compact list output); variable-length read-only content is shown in scrollable panels, while compact choices use keyboard-driven selectors. The bundled `eforge-playbook` skill guides create, edit, run, list, promote, and demote workflows through that generic contribution surface. Skill-based slash commands (`/eforge:init`, `/eforge:extend`, `/eforge:recover`, `/eforge:update`) provide host guidance where conversational reasoning is required; planning entry is discovered through generic eforge-plan extension contributions, workstation routing, and deep links rather than a host-owned slash command. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and Console all dispatch off the same constants so a route rename surfaces as a type error.
 
 ## Event System
 
@@ -284,11 +293,11 @@ When a plan completes and merges, the orchestrator immediately checks if any pen
 
 **Acceptance criterion cross-checking** - Acceptance validation uses the canonical inventory persisted at enqueue: the PRD validator emits exactly one verdict per stable `ac-###` criterion loaded from the queued PRD's hidden inventory block. The hidden block is stripped from planner, validator, dependency, staleness, profile-router, and provenance prose. There is no partial or skipped set — every criterion either passes, fails, or is unknown. The `passed` field on `acceptance_validation:complete` is `true` only when every verdict is `pass` or is covered by an explicit waiver; any `fail` or `unknown` verdict without a matching waiver sets `passed:false` regardless of the command validation result. Waivers are policy overrides that declare an intentional exception — they are not substitutes for evidence. They surface in the Console timeline detail panel alongside the waiver reason string so the reviewer can confirm intent.
 
-**No-validator policy** - Queued PRD builds require the persisted canonical inventory. If the hidden inventory block is missing, duplicated, or malformed, the build fails before orchestration and the PRD must be re-enqueued. Builds with an empty validated inventory do not automatically produce a passing `acceptance_validation:complete`: without `build.validation.allowNoAcceptanceCriteria: true` and a non-empty `noAcceptanceCriteriaReason`, acceptance validation fails. When no `prdValidator` is configured at all, the same waiver path applies. Separately, an empty implementation diff (no changes relative to the base branch) causes `prd_validation:complete passed:false` immediately — the validator cannot confirm that any criterion was addressed when there is nothing to inspect; set `build.validation.allowEmptyPrdDiff: true` with a non-empty `emptyPrdDiffReason` to allow such a build to pass. `builtOnMerge` plans that produce no committed file changes relative to `baseSha` fail during merge unless `build.validation.allowNoCommittedChanges: true` is set with a non-empty `noCommittedChangesReason`. Additionally, builds with zero combined validation commands (no planner-generated `validateCommands` and no `postMergeCommands`) fail unless `build.validation.allowNoCommands: true` is set with a non-empty `noCommandsReason`. All waiver booleans require a reason string; a missing or empty reason is rejected at config validation time.
+**No-validator policy** - Queued PRD builds require the persisted canonical inventory. If the hidden inventory block is missing, duplicated, or malformed, the build fails before orchestration and the PRD must be re-enqueued. Builds with an empty validated inventory do not automatically produce a passing `acceptance_validation:complete`: without `build.validation.allowNoAcceptanceCriteria: true` and a non-empty `noAcceptanceCriteriaReason`, acceptance validation fails. When no `prdValidator` is configured at all, the same waiver path applies. Separately, an empty implementation diff (no changes relative to the base branch) causes `prd_validation:complete passed:false` immediately — the validator cannot confirm that any criterion was addressed when there is nothing to inspect; set `build.validation.allowEmptyPrdDiff: true` with a non-empty `emptyPrdDiffReason` to allow such a build to pass. `builtOnMerge` plans that produce no committed file changes relative to `baseSha` fail during merge unless `build.validation.allowNoCommittedChanges: true` is set with a non-empty `noCommittedChangesReason`. Additionally, builds with zero combined validation commands (no planner-generated `validateCommands`, no configured `postMergeCommands`, and no queued PRD `postMerge` commands) fail unless `build.validation.allowNoCommands: true` is set with a non-empty `noCommandsReason`. All waiver booleans require a reason string; a missing or empty reason is rejected at config validation time.
 
 **Gap-close rerun ordering** - The gap-close pipeline runs before artifact recording but after the initial `prd_validation:complete` assessment. Once the gap closer emits `gap_close:complete passed:true`, the full validation sequence reruns in order: deterministic command validation first, then PRD validation, then acceptance validation. The rerun is unconditional — even if the initial pass produced `prd_validation:complete passed:true`, the rerun must also pass. If either validation fails on rerun, or if acceptance evidence is inconclusive, no artifact record is written and the build is marked failed.
 
-**Post-merge validation** runs commands from `orchestration.yaml` (planner-generated) and `eforge/config.yaml` `postMergeCommands` (user-configured). On failure, the validation-fixer agent attempts repairs up to a configurable retry limit.
+**Post-merge validation** runs commands from `orchestration.yaml` (planner-generated), `eforge/config.yaml` `postMergeCommands` (user-configured), and queued PRD `postMerge` metadata (per-enqueue, appended after configured commands). On failure, the validation-fixer agent attempts repairs up to a configurable retry limit.
 
 **Committed-state invariant** — Validation commands, PRD/acceptance validation, and artifact recording all operate on the committed HEAD of the merge worktree. A `builtOnMerge` plan (single-plan build where the plan runs directly in the merge worktree) must have all implementation work committed before `mergePlan()` returns. If the merge worktree has dirty tracked or untracked files at the point where the plan is marked merged, the orchestrator rejects the merge with an error listing the offending paths. Additionally, a `builtOnMerge` plan must produce at least one committed file change relative to `baseSha` — a build where `HEAD === baseSha` (no new commits) is rejected at merge time unless `build.validation.allowNoCommittedChanges: true` is set with a non-empty `noCommittedChangesReason`. `recordArtifact()` enforces the dirty-worktree invariant independently: if the merge worktree is dirty at artifact-recording time, the build is marked failed and the artifact registry is not written. This ensures that the recorded `commitSha` always corresponds to the full, committed build output.
 

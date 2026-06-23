@@ -422,18 +422,6 @@ export type {
   BuildResumeArtifactsEvent,
 } from './events.js';
 
-// --- eforge:region system-configuration-view ---
-export type {
-  PlaybookScope,
-  PlaybookArtifactSource,
-  PlaybookMode,
-  PlaybookShadow,
-  PlaybookListEntry,
-  PlaybookData,
-  PlaybookListResponse,
-  PlaybookShowResponse,
-} from './api/playbook.js';
-// --- eforge:endregion system-configuration-view ---
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, EvaluationIssueOutcomeSchema, PlanningDecisionSchema,
   AcceptanceCriterionVerdictSchema, AcceptanceCriteriaConflictSchema,

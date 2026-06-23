@@ -10,8 +10,6 @@ const EXPECTED_ROUTE_KEYS = [
   'extensionWorkstationFrame', 'extensionWorkstationAsset',
   'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
   'extensionRemove', 'extensionPromote', 'extensionDemote',
-  'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',
-  'playbookDemote', 'playbookValidate', 'playbookCopy', 'sessionPlanCreateFromPlaybook',
   'sessionPlanList', 'sessionPlanShow', 'sessionPlanCreate', 'sessionPlanSetSection',
   'sessionPlanSkipDimension', 'sessionPlanSetStatus', 'sessionPlanSelectDimensions',
   'sessionPlanReadiness', 'sessionPlanMigrateLegacy',
@@ -23,7 +21,6 @@ const GET_ROUTE_KEYS = new Set([
   'extensionContributionManifest',
   'extensionAgentTaskGet',
   'extensionWorkstationFrame', 'extensionWorkstationAsset',
-  'playbookList', 'playbookShow',
   'sessionPlanList', 'sessionPlanShow', 'sessionPlanReadiness',
   'sessionPlanSetList', 'sessionPlanSetShow', 'sessionPlanSetValidate',
 ]);
@@ -35,8 +32,6 @@ const SECURED_ROUTE_KEYS = new Set([
   'extensionWorkstationFrame', 'extensionWorkstationAsset',
   'extensionNew', 'extensionReload', 'extensionTest', 'extensionTrust', 'extensionUntrust', 'extensionInstall', 'extensionUpdate',
   'extensionRemove', 'extensionPromote', 'extensionDemote',
-  'playbookList', 'playbookShow', 'playbookSave', 'playbookRun', 'playbookPromote',
-  'playbookDemote', 'playbookValidate', 'playbookCopy', 'sessionPlanCreateFromPlaybook',
   'sessionPlanList', 'sessionPlanShow', 'sessionPlanCreate', 'sessionPlanSetSection',
   'sessionPlanSkipDimension', 'sessionPlanSetStatus', 'sessionPlanSelectDimensions',
   'sessionPlanReadiness', 'sessionPlanMigrateLegacy',
@@ -44,14 +39,15 @@ const SECURED_ROUTE_KEYS = new Set([
 ]);
 
 describe('extension content route registration', () => {
-  it('registers exactly the 41 module-owned route keys with client patterns', async () => {
+  it('registers exactly the 32 non-playbook module-owned route keys with client patterns', async () => {
     const harness = await startContentRouteHarness();
     try {
       expect(EXTENSION_CONTENT_ROUTE_KEYS).toEqual(EXPECTED_ROUTE_KEYS);
-      expect(EXTENSION_CONTENT_ROUTE_KEYS).toHaveLength(41);
+      expect(EXTENSION_CONTENT_ROUTE_KEYS).toHaveLength(32);
       expect(harness.routes.map((route) => route.routeKey)).toEqual(EXPECTED_ROUTE_KEYS);
       expect(new Set(harness.routes.map((route) => route.routeKey)).size).toBe(harness.routes.length);
       for (const route of harness.routes) expect(route.pattern).toBe(API_ROUTES[route.routeKey]);
+      expect(harness.routes.map((route) => route.routeKey).filter((key) => key.startsWith('playbook'))).toEqual([]);
     } finally { await harness.close(); }
   });
 

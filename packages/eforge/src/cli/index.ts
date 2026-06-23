@@ -15,10 +15,10 @@ import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
-import { registerPlaybookCommand } from './playbook.js';
 import { registerExtensionContributionCommands } from './extension-contributions.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
+import { registerPlaybookCommands } from './playbook.js';
 // --- eforge:region host-queue-controls ---
 import { registerQueueControlCommands } from './queue-control.js';
 // --- eforge:endregion host-queue-controls ---
@@ -77,6 +77,10 @@ import {
 // --- eforge:endregion daemon-lifecycle-imports ---
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
+
+function collectRepeatableOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
 
 function buildConfigOverrides(options: { maxConcurrentBuilds?: number; plugins?: boolean }): Partial<EforgeConfig> | undefined {
   const overrides: Partial<EforgeConfig> = {};
@@ -471,6 +475,8 @@ export function createProgram(abortController?: AbortController, version?: strin
     .description('Autonomous plan-build-review CLI for code generation')
     .version(version ?? EFORGE_VERSION);
 
+  registerPlaybookCommands(program);
+
   program
     .command('enqueue <source>')
     .description('Normalize input and add it to the PRD queue')
@@ -482,6 +488,7 @@ export function createProgram(abortController?: AbortController, version?: strin
     .option('--landing-auto-merge', 'Enable PR auto-merge for this build')
     .option('--no-landing-auto-merge', 'Disable PR auto-merge for this build')
     .option('--after <queue-id>', 'Explicit upstream dependency: waits in waiting/ if the upstream is active; enqueues immediately as an eligible dependent if the upstream completed with a usable artifact')
+    .option('--post-merge <command>', 'Per-enqueue post-merge validation command (repeatable)', collectRepeatableOption, [])
     .action(
       async (
         source: string,
@@ -493,6 +500,7 @@ export function createProgram(abortController?: AbortController, version?: strin
           landingAction?: string;
           landingAutoMerge?: boolean;
           after?: string;
+          postMerge?: string[];
         },
       ) => {
         let resolvedLandingAction: 'pr' | 'merge' | 'leave' | undefined;
@@ -567,6 +575,7 @@ export function createProgram(abortController?: AbortController, version?: strin
               verbose: options.verbose,
               abortController,
               ...(effectiveProfile && { profile: effectiveProfile }),
+              ...(options.postMerge !== undefined && options.postMerge.length > 0 && { postMerge: options.postMerge }),
               ...(resolvedLandingAction && { landingAction: resolvedLandingAction }),
               ...(resolvedLandingAutoMerge !== undefined && { landingAutoMerge: resolvedLandingAutoMerge }),
               ...(options.after !== undefined && { afterQueueId: options.after }),
@@ -1673,7 +1682,6 @@ export function createProgram(abortController?: AbortController, version?: strin
       },
     );
 
-  registerPlaybookCommand(program);
 
   // MCP proxy command — runs the stdio MCP server that bridges to the daemon
   program

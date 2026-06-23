@@ -16,23 +16,21 @@
  *   serializePlaybook    — serialize a Playbook back to markdown
  *   listPlaybooks        — merged listing with source labels, shadow chains, and mode
  *   loadPlaybook         — highest-precedence copy for a given name
- *   validatePlaybook     — pure schema validation (used by daemon endpoint)
+ *   validatePlaybook     — pure schema validation for extension-owned workflows
  *   writePlaybook        — atomic write to the target tier directory
  *   movePlaybook         — move between tiers (git mv when both in repo, else rename)
  *   copyPlaybookToScope  — copy to a different tier with updated scope frontmatter
  *   playbookToBuildSource — format an autonomous playbook as ordinary build source
  *   playbookToPlanSeed   — extract plan-seed data from a planning playbook
  *
- * Planning-mode playbooks are valid artifacts but `POST /api/playbook/run` does not
- * execute them directly — it returns a `requires-agent` response so first-party clients
- * can hand control to an interactive agent (e.g. the eforge-plan planning entry or /eforge:playbook run).
+ * Planning-mode playbooks are valid artifacts, but execution is owned by extension
+ * actions that can hand control to an interactive planning agent (for example the
+ * eforge-plan planning entry or /eforge:playbook run).
  */
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { access, readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
 import {
@@ -42,8 +40,6 @@ import {
   type Scope,
   type ScopeShadow,
 } from '@eforge-build/scopes';
-
-const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Zod Schema
@@ -56,6 +52,13 @@ const execFileAsync = promisify(execFile);
 export const playbookScopeSchema = z.enum(['user', 'project-team', 'project-local']);
 export type PlaybookScope = z.output<typeof playbookScopeSchema>;
 
+const frontmatterScalarSchema = z.string()
+  .refine((value) => !/[\x00-\x1F\x7F]/.test(value), 'must not contain control characters or newlines');
+
+const postMergeCommandSchema = z.string()
+  .refine((command) => command.trim().length > 0, 'postMerge commands must be non-empty strings')
+  .refine((command) => !/[\x00-\x1F\x7F]/.test(command), 'postMerge commands must not contain control characters or newlines');
+
 /**
  * Frontmatter schema for a playbook file.
  */
@@ -63,7 +66,7 @@ export const playbookFrontmatterSchema = z.object({
   /** Kebab-case playbook identifier. */
   name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be kebab-case'),
   /** Short human-readable description. */
-  description: z.string().min(1),
+  description: frontmatterScalarSchema.min(1),
   /** Which configuration tier this playbook belongs to. */
   scope: playbookScopeSchema,
   /**
@@ -78,9 +81,9 @@ export const playbookFrontmatterSchema = z.object({
    * For planning playbooks: seeded into the resulting session plan as `agent_profile`.
    * Profile existence is validated at execution time, not when the playbook is saved.
    */
-  profile: z.string().optional(),
+  profile: frontmatterScalarSchema.optional(),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */
-  postMerge: z.array(z.string()).optional(),
+  postMerge: z.array(postMergeCommandSchema).optional(),
 });
 
 export type PlaybookFrontmatter = z.output<typeof playbookFrontmatterSchema>;
@@ -342,14 +345,7 @@ export function serializePlaybook(playbook: Playbook): string {
     fm.postMerge = playbook.postMerge;
   }
 
-  const fmLines = Object.entries(fm)
-    .map(([k, v]) => {
-      if (Array.isArray(v)) {
-        return `${k}:\n${v.map((item) => `  - ${item}`).join('\n')}`;
-      }
-      return `${k}: ${v}`;
-    })
-    .join('\n');
+  const fmLines = stringifyYaml(fm, { lineWidth: 0 }).trimEnd();
 
   const sections: string[] = [];
   sections.push(`## Goal\n\n${playbook.goal.trim()}`);
@@ -375,7 +371,7 @@ export function serializePlaybook(playbook: Playbook): string {
 
 /**
  * Validate a raw playbook file string without writing or loading from disk.
- * Used by the daemon's `/api/playbook/validate` endpoint.
+ * Used by extension-owned validation workflows before writing playbook files.
  */
 export function validatePlaybook(
   raw: string,
@@ -531,6 +527,7 @@ export interface MovePlaybookOpts {
   name: string;
   fromScope: PlaybookScope;
   toScope: PlaybookScope;
+  overwrite?: boolean;
 }
 
 /**
@@ -539,8 +536,17 @@ export interface MovePlaybookOpts {
  * tree; falls back to `fs.rename` otherwise.
  * Returns the destination path so the caller can stage it.
  */
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: string }> {
-  const { name, fromScope, toScope, cwd, configDir } = opts;
+  const { name, fromScope, toScope, cwd, configDir, overwrite = false } = opts;
 
   const fromDir = playbooksDir(fromScope, { cwd, configDir });
   const toDir = playbooksDir(toScope, { cwd, configDir });
@@ -549,19 +555,21 @@ export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: stri
   const dst = resolve(toDir, `${name}.md`);
 
   await mkdir(toDir, { recursive: true });
-
-  // Attempt git mv when both paths are inside the repo (i.e. not user scope)
-  const bothInRepo = fromScope !== 'user' && toScope !== 'user';
-  if (bothInRepo) {
-    try {
-      await execFileAsync('git', ['-C', cwd, 'mv', src, dst]);
-      return { path: dst };
-    } catch {
-      // git mv failed — fall through to fs.rename
-    }
+  if (!overwrite && await fileExists(dst)) {
+    throw new Error(`Playbook "${name}" already exists at ${dst}. Pass overwrite: true to replace it.`);
   }
 
-  await rename(src, dst);
+  const raw = await readFile(src, 'utf-8');
+  const result = parsePlaybookInternal(raw);
+  if (!result.ok) {
+    throw new Error(`Playbook "${name}" at ${src} is invalid: ${result.errors.join('; ')}`);
+  }
+
+  const content = serializePlaybook({ ...result.playbook, scope: toScope });
+  const tmp = `${dst}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(tmp, content, 'utf-8');
+  await rename(tmp, dst);
+  await unlink(src);
   return { path: dst };
 }
 
@@ -669,63 +677,5 @@ export function playbookToBuildSource(playbook: Playbook): SessionPlanInput {
   };
 }
 
-/**
- * Structured seed data extracted from a planning-mode playbook.
- * Returned by `playbookToPlanSeed` and consumed by `createSessionPlanFromPlaybookSeed`.
- */
-export interface PlaybookPlanSeed {
-  /** Suggested session ID derived from the current date and playbook name. */
-  sessionId: string;
-  /** Suggested topic derived from the playbook description. */
-  topic: string;
-  /**
-   * Section content keyed by lowercase heading slug:
-   * - `'goal'` — playbook goal text
-   * - `'out of scope'` — playbook out-of-scope text
-   * - `'acceptance criteria'` — playbook acceptance-criteria text
-   * - `'notes from playbook'` — playbook planner-notes text (heading renamed)
-   */
-  sections: Map<string, string>;
-  /** The playbook name; used as the `seeded_from_playbook` frontmatter field. */
-  seededFrom: string;
-  /** Optional agent runtime profile name forwarded from playbook frontmatter. */
-  profile?: string;
-}
-
-/**
- * Extract plan-seed data from a planning-mode `Playbook`.
- *
- * Throws `PlaybookModeMismatchError` when called on an `autonomous` playbook —
- * use `playbookToBuildSource` for that mode instead.
- *
- * Returns a `PlaybookPlanSeed` with a suggested session ID, topic, and a
- * sections Map keyed by lowercase heading slugs matching the session-plan
- * `parseSections` convention.
- */
-export function playbookToPlanSeed(playbook: Playbook): PlaybookPlanSeed {
-  if (playbook.mode !== 'planning') {
-    throw new PlaybookModeMismatchError(playbook.name, 'planning', playbook.mode);
-  }
-
-  const now = new Date();
-  const yyyy = now.getFullYear().toString();
-  const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-  const dd = now.getDate().toString().padStart(2, '0');
-  const sessionId = `${yyyy}-${mm}-${dd}-${playbook.name}`;
-
-  const sections = new Map<string, string>();
-  sections.set('goal', playbook.goal);
-  sections.set('out of scope', playbook.outOfScope);
-  sections.set('acceptance criteria', playbook.acceptanceCriteria);
-  sections.set('notes from playbook', playbook.plannerNotes);
-
-  return {
-    sessionId,
-    topic: playbook.description,
-    sections,
-    seededFrom: playbook.name,
-    ...(playbook.profile !== undefined && playbook.profile.trim().length > 0
-      ? { profile: playbook.profile.trim() }
-      : {}),
-  };
-}
+export { playbookToPlanSeed } from './playbook-plan-seed.js';
+export type { PlaybookPlanSeed } from './playbook-plan-seed.js';

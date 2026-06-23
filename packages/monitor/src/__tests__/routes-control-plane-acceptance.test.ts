@@ -36,6 +36,10 @@ describe('control plane acceptance coverage', () => {
     expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', onSuccess: 'merge' })).status).toBe(400);
     expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', landingAction: 'bad' })).status).toBe(400);
     expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', landingAutoMerge: 'yes' })).status).toBe(400);
+    expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', postMerge: 'pnpm test' })).status).toBe(400);
+    expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', postMerge: ['pnpm test', 42] })).status).toBe(400);
+    expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', postMerge: ['pnpm test', ''] })).status).toBe(400);
+    expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', postMerge: ['pnpm test\nrm -rf .'] })).status).toBe(400);
     expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', afterQueueId: 1 })).status).toBe(400);
     expect((await harness.postJson(API_ROUTES.enqueue, { source: 'prd.md', profile: 'missing-profile' })).status).toBe(400);
   });
@@ -56,6 +60,7 @@ describe('control plane acceptance coverage', () => {
     const res = await harness.postJson(API_ROUTES.enqueue, {
       source: 'prd.md',
       flags: ['--dry-run', 12, '--verbose'],
+      postMerge: ['pnpm build', 'pnpm test'],
       landingAction: 'leave',
       landingAutoMerge: false,
       afterQueueId: 'already',
@@ -63,7 +68,7 @@ describe('control plane acceptance coverage', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ sessionId: 'session-1', pid: 42, autoBuild: false });
-    expect(spawned).toEqual([{ command: 'enqueue', args: ['prd.md', '--dry-run', '--verbose', '--landing-action', 'leave', '--no-landing-auto-merge', '--after', 'already'] }]);
+    expect(spawned).toEqual([{ command: 'enqueue', args: ['prd.md', '--dry-run', '--verbose', '--post-merge', 'pnpm build', '--post-merge', 'pnpm test', '--landing-action', 'leave', '--no-landing-auto-merge', '--after', 'already'] }]);
   });
 
   it('preserves daemon-stop preconditions and invokes shutdown after responding', async () => {

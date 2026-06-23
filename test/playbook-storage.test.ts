@@ -433,6 +433,34 @@ describe('movePlaybook', () => {
     const loaded = await loadPlaybook({ ...opts, name: 'my-feature' });
     expect(loaded.source).toBe('project-team');
   });
+
+  it('does not overwrite an existing destination unless overwrite is true', async () => {
+    const root = makeTempDir();
+    const opts = makeOpts(root);
+
+    await writePlaybook({ ...opts, scope: 'project-local', playbook: { ...validPlaybook(), scope: 'project-local' } });
+    const teamWritten = await writePlaybook({ ...opts, scope: 'project-team', playbook: { ...validPlaybook(), description: 'Existing team copy', scope: 'project-team' } });
+
+    await expect(movePlaybook({
+      ...opts,
+      name: 'my-feature',
+      fromScope: 'project-local',
+      toScope: 'project-team',
+    })).rejects.toThrow('already exists');
+
+    expect(parsePlaybook(await readFile(teamWritten.path, 'utf-8')).description).toBe('Existing team copy');
+
+    await movePlaybook({
+      ...opts,
+      name: 'my-feature',
+      fromScope: 'project-local',
+      toScope: 'project-team',
+      overwrite: true,
+    });
+
+    const overwritten = await loadPlaybook({ ...opts, name: 'my-feature' });
+    expect(overwritten.playbook.description).toBe('Add the my-feature capability');
+  });
 });
 
 // ---------------------------------------------------------------------------

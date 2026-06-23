@@ -15,9 +15,9 @@
 **Goal**: Make console-ui the canonical local-first control surface for observing, configuring, and steering eforge builds while keeping the engine headless and harness integrations thin.
 
 - **Actionable build control** - Queue management, retry/recovery, validation waivers, stack sync, and build lifecycle actions from the console.
-- **Planning workstations** - Keep planning workflow UX in extension-owned workstations hosted by Console while preserving daemon/client session-plan compatibility plumbing for non-Console consumers and extension-owned input adapters.
+- **Planning workstations** - Keep planning workflow UX in extension-owned workstations hosted by Console while preserving session-plan compatibility plumbing for non-Console consumers and extension-owned input adapters.
 - **WebUX workspaces** - Explore Console-hosted extension workstations for interactive web UI development: isolated worktrees, managed dev-server ports/processes, browser automation, UX goals, freshness/rebase reminders, checkpoint commits, and eforge-style branch finalization without turning interactive authoring into a kernel build mode. Design: [`docs/webux-workspaces.md`](webux-workspaces.md).
-- **Configuration and library surfaces** - Manage profiles, playbooks, scoped config, extensions, WebUX workspace templates, and model/runtime preferences through typed daemon/client APIs.
+- **Configuration and library surfaces** - Manage profiles, scoped config, extensions, WebUX workspace templates, and model/runtime preferences through typed daemon/client APIs, while playbook management remains extension-owned through `eforge-playbooks` contributions.
 - **Thin integration strategy** - Reduce Pi and Claude Code integrations to launch, deep-link, status, and build entry points that reuse daemon/client primitives instead of duplicating rich workflow UX.
 
 ---
@@ -29,7 +29,7 @@
 - **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, and user-authored custom session-plan/playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
 - **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, worktree-backed workspaces, and wrapper apps without treating every surface as engine functionality.
 - **Workspace/process extension seams** - Add reusable platform support for extension-managed workspace state, long-running dev-server/process supervision, action progress/log streaming, and workstation artifact serving so packages like `eforge-webux` do not need private daemon or Console hooks.
-- **User-authored workflow registration** - Explore native extension APIs, building on the bundled adapters that already ship, for custom session-plan extraction and custom playbook extraction before deprecating direct built-in compatibility surfaces.
+- **User-authored workflow registration** - Explore native extension APIs for custom session-plan extraction and custom playbook extraction. Keep first-party playbook behavior owned by `eforge-playbooks`.
 
 ---
 

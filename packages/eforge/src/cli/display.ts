@@ -3,8 +3,15 @@ import ora, { type Ora } from 'ora';
 import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
-import type { PlaybookListEntry } from '@eforge-build/client';
 import { getEventSummary } from '@eforge-build/client';
+
+type PlaybookListEntry = {
+  name: string;
+  source: 'project-local' | 'project-team' | 'user';
+  description: string;
+  profile?: string;
+  shadows: Array<{ source: string }>;
+};
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();

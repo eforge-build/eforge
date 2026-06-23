@@ -17,7 +17,6 @@ import {
   fetchSystemExtensionList,
   fetchSystemExtensionValidate,
   fetchSystemExtensionContributionManifest,
-  fetchSystemPlaybookList,
   fetchSystemModelProviders,
   fetchSystemModelList,
 } from './system-fetches';
@@ -41,9 +40,6 @@ function makeInitialState(): SystemSurfacesState {
       list: { status: 'idle' },
       validate: { status: 'idle' },
       contributions: { status: 'idle' },
-    },
-    playbooks: {
-      list: { status: 'idle' },
     },
     models: {
       catalogs: {
@@ -89,9 +85,6 @@ export function useSystemSurfaces() {
         list: { status: 'loading', data: prev.extensions.list.data },
         validate: { status: 'loading', data: prev.extensions.validate.data },
         contributions: { status: 'loading', data: prev.extensions.contributions.data },
-      },
-      playbooks: {
-        list: { status: 'loading', data: prev.playbooks.list.data },
       },
       models: {
         catalogs: {
@@ -215,17 +208,6 @@ export function useSystemSurfaces() {
       .catch((err) => {
         if (signal.aborted) return;
         setState((prev) => ({ ...prev, extensions: { ...prev.extensions, contributions: { status: 'error', error: errorMessage(err), data: prev.extensions.contributions.data, updatedAt: prev.extensions.contributions.updatedAt } } }));
-      });
-
-    fetchSystemPlaybookList(signal)
-      .then((data) => {
-        if (signal.aborted) return;
-        const status = data.playbooks.length === 0 ? 'empty' : 'success';
-        setState((prev) => ({ ...prev, playbooks: { list: { status, data, updatedAt: now } } }));
-      })
-      .catch((err) => {
-        if (signal.aborted) return;
-        setState((prev) => ({ ...prev, playbooks: { list: { status: 'error', error: errorMessage(err), data: prev.playbooks.list.data, updatedAt: prev.playbooks.list.updatedAt } } }));
       });
 
     for (const harness of SYSTEM_MODEL_HARNESSES) {

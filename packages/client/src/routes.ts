@@ -74,8 +74,6 @@ export type {
   SessionPlanSelectDimensionsResponse,
   SessionPlanReadinessResponse,
   SessionPlanMigrateLegacyRequest,
-  SessionPlanCreateFromPlaybookRequest,
-  SessionPlanCreateFromPlaybookResponse,
   SessionPlanMigrateLegacyResponse,
 } from './routes/session-plan.js';
 
@@ -126,16 +124,6 @@ export type {
   SchedulerResumeResponse,
 } from './routes/scheduler.js';
 
-export type {
-  PlaybookRunRequest,
-  PlaybookRunEnqueuedResponse,
-  PlaybookPlanningRequiredCapability,
-  PlaybookPlanningEntryMetadata,
-  PlaybookPlanningUnavailableDiagnostic,
-  PlaybookRunRequiresAgentResponse,
-  PlaybookRunPlanningUnavailableResponse,
-  PlaybookRunResponse,
-} from './routes/playbook.js';
 
 export type {
   StackLayersResponse,

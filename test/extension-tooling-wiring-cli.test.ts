@@ -47,6 +47,27 @@ describe('CLI enqueue preprocessing wiring', () => {
     expect(preprocessBlock).toContain('err.diagnosticEvent');
     expect(preprocessBlock).toContain('return;');
   });
+
+  it('exposes the producer-agnostic postMerge enqueue contract through client and CLI wiring', () => {
+    const coreSource = readRepoFile('packages/client/src/routes/core.ts');
+    expect(coreSource).toContain('postMerge?: string[];');
+    expect(coreSource).toContain('Producer-agnostic per-enqueue post-merge validation commands');
+    expect(coreSource).not.toContain('playbookPostMerge');
+
+    const program = createProgram(undefined, 'test');
+    const enqueueCommand = program.commands.find((command) => command.name() === 'enqueue');
+    expect(enqueueCommand?.options.map((option) => option.flags)).toContain('--post-merge <command>');
+
+    const enqueueBlockStart = cliIndexSource.indexOf(".command('enqueue <source>')");
+    const enqueueBlockEnd = cliIndexSource.indexOf(".command('build [source]')", enqueueBlockStart);
+    expect(enqueueBlockStart).toBeGreaterThanOrEqual(0);
+    expect(enqueueBlockEnd).toBeGreaterThan(enqueueBlockStart);
+    const enqueueBlock = cliIndexSource.slice(enqueueBlockStart, enqueueBlockEnd);
+    expect(enqueueBlock).toContain(".option('--post-merge <command>'");
+    expect(enqueueBlock).toContain('collectRepeatableOption');
+    expect(enqueueBlock).toContain('postMerge?: string[];');
+    expect(enqueueBlock).toContain("...(options.postMerge !== undefined && options.postMerge.length > 0 && { postMerge: options.postMerge })");
+  });
 });
 
 describe('extension tooling route constants and helpers', () => {

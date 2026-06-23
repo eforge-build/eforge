@@ -1,145 +1,136 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { openDatabase } from '@eforge-build/monitor/db';
-import { upsertTrustRecord } from '@eforge-build/engine/extensions';
-import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { API_ROUTES } from '@eforge-build/client';
-import { useTempDir } from './test-tmpdir.js';
-import { postJson, setupProject, validAutonomousPlaybookRaw, validPlanningPlaybookRaw } from './daemon-session-plan-routes-helpers.js';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
+import type { LoadedNativeExtension, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
+import eforgePlaybooks from '../eforge/extensions/eforge-playbooks/index.js';
 
-const makeTempDir = useTempDir('eforge-playbook-planning-contract-');
-
-let server: MonitorServer | undefined;
-
-afterEach(async () => {
-  await server?.stop();
-  server = undefined;
-});
-
-async function writeTeamPlaybook(tmpDir: string, name: string, raw: string): Promise<void> {
-  const playbooksDir = resolve(tmpDir, 'eforge', 'playbooks');
-  await mkdir(playbooksDir, { recursive: true });
-  await writeFile(resolve(playbooksDir, `${name}.md`), raw, 'utf-8');
-}
-
-async function start(tmpDir: string): Promise<MonitorServer> {
-  const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-  server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
-  return server;
-}
-
-async function runPlaybook(name: string): Promise<{ status: number; data: any }> {
-  const res = await postJson(`http://localhost:${server!.port}${API_ROUTES.playbookRun}`, { name });
-  return { status: res.status, data: await res.json() };
-}
-
-async function writeConfig(tmpDir: string, body: string): Promise<void> {
-  await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), body, 'utf-8');
-}
-
-function minimalPlanningProviderBody(): string {
-  return `const route = '/console/workstations/eforge-plan%3Aplanning-workstation';
-const inputSchema = { [Symbol.for('TypeBox.Kind')]: 'Object', type: 'object', properties: {}, additionalProperties: false };
-export default function extension(eforge) {
-  eforge.registerAction({ id: 'open-planning-entry', title: 'Open planning entry', inputSchema, sideEffects: ['none'], handler() { return { kind: 'planning-entry', workstationUrl: route }; } });
-  eforge.registerIntegrationCommand({ id: 'open-planning-entry', label: 'Open planning entry', inputSchema, action: { actionId: 'open-planning-entry' } });
-  eforge.registerDeepLink({ id: 'planning-workstation', label: 'Open planning workstation', urlTemplate: route, action: { actionId: 'open-planning-entry' } });
-  eforge.registerConsoleWorkstation({ id: 'planning-workstation', title: 'Planning workstation', srcDoc: '<main>Planning</main>', allowedActions: ['open-planning-entry'] });
-}
-`;
-}
-
-async function writePlanningExtension(tmpDir: string, scope: 'project-local' | 'project-team', opts: { capabilityVersion?: string; body?: string } = {}): Promise<string> {
-  const extensionDir = scope === 'project-local'
-    ? resolve(tmpDir, '.eforge', 'extensions', 'eforge-plan')
-    : resolve(tmpDir, 'eforge', 'extensions', 'eforge-plan');
-  await mkdir(extensionDir, { recursive: true });
-  await writeFile(resolve(extensionDir, 'package.json'), JSON.stringify({
-    type: 'module',
-    eforge: {
-      extension: {
-        name: 'eforge-plan',
-        entrypoint: 'index.js',
-        capabilities: [
-          { name: 'eforge.plan.planning-workstation', version: '1.0.0' },
-          { name: 'eforge.plan.planning-mode-playbook', version: opts.capabilityVersion ?? '1.0.0' },
-        ],
-      },
-    },
-  }), 'utf-8');
-  await writeFile(resolve(extensionDir, 'index.js'), opts.body ?? 'export default function extension() {}\n', 'utf-8');
-  return extensionDir;
-}
-
-describe('planning-mode playbooks depend on the eforge-plan planning contract', () => {
-  it('returns generic planning entry metadata when eforge-plan provides the required capability', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-    await writePlanningExtension(tmpDir, 'project-local', { body: minimalPlanningProviderBody() });
-    await writeTeamPlaybook(tmpDir, 'my-planning', validPlanningPlaybookRaw({ name: 'my-planning' }));
-    await start(tmpDir);
-
-    const { status, data } = await runPlaybook('my-planning');
-
-    expect(status).toBe(200);
-    expect(data).toMatchObject({
-      kind: 'requires-agent',
-      mode: 'planning',
-      name: 'my-planning',
-      requiredCapability: { name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' },
-      planningEntry: {
-        actionId: 'eforge-plan:open-planning-entry',
-        integrationCommandId: 'eforge-plan:open-planning-entry',
-        deepLinkId: 'eforge-plan:planning-workstation',
-        workstationId: 'eforge-plan:planning-workstation',
-        workstationUrl: '/console/workstations/eforge-plan%3Aplanning-workstation',
-      },
+function registry(options: { planCapabilityVersion?: string; planProviderName?: string } = {}): NativeExtensionRegistry {
+  const { api, state } = createExtensionRecorder('eforge-playbooks', '/project/eforge/extensions/eforge-playbooks/index.ts');
+  eforgePlaybooks(api as never);
+  const extensions: LoadedNativeExtension[] = [];
+  if (options.planCapabilityVersion !== undefined) {
+    const providerName = options.planProviderName ?? 'eforge-plan';
+    extensions.push({
+      name: providerName,
+      path: `/project/eforge/extensions/${providerName}`,
+      entrypoint: `/project/eforge/extensions/${providerName}/index.ts`,
+      scope: 'project-local',
+      source: 'explicit',
+      strategy: 'jiti',
+      capabilities: [{ name: 'eforge.plan.planning-mode-playbook', version: options.planCapabilityVersion }],
+      registrations: { eventHooks: 0, agentRunHooks: 0, policyGates: 0, profileRouters: 0, inputSources: 0, reviewerPerspectives: 0, validationProviders: 0, tools: 0, prdEnrichers: 0, actions: 0, consoleContributions: 0, consoleWorkstations: 0, integrationCommands: 0, deepLinks: 0 },
     });
-    await expect(readdir(resolve(tmpDir, '.eforge', 'queue'))).rejects.toThrow();
+  }
+  return { ...state, extensions, candidates: [] };
+}
+
+async function withProject<T>(fn: (cwd: string, configDir: string) => Promise<T>): Promise<T> {
+  const cwd = await mkdtemp(join(tmpdir(), 'eforge-playbook-planning-contract-'));
+  const configDir = resolve(cwd, 'eforge');
+  try {
+    return await fn(cwd, configDir);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+}
+
+async function writePlaybook(cwd: string, name: string, mode: 'planning' | 'autonomous' = 'planning'): Promise<void> {
+  const dir = resolve(cwd, '.eforge/playbooks');
+  await mkdir(dir, { recursive: true });
+  await writeFile(resolve(dir, `${name}.md`), `---\nname: ${name}\ndescription: ${name} description\nscope: project-local\nmode: ${mode}\nprofile: playbook-profile\n---\n\n## Goal\n\nShip ${name}.\n\n## Acceptance criteria\n\n- \`pnpm type-check\` exits 0.\n\n## Notes for the planner\n\nKeep the seed JSON-safe.\n`, 'utf-8');
+}
+
+async function run(cwd: string, configDir: string, input: Record<string, unknown>, options: { planCapabilityVersion?: string; planProviderName?: string } = {}) {
+  const queueCalls: unknown[] = [];
+  const result = await dispatchExtensionAction(registry(options), {
+    actionId: 'eforge-playbooks:run-playbook',
+    input,
+    requestedBy: { host: 'cli', surface: 'test' },
+    cwd,
+    configDir,
+    timeoutMs: 1000,
+    buildQueue: () => ({
+      enqueue: async (request) => {
+        queueCalls.push(request);
+        return { sessionId: 'queued-session', pid: 1234, autoBuild: true };
+      },
+    }),
+  });
+  return { result, queueCalls };
+}
+
+describe('eforge-playbooks planning contract through extension action dispatch', () => {
+  it('returns eforge-plan planning entry metadata when the planning capability is available', async () => {
+    await withProject(async (cwd, configDir) => {
+      await writePlaybook(cwd, 'plan-docs');
+      const { result, queueCalls } = await run(cwd, configDir, { name: 'plan-docs', profile: 'override-profile' }, { planCapabilityVersion: '1.0.0' });
+
+      expect(queueCalls).toEqual([]);
+      expect(result).toMatchObject({
+        kind: 'success',
+        output: {
+          kind: 'requires-agent',
+          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
+          planningEntry: {
+            contributionId: 'eforge-plan:open-planning-entry',
+            workstationId: 'eforge-plan:planning-workstation',
+            workstationUrl: '/console/workstations/eforge-plan%3Aplanning-workstation',
+            source: { extension: 'eforge-playbooks', playbook: 'plan-docs' },
+            seed: { profile: 'override-profile', seededFrom: 'plan-docs', sections: expect.any(Object) },
+          },
+        },
+      });
+      const seed = (result as Extract<typeof result, { kind: 'success' }>).output as { planningEntry: { seed: unknown } };
+      expect(JSON.parse(JSON.stringify(seed.planningEntry.seed))).toEqual(seed.planningEntry.seed);
+    });
   });
 
-  it.each([
-    { label: 'disabled', setup: async (tmpDir: string) => { await writeConfig(tmpDir, 'extensions:\n  enabled: false\n'); }, expectedCode: 'extension:disabled', expectedMessage: 'disabled' },
-    { label: 'missing', setup: async () => {}, expectedCode: 'extension:dependency-missing', expectedMessage: 'not loaded' },
-    { label: 'untrusted', setup: async (tmpDir: string) => { await writePlanningExtension(tmpDir, 'project-team'); }, expectedCode: 'extension:untrusted', expectedMessage: 'untrusted' },
-    { label: 'changed', setup: async (tmpDir: string) => { await writePlanningExtension(tmpDir, 'project-team'); await upsertTrustRecord(resolve(tmpDir, '.eforge'), 'eforge-plan', '0'.repeat(64), 'tester'); }, expectedCode: 'extension:trust-changed', expectedMessage: 'changed' },
-    { label: 'errored', setup: async (tmpDir: string) => { await writePlanningExtension(tmpDir, 'project-local', { body: 'throw new Error("boom"); export default function extension() {}\n' }); }, expectedCode: 'extension:factory-error', expectedMessage: 'boom' },
-    { label: 'capability-incompatible', setup: async (tmpDir: string) => { await writePlanningExtension(tmpDir, 'project-local', { capabilityVersion: '0.9.0' }); }, expectedCode: 'extension:dependency-capability-incompatible', expectedMessage: 'does not satisfy' },
-  ])('returns unavailable dependency diagnostics when eforge-plan is $label', async ({ setup, expectedCode, expectedMessage }) => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-    await setup(tmpDir);
-    await writeTeamPlaybook(tmpDir, 'my-planning', validPlanningPlaybookRaw({ name: 'my-planning' }));
-    await start(tmpDir);
-
-    const { status, data } = await runPlaybook('my-planning');
-
-    expect(status).toBe(200);
-    expect(data).toMatchObject({
-      kind: 'planning-unavailable',
-      mode: 'planning',
-      name: 'my-planning',
-      requiredCapability: { name: 'eforge.plan.planning-mode-playbook', version: '>=1.0.0' },
+  it('returns unavailable diagnostics and guidance when eforge-plan is missing or incompatible', async () => {
+    await withProject(async (cwd, configDir) => {
+      await writePlaybook(cwd, 'plan-api');
+      for (const options of [{}, { planCapabilityVersion: '0.9.0' }]) {
+        const { result, queueCalls } = await run(cwd, configDir, { name: 'plan-api' }, options);
+        expect(queueCalls).toEqual([]);
+        expect(result).toMatchObject({
+          kind: 'success',
+          output: {
+            kind: 'planning-unavailable',
+            requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
+            diagnostics: expect.arrayContaining([expect.objectContaining({ capabilityName: 'eforge.plan.planning-mode-playbook' })]),
+            message: expect.stringMatching(/Install\/load eforge-plan|reload extensions/i),
+          },
+        });
+      }
     });
-    if (data.kind !== 'planning-unavailable') throw new Error('Expected unavailable response');
-    expect(data.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: expectedCode })]));
-    expect(data.diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(expectedMessage);
-    await expect(readdir(resolve(tmpDir, '.eforge', 'queue'))).rejects.toThrow();
   });
 
-  it('keeps autonomous playbooks on the enqueue path when eforge-plan is unavailable', async () => {
-    const tmpDir = makeTempDir();
-    await setupProject(tmpDir);
-    await writeConfig(tmpDir, 'extensions:\n  enabled: false\n');
-    await writeTeamPlaybook(tmpDir, 'my-auto', validAutonomousPlaybookRaw({ name: 'my-auto' }));
-    await start(tmpDir);
+  it('returns unavailable diagnostics when another provider declares the planning capability', async () => {
+    await withProject(async (cwd, configDir) => {
+      await writePlaybook(cwd, 'plan-owned');
+      const { result, queueCalls } = await run(cwd, configDir, { name: 'plan-owned' }, { planCapabilityVersion: '1.0.0', planProviderName: 'not-eforge-plan' });
 
-    const { status, data } = await runPlaybook('my-auto');
+      expect(queueCalls).toEqual([]);
+      expect(result).toMatchObject({
+        kind: 'success',
+        output: {
+          kind: 'planning-unavailable',
+          requiredCapability: { provider: 'eforge-plan', id: 'eforge.plan.planning-mode-playbook', range: '>=1.0.0' },
+          diagnostics: expect.arrayContaining([expect.objectContaining({ providerName: 'eforge-plan', capabilityName: 'eforge.plan.planning-mode-playbook', requiredVersion: '>=1.0.0' })]),
+        },
+      });
+    });
+  });
 
-    expect(status).toBe(200);
-    expect(data).toMatchObject({ kind: 'enqueued' });
-    const queueFiles = await readdir(resolve(tmpDir, '.eforge', 'queue'));
-    expect(queueFiles.some((entry) => entry.endsWith('.md'))).toBe(true);
+  it('still enqueues autonomous playbooks when the planning capability is unavailable', async () => {
+    await withProject(async (cwd, configDir) => {
+      await writePlaybook(cwd, 'auto-docs', 'autonomous');
+      const { result, queueCalls } = await run(cwd, configDir, { name: 'auto-docs' });
+
+      expect(queueCalls).toHaveLength(1);
+      expect(result).toMatchObject({ kind: 'success', output: { kind: 'enqueued', sessionId: 'queued-session' } });
+    });
   });
 });

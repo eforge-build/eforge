@@ -12,7 +12,6 @@ import {
   fetchSystemExtensionList,
   fetchSystemExtensionValidate,
   fetchSystemExtensionContributionManifest,
-  fetchSystemPlaybookList,
   fetchSystemModelProviders,
   fetchSystemModelList,
   trustSystemExtension,
@@ -115,13 +114,9 @@ describe('system-fetches', () => {
         run: fetchSystemExtensionContributionManifest,
         assertUrl: (url) => expect(url).toBe(API_ROUTES.extensionContributionManifest),
       },
-      {
-        name: 'fetchSystemPlaybookList',
-        body: { playbooks: [], warnings: [] },
-        run: fetchSystemPlaybookList,
-        assertUrl: (url) => expect(url).toBe(API_ROUTES.playbookList),
-      },
     ];
+
+    expect(successfulGetCases.map((testCase) => testCase.name).join('\n')).not.toMatch(/Playbook/);
 
     for (const testCase of successfulGetCases) {
       globalThis.fetch = makeFetchMock(200, testCase.body);

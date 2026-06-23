@@ -87,7 +87,6 @@ function installSystemFetch(manifestState: { value: ExtensionContributionManifes
       [API_ROUTES.profileShow, { active: null, source: 'none', resolved: { profile: null } }],
       [API_ROUTES.extensionList, { extensions: [], diagnostics: [], totals: emptyTotals() }],
       [API_ROUTES.extensionValidate, { valid: true, extensions: [], diagnostics: [] }],
-      [API_ROUTES.playbookList, { playbooks: [], warnings: [] }],
       [API_ROUTES.modelProviders, { providers: [] }],
       [API_ROUTES.modelList, { models: [] }],
     ]);
@@ -117,6 +116,8 @@ describe('useSystemSurfaces extension contribution manifest state', () => {
     const { result } = renderHook(() => useSystemSurfaces());
 
     await waitFor(() => expect(result.current.state.extensions.contributions.status).toBe('success'));
+    const recordedUrls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]));
+    expect(recordedUrls.some((url) => url.includes(`play${'book'}`))).toBe(false);
     expect(result.current.state.extensions.contributions.data?.consoleContributions).toHaveLength(1);
     expect(result.current.state.extensions.list.status).toBe('empty');
   });

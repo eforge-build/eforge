@@ -1,135 +1,111 @@
-/**
- * CLI: eforge playbook commands and eforge play shortcut.
- *
- * Registers the `playbook` command with six subcommands and the `play` alias.
- * All actions are thin daemon clients — no engine imports.
- * Daemon helpers return `{ data: T; port: number }`, so all callers unwrap `.data`.
- */
-
-import { type Command } from 'commander';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Command } from 'commander';
 import chalk from 'chalk';
-import {
-  apiPlaybookList,
-  apiPlaybookShow,
-  apiPlaybookSave,
-  apiPlaybookRun,
-  apiPlaybookPromote,
-  apiPlaybookDemote,
-  apiPlaybookValidate,
-  type PlaybookData,
-  type PlaybookScope,
-} from '@eforge-build/client';
+import { serializePlaybook, type Playbook, type PlaybookMode, type PlaybookScope } from '@eforge-build/input';
+import type { ExtensionJsonObject } from '@eforge-build/client';
+import { invokePlaybookContributionForHost, renderPlaybookContributionResult, type PlaybookCommandAction } from './playbook-contributions.js';
 import { formatCliError } from './errors.js';
-import { renderPlaybookList } from './display.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+interface CommonOptions { json?: boolean }
+interface ScopedOptions extends CommonOptions { scope?: string }
+interface NewOptions extends CommonOptions { scope: string; mode?: string; profile?: string }
+interface SaveOptions extends CommonOptions { scope: string; raw?: string; file?: string; overwrite?: boolean }
+interface CopyOptions extends CommonOptions { sourceScope?: string; targetScope: string; overwrite?: boolean }
+interface MoveOptions extends CommonOptions { overwrite?: boolean }
+interface RunOptions extends ScopedOptions { mode?: string; profile?: string; after?: string; landingAction?: string; landingAutoMerge?: boolean }
 
-/** Reconstruct a raw playbook markdown string from a PlaybookData object. */
-function playbookDataToRaw(playbook: PlaybookData): string {
-  const lines: string[] = ['---'];
-  lines.push(`name: ${playbook.name}`);
-  lines.push(`description: ${playbook.description}`);
-  lines.push(`scope: ${playbook.scope}`);
-  lines.push(`mode: ${playbook.mode}`);
-  if (playbook.profile) {
-    lines.push(`profile: ${playbook.profile}`);
-  }
-  if (playbook.postMerge && playbook.postMerge.length > 0) {
-    lines.push('postMerge:');
-    for (const cmd of playbook.postMerge) {
-      lines.push(`  - ${cmd}`);
-    }
-  }
-  lines.push('---');
-  lines.push('');
-  lines.push('## Goal');
-  lines.push('');
-  lines.push(playbook.goal || '');
-  if (playbook.outOfScope) {
-    lines.push('');
-    lines.push('## Out of scope');
-    lines.push('');
-    lines.push(playbook.outOfScope);
-  }
-  if (playbook.acceptanceCriteria) {
-    lines.push('');
-    lines.push('## Acceptance criteria');
-    lines.push('');
-    lines.push(playbook.acceptanceCriteria);
-  }
-  if (playbook.plannerNotes) {
-    lines.push('');
-    lines.push('## Notes for the planner');
-    lines.push('');
-    lines.push(playbook.plannerNotes);
-  }
-  return lines.join('\n');
+export function registerPlaybookCommands(program: Command): void {
+  // Compatibility surface for playbook files commonly edited with git add workflows.
+  const playbook = program.command('playbook').description('Manage eforge playbooks through eforge-playbooks host contributions');
+
+  playbook.command('list')
+    .description('List playbooks')
+    .option('--scope <scope>', 'Filter by scope')
+    .option('--mode <mode>', 'Filter by mode')
+    .option('--include-shadowed', 'Include shadowed playbooks')
+    .option('--json', 'Output JSON')
+    .action((options: ScopedOptions & { mode?: string; includeShadowed?: boolean }) => invokeAndRender('list', compact({ scope: options.scope, mode: options.mode, includeShadowed: options.includeShadowed }), options));
+
+  playbook.command('show <name>')
+    .description('Show a playbook')
+    .option('--scope <scope>', 'Resolve from an exact scope')
+    .option('--json', 'Output JSON')
+    .action((name: string, options: ScopedOptions) => invokeAndRender('show', compact({ name, scope: options.scope }), options));
+
+  playbook.command('new <name>')
+    .description('Create a playbook in $EDITOR')
+    .option('--scope <scope>', 'Target scope', 'project-local')
+    .option('--mode <mode>', 'Playbook mode', 'autonomous')
+    .option('--profile <profile>', 'Agent profile')
+    .option('--json', 'Output JSON')
+    .action((name: string, options: NewOptions) => createNewPlaybook(name, options));
+
+  playbook.command('edit <name>')
+    .description('Edit a playbook in $EDITOR')
+    .option('--scope <scope>', 'Resolve from an exact scope')
+    .option('--json', 'Output JSON')
+    .action((name: string, options: ScopedOptions) => editExistingPlaybook(name, options));
+
+  playbook.command('save')
+    .description('Save a playbook')
+    .requiredOption('--scope <scope>', 'Target scope')
+    .option('--raw <markdown>', 'Raw playbook Markdown')
+    .option('--file <path>', 'Read raw playbook Markdown from a file')
+    .option('--overwrite <boolean>', 'Overwrite existing playbook', parseBoolean)
+    .option('--json', 'Output JSON')
+    .action(async (options: SaveOptions) => invokeAndRender('save', compact({ scope: options.scope, raw: await rawInput(options), overwrite: options.overwrite }), options));
+
+  playbook.command('validate')
+    .description('Validate raw playbook Markdown')
+    .option('--raw <markdown>', 'Raw playbook Markdown')
+    .option('--file <path>', 'Read raw playbook Markdown from a file')
+    .option('--scope <scope>', 'Validation scope')
+    .option('--json', 'Output JSON')
+    .action(async (options: SaveOptions) => invokeAndRender('validate', compact({ raw: await rawInput(options), scope: options.scope }), options));
+
+  playbook.command('copy <name>')
+    .description('Copy a playbook to another scope')
+    .requiredOption('--target-scope <scope>', 'Target scope')
+    .option('--source-scope <scope>', 'Source scope')
+    .option('--overwrite <boolean>', 'Overwrite target playbook', parseBoolean)
+    .option('--json', 'Output JSON')
+    .action((name: string, options: CopyOptions) => invokeAndRender('copy', compact({ name, sourceScope: options.sourceScope, targetScope: options.targetScope, overwrite: options.overwrite }), options));
+
+  playbook.command('promote <name>').description('Promote a playbook').option('--overwrite <boolean>', 'Overwrite target playbook', parseBoolean).option('--json', 'Output JSON').action((name: string, options: MoveOptions) => invokeAndRender('promote', compact({ name, overwrite: options.overwrite }), options));
+  playbook.command('demote <name>').description('Demote a playbook').option('--overwrite <boolean>', 'Overwrite target playbook', parseBoolean).option('--json', 'Output JSON').action((name: string, options: MoveOptions) => invokeAndRender('demote', compact({ name, overwrite: options.overwrite }), options));
+
+  playbook.command('run <name>')
+    .description('Run a playbook')
+    .option('--scope <scope>', 'Resolve from an exact scope')
+    .option('--mode <mode>', 'Expected playbook mode')
+    .option('--profile <profile>', 'Agent profile override')
+    .option('--after <queue-id>', 'Queue after an upstream queue item')
+    .option('--landing-action <action>', 'Landing action: pr, merge, or leave')
+    .option('--landing-auto-merge <boolean>', 'Enable or disable PR auto-merge', parseBoolean)
+    .option('--json', 'Output JSON')
+    .action((name: string, options: RunOptions) => invokeAndRender('run', compact({ name, scope: options.scope, mode: options.mode, profile: options.profile, afterQueueId: options.after, landingAction: options.landingAction, landingAutoMerge: options.landingAutoMerge }), options));
+
+  program.command('play <name>')
+    .description('Alias for eforge playbook run <name>')
+    .option('--scope <scope>', 'Resolve from an exact scope')
+    .option('--mode <mode>', 'Expected playbook mode')
+    .option('--profile <profile>', 'Agent profile override')
+    .option('--after <queue-id>', 'Queue after an upstream queue item')
+    .option('--landing-action <action>', 'Landing action: pr, merge, or leave')
+    .option('--landing-auto-merge <boolean>', 'Enable or disable PR auto-merge', parseBoolean)
+    .option('--json', 'Output JSON')
+    .action((name: string, options: RunOptions) => invokeAndRender('run', compact({ name, scope: options.scope, mode: options.mode, profile: options.profile, afterQueueId: options.after, landingAction: options.landingAction, landingAutoMerge: options.landingAutoMerge }), options));
 }
 
-/** Extract the content of a named markdown section from a body string. */
-function extractSection(body: string, heading: string): string {
-  // Match `## <heading>` followed by any single newline (the engine's body
-  // parser accepts both `## Goal\nDo thing.` and `## Goal\n\nDo thing.` —
-  // we must too, otherwise content silently disappears on edit-save when the
-  // user removes the blank line under a heading).
-  const regex = new RegExp(`## ${heading}\\r?\\n([\\s\\S]*?)(?=\\r?\\n## |$)`);
-  return body.match(regex)?.[1]?.trim() ?? '';
-}
-
-/**
- * Parse a raw playbook markdown string into frontmatter + body sections.
- * Returns null when the format is invalid (no frontmatter delimiters found).
- */
-async function parsePlaybookRaw(raw: string): Promise<{
-  frontmatter: Record<string, unknown>;
-  body: { goal: string; outOfScope: string; acceptanceCriteria: string; plannerNotes: string };
-} | null> {
-  // Match the engine's splitFrontmatter (which accepts \r\n endings).
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/);
-  if (!match) return null;
-
-  const { parse: parseYaml } = await import('yaml');
-  const frontmatter = parseYaml(match[1]) as Record<string, unknown>;
-  const bodyStr = match[2];
-
-  return {
-    frontmatter,
-    body: {
-      goal: extractSection(bodyStr, 'Goal'),
-      outOfScope: extractSection(bodyStr, 'Out of scope'),
-      acceptanceCriteria: extractSection(bodyStr, 'Acceptance criteria'),
-      plannerNotes: extractSection(bodyStr, 'Notes for the planner'),
-    },
-  };
-}
-
-/** Shared run logic — used by both `playbook run` and `play` alias. */
-async function runAction(name: string, options: { after?: string }): Promise<void> {
-  const cwd = process.cwd();
+async function invokeAndRender(action: PlaybookCommandAction, input: ExtensionJsonObject, options: CommonOptions): Promise<void> {
   try {
-    const { data } = await apiPlaybookRun({
-      cwd,
-      body: {
-        name,
-        ...(options.after ? { afterQueueId: options.after } : {}),
-      },
-    });
-    const kind = (data as { kind: string }).kind;
-    if (kind === 'enqueued') {
-      console.log(chalk.green('✔') + ` Enqueued: ${(data as { id: string }).id}`);
-    } else if (kind === 'requires-agent') {
-      const planning = data as unknown as { planningEntry: { integrationCommandId: string; workstationUrl: string } };
-      console.log(chalk.yellow('⚡') + ` Planning playbook "${name}" requires the eforge-plan planning entry.`);
-      console.log(chalk.dim(`  Invoke integration command contribution with: eforge extension contributions invoke ${planning.planningEntry.integrationCommandId} --kind command`));
-      console.log(chalk.dim(`  Or open ${planning.planningEntry.workstationUrl}.`));
-    } else {
-      const unavailable = data as unknown as { requiredCapability: { name: string }; diagnostics: Array<{ message: string }> };
-      console.log(chalk.yellow('⚠') + ` Planning playbook "${name}" cannot continue: ${unavailable.requiredCapability.name} is unavailable.`);
-      for (const diagnostic of unavailable.diagnostics) console.log(chalk.dim(`  - ${diagnostic.message}`));
-      console.log(chalk.dim('  Load, trust, and reload eforge-plan, then discover/invoke the generic planning entry contribution.'));
-    }
+    const result = await invokePlaybookContributionForHost({ cwd: process.cwd(), action, input });
+    if (options.json) console.log(JSON.stringify(result.response.ok ? result.response.output : result.response, null, 2));
+    else renderPlaybookContributionResult(result);
+    if (!result.response.ok) process.exit(1);
   } catch (err) {
     const { message, exitCode } = formatCliError(err);
     console.error(chalk.red(`Error: ${message}`));
@@ -137,296 +113,86 @@ async function runAction(name: string, options: { after?: string }): Promise<voi
   }
 }
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
+async function createNewPlaybook(name: string, options: NewOptions): Promise<void> {
+  try {
+    const raw = await editPlaybookMarkdown(serializePlaybook({
+      name,
+      description: `Describe ${name}`,
+      scope: options.scope as PlaybookScope,
+      mode: (options.mode ?? 'autonomous') as PlaybookMode,
+      ...(options.profile ? { profile: options.profile } : {}),
+      goal: 'Describe the goal.',
+      outOfScope: 'Describe what is out of scope.',
+      acceptanceCriteria: '- [ ] Describe acceptance criteria.',
+      plannerNotes: 'Add planner notes.',
+    }));
+    await validateAndSave(raw, options.scope, { json: options.json });
+  } catch (err) {
+    const { message, exitCode } = formatCliError(err);
+    console.error(chalk.red(`Error: ${message}`));
+    process.exit(exitCode);
+  }
+}
 
-/**
- * Register `eforge playbook` (with subcommands) and the `eforge play` shortcut
- * onto the given top-level Commander program.
- */
-export function registerPlaybookCommand(program: Command): void {
-  // ---- eforge playbook ---------------------------------------------------
+async function editExistingPlaybook(name: string, options: ScopedOptions): Promise<void> {
+  try {
+    const shown = await invokePlaybookContributionForHost({ cwd: process.cwd(), action: 'show', input: compact({ name, scope: options.scope }) });
+    if (!shown.response.ok) return failContribution(shown, options);
+    const output = shown.response.output as unknown as { playbook: Playbook; source: { source: string } };
+    const raw = await editPlaybookMarkdown(serializePlaybook(output.playbook));
+    await validateAndSave(raw, output.source.source, { json: options.json, overwrite: true });
+  } catch (err) {
+    const { message, exitCode } = formatCliError(err);
+    console.error(chalk.red(`Error: ${message}`));
+    process.exit(exitCode);
+  }
+}
 
-  const playbook = program
-    .command('playbook')
-    .description('Manage playbooks');
+async function validateAndSave(raw: string, scope: string, options: CommonOptions & { overwrite?: boolean }): Promise<void> {
+  const validation = await invokePlaybookContributionForHost({ cwd: process.cwd(), action: 'validate', input: { raw, scope } });
+  if (!validation.response.ok) return failContribution(validation, options);
+  const validationOutput = validation.response.output as { ok?: boolean; errors?: string[] };
+  if (validationOutput.ok === false) {
+    if (options.json) console.log(JSON.stringify(validationOutput, null, 2));
+    else console.error((validationOutput.errors ?? ['Playbook validation failed']).join('\n'));
+    process.exit(1);
+  }
+  await invokeAndRender('save', compact({ scope, raw, overwrite: options.overwrite }), options);
+}
 
-  // -- list ----------------------------------------------------------------
+async function editPlaybookMarkdown(initial: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'eforge-playbook-'));
+  const file = join(dir, 'playbook.md');
+  try {
+    await writeFile(file, initial, 'utf-8');
+    const editor = process.env.VISUAL ?? process.env.EDITOR;
+    if (!editor) throw new Error('Set $VISUAL or $EDITOR to edit playbooks.');
+    const child = spawnSync(editor, [file], { stdio: 'inherit', shell: true });
+    if (child.error) throw child.error;
+    if (child.status !== 0) throw new Error(`Editor exited with status ${child.status ?? 'unknown'}`);
+    return await readFile(file, 'utf-8');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
-  playbook
-    .command('list')
-    .description('List all available playbooks with source and shadow chain')
-    .action(async () => {
-      const cwd = process.cwd();
-      try {
-        const { data } = await apiPlaybookList({ cwd });
-        for (const warning of data.warnings) {
-          process.stderr.write(chalk.yellow(`Warning: ${warning}\n`));
-        }
-        renderPlaybookList(data.playbooks);
-      } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
-      }
-    });
+function failContribution(result: Awaited<ReturnType<typeof invokePlaybookContributionForHost>>, options: CommonOptions): never {
+  if (options.json) console.log(JSON.stringify(result.response, null, 2));
+  else renderPlaybookContributionResult(result);
+  process.exit(1);
+}
 
-  // -- new -----------------------------------------------------------------
+async function rawInput(options: { raw?: string; file?: string }): Promise<string | undefined> {
+  if (options.raw !== undefined && options.file !== undefined) throw new Error('--raw and --file are mutually exclusive');
+  return options.raw ?? (options.file ? readFile(options.file, 'utf-8') : undefined);
+}
 
-  playbook
-    .command('new')
-    .description('Scaffold a new playbook (non-interactive, for scripts)')
-    .requiredOption('--scope <scope>', 'Playbook scope: user | project-team | project-local')
-    .requiredOption('--name <name>', 'Playbook name (kebab-case)')
-    .option('--description <description>', 'Short description of the playbook', '')
-    .option('--from <file>', 'Read body content from this file (used as the Goal section)')
-    .option('--profile <name>', 'Agent runtime profile to use when this playbook is run')
-    .action(async (options: { scope: string; name: string; description: string; from?: string; profile?: string }) => {
-      const cwd = process.cwd();
+function compact(input: Record<string, unknown>): ExtensionJsonObject {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as ExtensionJsonObject;
+}
 
-      const validScopes: PlaybookScope[] = ['user', 'project-team', 'project-local'];
-      if (!validScopes.includes(options.scope as PlaybookScope)) {
-        console.error(chalk.red(`Error: --scope must be one of: ${validScopes.join(', ')}`));
-        process.exit(1);
-      }
-      const scope = options.scope as PlaybookScope;
-
-      let goal = '';
-      if (options.from) {
-        const { readFile } = await import('node:fs/promises');
-        try {
-          goal = await readFile(options.from, 'utf-8');
-        } catch {
-          console.error(chalk.red(`Error: could not read file: ${options.from}`));
-          process.exit(1);
-        }
-      }
-
-      try {
-        const { data } = await apiPlaybookSave({
-          cwd,
-          body: {
-            scope,
-            playbook: {
-              frontmatter: {
-                name: options.name,
-                description: options.description,
-                scope,
-                mode: 'autonomous',
-                ...(options.profile ? { profile: options.profile } : {}),
-              },
-              body: {
-                goal,
-                outOfScope: '',
-                acceptanceCriteria: '',
-                plannerNotes: '',
-              },
-            },
-          },
-        });
-        console.log(chalk.green('✔') + ` Playbook saved: ${data.path}`);
-      } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
-      }
-    });
-
-  // -- edit ----------------------------------------------------------------
-
-  playbook
-    .command('edit <name>')
-    .description('Open a playbook in $EDITOR, validate, and save to the same tier')
-    .action(async (name: string) => {
-      const cwd = process.cwd();
-
-      const editor = process.env['EDITOR'];
-      if (!editor) {
-        console.error(chalk.red('Error: $EDITOR is not set. Set it to your preferred editor, e.g.:'));
-        console.error(chalk.dim('  export EDITOR=vim'));
-        process.exit(1);
-        return;
-      }
-
-      try {
-        // Fetch the current playbook content (resolved via shadow chain)
-        const { data: showData } = await apiPlaybookShow({ cwd, name });
-        const rawContent = playbookDataToRaw(showData.playbook);
-
-        // Write to a temp file
-        const { writeFile, readFile, unlink } = await import('node:fs/promises');
-        const { tmpdir } = await import('node:os');
-        const { join } = await import('node:path');
-        const tmpFile = join(tmpdir(), `eforge-playbook-${name}-${Date.now()}.md`);
-        await writeFile(tmpFile, rawContent, 'utf-8');
-
-        // Open the editor
-        const { spawnSync } = await import('node:child_process');
-        const spawnResult = spawnSync(editor, [tmpFile], { stdio: 'inherit' });
-        if (spawnResult.error) {
-          await unlink(tmpFile).catch(() => {});
-          console.error(chalk.red(`Error: failed to open editor: ${spawnResult.error.message}`));
-          process.exit(1);
-          return;
-        }
-        // Treat a non-zero editor exit (e.g. vim `:cq` or a crash) as an
-        // explicit abort — do NOT save whatever happens to be in the buffer.
-        if (spawnResult.status !== null && spawnResult.status !== 0) {
-          await unlink(tmpFile).catch(() => {});
-          console.error(chalk.red(`Error: editor exited with status ${spawnResult.status} — aborting (no changes saved)`));
-          process.exit(1);
-          return;
-        }
-
-        // Read the edited content
-        const editedRaw = await readFile(tmpFile, 'utf-8');
-        await unlink(tmpFile).catch(() => {});
-
-        // Validate the edited content via the daemon
-        const { data: validateData } = await apiPlaybookValidate({ cwd, body: { raw: editedRaw } });
-        if (!validateData.ok) {
-          console.error(chalk.red('Validation failed — changes not saved:'));
-          for (const error of (validateData.errors ?? [])) {
-            console.error(chalk.red(`  - ${error}`));
-          }
-          process.exit(1);
-          return;
-        }
-
-        // Parse and save to the same tier the file was loaded from
-        const parsed = await parsePlaybookRaw(editedRaw);
-        if (!parsed) {
-          console.error(chalk.red('Error: could not parse edited playbook frontmatter'));
-          process.exit(1);
-          return;
-        }
-
-        // showData.source is already typed as PlaybookScope-compatible.
-        const targetScope: PlaybookScope = showData.source;
-
-        const { frontmatter, body } = parsed;
-
-        // Preserve postMerge across the edit round-trip when present and shaped
-        // as a string array. Without this, any playbook with a postMerge field
-        // would silently lose it on edit-save.
-        const fmPostMerge = frontmatter['postMerge'];
-        const preservedPostMerge =
-          Array.isArray(fmPostMerge) && fmPostMerge.every((x) => typeof x === 'string')
-            ? (fmPostMerge as string[])
-            : showData.playbook.postMerge;
-
-        // Preserve mode from parsed frontmatter, falling back to the loaded playbook's mode.
-        const fmMode = frontmatter['mode'];
-        const preservedMode: 'autonomous' | 'planning' =
-          fmMode === 'autonomous' || fmMode === 'planning'
-            ? fmMode
-            : (showData.playbook.mode ?? 'autonomous');
-
-        // Preserve profile from parsed frontmatter. Omitting the key in the editor
-        // intentionally clears an existing profile so the playbook falls back to
-        // profile-router/active-profile/default resolution.
-        const fmProfile = frontmatter['profile'];
-        const preservedProfile: string | undefined =
-          typeof fmProfile === 'string' && fmProfile.trim().length > 0
-            ? fmProfile.trim()
-            : undefined;
-
-        await apiPlaybookSave({
-          cwd,
-          body: {
-            scope: targetScope,
-            playbook: {
-              frontmatter: {
-                name: String(frontmatter['name'] ?? showData.playbook.name),
-                description: String(frontmatter['description'] ?? showData.playbook.description),
-                scope: targetScope,
-                mode: preservedMode,
-                ...(preservedProfile ? { profile: preservedProfile } : {}),
-                ...(preservedPostMerge && preservedPostMerge.length > 0
-                  ? { postMerge: preservedPostMerge }
-                  : {}),
-              },
-              body: {
-                goal: body.goal,
-                outOfScope: body.outOfScope,
-                acceptanceCriteria: body.acceptanceCriteria,
-                plannerNotes: body.plannerNotes,
-              },
-            },
-          },
-        });
-
-        console.log(chalk.green('✔') + ` Playbook ${chalk.cyan(name)} saved`);
-      } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
-      }
-    });
-
-  // -- run -----------------------------------------------------------------
-
-  playbook
-    .command('run <name>')
-    .description('Run a playbook — autonomous playbooks are enqueued as a PRD; planning playbooks return generic eforge-plan planning entry metadata or unavailable diagnostics')
-    .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
-    .action(async (name: string, options: { after?: string }) => {
-      await runAction(name, options);
-    });
-
-  // -- promote -------------------------------------------------------------
-
-  playbook
-    .command('promote <name>')
-    .description('Promote a playbook from project-local to project-team (stages with git add)')
-    .action(async (name: string) => {
-      const cwd = process.cwd();
-      try {
-        const { data } = await apiPlaybookPromote({ cwd, body: { name } });
-
-        // Stage the new path for commit; non-fatal if git is unavailable
-        const { execFileSync } = await import('node:child_process');
-        try {
-          execFileSync('git', ['add', data.path], { cwd });
-        } catch {
-          console.error(chalk.yellow(`Warning: failed to stage promoted playbook with git add`));
-        }
-
-        console.log(chalk.green('✔') + ` Promoted: ${data.path}`);
-        console.log(chalk.dim(`  Staged for commit. Run 'git commit' to complete the promotion.`));
-      } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
-      }
-    });
-
-  // -- demote --------------------------------------------------------------
-
-  playbook
-    .command('demote <name>')
-    .description('Demote a playbook from project-team to project-local (.eforge/playbooks/)')
-    .action(async (name: string) => {
-      const cwd = process.cwd();
-      try {
-        const { data } = await apiPlaybookDemote({ cwd, body: { name } });
-        console.log(chalk.green('✔') + ` Demoted: ${data.path}`);
-        console.log(chalk.dim(`  File is now in .eforge/playbooks/ (gitignored). Not staged.`));
-      } catch (err) {
-        const { message, exitCode } = formatCliError(err);
-        console.error(chalk.red(`Error: ${message}`));
-        process.exit(exitCode);
-      }
-    });
-
-  // ---- eforge play <name> (alias for eforge playbook run <name>) ---------
-
-  program
-    .command('play <name>')
-    .description('Shortcut for `eforge playbook run <name>` — enqueues autonomous playbooks; returns eforge-plan planning entry metadata or unavailable diagnostics')
-    .option('--after <queue-id>', 'Queue ID that this PRD should run after (piggyback); applies to autonomous playbooks only')
-    .action(async (name: string, options: { after?: string }) => {
-      await runAction(name, options);
-    });
+function parseBoolean(value: string): boolean {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error('Expected true or false');
 }
