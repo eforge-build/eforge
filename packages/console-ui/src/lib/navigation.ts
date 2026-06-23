@@ -24,6 +24,11 @@ export interface ConsoleNavItem {
   href: string;
 }
 
+export interface ConsoleWorkstationSubviewPathLike {
+  path?: string;
+  subPath?: string;
+}
+
 /** Canonical route ordering by base ID. */
 export const consoleRouteOrder: ConsoleRouteBaseId[] = ['now', 'workstations', 'buildDetail', 'workstationDetail', 'system'];
 
@@ -100,6 +105,18 @@ export function buildNavItems(): ConsoleNavItem[] {
     label: ROUTE_LABELS[id],
     href: id === 'now' ? '/console/' : `/console/${id}`,
   }));
+}
+
+export function toConsoleWorkstationSubviewPath(
+  workstationId: string,
+  subview: ConsoleWorkstationSubviewPathLike,
+): string {
+  const subPath = subview.subPath ?? subview.path;
+  return toConsolePath({
+    id: 'workstationDetail',
+    workstationId,
+    ...(subPath ? { subPath } : {}),
+  });
 }
 
 function decodeRouteSegment(segment: string): string {

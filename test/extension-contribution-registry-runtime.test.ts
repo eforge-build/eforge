@@ -47,7 +47,7 @@ describe('extension contribution registry runtime', () => {
       export default function extension(eforge) {
         eforge.registerAction({ id: 'hello', title: 'Hello', inputSchema: Type.Object({ name: Type.String() }), outputSchema: Type.Object({ greeting: Type.String() }), sideEffects: ['none'], handler: (input) => ({ greeting: 'hi ' + input.name }) });
         eforge.registerConsoleContribution({ id: 'panel', title: 'Panel', blocks: [{ rendererId: 'action-button', content: 'Run', action: { actionId: 'hello', inputDefaults: { name: 'Ada' } } }] });
-        eforge.registerConsoleWorkstation({ id: 'workspace', title: 'Workspace', srcDoc: '<h1>Workspace</h1>', allowedActions: ['hello'] });
+        eforge.registerConsoleWorkstation({ id: 'workspace', title: 'Workspace', srcDoc: '<h1>Workspace</h1>', allowedActions: ['hello'], subviews: [{ id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' }] });
         eforge.registerIntegrationCommand({ id: 'say-hi', label: 'Say hi', action: { actionId: 'hello', inputDefaults: { name: 'Grace' } } });
         eforge.registerDeepLink({ id: 'open-hi', label: 'Open hi', urlTemplate: 'eforge://hi/{name}', action: { actionId: 'hello' } });
       }`,
@@ -55,7 +55,7 @@ describe('extension contribution registry runtime', () => {
 
     expect(result.registry.actions[0]).toMatchObject({ localId: 'hello', id: 'contrib:hello' });
     expect(result.registry.consoleContributions[0]).toMatchObject({ localId: 'panel', id: 'contrib:panel' });
-    expect(result.registry.consoleWorkstations[0]).toMatchObject({ localId: 'workspace', id: 'contrib:workspace' });
+    expect(result.registry.consoleWorkstations[0]).toMatchObject({ localId: 'workspace', id: 'contrib:workspace', value: { subviews: [{ id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' }] } });
     expect(result.registry.integrationCommands[0]).toMatchObject({ localId: 'say-hi', id: 'contrib:say-hi' });
     expect(result.registry.deepLinks[0]).toMatchObject({ localId: 'open-hi', id: 'contrib:open-hi' });
     expect(result.registry.extensions[0]?.registrations).toMatchObject({ actions: 1, consoleContributions: 1, consoleWorkstations: 1, integrationCommands: 1, deepLinks: 1 });
@@ -64,13 +64,13 @@ describe('extension contribution registry runtime', () => {
     expect(manifest.schemaVersion).toBe(1);
     expect(Date.parse(manifest.generatedAt)).not.toBeNaN();
     expect(manifest.consoleContributions[0]?.blocks[0]).toMatchObject({ action: { actionId: 'contrib:hello' } });
-    expect(manifest.consoleWorkstations[0]).toMatchObject({ id: 'contrib:workspace', allowedActions: ['contrib:hello'], srcDoc: '<h1>Workspace</h1>' });
+    expect(manifest.consoleWorkstations[0]).toMatchObject({ id: 'contrib:workspace', allowedActions: ['contrib:hello'], srcDoc: '<h1>Workspace</h1>', subviews: [{ id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' }] });
     expect(manifest.actions[0]?.availability).toEqual({ available: true });
     expect(JSON.stringify(manifest)).not.toContain('handler');
 
     const projection = projectExtensionRegistry(result.registry);
     expect(projection.totals).toMatchObject({ actions: 1, consoleContributions: 1, consoleWorkstations: 1, integrationCommands: 1, deepLinks: 1 });
-    expect(projection.extensions[0]).toMatchObject({ actionDetails: [{ id: 'contrib:hello' }], consoleContributionDetails: [{ id: 'contrib:panel' }], consoleWorkstationDetails: [{ id: 'contrib:workspace' }] });
+    expect(projection.extensions[0]).toMatchObject({ actionDetails: [{ id: 'contrib:hello' }], consoleContributionDetails: [{ id: 'contrib:panel' }], consoleWorkstationDetails: [{ id: 'contrib:workspace', subviews: [{ id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' }] }] });
 
     const dispatched = await dispatchExtensionAction(result.registry, {
       actionId: 'contrib:hello',
@@ -303,6 +303,8 @@ describe('extension contribution registry runtime', () => {
         eforge.registerConsoleContribution({ id: 'unknown-action', title: 'Unknown action', blocks: [{ rendererId: 'action-button', content: 'Run', action: { actionId: 'missing' } }] });
         eforge.registerConsoleWorkstation({ id: 'missing-src-doc', title: 'Missing srcDoc' });
         eforge.registerConsoleWorkstation({ id: 'unknown-allow', title: 'Unknown allow', srcDoc: '<p>bad</p>', allowedActions: ['missing'] });
+        eforge.registerConsoleWorkstation({ id: 'bad-subview', title: 'Bad subview', srcDoc: '<p>bad</p>', subviews: [{ id: 'bad subview', label: 'Bad', path: '?focus=bad' }] });
+        eforge.registerConsoleWorkstation({ id: 'bad-subview-route', title: 'Bad subview route', srcDoc: '<p>bad</p>', subviews: [{ id: 'bad', label: 'Bad', path: '/console/workstations/other' }] });
         eforge.registerIntegrationCommand({ id: 'bad-command-schema', label: 'Bad command schema', inputSchema: { type: 'string' }, action: { actionId: 'valid' } });
         eforge.registerIntegrationCommand({ id: 'no-command-action', label: 'No command action' });
         eforge.registerDeepLink({ id: 'no-target', label: 'No target' });
@@ -315,7 +317,20 @@ describe('extension contribution registry runtime', () => {
     expect(result.registry.consoleWorkstations).toHaveLength(0);
     expect(result.registry.integrationCommands).toHaveLength(0);
     expect(result.registry.deepLinks).toHaveLength(0);
-    expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration').length).toBeGreaterThanOrEqual(12);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:invalid-registration', name: 'bad-subview', message: expect.stringContaining('subviews[0].id') }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'extension:invalid-registration', name: 'bad-subview-route', message: expect.stringContaining('subviews[0].path') }));
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration').length).toBeGreaterThanOrEqual(14);
+  });
+
+  it('rejects non-round-trippable workstation subview routes during registration', async () => {
+    const routes = ['%2e/secret', '%2e%2e/secret', '.%2e/secret', '%2e./secret', 'plans/%2E%2e/secret', 'plans/%zz/secret', 'plans#draft', './plans', 'plans/./draft', 'plans//draft', 'plans/', 'plans\\\\draft', ' plans', 'plans '];
+    const modules = Object.fromEntries(routes.map((route, index) => [`bad-route-${index}.js`, `export default function extension(eforge) {
+      eforge.registerConsoleWorkstation({ id: 'bad-${index}', title: 'Bad ${index}', srcDoc: '<p>bad</p>', subviews: [{ id: 'bad', label: 'Bad', path: ${JSON.stringify(route)} }] });
+    }`])) as Record<string, string>;
+    const result = await loadFixture(makeTempDir(), modules);
+
+    expect(result.registry.consoleWorkstations).toHaveLength(0);
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toHaveLength(routes.length);
   });
 
   it('rejects non-JSON-safe schema documents during registration', async () => {

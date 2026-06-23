@@ -127,6 +127,7 @@ export type {
   ConsoleWorkstationBase,
   ConsoleWorkstationFrameBundle,
   ConsoleWorkstationFrameBundleWorkstation,
+  ConsoleWorkstationSubview,
   ConsoleWorkstationSrcDoc,
   ExtensionAction,
   ExtensionActionBinding,

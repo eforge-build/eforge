@@ -9,6 +9,7 @@ export * from './sheet';
 export * from './alert-dialog';
 export * from './checkbox';
 export * from './collapsible';
+export * from './command';
 export * from './dialog';
 export * from './dropdown-menu';
 export * from './scroll-area';

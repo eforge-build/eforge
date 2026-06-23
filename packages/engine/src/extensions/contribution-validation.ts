@@ -7,6 +7,7 @@ import type {
   ConsoleContributionBlockSpec,
   ConsoleContributionSpec,
   ConsoleWorkstationSpec,
+  ConsoleWorkstationSubviewSpec,
   ExtensionActionBindingSpec,
   ExtensionActionSpec,
   NativeExtensionContributionRequirements,
@@ -38,6 +39,7 @@ const RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-b
 const ACTION_RENDERERS = new Set(['action-button', 'action-form']);
 const SAFE_CONSOLE_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 const SAFE_DEEP_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:', 'eforge:']);
+const URL_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
 
 export interface RegistrationValidationResult<T> {
   ok: boolean;
@@ -127,6 +129,8 @@ export function validateConsoleWorkstationSpec(value: unknown): RegistrationVali
     if (!Array.isArray(value.allowedActions)) return fail(id, 'registerConsoleWorkstation allowedActions must be an array of local action ids');
     if (!value.allowedActions.every((actionId) => isValidExtensionLocalContributionId(actionId))) return fail(id, 'registerConsoleWorkstation allowedActions must contain only local action ids matching ^[a-z][a-z0-9-]{0,63}$');
   }
+  const subviewsResult = validateConsoleWorkstationSubviews(value.subviews);
+  if (!subviewsResult.ok) return fail(id, subviewsResult.message ?? 'registerConsoleWorkstation subviews are invalid');
   let normalizedRequirements: NativeExtensionContributionRequirements | undefined;
   if (value.requirements !== undefined) {
     const requirementsResult = validateContributionRequirements(value.requirements, 'registerConsoleWorkstation requirements');
@@ -298,6 +302,56 @@ function validateBase(value: unknown, method: string, labelField: 'title' | 'lab
   return { ok: true, id };
 }
 
+function validateConsoleWorkstationSubviews(value: unknown): JsonSafeValidationResult {
+  if (value === undefined) return { ok: true };
+  if (!Array.isArray(value)) return { ok: false, message: 'registerConsoleWorkstation subviews must be an array' };
+  const seen = new Set<string>();
+  for (const [index, subview] of value.entries()) {
+    const result = validateConsoleWorkstationSubview(subview, index, seen);
+    if (!result.ok) return result;
+  }
+  return { ok: true };
+}
+
+function validateConsoleWorkstationSubview(value: unknown, index: number, seen: Set<string>): JsonSafeValidationResult {
+  const prefix = `registerConsoleWorkstation subviews[${index}]`;
+  if (!isNonArrayObject(value)) return { ok: false, message: `${prefix} must be an object` };
+  if (!hasOnlyAllowedSubviewFields(value)) return { ok: false, message: `${prefix} includes unsupported fields` };
+  if (!isValidExtensionLocalContributionId(value.id)) return { ok: false, message: `${prefix}.id must match ^[a-z][a-z0-9-]{0,63}$` };
+  const subviewId = value.id as ConsoleWorkstationSubviewSpec['id'];
+  if (seen.has(subviewId)) return { ok: false, message: `${prefix}.id must be unique within the workstation` };
+  seen.add(subviewId);
+  if (!isNonBlankString(value.label)) return { ok: false, message: `${prefix}.label must be a non-empty string` };
+  if (value.description !== undefined && typeof value.description !== 'string') return { ok: false, message: `${prefix}.description must be a string` };
+  const hasPath = value.path !== undefined;
+  const hasSubPath = value.subPath !== undefined;
+  if (hasPath === hasSubPath) return { ok: false, message: `${prefix} requires exactly one of path or subPath` };
+  if (hasPath && !isWorkstationInternalRoute(value.path)) return { ok: false, message: `${prefix}.path must be a workstation-internal route` };
+  if (hasSubPath && !isWorkstationInternalRoute(value.subPath)) return { ok: false, message: `${prefix}.subPath must be a workstation-internal route` };
+  return validateJsonSafeValue(value, { requireObjectRoot: true, rejectSymbolKeys: true });
+}
+
+function isWorkstationInternalRoute(value: unknown): value is string {
+  if (!isNonBlankString(value)) return false;
+  if (value.trim() !== value) return false;
+  if (/[\u0000-\u001f\u007f#\\]/u.test(value)) return false;
+  if (value.startsWith('?')) return true;
+  if (value.startsWith('/') || URL_SCHEME_PATTERN.test(value)) return false;
+  const [path = ''] = value.split('?');
+  if (path.length === 0) return false;
+  return path.split('/').every(isSafeWorkstationInternalRouteSegment);
+}
+
+function isSafeWorkstationInternalRouteSegment(segment: string): boolean {
+  if (segment.length === 0) return false;
+  try {
+    const decoded = decodeURIComponent(segment);
+    return decoded !== '.' && decoded !== '..';
+  } catch {
+    return false;
+  }
+}
+
 function validateConsoleContributionBlock(block: unknown): JsonSafeValidationResult {
   if (!isNonArrayObject(block)) return { ok: false, message: 'Console contribution blocks must be objects' };
   if (typeof block.rendererId !== 'string' || !RENDERERS.has(block.rendererId)) return { ok: false, message: 'Console contribution block rendererId is unsupported' };
@@ -335,6 +389,10 @@ function hasOnlyAllowedBlockFields(block: Record<string, unknown>): boolean {
   if (block.rendererId === 'link') allowed.add('href');
   if (ACTION_RENDERERS.has(String(block.rendererId))) allowed.add('action');
   return Object.keys(block).every((key) => allowed.has(key));
+}
+
+function hasOnlyAllowedSubviewFields(subview: Record<string, unknown>): boolean {
+  return Object.keys(subview).every((key) => key === 'id' || key === 'label' || key === 'description' || key === 'path' || key === 'subPath');
 }
 
 function isSafeUrlString(value: string, allowedSchemes: Set<string>): boolean {

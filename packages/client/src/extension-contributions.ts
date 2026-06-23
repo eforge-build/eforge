@@ -17,6 +17,8 @@ export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = routePatternToRegexP
   API_ROUTES.extensionWorkstationAsset,
   { assetId: CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN.slice(1, -1) },
 );
+const ENCODED_DOT_SEGMENT_PATTERN = '(?:\\.|%2[eE]){1,2}';
+const CONSOLE_WORKSTATION_SUBVIEW_ROUTE_PATTERN = `^(?!\\s)(?!.*\\s$)(?!.*[#\\\\\\u0000-\\u001F\\u007F])(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*|(?!(?:[A-Za-z][A-Za-z0-9+.-]*:|/))(?![^?]*%(?![0-9A-Fa-f]{2}))(?:(?!${ENCODED_DOT_SEGMENT_PATTERN}(?:/|\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+/)*(?!${ENCODED_DOT_SEGMENT_PATTERN}(?:\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*)?)$`;
 const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_HASH_PATTERN = /^sha256-([a-f0-9]{64})-path-[a-f0-9]{64}$/;
 
 function routePatternToRegexPattern(
@@ -219,6 +221,23 @@ export const ConsoleWorkstationFrameBundleManifestSchema = Type.Object({
   assets: Type.Array(ConsoleWorkstationFrameBundleAssetRefSchema),
 }, { additionalProperties: false });
 
+const ConsoleWorkstationSubviewManifestEntryBaseSchema = {
+  id: Type.String({ pattern: '^[a-z][a-z0-9-]{0,63}$' }),
+  label: Type.String({ minLength: 1, pattern: '\\S' }),
+  description: Type.Optional(Type.String()),
+};
+
+export const ConsoleWorkstationSubviewManifestEntrySchema = Type.Union([
+  Type.Object({
+    ...ConsoleWorkstationSubviewManifestEntryBaseSchema,
+    path: Type.String({ minLength: 1, pattern: CONSOLE_WORKSTATION_SUBVIEW_ROUTE_PATTERN }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    ...ConsoleWorkstationSubviewManifestEntryBaseSchema,
+    subPath: Type.String({ minLength: 1, pattern: CONSOLE_WORKSTATION_SUBVIEW_ROUTE_PATTERN }),
+  }, { additionalProperties: false }),
+]);
+
 export const ConsoleWorkstationSrcDocManifestEntrySchema = Type.Object({
   id: Type.String(),
   localId: Type.String(),
@@ -229,6 +248,7 @@ export const ConsoleWorkstationSrcDocManifestEntrySchema = Type.Object({
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
   requirements: Type.Optional(ExtensionContributionRequirementsSchema),
   availability: Type.Optional(ExtensionContributionAvailabilitySchema),
+  subviews: Type.Optional(Type.Array(ConsoleWorkstationSubviewManifestEntrySchema)),
   srcDoc: Type.String(),
   allowedActions: Type.Array(Type.String()),
 }, { additionalProperties: false });
@@ -243,6 +263,7 @@ export const ConsoleWorkstationFrameBundleManifestEntrySchema = Type.Object({
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
   requirements: Type.Optional(ExtensionContributionRequirementsSchema),
   availability: Type.Optional(ExtensionContributionAvailabilitySchema),
+  subviews: Type.Optional(Type.Array(ConsoleWorkstationSubviewManifestEntrySchema)),
   frameBundle: ConsoleWorkstationFrameBundleManifestSchema,
   allowedActions: Type.Array(Type.String()),
 }, { additionalProperties: false });
@@ -368,6 +389,7 @@ export type ExtensionActionManifestEntry = Static<typeof ExtensionActionManifest
 export type ConsoleContributionManifestEntry = Static<typeof ConsoleContributionManifestEntrySchema>;
 export type ConsoleWorkstationFrameBundleAssetRef = Static<typeof ConsoleWorkstationFrameBundleAssetRefSchema>;
 export type ConsoleWorkstationFrameBundleManifest = Static<typeof ConsoleWorkstationFrameBundleManifestSchema>;
+export type ConsoleWorkstationSubviewManifestEntry = Static<typeof ConsoleWorkstationSubviewManifestEntrySchema>;
 export type ConsoleWorkstationSrcDocManifestEntry = Static<typeof ConsoleWorkstationSrcDocManifestEntrySchema>;
 export type ConsoleWorkstationFrameBundleManifestEntry = Static<typeof ConsoleWorkstationFrameBundleManifestEntrySchema>;
 export type ConsoleWorkstationManifestEntry = Static<typeof ConsoleWorkstationManifestEntrySchema>;

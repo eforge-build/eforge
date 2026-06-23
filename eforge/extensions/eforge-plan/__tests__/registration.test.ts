@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
 import { buildExtensionContributionManifest } from '@eforge-build/engine/extensions/manifest.js';
@@ -26,7 +27,7 @@ async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 }
 
 function load() {
-  const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
+  const { api, state } = createExtensionRecorder('eforge-plan', fileURLToPath(new URL('../index.ts', import.meta.url)));
   eforgePlanExtension(api as never);
   expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
   expect(state.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toEqual([]);
@@ -472,12 +473,19 @@ describe('eforge-plan extension registration', () => {
       ]),
       frameBundle: { root: 'workstation-assets/plans', entrypoint: 'index.js', styles: ['style.css'], browserSdkVersion: 1 },
     });
+    const planningSubviews = workstation!.subviews ?? [];
+    expect(planningSubviews).toEqual([
+      { id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' },
+      { id: 'backlog', label: 'Backlog', path: '?focus=board' },
+      { id: 'plans', label: 'Plans', path: '?focus=plans' },
+    ]);
     // promote-selection remains registered as an action, integration command, and
     // deep link, but the AI-first workstation no longer allows it in the iframe surface.
     expect(workstation!.allowedActions).not.toContain('list-board');
     expect(workstation!.allowedActions).not.toContain('promote-selection');
     expect('srcDoc' in workstation!).toBe(false);
     const manifest = buildExtensionContributionManifest(registryFromRecorderState(state));
+    expect(manifest.consoleWorkstations.find((entry) => entry.id === 'eforge-plan:planning-workstation')?.subviews).toEqual(planningSubviews);
     expect(manifest.actions.find((entry) => entry.localId === 'open-planning-entry')).toMatchObject({ id: 'eforge-plan:open-planning-entry' });
     expect(manifest.integrationCommands.find((entry) => entry.localId === 'open-planning-entry')).toMatchObject({ id: 'eforge-plan:open-planning-entry', action: { actionId: 'eforge-plan:open-planning-entry' } });
     expect(state.integrationCommands.find((entry) => entry.value.id === 'open-planning-entry')?.value).toMatchObject({

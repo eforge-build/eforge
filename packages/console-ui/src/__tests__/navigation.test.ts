@@ -4,6 +4,7 @@ import {
   parseConsoleRoute,
   buildNavItems,
   consoleRouteOrder,
+  toConsoleWorkstationSubviewPath,
 } from '@/lib/navigation';
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,17 @@ describe('toConsolePath', () => {
 
   it('attaches a query-only sub-path directly to the workstation id', () => {
     expect(toConsolePath({ id: 'workstationDetail', workstationId: 'eforge-plan', subPath: '?group=epic' })).toBe('/console/workstations/eforge-plan?group=epic');
+  });
+
+  it('builds workstation subview URLs for eforge-plan first-party views', () => {
+    expect(toConsoleWorkstationSubviewPath('eforge-plan', { path: '?focus=roadmap' })).toBe('/console/workstations/eforge-plan?focus=roadmap');
+    expect(toConsoleWorkstationSubviewPath('eforge-plan', { subPath: '?focus=board' })).toBe('/console/workstations/eforge-plan?focus=board');
+    expect(toConsoleWorkstationSubviewPath('eforge-plan', { path: '?focus=plans' })).toBe('/console/workstations/eforge-plan?focus=plans');
+  });
+
+  it('builds workstation subview URLs for nested and query-only paths', () => {
+    expect(toConsoleWorkstationSubviewPath('demo:board', { path: 'plans/plan:2026?tab=readiness' })).toBe('/console/workstations/demo%3Aboard/plans/plan:2026?tab=readiness');
+    expect(toConsoleWorkstationSubviewPath('demo:board', { subPath: '?focus=roadmap' })).toBe('/console/workstations/demo%3Aboard?focus=roadmap');
   });
 
   it('maps a buildDetail object to /console/builds/:detailId', () => {

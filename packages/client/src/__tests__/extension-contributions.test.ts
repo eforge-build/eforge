@@ -9,6 +9,7 @@ import {
   CONSOLE_WORKSTATION_FRAME_URL_PATTERN,
   ConsoleContributionBlockSchema,
   ConsoleWorkstationFrameBundleAssetRefSchema,
+  ConsoleWorkstationSubviewManifestEntrySchema,
   ExtensionActionInvokeErrorCodeSchema,
   ExtensionActionInvokeRequestSchema,
   ExtensionActionInvokeResponseSchema,
@@ -23,6 +24,7 @@ import {
   CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN as BROWSER_CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN,
   CONSOLE_WORKSTATION_FRAME_URL_PATTERN as BROWSER_CONSOLE_WORKSTATION_FRAME_URL_PATTERN,
   ConsoleWorkstationFrameBundleManifestSchema as BrowserConsoleWorkstationFrameBundleManifestSchema,
+  ConsoleWorkstationSubviewManifestEntrySchema as BrowserConsoleWorkstationSubviewManifestEntrySchema,
   ExtensionActionOutputProfileSchema as BrowserExtensionActionOutputProfileSchema,
 } from '../browser.js';
 import { Value } from '@sinclair/typebox/value';
@@ -116,6 +118,7 @@ describe('extension contribution schemas', () => {
     expect(BROWSER_CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN).toBe(CONSOLE_WORKSTATION_BUNDLE_SHA256_PATTERN);
     expect(BROWSER_CONSOLE_WORKSTATION_FRAME_URL_PATTERN).toBe(CONSOLE_WORKSTATION_FRAME_URL_PATTERN);
     expect(BrowserConsoleWorkstationFrameBundleManifestSchema.type).toBe('object');
+    expect(BrowserConsoleWorkstationSubviewManifestEntrySchema.anyOf).toBe(ConsoleWorkstationSubviewManifestEntrySchema.anyOf);
     expect(BrowserExtensionActionOutputProfileSchema).toBe(ExtensionActionOutputProfileSchema);
   });
 
@@ -159,6 +162,61 @@ describe('extension contribution schemas', () => {
       const value = manifest();
       value.actions[0] = { ...value.actions[0], requirements: { dependencies: [dependency] } } as never;
       expect(safeParseExtensionContributionManifest(value).success).toBe(false);
+    }
+  });
+
+  it('accepts srcDoc and frameBundle workstation subviews', () => {
+    const subviews = [
+      { id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' },
+      { id: 'backlog', label: 'Backlog', path: '?focus=board' },
+      { id: 'plans', label: 'Plans', path: '?focus=plans' },
+    ];
+    const srcDocManifest = manifest();
+    srcDocManifest.consoleWorkstations[0] = { ...srcDocManifest.consoleWorkstations[0], subviews } as never;
+    expect(safeParseExtensionContributionManifest(srcDocManifest).success).toBe(true);
+
+    const frameBundleManifest = manifest();
+    frameBundleManifest.consoleWorkstations[0] = {
+      ...base,
+      id: 'example.workstation',
+      localId: 'workstation',
+      title: 'Workstation',
+      schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION,
+      subviews,
+      frameBundle: {
+        browserSdkVersion: 1,
+        frameUrl: buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: 'example.workstation' }),
+        entrypoint: bundleAssetRef('dist/index.js'),
+        styles: [bundleAssetRef('dist/index.css')],
+        assets: [bundleAssetRef('dist/logo.svg')],
+      },
+      allowedActions: ['example.say-hi'],
+    } as never;
+    expect(safeParseExtensionContributionManifest(frameBundleManifest).success).toBe(true);
+  });
+
+  it('rejects malformed workstation subviews', () => {
+    const missingRoute = manifest();
+    missingRoute.consoleWorkstations[0] = {
+      ...missingRoute.consoleWorkstations[0],
+      subviews: [{ id: 'roadmap', label: 'Roadmap' }],
+    } as never;
+    expect(safeParseExtensionContributionManifest(missingRoute).success).toBe(false);
+
+    const bothRoutes = manifest();
+    bothRoutes.consoleWorkstations[0] = {
+      ...bothRoutes.consoleWorkstations[0],
+      subviews: [{ id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap', subPath: '?focus=roadmap' }],
+    } as never;
+    expect(safeParseExtensionContributionManifest(bothRoutes).success).toBe(false);
+
+    for (const path of ['https://example.test', '/console/workstations/example', '//example.test', '../secret', 'plans/../secret', '%2e/secret', '%2e%2e/secret', '.%2e/secret', '%2e./secret', 'plans/%2E%2e/secret', 'plans/%zz/secret', 'plans#draft', './plans', 'plans/./draft', 'plans//draft', 'plans/', 'plans\\draft', ' plans', 'plans ', 'bad\u0000route']) {
+      const invalidRoute = manifest();
+      invalidRoute.consoleWorkstations[0] = {
+        ...invalidRoute.consoleWorkstations[0],
+        subviews: [{ id: 'roadmap', label: 'Roadmap', path }],
+      } as never;
+      expect(safeParseExtensionContributionManifest(invalidRoute).success).toBe(false);
     }
   });
 

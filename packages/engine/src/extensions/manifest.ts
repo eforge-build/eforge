@@ -90,6 +90,7 @@ export function buildConsoleWorkstationManifestEntry(reg: ConsoleWorkstationRegi
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
     requirements: projectRequirements(reg.requirements ?? reg.value.requirements),
     availability: projectAvailability(reg.availability),
+    subviews: projectWorkstationSubviews(reg.value.subviews),
     allowedActions: projectAllowedActions(reg, registry),
   };
   if (reg.value.frameBundle !== undefined) {
@@ -164,6 +165,10 @@ function projectRequirements(requirements: unknown): unknown {
 
 function projectAvailability(availability: unknown): unknown {
   return availability === undefined ? undefined : jsonSafeClone(availability);
+}
+
+function projectWorkstationSubviews(subviews: unknown): unknown {
+  return subviews === undefined ? undefined : jsonSafeClone(subviews);
 }
 
 function projectBlock(block: ConsoleContributionBlockSpec, extensionName: string): ConsoleContributionBlock {

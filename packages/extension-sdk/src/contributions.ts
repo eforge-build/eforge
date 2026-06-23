@@ -159,12 +159,17 @@ export interface ConsoleContribution {
   blocks: ConsoleContributionBlock[];
 }
 
+export type ConsoleWorkstationSubview =
+  | { id: string; label: string; description?: string; path: string; subPath?: never }
+  | { id: string; label: string; description?: string; path?: never; subPath: string };
+
 export interface ConsoleWorkstationBase {
   id: string;
   title: string;
   description?: string;
   requirements?: ExtensionContributionRequirements;
   availability?: ExtensionContributionAvailability;
+  subviews?: ConsoleWorkstationSubview[];
   /** Local action ids registered by this same extension. Omit to allow all same-extension actions; use [] to expose no actions. */
   allowedActions?: string[];
 }

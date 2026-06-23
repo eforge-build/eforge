@@ -92,7 +92,7 @@ describe('extension workstation frameBundle runtime', () => {
     export default function extension(eforge) {
       eforge.registerAction({ id: 'open', title: 'Open', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
       eforge.registerAction({ id: 'other', title: 'Other', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
-      eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', frameBundle: { root: 'workstation-assets/board', entrypoint: 'index.js', styles: ['style.css', 'style.css'], assets: ['logo.svg', 'style.css', 'copy.js'] } });
+      eforge.registerConsoleWorkstation({ id: 'board', title: 'Board', subviews: [{ id: 'backlog', label: 'Backlog', subPath: '?focus=board' }], frameBundle: { root: 'workstation-assets/board', entrypoint: 'index.js', styles: ['style.css', 'style.css'], assets: ['logo.svg', 'style.css', 'copy.js'] } });
       eforge.registerConsoleWorkstation({ id: 'empty-actions', title: 'Empty actions', allowedActions: [], frameBundle: { root: 'workstation-assets/board', entrypoint: 'index.js' } });
       eforge.registerConsoleWorkstation({ id: 'legacy', title: 'Legacy', srcDoc: '<p>Legacy</p>' });
     }`, {
@@ -109,6 +109,7 @@ describe('extension workstation frameBundle runtime', () => {
     expect(workstation && 'srcDoc' in workstation).toBe(false);
     expect(workstation && 'frameBundle' in workstation ? workstation.frameBundle.browserSdkVersion : undefined).toBe(1);
     if (!workstation || !('frameBundle' in workstation)) throw new Error('bundle workstation missing');
+    expect(workstation.subviews).toEqual([{ id: 'backlog', label: 'Backlog', subPath: '?focus=board' }]);
     expect(workstation.allowedActions).toEqual(['bundle:open', 'bundle:other']);
     expect(workstation.frameBundle.frameUrl).toBe(buildPath(API_ROUTES.extensionWorkstationFrame, { workstationId: workstation.id }));
     expect(workstation.frameBundle.styles.map((asset) => asset.relativePath)).toEqual(['workstation-assets/board/style.css']);
