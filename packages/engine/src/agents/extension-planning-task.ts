@@ -1,32 +1,24 @@
-import { Type } from '@sinclair/typebox';
-import {
-  EforgePlanPlanningBacklogCurationDraftSchema,
-  EforgePlanPlanningDraftResultSchema,
-  EforgePlanPlanningSessionPlanCreationDraftSchema,
-  // --- eforge:region client-engine-task-contract ---
-  EforgePlanPlanningPlanRevisionTurnSchema,
-  // --- eforge:endregion client-engine-task-contract ---
-  getSchemaYaml,
-  parseEforgePlanPlanningDraftResult,
-  type EforgePlanPlanningDraftInput,
-  type EforgePlanPlanningDraftResult,
-  type EforgePlanPlanningSessionPlanCreationDraft,
+import type {
+  EforgePlanPlanningDraftInput,
+  EforgePlanPlanningDraftResult,
 } from '@eforge-build/client';
-import type { AgentHarness, CustomTool, SdkPassthroughConfig } from '../harness.js';
+import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { classifyAgentTerminalSubtype, pickSdkOptions } from '../harness.js';
 import { isRetryableInfrastructureSubtype } from '../retry.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { DEFAULT_TIER_MAX_TURNS } from '../config.js';
 import { loadPrompt } from '../prompts.js';
+import {
+  createPlanningDraftSubmitTool,
+  createPlanningProgressTool,
+  planningDraftResultSchemaYaml,
+  PLANNING_DRAFT_SUBMIT_TOOL_NAME,
+  PLANNING_PROGRESS_TOOL_NAME,
+  type EforgePlanPlanningProgressCallback,
+  type EforgePlanPlanningProgressUpdate,
+} from './extension-planning-submit-tools.js';
 
-export interface EforgePlanPlanningProgressUpdate {
-  currentSection?: string;
-  coveredSections?: string[];
-  remainingSections?: string[];
-  message?: string;
-}
-
-export type EforgePlanPlanningProgressCallback = (update: EforgePlanPlanningProgressUpdate) => void | Promise<void>;
+export type { EforgePlanPlanningProgressCallback, EforgePlanPlanningProgressUpdate };
 
 export interface ExtensionPlanningTaskOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -40,188 +32,11 @@ export interface ExtensionPlanningTaskOptions extends SdkPassthroughConfig {
   onProgress?: EforgePlanPlanningProgressCallback;
 }
 
-const MAX_PROGRESS_STRING_LENGTH = 200;
-const MAX_PROGRESS_ARRAY_ITEMS = 50;
-
-const planningProgressToolSchema = Type.Object({
-  currentSection: Type.Optional(Type.String()),
-  coveredSections: Type.Optional(Type.Array(Type.String())),
-  remainingSections: Type.Optional(Type.Array(Type.String())),
-  message: Type.Optional(Type.String()),
-}, { additionalProperties: false });
-
-function sanitizeProgressString(value: string): string {
-  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
-  return cleaned.length > MAX_PROGRESS_STRING_LENGTH ? `${cleaned.slice(0, MAX_PROGRESS_STRING_LENGTH - 3)}...` : cleaned;
-}
-
-function sanitizeProgressArray(values: string[]): string[] {
-  return values.slice(0, MAX_PROGRESS_ARRAY_ITEMS).map(sanitizeProgressString).filter((entry) => entry.length > 0);
-}
-
-function sanitizeProgressUpdate(input: unknown): EforgePlanPlanningProgressUpdate {
-  const raw = (input ?? {}) as Record<string, unknown>;
-  const update: EforgePlanPlanningProgressUpdate = {};
-  if (typeof raw.currentSection === 'string') {
-    const current = sanitizeProgressString(raw.currentSection);
-    if (current.length > 0) update.currentSection = current;
-  }
-  if (Array.isArray(raw.coveredSections)) {
-    update.coveredSections = sanitizeProgressArray(raw.coveredSections.filter((entry): entry is string => typeof entry === 'string'));
-  }
-  if (Array.isArray(raw.remainingSections)) {
-    update.remainingSections = sanitizeProgressArray(raw.remainingSections.filter((entry): entry is string => typeof entry === 'string'));
-  }
-  if (typeof raw.message === 'string') {
-    const message = sanitizeProgressString(raw.message);
-    if (message.length > 0) update.message = message;
-  }
-  return update;
-}
-
-// --- eforge:region session-plan-creation-readiness ---
-function validateSubmittedCreationDraftAgainstContext(result: EforgePlanPlanningDraftResult, input: EforgePlanPlanningDraftInput): string | undefined {
-  const candidate = result as { decision?: unknown; sessionPlanCreationDraft?: EforgePlanPlanningSessionPlanCreationDraft };
-  const draft = candidate.decision === 'ready' ? candidate.sessionPlanCreationDraft : undefined;
-  if (draft === undefined) return undefined;
-  const readiness = input.sessionPlanCreationReadiness;
-  if (readiness?.resolved !== undefined && (readiness.resolved.planningType !== draft.planningType || readiness.resolved.planningDepth !== draft.planningDepth)) {
-    return [
-      `Submission rejected: sessionPlanCreationDraft planning contract mismatch.`,
-      `expected planningType/planningDepth: ${readiness.resolved.planningType}/${readiness.resolved.planningDepth}`,
-      `actual planningType/planningDepth: ${draft.planningType}/${draft.planningDepth}`,
-      'Copy the planningType and planningDepth from sessionPlanCreationReadiness.resolved, then call the submit tool again.',
-    ].join('\n');
-  }
-  const entry = resolveCreationReadinessEntry(input, draft.planningType, draft.planningDepth);
-  if (entry === undefined) return undefined;
-  const requiredIds = new Set(entry.requiredDimensions);
-  const submittedSections = draft.sections.map((section) => section.dimension);
-  const submittedSkips = draft.skippedDimensions ?? [];
-  const unknownIds = [...new Set([...submittedSections, ...submittedSkips.map((skip) => skip.dimension)].filter((dimension) => !requiredIds.has(dimension)))];
-  const coveredIds = new Set(submittedSections.filter((dimension) => requiredIds.has(dimension)));
-  const skippedIds = new Set(submittedSkips.filter((skip) => requiredIds.has(skip.dimension) && skip.reason.trim().length > 0).map((skip) => skip.dimension));
-  const blankSkipIds = [...new Set(submittedSkips.filter((skip) => requiredIds.has(skip.dimension) && skip.reason.trim().length === 0).map((skip) => skip.dimension))];
-  const missingIds = entry.requiredDimensions.filter((dimension) => !coveredIds.has(dimension) && !skippedIds.has(dimension));
-  if (unknownIds.length === 0 && missingIds.length === 0 && blankSkipIds.length === 0) return undefined;
-  return [
-    `Submission rejected: sessionPlanCreationDraft does not satisfy the provided readiness contract for ${draft.planningType}/${draft.planningDepth}.`,
-    `expected required dimension ids: ${entry.requiredDimensions.join(', ')}`,
-    ...(unknownIds.length > 0 ? [`unknown dimension ids: ${unknownIds.join(', ')}`] : []),
-    ...(missingIds.length > 0 ? [`missing required dimension ids: ${missingIds.join(', ')}`] : []),
-    ...(blankSkipIds.length > 0 ? [`${blankSkipIds.join(', ')} has a blank skip reason; skipped required dimensions need non-empty reasons.`] : []),
-    'Use exact kebab-case ids from sessionPlanCreationReadiness; do not use display-heading aliases such as Goal, Scope, or Validation.',
-    'Fix the payload and call the submit tool again, or emit needs-input if a ready draft cannot be produced.',
-  ].join('\n');
-}
-
-function resolveCreationReadinessEntry(input: EforgePlanPlanningDraftInput, planningType: string, planningDepth: string): { requiredDimensions: string[]; optionalDimensions: string[] } | undefined {
-  const readiness = input.sessionPlanCreationReadiness;
-  if (readiness === undefined) return undefined;
-  if (readiness.resolved !== undefined && readiness.resolved.planningType === planningType && readiness.resolved.planningDepth === planningDepth) return readiness.resolved;
-  const byType = readiness.dimensionContract[planningType as keyof typeof readiness.dimensionContract];
-  if (byType === undefined) return undefined;
-  return byType[planningDepth as keyof typeof byType];
-}
-
-function formatCreationDraftSchemaGuidance(rawInput: unknown, input: EforgePlanPlanningDraftInput): string | undefined {
-  const candidate = rawInput as { sessionPlanCreationDraft?: unknown } | undefined;
-  if (candidate?.sessionPlanCreationDraft === undefined) return undefined;
-  const draft = candidate.sessionPlanCreationDraft as { planningType?: unknown; planningDepth?: unknown };
-  const entry = typeof draft.planningType === 'string' && typeof draft.planningDepth === 'string'
-    ? resolveCreationReadinessEntry(input, draft.planningType, draft.planningDepth) ?? input.sessionPlanCreationReadiness?.resolved
-    : input.sessionPlanCreationReadiness?.resolved;
-  return [
-    'For sessionPlanCreationDraft, dimension values must be exact kebab-case ids from sessionPlanCreationReadiness.',
-    ...(entry !== undefined ? [`expected required dimension ids: ${entry.requiredDimensions.join(', ')}`] : []),
-    'Do not use display-heading aliases such as Goal, Scope, or Validation.',
-  ].join('\n');
-}
-// --- eforge:endregion session-plan-creation-readiness ---
-
-const planningDraftSubmissionToolSchema = Type.Object({
-  summary: Type.String(),
-  assumptionsOpenQuestions: Type.Array(Type.String()),
-  nextSteps: Type.Optional(Type.Array(Type.String())),
-  recommendations: Type.Optional(Type.Object({}, { additionalProperties: true })),
-  // --- eforge:region backlog-curation-draft ---
-  backlogCurationDraft: Type.Optional(EforgePlanPlanningBacklogCurationDraftSchema),
-  // --- eforge:endregion backlog-curation-draft ---
-  handoffDraft: Type.Optional(Type.Object({}, { additionalProperties: true })),
-  handoffDrafts: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: true }), { minItems: 1 })),
-  planDrafts: Type.Optional(Type.Array(Type.Object({
-    title: Type.String(),
-    body: Type.String(),
-  }, { additionalProperties: false }), { minItems: 1 })),
-  playbookDraft: Type.Optional(Type.Object({
-    name: Type.String(),
-    body: Type.String(),
-  }, { additionalProperties: false })),
-  sessionPlanPatch: Type.Optional(Type.Object({
-    sections: Type.Array(Type.Object({
-      dimension: Type.String(),
-      content: Type.String(),
-    }, { additionalProperties: false }), { minItems: 1 }),
-    skippedDimensions: Type.Optional(Type.Array(Type.Object({
-      dimension: Type.String(),
-      reason: Type.String(),
-    }, { additionalProperties: false }))),
-  }, { additionalProperties: false })),
-  // --- eforge:region client-engine-task-contract ---
-  planRevisionTurn: Type.Optional(EforgePlanPlanningPlanRevisionTurnSchema),
-  // --- eforge:endregion client-engine-task-contract ---
-  decision: Type.Optional(Type.Union([Type.Literal('ready'), Type.Literal('needs-input')])),
-  sessionPlanCreationDraft: Type.Optional(EforgePlanPlanningSessionPlanCreationDraftSchema),
-  clarificationQuestions: Type.Optional(Type.Array(Type.Object({
-    question: Type.String(),
-    why: Type.Optional(Type.String()),
-    options: Type.Optional(Type.Array(Type.String())),
-  }, { additionalProperties: false }), { minItems: 1 })),
-  rationale: Type.Optional(Type.String()),
-}, { additionalProperties: false });
-
 export async function* runEforgePlanPlanningDraftTask(
   options: ExtensionPlanningTaskOptions,
 ): AsyncGenerator<EforgeEvent, EforgePlanPlanningDraftResult> {
-  let submitted: EforgePlanPlanningDraftResult | undefined;
-  const submitToolName = 'submit_eforge_plan_planning_result';
-  const submitTool: CustomTool = {
-    name: submitToolName,
-    description: 'Submit the final eforge-plan planning draft result. This is the only accepted output channel for this task.',
-    inputSchema: planningDraftSubmissionToolSchema,
-    handler: async (input: unknown) => {
-      try {
-        const parsed = parseEforgePlanPlanningDraftResult(input);
-        if (submitted !== undefined) {
-          return 'Error: a planning result was already submitted. Submit exactly one final result.';
-        }
-        const readinessError = validateSubmittedCreationDraftAgainstContext(parsed, options.input);
-        if (readinessError !== undefined) return readinessError;
-        submitted = parsed;
-        return 'Planning draft result submitted successfully.';
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        const creationDraftGuidance = formatCreationDraftSchemaGuidance(input, options.input);
-        return `Submission rejected: ${message}${creationDraftGuidance === undefined ? '' : `\n${creationDraftGuidance}`}\nFix the payload and call ${submitToolName} again.`;
-      }
-    },
-  };
-
-  const progressToolName = 'report_eforge_plan_planning_progress';
-  const progressTool: CustomTool = {
-    name: progressToolName,
-    description: 'Report telemetry-only section progress while drafting the session plan. This never replaces the final submission and does not affect readiness.',
-    inputSchema: planningProgressToolSchema,
-    handler: async (input: unknown) => {
-      const update = sanitizeProgressUpdate(input);
-      try {
-        await options.onProgress?.(update);
-      } catch {
-        // Progress reporting is telemetry-only; never fail the task because a progress update could not be recorded.
-      }
-      return 'Section progress recorded.';
-    },
-  };
+  const submitState = createPlanningDraftSubmitTool({ input: options.input });
+  const progressTool = createPlanningProgressTool(options.onProgress);
 
   const prompt = await loadPrompt('eforge-plan-planning-draft', {
     topic: options.input.topic,
@@ -231,14 +46,14 @@ export async function* runEforgePlanPlanningDraftTask(
     sourceText: options.input.sourceText ?? '(none)',
     existingSessionPlan: options.input.existingSessionPlan ?? '(none)',
     requestedOutputSections: options.input.requestedOutputSections?.join(', ') ?? '(agent should choose applicable sections)',
-    submitTool: options.harness.effectiveCustomToolName(submitToolName),
-    progressTool: options.harness.effectiveCustomToolName(progressToolName),
-    resultSchema: getSchemaYaml('eforge-plan-planning-draft-result', EforgePlanPlanningDraftResultSchema),
+    submitTool: options.harness.effectiveCustomToolName(PLANNING_DRAFT_SUBMIT_TOOL_NAME),
+    progressTool: options.harness.effectiveCustomToolName(PLANNING_PROGRESS_TOOL_NAME),
+    resultSchema: planningDraftResultSchemaYaml(),
     sessionPlanCreationReadiness: JSON.stringify(options.input.sessionPlanCreationReadiness ?? {}, null, 2),
   }, options.promptAppend);
 
-  const effectiveSubmitToolName = options.harness.effectiveCustomToolName(submitToolName);
-  const effectiveProgressToolName = options.harness.effectiveCustomToolName(progressToolName);
+  const effectiveSubmitToolName = options.harness.effectiveCustomToolName(PLANNING_DRAFT_SUBMIT_TOOL_NAME);
+  const effectiveProgressToolName = options.harness.effectiveCustomToolName(PLANNING_PROGRESS_TOOL_NAME);
   const allowedTools = options.allowedTools === undefined
     ? undefined
     : [...new Set([...options.allowedTools, effectiveSubmitToolName, effectiveProgressToolName])];
@@ -261,7 +76,7 @@ export async function* runEforgePlanPlanningDraftTask(
         cwd: options.cwd,
         maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
         tools: 'read-only',
-        customTools: [submitTool, progressTool],
+        customTools: [submitState.tool, progressTool],
         abortSignal: options.abortController?.signal,
         ...sdkOptions,
       },
@@ -273,6 +88,7 @@ export async function* runEforgePlanPlanningDraftTask(
       }
     }
   } catch (err) {
+    const submitted = submitState.getSubmitted();
     const terminalSubtype = classifyAgentTerminalSubtype(err);
     const message = err instanceof Error ? err.message : String(err);
     if (submitted !== undefined && terminalSubtype !== undefined && isRetryableInfrastructureSubtype(terminalSubtype)) {
@@ -290,8 +106,9 @@ export async function* runEforgePlanPlanningDraftTask(
     throw err;
   }
 
+  const submitted = submitState.getSubmitted();
   if (submitted === undefined) {
-    throw new Error(`eforge-plan planning draft task did not call ${options.harness.effectiveCustomToolName(submitToolName)}.`);
+    throw new Error(`eforge-plan planning draft task did not call ${options.harness.effectiveCustomToolName(PLANNING_DRAFT_SUBMIT_TOOL_NAME)}.`);
   }
 
   return submitted;

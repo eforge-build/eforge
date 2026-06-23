@@ -8,9 +8,11 @@ import {
   BACKLOG_CURATION_DIAGNOSTICS_PER_PACKET_MAX,
   BACKLOG_CURATION_HISTORICAL_HINTS_PER_ITEM_MAX,
   BACKLOG_CURATION_PACKET_MAX_BYTES,
+  BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
+  type BacklogCurationMapReduceGlobalContext,
 } from '@eforge-build/client';
 import { buildBacklogCurationSource } from '../backlog-curation-source.js';
-import { byteLength, computeBacklogCurationPacketSha256 } from '../backlog-curation-packets.js';
+import { buildBacklogCurationReducerInput, byteLength, computeBacklogCurationPacketSha256 } from '../backlog-curation-packets.js';
 import { writeBacklogItem } from '../markdown-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -51,6 +53,28 @@ describe('backlog curation map/reduce packets', () => {
 
       expect(firstHashes).toEqual(secondHashes);
     });
+  });
+
+  it('shrinks oversized reducer global context to fit the byte cap', () => {
+    const sourceFingerprint = 'a'.repeat(64);
+    const globalContext: BacklogCurationMapReduceGlobalContext = {
+      schemaVersion: 1,
+      purpose: 'backlog-curation-map-reduce',
+      sourceFingerprint,
+      curationGuidance: Array.from({ length: 8 }, () => 'g'.repeat(1_200)),
+      caps: {},
+      itemCount: 1_000,
+      openItemIds: Array.from({ length: 1_000 }, (_, index) => `item-${index}-${'x'.repeat(300)}`),
+      roadmapSummaries: Array.from({ length: 20 }, (_, index) => ({ id: `roadmap-${index}`, summary: 'r'.repeat(500) })),
+      dependencySummaries: Array.from({ length: 50 }, (_, index) => ({ id: `dep-${index}`, summary: 'd'.repeat(500) })),
+      recommendationSummaries: Array.from({ length: 50 }, (_, index) => ({ id: `rec-${index}`, summary: 's'.repeat(500) })),
+      diagnostics: [],
+    };
+
+    const reducer = buildBacklogCurationReducerInput(globalContext, []);
+
+    expect(byteLength(reducer)).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
+    expect(reducer.diagnostics.some((diagnostic) => diagnostic.code === 'reducer-input-global-context-truncated')).toBe(true);
   });
 
   it('includes item preconditions with body and record hashes plus source fingerprint', async () => {

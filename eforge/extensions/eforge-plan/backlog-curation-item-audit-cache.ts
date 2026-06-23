@@ -44,7 +44,7 @@ export interface BacklogCurationItemAuditCacheWriteResult {
   written: boolean;
   path?: string;
   cacheKey?: string;
-  reason?: 'missing-key-dimension' | 'schema-invalid' | 'byte-invalid';
+  reason?: 'missing-key-dimension' | 'schema-invalid' | 'byte-invalid' | 'key-mismatch';
 }
 
 interface CacheKeyParts {
@@ -110,6 +110,7 @@ export async function writeBacklogCurationItemAuditCache(input: BacklogCurationI
   if (!isFindingByteValid(input.finding)) return { written: false, reason: 'byte-invalid' };
   const parsed = safeParseWithSchema(BacklogCurationMapReduceFindingSchema, input.finding);
   if (!parsed.success) return { written: false, reason: 'schema-invalid' };
+  if (!isFindingMatchingCacheKey(parsed.data, parts)) return { written: false, reason: 'key-mismatch' };
   const cacheKey = sha256(canonicalJson(parts));
   const path = resolveBacklogCurationItemAuditCachePath(input);
   if (path === null) return { written: false, reason: 'missing-key-dimension' };
@@ -142,12 +143,16 @@ function isMatchingSidecarKey(sidecar: CacheSidecar, parts: CacheKeyParts, cache
   return sidecar?.schemaVersion === 1
     && sidecar.cacheKey === cacheKey
     && canonicalJson(sidecar.key) === canonicalJson(parts)
-    && sidecar.finding?.sourceFingerprint === parts.sourceFingerprint
-    && sidecar.finding?.itemId === parts.itemId
-    && sidecar.finding?.packetSha256 === parts.packetSha256
-    && sidecar.finding?.bodySha256 === parts.bodySha256
-    && sidecar.finding?.promptVersion === parts.promptVersion
-    && canonicalJson(sidecar.finding?.runtimeIdentity) === canonicalJson(parts.runtimeIdentity);
+    && isFindingMatchingCacheKey(sidecar.finding, parts);
+}
+
+function isFindingMatchingCacheKey(finding: BacklogCurationMapReduceFinding | undefined, parts: CacheKeyParts): boolean {
+  return finding?.sourceFingerprint === parts.sourceFingerprint
+    && finding.itemId === parts.itemId
+    && finding.packetSha256 === parts.packetSha256
+    && finding.bodySha256 === parts.bodySha256
+    && finding.promptVersion === parts.promptVersion
+    && canonicalJson(finding.runtimeIdentity) === canonicalJson(parts.runtimeIdentity);
 }
 
 async function writeJsonAtomically(path: string, value: unknown): Promise<void> {

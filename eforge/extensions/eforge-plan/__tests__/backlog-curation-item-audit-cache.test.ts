@@ -67,6 +67,28 @@ describe('backlog curation item audit cache', () => {
     });
   });
 
+  it('rejects cache sidecars and writes whose embedded finding dimensions do not match the key', async () => {
+    await withTempProject(async (cwd) => {
+      const key = { cwd, sourceFingerprint, itemId: 'item-1', packetSha256, bodySha256, promptVersion: 'prompt-v1', runtimeIdentity };
+
+      await expect(writeBacklogCurationItemAuditCache({ ...key, finding: finding({ itemId: 'item-2' }) })).resolves.toMatchObject({ written: false, reason: 'key-mismatch' });
+
+      await writeBacklogCurationItemAuditCache({ ...key, finding: finding() });
+      const path = resolveBacklogCurationItemAuditCachePath(key);
+      expect(path).toBeTruthy();
+      const cacheKey = path!.match(/([^/]+)\.json$/)?.[1];
+      await writeFile(path!, JSON.stringify({
+        schemaVersion: 1,
+        key: { sourceFingerprint, itemId: 'item-2', packetSha256, bodySha256, promptVersion: 'prompt-v1', runtimeIdentity },
+        cacheKey,
+        writtenAt: '2026-01-01T00:00:00.000Z',
+        finding: finding(),
+      }), 'utf-8');
+
+      await expect(readBacklogCurationItemAuditCache(key)).resolves.toMatchObject({ hit: false, reason: 'key-mismatch' });
+    });
+  });
+
   it('misses malformed and schema-invalid sidecars', async () => {
     await withTempProject(async (cwd) => {
       const key = { cwd, sourceFingerprint, itemId: 'item-1', packetSha256, bodySha256, promptVersion: 'prompt-v1', runtimeIdentity };
@@ -77,8 +99,16 @@ describe('backlog curation item audit cache', () => {
       await expect(readBacklogCurationItemAuditCache(key)).resolves.toMatchObject({ hit: false, reason: 'malformed-json' });
 
       await writeBacklogCurationItemAuditCache({ ...key, finding: finding() });
-      await writeFile(path!, JSON.stringify({ schemaVersion: 1, key: {}, cacheKey: 'bad', finding: finding({ itemId: '' as never }) }), 'utf-8');
-      await expect(readBacklogCurationItemAuditCache(key)).resolves.toMatchObject({ hit: false });
+      const cacheKey = path!.match(/([^/]+)\.json$/)?.[1];
+      await writeFile(path!, JSON.stringify({
+        schemaVersion: 1,
+        key: { sourceFingerprint, itemId: 'item-1', packetSha256, bodySha256, promptVersion: 'prompt-v1', runtimeIdentity },
+        cacheKey,
+        writtenAt: '2026-01-01T00:00:00.000Z',
+        finding: finding({ disposition: 'invalid-disposition' as never }),
+      }), 'utf-8');
+      const result = await readBacklogCurationItemAuditCache(key);
+      expect({ hit: result.hit, reason: result.reason }).toEqual({ hit: false, reason: 'schema-invalid' });
     });
   });
 

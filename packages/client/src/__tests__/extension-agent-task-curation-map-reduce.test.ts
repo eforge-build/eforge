@@ -13,6 +13,9 @@ import {
   BacklogCurationMapReduceReducerInputSchema,
   BacklogCurationMapReduceRuntimeIdentitySchema,
   safeParseBacklogCurationMapReduceFinding,
+  safeParseBacklogCurationMapReduceItemOutcome,
+  safeParseBacklogCurationMapReduceReducerInput,
+  safeParseBacklogCurationMapReduceSourceBundle,
 } from '../index.js';
 
 const SHA = 'a'.repeat(64);
@@ -113,13 +116,36 @@ describe('backlog curation map/reduce schemas', () => {
   });
 
   it('enforces finding total byte caps at the shared parse boundary', () => {
-    const oversized = {
-      ...finding,
-      summary: 's'.repeat(1_900),
-      rationale: 'r'.repeat(2_900),
-      citations: Array.from({ length: BACKLOG_CURATION_CITATIONS_PER_ITEM_MAX }, (_, index) => ({ kind: 'current-source', source: `source-${index}`, excerpt: 'e'.repeat(900) })),
-    };
+    const oversized = oversizedSchemaValidFinding();
     expect(Value.Check(BacklogCurationMapReduceFindingSchema, oversized)).toBe(true);
     expect(safeParseBacklogCurationMapReduceFinding(oversized).success).toBe(false);
   });
+
+  it('enforces nested finding byte caps in item outcomes, reducer inputs, and source bundles', () => {
+    const oversized = oversizedSchemaValidFinding();
+    const outcome = { ...auditedOutcome, finding: oversized };
+    const reducerInput = { schemaVersion: 1, sourceFingerprint: SHA, globalContext, outcomes: [outcome], diagnostics: [] };
+    const sourceBundle = { schemaVersion: 1, sourceFingerprint: SHA, globalContext, packets: [packet], degradedOutcomes: [], reducerInput };
+
+    const outcomeResult = safeParseBacklogCurationMapReduceItemOutcome(outcome);
+    expect(outcomeResult.success).toBe(false);
+    if (!outcomeResult.success) expect(outcomeResult.error.message).toContain('finding:');
+
+    const reducerResult = safeParseBacklogCurationMapReduceReducerInput(reducerInput);
+    expect(reducerResult.success).toBe(false);
+    if (!reducerResult.success) expect(reducerResult.error.message).toContain('outcomes/0/finding:');
+
+    const bundleResult = safeParseBacklogCurationMapReduceSourceBundle(sourceBundle);
+    expect(bundleResult.success).toBe(false);
+    if (!bundleResult.success) expect(bundleResult.error.message).toContain('reducerInput/outcomes/0/finding:');
+  });
 });
+
+function oversizedSchemaValidFinding() {
+  return {
+    ...finding,
+    summary: 's'.repeat(1_900),
+    rationale: 'r'.repeat(2_900),
+    citations: Array.from({ length: BACKLOG_CURATION_CITATIONS_PER_ITEM_MAX }, (_, index) => ({ kind: 'current-source', source: `source-${index}`, excerpt: 'e'.repeat(900) })),
+  };
+}

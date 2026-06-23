@@ -73,10 +73,42 @@ export function buildBacklogCurationReducerInput(globalContext: BacklogCurationM
   const bytes = byteLength(reducer);
   if (bytes > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) {
     diagnostics.push({ code: 'reducer-input-byte-cap-exceeded', severity: 'warning', message: `Reducer input is ${bytes} bytes; cap is ${BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES}.` });
+    shrinkReducerGlobalContext(reducer.globalContext, reducer, diagnostics);
+    const observedOutcomeCount = reducer.outcomes.length;
     while (reducer.outcomes.length > 0 && byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) reducer.outcomes.pop();
-    while (diagnostics.length > 0 && byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) diagnostics.pop();
+    if (reducer.outcomes.length < observedOutcomeCount) {
+      const outcomeDiagnostic: BacklogCurationMapReduceDiagnostic = { code: 'reducer-input-outcomes-dropped', severity: 'warning', message: `Reducer input outcomes were dropped to fit the byte cap; observed ${observedOutcomeCount}, retained ${reducer.outcomes.length}.` };
+      diagnostics.push(outcomeDiagnostic);
+      while (reducer.outcomes.length > 0 && byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) reducer.outcomes.pop();
+      outcomeDiagnostic.message = `Reducer input outcomes were dropped to fit the byte cap; observed ${observedOutcomeCount}, retained ${reducer.outcomes.length}.`;
+    }
   }
   return reducer;
+}
+
+function shrinkReducerGlobalContext(
+  globalContext: BacklogCurationMapReduceGlobalContext,
+  reducer: BacklogCurationMapReduceReducerInput,
+  diagnostics: BacklogCurationMapReduceDiagnostic[],
+): void {
+  const truncationDiagnostic: BacklogCurationMapReduceDiagnostic = { code: 'reducer-input-global-context-truncated', severity: 'warning', message: 'Reducer global context was truncated to fit the byte cap.' };
+  if (!diagnostics.some((diagnostic) => diagnostic.code === truncationDiagnostic.code)) diagnostics.push(truncationDiagnostic);
+  const halve = <T>(entries: T[]): void => { entries.splice(Math.floor(entries.length / 2)); };
+  const arrays = [
+    globalContext.openItemIds,
+    globalContext.recommendationSummaries,
+    globalContext.dependencySummaries,
+    globalContext.roadmapSummaries,
+    globalContext.curationGuidance,
+    globalContext.diagnostics,
+  ];
+  while (byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES && arrays.some((entries) => entries.length > 0)) {
+    const largest = arrays.filter((entries) => entries.length > 0).sort((left, right) => byteLength(right) - byteLength(left))[0];
+    halve(largest);
+  }
+  if (byteLength(reducer) > BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES) {
+    delete globalContext.redraftSummary;
+  }
 }
 
 export function buildBacklogCurationItemPacket(source: Record<string, unknown>, item: Record<string, unknown>, sourceFingerprint: string): PacketBuildResult {

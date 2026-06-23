@@ -87,6 +87,41 @@ describe('eforge-plan planning draft task runner', () => {
     expect('verbose' in (harness.calls[0] as unknown as Record<string, unknown>)).toBe(false);
   });
 
+  it('sanitizes progress updates and isolates progress callback errors', async () => {
+    const progressInput = {
+      currentSection: `Goal\u0000${'x'.repeat(300)}`,
+      coveredSections: Array.from({ length: 60 }, (_, index) => `covered-${index}\u0007${'y'.repeat(300)}`),
+      remainingSections: ['Validation\nDetails', 12, ''] as unknown[],
+      message: `Working\u0001${'z'.repeat(300)}`,
+    };
+    const received: unknown[] = [];
+    const harness = new StubHarness([{
+      toolCalls: [
+        { tool: 'report_eforge_plan_planning_progress', toolUseId: 'progress-1', input: progressInput, output: '' },
+        { tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: validSubmission, output: '' },
+      ],
+    }]);
+
+    const { result } = await collect(runEforgePlanPlanningDraftTask({
+      harness,
+      cwd: '/tmp',
+      input: { topic: 'Demo task' },
+      onProgress: (update) => {
+        received.push(update);
+        throw new Error('progress sink unavailable');
+      },
+    }));
+
+    expect(result.summary).toBe(validSubmission.summary);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({ remainingSections: ['Validation Details'], message: expect.stringContaining('Working') });
+    const update = received[0] as { currentSection: string; coveredSections: string[]; message: string };
+    expect(update.currentSection.length).toBeLessThanOrEqual(200);
+    expect(update.message.length).toBeLessThanOrEqual(200);
+    expect(update.coveredSections).toHaveLength(50);
+    expect(update.coveredSections.every((entry) => entry.length <= 200 && !/[\u0000-\u001f\u007f]/.test(entry))).toBe(true);
+  });
+
   it('does not complete when the submission tool is not called', async () => {
     const harness = new StubHarness([{ text: 'Here is prose instead of a tool call.' }]);
 
