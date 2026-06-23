@@ -12,7 +12,8 @@ async function files(dir = root): Promise<string[]> { const out: string[] = []; 
 describe('eforge-playbooks package foundation', () => {
   it('declares metadata, workspace registration, lockstep wiring, and scripts', async () => {
     const pkg = await json(join(root, 'package.json'));
-    expect(pkg).toMatchObject({ name: '@eforge-build/eforge-playbooks', version: '0.7.21', license: 'Apache-2.0', type: 'module', types: './dist/index.d.ts', eforge: { extension: { name: 'eforge-playbooks', entrypoint: './dist/index.js' } } });
+    const eforgePkg = await json(join(repo, 'packages/eforge/package.json'));
+    expect(pkg).toMatchObject({ name: '@eforge-build/eforge-playbooks', version: eforgePkg.version, license: 'Apache-2.0', type: 'module', types: './dist/index.d.ts', eforge: { extension: { name: 'eforge-playbooks', entrypoint: './dist/index.js' } } });
     expect(pkg.files).toEqual(['dist/', 'README.md', 'LICENSE']);
     expect(pkg.dependencies).toMatchObject({ '@eforge-build/extension-sdk': 'workspace:*', '@eforge-build/input': 'workspace:*' });
     expect(await readFile(join(repo, 'pnpm-workspace.yaml'), 'utf-8')).toContain('eforge/extensions/eforge-playbooks');

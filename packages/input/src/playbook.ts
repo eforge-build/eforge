@@ -27,12 +27,10 @@
  * actions that can hand control to an interactive planning agent (for example the
  * eforge-plan planning entry or /eforge:playbook run).
  */
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
 import {
@@ -42,8 +40,6 @@ import {
   type Scope,
   type ScopeShadow,
 } from '@eforge-build/scopes';
-
-const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Zod Schema
@@ -56,6 +52,9 @@ const execFileAsync = promisify(execFile);
 export const playbookScopeSchema = z.enum(['user', 'project-team', 'project-local']);
 export type PlaybookScope = z.output<typeof playbookScopeSchema>;
 
+const frontmatterScalarSchema = z.string()
+  .refine((value) => !/[\x00-\x1F\x7F]/.test(value), 'must not contain control characters or newlines');
+
 const postMergeCommandSchema = z.string()
   .refine((command) => command.trim().length > 0, 'postMerge commands must be non-empty strings')
   .refine((command) => !/[\x00-\x1F\x7F]/.test(command), 'postMerge commands must not contain control characters or newlines');
@@ -67,7 +66,7 @@ export const playbookFrontmatterSchema = z.object({
   /** Kebab-case playbook identifier. */
   name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be kebab-case'),
   /** Short human-readable description. */
-  description: z.string().min(1),
+  description: frontmatterScalarSchema.min(1),
   /** Which configuration tier this playbook belongs to. */
   scope: playbookScopeSchema,
   /**
@@ -82,7 +81,7 @@ export const playbookFrontmatterSchema = z.object({
    * For planning playbooks: seeded into the resulting session plan as `agent_profile`.
    * Profile existence is validated at execution time, not when the playbook is saved.
    */
-  profile: z.string().optional(),
+  profile: frontmatterScalarSchema.optional(),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */
   postMerge: z.array(postMergeCommandSchema).optional(),
 });
@@ -346,14 +345,7 @@ export function serializePlaybook(playbook: Playbook): string {
     fm.postMerge = playbook.postMerge;
   }
 
-  const fmLines = Object.entries(fm)
-    .map(([k, v]) => {
-      if (Array.isArray(v)) {
-        return `${k}:\n${v.map((item) => `  - ${JSON.stringify(item)}`).join('\n')}`;
-      }
-      return `${k}: ${v}`;
-    })
-    .join('\n');
+  const fmLines = stringifyYaml(fm, { lineWidth: 0 }).trimEnd();
 
   const sections: string[] = [];
   sections.push(`## Goal\n\n${playbook.goal.trim()}`);
@@ -554,18 +546,17 @@ export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: stri
 
   await mkdir(toDir, { recursive: true });
 
-  // Attempt git mv when both paths are inside the repo (i.e. not user scope)
-  const bothInRepo = fromScope !== 'user' && toScope !== 'user';
-  if (bothInRepo) {
-    try {
-      await execFileAsync('git', ['-C', cwd, 'mv', src, dst]);
-      return { path: dst };
-    } catch {
-      // git mv failed — fall through to fs.rename
-    }
+  const raw = await readFile(src, 'utf-8');
+  const result = parsePlaybookInternal(raw);
+  if (!result.ok) {
+    throw new Error(`Playbook "${name}" at ${src} is invalid: ${result.errors.join('; ')}`);
   }
 
-  await rename(src, dst);
+  const content = serializePlaybook({ ...result.playbook, scope: toScope });
+  const tmp = `${dst}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(tmp, content, 'utf-8');
+  await rename(tmp, dst);
+  await unlink(src);
   return { path: dst };
 }
 

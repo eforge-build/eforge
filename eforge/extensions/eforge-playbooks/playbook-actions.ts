@@ -13,7 +13,7 @@ import {
   ValidatePlaybookInputSchema,
   ValidatePlaybookOutputSchema,
 } from './schemas.js';
-import { copyHighest, exists, loadExact, playbookPath, projectEntry, savePlaybook } from './storage.js';
+import { assertRequestedPlaybookName, copyHighest, exists, loadExact, playbookPath, projectEntry, savePlaybook } from './storage.js';
 import { userError, wrapUserError } from './action-errors.js';
 
 export type RegistrableAction = ExtensionAction<TObject, TSchema | undefined>;
@@ -56,6 +56,7 @@ export const playbookManagementActions = [
     async handler(input, ctx) {
       if (input.sourceScope === undefined) return copyHighest(ctx, input.name, input.targetScope, input.overwrite);
       const source = await loadExact(ctx, input.name, input.sourceScope);
+      assertRequestedPlaybookName(input.name, source.playbook.name);
       const targetPath = playbookPath(ctx, input.targetScope, input.name);
       if (input.overwrite === false && await exists(targetPath)) throw userError(`Playbook "${input.name}" already exists at ${targetPath}.`, '/overwrite');
       const written = await writePlaybook({ cwd: ctx.cwd, configDir: ctx.paths.configDir, scope: input.targetScope, playbook: { ...source.playbook, scope: input.targetScope as PlaybookScope } });

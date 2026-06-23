@@ -73,6 +73,48 @@ Registered action IDs are local to the extension and are exposed with effective 
 | `demote-playbook` | Move a playbook from `project-team` to `project-local`. | `local-write` |
 | `run-playbook` | Resolve and run a playbook. Autonomous playbooks compile to normalized build source and enqueue through the generic build queue. Planning-mode playbooks return eforge-plan planning entry metadata or diagnostics and never enqueue. | `local-read`, `daemon-state`, `build-queue` |
 
+Common action input forms:
+
+```json
+{ "scope": "project-team", "mode": "autonomous", "includeShadowed": false }
+```
+
+```json
+{ "name": "weekly-maintenance", "scope": "project-local" }
+```
+
+```json
+{
+  "scope": "project-team",
+  "playbook": {
+    "frontmatter": {
+      "name": "weekly-maintenance",
+      "description": "Run routine maintenance",
+      "mode": "autonomous",
+      "profile": "excursion"
+    },
+    "body": {
+      "goal": "Update routine maintenance checks.",
+      "acceptanceCriteria": "Maintenance checks are documented and pass."
+    }
+  },
+  "overwrite": true
+}
+```
+
+```json
+{
+  "name": "weekly-maintenance",
+  "mode": "autonomous",
+  "profile": "excursion",
+  "afterQueueId": "session_123",
+  "landingAction": "pr",
+  "landingAutoMerge": false
+}
+```
+
+`save-playbook` accepts exactly one payload shape: `raw` Markdown, the nested `{ "playbook": { "frontmatter", "body" } }` form, or flattened playbook fields (`name`, `description`, `mode`, `profile`, `postMerge`, `goal`, `outOfScope`, `acceptanceCriteria`, and `plannerNotes`). When a top-level `name` is supplied, it must match the parsed or structured playbook name. `run-playbook` rejects a supplied `mode` when it differs from the playbook frontmatter mode.
+
 ## Planning-mode behavior
 
 A playbook whose frontmatter mode is `planning` is an investigation-first handoff. `run-playbook` converts the playbook to a JSON-safe planning seed and checks:

@@ -21,7 +21,7 @@ export const PlaybookSchema = Type.Object({
   plannerNotes: Type.String(),
 }, { additionalProperties: false });
 export const PlaybookEntrySchema = Type.Object({
-  name: Name,
+  name: Type.String({ minLength: 1 }),
   description: Type.String(),
   scope: Scope,
   mode: Mode,

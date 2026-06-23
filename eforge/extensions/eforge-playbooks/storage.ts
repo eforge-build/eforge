@@ -45,8 +45,20 @@ export function projectEntry(entry: PlaybookEntry, includeShadowed: boolean): Pl
   return omitUndefined({ ...entry, shadows: includeShadowed ? entry.shadows : [] });
 }
 
+export function assertRequestedPlaybookName(requestedName: string, actualName: string): void {
+  if (requestedName !== actualName) throw invalidField('/name', `Requested playbook name "${requestedName}" does not match loaded playbook name "${actualName}".`);
+}
+
 export function normalizeSavePayload(input: SavePlaybookInput): Playbook {
-  const variants = [input.raw !== undefined, input.playbook !== undefined, input.description !== undefined || input.mode !== undefined || input.goal !== undefined].filter(Boolean).length;
+  const hasFlattenedPayload = input.description !== undefined
+    || input.mode !== undefined
+    || input.profile !== undefined
+    || input.postMerge !== undefined
+    || input.goal !== undefined
+    || input.outOfScope !== undefined
+    || input.acceptanceCriteria !== undefined
+    || input.plannerNotes !== undefined;
+  const variants = [input.raw !== undefined, input.playbook !== undefined, hasFlattenedPayload].filter(Boolean).length;
   if (variants !== 1) throw userError('Select exactly one save payload variant: raw, playbook, or flattened fields.');
   let playbook: Playbook;
   if (input.raw !== undefined) {
@@ -89,6 +101,8 @@ export async function savePlaybook(ctx: ExtensionActionContext, input: SavePlayb
 }
 
 export async function copyHighest(ctx: ExtensionActionContext, name: string, targetScope: PlaybookScope, overwrite?: boolean) {
+  const source = await loadPlaybook({ cwd: ctx.cwd, configDir: ctx.paths.configDir, name }).catch((err) => wrapUserError(err, `Playbook "${name}" was not found.`));
+  assertRequestedPlaybookName(name, source.playbook.name);
   const target = playbookPath(ctx, targetScope, name);
   if (overwrite === false && await exists(target)) throw userError(`Playbook "${name}" already exists at ${target}.`, '/overwrite');
   return copyPlaybookToScope({ cwd: ctx.cwd, configDir: ctx.paths.configDir, name, targetScope }).catch((err) => wrapUserError(err, `Playbook "${name}" was not found.`));

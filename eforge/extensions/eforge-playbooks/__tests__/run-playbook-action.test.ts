@@ -29,6 +29,20 @@ describe('run-playbook action', () => {
     });
   });
 
+  it('lets run input profile override playbook profile and omits undefined enqueue fields', async () => {
+    await withTempProject(async (cwd) => {
+      await writePlaybook(cwd, 'project-local', 'profiled', rawPlaybook({ name: 'profiled', scope: 'project-local', profile: 'frontmatter-profile' }));
+      const { result, calls } = await run(cwd, { name: 'profiled', profile: 'override-profile' });
+
+      expect(result).toMatchObject({ kind: 'success', output: { kind: 'enqueued', id: 's1', sessionId: 's1' } });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ profile: 'override-profile' });
+      expect(calls[0]).not.toHaveProperty('afterQueueId');
+      expect(calls[0]).not.toHaveProperty('landingAction');
+      expect(calls[0]).not.toHaveProperty('landingAutoMerge');
+    });
+  });
+
   it('blocks bad AC, mode mismatch, and enqueue failures as invalid input', async () => {
     await withTempProject(async (cwd) => {
       await writePlaybook(cwd, 'project-local', 'bad', rawPlaybook({ name: 'bad', scope: 'project-local', ac: '- `pnpm test`.' }));

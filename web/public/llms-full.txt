@@ -3163,7 +3163,7 @@ From the CLI, invoke the generic extension action:
 eforge extension contributions invoke eforge-playbooks:save-playbook --kind action --input-json '{"scope":"project-team","raw":"---\nname: docs-sync\ndescription: Keep docs current\nscope: project-team\nmode: autonomous\n---\n\n## Goal\nKeep docs current"}'
 ```
 
-The action validates and saves the playbook. Use `scope` values `user`, `project-team`, or `project-local`; include `profile` in the playbook frontmatter when the playbook should pin a runtime profile.
+The action validates and saves the playbook. Use `scope` values `user`, `project-team`, or `project-local`; include `profile` in the playbook frontmatter when the playbook should pin a runtime profile. Besides raw Markdown, `save-playbook` accepts the nested `{ playbook: { frontmatter, body } }` form or flattened fields such as `name`, `description`, `mode`, `profile`, `postMerge`, `goal`, `outOfScope`, `acceptanceCriteria`, and `plannerNotes`.
 
 ## Run a playbook
 
