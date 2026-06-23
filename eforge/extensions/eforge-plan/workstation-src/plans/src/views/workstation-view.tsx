@@ -85,7 +85,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
 
   return (
     <div className="grid gap-4">
-      <div className={focus === 'plans' ? 'grid gap-4' : 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start'}>
+      <div className={focus === 'plans' ? 'grid gap-4' : 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start'}>
         <div className="min-w-0">
           <nav className="mb-4 flex flex-wrap gap-1 border-b pb-2">
             {FOCUSES.map((entry) => {

@@ -673,6 +673,37 @@ describe('planning agent task actions', () => {
     });
   });
 
+  it('defaults planning task lists to compact paginated summaries for agent callers', async () => {
+    await withTempProject(async (cwd) => {
+      const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-one', createdAt: '2026-01-01T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-two', createdAt: '2026-01-02T00:00:00.000Z', ...base });
+      const records: Record<string, ExtensionAgentTaskRecord> = {
+        'task-one': completedTask({ taskId: 'task-one' } as Partial<ExtensionAgentTaskRecord>),
+        'task-two': completedTask({ taskId: 'task-two' } as Partial<ExtensionAgentTaskRecord>),
+      };
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:list-planning-agent-tasks',
+        input: { limit: 1 },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get(taskId: string) { return { task: records[taskId]! }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      expect(result.output).toMatchObject({ total: 2, returned: 1, limit: 1, offset: 0, hasMore: true, nextOffset: 1 });
+      const [task] = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      expect(task).toMatchObject({ available: true, status: 'completed', entrySummary: { taskId: 'task-two', selection: { itemCount: 1 } }, taskSummary: { taskId: 'task-two', resultSummary: { outputKeys: expect.arrayContaining(['recommendations', 'sessionPlanPatch']) } } });
+      expect(task).not.toHaveProperty('entry');
+      expect(task).not.toHaveProperty('task');
+    });
+  });
+
   it('previews backlog curation validation on demand without coupling it to task list rendering', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });

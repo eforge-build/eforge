@@ -9,6 +9,7 @@ import {
   BACKLOG_CURATION_HISTORICAL_HINTS_PER_ITEM_MAX,
   BACKLOG_CURATION_PACKET_MAX_BYTES,
   BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
+  safeParseBacklogCurationMapReduceSourceBundle,
   type BacklogCurationMapReduceGlobalContext,
 } from '@eforge-build/client';
 import { buildBacklogCurationSource } from '../backlog-curation-source.js';
@@ -39,6 +40,26 @@ describe('backlog curation map/reduce packets', () => {
         expect(packet.historicalHints.length).toBeLessThanOrEqual(BACKLOG_CURATION_HISTORICAL_HINTS_PER_ITEM_MAX);
         expect(packet.diagnostics.length).toBeLessThanOrEqual(BACKLOG_CURATION_DIAGNOSTICS_PER_PACKET_MAX);
       }
+    });
+  });
+
+  it('keeps packet metadata within the source bundle schema caps', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, {
+        id: 'long-metadata-item',
+        status: 'candidate',
+        evidence_notes: 'Evidence note. '.repeat(80),
+        recheck_notes: 'Recheck note. '.repeat(80),
+        body: '# Long Metadata Item\n\n## Claim\n\nMetadata must fit schema caps.\n',
+      });
+
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const parsed = safeParseBacklogCurationMapReduceSourceBundle(source.backlogCurationMapReduce);
+
+      expect(parsed.success).toBe(true);
+      const packet = source.backlogCurationMapReduce.packets.find((entry) => entry.itemId === 'long-metadata-item');
+      expect(String(packet?.metadata.evidence_notes).length).toBeLessThanOrEqual(500);
+      expect(String(packet?.metadata.recheck_notes).length).toBeLessThanOrEqual(500);
     });
   });
 

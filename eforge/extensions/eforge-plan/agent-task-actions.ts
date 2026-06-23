@@ -1,4 +1,4 @@
-import { defineExtensionAction, ExtensionActionInputValidationError, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness } from '@eforge-build/client';
 import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '@eforge-build/input';
 import {
@@ -22,6 +22,7 @@ import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-a
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
+import { normalizePlanningAgentTaskListProjection, projectMissingPlanningAgentTaskListItem, projectPlanningAgentTaskListItem } from './planning-agent-task-projection.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
   ApplyPlanningAgentTaskResultOutputSchema,
@@ -146,26 +147,33 @@ export const cancelPlanningAgentTaskAction = defineExtensionAction({
 export const listPlanningAgentTasksAction = defineExtensionAction({
   id: 'list-planning-agent-tasks',
   title: 'List eforge-plan planning agent tasks',
-  description: 'Project the durable planning task workflow index and join owner-scoped daemon task records.',
+  description: 'Project the durable planning task workflow index with compact, paginated task summaries by default for agent callers.',
   inputSchema: ListPlanningAgentTasksInputSchema,
   outputSchema: ListPlanningAgentTasksOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ['local-read'],
-  async handler(_input, ctx) {
+  async handler(input, ctx) {
     const entries = listPlanningTaskWorkflowEntries(await readPlanningTaskWorkflowIndex(ctx.cwd)).filter((entry) => !isConsumedSessionPlanCreationEntry(entry));
-    const tasks = await Promise.all(entries.map(async (entry) => {
+    const projection = normalizePlanningAgentTaskListProjection(input, ctx.requestedBy.host, entries.length);
+    const pageEntries = entries.slice(projection.offset, projection.offset + projection.limit);
+    const tasks = await Promise.all(pageEntries.map(async (entry) => {
       try {
         const response = await ctx.agentTasks.get(entry.taskId);
-        return {
-          entry,
-          available: true,
-          status: response.task.status,
-          task: response.task,
-        };
+        return projectPlanningAgentTaskListItem({ entry, task: response.task, includeEntry: projection.includeEntry, includeTask: projection.includeTask });
       } catch (err) {
-        return { entry, available: false, staleReason: errorMessage(err) };
+        return projectMissingPlanningAgentTaskListItem({ entry, includeEntry: projection.includeEntry, staleReason: errorMessage(err) });
       }
     }));
-    return toJsonSafeObject({ tasks });
+    const nextOffset = projection.offset + tasks.length;
+    return toJsonSafeObject({
+      tasks,
+      total: entries.length,
+      returned: tasks.length,
+      limit: projection.limit,
+      offset: projection.offset,
+      hasMore: nextOffset < entries.length,
+      ...(nextOffset < entries.length ? { nextOffset } : {}),
+    });
   },
 });
 

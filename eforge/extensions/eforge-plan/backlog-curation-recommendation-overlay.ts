@@ -58,7 +58,8 @@ export function buildProspectiveCurationProjection(input: {
     return { prospectiveItems, prospectiveEpics, removed: { itemIds: [], epicIds: [] }, repositioned: [], validation: { valid: true, issues: [] }, summary: undefined };
   }
 
-  const overlay = overlayRecommendations(input.generatedRecommendations, epicCatalog, closedItemIds, closedEpicIds, deriveStatusChanges(input.draft, 'itemChanges'));
+  const itemCatalog = new Map(prospectiveItems.map((item) => [item.id, item]));
+  const overlay = overlayRecommendations(input.generatedRecommendations, itemCatalog, epicCatalog, closedItemIds, closedEpicIds, deriveStatusChanges(input.draft, 'itemChanges'));
   const validation = collectProspectiveRecommendationValidationIssues(overlay.recommendations, prospectiveItems, prospectiveEpics);
   return {
     prospectiveItems,
@@ -87,6 +88,7 @@ export function filterRecommendationsForCurationDraftStatusOverlay(model: Backlo
 
 function overlayRecommendations(
   model: BacklogRecommendationModel,
+  itemCatalog: ReadonlyMap<string, RecommendationReferenceRecord>,
   epicCatalog: ReadonlyMap<string, RecommendationReferenceRecord>,
   closedItemIds: ReadonlySet<string>,
   closedEpicIds: ReadonlySet<string>,
@@ -98,11 +100,11 @@ function overlayRecommendations(
   const movedToActive = new Map<string, ItemRef>();
   const movedToReady = new Map<string, ItemRef>();
 
-  const activeWork = filterItemRefs(model.activeWork, 'activeWork', closedItemIds, removedItemIds, repositioned, movedToActive, movedToReady, itemStatusChanges);
-  const readyCandidates = filterItemRefs(model.readyCandidates, 'readyCandidates', closedItemIds, removedItemIds, repositioned, movedToActive, movedToReady, itemStatusChanges);
-  const recommendedNextSequence = filterItemRefs(model.recommendedNextSequence, 'recommendedNextSequence', closedItemIds, removedItemIds, repositioned, movedToActive, movedToReady, itemStatusChanges);
-  const safeParallelizableGroups = model.safeParallelizableGroups.flatMap((group) => overlayGroup(group, epicCatalog, closedItemIds, closedEpicIds, removedItemIds, removedEpicIds, repositioned, movedToActive, itemStatusChanges));
-  const blockedChains = model.blockedChains.flatMap((chain) => overlayBlockedChain(chain, closedItemIds, removedItemIds, repositioned, movedToActive, itemStatusChanges));
+  const activeWork = filterItemRefs(model.activeWork, 'activeWork', itemCatalog, closedItemIds, removedItemIds, repositioned, movedToActive, movedToReady, itemStatusChanges);
+  const readyCandidates = filterItemRefs(model.readyCandidates, 'readyCandidates', itemCatalog, closedItemIds, removedItemIds, repositioned, movedToActive, movedToReady, itemStatusChanges);
+  const recommendedNextSequence = filterItemRefs(model.recommendedNextSequence, 'recommendedNextSequence', itemCatalog, closedItemIds, removedItemIds, repositioned, movedToActive, movedToReady, itemStatusChanges);
+  const safeParallelizableGroups = model.safeParallelizableGroups.flatMap((group) => overlayGroup(group, itemCatalog, epicCatalog, closedItemIds, closedEpicIds, removedItemIds, removedEpicIds, repositioned, movedToActive, itemStatusChanges));
+  const blockedChains = model.blockedChains.flatMap((chain) => overlayBlockedChain(chain, itemCatalog, closedItemIds, removedItemIds, repositioned, movedToActive, itemStatusChanges));
 
   const activeIds = new Set(activeWork.map((ref) => ref.itemId));
   for (const [itemId, ref] of movedToActive) if (!activeIds.has(itemId)) activeWork.push(ref);
@@ -126,6 +128,7 @@ function overlayRecommendations(
 function filterItemRefs(
   refs: readonly ItemRef[],
   lane: string,
+  itemCatalog: ReadonlyMap<string, RecommendationReferenceRecord>,
   closedItemIds: ReadonlySet<string>,
   removedItemIds: Set<string>,
   repositioned: RecommendationRepositionedTarget[],
@@ -140,7 +143,7 @@ function filterItemRefs(
       continue;
     }
     const changedStatus = itemStatusChanges.get(ref.itemId)?.status;
-    if (changedStatus === 'active' && lane !== 'activeWork') {
+    if (isProspectiveActive(ref.itemId, itemCatalog, changedStatus) && lane !== 'activeWork') {
       if (!movedToActive.has(ref.itemId)) movedToActive.set(ref.itemId, cloneItemRef(ref));
       repositioned.push({ itemId: ref.itemId, from: lane, to: 'activeWork' });
       continue;
@@ -157,6 +160,7 @@ function filterItemRefs(
 
 function overlayGroup(
   group: Group,
+  itemCatalog: ReadonlyMap<string, RecommendationReferenceRecord>,
   epicCatalog: ReadonlyMap<string, RecommendationReferenceRecord>,
   closedItemIds: ReadonlySet<string>,
   closedEpicIds: ReadonlySet<string>,
@@ -170,7 +174,7 @@ function overlayGroup(
   for (const itemId of group.itemIds) {
     if (closedItemIds.has(itemId)) {
       removedItemIds.add(itemId);
-    } else if (itemStatusChanges.get(itemId)?.status === 'active') {
+    } else if (isProspectiveActive(itemId, itemCatalog, itemStatusChanges.get(itemId)?.status)) {
       if (!movedToActive.has(itemId)) movedToActive.set(itemId, { itemId, ...(group.rationale !== undefined && { rationale: group.rationale }) });
       repositioned.push({ itemId, from: `safeParallelizableGroups.${group.ref}.itemIds`, to: 'activeWork' });
     } else {
@@ -188,6 +192,7 @@ function overlayGroup(
 
 function overlayBlockedChain(
   chain: BlockedChain,
+  itemCatalog: ReadonlyMap<string, RecommendationReferenceRecord>,
   closedItemIds: ReadonlySet<string>,
   removedItemIds: Set<string>,
   repositioned: RecommendationRepositionedTarget[],
@@ -199,7 +204,7 @@ function overlayBlockedChain(
   for (const itemId of chain.itemIds) {
     if (closedItemIds.has(itemId)) {
       removedItemIds.add(itemId);
-    } else if (itemStatusChanges.get(itemId)?.status === 'active') {
+    } else if (isProspectiveActive(itemId, itemCatalog, itemStatusChanges.get(itemId)?.status)) {
       if (!movedToActive.has(itemId)) movedToActive.set(itemId, { itemId, ...(chain.rationale !== undefined && { rationale: chain.rationale }) });
       repositioned.push({ itemId, from: `blockedChains.${ref}.itemIds`, to: 'activeWork' });
     } else {
@@ -213,6 +218,12 @@ function overlayBlockedChain(
   });
   if (itemIds.length === 0) return [];
   return [{ ...chain, itemIds, blockedBy }];
+}
+
+function isProspectiveActive(itemId: string, itemCatalog: ReadonlyMap<string, RecommendationReferenceRecord>, changedStatus: string | undefined): boolean {
+  if (changedStatus !== undefined) return changedStatus === 'active';
+  const record = itemCatalog.get(itemId);
+  return record?.status === 'active' || record?.lifecycleState === 'active' || record?.lifecycleState === 'queue' || record?.lifecycleState === 'build' || record?.lifecycleState === 'pr-open';
 }
 
 function collectProspectiveRecommendationValidationIssues(model: BacklogRecommendationModel, items: readonly RecommendationReferenceRecord[], epics: readonly RecommendationReferenceRecord[]): RecommendationReferenceValidationResult {

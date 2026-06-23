@@ -6,7 +6,7 @@ import {
 import { type SafeParseResult, safeParseWithSchema } from '../schema-utils.js';
 
 export const BACKLOG_CURATION_MAP_REDUCE_SCHEMA_VERSION = 1 as const;
-export const BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION = 'backlog-curation-item-audit-v1' as const;
+export const BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION = 'backlog-curation-item-audit-v2-source-readonly' as const;
 
 export const BACKLOG_CURATION_PACKET_MAX_BYTES = 24_000 as const;
 export const BACKLOG_CURATION_PACKET_MAX_COUNT = 1_000 as const;
@@ -135,6 +135,28 @@ export const BacklogCurationMapReduceItemPacketSchema = Type.Object({
   diagnostics: Type.Array(BacklogCurationMapReduceCapDiagnosticSchema, { maxItems: BACKLOG_CURATION_DIAGNOSTICS_PER_PACKET_MAX }),
 }, { additionalProperties: false });
 
+const BacklogCurationMapReduceClosureVerdictSchema = Type.Union([
+  Type.Literal('shipped'),
+  Type.Literal('superseded'),
+  Type.Literal('partial'),
+  Type.Literal('still-needed'),
+  Type.Literal('stale-invalid'),
+  Type.Literal('needs-product-input'),
+  Type.Literal('skip'),
+]);
+
+const BacklogCurationMapReduceClosureEvidenceRoleSchema = Type.Union([
+  Type.Literal('implementation'),
+  Type.Literal('product-surface'),
+  Type.Literal('replacement'),
+  Type.Literal('supporting'),
+]);
+
+const BacklogCurationCheckedPathSchema = Type.Object({
+  path: boundedNonEmptyString(400),
+  reason: Type.Optional(boundedString(500)),
+}, { additionalProperties: false });
+
 const BacklogCurationMapReduceFindingProperties = {
   schemaVersion: Type.Literal(BACKLOG_CURATION_MAP_REDUCE_SCHEMA_VERSION),
   itemId: EforgePlanPlanningBacklogSafeIdSchema,
@@ -144,6 +166,9 @@ const BacklogCurationMapReduceFindingProperties = {
   promptVersion: boundedNonEmptyString(120),
   runtimeIdentity: BacklogCurationMapReduceRuntimeIdentitySchema,
   disposition: Type.Union([Type.Literal('change'), Type.Literal('recheck'), Type.Literal('skip'), Type.Literal('needs-input')]),
+  verdict: Type.Optional(BacklogCurationMapReduceClosureVerdictSchema),
+  closureEvidenceRoles: Type.Optional(Type.Array(BacklogCurationMapReduceClosureEvidenceRoleSchema, { maxItems: 8 })),
+  checkedPaths: Type.Optional(Type.Array(BacklogCurationCheckedPathSchema, { maxItems: 20 })),
   summary: boundedString(2_000),
   rationale: boundedString(3_000),
   citations: Type.Array(BacklogCurationMapReduceCitationSchema, { maxItems: BACKLOG_CURATION_CITATIONS_PER_ITEM_MAX }),

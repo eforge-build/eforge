@@ -319,8 +319,23 @@ function validateSourceFirstClosedPatch(audit: BacklogCurationFullImplementation
   const candidates = sourceFirstClosureCandidatesForPatch(audit, patch, status);
   const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
   const matching = candidates.filter(hasDisplayableSourceConfidence).filter((entry) => sourceFirstEvidenceMatchesDraft(entry, draftEvidence));
-  if (matching.length === 0) throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires matching strong current-source closure preview metadata and a draft evidence citation from that metadata.`);
-  if (!matching.some((entry) => sourceFirstCandidateHasRequiredEvidenceRoles(entry, status))) throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires closure preview metadata with both core ${status === 'superseded' ? 'replacement' : 'implementation'} and product-surface wiring evidence.`);
+  if (matching.length === 0) {
+    if (draftEvidenceHasRequiredClosureRoles(patch.evidence ?? [], status)) return;
+    throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires matching strong current-source closure preview metadata or agent-verified current-source evidence with both required role labels.`);
+  }
+  if (!matching.some((entry) => sourceFirstCandidateHasRequiredEvidenceRoles(entry, status))) {
+    if (draftEvidenceHasRequiredClosureRoles(patch.evidence ?? [], status)) return;
+    throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires closure preview metadata or agent-verified current-source evidence with both core ${status === 'superseded' ? 'replacement' : 'implementation'} and product-surface wiring evidence.`);
+  }
+}
+
+function draftEvidenceHasRequiredClosureRoles(evidence: readonly string[], status: 'shipped' | 'superseded'): boolean {
+  const requiredPrefix = status === 'shipped' ? SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX : SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX;
+  const currentSourceEvidence = evidence.map((entry) => entry.trim().toLowerCase()).filter((entry) => entry.startsWith(requiredPrefix.toLowerCase()));
+  const implementationRole = status === 'superseded' ? 'replacement' : 'implementation';
+  const hasImplementation = currentSourceEvidence.some((entry) => entry.includes(`${implementationRole}:`) || entry.includes('implementation:'));
+  const hasProductSurface = currentSourceEvidence.some((entry) => entry.includes('product-surface:'));
+  return hasImplementation && hasProductSurface;
 }
 
 function sourceFirstClosureCandidatesForPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string }, status: 'shipped' | 'superseded'): FullAuditEvidenceSummary[] {

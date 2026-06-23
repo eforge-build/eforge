@@ -99,7 +99,7 @@ export async function* runBacklogCurationItemAuditTask(
     prompt,
     cwd: options.cwd,
     maxTurns: options.maxTurns ?? DEFAULT_TIER_MAX_TURNS.planning,
-    tools: 'none',
+    tools: 'read-only',
     customTools: [submitTool, progressTool],
     abortSignal: options.abortController?.signal,
     ...sdkOptionsWithCustomTools(options, [ITEM_AUDIT_SUBMIT_TOOL_NAME, PLANNING_PROGRESS_TOOL_NAME]),
@@ -205,10 +205,24 @@ function validateFindingAgainstPacket(
     finding.packetSha256 === packetSha256 ? undefined : `packetSha256 mismatch: expected ${packetSha256}.`,
     finding.bodySha256 === packet.bodySha256 ? undefined : `bodySha256 mismatch: expected ${packet.bodySha256}.`,
     finding.promptVersion === BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION ? undefined : `promptVersion mismatch: expected ${BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION}.`,
+    ...validateCurrentSourceFindingShape(finding),
     jsonByteLength(finding) <= BACKLOG_CURATION_FINDING_MAX_BYTES ? undefined : `finding JSON exceeds ${BACKLOG_CURATION_FINDING_MAX_BYTES} bytes.`,
   ].filter((entry): entry is string => entry !== undefined);
   if (errors.length === 0) return undefined;
   return `Submission rejected: ${boundedRejectionMessage(errors.join('\n'))}\nFix the finding and call ${ITEM_AUDIT_SUBMIT_TOOL_NAME} again.`;
+}
+
+function validateCurrentSourceFindingShape(finding: BacklogCurationMapReduceFinding): string[] {
+  const errors = [
+    finding.verdict === undefined ? 'verdict is required for current-source item audit findings.' : undefined,
+    (finding.checkedPaths?.length ?? 0) === 0 ? 'checkedPaths must include at least one source path inspected by the read-only item audit.' : undefined,
+  ];
+  if (finding.verdict === 'shipped' || finding.verdict === 'superseded') {
+    const roles = new Set(finding.closureEvidenceRoles ?? []);
+    if (!roles.has('implementation') && !roles.has('replacement')) errors.push('shipped/superseded findings require implementation or replacement closureEvidenceRoles.');
+    if (!roles.has('product-surface')) errors.push('shipped/superseded findings require product-surface closureEvidenceRoles.');
+  }
+  return errors.filter((entry): entry is string => entry !== undefined);
 }
 
 function validatePacket(packet: BacklogCurationMapReduceItemPacket): BacklogCurationMapReduceItemPacket {
