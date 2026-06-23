@@ -261,6 +261,7 @@ export class ClaudeSDKHarness implements AgentHarness {
 
       const isReadOnly = options.tools === 'read-only';
       const usesPreset = options.tools === 'coding' || isReadOnly;
+      const hasCustomMcpServers = Object.keys(customMcpServers).length > 0;
 
       // For read-only agents: always block mutation tools + subagents, skip mcpServers/plugins/settingSources.
       // resolveDisallowedTools adds the eforge anti-recursion patterns on top.
@@ -282,7 +283,7 @@ export class ClaudeSDKHarness implements AgentHarness {
             ...(usesPreset
               ? [{ name: '<preset:claude_code>', description: isReadOnly ? 'Claude Code built-in tool preset (Read-only: Write/Edit/Bash/Task blocked)' : 'Claude Code built-in tool preset (Read/Write/Edit/Bash/Grep/Glob/Task/...)' }]
               : []),
-            ...(usesPreset ? (options.customTools ?? []).map((ct) => ({
+            ...(hasCustomMcpServers ? (options.customTools ?? []).map((ct) => ({
               name: this.effectiveCustomToolName(ct.name),
               description: ct.description,
               parameters: ct.inputSchema,
@@ -301,7 +302,7 @@ export class ClaudeSDKHarness implements AgentHarness {
             disableSubagents: this.disableSubagents,
             bare: this.bare,
             projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
-            internalMcpServerNames: customMcpServers.eforge_engine ? ['eforge_engine'] : [],
+            internalMcpServerNames: hasCustomMcpServers ? ['eforge_engine'] : [],
             pluginCount: isReadOnly ? 0 : (this.plugins?.length ?? 0),
             settingSources: (usesPreset && !isReadOnly) ? (this.settingSources ?? null) : null,
             customToolCount: options.customTools?.length ?? 0,
@@ -331,9 +332,7 @@ export class ClaudeSDKHarness implements AgentHarness {
             plugins: this.plugins,
             settingSources: this.settingSources,
           } : {}),
-          ...(usesPreset && isReadOnly && Object.keys(customMcpServers).length > 0 ? {
-            mcpServers: customMcpServers,
-          } : {}),
+          ...((usesPreset && isReadOnly && hasCustomMcpServers) || (!usesPreset && hasCustomMcpServers) ? { mcpServers: customMcpServers } : {}),
           abortController: options.abortSignal
             ? abortControllerFromSignal(options.abortSignal)
             : undefined,

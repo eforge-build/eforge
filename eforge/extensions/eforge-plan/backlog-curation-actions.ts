@@ -3,6 +3,7 @@ import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAge
 import { toJsonSafeObject } from './json-safe.js';
 import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogInput, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
 import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
+import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata, type BacklogCurationSourceBuild } from './backlog-curation-source.js';
 import {
   BACKLOG_CURATION_WORKFLOW_PURPOSE,
   listBacklogCurationWorkflowEntries,
@@ -20,7 +21,7 @@ type AnalyzeAllStartRequest = {
   kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
   input: {
     topic: string;
-    sourceProvider: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number } };
+    sourceProvider: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number; prebuiltSource?: BacklogCurationSourceBuild } };
     requestedOutputSections: typeof BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS;
     includeRoadmap: true;
   };
@@ -36,12 +37,15 @@ export const analyzeAllBacklogAction = defineExtensionAction({
   async handler(input: AnalyzeAllBacklogInput, ctx) {
     throwIfAborted(ctx.signal);
     const itemAuditConcurrency = normalizeItemAuditConcurrency(input.itemAuditConcurrency);
-    return await runAnalyzeStartExclusive(ctx.cwd, itemAuditConcurrency, async () => {
-      const active = await findActiveBacklogCurationTask(ctx, itemAuditConcurrency);
-      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, ...(active.entry.sourceFingerprint !== undefined && { sourceFingerprint: active.entry.sourceFingerprint }), reused: true });
+    const source = await buildBacklogCurationSource(ctx.cwd, undefined, { signal: ctx.signal, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) });
+    await writeBacklogCurationSourcePreviewMetadata(ctx.cwd, source);
+    const { sourceFingerprint } = source;
+    return await runAnalyzeStartExclusive(ctx.cwd, sourceFingerprint, itemAuditConcurrency, async () => {
+      const active = await findActiveBacklogCurationTask(ctx, sourceFingerprint, itemAuditConcurrency);
+      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, reused: true });
       throwIfAborted(ctx.signal);
-      const response = await startBacklogCurationTask(ctx, itemAuditConcurrency);
-      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, undefined, undefined, itemAuditConcurrency));
+      const response = await startBacklogCurationTask(ctx, itemAuditConcurrency, source);
+      const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, sourceFingerprint, undefined, itemAuditConcurrency));
       return toJsonSafeObject({ task: compactTask(response.task), entry });
     });
   },
@@ -49,10 +53,11 @@ export const analyzeAllBacklogAction = defineExtensionAction({
 
 export async function findActiveBacklogCurationTask(
   ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>,
+  sourceFingerprint: string,
   itemAuditConcurrency?: number,
 ): Promise<{ task: ExtensionAgentTaskRecord; entry: PlanningTaskWorkflowEntry } | undefined> {
   const index = await readPlanningTaskWorkflowIndex(ctx.cwd);
-  for (const entry of listBacklogCurationWorkflowEntries(index, undefined, itemAuditConcurrency)) {
+  for (const entry of listBacklogCurationWorkflowEntries(index, sourceFingerprint, itemAuditConcurrency)) {
     if (entry.appliedAt !== undefined) continue;
     try {
       const response = await ctx.agentTasks.get(entry.taskId);
@@ -81,12 +86,12 @@ export function buildBacklogCurationEntry(taskId: string, sourceFingerprint?: st
   };
 }
 
-async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditConcurrency?: number): Promise<{ task: ExtensionAgentTaskRecord }> {
+async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditConcurrency: number | undefined, source: BacklogCurationSourceBuild): Promise<{ task: ExtensionAgentTaskRecord }> {
   const request: AnalyzeAllStartRequest = {
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
       topic: ANALYZE_ALL_TOPIC,
-      sourceProvider: { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) } },
+      sourceProvider: { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }), prebuiltSource: source } },
       requestedOutputSections: BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS,
       includeRoadmap: true,
     },
@@ -94,8 +99,8 @@ async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditCo
   return await (ctx.agentTasks.start as unknown as (request: AnalyzeAllStartRequest) => Promise<{ task: ExtensionAgentTaskRecord }>)(request);
 }
 
-function runAnalyzeStartExclusive<T>(cwd: string, itemAuditConcurrency: number | undefined, task: () => Promise<T>): Promise<T> {
-  const key = `${cwd}\0analyze-all-backlog\0${itemAuditConcurrency ?? 'default'}`;
+function runAnalyzeStartExclusive<T>(cwd: string, sourceFingerprint: string, itemAuditConcurrency: number | undefined, task: () => Promise<T>): Promise<T> {
+  const key = `${cwd}\0analyze-all-backlog\0${sourceFingerprint}\0${itemAuditConcurrency ?? 'default'}`;
   const prior = analyzeStartChains.get(key) ?? Promise.resolve();
   const result = prior.then(task, task);
   let chain: Promise<unknown>;

@@ -5,8 +5,10 @@ import { pathToFileURL } from 'node:url';
 import {
   EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
   parseEforgePlanPlanningDraftResult,
+  safeParseBacklogCurationMapReduceSourceBundle,
   safeParseExtensionAgentTaskStartRequest,
   type EforgePlanPlanningDraftResult,
+  type BacklogCurationMapReduceSourceBundle,
   type ExtensionAgentTaskCancelResponse,
   type ExtensionAgentTaskGetResponse,
   type ExtensionAgentTaskKind,
@@ -26,6 +28,13 @@ import {
   emitAgentTaskStart,
   sanitizeMetadata,
 } from './agent-task-events.js';
+import {
+  buildBacklogCurationRuntimeIdentity,
+  isBacklogCurationMapReduceBundle,
+  resolveBacklogCurationMapReduceProviderHooks,
+  runBacklogCurationMapReduceTask,
+  type BacklogCurationMapReduceProviderHooks,
+} from './backlog-curation-map-reduce-runner.js';
 import {
   AgentTaskStoreError,
   assertValidAgentTaskId,
@@ -135,7 +144,8 @@ export class ExtensionAgentTaskService {
 
   private async runPlannerTask(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<EforgePlanPlanningDraftResult> {
     const cwd = this.requireCwd();
-    const input = await this.resolveDeferredSourceInput(options);
+    const deferredSource = await this.resolveDeferredSourceInput(options);
+    const input = deferredSource.input;
     const { loadConfig } = await import('@eforge-build/engine/config');
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const { buildAgentRuntimeRegistry, singletonRegistry } = await import('@eforge-build/engine/agent-runtime-registry');
@@ -146,6 +156,22 @@ export class ExtensionAgentTaskService {
     const agentRuntimes = await resolveAgentRuntimes(this.context.options.agentRuntimes, config, buildAgentRuntimeRegistry, singletonRegistry);
     const { harness, toolbeltSummary } = agentRuntimes.forRoleResolved('planner');
     const plannerConfig = resolveAgentConfig('planner', config, undefined, toolbeltSummary);
+    if (isEforgePlanCurationMapReduceTask(deferredSource, options.owner)) {
+      return await runBacklogCurationMapReduceTask({
+        ...plannerConfig,
+        harness,
+        cwd,
+        taskId: options.taskId,
+        input,
+        sourceBundle: deferredSource.structuredSource,
+        providerHooks: deferredSource.providerHooks,
+        runtimeIdentity: buildBacklogCurationRuntimeIdentity(plannerConfig, toolbeltSummary),
+        ...(sourceProviderItemAuditConcurrency(options.request) !== undefined && { itemAuditConcurrency: sourceProviderItemAuditConcurrency(options.request) }),
+        abortController: options.controller,
+        progress: (message) => this.updateProgress(options.taskId, message),
+        sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
+      });
+    }
     let sawProgress = false;
     const task = runEforgePlanPlanningDraftTask({
       ...plannerConfig,
@@ -170,14 +196,14 @@ export class ExtensionAgentTaskService {
     return next.value;
   }
 
-  private async resolveDeferredSourceInput(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<ExtensionAgentTaskStartRequest['input']> {
+  private async resolveDeferredSourceInput(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<ResolvedDeferredSourceInput> {
     const provider = options.request.input.sourceProvider;
-    if (provider === undefined) return options.request.input;
+    if (provider === undefined) return { input: options.request.input };
     if (options.owner === undefined) throw new AgentTaskServiceError('Deferred source providers require an extension owner', 400);
     await this.updateProgress(options.taskId, 'Preparing planner source');
     const source = await runDeferredSourceProvider({ cwd: this.requireCwd(), owner: options.owner, provider, signal: options.controller.signal });
     const { sourceProvider: _omitted, ...inputWithoutProvider } = options.request.input;
-    return { ...inputWithoutProvider, sourceText: source.sourceText };
+    return { ...source, input: { ...inputWithoutProvider, sourceText: source.sourceText } };
   }
 
   private async complete(taskId: string, result: EforgePlanPlanningDraftResult, startedAtMs: number): Promise<void> {
@@ -343,7 +369,14 @@ function countOutputSections(result: EforgePlanPlanningDraftResult): number {
 type DeferredSourceProviderSpec = NonNullable<ExtensionAgentTaskStartRequest['input']['sourceProvider']>;
 type DeferredSourceProviderHandler = (context: { cwd: string; input: Record<string, unknown>; signal: AbortSignal }) => Promise<unknown> | unknown;
 
-async function runDeferredSourceProvider(options: { cwd: string; owner: ExtensionAgentTaskOwner; provider: DeferredSourceProviderSpec; signal: AbortSignal }): Promise<{ sourceText: string }> {
+interface ResolvedDeferredSourceInput {
+  input: ExtensionAgentTaskStartRequest['input'];
+  sourceText?: string;
+  structuredSource?: unknown;
+  providerHooks?: BacklogCurationMapReduceProviderHooks;
+}
+
+async function runDeferredSourceProvider(options: { cwd: string; owner: ExtensionAgentTaskOwner; provider: DeferredSourceProviderSpec; signal: AbortSignal }): Promise<{ sourceText: string; structuredSource?: unknown; providerHooks: BacklogCurationMapReduceProviderHooks }> {
   throwIfSourceProviderAborted(options.signal);
   const modulePath = await resolveProviderModulePath(options.owner.extensionPath, options.provider.module);
   const moduleExports = await importDeferredSourceProviderModule(modulePath);
@@ -353,7 +386,15 @@ async function runDeferredSourceProvider(options: { cwd: string; owner: Extensio
   if (!isRecord(result) || typeof result.sourceText !== 'string') {
     throw new AgentTaskServiceError(`Deferred source provider ${options.provider.module} did not return { sourceText: string }`, 500);
   }
-  return { sourceText: result.sourceText };
+  const parsedStructuredSource = result.backlogCurationMapReduce === undefined ? undefined : safeParseBacklogCurationMapReduceSourceBundle(result.backlogCurationMapReduce);
+  if (parsedStructuredSource !== undefined && !parsedStructuredSource.success) {
+    throw new AgentTaskServiceError(`Invalid backlogCurationMapReduce source: ${parsedStructuredSource.error.message}`, 500);
+  }
+  return {
+    sourceText: result.sourceText,
+    ...(parsedStructuredSource?.success === true && { structuredSource: parsedStructuredSource.data }),
+    providerHooks: resolveBacklogCurationMapReduceProviderHooks(moduleExports),
+  };
 }
 
 async function resolveProviderModulePath(extensionPath: string, moduleSpecifier: string): Promise<string> {
@@ -402,6 +443,21 @@ function resolveDeferredSourceProviderHandler(moduleExports: Record<string, unkn
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isEforgePlanCurationMapReduceTask(source: ResolvedDeferredSourceInput, owner: ExtensionAgentTaskOwner | undefined): source is ResolvedDeferredSourceInput & { structuredSource: BacklogCurationMapReduceSourceBundle; providerHooks: BacklogCurationMapReduceProviderHooks } {
+  if (source.structuredSource === undefined || source.providerHooks === undefined || !isBacklogCurationMapReduceBundle(source.structuredSource)) return false;
+  const bundle = source.structuredSource;
+  return owner?.extensionName === 'eforge-plan' || bundle.globalContext.purpose === 'backlog-curation-map-reduce';
+}
+
+function sourceProviderItemAuditConcurrency(request: ExtensionAgentTaskStartRequest): number | undefined {
+  const input = request.input.sourceProvider?.input as { itemAuditConcurrency?: unknown } | undefined;
+  return numberValue(input?.itemAuditConcurrency);
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function throwIfSourceProviderAborted(signal: AbortSignal): void {

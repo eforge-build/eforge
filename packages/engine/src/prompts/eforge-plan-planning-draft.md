@@ -78,7 +78,7 @@ When the requested output sections include `planRevisionTurn`:
 
 ## Backlog curation guidance
 
-When the requested output sections include `backlogCurationDraft`:
+When the requested output sections include `backlogCurationDraft` in this generic single-shot task:
 
 - Preserve the provided `sourceFingerprint` exactly in the draft.
 - Emit structured `itemChanges`, `epicChanges`, `noOpRechecks`, `skipped`, and `needsInput` arrays. Use empty arrays when a category has no entries.

@@ -22,11 +22,14 @@ import { summarizeProjectTraces } from './trace-activity.js';
 import type { BacklogEpic, BacklogItem, TraceSummary } from './backlog-domain.js';
 import { BacklogCurationFullImplementationAuditPreviewSchema, BacklogCurationGitDeltaPreviewSchema, type BacklogCurationFullImplementationAuditPreview, type BacklogCurationGitDeltaPreview } from './backlog-curation-schemas.js';
 import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
+import { buildBacklogCurationMapReduceSourceBundle } from './backlog-curation-packets.js';
+import type { BacklogCurationMapReduceSourceBundle } from '@eforge-build/client';
 
 export interface BacklogCurationSourceBuild {
   sourceFingerprint: string;
   sourceText: string;
   source: Record<string, unknown>;
+  backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle;
   fullImplementationAuditPreview?: BacklogCurationFullImplementationAuditPreview;
 }
 
@@ -161,7 +164,8 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     truncation,
     ...(redraft !== undefined && { redraft }),
   };
-  return { sourceFingerprint, sourceText: buildSourceText(source), source, ...(fullImplementationAudit !== undefined && { fullImplementationAuditPreview: fullImplementationAudit.preview as BacklogCurationFullImplementationAuditPreview }) };
+  const backlogCurationMapReduce = buildBacklogCurationMapReduceSourceBundle(source);
+  return { sourceFingerprint, sourceText: buildSourceText(source), source, backlogCurationMapReduce, ...(fullImplementationAudit !== undefined && { fullImplementationAuditPreview: fullImplementationAudit.preview as BacklogCurationFullImplementationAuditPreview }) };
 }
 
 export function buildBacklogCurationRedraftContext(parentTaskId: string, result: Record<string, unknown> | undefined, input: { answers?: string[]; steering?: string }): Record<string, unknown> {

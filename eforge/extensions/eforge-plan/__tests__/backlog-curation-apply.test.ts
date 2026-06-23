@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyBacklogCurationDraftFromTask, applySectionOperations, previewBacklogCurationDraftFromTask } from '../backlog-curation-apply.js';
+import { applyBacklogCurationDraftFromTask, applySectionOperations, previewBacklogCurationDraftFromTask, validateBacklogCurationPlanningDraftResult } from '../backlog-curation-apply.js';
 import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
 import { AMBIGUOUS_SHIPPED_EVIDENCE_PREFIX, AMBIGUOUS_SUPERSEDED_EVIDENCE_PREFIX, SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX, SHIPPED_GIT_PR_EVIDENCE_PREFIX, SHIPPED_LIFECYCLE_EVIDENCE_PREFIX, SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX, SUPERSEDED_GIT_PR_EVIDENCE_PREFIX, SUPERSEDED_LIFECYCLE_EVIDENCE_PREFIX } from '../backlog-curation-evidence-prefixes.js';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
@@ -757,6 +757,57 @@ describe('backlog curation apply', () => {
       });
       await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
       expect((await readBacklogItem(cwd, 'stale-freeform'))?.status).toBe('stale');
+    });
+  });
+
+  it('accepts reducer-shaped curation output through reducer validation and apply validation', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Claim\n\nOld\n' });
+      const { source, entry } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const reducerResult = {
+        summary: 'Reduced curation outcomes.',
+        assumptionsOpenQuestions: [],
+        backlogCurationDraft: {
+          schemaVersion: 1,
+          sourceFingerprint: source.sourceFingerprint,
+          summary: ['Reducer accepted.'],
+          itemChanges: [{ kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Ready to plan from reducer finding.' }],
+          epicChanges: [],
+          noOpRechecks: [],
+          skipped: [],
+          needsInput: [],
+        },
+      };
+
+      await expect(validateBacklogCurationPlanningDraftResult(cwd, reducerResult, { sourceFingerprint: source.sourceFingerprint })).resolves.toEqual([]);
+      const task = { taskId: 'task-1', kind: 'eforge-plan.planning-draft', status: 'completed', result: reducerResult };
+      await expect(previewBacklogCurationDraftFromTask(cwd, task, entry)).resolves.toMatchObject({ valid: true, itemChanges: 1 });
+      await expect(applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry)).resolves.toMatchObject({ changedItemIds: ['item-1'] });
+    });
+  });
+
+  it('rejects invalid reducer-shaped curation outputs through existing validation', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item\n\n## Evidence\n\n- Prior\n' });
+      const { source } = await workflowEntry(cwd);
+      const snapshot = await readBacklogItemSnapshot(cwd, 'item-1');
+      const validPatch = { kind: 'item', id: 'item-1', precondition: { kind: 'item', id: 'item-1', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 }, metadata: { status: 'planned' }, rationale: 'Reducer patch.' };
+      const cases = [
+        { name: 'stale precondition', patch: { ...validPatch, precondition: { ...validPatch.precondition, bodySha256: '0'.repeat(64) } }, expected: /precondition.*stale|bodySha256/i },
+        { name: 'invalid status', patch: { ...validPatch, metadata: { status: 'not-a-status' } }, expected: /Unknown backlog status|metadata\.status/i },
+        { name: 'invalid evidence', patch: { ...validPatch, metadata: { status: 'shipped' }, evidence: ['Historical closure without a matching current-source prefix.'] }, expected: /evidence|matching shipped/i },
+      ];
+
+      for (const testCase of cases) {
+        const result = {
+          summary: testCase.name,
+          assumptionsOpenQuestions: [],
+          backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: source.sourceFingerprint, summary: [], itemChanges: [testCase.patch], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] },
+        };
+        const errors = await validateBacklogCurationPlanningDraftResult(cwd, result, { sourceFingerprint: source.sourceFingerprint });
+        expect(errors.join('\n'), testCase.name).toMatch(testCase.expected);
+      }
     });
   });
 

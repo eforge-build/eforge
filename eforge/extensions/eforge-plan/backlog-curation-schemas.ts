@@ -5,6 +5,9 @@ import {
   EforgePlanPlanningRequestedOutputSectionSchema,
   ExtensionAgentTaskIdSchema,
   ExtensionAgentTaskStatusSchema,
+  BacklogCurationMapReduceCapDiagnosticSchema,
+  BacklogCurationMapReduceDiagnosticSchema,
+  BacklogCurationMapReduceSourceBundleSchema,
 } from '@eforge-build/client';
 import { BacklogStatusSchema, JsonValueSchema, RecommendationBlockedChainSchema, RecommendationDerivedStatusSchema, RecommendationItemRefSchema, RecommendationProfileSchema, RecommendationSummarySchema, BacklogRecommendationModelSchema } from './schema.js';
 
@@ -17,6 +20,10 @@ export const AnalyzeAllBacklogInputSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const SourceFingerprintSchema = Type.String({ minLength: 64, maxLength: 64, pattern: '^[A-Fa-f0-9]{64}$' });
+
+export const BacklogCurationProviderMapReduceBundleSchema = BacklogCurationMapReduceSourceBundleSchema;
+export const BacklogCurationProviderDiagnosticSchema = BacklogCurationMapReduceDiagnosticSchema;
+export const BacklogCurationProviderCapDiagnosticSchema = BacklogCurationMapReduceCapDiagnosticSchema;
 
 const AnalyzeAllBacklogWorkflowEntrySchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,

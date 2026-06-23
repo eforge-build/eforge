@@ -114,7 +114,7 @@ describe('ClaudeSDKHarness debug payload — restructured MCP server fields', ()
   async function captureDebugPayload(
     mcpServers: Record<string, McpServerConfig>,
     customToolCount = 0,
-    tools: 'coding' | 'read-only' = 'coding',
+    tools: 'coding' | 'read-only' | 'none' = 'coding',
   ): Promise<HarnessDebugPayload | null> {
     const controller = new AbortController();
     controller.abort('test-abort'); // pre-abort to prevent real network call
@@ -233,6 +233,15 @@ describe('ClaudeSDKHarness debug payload — restructured MCP server fields', ()
     expect(payload!.extra!['internalMcpServerNames']).toEqual(['eforge_engine']);
     expect(payload!.extra!['pluginCount']).toBe(0);
     expect(payload!.extra!['settingSources']).toBeNull();
+  });
+
+  it('exposes engine custom tools when repository tools are disabled', async () => {
+    const payload = await captureDebugPayload({}, 1, 'none');
+    expect(payload).not.toBeNull();
+
+    expect(payload!.tools.map((tool) => tool.name)).toEqual(['mcp__eforge_engine__submit_tool_0']);
+    expect(payload!.extra!['toolsMode']).toBe('none');
+    expect(payload!.extra!['internalMcpServerNames']).toEqual(['eforge_engine']);
   });
 
   it('projectMcpServerNames is empty when no project MCP servers are configured', async () => {

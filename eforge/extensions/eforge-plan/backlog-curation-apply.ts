@@ -1,5 +1,4 @@
-import { safeParseWithSchema } from '@eforge-build/client';
-import { EforgePlanPlanningBacklogCurationDraftSchema } from '@eforge-build/client';
+import { EforgePlanPlanningBacklogCurationDraftSchema, safeParseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError, Type } from '@eforge-build/extension-sdk';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem, type TraceSummary } from './backlog-domain.js';
 // --- eforge:region shipped-evidence-context ---
@@ -114,6 +113,36 @@ export async function previewBacklogCurationDraftFromTask(cwd: string, task: Pla
     };
   } catch (err) {
     return { valid: false, errors: previewErrorsFromError(err) };
+  }
+}
+export async function validateBacklogCurationPlanningDraftResult(cwd: string, result: unknown, context?: { sourceFingerprint?: string }): Promise<string[]> {
+  try {
+    const expectedSourceFingerprint = context?.sourceFingerprint;
+    const rawResult = result as Record<string, unknown> | undefined;
+    const rawDraft = rawResult?.backlogCurationDraft as { sourceFingerprint?: unknown } | undefined;
+    if (expectedSourceFingerprint !== undefined && rawDraft?.sourceFingerprint !== undefined && rawDraft.sourceFingerprint !== expectedSourceFingerprint) {
+      return [`backlogCurationDraft.sourceFingerprint: Curation draft source fingerprint must match ${expectedSourceFingerprint}.`];
+    }
+    await prepareBacklogCurationDraftApply(cwd, {
+      taskId: 'backlog-curation-reducer-validation',
+      kind: 'eforge-plan.planning-draft',
+      status: 'completed',
+      result,
+    }, {
+      taskId: 'backlog-curation-reducer-validation',
+      originalRequest: '',
+      derivedRequest: 'Analyze and curate all open eforge-plan backlog records.',
+      selection: {},
+      requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
+      includeRoadmap: true,
+      purpose: 'backlog-curation',
+      ...(expectedSourceFingerprint !== undefined && { sourceFingerprint: expectedSourceFingerprint }),
+      createdAt: new Date().toISOString(),
+    }, { skipGeneratedRecommendationErrors: false });
+    return [];
+  } catch (err) {
+    if (!(err instanceof ExtensionActionInputValidationError)) throw err;
+    return previewErrorsFromError(err).map((error) => `${error.path}: ${error.message}`);
   }
 }
 // --- eforge:endregion apply-entrypoint ---
@@ -513,7 +542,6 @@ function requireProspective<T>(map: Map<string, T>, id: string, path: string): T
   if (value === undefined) throw validationError(`${path}.id`, `Unknown curation target "${id}".`);
   return value;
 }
-
 function isValidSectionHeading(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length > 0 && !/[\r\n]/.test(trimmed) && !trimmed.startsWith('#');
