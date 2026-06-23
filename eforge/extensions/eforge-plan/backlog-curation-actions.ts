@@ -42,11 +42,11 @@ export const analyzeAllBacklogAction = defineExtensionAction({
     const { sourceFingerprint } = source;
     return await runAnalyzeStartExclusive(ctx.cwd, sourceFingerprint, itemAuditConcurrency, async () => {
       const active = await findActiveBacklogCurationTask(ctx, sourceFingerprint, itemAuditConcurrency);
-      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, sourceFingerprint, reused: true });
+      if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, reused: true });
       throwIfAborted(ctx.signal);
       const response = await startBacklogCurationTask(ctx, itemAuditConcurrency);
       const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, sourceFingerprint, undefined, itemAuditConcurrency));
-      return toJsonSafeObject({ task: compactTask(response.task), entry, sourceFingerprint });
+      return toJsonSafeObject({ task: compactTask(response.task), entry });
     });
   },
 });

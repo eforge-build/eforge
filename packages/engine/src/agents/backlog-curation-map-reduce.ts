@@ -7,7 +7,7 @@ import {
   BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES,
   BACKLOG_CURATION_REPAIR_ERROR_MAX_BYTES,
   BACKLOG_CURATION_VALIDATION_ERRORS_MAX,
-  BacklogCurationMapReduceFindingSchema,
+  BacklogCurationMapReduceFindingSubmissionSchema,
   BacklogCurationMapReduceItemPacketSchema,
   safeParseBacklogCurationMapReduceFinding,
   safeParseBacklogCurationMapReduceReducerInput,
@@ -40,7 +40,7 @@ export interface BacklogCurationItemAuditTaskOptions extends SdkPassthroughConfi
   harness: AgentHarness;
   cwd: string;
   packet: BacklogCurationMapReduceItemPacket;
-  runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity;
+  runtimeIdentity?: BacklogCurationMapReduceRuntimeIdentity;
   verbose?: boolean;
   abortController?: AbortController;
   maxTurns?: number;
@@ -70,8 +70,7 @@ interface ReducerAttemptResult {
 const ITEM_AUDIT_SUBMIT_TOOL_NAME = 'submit_eforge_plan_backlog_item_finding';
 
 function itemAuditSubmissionSchema(): TObject {
-  const required = BacklogCurationMapReduceFindingSchema.required?.filter((field) => field !== 'runtimeIdentity');
-  return { ...BacklogCurationMapReduceFindingSchema, ...(required !== undefined && { required }) };
+  return BacklogCurationMapReduceFindingSubmissionSchema;
 }
 
 export async function* runBacklogCurationItemAuditTask(
@@ -168,7 +167,7 @@ export const createBoundedBacklogCurationReducerNeedsInputResult = boundedNeedsI
 function createItemAuditSubmitTool(
   packet: BacklogCurationMapReduceItemPacket,
   packetSha256: string,
-  runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity,
+  runtimeIdentity: BacklogCurationMapReduceRuntimeIdentity | undefined,
   accept: (finding: BacklogCurationMapReduceFinding) => void,
 ): CustomTool {
   let accepted = false;
@@ -179,7 +178,8 @@ function createItemAuditSubmitTool(
     handler: async (input: unknown) => {
       const submission = safeParseWithSchema(itemAuditSubmissionSchema(), input);
       if (!submission.success) return `Submission rejected: ${boundedRejectionMessage(submission.error.message)}\nFix the finding and call ${ITEM_AUDIT_SUBMIT_TOOL_NAME} again.`;
-      const parsed = safeParseBacklogCurationMapReduceFinding({ ...submission.data, runtimeIdentity });
+      const effectiveRuntimeIdentity = runtimeIdentity ?? submission.data.runtimeIdentity;
+      const parsed = safeParseBacklogCurationMapReduceFinding({ ...submission.data, runtimeIdentity: effectiveRuntimeIdentity });
       if (!parsed.success) return `Submission rejected: ${boundedRejectionMessage(parsed.error.message)}\nFix the finding and call ${ITEM_AUDIT_SUBMIT_TOOL_NAME} again.`;
       const mismatch = validateFindingAgainstPacket(parsed.data, packet, packetSha256);
       if (mismatch !== undefined) return mismatch;

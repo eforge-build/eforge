@@ -544,7 +544,6 @@ function requireProspective<T>(map: Map<string, T>, id: string, path: string): T
   if (value === undefined) throw validationError(`${path}.id`, `Unknown curation target "${id}".`);
   return value;
 }
-
 function isValidSectionHeading(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length > 0 && !/[\r\n]/.test(trimmed) && !trimmed.startsWith('#');
