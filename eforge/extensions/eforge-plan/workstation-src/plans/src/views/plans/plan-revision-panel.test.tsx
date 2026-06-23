@@ -69,6 +69,7 @@ describe('PlanDetailCard revision workstation', () => {
     expect(within(rail).getByText(/The AI is revising this plan/)).toBeTruthy();
     expect(within(rail).getByText(/1 running/)).toBeTruthy();
     expect((within(rail).getByRole('button', { name: /Send to AI/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Toggle Scope section/ }));
     // The page is locked while a turn runs: representative plan mutation and annotation affordances are disabled.
     [
       screen.getByRole('button', { name: /Delete/ }),

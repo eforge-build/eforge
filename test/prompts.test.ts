@@ -108,6 +108,8 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('copy `resolved.planningType` and `resolved.planningDepth`');
     expect(prompt).toContain('use exactly `resolved.requiredDimensions`');
     expect(prompt).toContain('cover or explicitly skip every required id');
+    expect(prompt).toContain('becomes the persisted `## Executive Summary`');
+    expect(prompt).toContain('fast scope review and sign-off');
     expect(prompt).toContain('emit `needs-input`');
     expect(prompt).toMatch(/Do not submit.*Goal.*Scope.*Context and Evidence.*Implementation Plan.*Validation.*Risks and Guardrails/s);
   });

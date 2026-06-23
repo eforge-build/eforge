@@ -106,6 +106,8 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
   };
 
   const sectionEntries = Object.entries(plan.sections ?? {});
+  const executiveSummary = sectionEntries.find(([key]) => isExecutiveSummarySection(key));
+  const detailSectionEntries = sectionEntries.filter(([key]) => !isExecutiveSummarySection(key));
 
   // Lead-with-status summary: how close the plan is to a clean handoff.
   const missingCount = (readiness.missingDimensions?.length ?? 0) + (readiness.acDiagnostics?.length ?? 0);
@@ -148,17 +150,29 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
           <span className={`ml-auto text-xs font-semibold ${canHandoff ? 'text-[color:var(--lane-ready)]' : 'text-[color:var(--prio-medium)]'}`}>{readinessSummary}</span>
         </div>
 
+        {executiveSummary !== undefined && (
+          <AnnotatablePlanSection
+            plan={plan}
+            dimension="executive-summary"
+            content={executiveSummary[1]}
+            disabled={locked || revision.busy || revision.loading}
+            defaultOpen
+            onSaveSection={setSection}
+            onSelectAnnotationTarget={onSelectAnnotationTarget}
+          />
+        )}
+
         <ReadinessChecklist plan={plan} readiness={readiness} disabled={locked} onSetSection={setSection} onSelectDimensions={selectDimensions} />
         <OpenQuestionsPanel plan={plan} />
 
-        {sectionEntries.length > 0 && (
+        {detailSectionEntries.length > 0 && (
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sections</h4>
               <Button className="ml-auto" size="sm" variant="outline" disabled={locked || revision.busy || revision.loading} onClick={() => { const target = buildWholePlanAnnotationTarget(plan); if (target) onSelectAnnotationTarget(target); }}>Annotate whole plan</Button>
             </div>
-            {sectionEntries.map(([key, content]) => (
-              <AnnotatablePlanSection key={key} plan={plan} dimension={key} content={content} disabled={locked || revision.busy || revision.loading} onSelectAnnotationTarget={onSelectAnnotationTarget} />
+            {detailSectionEntries.map(([key, content]) => (
+              <AnnotatablePlanSection key={key} plan={plan} dimension={key} content={content} disabled={locked || revision.busy || revision.loading} onSaveSection={setSection} onSelectAnnotationTarget={onSelectAnnotationTarget} />
             ))}
           </div>
         )}
@@ -172,4 +186,8 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
       </CardContent>
     </Card>
   );
+}
+
+function isExecutiveSummarySection(key: string): boolean {
+  return key.trim().toLowerCase().replace(/-/g, ' ') === 'executive summary';
 }

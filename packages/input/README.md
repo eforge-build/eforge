@@ -35,7 +35,7 @@ Playbooks are Markdown files with YAML frontmatter encoding a reusable build int
 
 ### Session plans
 
-Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured eforge-plan planning entry/workstation flow. They are project-local only and compile to ordinary build source.
+Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured eforge-plan planning entry/workstation flow. They are project-local only and compile to ordinary build source. Plans created from ready AI creation drafts may include a leading `## Executive Summary` section before readiness dimensions.
 
 #### Lifecycle
 
@@ -85,7 +85,7 @@ All mutation helpers return a new `SessionPlan` value; they do not write to disk
 
 #### Build source compilation
 
-- `sessionPlanToBuildSource(plan)` - compile a session plan to ordinary build source for the engine queue
+- `sessionPlanToBuildSource(plan)` - compile a session plan to ordinary build source for the engine queue, preserving body section order such as a leading `## Executive Summary` before readiness sections
 
 ### Session plan sets (read-only)
 

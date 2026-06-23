@@ -4,7 +4,7 @@ The planning workstation is an extension-owned Vite iframe. It talks to the host
 
 ## Server-authoritative curation preview
 
-Backlog curation preview and apply data is server-authoritative. The iframe renders preview payloads from `preview-backlog-curation-task`, task list metadata from `list-planning-agent-tasks`, and apply results from `apply-planning-agent-task-result`. Completed available unapplied ready single-output `sessionPlanCreationDraft` tasks are the only planning tasks the workstation auto-applies; it calls `apply-planning-agent-task-result` once with `applySessionPlanCreationDraft: {}`, refreshes data, opens the created plan in Plans focus, and leaves failed automatic apply attempts visible without retrying the same task automatically. Failures, collisions, needs-input, unavailable, curation, recommendation, handoff, patch, revision, and multi-output tasks stay visible for review.
+Backlog curation preview and apply data is server-authoritative. The iframe renders preview payloads from `preview-backlog-curation-task`, task list metadata from `list-planning-agent-tasks`, and apply results from `apply-planning-agent-task-result`. Completed available unapplied ready single-output `sessionPlanCreationDraft` tasks are the only planning tasks the workstation auto-applies; it calls `apply-planning-agent-task-result` once with `applySessionPlanCreationDraft: {}`, persists the task summary as the created plan's `## Executive Summary`, refreshes data, opens the created plan in Plans focus, and leaves failed automatic apply attempts visible without retrying the same task automatically. Failures, collisions, needs-input, unavailable, curation, recommendation, handoff, patch, revision, and multi-output tasks stay visible for review.
 
 Required preview payload fields for curation UI and fixtures are:
 
@@ -24,6 +24,10 @@ Analysis previews are server-authoritative as well. The recommendations rail sho
 Render removed targets, repositioned targets, effective recommendation counts, and validation details from `recommendationProjection`. Do not locally replay backlog mutations or locally filter generated recommendations. Normal curation+recommendations apply writes the server-provided effective projection; curation-only apply remains visible as a path that applies backlog records, discards generated recommendations, and leaves those discarded recommendations unfresh.
 
 Needs-input evidence labels must preserve the server wording, including `Ambiguous shipped candidate: needs input — ` and `Ambiguous superseded candidate: needs input — `. Current-source closure evidence labels likewise remain display-only until accepted by apply: `Shipped evidence: current source — ` and `Superseded evidence: current source — `. Historical labels such as `Shipped evidence: lifecycle trace — `, `Shipped evidence: inferred from git/PR history — `, `Superseded evidence: lifecycle trace — `, and `Superseded evidence: inferred from git/PR history — ` are navigation hints, not closure authority.
+
+## Plan detail review
+
+Flat session-plan detail renders the `## Executive Summary` first when present, then readiness diagnostics, open questions, and collapsed detailed sections. This gives reviewers a fast sign-off artifact while keeping readiness problems visible. Detailed sections start collapsed; expanding a section reveals rendered Markdown, edit controls, and annotation target-selection buttons.
 
 ## Freshness labels
 
