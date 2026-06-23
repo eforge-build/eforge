@@ -66,7 +66,7 @@ export function buildBacklogCurationReducerInput(globalContext: BacklogCurationM
     schemaVersion: BACKLOG_CURATION_MAP_REDUCE_SCHEMA_VERSION,
     sourceFingerprint: globalContext.sourceFingerprint,
     ...(generatedAt !== undefined && { generatedAt }),
-    globalContext,
+    globalContext: cloneGlobalContext(globalContext),
     outcomes: [...outcomes],
     diagnostics,
   };
@@ -84,6 +84,10 @@ export function buildBacklogCurationReducerInput(globalContext: BacklogCurationM
     }
   }
   return reducer;
+}
+
+function cloneGlobalContext(globalContext: BacklogCurationMapReduceGlobalContext): BacklogCurationMapReduceGlobalContext {
+  return JSON.parse(JSON.stringify(globalContext)) as BacklogCurationMapReduceGlobalContext;
 }
 
 function shrinkReducerGlobalContext(

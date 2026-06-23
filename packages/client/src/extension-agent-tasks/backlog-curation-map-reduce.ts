@@ -275,7 +275,10 @@ function validateOutcomeFinding<T extends BacklogCurationMapReduceItemOutcome>(o
   if (outcome.outcome !== 'cache-hit' && outcome.outcome !== 'audited-finding') return { success: true, data: outcome };
   const finding = safeParseBacklogCurationMapReduceFinding(outcome.finding);
   if (!finding.success) return prefixSafeParseError(finding, path);
-  if (outcome.finding.sourceFingerprint !== outcome.sourceFingerprint) return semanticError(`${path}/sourceFingerprint`, `sourceFingerprint must match ${outcome.sourceFingerprint}.`);
+  if (finding.data.sourceFingerprint !== outcome.sourceFingerprint) return semanticError(`${path}/sourceFingerprint`, `sourceFingerprint must match ${outcome.sourceFingerprint}.`);
+  if (finding.data.itemId !== outcome.itemId) return semanticError(`${path}/itemId`, `itemId must match ${outcome.itemId}.`);
+  if (finding.data.packetSha256 !== outcome.packetSha256) return semanticError(`${path}/packetSha256`, `packetSha256 must match ${outcome.packetSha256}.`);
+  if (finding.data.bodySha256 !== outcome.bodySha256) return semanticError(`${path}/bodySha256`, `bodySha256 must match ${outcome.bodySha256}.`);
   return { success: true, data: outcome };
 }
 

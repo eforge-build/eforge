@@ -95,6 +95,7 @@ export async function runBacklogCurationMapReduceTask(options: BacklogCurationMa
   const cached = await resolveCacheAndMisses(options, bundle.packets, promptVersion);
   await options.progress(`Cache hits ${cached.hits}, misses ${cached.misses}`);
   const audited = await auditMisses(options, cached.missPackets, promptVersion, cached.outcomes.length, bundle.packets.length);
+  throwIfAborted(options.abortController.signal);
   const outcomes = [...bundle.degradedOutcomes, ...cached.outcomes, ...audited];
   await options.progress(`Reducing ${outcomes.length} item outcomes`);
   const reducerInput = buildReducerInput(options, bundle, outcomes);
@@ -168,7 +169,7 @@ async function auditOnePacket(options: BacklogCurationMapReduceRunnerOptions, pa
     }
     return outcome;
   } catch (error) {
-    if (options.abortController.signal.aborted) return cancelledOutcome(packet, packetSha256);
+    if (options.abortController.signal.aborted) throwIfAborted(options.abortController.signal);
     return failureOutcome(packet, packetSha256, error);
   }
 }

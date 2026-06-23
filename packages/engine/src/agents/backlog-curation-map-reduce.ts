@@ -86,7 +86,10 @@ export async function* runBacklogCurationItemAuditTask(
     sourceFingerprint: packet.sourceFingerprint,
     packetSha256,
     promptVersion: BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
-    runtimeIdentityJson: JSON.stringify(options.runtimeIdentity, null, 2),
+    runtimeIdentityJson: JSON.stringify(options.runtimeIdentity ?? null, null, 2),
+    runtimeIdentityInstruction: options.runtimeIdentity === undefined
+      ? 'Runtime identity was not provided by the server; include a valid `runtimeIdentity` in your submission.'
+      : 'Runtime identity is server-owned; do not submit this field.',
     packetJson: JSON.stringify(packet, null, 2),
     submitTool: options.harness.effectiveCustomToolName(ITEM_AUDIT_SUBMIT_TOOL_NAME),
     progressTool: options.harness.effectiveCustomToolName(PLANNING_PROGRESS_TOOL_NAME),

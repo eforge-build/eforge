@@ -3,7 +3,7 @@ import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAge
 import { toJsonSafeObject } from './json-safe.js';
 import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogInput, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
 import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
-import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
+import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata, type BacklogCurationSourceBuild } from './backlog-curation-source.js';
 import {
   BACKLOG_CURATION_WORKFLOW_PURPOSE,
   listBacklogCurationWorkflowEntries,
@@ -21,7 +21,7 @@ type AnalyzeAllStartRequest = {
   kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
   input: {
     topic: string;
-    sourceProvider: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number } };
+    sourceProvider: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number; prebuiltSource?: BacklogCurationSourceBuild } };
     requestedOutputSections: typeof BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS;
     includeRoadmap: true;
   };
@@ -44,7 +44,7 @@ export const analyzeAllBacklogAction = defineExtensionAction({
       const active = await findActiveBacklogCurationTask(ctx, sourceFingerprint, itemAuditConcurrency);
       if (active !== undefined) return toJsonSafeObject({ task: compactTask(active.task), entry: active.entry, reused: true });
       throwIfAborted(ctx.signal);
-      const response = await startBacklogCurationTask(ctx, itemAuditConcurrency);
+      const response = await startBacklogCurationTask(ctx, itemAuditConcurrency, source);
       const entry = await recordEntryOrCancelTask(ctx, response.task.taskId, buildBacklogCurationEntry(response.task.taskId, sourceFingerprint, undefined, itemAuditConcurrency));
       return toJsonSafeObject({ task: compactTask(response.task), entry });
     });
@@ -86,12 +86,12 @@ export function buildBacklogCurationEntry(taskId: string, sourceFingerprint?: st
   };
 }
 
-async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditConcurrency?: number): Promise<{ task: ExtensionAgentTaskRecord }> {
+async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditConcurrency: number | undefined, source: BacklogCurationSourceBuild): Promise<{ task: ExtensionAgentTaskRecord }> {
   const request: AnalyzeAllStartRequest = {
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
     input: {
       topic: ANALYZE_ALL_TOPIC,
-      sourceProvider: { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) } },
+      sourceProvider: { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }), prebuiltSource: source } },
       requestedOutputSections: BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS,
       includeRoadmap: true,
     },

@@ -8,7 +8,7 @@ You are auditing exactly one validated backlog item packet for map/reduce backlo
 - Source fingerprint: {{sourceFingerprint}}
 - Packet SHA-256: {{packetSha256}}
 - Prompt version: {{promptVersion}}
-- Runtime identity (server-owned; do not submit this field):
+- {{runtimeIdentityInstruction}}
 
 ```json
 {{runtimeIdentityJson}}
@@ -31,7 +31,7 @@ You MAY call `{{progressTool}}` for telemetry-only progress. Progress never repl
 - Do not include raw evidence dumps, raw item bodies, or unrelated context in your output.
 - Keep the finding compact. Use citations and recommendation signals only when they are directly useful to the reducer.
 - Preserve `itemId`, `sourceFingerprint`, `bodySha256`, `packetSha256`, and `promptVersion` exactly.
-- Do not include `runtimeIdentity`; the runner injects the authoritative runtime identity.
+- If the server provided runtime identity above, do not include `runtimeIdentity`; the runner injects the authoritative runtime identity. If it is `null`, include a valid `runtimeIdentity` in the submission.
 
 ## Output contract
 

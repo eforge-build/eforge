@@ -138,23 +138,39 @@ describe('backlog curation map/reduce runner', () => {
     expect(Buffer.byteLength(reducerPrompt, 'utf-8')).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES * 2);
     expect(reducerPrompt).toContain('"outcome": "audited-finding"');
   });
+
+  it('cancels active item audits without starting queued work or invoking the reducer', async () => {
+    const controller = new AbortController();
+    const harness = new MapReduceHarness({ blockItemAudits: true });
+    const sourceBundle = multiPacketBundle(4);
+    const run = runBacklogCurationMapReduceTask(baseOptions({ harness, sourceBundle, abortController: controller, itemAuditConcurrency: 2 }));
+
+    await waitFor(() => harness.itemAuditCalls === 2);
+    controller.abort();
+    await expect(run).rejects.toThrow(/aborted|cancel/i);
+
+    expect(harness.itemAuditCalls).toBe(2);
+    expect(harness.observedAborted).toEqual([true, true]);
+    expect(harness.reducerCalls).toBe(0);
+  });
 });
 
 type RunnerOptions = Parameters<typeof runBacklogCurationMapReduceTask>[0];
 
-function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]; providerHooks?: RunnerOptions['providerHooks'] }): RunnerOptions {
+function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]; providerHooks?: RunnerOptions['providerHooks']; sourceBundle?: BacklogCurationMapReduceSourceBundle; abortController?: AbortController; itemAuditConcurrency?: number }): RunnerOptions {
   return {
     cwd: process.cwd(),
     taskId: 'task-map-reduce',
     input: { topic: 'curate', requestedOutputSections: ['backlogCurationDraft', 'recommendations'] },
     harness: overrides.harness,
-    sourceBundle: bundle,
+    sourceBundle: overrides.sourceBundle ?? bundle,
     providerHooks: overrides.providerHooks ?? {
       readBacklogCurationItemAuditCache: async () => ({ hit: false }),
       buildBacklogCurationReducerInput: (globalContext, outcomes) => ({ schemaVersion: 1, sourceFingerprint: globalContext.sourceFingerprint, globalContext, outcomes: [...outcomes], diagnostics: [] }),
     },
     runtimeIdentity: { provider: 'stub', modelId: 'stub-model' },
-    abortController: new AbortController(),
+    ...(overrides.itemAuditConcurrency !== undefined && { itemAuditConcurrency: overrides.itemAuditConcurrency }),
+    abortController: overrides.abortController ?? new AbortController(),
     progress: async (message) => { overrides.progress?.push(message); },
     sectionProgress: async () => {},
   };
@@ -165,8 +181,9 @@ class MapReduceHarness implements AgentHarness {
   reducerCalls = 0;
   reducerInputs: Array<{ outcomes?: unknown[] }> = [];
   reducerPrompts: string[] = [];
+  observedAborted: boolean[] = [];
 
-  constructor(private readonly behavior: { itemFailure?: Error; reducerResult?: Record<string, unknown> } = {}) {}
+  constructor(private readonly behavior: { itemFailure?: Error; reducerResult?: Record<string, unknown>; blockItemAudits?: boolean } = {}) {}
 
   effectiveCustomToolName(name: string): string { return name; }
 
@@ -176,6 +193,11 @@ class MapReduceHarness implements AgentHarness {
     const reducerTool = options.customTools?.find((tool) => tool.name === 'submit_eforge_plan_planning_result');
     if (itemTool !== undefined) {
       this.itemAuditCalls += 1;
+      if (this.behavior.blockItemAudits === true) {
+        await waitForAbort(options.abortSignal);
+        this.observedAborted.push(options.abortSignal?.aborted === true);
+        throw new Error('item audit aborted');
+      }
       if (this.behavior.itemFailure !== undefined) throw this.behavior.itemFailure;
       await itemTool.handler(finding());
     }
@@ -187,6 +209,24 @@ class MapReduceHarness implements AgentHarness {
     }
     yield { type: 'agent:stop', agent, planId, agentId: 'agent', timestamp: new Date().toISOString() };
   }
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 100; i += 1) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for condition');
+}
+
+function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
+  if (signal?.aborted === true) return Promise.resolve();
+  return new Promise((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+}
+
+function multiPacketBundle(count: number): BacklogCurationMapReduceSourceBundle {
+  const packets = Array.from({ length: count }, (_, index) => ({ ...packet, itemId: `item-${index + 1}`, itemTitle: `Item ${index + 1}`, precondition: { ...packet.precondition, id: `item-${index + 1}` } }));
+  return { ...bundle, globalContext: { ...bundle.globalContext, itemCount: count, openItemIds: packets.map((entry) => entry.itemId) }, packets, reducerInput: { ...bundle.reducerInput, globalContext: { ...bundle.reducerInput.globalContext, itemCount: count, openItemIds: packets.map((entry) => entry.itemId) } } };
 }
 
 function extractReducerInput(prompt: string): { outcomes?: unknown[] } {

@@ -143,6 +143,7 @@ export async function validateBacklogCurationPlanningDraftResult(cwd: string, re
     }, { skipGeneratedRecommendationErrors: false });
     return [];
   } catch (err) {
+    if (!(err instanceof ExtensionActionInputValidationError)) throw err;
     return previewErrorsFromError(err).map((error) => `${error.path}: ${error.message}`);
   }
 }
