@@ -480,6 +480,19 @@ describe('playbook skills — generic eforge-plan planning entry contract', () =
       expect(raw).not.toContain('/eforge:plan');
     }
   });
+
+  it('both playbook skills document eforge-playbooks action ownership and avoid removed direct-route wording', () => {
+    const directRoute = '/api/' + 'playbook';
+    for (const raw of [piPlaybook, pluginPlaybook]) {
+      expect(raw).toContain('eforge-playbooks');
+      expect(raw).toContain('eforge-playbooks:run-playbook');
+      expect(raw).toContain('eforge-playbooks:copy-playbook');
+      expect(raw).not.toContain(directRoute);
+      expect(raw).not.toContain('create-from-' + 'playbook');
+    }
+    expect(piPlaybook).toContain('eforge_extension_contribution');
+    expect(pluginPlaybook).toContain('mcp__eforge__eforge_extension_contribution');
+  });
 });
 
 describe('docs/config.md — planning playbook prose', () => {

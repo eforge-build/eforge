@@ -7,7 +7,7 @@ description: Install eforge and run your first delegated build.
 
 # Getting Started
 
-eforge turns normalized build source into reviewed, validated code changes. For your first build, start directly from a prompt, PRD, or file path; optional workflow surfaces such as playbooks, session plans, and first-party planning extensions can prepare build source before it reaches the same kernel.
+eforge turns normalized build source into reviewed, validated code changes. For your first build, start directly from a prompt, PRD, or file path; optional workflow surfaces such as first-party `eforge-playbooks`, session plans, and first-party planning extensions can prepare build source before it reaches the same kernel.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ Use `--profile <name>` for a one-off agent runtime profile override, and `--land
 
 ## Optional planning and workflow surfaces
 
-Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension is available. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
+Optional producers can prepare build source before the kernel sees it. [Playbooks](./playbooks) are reusable workflow artifacts owned by the first-party `eforge-playbooks` extension: autonomous playbooks normalize to build source and enqueue a build, while planning-mode playbooks route to eforge-plan when that optional first-party extension provides the `eforge.plan.planning-mode-playbook` capability. Optional first-party extension behavior is documented in the [eforge-plan guide](./eforge-plan).
 
 When eforge-plan is loaded and trusted, hosts can discover, inspect, and invoke its planning entry through extension contributions; from the standalone CLI, use `eforge extension contributions list --search planning`, `eforge extension contributions show eforge-plan:open-planning-entry --kind command`, and `eforge extension contributions invoke eforge-plan:open-planning-entry --kind command`. Follow the [eforge-plan guide](./eforge-plan) for extension-owned handoff details; ready build source can still be submitted as a normal file build.
 
@@ -122,7 +122,7 @@ description: How the eforge build engine, inputs, and extension surfaces fit tog
 
 eforge is a build-engine kernel with extensible workflow surfaces around it. The core engine consumes normalized build source, compiles it into plans, orchestrates dependency-aware worktrees, runs implementation/review/validation loops, records conservative gates, and emits typed events for consumers.
 
-Input authoring and workflow UX live outside that core. CLI prompts, rough notes, PRD files, playbooks, session plans, wrapper-app artifacts, host integrations, toolbelts, shell hooks, and native extensions can shape how work is prepared or governed before it reaches the engine. They are extension surfaces, not separate engines.
+Input authoring and workflow UX live outside that core. CLI prompts, rough notes, PRD files, `eforge-playbooks` playbook workflows, session plans, wrapper-app artifacts, host integrations, toolbelts, shell hooks, and native extensions can shape how work is prepared or governed before it reaches the engine. They are extension surfaces, not separate engines.
 
 That boundary is why different hosts can feel different while the build semantics remain consistent: every input surface eventually normalizes into build source, and the engine handles the same compile/build/landing lifecycle.
 
@@ -146,7 +146,7 @@ The compile phase produces `orchestration.yaml` - a dependency graph over the pl
 
 A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, a wrapper-app artifact, an autonomous workflow artifact, or another host-provided file, but the build-engine kernel sees normalized build source rather than the original authoring surface.
 
-That boundary keeps producer UX optional. Hosts, wrapper apps, playbooks, session-plan compatibility adapters, and first-party extensions such as [eforge-plan](/docs/eforge-plan) may help collect intent, investigate scope, or format a handoff. They are producers around the kernel. Once a build is enqueued, the engine consumes the normalized source through the same compile/build/landing lifecycle.
+That boundary keeps producer UX optional. Hosts, wrapper apps, playbooks owned by the first-party `eforge-playbooks` extension, session-plan compatibility tools, and first-party extensions such as [eforge-plan](/docs/eforge-plan) may help collect intent, investigate scope, or format a handoff. They are producers around the kernel. Once a build is enqueued, the engine consumes the normalized source through the same compile/build/landing lifecycle.
 
 ## Build Artifact Provenance
 
@@ -209,7 +209,7 @@ A **profile** is a named YAML file that bundles tier recipes into a reusable uni
 
 The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models. See [Profiles](/docs/profiles) for a full walkthrough.
 
-**Playbooks** are an optional workflow surface: a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Autonomous playbooks normalize to build source before enqueue; planning playbooks route to optional eforge-plan planning when that extension capability is available. See [Playbooks](/docs/playbooks).
+**Playbooks** are an optional workflow surface owned by the first-party `eforge-playbooks` extension: reusable Markdown templates for recurring work that optionally pin a profile via their `profile` frontmatter field. Autonomous playbooks normalize to build source before enqueue; planning playbooks route to optional eforge-plan planning when that extension capability is available and return planning-entry metadata rather than enqueueing directly. See [Playbooks](/docs/playbooks).
 
 ## The Queue and Daemon
 
@@ -404,7 +404,7 @@ The standalone CLI can override the active profile for one build with `eforge bu
 
 ## Native Extensions
 
-Configuration is split between core build/daemon/profile settings and optional producer surfaces. The build-engine kernel consumes normalized build source; native extensions, playbooks, and session-plan compatibility adapters can prepare, route, or govern that source before enqueue without becoming kernel capabilities.
+Configuration is split between core build/daemon/profile settings and optional producer surfaces. The build-engine kernel consumes normalized build source; native extensions, the first-party `eforge-playbooks` extension, and session-plan compatibility tools can prepare, route, or govern that source before enqueue without becoming kernel capabilities.
 
 Native eforge extensions are TypeScript/JavaScript modules discovered from three scopes:
 
@@ -437,7 +437,7 @@ Extension action handlers use `extensions.eventHookTimeoutMs`; `agentContextHook
 
 Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, registration counts, and event replay results through `eforge extension list/show/validate/test` and extension API routes.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture for runtime-wired families, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, reviewer perspective execution, validation-provider execution, engine-side extension action/contribution/workstation registry support, Console System rendering for declarative contributions, sandboxed Console workstation rendering from `srcDoc` or daemon-owned `frameBundle` frame/asset URLs, host discovery/detail/invocation for actions, integration commands, and action-backed deep links, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote`). Package-managed extensions installed via `eforge extension install` carry nested `package.*` and `install.*` provenance fields such as `install.sourceKind`, `install.sourceSpec`, and `install.installedAt`; install sidecar files are excluded from the trust hash. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. The bundled playbook and session-planning adapters are internal/built-in and are not native extension registration points. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, direct React loading into the parent Console, private Console imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and user-authored workflow registration for custom session-plan or playbook extraction are not supported by native extensions in the current release. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture for runtime-wired families, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, reviewer perspective execution, validation-provider execution, engine-side extension action/contribution/workstation registry support, Console System rendering for declarative contributions, sandboxed Console workstation rendering from `srcDoc` or daemon-owned `frameBundle` frame/asset URLs, host discovery/detail/invocation for actions, integration commands, and action-backed deep links, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust/install/update/remove/promote/demote`). Package-managed extensions installed via `eforge extension install` carry nested `package.*` and `install.*` provenance fields such as `install.sourceKind`, `install.sourceSpec`, and `install.installedAt`; install sidecar files are excluded from the trust hash. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. The first-party `eforge-playbooks` extension exposes playbook actions through the native extension contribution model, backed by public `@eforge-build/input` helpers; the session-planning helpers remain separate from that playbook extension boundary. These are not user-authored native workflow registration points. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, direct React loading into the parent Console, private Console imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and user-authored workflow registration for custom session-plan or playbook extraction are not supported by native extensions in the current release. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
 ## Guided Toolbelt Presets
 
@@ -558,7 +558,7 @@ For the complete field schema and validation behavior, see the [Toolbelts](/refe
 
 ## Playbook Profiles
 
-Playbooks are optional workflow artifacts that resolve outside the build-engine kernel before autonomous runs normalize to build source or planning runs route to an extension. Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
+Playbooks are optional workflow artifacts that resolve outside the build-engine kernel through `eforge-playbooks:run-playbook` before autonomous runs normalize to build source or planning runs route to eforge-plan handoff metadata. The extension owns playbook management/run behavior and uses pure `@eforge-build/input` helpers for parsing, storage, validation, compilation, and seed generation. Playbooks support an optional `profile` frontmatter field that names an agent runtime profile to use when the playbook runs:
 
 ```yaml
 ---
@@ -577,7 +577,7 @@ Keep all documentation in sync with the latest code changes.
 
 **Validation timing**: the named profile is validated at execution time, not when the playbook is saved. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
 
-**Planning playbooks**: when a planning-mode playbook has a `profile` field and the eforge-plan planning flow creates a session plan from it, the profile is inherited into the session plan's `agent_profile` frontmatter field. When the session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
+**Planning playbooks**: when a planning-mode playbook has a `profile` field, `eforge-playbooks:run-playbook` includes it in the eforge-plan planning handoff seed. The eforge-plan flow applies it as the session plan's `agent_profile` frontmatter when a plan is created; when that session plan is enqueued, `agent_profile` is used as the effective profile unless an explicit override is supplied.
 
 **Blank profile fallback**: omitting `profile` allows a registered profile router to select a profile first; if no router selects one, eforge uses the project's active-profile marker or engine defaults.
 
@@ -831,7 +831,7 @@ description: TypeScript and JavaScript extensions that observe lifecycle behavio
 
 # Extensions
 
-eforge has a broad extension surface around a small build-engine kernel. Input surfaces, playbooks, session plans, profile toolbelts, shell hooks, host integrations, wrapper apps, and native TypeScript extensions can shape how work is authored, routed, governed, observed, and integrated without moving those concerns into the engine.
+eforge has a broad extension surface around a small build-engine kernel. Input surfaces, first-party `eforge-playbooks` playbook workflows, session plans, profile toolbelts, shell hooks, host integrations, wrapper apps, and native TypeScript extensions can shape how work is authored, routed, governed, observed, and integrated without moving those concerns into the engine.
 
 Native eforge extensions are one typed mechanism in that broader surface: TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, PRD enrichers, reviewer perspectives, validation providers, custom tools, typed actions, declarative Console contributions, sandboxed Console workstations, integration commands, and deep links with full TypeScript inference.
 
@@ -852,7 +852,7 @@ Native eforge extensions are distinct from other extensibility mechanisms in the
 
 Toolbelts answer "which project MCP servers from `.mcp.json` should this tier expose?" Extensions answer "what should eforge do when something happens?" and may contribute TypeScript-defined tools per agent run. Toolbelts do not filter extension-contributed tools, engine-internal custom tools, or harness built-ins. Extensions should not redefine toolbelts or act as a hidden profile/config layer.
 
-Playbooks and session plans are reusable input artifacts built on `@eforge-build/input`. The first-party `@eforge-build/eforge-playbooks` extension owns shipped playbook management actions, planning-mode handoff metadata, and autonomous queue handoff across project-local, project-team, and user scopes while using the pure input playbook helpers for parsing, storage, validation, and compilation. Session plans remain project-local Markdown files under `.eforge/session-plans/` and are handled by the bundled session-planning adapter. Native extensions do not currently register custom playbook or session-plan extraction workflows. Custom playbook extraction remains deferred, custom session-plan extraction remains deferred, user-authored session-plan extraction remains unsupported, user-authored playbook extraction remains unsupported, and user-authored native workflow registration remains future/deferred work.
+Playbooks and session plans are reusable input artifacts built on `@eforge-build/input`. The first-party `@eforge-build/eforge-playbooks` extension owns shipped playbook management actions, planning-mode handoff metadata, and autonomous queue handoff across project-local, project-team, and user scopes while using the pure input playbook helpers for parsing, storage, validation, and compilation. Session plans remain project-local Markdown files under `.eforge/session-plans/` and are handled separately from the playbook extension boundary. Native extensions do not currently register custom playbook or session-plan extraction workflows. Custom playbook extraction remains deferred, custom session-plan extraction remains deferred, user-authored session-plan extraction remains unsupported, user-authored playbook extraction remains unsupported, and user-authored native workflow registration remains future/deferred work.
 
 ## Extension user workflow
 
@@ -1005,9 +1005,9 @@ Install scope follows the CLI scaffold labels: `local` targets `.eforge/extensio
 
 Non-JSON output prints concrete next steps after install. When the returned entry has `trustState: "untrusted"` or `"changed"`, the CLI prints a trust command (`eforge extension trust <name>`), a validate command, and a reload command. JSON output (`--json`) prints the daemon response directly.
 
-### Optional first-party eforge-plan package
+### Optional first-party eforge-plan and eforge-playbooks packages
 
-`@eforge-build/eforge-plan` is the optional first-party planning package. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, and revision flows is documented in [eforge-plan](/docs/eforge-plan) and the extension-owned README.
+`@eforge-build/eforge-plan` is the optional first-party planning package. `@eforge-build/eforge-playbooks` is the first-party playbooks package; it declares playbook management/run capabilities and optionally uses the `eforge-plan` planning-mode capability when available. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, revision flows, playbook management, and playbook run handoff is documented in [eforge-plan](/docs/eforge-plan), [Playbooks](/docs/playbooks), and the extension-owned READMEs.
 
 ```bash
 # Local install (trusted by default)
@@ -1025,13 +1025,26 @@ eforge extension reload
 eforge extension install @eforge-build/eforge-plan --scope project --trust
 eforge extension reload
 
+# Install the first-party playbooks package
+eforge extension install @eforge-build/eforge-playbooks
+eforge extension validate eforge-playbooks
+eforge extension reload
+
+# Project/team install with post-inspection trust
+eforge extension install @eforge-build/eforge-playbooks --scope project
+eforge extension validate eforge-playbooks
+eforge extension trust eforge-playbooks
+eforge extension reload
+
 # Update or remove
 eforge extension update eforge-plan
 eforge extension update eforge-plan --version latest
 eforge extension remove eforge-plan
+eforge extension update eforge-playbooks
+eforge extension remove eforge-playbooks
 ```
 
-The package remains unsandboxed arbitrary code like any native extension. It ships its runtime entrypoints in `dist/` and its planning workstation browser bundle in `workstation-assets/plans/`. Local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading.
+These packages remain unsandboxed arbitrary code like any native extension. `eforge-plan` ships runtime entrypoints in `dist/` and its planning workstation browser bundle in `workstation-assets/plans/`; `eforge-playbooks` ships its runtime entrypoint in `dist/` and declarative Console contribution metadata without a workstation bundle. Local installs under `.eforge/extensions/` are trusted by default, while project/team installs under `eforge/extensions/` require each user to inspect and trust the package before loading.
 
 ### Promote and demote
 
@@ -1320,7 +1333,7 @@ Policy gates run at three blocking points: `beforeQueueDispatch` runs before a q
 
 Policy decisions are strictly validated. `{ decision: 'allow' }` lets the operation continue. `{ decision: 'block', reason }` blocks it and surfaces the reason. `{ decision: 'require-approval', reason }` blocks the gated operation; eforge does not provide approval workflow, approval state, or Console approval UI in the current release. Thrown errors, timeouts, and invalid decisions emit `extension:policy:*` diagnostics and follow `extensions.policyGateFailurePolicy`: `fail-closed` blocks, while `fail-open` allows continuation after recording diagnostics.
 
-Unsupported extension capability families are still recorded as registration metadata when applicable so provenance and validation output remain complete. User-authored session-plan extraction remains unsupported, and user-authored playbook extraction remains unsupported. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. Extension-authored actions, Console contributions, integration commands, and deep links are captured in the engine registry with safe management details and manifest projection; the daemon exposes contribution manifest and action invocation routes, Console renders declarative Console contributions under `/console/system`, and CLI, MCP/Claude, and Pi host integrations can discover actions, integration commands, and action-backed deep links through the shared contribution dispatcher. Action invocations reuse `extensions.eventHookTimeoutMs`, receive the daemon-owned `ctx.agentTasks` API for supported single-shot read-only planner tasks and `ctx.buildQueue.enqueue` for trusted queue handoffs, and emit daemon-scoped `extension:action:*` lifecycle events without raw input payloads or raw output payloads. The shipped playbook and session-planning adapters are internal/built-in rather than user-authored native extension registration points. `beforeEnqueue`, `beforeValidation`, `modify` decisions, custom session-plan extraction into extensions, custom playbook extraction into extensions, raw extension-owned HTTP routes, arbitrary Console JavaScript outside registered workstation documents, direct React loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, multi-turn chat, arbitrary raw prompt templates, and independently loaded frontend plugins are unsupported runtime phases. Approval workflows, approval state, and Console approval UI are not provided in the current release.
+Unsupported extension capability families are still recorded as registration metadata when applicable so provenance and validation output remain complete. User-authored session-plan extraction remains unsupported, and user-authored playbook extraction remains unsupported. For tools, `registerTool(tool)` records loader-time provenance and validation metadata; returning `tools: [tool]` from `onAgentRun` is the per-run injection path. Extension-authored actions, Console contributions, integration commands, and deep links are captured in the engine registry with safe management details and manifest projection; the daemon exposes contribution manifest and action invocation routes, Console renders declarative Console contributions under `/console/system`, and CLI, MCP/Claude, and Pi host integrations can discover actions, integration commands, and action-backed deep links through the shared contribution dispatcher. Action invocations reuse `extensions.eventHookTimeoutMs`, receive the daemon-owned `ctx.agentTasks` API for supported single-shot read-only planner tasks and `ctx.buildQueue.enqueue` for trusted queue handoffs, and emit daemon-scoped `extension:action:*` lifecycle events without raw input payloads or raw output payloads. The shipped playbook action surface lives in the first-party `eforge-playbooks` extension, and the session-planning adapter remains internal/built-in; neither is a user-authored native extension registration point. `beforeEnqueue`, `beforeValidation`, `modify` decisions, custom session-plan extraction into extensions, custom playbook extraction into extensions, raw extension-owned HTTP routes, arbitrary Console JavaScript outside registered workstation documents, direct React loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, multi-turn chat, arbitrary raw prompt templates, and independently loaded frontend plugins are unsupported runtime phases. Approval workflows, approval state, and Console approval UI are not provided in the current release.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -1629,7 +1642,7 @@ Compatibility helper that resolves safe path segments under the project-local `.
 
 Prefer `createEforgeProjectPaths` or `resolveExtensionStoragePath` for new extension-owned storage so the scope and `storage/extensions/<extension-name>/` convention are explicit.
 
-These helpers do not add a native workflow registration API. The bundled playbook and session-planning adapters are internal to `@eforge-build/input`; user-authored custom playbook or session-plan extraction is not supported by native extensions in the current release.
+These helpers do not add a native workflow registration API. The first-party `eforge-playbooks` package exposes shipped playbook behavior through extension actions backed by public `@eforge-build/input` helpers; session-planning helpers remain separate from that playbook extension boundary. User-authored custom playbook or session-plan extraction is not supported by native extensions in the current release.
 
 ---
 
@@ -2805,7 +2818,7 @@ Breaking changes to daemon HTTP routes, event schemas, manifest wire shapes, or 
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Direct React component loading into the parent Console is unsupported for extensions, private Console React/components/CSS imports are unsupported, parent Console context imports are unsupported, and parent-Console plugins are unsupported. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution/workstation registry support, daemon contribution manifest/action invocation routes, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, daemon-owned `ctx.buildQueue.enqueue` dispatch for trusted queue handoffs, Console System rendering, and CLI/MCP/Pi host discovery/detail/invocation for action-backed contributions, plus sandboxed iframe workstation rendering. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The bundled playbook and session-planning adapters are internal/built-in and are not user-authored native extension workflow registration APIs. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and arbitrary frontend plugin bundles outside registered workstation iframes are intentionally deferred or unsupported runtime phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records runtime-wired registrations and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Direct React component loading into the parent Console is unsupported for extensions, private Console React/components/CSS imports are unsupported, parent Console context imports are unsupported, and parent-Console plugins are unsupported. Runtime dispatch and replay testing are available for `onEvent`; runtime wiring is also available for `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`), `registerInputSource` enqueue preprocessing, `registerPrdEnricher` content enrichment, `registerReviewerPerspective` parallel review-cycle dispatch, `registerValidationProvider` per-plan validate-stage execution, engine-side extension action/contribution/workstation registry support, daemon contribution manifest/action invocation routes, daemon-owned `ctx.agentTasks` dispatch for supported single-shot read-only planner tasks, daemon-owned `ctx.buildQueue.enqueue` dispatch for trusted queue handoffs, Console System rendering, and CLI/MCP/Pi host discovery/detail/invocation for action-backed contributions, plus sandboxed iframe workstation rendering. Replay invokes only matching event hooks and summarizes non-event registrations separately with their current runtime status. The first-party `eforge-playbooks` extension exposes shipped playbook behavior through native actions, and session-planning remains separate/built-in; neither is a user-authored native extension workflow registration API. `beforeEnqueue`, `beforeValidation`, approval workflow/state/UI, `modify` decisions, user-authored custom session-plan extraction, user-authored custom playbook extraction, raw extension-owned HTTP routes, extension-authored arbitrary frontend asset bundles outside the workstation frame/asset contract, direct React component loading into the parent Console, private Console React/components/CSS imports, parent Console context imports, extension-owned AI planning/chat APIs outside `ctx.agentTasks`, arbitrary raw prompt templates, multi-turn chat, and arbitrary frontend plugin bundles outside registered workstation iframes are intentionally deferred or unsupported runtime phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -2974,7 +2987,7 @@ The active profile sets the baseline. Other mechanisms can override it in specif
 
 1. **Explicit `--profile` flag** - `eforge build --profile <name>` or the enqueue `profile` field overrides the active-profile marker for that single build.
 2. **PRD frontmatter `profile:`** - a profile set directly in a PRD file takes absolute precedence; no profile router is consulted.
-3. **Playbook `profile:` frontmatter** - overrides the active-profile marker and any profile router when the playbook runs. See [Playbooks](/docs/playbooks).
+3. **Playbook `profile:` frontmatter** - applied by `eforge-playbooks:run-playbook` before generic queue handoff; it overrides the active-profile marker and any profile router for autonomous runs and is included in eforge-plan handoff metadata for planning runs. See [Playbooks](/docs/playbooks).
 4. **Registered profile router** - an extension can register a `selectBuildProfile` function that selects a profile per-PRD from queue context. Routers run only when no explicit profile is set in the PRD frontmatter. See [Extensions API - registerProfileRouter](/docs/extensions-api).
 5. **Active-profile marker** - the fallback when no higher-precedence mechanism applies.
 6. **Engine defaults** - used when no profile is configured at all.
@@ -3069,6 +3082,14 @@ description: Create and run reusable workflow templates for recurring eforge bui
 
 A playbook is an optional workflow artifact around the eforge build-engine kernel. Instead of re-describing recurring work each time, you write it once as a Markdown file and run it on demand. eforge resolves the playbook, optionally routes it to a specific agent runtime profile, and either normalizes it to build source for enqueue or routes to an investigation-first planning extension before a later handoff.
 
+## Boundary and ownership
+
+`eforge-playbooks` owns playbook management and run behavior. The first-party extension exposes the canonical actions `eforge-playbooks:list-playbooks`, `eforge-playbooks:show-playbook`, `eforge-playbooks:save-playbook`, `eforge-playbooks:validate-playbook`, `eforge-playbooks:copy-playbook`, `eforge-playbooks:promote-playbook`, `eforge-playbooks:demote-playbook`, and `eforge-playbooks:run-playbook` through generic extension contribution/action invocation. Host commands such as `/eforge:playbook`, `eforge playbook`, MCP `eforge_playbook`, and Pi `eforge_playbook` are compatibility surfaces over those extension contributions.
+
+`@eforge-build/input` keeps the pure playbook parse, serialize, list, load, write, move, copy, validate, compile, and seed helpers. Autonomous playbooks enqueue through `ctx.buildQueue.enqueue(...)` via generic extension action handoff. Planning playbooks check the `eforge.plan.planning-mode-playbook` capability from eforge-plan and return planning-entry metadata or unavailable diagnostics; they do not create session plans or enqueue PRDs directly. Console playbook management is displayed through extension contributions and workstations, not a core Console playbooks section.
+
+If `eforge-playbooks` is unavailable, hosts report extension-unavailable diagnostics and guidance to install, trust, validate, or reload the extension before retrying.
+
 ## Modes
 
 Every playbook has a `mode` field in its YAML frontmatter:
@@ -3077,7 +3098,7 @@ Every playbook has a `mode` field in its YAML frontmatter:
 
 **`mode: planning`** - running the playbook checks the `eforge.plan.planning-mode-playbook` capability from optional [eforge-plan](/docs/eforge-plan) and returns generic planning entry metadata when that capability is available. Continue through `eforge_extension_contribution` list/show/invoke or the eforge-plan workstation deep link; the extension owns the investigation-first flow, session-plan drafting, revision, and handoff before `/eforge:build`. The daemon does not create the session plan directly or enqueue a PRD.
 
-When you invoke the `eforge-playbooks:run-playbook` extension action for a planning playbook, the extension action returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable.
+When you invoke the `eforge-playbooks:run-playbook` extension action for a planning playbook, the extension action returns `{ kind: "requires-agent", mode: "planning", planningEntry, requiredCapability }` when eforge-plan is available, or `{ kind: "planning-unavailable", requiredCapability, diagnostics }` when the required capability is unavailable. The required capability is provider `eforge-plan`, id `eforge.plan.planning-mode-playbook`, range `>=1.0.0`. Available planning output includes contribution `eforge-plan:open-planning-entry`, workstation id `eforge-plan:planning-workstation`, and workstation URL `/console/workstations/eforge-plan%3Aplanning-workstation`.
 
 Planning-mode playbooks produce session plans through the eforge-plan planning entry, not by directly enqueueing a PRD. The planning workstation creates or resumes a file in `.eforge/session-plans/`, records confirmed investigation findings as context/evidence in context-oriented sections, and makes Scope, Code Impact, and Acceptance Criteria describe concrete implementation targets, actions, and validation criteria. Then `/eforge:build` submits the ready session-plan file as build source. If the playbook declares `profile`, the session plan inherits it as `agent_profile`; the profile is validated when that session plan is enqueued. If the playbook declares `postMerge`, those commands are forwarded as generic queued PRD `postMerge` metadata only when an autonomous playbook is converted directly to build source.
 
@@ -3198,6 +3219,16 @@ eforge extension contributions invoke eforge-playbooks:list-playbooks --kind com
 ```
 
 Output groups playbooks by scope tier and marks shadowed entries.
+
+## Copy a playbook
+
+Copy an existing playbook between scopes through the generic extension contribution command:
+
+```bash
+eforge extension contributions invoke eforge-playbooks:copy-playbook --kind command --input-json '{"name":"docs-sync","targetScope":"project-local","overwrite":true}'
+```
+
+The action validates the source and destination, writes through the extension-owned playbook helpers, and returns the copied playbook metadata.
 
 ## Edit a playbook
 
@@ -3509,7 +3540,7 @@ description: How to use eforge from Claude Code, Pi, the standalone CLI, extensi
 
 # Integrations
 
-eforge can be driven from three host surfaces: the Claude Code plugin, the Pi extension, and the standalone CLI. All three talk to the same daemon and share the same core queue and profiles. Optional workflow surfaces such as playbooks, session-plan compatibility tools, and first-party extensions prepare or route build source around the kernel. This page covers how each surface works and how to connect eforge to external systems.
+eforge can be driven from three host surfaces: the Claude Code plugin, the Pi extension, and the standalone CLI. All three talk to the same daemon and share the same core queue and profiles. Optional workflow surfaces such as `eforge-playbooks`, session-plan compatibility tools, and first-party extensions prepare or route build source around the kernel. This page covers how each surface works and how to connect eforge to external systems.
 
 ## Claude Code plugin
 
@@ -3537,7 +3568,7 @@ eforge mcp-proxy
 
 The proxy translates MCP tool calls from Claude Code into HTTP requests to the local daemon HTTP API. The daemon auto-starts on first use; you do not need to start it manually.
 
-The MCP tool surface includes build enqueueing, status, config/profile/playbook/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
+The MCP tool surface includes build enqueueing, status, config/profile/session-plan management, recovery, extension management, extension contribution discovery/detail/invocation through `eforge_extension_contribution` (`mcp__eforge__eforge_extension_contribution` in Claude tool-call form), `eforge_playbook` compatibility over `eforge-playbooks:*` contributions, existing queue controls, and auto-build state. `eforge_queue_priority` updates pending/waiting queue-item priority, and `eforge_queue_remove` removes non-running pending, waiting, failed, or skipped queue items. The richer hold/unhold, scheduler pause/resume, failed-enqueue re-enqueue, and cascade preview/apply controls are Console and daemon/client API surfaces unless a host implementation intentionally exposes them. The `eforge_auto_build` tool reads or updates the daemon's auto-build desired state; Console uses the same daemon API state.
 
 ### Skills (slash commands)
 
@@ -3546,7 +3577,7 @@ All eforge workflows are available as slash commands:
 | Command | Purpose |
 |---------|---------|
 | `/eforge:build` | Enqueue a build from a prompt, PRD, file path, or optional session-plan artifact |
-| `/eforge:playbook` | Optional workflow command to create, run, list, edit, promote, or demote playbooks |
+| `/eforge:playbook` | Optional workflow command over `eforge-playbooks:*` contributions to create, run, list, edit, copy, promote, or demote playbooks |
 | `/eforge:profile` | Inspect and switch agent runtime profiles |
 | `/eforge:profile-new` | Create a new profile through a guided wizard |
 | `/eforge:workflow` | Choose or reconfigure landing action, PR auto-merge policy, stacking, and automatic stack sync |
@@ -3578,7 +3609,7 @@ Add `-l` to install to project settings instead of global:
 pi install -l npm:@eforge-build/pi-eforge
 ```
 
-The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links with compact list output, including the optional [eforge-plan](/docs/eforge-plan) planning entry when that extension is loaded.
+The Pi extension communicates directly with the daemon HTTP API rather than through a proxy, and supports richer UI patterns such as searchable selectors for profile and playbook selection plus scrollable panels for variable-length read-only content. Native Pi tools mirror the Claude Code MCP surface, including core build/status/queue/config tools plus optional workflow tools such as `eforge_session_plan`, `eforge_playbook`, `eforge_extension`, and `eforge_extension_contribution`; `eforge_playbook` delegates to `eforge-playbooks:*` through generic contribution invocation. Pi also exposes `/eforge:extensions` for browsing, showing, and invoking extension-provided actions, commands, and deep links with compact list output, including optional [eforge-plan](/docs/eforge-plan) planning entries and `eforge-playbooks` contributions when those extensions are loaded.
 
 ### Pi commands
 
@@ -3601,7 +3632,7 @@ npm install -g @eforge-build/eforge
 npx @eforge-build/eforge build "Add rate limiting to the API"
 ```
 
-Daemon management, playbook commands, extension commands, and one-off build profile overrides are available from the CLI:
+Daemon management, playbook compatibility commands, extension commands, and one-off build profile overrides are available from the CLI. Playbook commands call `eforge-playbooks:*` through the generic extension contribution dispatcher:
 
 ```bash
 eforge build "Add dark mode toggle"
@@ -3634,7 +3665,7 @@ Actions, action-backed commands, and action-backed deep links can be invoked gen
 
 ## Daemon HTTP API
 
-The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; queue and recovery helpers include hold/unhold, queue cascade preview/apply, failed-enqueue list/re-enqueue, recovery-guidance preparation, and scheduler pause/resume. Browser/Console integrations should use `holdQueueItem`, `unholdQueueItem`, `previewQueueCascade`, `applyQueueCascade`, `fetchFailedEnqueues`, `reenqueueFailedEnqueue`, `prepareRecoveryGuidance`, `pauseScheduler`, `resumeScheduler`, `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
+The daemon exposes a local HTTP API and SSE event streams used by the Claude Code MCP proxy, the Pi extension, Console, and wrapper apps. Use the generated [HTTP API Reference](/reference/api) for route shapes and the [Events Reference](/reference/events) for streamed event variants. For TypeScript integrations, import typed route helpers from `@eforge-build/client` instead of hard-coding `/api/...` paths; queue and recovery helpers include hold/unhold, queue cascade preview/apply, failed-enqueue list/re-enqueue, recovery-guidance preparation, and scheduler pause/resume. Direct playbook-specific daemon routes are absent: integrations must discover `eforge-playbooks:*` through the generic extension contribution manifest and invoke actions through generic extension action routes. Browser/Console integrations should use `holdQueueItem`, `unholdQueueItem`, `previewQueueCascade`, `applyQueueCascade`, `fetchFailedEnqueues`, `reenqueueFailedEnqueue`, `prepareRecoveryGuidance`, `pauseScheduler`, `resumeScheduler`, `fetchExtensionContributionManifest`, `invokeExtensionAction`, and client-owned `API_ROUTES` helpers rather than raw route construction. For normal day-to-day usage, prefer the host commands and tools above; direct API calls are intended for integrations and automation.
 
 ## Shell hooks
 
@@ -3971,7 +4002,7 @@ The web UI running locally at `http://localhost:<port>/console/` (port range 456
 
 ## Playbook
 
-A reusable Markdown workflow template for recurring work. Has a `mode` of either `autonomous` (enqueues a build directly) or `planning` (checks the eforge-plan planning capability and returns planning entry metadata). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
+A reusable Markdown workflow template for recurring work owned by the first-party `eforge-playbooks` extension. Has a `mode` of either `autonomous` (normalizes to build source and enqueues through generic extension action handoff) or `planning` (checks eforge-plan capability `eforge.plan.planning-mode-playbook` and returns `planningEntry` metadata for `eforge-plan:open-planning-entry` / `eforge-plan:planning-workstation`). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
 
 ## Planner
 
@@ -4871,7 +4902,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces. They prepare, persist, or normalize workflow artifacts around build source; they are not kernel-owned planning capabilities.
+`sessionPlan` and `sessionPlanSet` route families remain daemon API producer surfaces for project-local planning artifacts, not kernel-owned planning capabilities. Playbooks are owned by the first-party `eforge-playbooks` extension and are reached through generic extension contribution manifest/action invocation routes, not playbook-specific daemon or client APIs.
 
 Total routes: 86
 
@@ -5458,7 +5489,7 @@ eforge exposes its capabilities through two integration surfaces:
 
 Both surfaces are kept in parity per `AGENTS.md`.
 
-Playbook and session-plan host tools prepare or manage optional workflow artifacts around normalized build source. They are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities.
+Playbook and session-plan host tools are host surfaces, not kernel-owned planning capabilities. `eforge_playbook` is a compatibility facade over the first-party `eforge-playbooks` extension contributions, including list/show/save/validate/copy/promote/demote/run behavior. Session-plan host tools manage project-local planning artifacts separately.
 
 ## MCP tools (Claude Code)
 

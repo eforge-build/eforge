@@ -154,6 +154,6 @@ describe('client contract public exports', () => {
     expect(client.DAEMON_API_VERSION).toBe(76);
     expect(browser.DAEMON_API_VERSION).toBe(76);
     const source = readFileSync('packages/client/src/api-version-const.ts', 'utf8');
-    expect(source).toContain('removes direct playbook/create-from-playbook daemon APIs');
+    expect(source).toContain('removes direct daemon APIs for playbooks and related session-plan derivation');
   });
 });

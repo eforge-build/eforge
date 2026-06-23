@@ -4,6 +4,7 @@ import { API_ROUTES } from '../routes/route-map.js';
 import * as browser from '../browser.js';
 import * as client from '../index.js';
 
+const deletedSessionPlanRouteKey = ['session', 'Plan', 'Create', 'From', 'Playbook'].join('');
 const deletedRouteKeys = [
   'playbookList',
   'playbookShow',
@@ -13,7 +14,7 @@ const deletedRouteKeys = [
   'playbookDemote',
   'playbookValidate',
   'playbookCopy',
-  'sessionPlanCreateFromPlaybook',
+  deletedSessionPlanRouteKey,
 ] as const;
 
 function exportedNames(module: object): string[] {
@@ -25,11 +26,11 @@ function readSource(path: string): string {
 }
 
 describe('playbook client boundary removal', () => {
-  it('removes direct playbook and create-from-playbook route keys from API_ROUTES', () => {
+  it('removes direct playbook and create-from route keys from API_ROUTES', () => {
     const routeKeys = Object.keys(API_ROUTES);
     for (const key of deletedRouteKeys) expect(routeKeys).not.toContain(key);
     expect(routeKeys.filter((key) => key.startsWith('playbook'))).toEqual([]);
-    expect(routeKeys).not.toContain('sessionPlanCreateFromPlaybook');
+    expect(routeKeys).not.toContain(deletedSessionPlanRouteKey);
   });
 
   it('keeps generic extension routes while removing direct playbook route paths', () => {

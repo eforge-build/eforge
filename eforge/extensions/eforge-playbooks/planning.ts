@@ -6,6 +6,7 @@ import {
   PLANNING_ENTRY_COMMAND_ID,
   PLANNING_ENTRY_DEEP_LINK_ID,
   PLANNING_MODE_CAPABILITY,
+  PLANNING_MODE_CAPABILITY_PROVIDER,
   PLANNING_MODE_CAPABILITY_VERSION,
   PLANNING_WORKSTATION_ID,
   PLANNING_WORKSTATION_URL,
@@ -23,7 +24,7 @@ export const EFORGE_PLAN_DRIFT_CONSTANTS = {
 } as const;
 
 export function requiredPlanningCapability() {
-  return { name: PLANNING_MODE_CAPABILITY, version: PLANNING_MODE_CAPABILITY_VERSION };
+  return { provider: PLANNING_MODE_CAPABILITY_PROVIDER, id: PLANNING_MODE_CAPABILITY, range: PLANNING_MODE_CAPABILITY_VERSION } as const;
 }
 
 export function planningEntry(seed: PlaybookPlanSeed) {
@@ -41,7 +42,8 @@ export function planningEntry(seed: PlaybookPlanSeed) {
 
 export function planningRunResult(ctx: ExtensionActionContext, name: string, seed: PlaybookPlanSeed) {
   const availability = ctx.capabilities.get(PLANNING_MODE_CAPABILITY, PLANNING_MODE_CAPABILITY_VERSION);
-  if (availability.available) {
+  const eforgePlanProvider = availability.providers.find((provider) => provider.extensionName === PLANNING_MODE_CAPABILITY_PROVIDER);
+  if (availability.available && eforgePlanProvider) {
     return {
       kind: 'requires-agent' as const,
       mode: 'planning' as const,
@@ -56,10 +58,28 @@ export function planningRunResult(ctx: ExtensionActionContext, name: string, see
     mode: 'planning' as const,
     name,
     requiredCapability: requiredPlanningCapability(),
-    diagnostics: normalizeDiagnostics(availability.diagnostics),
+    diagnostics: normalizeDiagnostics(providerScopedDiagnostics(availability.diagnostics)),
     planningEntry: planningEntry(seed),
     message: 'The optional eforge-plan planning capability is unavailable. Install/load eforge-plan, trust project-team extensions when needed, and reload extensions before retrying.',
   };
+}
+
+function providerScopedDiagnostics(diagnostics: ExtensionAvailabilityDiagnostic[]) {
+  if (diagnostics.length > 0) return diagnostics.map((diagnostic) => ({
+    ...diagnostic,
+    providerName: diagnostic.providerName ?? PLANNING_MODE_CAPABILITY_PROVIDER,
+    capabilityName: diagnostic.capabilityName ?? PLANNING_MODE_CAPABILITY,
+    requiredVersion: diagnostic.requiredVersion ?? PLANNING_MODE_CAPABILITY_VERSION,
+  }));
+  return [{
+    code: 'extension:dependency-capability-incompatible',
+    message: 'eforge-plan is not loaded with capability eforge.plan.planning-mode-playbook >=1.0.0. Install/load it, trust project-team extensions if prompted, and reload extensions.',
+    severity: 'warning' as const,
+    dependencyName: PLANNING_MODE_CAPABILITY_PROVIDER,
+    providerName: PLANNING_MODE_CAPABILITY_PROVIDER,
+    capabilityName: PLANNING_MODE_CAPABILITY,
+    requiredVersion: PLANNING_MODE_CAPABILITY_VERSION,
+  }];
 }
 
 function normalizeDiagnostics(diagnostics: ExtensionAvailabilityDiagnostic[]) {
@@ -79,6 +99,7 @@ function normalizeDiagnostics(diagnostics: ExtensionAvailabilityDiagnostic[]) {
     message: 'eforge-plan is not loaded with capability eforge.plan.planning-mode-playbook >=1.0.0. Install/load it, trust project-team extensions if prompted, and reload extensions.',
     severity: 'warning' as const,
     dependencyName: 'eforge-plan',
+    providerName: PLANNING_MODE_CAPABILITY_PROVIDER,
     capabilityName: PLANNING_MODE_CAPABILITY,
     requiredVersion: PLANNING_MODE_CAPABILITY_VERSION,
   }];

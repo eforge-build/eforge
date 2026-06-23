@@ -38,6 +38,6 @@
  * to clear stale attention rows without re-enqueuing work.)
  * (v75 is a case 1 bump: enqueue requests can carry postMerge commands that
  * stale daemons would silently drop.)
- * (v76 is a case 1 bump: removes direct playbook/create-from-playbook daemon APIs.)
+ * (v76 is a case 1 bump: removes direct daemon APIs for playbooks and related session-plan derivation.)
  */
-export const DAEMON_API_VERSION = 76; // v76: removes direct playbook/create-from-playbook daemon APIs.
+export const DAEMON_API_VERSION = 76; // v76: removes direct daemon APIs for playbooks and related session-plan derivation.

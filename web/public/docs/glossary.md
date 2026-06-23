@@ -63,7 +63,7 @@ The web UI running locally at `http://localhost:<port>/console/` (port range 456
 
 ## Playbook
 
-A reusable Markdown workflow template for recurring work. Has a `mode` of either `autonomous` (enqueues a build directly) or `planning` (checks the eforge-plan planning capability and returns planning entry metadata). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
+A reusable Markdown workflow template for recurring work owned by the first-party `eforge-playbooks` extension. Has a `mode` of either `autonomous` (normalizes to build source and enqueues through generic extension action handoff) or `planning` (checks eforge-plan capability `eforge.plan.planning-mode-playbook` and returns `planningEntry` metadata for `eforge-plan:open-planning-entry` / `eforge-plan:planning-workstation`). Optionally pins an agent runtime profile via a `profile` frontmatter field. See [Playbooks](/docs/playbooks).
 
 ## Planner
 

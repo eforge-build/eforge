@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
+import { ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
 import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
 import { rawPlaybook, record, withTempProject, writePlaybook } from './helpers.js';
 
@@ -43,14 +44,22 @@ describe('run-playbook action', () => {
     });
   });
 
-  it('blocks bad AC, mode mismatch, and enqueue failures as invalid input', async () => {
+  it('blocks bad AC, mode mismatch, and enqueue validation failures as invalid input', async () => {
     await withTempProject(async (cwd) => {
       await writePlaybook(cwd, 'project-local', 'bad', rawPlaybook({ name: 'bad', scope: 'project-local', ac: '- `pnpm test`.' }));
       expect((await run(cwd, { name: 'bad' })).result.kind).toBe('invalid-input');
       await writePlaybook(cwd, 'project-local', 'auto');
       expect((await run(cwd, { name: 'auto', mode: 'planning' })).result.kind).toBe('invalid-input');
+      const failed = await run(cwd, { name: 'auto' }, { enqueue: async () => { throw new ExtensionActionInputValidationError('bad queue', [{ path: '/source', message: 'bad queue' }]); } });
+      expect(failed.result).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('Playbook enqueue failed:'), validationErrors: [{ path: '/source', message: 'bad queue' }] });
+    });
+  });
+
+  it('lets unexpected enqueue failures propagate as handler errors', async () => {
+    await withTempProject(async (cwd) => {
+      await writePlaybook(cwd, 'project-local', 'auto');
       const failed = await run(cwd, { name: 'auto' }, { enqueue: async () => { throw new Error('bad queue'); } });
-      expect(failed.result).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('Playbook enqueue failed:') });
+      expect(failed.result).toMatchObject({ kind: 'handler-error' });
     });
   });
 

@@ -1,4 +1,5 @@
 import { Type, type Static } from '@eforge-build/extension-sdk';
+import { PLANNING_MODE_CAPABILITY, PLANNING_MODE_CAPABILITY_PROVIDER, PLANNING_MODE_CAPABILITY_VERSION } from './constants.js';
 
 const Scope = Type.Union([Type.Literal('user'), Type.Literal('project-team'), Type.Literal('project-local')]);
 const Mode = Type.Union([Type.Literal('autonomous'), Type.Literal('planning')]);
@@ -112,7 +113,11 @@ export const PlanSeedSchema = Type.Object({
   seededFrom: Type.String(),
   profile: Type.Optional(Type.String()),
 }, { additionalProperties: false });
-export const RequiredCapabilitySchema = Type.Object({ name: Type.String(), version: Type.String() }, { additionalProperties: false });
+export const RequiredCapabilitySchema = Type.Object({
+  provider: Type.Literal(PLANNING_MODE_CAPABILITY_PROVIDER),
+  id: Type.Literal(PLANNING_MODE_CAPABILITY),
+  range: Type.Literal(PLANNING_MODE_CAPABILITY_VERSION),
+}, { additionalProperties: false });
 export const PlanningEntrySchema = Type.Object({
   contributionId: Type.Literal('eforge-plan:open-planning-entry'),
   actionId: Type.Literal('eforge-plan:open-planning-entry'),

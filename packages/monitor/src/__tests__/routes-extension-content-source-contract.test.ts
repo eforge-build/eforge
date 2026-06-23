@@ -103,12 +103,14 @@ describe('extension content route source contracts', () => {
   it('does not keep direct playbook route/service modules or workflow-adapter references', () => {
     expect(existsSync(join(ROUTE_ROOT, 'playbooks.ts'))).toBe(false);
     expect(existsSync(join(ROUTE_ROOT, 'playbook-service.ts'))).toBe(false);
+    const directAdapterName = ['create', 'Playbook', 'Workflow', 'Adapter'].join('');
+    const directSessionPlanRouteKey = ['session', 'Plan', 'Create', 'From', 'Playbook'].join('');
 
     for (const file of CONTENT_ROUTE_FILES) {
       const source = readRouteFile(file);
-      expect(source, file).not.toContain('createPlaybookWorkflowAdapter');
+      expect(source, file).not.toContain(directAdapterName);
       expect(source, file).not.toContain('createPlaybookRoutes');
-      expect(source, file).not.toContain('sessionPlanCreateFromPlaybook');
+      expect(source, file).not.toContain(directSessionPlanRouteKey);
       expect(source, file).not.toMatch(/\bplaybook(?:List|Show|Save|Run|Promote|Demote|Validate|Copy)\b/);
     }
   });

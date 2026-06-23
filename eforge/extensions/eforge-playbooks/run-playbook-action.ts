@@ -1,4 +1,4 @@
-import { defineExtensionAction } from '@eforge-build/extension-sdk';
+import { ExtensionActionInputValidationError, ExtensionActionUserError, defineExtensionAction } from '@eforge-build/extension-sdk';
 import { analyzeAcceptanceCriteriaInBody, formatAcDiagnostics, playbookToBuildSource, playbookToPlanSeed } from '@eforge-build/input';
 import { RunPlaybookInputSchema, RunPlaybookOutputSchema } from './schemas.js';
 import { invalidField, userError } from './action-errors.js';
@@ -34,8 +34,11 @@ export const runPlaybookAction = defineExtensionAction({
       }));
       return omitUndefined({ kind: 'enqueued' as const, id: enqueued.sessionId, sessionId: enqueued.sessionId, autoBuild: enqueued.autoBuild });
     } catch (err) {
-      const message = err instanceof Error && err.message ? err.message : 'Unknown enqueue error';
-      throw userError(`Playbook enqueue failed: ${message}`);
+      if (err instanceof ExtensionActionUserError) throw err;
+      if (err instanceof ExtensionActionInputValidationError) {
+        throw new ExtensionActionUserError(`Playbook enqueue failed: ${err.message}`, err.details);
+      }
+      throw err;
     }
   },
 });

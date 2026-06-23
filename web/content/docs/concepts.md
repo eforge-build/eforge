@@ -9,7 +9,7 @@ description: How the eforge build engine, inputs, and extension surfaces fit tog
 
 eforge is a build-engine kernel with extensible workflow surfaces around it. The core engine consumes normalized build source, compiles it into plans, orchestrates dependency-aware worktrees, runs implementation/review/validation loops, records conservative gates, and emits typed events for consumers.
 
-Input authoring and workflow UX live outside that core. CLI prompts, rough notes, PRD files, playbooks, session plans, wrapper-app artifacts, host integrations, toolbelts, shell hooks, and native extensions can shape how work is prepared or governed before it reaches the engine. They are extension surfaces, not separate engines.
+Input authoring and workflow UX live outside that core. CLI prompts, rough notes, PRD files, `eforge-playbooks` playbook workflows, session plans, wrapper-app artifacts, host integrations, toolbelts, shell hooks, and native extensions can shape how work is prepared or governed before it reaches the engine. They are extension surfaces, not separate engines.
 
 That boundary is why different hosts can feel different while the build semantics remain consistent: every input surface eventually normalizes into build source, and the engine handles the same compile/build/landing lifecycle.
 
@@ -33,7 +33,7 @@ The compile phase produces `orchestration.yaml` - a dependency graph over the pl
 
 A **build source** is the normalized input eforge hands to the compile phase after an outside input surface has been resolved. It can start as a CLI prompt, rough notes, a PRD file, a wrapper-app artifact, an autonomous workflow artifact, or another host-provided file, but the build-engine kernel sees normalized build source rather than the original authoring surface.
 
-That boundary keeps producer UX optional. Hosts, wrapper apps, playbooks, session-plan compatibility adapters, and first-party extensions such as [eforge-plan](/docs/eforge-plan) may help collect intent, investigate scope, or format a handoff. They are producers around the kernel. Once a build is enqueued, the engine consumes the normalized source through the same compile/build/landing lifecycle.
+That boundary keeps producer UX optional. Hosts, wrapper apps, playbooks owned by the first-party `eforge-playbooks` extension, session-plan compatibility tools, and first-party extensions such as [eforge-plan](/docs/eforge-plan) may help collect intent, investigate scope, or format a handoff. They are producers around the kernel. Once a build is enqueued, the engine consumes the normalized source through the same compile/build/landing lifecycle.
 
 ## Build Artifact Provenance
 
@@ -96,7 +96,7 @@ A **profile** is a named YAML file that bundles tier recipes into a reusable uni
 
 The active profile is resolved highest-priority-first: project-local beats project beats user. You can swap profiles without touching `eforge/config.yaml` - useful for switching between harnesses or experimenting with different models. See [Profiles](/docs/profiles) for a full walkthrough.
 
-**Playbooks** are an optional workflow surface: a reusable Markdown template for recurring work that optionally pins a profile via its `profile` frontmatter field. Autonomous playbooks normalize to build source before enqueue; planning playbooks route to optional eforge-plan planning when that extension capability is available. See [Playbooks](/docs/playbooks).
+**Playbooks** are an optional workflow surface owned by the first-party `eforge-playbooks` extension: reusable Markdown templates for recurring work that optionally pin a profile via their `profile` frontmatter field. Autonomous playbooks normalize to build source before enqueue; planning playbooks route to optional eforge-plan planning when that extension capability is available and return planning-entry metadata rather than enqueueing directly. See [Playbooks](/docs/playbooks).
 
 ## The Queue and Daemon
 

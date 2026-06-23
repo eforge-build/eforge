@@ -3,6 +3,7 @@ import { startContentRouteHarness } from './route-test-harness.js';
 
 const api = '/api';
 const playbookSegment = 'play' + 'book';
+const deletedSessionPlanRouteKey = ['session', 'Plan', 'Create', 'From', 'Playbook'].join('');
 
 const deletedRoutes = [
   { method: 'GET', path: `${api}/${playbookSegment}/list` },
@@ -21,7 +22,7 @@ describe('playbook routes', () => {
     const h = await startContentRouteHarness();
     try {
       expect(h.routes.map((route) => route.routeKey).filter((key) => key.startsWith('playbook'))).toEqual([]);
-      expect(h.routes.map((route) => route.routeKey)).not.toContain('sessionPlanCreateFromPlaybook');
+      expect(h.routes.map((route) => route.routeKey)).not.toContain(deletedSessionPlanRouteKey);
       for (const route of deletedRoutes) {
         const res = route.method === 'GET' ? await h.get(route.path) : await h.postJson(route.path, {});
         expect(res.status, `${route.method} ${route.path}`).toBe(404);

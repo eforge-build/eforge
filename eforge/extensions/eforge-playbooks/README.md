@@ -146,7 +146,7 @@ ctx.buildQueue.enqueue({
 });
 ```
 
-`profile` defaults to the compiled playbook profile when the action input does not override it. `postMerge`, `afterQueueId`, `landingAction`, and `landingAutoMerge` are passed through to generic queue validation. Enqueue failures are reported as invalid-input action failures whose message starts with `Playbook enqueue failed:`.
+`profile` defaults to the compiled playbook profile when the action input does not override it. `postMerge`, `afterQueueId`, `landingAction`, and `landingAutoMerge` are passed through to generic queue validation. Queue validation failures remain invalid-input action failures; unexpected daemon/runtime enqueue errors propagate as handler errors.
 
 The success result is `kind: "enqueued"` and aliases `id` to `sessionId`.
 

@@ -142,14 +142,18 @@ describe('docs kernel boundary', () => {
     for (const path of GENERATOR_SOURCE_DOCS) {
       const contents = read(path);
       if (path.endsWith('api.ts')) {
-        expect(contents).toContain('playbook`, `sessionPlan`, or `sessionPlanSet`');
-        expect(contents).toMatch(/optional workflow compatibility|producer surfaces/i);
+        expect(contents).toContain('sessionPlan` and `sessionPlanSet`');
+        expect(contents).toContain('eforge-playbooks');
+        expect(contents).toMatch(/generic extension contribution\/action routes|producer surfaces/i);
         expect(contents).toContain('not kernel-owned planning capabilities');
+        expect(contents).not.toContain('playbook`, `sessionPlan`');
       }
       if (path.endsWith('tools.ts')) {
         expect(contents).toMatch(/Playbook and session-plan host tools/i);
+        expect(contents).toContain('eforge-playbooks');
         expect(contents).toMatch(/optional workflow compatibility|host surfaces/i);
         expect(contents).toContain('not kernel-owned planning capabilities');
+        expect(contents).not.toContain('create-from-playbook');
       }
     }
   });

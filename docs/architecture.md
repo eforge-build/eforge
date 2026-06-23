@@ -26,7 +26,7 @@ graph TD
     end
 
     subgraph Input ["@eforge-build/input"]
-        InputArtifacts["Playbooks / Session Plans<br/>pure playbook helpers<br/>bundled session-planning adapter<br/>normalizeBuildSource"]
+        InputArtifacts["Playbooks / Session Plans<br/>pure playbook helpers<br/>session-planning helpers<br/>normalizeBuildSource"]
     end
 
     subgraph Scopes ["@eforge-build/scopes"]
@@ -115,9 +115,9 @@ flowchart TD
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
 - First-party extension packages MAY depend on `extension-sdk` and public input/scopes/client packages needed for their contribution contracts. The `@eforge-build/eforge-playbooks` package depends on `extension-sdk` and `input`.
 
-Direct playbook daemon routes (`/api/playbook/*`, `/api/session-plan/create-from-playbook`) are removed. Playbook behavior is exposed through generic extension contribution invocation, with host compatibility surfaces using the extension's integration commands: the first-party `@eforge-build/eforge-playbooks` extension owns the action/contribution surface for playbook list/load/save/write/move/copy/validate/compile/planning-handoff behavior, imports only public `@eforge-build/input` helpers for pure parser/storage/compiler behavior, and enqueues autonomous runs through `ctx.buildQueue.enqueue`.
+Playbook-specific daemon and client APIs are removed. Playbook behavior is exposed through generic extension contribution invocation, with host compatibility surfaces using the extension's integration commands: the first-party `@eforge-build/eforge-playbooks` extension owns the action/contribution surface for playbook list/load/save/write/move/copy/validate/compile/planning-handoff behavior, imports only public `@eforge-build/input` helpers for pure parser/storage/compiler behavior, and enqueues autonomous runs through `ctx.buildQueue.enqueue`.
 
-Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow a `client` → `monitor compatibility shim` → `input bundled session-planning adapter` → lower-level input helpers chain: `API_ROUTES.sessionPlan*` constants and response types live in `@eforge-build/client`, the daemon routes keep local HTTP security/request validation/error mapping in `packages/monitor/`, and the bundled session-planning adapter in `@eforge-build/input` owns session-plan domain behavior before reaching lower-level input helpers. The MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against the client constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
+Session-plan routes and the `eforge_session_plan` tool follow a `client` → `monitor compatibility shim` → `input session-planning helpers` → lower-level input helpers chain: `API_ROUTES.sessionPlan*` constants and response types live in `@eforge-build/client`, the daemon routes keep local HTTP security/request validation/error mapping in `packages/monitor/`, and the bundled session-planning adapter in `@eforge-build/input` owns session-plan domain behavior before reaching lower-level input helpers. The MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations against the client constants. The Claude Code MCP proxy uses `daemonRequest` (auto-starting); the Pi extension uses `requireDaemon` from its local no-start wrapper layer, which throws with explicit-start guidance when no daemon is live.
 
 **Why:** Keeping the engine input-agnostic means future wrapper apps can reuse `@eforge-build/input` protocols without pulling in engine internals.
 
