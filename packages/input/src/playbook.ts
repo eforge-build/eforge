@@ -27,7 +27,7 @@
  * actions that can hand control to an interactive planning agent (for example the
  * eforge-plan planning entry or /eforge:playbook run).
  */
-import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
+import { access, readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -527,6 +527,7 @@ export interface MovePlaybookOpts {
   name: string;
   fromScope: PlaybookScope;
   toScope: PlaybookScope;
+  overwrite?: boolean;
 }
 
 /**
@@ -535,8 +536,17 @@ export interface MovePlaybookOpts {
  * tree; falls back to `fs.rename` otherwise.
  * Returns the destination path so the caller can stage it.
  */
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: string }> {
-  const { name, fromScope, toScope, cwd, configDir } = opts;
+  const { name, fromScope, toScope, cwd, configDir, overwrite = false } = opts;
 
   const fromDir = playbooksDir(fromScope, { cwd, configDir });
   const toDir = playbooksDir(toScope, { cwd, configDir });
@@ -545,6 +555,9 @@ export async function movePlaybook(opts: MovePlaybookOpts): Promise<{ path: stri
   const dst = resolve(toDir, `${name}.md`);
 
   await mkdir(toDir, { recursive: true });
+  if (!overwrite && await fileExists(dst)) {
+    throw new Error(`Playbook "${name}" already exists at ${dst}. Pass overwrite: true to replace it.`);
+  }
 
   const raw = await readFile(src, 'utf-8');
   const result = parsePlaybookInternal(raw);

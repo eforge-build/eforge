@@ -67,7 +67,7 @@ export const playbookManagementActions = [
     id: 'promote-playbook', title: 'Promote playbook', description: 'Move a project-local playbook to project-team scope.',
     inputSchema: MovePlaybookInputSchema, outputSchema: PathOutputSchema, sideEffects: ['local-write'],
     async handler(input, ctx) {
-      return movePlaybook({ cwd: ctx.cwd, configDir: ctx.paths.configDir, name: input.name, fromScope: 'project-local', toScope: 'project-team' })
+      return movePlaybook({ cwd: ctx.cwd, configDir: ctx.paths.configDir, name: input.name, fromScope: 'project-local', toScope: 'project-team', overwrite: input.overwrite })
         .catch((err) => wrapUserError(err, `Unable to promote playbook "${input.name}".`, '/name'));
     },
   }),
@@ -75,7 +75,7 @@ export const playbookManagementActions = [
     id: 'demote-playbook', title: 'Demote playbook', description: 'Move a project-team playbook to project-local scope.',
     inputSchema: MovePlaybookInputSchema, outputSchema: PathOutputSchema, sideEffects: ['local-write'],
     async handler(input, ctx) {
-      return movePlaybook({ cwd: ctx.cwd, configDir: ctx.paths.configDir, name: input.name, fromScope: 'project-team', toScope: 'project-local' })
+      return movePlaybook({ cwd: ctx.cwd, configDir: ctx.paths.configDir, name: input.name, fromScope: 'project-team', toScope: 'project-local', overwrite: input.overwrite })
         .catch((err) => wrapUserError(err, `Unable to demote playbook "${input.name}".`, '/name'));
     },
   }),

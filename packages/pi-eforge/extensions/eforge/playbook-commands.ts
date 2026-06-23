@@ -3,10 +3,8 @@ import { formatExtensionContributionOutputText, type ExtensionJsonObject } from 
 import { eforgePlaybooksUnavailableMessage, invokePlaybookContributionIfRunning, type PlaybookCommandAction } from './playbook-contributions.js';
 import { DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { showInfoPanel, type UIContext } from './ui-helpers.js';
-import { promptForBuildLandingGate } from './landing-gate.js';
-import type { LandingAction } from './trunk-landing.js';
+import { promptForPlaybookLandingGate } from './landing-gate.js';
 
-const promptForPlaybookLandingGate = promptForBuildLandingGate;
 // Planning-mode results render planningEntry metadata; autonomous runs forward afterQueueId and do not call apiGetQueueIfRunning before invoking the contribution.
 
 export function registerPlaybookCommand(pi: ExtensionAPI, getLatestCtx: () => UIContext | null): void {
@@ -19,7 +17,7 @@ export function registerPlaybookCommand(pi: ExtensionAPI, getLatestCtx: () => UI
 }
 
 export async function handlePlaybookCommand(pi: ExtensionAPI, ctx: UIContext | null, rawArgs: string): Promise<void> {
-  if (!ctx) {
+  if (!ctx || !ctx.hasUI) {
     pi.sendUserMessage(`Use eforge_playbook with these arguments: ${rawArgs}`.trim());
     return;
   }
@@ -29,21 +27,19 @@ export async function handlePlaybookCommand(pi: ExtensionAPI, ctx: UIContext | n
     return;
   }
   let input = parsed.input;
-  if (parsed.action === 'run' && input.mode !== 'planning') {
-    const choice = await promptForPlaybookLandingGate(pi, ctx, input.landingAction as LandingAction | undefined, undefined, {
-      landingAutoMergeOverride: input.landingAutoMerge as boolean | undefined,
-    });
-    if (choice.cancelled) {
-      await showInfoPanel(ctx, 'eforge playbook', 'Playbook run cancelled before enqueue.');
-      return;
-    }
-    input = compact({
-      ...input,
-      landingAction: choice.landingAction ?? input.landingAction,
-      landingAutoMerge: choice.landingAutoMerge ?? input.landingAutoMerge,
-    });
-  }
   try {
+    if (parsed.action === 'run' && input.mode !== 'planning') {
+      const choice = await promptForPlaybookLandingGate(pi, ctx);
+      if (choice.cancelled) {
+        await showInfoPanel(ctx, 'eforge playbook', 'Playbook run cancelled before enqueue.');
+        return;
+      }
+      input = compact({
+        ...input,
+        landingAction: choice.landingAction ?? input.landingAction,
+        landingAutoMerge: choice.landingAutoMerge ?? input.landingAutoMerge,
+      });
+    }
     const result = await invokePlaybookContributionIfRunning({ cwd: ctx.cwd, action: parsed.action, input: input as ExtensionJsonObject });
     if (!result.response.ok) {
       await showInfoPanel(ctx, 'eforge playbook - Error', result.response.error.message);

@@ -43,7 +43,7 @@ export const ListPlaybooksOutputSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const ShowPlaybookInputSchema = Type.Object({ name: Name, scope: Type.Optional(Scope) }, { additionalProperties: false });
-export const MovePlaybookInputSchema = Type.Object({ name: Name }, { additionalProperties: false });
+export const MovePlaybookInputSchema = Type.Object({ name: Name, overwrite: Type.Optional(Type.Boolean()) }, { additionalProperties: false });
 export const ShowPlaybookOutputSchema = Type.Object({
   playbook: PlaybookSchema,
   source: SourceSchema,

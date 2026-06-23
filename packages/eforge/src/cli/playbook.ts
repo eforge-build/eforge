@@ -14,6 +14,7 @@ interface ScopedOptions extends CommonOptions { scope?: string }
 interface NewOptions extends CommonOptions { scope: string; mode?: string; profile?: string }
 interface SaveOptions extends CommonOptions { scope: string; raw?: string; file?: string; overwrite?: boolean }
 interface CopyOptions extends CommonOptions { sourceScope?: string; targetScope: string; overwrite?: boolean }
+interface MoveOptions extends CommonOptions { overwrite?: boolean }
 interface RunOptions extends ScopedOptions { mode?: string; profile?: string; after?: string; landingAction?: string; landingAutoMerge?: boolean }
 
 export function registerPlaybookCommands(program: Command): void {
@@ -73,8 +74,8 @@ export function registerPlaybookCommands(program: Command): void {
     .option('--json', 'Output JSON')
     .action((name: string, options: CopyOptions) => invokeAndRender('copy', compact({ name, sourceScope: options.sourceScope, targetScope: options.targetScope, overwrite: options.overwrite }), options));
 
-  playbook.command('promote <name>').description('Promote a playbook').option('--json', 'Output JSON').action((name: string, options: CommonOptions) => invokeAndRender('promote', { name }, options));
-  playbook.command('demote <name>').description('Demote a playbook').option('--json', 'Output JSON').action((name: string, options: CommonOptions) => invokeAndRender('demote', { name }, options));
+  playbook.command('promote <name>').description('Promote a playbook').option('--overwrite <boolean>', 'Overwrite target playbook', parseBoolean).option('--json', 'Output JSON').action((name: string, options: MoveOptions) => invokeAndRender('promote', compact({ name, overwrite: options.overwrite }), options));
+  playbook.command('demote <name>').description('Demote a playbook').option('--overwrite <boolean>', 'Overwrite target playbook', parseBoolean).option('--json', 'Output JSON').action((name: string, options: MoveOptions) => invokeAndRender('demote', compact({ name, overwrite: options.overwrite }), options));
 
   playbook.command('run <name>')
     .description('Run a playbook')
