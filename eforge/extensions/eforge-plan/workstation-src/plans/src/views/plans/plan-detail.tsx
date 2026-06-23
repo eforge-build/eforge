@@ -6,18 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { CollapsiblePanel } from '@/components/collapsible-panel';
 import { useToast } from '@/components/toast';
-import type { PlanData, PlanDetail, Readiness } from '@/types';
+import type { PlanData, PlanDetail, PlanRevisionAnnotationTarget, Readiness } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { ReadinessChecklist } from './readiness-checklist';
 import { MetadataEditor, type MetadataInput } from './metadata-editor';
 import { OpenQuestionsPanel } from './open-questions-panel';
 import { titleCase } from './dimensions';
 import { PlanBuildTracePanel } from './lifecycle-evidence-panel';
-import { PlanRevisionPanel } from './plan-revision-panel';
-import { usePlanRevisionSession } from './use-plan-revision-session';
 import { AnnotatablePlanSection } from './plan-annotatable-section';
-import { PlanRevisionAnnotationsPanel } from './plan-revision-annotations-panel';
 import { buildWholePlanAnnotationTarget } from './plan-revision-annotation-targets';
+import type { PlanRevisionSessionApi } from './use-plan-revision-session';
 
 const bridge = getBridge();
 
@@ -25,6 +23,9 @@ interface MutationResult { plan?: PlanData; readiness?: Readiness }
 
 interface PlanDetailCardProps {
   detail: PlanDetail & { plan: PlanData };
+  revision: PlanRevisionSessionApi;
+  locked: boolean;
+  onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget) => void;
   onApply: (result: MutationResult) => void;
   onRefresh: () => Promise<void>;
   onDeleted: () => Promise<void>;
@@ -32,17 +33,14 @@ interface PlanDetailCardProps {
 
 /** Structured flat session-plan detail: header actions, readiness checklist,
  *  editable metadata, and rendered dimension sections. */
-export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDetailCardProps) {
+export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTarget, onApply, onRefresh, onDeleted }: PlanDetailCardProps) {
   const toast = useToast();
   const plan = detail.plan;
   const readiness = detail.readiness ?? {};
   const [confirmingHandoff, setConfirmingHandoff] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
-  const revision = usePlanRevisionSession({ session: plan.session, onApply, onRefresh, autoLoadExisting: true });
   // While an AI revision turn is running it auto-applies on completion, so the
   // rest of the plan is locked to avoid concurrent edits and competing turns.
-  const locked = revision.hasRunningTurn;
-
   // Run a mutating action, surface a toast, apply the returned plan/readiness to
   // local detail state, then refresh the artifact list so statuses stay in sync.
   const mutate = async (
@@ -157,16 +155,13 @@ export function PlanDetailCard({ detail, onApply, onRefresh, onDeleted }: PlanDe
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sections</h4>
-              <Button className="ml-auto" size="sm" variant="outline" disabled={locked || revision.busy || revision.loading} onClick={() => { const target = buildWholePlanAnnotationTarget(plan); if (target) void revision.createAnnotation(target); }}>Annotate whole plan</Button>
+              <Button className="ml-auto" size="sm" variant="outline" disabled={locked || revision.busy || revision.loading} onClick={() => { const target = buildWholePlanAnnotationTarget(plan); if (target) onSelectAnnotationTarget(target); }}>Annotate whole plan</Button>
             </div>
             {sectionEntries.map(([key, content]) => (
-              <AnnotatablePlanSection key={key} plan={plan} dimension={key} content={content} disabled={locked || revision.busy || revision.loading} onCreateAnnotation={revision.createAnnotation} />
+              <AnnotatablePlanSection key={key} plan={plan} dimension={key} content={content} disabled={locked || revision.busy || revision.loading} onSelectAnnotationTarget={onSelectAnnotationTarget} />
             ))}
           </div>
         )}
-
-        <PlanRevisionAnnotationsPanel plan={plan} api={revision} disabled={locked} />
-        <PlanRevisionPanel plan={plan} api={revision} />
 
         <CollapsiblePanel storageKey={`eforge-plan.provenance.${plan.session}`} title="Build activity & metadata">
           <div className="grid gap-3">

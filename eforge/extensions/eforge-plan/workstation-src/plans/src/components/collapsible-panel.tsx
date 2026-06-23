@@ -32,7 +32,19 @@ function readStoredOpen(key: string, fallback: boolean): boolean {
  * remembered per panel.
  */
 export function CollapsiblePanel({ storageKey, defaultOpen = false, className, icon, title, summary, actions, children }: CollapsiblePanelProps) {
-  const [open, setOpen] = React.useState(() => readStoredOpen(storageKey, defaultOpen));
+  const hasStoredPreference = React.useRef(false);
+  const [open, setOpen] = React.useState(() => {
+    try {
+      hasStoredPreference.current = window.localStorage.getItem(storageKey) !== null;
+    } catch {
+      hasStoredPreference.current = false;
+    }
+    return readStoredOpen(storageKey, defaultOpen);
+  });
+
+  React.useEffect(() => {
+    if (defaultOpen && !hasStoredPreference.current) setOpen(true);
+  }, [defaultOpen]);
 
   const toggle = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -40,6 +52,7 @@ export function CollapsiblePanel({ storageKey, defaultOpen = false, className, i
       const next = !prev;
       try {
         window.localStorage.setItem(storageKey, String(next));
+        hasStoredPreference.current = true;
       } catch {
         // Persistence is best-effort; embedded webviews may deny storage.
       }

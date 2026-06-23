@@ -12,7 +12,6 @@ import { PlansView } from './plans-view';
 import { ActivityRail } from './activity-rail';
 import { RecommendationsRail } from './recommendations-rail';
 import { SelectionRail } from './selection-rail';
-import { PlanContextRail } from './plan-context-rail';
 import { usePlanningTaskWorkflows } from './backlog/use-planning-task-workflows';
 
 type Focus = 'roadmap' | 'board' | 'plans';
@@ -77,14 +76,6 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
   // show which plan(s) converged on it, mirroring the source refs a plan shows.
   const itemPlanIndex = React.useMemo(() => buildItemPlanIndex(data.artifacts), [data.artifacts]);
 
-  // The rail is context for the current focus. The Plans focus swaps the
-  // backlog co-pilot cards for the open plan's lineage.
-  const selectedPlanKey = router.query.get('plan') ?? '';
-  const selectedArtifact = React.useMemo(
-    () => data.artifacts.find((entry) => entry.key === selectedPlanKey) ?? null,
-    [data.artifacts, selectedPlanKey],
-  );
-
   const roadmapSummary = sourceSummary(data.roadmapState);
   const counts: Record<Focus, number> = {
     roadmap: roadmapSummary.local + roadmapSummary.configuredShared + roadmapSummary.discovered,
@@ -94,7 +85,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+      <div className={focus === 'plans' ? 'grid gap-4' : 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start'}>
         <div className="min-w-0">
           <nav className="mb-4 flex flex-wrap gap-1 border-b pb-2">
             {FOCUSES.map((entry) => {
@@ -150,35 +141,35 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
           )}
         </div>
 
-        <aside className="grid min-w-0 gap-3 lg:sticky lg:top-[5.5rem]">
-          {focus === 'roadmap' ? (
-            <RoadmapContextRail
-              state={data.roadmapState}
-              loading={data.loading}
-              recommendationStatus={data.recommendationStatus}
-              recommendationFreshness={data.recommendationFreshness}
-              activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
-              onReloadRoadmap={data.refresh}
-            />
-          ) : focus === 'plans' ? (
-            <PlanContextRail artifact={selectedArtifact} titles={selection.titles} />
-          ) : (
-            <>
-              <SelectionRail selection={selection} busy={workflows.busy} />
-              <RecommendationsRail
-                recommendations={data.recommendations}
-                status={data.recommendationStatus}
-                freshness={data.recommendationFreshness}
-                selection={selection}
-                busy={workflows.busy}
-                analyzing={curationRunning}
-                onAnalyze={workflows.analyzeAllBacklog}
-                onForkLane={onForkLane}
+        {focus !== 'plans' && (
+          <aside className="grid min-w-0 gap-3 lg:sticky lg:top-[5.5rem]">
+            {focus === 'roadmap' ? (
+              <RoadmapContextRail
+                state={data.roadmapState}
+                loading={data.loading}
+                recommendationStatus={data.recommendationStatus}
+                recommendationFreshness={data.recommendationFreshness}
+                activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+                onReloadRoadmap={data.refresh}
               />
-              <ActivityRail workflows={panelWorkflows} titles={selection.titles} />
-            </>
-          )}
-        </aside>
+            ) : (
+              <>
+                <SelectionRail selection={selection} busy={workflows.busy} />
+                <RecommendationsRail
+                  recommendations={data.recommendations}
+                  status={data.recommendationStatus}
+                  freshness={data.recommendationFreshness}
+                  selection={selection}
+                  busy={workflows.busy}
+                  analyzing={curationRunning}
+                  onAnalyze={workflows.analyzeAllBacklog}
+                  onForkLane={onForkLane}
+                />
+                <ActivityRail workflows={panelWorkflows} titles={selection.titles} />
+              </>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

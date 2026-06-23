@@ -2,7 +2,7 @@ import * as React from 'react';
 import { MessageSquarePlus } from 'lucide-react';
 import { SafeMarkdown } from '@/components/safe-markdown';
 import { Button } from '@/components/ui/button';
-import type { PlanData, PlanRevisionAnnotationTarget, PlanRevisionSessionProjection } from '@/types';
+import type { PlanData, PlanRevisionAnnotationTarget } from '@/types';
 import { titleCase } from './dimensions';
 import { buildBlockAnnotationTarget, buildSectionAnnotationTarget, buildSelectionAnnotationTarget } from './plan-revision-annotation-targets';
 
@@ -11,10 +11,10 @@ interface Props {
   dimension: string;
   content: string;
   disabled: boolean;
-  onCreateAnnotation: (target: PlanRevisionAnnotationTarget, body?: string) => Promise<PlanRevisionSessionProjection | null>;
+  onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget) => void;
 }
 
-export function AnnotatablePlanSection({ plan: _plan, dimension, content, disabled, onCreateAnnotation }: Props) {
+export function AnnotatablePlanSection({ plan: _plan, dimension, content, disabled, onSelectAnnotationTarget }: Props) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedTarget, setSelectedTarget] = React.useState<PlanRevisionAnnotationTarget | null>(null);
   const [focusedBlock, setFocusedBlock] = React.useState<HTMLElement | null>(null);
@@ -48,9 +48,9 @@ export function AnnotatablePlanSection({ plan: _plan, dimension, content, disabl
     return () => document.removeEventListener('selectionchange', refreshSelection);
   }, [refreshSelection]);
 
-  const create = async (target: PlanRevisionAnnotationTarget | null) => {
+  const selectTarget = (target: PlanRevisionAnnotationTarget | null) => {
     if (!target) return;
-    await onCreateAnnotation(target);
+    onSelectAnnotationTarget(target);
     setSelectedTarget(null);
   };
 
@@ -73,13 +73,13 @@ export function AnnotatablePlanSection({ plan: _plan, dimension, content, disabl
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h5>
         <div className="ml-auto flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={disabled || !selectedTarget} onMouseDown={(event) => event.preventDefault()} onClick={() => void create(selectedTarget ?? (rootRef.current ? buildSelectionAnnotationTarget(window.getSelection(), rootRef.current, dimension, `${title} selection`) : null))}>
+          <Button size="sm" variant="outline" disabled={disabled || !selectedTarget} onMouseDown={(event) => event.preventDefault()} onClick={() => selectTarget(selectedTarget ?? (rootRef.current ? buildSelectionAnnotationTarget(window.getSelection(), rootRef.current, dimension, `${title} selection`) : null))}>
             <MessageSquarePlus className="h-4 w-4" /> Annotate selection in {title}
           </Button>
-          <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0 || !focusedBlock} onClick={() => void create(currentBlockTarget())}>
+          <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0 || !focusedBlock} onClick={() => selectTarget(currentBlockTarget())}>
             Annotate focused block in {title}
           </Button>
-          <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0} onClick={() => void create(buildSectionAnnotationTarget(dimension, title, content))}>
+          <Button size="sm" variant="outline" disabled={disabled || content.trim().length === 0} onClick={() => selectTarget(buildSectionAnnotationTarget(dimension, title, content))}>
             Annotate section {title}
           </Button>
         </div>

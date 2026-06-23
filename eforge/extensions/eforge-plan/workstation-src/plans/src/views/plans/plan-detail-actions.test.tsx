@@ -31,7 +31,7 @@ function renderPlan(plan: Partial<PlanData>) {
     plan: fullPlan,
     readiness: { ready: true, coveredDimensions: Object.keys(sections), missingDimensions: [], skippedDimensions: [] },
   };
-  render(<ToastProvider><PlanDetailCard detail={detail} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} /></ToastProvider>);
+  render(<ToastProvider><PlanDetailCard detail={detail} revision={{ busy: false, loading: false, hasRunningTurn: false } as any} locked={false} onSelectAnnotationTarget={vi.fn()} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} /></ToastProvider>);
   return { invokeAction };
 }
 
