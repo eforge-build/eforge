@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ConsoleShell } from '@/components/shell/console-shell';
+import { CommandPalette } from '@/components/command-palette';
 import { useDaemonEvents } from '@/hooks/use-daemon-events';
 import { useAutoBuild } from '@/hooks/use-auto-build';
 import { useActiveSessionStreams } from '@/hooks/use-active-session-streams';
@@ -144,18 +145,21 @@ export function App() {
   })();
 
   return (
-    <ConsoleShell
-      projectState={projectState}
-      autoBuildToggling={autoBuildToggling}
-      onSetAutoBuildEnabled={onSetAutoBuildEnabled}
-      schedulerToggling={schedulerToggling}
-      schedulerError={schedulerError}
-      onPauseScheduler={pauseScheduler}
-      onResumeScheduler={resumeScheduler}
-      onNavigate={handleNavigate}
-    >
-      {routeContent}
-    </ConsoleShell>
+    <>
+      <CommandPalette onNavigate={handleNavigate} />
+      <ConsoleShell
+        projectState={projectState}
+        autoBuildToggling={autoBuildToggling}
+        onSetAutoBuildEnabled={onSetAutoBuildEnabled}
+        schedulerToggling={schedulerToggling}
+        schedulerError={schedulerError}
+        onPauseScheduler={pauseScheduler}
+        onResumeScheduler={resumeScheduler}
+        onNavigate={handleNavigate}
+      >
+        {routeContent}
+      </ConsoleShell>
+    </>
   );
 }
 // --- eforge:endregion console-shell ---

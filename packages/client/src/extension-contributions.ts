@@ -17,7 +17,8 @@ export const CONSOLE_WORKSTATION_BUNDLE_ASSET_URL_PATTERN = routePatternToRegexP
   API_ROUTES.extensionWorkstationAsset,
   { assetId: CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_PATTERN.slice(1, -1) },
 );
-const CONSOLE_WORKSTATION_SUBVIEW_ROUTE_PATTERN = '^(?!\\s)(?!.*\\s$)(?!.*[#\\\\\\u0000-\\u001F\\u007F])(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*|(?!(?:[A-Za-z][A-Za-z0-9+.-]*:|/))(?:(?!\\.{1,2}(?:/|\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+/)*(?!\\.{1,2}(?:\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*)?)$';
+const ENCODED_DOT_SEGMENT_PATTERN = '(?:\\.|%2[eE]){1,2}';
+const CONSOLE_WORKSTATION_SUBVIEW_ROUTE_PATTERN = `^(?!\\s)(?!.*\\s$)(?!.*[#\\\\\\u0000-\\u001F\\u007F])(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*|(?!(?:[A-Za-z][A-Za-z0-9+.-]*:|/))(?![^?]*%(?![0-9A-Fa-f]{2}))(?:(?!${ENCODED_DOT_SEGMENT_PATTERN}(?:/|\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+/)*(?!${ENCODED_DOT_SEGMENT_PATTERN}(?:\\?|$))[^/?#\\\\\\u0000-\\u001F\\u007F]+(?:\\?[^#\\\\\\u0000-\\u001F\\u007F]*)?)$`;
 const CONSOLE_WORKSTATION_BUNDLE_ASSET_ID_HASH_PATTERN = /^sha256-([a-f0-9]{64})-path-[a-f0-9]{64}$/;
 
 function routePatternToRegexPattern(

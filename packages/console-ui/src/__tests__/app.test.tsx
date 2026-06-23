@@ -45,6 +45,15 @@ vi.mock('@/lib/fetch-json', () => ({
   fetchJson: vi.fn().mockResolvedValue(null),
 }));
 
+// Keep App routing tests isolated from command palette manifest fetches.
+vi.mock('@/components/command-palette', () => ({
+  CommandPalette: ({ onNavigate }: { onNavigate: (href: string) => void }) => (
+    <button data-testid="command-palette-host" type="button" onClick={() => onNavigate('/console/system')}>
+      Command palette host
+    </button>
+  ),
+}));
+
 // Stub complex pipeline sub-components that have deep deps not needed here
 vi.mock('@/components/pipeline/thread-pipeline', () => ({
   ThreadPipeline: () => <div data-testid="thread-pipeline" />,
@@ -111,6 +120,12 @@ const RUN_DETAIL_SUSPENSE_MARKER = 'Loading...';
 // ---------------------------------------------------------------------------
 
 describe('App — popstate routing', () => {
+  it('mounts the command palette host', () => {
+    window.history.pushState(null, '', '/console/');
+    render(<App />);
+    expect(screen.getByTestId('command-palette-host')).toBeDefined();
+  });
+
   it('initial render at /console/runs/:id shows run-detail fallback, not NowDashboard', () => {
     window.history.pushState(null, '', '/console/runs/abc123');
     render(<App />);

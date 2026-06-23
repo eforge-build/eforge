@@ -14,3 +14,10 @@ if (typeof Element !== 'undefined') {
   Element.prototype.releasePointerCapture ??= () => {};
   Element.prototype.scrollIntoView ??= () => {};
 }
+
+// cmdk observes its list size, but jsdom does not implement ResizeObserver.
+globalThis.ResizeObserver ??= class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

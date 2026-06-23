@@ -323,7 +323,7 @@ describe('extension contribution registry runtime', () => {
   });
 
   it('rejects non-round-trippable workstation subview routes during registration', async () => {
-    const routes = ['plans#draft', './plans', 'plans/./draft', 'plans//draft', 'plans/', 'plans\\\\draft', ' plans', 'plans '];
+    const routes = ['%2e/secret', '%2e%2e/secret', '.%2e/secret', '%2e./secret', 'plans/%2E%2e/secret', 'plans/%zz/secret', 'plans#draft', './plans', 'plans/./draft', 'plans//draft', 'plans/', 'plans\\\\draft', ' plans', 'plans '];
     const modules = Object.fromEntries(routes.map((route, index) => [`bad-route-${index}.js`, `export default function extension(eforge) {
       eforge.registerConsoleWorkstation({ id: 'bad-${index}', title: 'Bad ${index}', srcDoc: '<p>bad</p>', subviews: [{ id: 'bad', label: 'Bad', path: ${JSON.stringify(route)} }] });
     }`])) as Record<string, string>;

@@ -210,7 +210,7 @@ describe('extension contribution schemas', () => {
     } as never;
     expect(safeParseExtensionContributionManifest(bothRoutes).success).toBe(false);
 
-    for (const path of ['https://example.test', '/console/workstations/example', '//example.test', '../secret', 'plans/../secret', 'plans#draft', './plans', 'plans/./draft', 'plans//draft', 'plans/', 'plans\\draft', ' plans', 'plans ', 'bad\u0000route']) {
+    for (const path of ['https://example.test', '/console/workstations/example', '//example.test', '../secret', 'plans/../secret', '%2e/secret', '%2e%2e/secret', '.%2e/secret', '%2e./secret', 'plans/%2E%2e/secret', 'plans/%zz/secret', 'plans#draft', './plans', 'plans/./draft', 'plans//draft', 'plans/', 'plans\\draft', ' plans', 'plans ', 'bad\u0000route']) {
       const invalidRoute = manifest();
       invalidRoute.consoleWorkstations[0] = {
         ...invalidRoute.consoleWorkstations[0],

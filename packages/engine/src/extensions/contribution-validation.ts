@@ -339,7 +339,17 @@ function isWorkstationInternalRoute(value: unknown): value is string {
   if (value.startsWith('/') || URL_SCHEME_PATTERN.test(value)) return false;
   const [path = ''] = value.split('?');
   if (path.length === 0) return false;
-  return path.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+  return path.split('/').every(isSafeWorkstationInternalRouteSegment);
+}
+
+function isSafeWorkstationInternalRouteSegment(segment: string): boolean {
+  if (segment.length === 0) return false;
+  try {
+    const decoded = decodeURIComponent(segment);
+    return decoded !== '.' && decoded !== '..';
+  } catch {
+    return false;
+  }
 }
 
 function validateConsoleContributionBlock(block: unknown): JsonSafeValidationResult {
