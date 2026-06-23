@@ -327,7 +327,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       }
 
       if (!options.suppressSuccessToast) toast.push(`Applied generated output from ${response.taskId}.`, 'success');
-      if (!options.automatic) clearPersistedAutoApplyAttempt(taskId);
+      clearPersistedAutoApplyAttempt(taskId);
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
       // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       autoApplyFailedRef.current.delete(taskId);
