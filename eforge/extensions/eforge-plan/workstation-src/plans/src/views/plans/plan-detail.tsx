@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowRight, CheckCircle2, Trash2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Trash2, X } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,11 +29,13 @@ interface PlanDetailCardProps {
   onApply: (result: MutationResult) => void;
   onRefresh: () => Promise<void>;
   onDeleted: () => Promise<void>;
+  /** Deselect this plan and return to the empty detail state. */
+  onClose: () => void;
 }
 
 /** Structured flat session-plan detail: header actions, readiness checklist,
  *  editable metadata, and rendered dimension sections. */
-export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTarget, onApply, onRefresh, onDeleted }: PlanDetailCardProps) {
+export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTarget, onApply, onRefresh, onDeleted, onClose }: PlanDetailCardProps) {
   const toast = useToast();
   const plan = detail.plan;
   const readiness = detail.readiness ?? {};
@@ -118,13 +120,13 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
     : readinessPasses ? 'Checks pass · mark ready to hand off' : totalCount > 0 ? `${coveredCount}/${totalCount} covered · ${missingCount} to resolve` : 'Not started';
 
   return (
-    <Card>
+    <Card aria-label={`Plan ${plan.session}`}>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div>
           <CardTitle>{planDisplayTitle(plan.topic, plan.session)}</CardTitle>
           <CardDescription>{plan.session}</CardDescription>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canMarkReady && <Button variant="secondary" size="sm" disabled={locked} onClick={setReady}><CheckCircle2 className="h-4 w-4" /> Mark ready</Button>}
           <Button variant={confirmingDelete ? 'destructive' : 'outline'} size="sm" disabled={locked} onClick={() => void deletePlan()} onBlur={() => setConfirmingDelete(false)}>
             <Trash2 className="h-4 w-4" /> {confirmingDelete ? 'Confirm delete' : 'Delete'}
@@ -139,6 +141,7 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
           >
             {confirmingHandoff ? 'Confirm handoff' : 'Handoff'} <ArrowRight className="h-4 w-4" />
           </Button>
+          <Button variant="ghost" size="icon-xs" aria-label="Close plan" title="Close" className="ml-1" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">

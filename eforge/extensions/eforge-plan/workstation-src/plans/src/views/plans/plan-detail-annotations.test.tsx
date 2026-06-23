@@ -9,10 +9,13 @@ const plan = { session: 's', topic: 'Topic', status: 'planning', sections: { 'ex
 const annotation: PlanRevisionAnnotation = { annotationId: 'ann-1', targetSession: 's', body: 'Needs detail', target: { kind: 'selection', dimension: 'scope', label: 'Scope selection', capturedText: 'Selected scope', quoteContext: { exact: 'Selected scope', suffix: 'words for annotations.' } }, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:05:00.000Z' };
 const session: PlanRevisionSessionProjection = { threadId: 'thread', targetSession: 's', createdAt: '', updatedAt: '', plan, annotations: [annotation], turns: [] };
 
-function renderDetail(invokeAction: EforgeBridge['invokeAction'], projected: PlanRevisionSessionProjection = session, artifact: Artifact = { key: 'plan:s', kind: 'plan', session: 's', title: 'Topic' }, titles = new Map<string, string>()) {
+// `_projected` is accepted positionally (call sites pass the bridge projection
+// here for readability) but the projection actually wired into the component
+// comes from `createBridge`; the prefix marks it as intentionally unused.
+function renderDetail(invokeAction: EforgeBridge['invokeAction'], _projected: PlanRevisionSessionProjection = session, artifact: Artifact = { key: 'plan:s', kind: 'plan', session: 's', title: 'Topic' }, titles = new Map<string, string>()) {
   window.eforge = { invokeAction };
   const detail: PlanDetail & { plan: typeof plan } = { plan, readiness: { ready: false } };
-  return render(<ToastProvider><PlanDetailWorkspace detail={detail} artifact={artifact} titles={titles} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} /></ToastProvider>);
+  return render(<ToastProvider><PlanDetailWorkspace detail={detail} artifact={artifact} titles={titles} onApply={vi.fn()} onRefresh={vi.fn(async () => undefined)} onDeleted={vi.fn(async () => undefined)} onClose={vi.fn()} /></ToastProvider>);
 }
 
 function createBridge(projected: PlanRevisionSessionProjection = { ...session, annotations: [] }) {

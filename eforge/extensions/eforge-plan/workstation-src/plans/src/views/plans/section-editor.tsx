@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { titleCase } from './dimensions';
 
@@ -44,7 +44,7 @@ export function SectionEditor({ dimension, initialContent = '', disabled, onSave
       />
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" disabled={disabled || saving || !value.trim()} onClick={() => void submit()}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save section
+          {saving ? <Spinner /> : null} Save section
         </Button>
         <Button size="sm" variant="ghost" disabled={saving} onClick={onCancel}>Cancel</Button>
       </div>

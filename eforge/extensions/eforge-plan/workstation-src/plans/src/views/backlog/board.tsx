@@ -1,5 +1,8 @@
 import * as React from 'react';
 import { ChevronsLeft, ChevronsRight, FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
 import type { Board as BoardData, BoardItem } from '@/types';
 import type { PlanLink } from '@/lib/plan-links';
 import { ItemCard, type CardRelation } from './item-card';
@@ -153,12 +156,12 @@ export function Board({ board, itemPlanIndex, onOpenPlan, query, onQuery, filter
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <input
+        <Input
           type="search"
           value={query}
           onChange={(event) => onQuery(event.target.value)}
           placeholder="Search title, id, tag, dependency…"
-          className="min-w-64 flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+          className="h-8 min-w-64 flex-1"
         />
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap items-center gap-1">
@@ -217,7 +220,7 @@ export function Board({ board, itemPlanIndex, onOpenPlan, query, onQuery, filter
       )}
 
       {columns.length === 0
-        ? <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">No items match this view.</p>
+        ? <EmptyState className="p-6 text-center">No items match this view.</EmptyState>
         : (
           <div className="flex max-h-[78vh] items-start gap-3 overflow-auto pb-2">
             {columns.map((column) => {
@@ -268,13 +271,9 @@ export function Board({ board, itemPlanIndex, onOpenPlan, query, onQuery, filter
         )}
 
       {onLoadMoreBoard && board.pagination?.hasMore && filter !== 'closed' && (
-        <button
-          type="button"
-          onClick={() => { if (onLoadMoreBoard) void onLoadMoreBoard(); }}
-          className="mx-auto rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
-        >
+        <Button variant="outline" size="sm" className="mx-auto" onClick={() => { if (onLoadMoreBoard) void onLoadMoreBoard(); }}>
           Load more board items
-        </button>
+        </Button>
       )}
 
       {hovered && (dependencyIds.size > 0 || dependentIds.size > 0) && (

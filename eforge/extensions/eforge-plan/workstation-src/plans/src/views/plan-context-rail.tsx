@@ -1,7 +1,8 @@
 import { ClipboardList, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { usePlanNavigation } from '@/lib/plan-links';
+import { EmptyState } from '@/components/ui/empty-state';
+import { RailCard } from '@/components/ui/rail-card';
+import { planBuildState, sourceEpicIds, sourceItemIds, usePlanNavigation } from '@/lib/plan-links';
 import { planDisplayTitle } from '@/lib/plan-title';
 import type { Artifact } from '@/types';
 
@@ -37,12 +38,12 @@ export function PlanContextRailContent({ artifact, titles }: PlanContextRailProp
   const { openItem } = usePlanNavigation();
 
   if (!artifact) {
-    return <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">Select a plan to see where it came from and how far it has built.</p>;
+    return <EmptyState className="p-2 text-xs">Select a plan to see where it came from and how far it has built.</EmptyState>;
   }
 
-  const itemIds = artifact.sourceRefs?.sourceItemIds ?? artifact.sourceRefs?.itemIds ?? [];
-  const epicIds = artifact.sourceRefs?.sourceEpicIds ?? artifact.sourceRefs?.epicIds ?? [];
-  const buildState = artifact.lifecycleState ?? artifact.status;
+  const itemIds = sourceItemIds(artifact);
+  const epicIds = sourceEpicIds(artifact);
+  const buildState = planBuildState(artifact);
   const prUrl = buildPrUrl(artifact);
 
   return (
@@ -100,13 +101,8 @@ export function PlanContextRailContent({ artifact, titles }: PlanContextRailProp
 
 export function PlanContextRail({ artifact, titles }: PlanContextRailProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm"><ClipboardList className="h-4 w-4 text-muted-foreground" /> Plan context</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <PlanContextRailContent artifact={artifact} titles={titles} />
-      </CardContent>
-    </Card>
+    <RailCard icon={ClipboardList} title="Plan context">
+      <PlanContextRailContent artifact={artifact} titles={titles} />
+    </RailCard>
   );
 }

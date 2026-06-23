@@ -1,14 +1,17 @@
 import * as React from 'react';
-import { ClipboardList, X } from 'lucide-react';
+import { ClipboardList } from 'lucide-react';
 import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Drawer } from '@/components/ui/drawer';
+import { ErrorBox } from '@/components/ui/error-box';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/toast';
 import { mergeCompactItemDetail } from '@/lib/compact-board-adapter';
 import type { PlanLink } from '@/lib/plan-links';
 import type { BoardItem, CompactBoardDetailResponse, DependencyRef, Epic } from '@/types';
 import { shortId } from './board-model';
+import { SubBlock } from './sub-block';
 import { LifecyclePanel } from './lifecycle-panel';
 
 const BACKLOG_STATUSES = ['candidate', 'planned', 'active', 'shipped', 'stale', 'superseded'] as const;
@@ -63,12 +66,6 @@ export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRef
     return () => { cancelled = true; };
   }, [item]);
 
-  React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
   const displayItem = detail ?? item;
   const dirty = status !== item.status || priority !== item.priority || epic !== (item.epic ?? NO_EPIC);
   const openStatusWithBlockers = displayItem.unresolvedDependsOn.length > 0 && ['candidate', 'planned', 'active'].includes(status);
@@ -92,19 +89,15 @@ export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRef
   };
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-30 flex w-[26rem] max-w-full flex-col border-l border-border bg-card shadow-2xl" aria-label={`Details for ${item.title}`}>
-      <header className="flex items-start gap-2 border-b border-border p-4">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-snug text-text-bright">{item.title}</h3>
-          <code className="mt-1 block break-all text-2xs text-muted-foreground">{item.id}</code>
-        </div>
-        <button type="button" aria-label="Close details" className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4">
-        <section className="grid gap-2">
+    <Drawer
+      ariaLabel={`Details for ${item.title}`}
+      width="sm"
+      title={item.title}
+      subtitle={<code className="mt-1 block break-all text-2xs text-muted-foreground">{item.id}</code>}
+      closeLabel="Close details"
+      onClose={onClose}
+    >
+      <section className="grid gap-2">
           <Field label="Status">
             <Select value={status} onChange={(event) => setStatus(event.target.value)} className="h-8 text-xs capitalize">
               {BACKLOG_STATUSES.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -158,7 +151,7 @@ export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRef
         )}
 
         {detailLoading && <p className="mt-4 rounded border border-border bg-background p-2 text-xs text-muted-foreground">Loading item details…</p>}
-        {detailError && <p className="mt-4 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive-foreground">{detailError}</p>}
+        {detailError && <ErrorBox className="mt-4">{detailError}</ErrorBox>}
 
         {displayItem.reasons.length > 0 && (
           <Section title="Lane">
@@ -196,8 +189,7 @@ export function ItemDrawer({ item, epics, plans = [], onOpenPlan, onClose, onRef
         <Section title="Lifecycle">
           <LifecyclePanel item={displayItem} />
         </Section>
-      </div>
-    </aside>
+    </Drawer>
   );
 }
 
@@ -210,13 +202,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// Drawer sub-section: the shared SubBlock with the drawer's looser top spacing.
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="mt-4 border-t border-border pt-3">
-      <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-      {children}
-    </section>
-  );
+  return <SubBlock title={title} className="mt-4 pt-3">{children}</SubBlock>;
 }
 
 function DependencySection({ title, refs }: { title: string; refs: DependencyRef[] }) {

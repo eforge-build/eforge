@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { GitMerge, Loader2 } from 'lucide-react';
+import { GitMerge, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/components/toast';
+import { useEscapeToClose } from '@/hooks/use-escape-to-close';
 import { draftKey } from '@/lib/plan-links';
 import type { DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse } from '@/types';
 import { DraftUnitAdvisoryNotice } from './draft-unit-advisory';
@@ -30,6 +32,8 @@ export function DraftMergePanel({ units, onAdvise, onMerge, onClose, onOpenUnit 
   const [advisory, setAdvisory] = React.useState<DraftUnitAdvisory | null>(null);
   const [busy, setBusy] = React.useState(false);
 
+  useEscapeToClose(onClose, !busy);
+
   React.useEffect(() => {
     let active = true;
     void onAdvise(unitIds).then((result) => { if (active) setAdvisory(result); }).catch(() => { if (active) setAdvisory(null); });
@@ -46,10 +50,13 @@ export function DraftMergePanel({ units, onAdvise, onMerge, onClose, onOpenUnit 
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><GitMerge className="h-4 w-4" /> Merge {unitIds.length} draft units</CardTitle>
-        <CardDescription>Combine the selected units into one. The originals are consumed; their items are pooled into the new unit.</CardDescription>
+    <Card aria-label={`Merge ${unitIds.length} draft units`}>
+      <CardHeader className="flex-row items-start justify-between gap-3">
+        <div className="grid gap-1.5">
+          <CardTitle className="flex items-center gap-2 text-base"><GitMerge className="h-4 w-4" /> Merge {unitIds.length} draft units</CardTitle>
+          <CardDescription>Combine the selected units into one. The originals are consumed; their items are pooled into the new unit.</CardDescription>
+        </div>
+        <Button variant="ghost" size="icon-xs" aria-label="Close merge panel" disabled={busy} onClick={onClose}><X className="h-4 w-4" /></Button>
       </CardHeader>
       <CardContent className="grid gap-3">
         <div className="grid gap-1">
@@ -67,7 +74,7 @@ export function DraftMergePanel({ units, onAdvise, onMerge, onClose, onOpenUnit 
         {advisory && <DraftUnitAdvisoryNotice advisory={advisory} />}
         <div className="flex items-center gap-2 border-t pt-3">
           <Button disabled={busy || !title.trim()} onClick={merge}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />} Merge units
+            {busy ? <Spinner /> : <GitMerge className="h-4 w-4" />} Merge units
           </Button>
           <Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
         </div>

@@ -1,16 +1,8 @@
 import * as React from 'react';
+import { ToneChip } from '@/components/ui/tone-chip';
+import { lifecycleChipTone, type Tone } from '@/lib/tone';
 import type { BoardItem, LifecycleLinkRow } from '@/types';
 import { shortId } from './board-model';
-
-const CHIP_TONE: Record<string, string> = {
-  Plan: 'border-primary/30 text-text-bright bg-primary/10',
-  Queue: 'border-[color:var(--lane-ready)]/30 text-[color:var(--lane-ready)] bg-[color:var(--lane-ready)]/10',
-  Run: 'border-[color:var(--lane-progress)]/30 text-[color:var(--lane-progress)] bg-[color:var(--lane-progress)]/10',
-  'PR open': 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-  Merged: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10',
-  Failed: 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)] bg-[color:var(--lane-blocked)]/10',
-  Partial: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10',
-};
 
 // Most significant chip first: failures and review-needing states outrank
 // progress states. The compact card shows only the winner; the drawer shows all.
@@ -18,24 +10,19 @@ const CHIP_SEVERITY = ['Failed', 'Partial', 'PR open', 'Merged', 'Run', 'Queue',
 
 // On cards only attention states keep color (failures, open PRs, running
 // builds); steady states render muted so the column does the talking.
-const SUMMARY_TONE: Record<string, string> = {
-  Failed: CHIP_TONE.Failed,
-  Partial: CHIP_TONE.Partial,
-  'PR open': CHIP_TONE['PR open'],
-  Run: CHIP_TONE.Run,
-};
+const SUMMARY_ATTENTION = new Set(['Failed', 'Partial', 'PR open', 'Run']);
 
 /**
  * Single most significant lifecycle chip for the compact card, or null when
  * the item has no lifecycle evidence. 'Plan' is suppressed here: nearly every
  * item has a plan link, so on cards it is noise - the drawer still shows it.
  */
-export function summaryLifecycleChip(item: BoardItem): { label: string; className: string } | null {
+export function summaryLifecycleChip(item: BoardItem): { label: string; tone: Tone } | null {
   if ((item.lifecycleLinks ?? []).length === 0 && !item.lifecycleState) return null;
   const chips = new Set(lifecycleChips(item));
   const label = CHIP_SEVERITY.find((candidate) => chips.has(candidate)) ?? [...chips][0];
   if (!label || label === 'Plan') return null;
-  return { label, className: SUMMARY_TONE[label] ?? 'border-border text-muted-foreground' };
+  return { label, tone: SUMMARY_ATTENTION.has(label) ? lifecycleChipTone(label) : 'neutral' };
 }
 
 export function LifecyclePanel({ item }: { item: BoardItem }) {
@@ -78,7 +65,7 @@ function lifecycleChips(item: BoardItem): string[] {
 }
 
 function LifecycleChip({ label }: { label: string }) {
-  return <span className={`rounded border px-1.5 py-0.5 text-2xs font-semibold ${CHIP_TONE[label] ?? 'border-border text-muted-foreground'}`}>{label}</span>;
+  return <ToneChip tone={lifecycleChipTone(label)}>{label}</ToneChip>;
 }
 
 function LifecycleRow({ row }: { row: LifecycleLinkRow }) {

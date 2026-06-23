@@ -4,10 +4,14 @@ import { getBridge } from '@/bridge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { ToneChip } from '@/components/ui/tone-chip';
 import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
+import type { Tone } from '@/lib/tone';
 import type { Artifact, Detail, DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
@@ -127,7 +131,7 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
                       className={`flex items-start gap-2 rounded-md border p-3 transition-colors hover:bg-accent ${selectedKey === key && !mergeMode ? 'border-primary bg-accent' : picked ? 'border-primary bg-primary/10' : 'border-border'}`}
                     >
                       {pickable && (
-                        <input type="checkbox" className="mt-1 shrink-0" checked={picked} aria-label={`Select ${unit.title} to merge`} onChange={() => toggleMergePick(unit.unitId)} />
+                        <Checkbox className="mt-1" checked={picked} aria-label={`Select ${unit.title} to merge`} onChange={() => toggleMergePick(unit.unitId)} />
                       )}
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => (pickable ? toggleMergePick(unit.unitId) : selectPlan(key))}>
                         <div className="flex items-center justify-between gap-2">
@@ -148,7 +152,7 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
               </>
             )}
             {artifacts.length === 0
-              ? <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No planning artifacts found.</p>
+              ? <EmptyState>No planning artifacts found.</EmptyState>
               : artifacts.map((artifact) => (
                 <button
                   key={artifact.key}
@@ -181,6 +185,7 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
             selectPlan('');
             await onRefresh();
           }}
+          onClose={() => { setDetail(null); selectPlan(''); }}
         />
       ) : (
         <section className="min-w-0 lg:col-span-2">
@@ -264,23 +269,23 @@ function CreatePlanForm({ onClose, onCreated }: { onClose: () => void; onCreated
 // projection. This is a per-artifact reference to global build state - clicking
 // into the plan shows the full evidence and links out to the run; the chip never
 // mirrors the global queue here.
-const BUILD_CHIP: Record<string, { label: string; className: string }> = {
-  queued: { label: 'Queued', className: 'border-[color:var(--lane-ready)]/40 text-[color:var(--lane-ready)] bg-[color:var(--lane-ready)]/10' },
-  building: { label: 'Building', className: 'border-[color:var(--lane-progress)]/40 text-[color:var(--lane-progress)] bg-[color:var(--lane-progress)]/10' },
-  active: { label: 'Building', className: 'border-[color:var(--lane-progress)]/40 text-[color:var(--lane-progress)] bg-[color:var(--lane-progress)]/10' },
-  'pr-open': { label: 'PR open', className: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10' },
-  partial: { label: 'Partial', className: 'border-[color:var(--prio-medium)]/40 text-[color:var(--prio-medium)] bg-[color:var(--prio-medium)]/10' },
-  failed: { label: 'Failed', className: 'border-[color:var(--lane-blocked)]/40 text-[color:var(--lane-blocked)] bg-[color:var(--lane-blocked)]/10' },
-  merged: { label: 'Shipped', className: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10' },
-  shipped: { label: 'Shipped', className: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10' },
-  landed: { label: 'Shipped', className: 'border-[color:var(--lane-done)]/40 text-[color:var(--lane-done)] bg-[color:var(--lane-done)]/10' },
+const BUILD_CHIP: Record<string, { label: string; tone: Tone }> = {
+  queued: { label: 'Queued', tone: 'info' },
+  building: { label: 'Building', tone: 'progress' },
+  active: { label: 'Building', tone: 'progress' },
+  'pr-open': { label: 'PR open', tone: 'warn' },
+  partial: { label: 'Partial', tone: 'warn' },
+  failed: { label: 'Failed', tone: 'danger' },
+  merged: { label: 'Shipped', tone: 'done' },
+  shipped: { label: 'Shipped', tone: 'done' },
+  landed: { label: 'Shipped', tone: 'done' },
 };
 
 function ArtifactBuildChip({ artifact }: { artifact: Artifact }) {
   const state = (artifact.lifecycleState ?? '').toLowerCase();
   const chip = BUILD_CHIP[state];
   if (!chip) return null;
-  return <span className={`rounded border px-1.5 py-0.5 text-2xs font-semibold ${chip.className}`}>{chip.label}</span>;
+  return <ToneChip tone={chip.tone}>{chip.label}</ToneChip>;
 }
 
 function artifactTitle(artifact: Artifact) {

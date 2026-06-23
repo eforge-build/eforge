@@ -1,6 +1,6 @@
 import { ListChecks, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RailCard } from '@/components/ui/rail-card';
 import type { BacklogSelection } from '@/hooks/use-backlog-selection';
 
 const MAX_CHIPS = 8;
@@ -20,16 +20,18 @@ export function SelectionRail({ selection, busy }: { selection: BacklogSelection
   const hidden = ids.length - shown.length;
 
   return (
-    <Card className="border-primary/50">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <ListChecks className="h-4 w-4 text-primary" /> Build plan
-          <span className="ml-auto text-2xs font-normal text-muted-foreground">
-            {ids.length} selected{readyCount !== ids.length ? ` · ${readyCount} ready` : ''}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-2">
+    <RailCard
+      className="border-primary/50"
+      icon={ListChecks}
+      iconClassName="text-primary"
+      title="Build plan"
+      action={
+        <span className="ml-auto text-2xs font-normal text-muted-foreground">
+          {ids.length} selected{readyCount !== ids.length ? ` · ${readyCount} ready` : ''}
+        </span>
+      }
+      contentClassName="grid gap-2"
+    >
         <div className="flex flex-wrap gap-1">
           {shown.map((id) => (
             <button
@@ -52,7 +54,6 @@ export function SelectionRail({ selection, busy }: { selection: BacklogSelection
           <Button size="sm" variant="ghost" onClick={selection.clear}>Clear</Button>
         </div>
         {readyCount === 0 && <p className="text-2xs text-muted-foreground">None of the selected items are ready to plan yet.</p>}
-      </CardContent>
-    </Card>
+    </RailCard>
   );
 }

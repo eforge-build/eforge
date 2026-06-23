@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { AlertTriangle, CheckCircle2, Circle, Loader2, MinusCircle, Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, MinusCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Select } from '@/components/ui/select';
 import type { AcDiagnostic, PlanData, Readiness } from '@/types';
 import { SectionEditor } from './section-editor';
@@ -150,7 +151,7 @@ function SelectDimensionsForm({ plan, disabled, onSelect }: { plan: PlanData; di
           {PLANNING_DEPTHS.map((depth) => <option key={depth} value={depth}>{depth}</option>)}
         </Select>
         <Button size="sm" variant="secondary" disabled={disabled || applying} onClick={() => void apply()}>
-          {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Apply dimensions
+          {applying ? <Spinner /> : null} Apply dimensions
         </Button>
       </div>
     </div>

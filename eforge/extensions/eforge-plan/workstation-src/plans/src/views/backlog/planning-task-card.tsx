@@ -1,7 +1,10 @@
 import * as React from 'react';
-import { Loader2, Trash2, XCircle } from 'lucide-react';
+import { Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { ToneChip } from '@/components/ui/tone-chip';
 import { useToast } from '@/components/toast';
+import { agentTaskTone } from '@/lib/tone';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { isGeneratedPlannerPrompt, selectionItemsLabel } from '@/lib/plan-title';
 import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
@@ -21,14 +24,6 @@ interface PlanningTaskCardProps {
   applyError?: PlanningTaskApplyError;
 }
 
-const STATUS_TONE: Record<string, string> = {
-  queued: 'border-border text-muted-foreground',
-  running: 'border-primary/40 text-text-bright',
-  completed: 'border-primary/40 text-text-bright',
-  failed: 'border-destructive/40 text-destructive-foreground',
-  cancelled: 'border-border text-muted-foreground',
-};
-
 export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, applyError }: PlanningTaskCardProps) {
   const { entry, task } = item;
   const status = task?.status ?? item.status ?? 'queued';
@@ -43,7 +38,7 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs ${STATUS_TONE[status] ?? STATUS_TONE.queued}`}>{status}</span>
+            <ToneChip tone={agentTaskTone(status)} className="shrink-0 text-xs">{status}</ToneChip>
             <p className="line-clamp-2 min-w-0 flex-1 break-words font-medium leading-snug text-foreground" title={heading.full}>{heading.title}</p>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
@@ -147,7 +142,7 @@ function RunningProgress({ task }: { task?: PlanningAgentTaskRecord }) {
   const message = task?.metadata?.progressMessage;
   return (
     <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-      <span className="flex items-start gap-2"><Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" /> <span className="min-w-0 break-words">{message ?? 'Planning in progress…'}</span></span>
+      <span className="flex items-start gap-2"><Spinner className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words">{message ?? 'Planning in progress…'}</span></span>
       {progress && (
         <div className="grid gap-0.5 break-words">
           {progress.currentSection && <span>Current section: <span className="text-foreground">{progress.currentSection}</span></span>}

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Check, Edit3, Send, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { formatRelativeTime } from '@/lib/format-time';
 import type { PlanData } from '@/types';
@@ -44,7 +45,7 @@ export function PlanRevisionAnnotationsPanel({ plan, api, disabled }: Props) {
           return (
             <article key={annotation.annotationId} className="grid gap-2 rounded-md border bg-background/80 p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <input id={`select-${annotation.annotationId}`} aria-label={`Select annotation ${shortAnnotationId(annotation.annotationId)} for revision`} type="checkbox" checked={selectedIds.includes(annotation.annotationId)} onChange={(event) => toggle(annotation.annotationId, event.target.checked)} />
+                <Checkbox id={`select-${annotation.annotationId}`} aria-label={`Select annotation ${shortAnnotationId(annotation.annotationId)} for revision`} checked={selectedIds.includes(annotation.annotationId)} onChange={(event) => toggle(annotation.annotationId, event.target.checked)} />
                 <label htmlFor={`select-${annotation.annotationId}`} className="text-xs font-medium">Include annotation {shortAnnotationId(annotation.annotationId)} in selected revision set</label>
                 <Badge variant="outline">{annotation.target.kind}</Badge>
                 <span className="text-xs text-muted-foreground">{targetLabel(annotation)}</span>
@@ -76,7 +77,7 @@ export function PlanRevisionAnnotationsPanel({ plan, api, disabled }: Props) {
       </div>
       <div className="sticky bottom-2 z-10 grid gap-2 rounded-md border bg-background p-3 shadow">
         <div className="flex flex-wrap items-center gap-2 text-xs"><Badge>{annotations.length} open annotations</Badge><span className="text-muted-foreground">Revise with selected annotation context.</span></div>
-        <label className="flex items-center gap-2 text-xs"><input aria-label="Include all open annotations" type="checkbox" checked={includeOpenAnnotations} onChange={(event) => setIncludeOpenAnnotations(event.target.checked)} /> Include all open annotations</label>
+        <label className="flex items-center gap-2 text-xs"><Checkbox aria-label="Include all open annotations" checked={includeOpenAnnotations} onChange={(event) => setIncludeOpenAnnotations(event.target.checked)} /> Include all open annotations</label>
         <label className="grid gap-1 text-xs"><span className="font-medium">Optional steering</span><Textarea value={steering} maxLength={MAX_STEERING_TEXT + 1} disabled={api.busy || api.loading || disabled} onChange={(event) => setSteering(event.target.value)} placeholder="Tell the AI how to use these annotations…" /></label>
         {disabledReason && <p className="text-xs text-muted-foreground">{disabledReason}</p>}
         <div><Button size="sm" disabled={Boolean(disabledReason)} onClick={() => void submit()}><Send className="h-4 w-4" /> Revise with AI from annotations</Button></div>
