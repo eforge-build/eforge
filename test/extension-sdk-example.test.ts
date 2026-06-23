@@ -138,10 +138,12 @@ const _contributionApiStub: sdk.EforgeExtensionFactory = (api) => {
     title: 'Hello panel',
     blocks: [{ rendererId: 'action-button', content: 'Say hi', action: { actionId: 'say-hi' } }],
   });
+  const workstationSubview: sdk.ConsoleWorkstationSubview = { id: 'roadmap', label: 'Roadmap', subPath: '?focus=roadmap' };
   const workstation: sdk.ConsoleWorkstation = sdk.defineConsoleWorkstation({
     id: 'hello-workstation',
     title: 'Hello workstation',
     srcDoc: '<h1>Hello</h1>',
+    subviews: [workstationSubview],
     allowedActions: ['say-hi'],
   });
   const srcDocWorkstation = sdk.defineConsoleWorkstation({
@@ -598,6 +600,7 @@ type _TypeExports = [
   sdk.ConsoleWorkstationBase,
   sdk.ConsoleWorkstationFrameBundle,
   sdk.ConsoleWorkstationFrameBundleWorkstation,
+  sdk.ConsoleWorkstationSubview,
   sdk.ConsoleWorkstationSrcDoc,
   sdk.EforgeConsoleBridge,
   sdk.IntegrationCommand,

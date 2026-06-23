@@ -284,6 +284,11 @@ export default defineEforgeExtension((eforge) => {
     id: 'planning-workstation',
     title: 'eforge-plan planning workstation',
     description: 'Extension-owned planning workstation for backlog board data, flat session plans, and session plan sets.',
+    subviews: [
+      { id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' },
+      { id: 'backlog', label: 'Backlog', path: '?focus=board' },
+      { id: 'plans', label: 'Plans', path: '?focus=plans' },
+    ],
     allowedActions: [
       'list-board-compact',
       'get-item',

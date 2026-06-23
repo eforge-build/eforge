@@ -169,7 +169,10 @@ export type ConsoleContributionBlockSpec =
   | { rendererId: 'action-button'; title?: string; content: string; action: ExtensionActionBindingSpec }
   | { rendererId: 'action-form'; title?: string; content: string; action: ExtensionActionBindingSpec };
 export interface ConsoleContributionSpec { id: string; title: string; description?: string; blocks: ConsoleContributionBlockSpec[]; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability }
-export interface ConsoleWorkstationBaseSpec { id: string; title: string; description?: string; allowedActions?: string[]; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability }
+export type ConsoleWorkstationSubviewSpec =
+  | { id: string; label: string; description?: string; path: string; subPath?: never }
+  | { id: string; label: string; description?: string; path?: never; subPath: string };
+export interface ConsoleWorkstationBaseSpec { id: string; title: string; description?: string; allowedActions?: string[]; requirements?: NativeExtensionContributionRequirements; availability?: NativeExtensionContributionAvailability; subviews?: ConsoleWorkstationSubviewSpec[] }
 export interface ConsoleWorkstationFrameBundleSpec { root: string; entrypoint: string; styles?: string[]; assets?: string[]; browserSdkVersion?: 1 }
 export interface ConsoleWorkstationSrcDocSpec extends ConsoleWorkstationBaseSpec { srcDoc: string; frameBundle?: never }
 export interface ConsoleWorkstationFrameBundleWorkstationSpec extends ConsoleWorkstationBaseSpec { srcDoc?: never; frameBundle: ConsoleWorkstationFrameBundleSpec }

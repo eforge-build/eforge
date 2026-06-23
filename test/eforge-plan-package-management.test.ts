@@ -105,6 +105,11 @@ describe('eforge-plan package management acceptance', () => {
     expect(workstation).toBeDefined();
     expect(workstation && 'frameBundle' in workstation).toBe(true);
     if (!workstation || !('frameBundle' in workstation)) throw new Error('Missing eforge-plan frame bundle');
+    expect(workstation.subviews).toEqual([
+      { id: 'roadmap', label: 'Roadmap', path: '?focus=roadmap' },
+      { id: 'backlog', label: 'Backlog', path: '?focus=board' },
+      { id: 'plans', label: 'Plans', path: '?focus=plans' },
+    ]);
 
     const frame = await fetchFromManifestUrl(port, workstation.frameBundle.frameUrl);
     expect(frame.status).toBe(200);
