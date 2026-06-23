@@ -166,6 +166,92 @@ describe('eforge-plan compact backlog query actions', () => {
     });
   });
 
+  it('applies get-item projection controls without changing body opt-in behavior', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const projected = await invoke(cwd, 'get-item', {
+        id: 'child',
+        includeEpic: false,
+        includeSections: false,
+        includeLifecycleRows: false,
+        includeDependencies: false,
+        includeDependents: false,
+      });
+
+      expect(projected.item).toMatchObject({ id: 'child' });
+      expect(projected).not.toHaveProperty('epic');
+      expect(projected).not.toHaveProperty('dependencies');
+      expect(projected).not.toHaveProperty('dependents');
+      expect(projected.item).not.toHaveProperty('dependsOn');
+      expect(projected.item).not.toHaveProperty('unresolvedDependsOn');
+      expect(projected.item).not.toHaveProperty('sections');
+      expect(projected.item).not.toHaveProperty('linkRows');
+      expect(projected.item).not.toHaveProperty('failureEvidence');
+      expect(JSON.stringify(projected)).not.toContain('Child claim.');
+
+      const withBody = await invoke(cwd, 'get-item', { id: 'child', includeBody: true });
+      expect((withBody.item as { body?: string }).body).toContain('Child claim.');
+      expect(JSON.stringify(withBody)).not.toContain('Dependency claim.');
+    });
+  });
+
+  it('omits dependency id arrays from dependent summaries when requested', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const projected = await invoke(cwd, 'get-item', { id: 'dep', includeDependencies: false });
+
+      expect(projected).not.toHaveProperty('dependencies');
+      expect(projected.dependents).toEqual([expect.objectContaining({ id: 'child' })]);
+      expect(projected.dependents).toEqual([expect.not.objectContaining({ dependsOn: expect.any(Array) })]);
+      expect(projected.dependents).toEqual([expect.not.objectContaining({ unresolvedDependsOn: expect.any(Array) })]);
+    });
+  });
+
+  it('applies get-epic section and item projection controls', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const noSections = await invoke(cwd, 'get-epic', { id: 'epic-one', includeSections: false });
+      expect(noSections.epic).not.toHaveProperty('sections');
+      expect(JSON.stringify(noSections)).not.toContain('Deliver compact reads.');
+
+      const noItems = await invoke(cwd, 'get-epic', { id: 'epic-one', includeItems: false });
+      expect(noItems).toMatchObject({ items: [], totalItems: 0 });
+    });
+  });
+
+  it('omits dependency id arrays from get-epic item summaries when requested', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const output = await invoke(cwd, 'get-epic', { id: 'epic-one', includeItemDependencies: false });
+
+      const child = (output.items as Array<Record<string, unknown>>).find((entry) => entry.id === 'child');
+      expect(child).toMatchObject({ id: 'child' });
+      expect(child).not.toHaveProperty('dependsOn');
+      expect(child).not.toHaveProperty('unresolvedDependsOn');
+    });
+  });
+
+  it('applies search and compact board projection controls', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+
+      const search = await invoke(cwd, 'search-items', { query: 'child', includeEpics: true, includeDependencies: false });
+      expect(search.epics).toEqual([expect.objectContaining({ id: 'epic-one' })]);
+      expect(search.items).toEqual([expect.not.objectContaining({ dependsOn: expect.any(Array) })]);
+
+      const board = await invoke(cwd, 'list-board-compact', { epic: 'epic-one', includeEpics: false, includeLaneCounts: false, includeDependencies: false });
+      expect(board).not.toHaveProperty('epics');
+      expect(board).not.toHaveProperty('lanes');
+      expect(board).not.toHaveProperty('counts');
+      expect(board.items).toEqual(expect.arrayContaining([expect.not.objectContaining({ dependsOn: expect.any(Array) })]));
+      expect(JSON.stringify(board)).not.toContain('Child claim.');
+    });
+  });
+
   it('reads an epic detail with paged compact item summaries', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);

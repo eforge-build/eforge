@@ -4,7 +4,7 @@ The planning workstation is an extension-owned Vite iframe. It talks to the host
 
 ## Server-authoritative curation preview
 
-Backlog curation preview and apply data is server-authoritative. The iframe renders preview payloads from `preview-backlog-curation-task`, task list metadata from `list-planning-agent-tasks`, and apply results from `apply-planning-agent-task-result`.
+Backlog curation preview and apply data is server-authoritative. The iframe renders preview payloads from `preview-backlog-curation-task`, task list metadata from `list-planning-agent-tasks`, and apply results from `apply-planning-agent-task-result`. Completed available unapplied ready single-output `sessionPlanCreationDraft` tasks are the only planning tasks the workstation auto-applies; it calls `apply-planning-agent-task-result` once with `applySessionPlanCreationDraft: {}`, refreshes data, opens the created plan in Plans focus, and leaves failed automatic apply attempts visible without retrying the same task automatically. Failures, collisions, needs-input, unavailable, curation, recommendation, handoff, patch, revision, and multi-output tasks stay visible for review.
 
 Required preview payload fields for curation UI and fixtures are:
 

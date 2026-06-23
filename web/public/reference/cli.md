@@ -366,6 +366,32 @@ List extension-provided actions, integration commands, and deep links
 | Flag | Description |
 |------|-------------|
 | `--kind <kind>` | Contribution kind: action, command, deep-link, or all |
+| `--extension-name <name>` | Filter to one extension name |
+| `--search <text>` | Search id, label, description, extension, and action metadata |
+| `--id-prefix <prefix>` | Filter to contribution ids with this prefix |
+| `--output-profile <profile>` | Filter by action output profile |
+| `--limit <number>` | Maximum entries to return |
+| `--offset <number>` | Zero-based pagination offset |
+| `--include-schema` | Include input schemas/defaults in the list projection |
+| `--include-diagnostics` | Include manifest diagnostics in the list projection |
+| `--full` | Use the full projection, including schemas and diagnostics |
+| `--json` | Output JSON |
+
+##### `show`
+
+**Full command:** `eforge extension contributions show`
+
+Show one extension action, integration command, or deep link contribution
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--kind <kind>` | Contribution kind: action, command, or deep-link |
+| `--include-schema` | Include input schema/defaults in the detail projection |
+| `--include-diagnostics` | Include manifest diagnostics in the detail projection |
+| `--full` | Use the full projection, including schema and diagnostics |
 | `--json` | Output JSON |
 
 ##### `invoke`

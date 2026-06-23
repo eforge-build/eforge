@@ -17,8 +17,9 @@ export function boardFromCompact(response: CompactBoardResponse, recommendations
   const rec = recommendationIndex(recommendations);
   const items = response.items.map((item) => boardItemFromCompact(item, epicRefs, rec));
   const itemsByLane = groupItemsByLane(items);
+  const lanes: Array<{ lane: string; title: string; count: number; openCount: number; closedCount: number; pagination?: Board['pagination'] }> = response.lanes ?? laneSummariesFromItems(items);
   return {
-    lanes: response.lanes.map((lane) => ({
+    lanes: lanes.map((lane) => ({
       lane: lane.lane,
       title: lane.title,
       items: itemsByLane.get(lane.lane) ?? [],
@@ -29,8 +30,8 @@ export function boardFromCompact(response: CompactBoardResponse, recommendations
     })),
     items,
     epics,
-    counts: response.counts,
-    pagination: response.pagination,
+    counts: response.counts ?? countsFromItems(items),
+    pagination: response.pagination ?? { limit: response.limit, offset: response.offset, returned: items.length, hasMore: response.offset + items.length < response.total },
   };
 }
 
@@ -58,7 +59,7 @@ export function mergeCompactLanePage(board: Board, response: CompactBoardRespons
 }
 
 export function mergeCompactItemDetail(summary: BoardItem, response: CompactBoardDetailResponse): BoardItem {
-  return mergeDetailIntoItem(summary, response.item, response.dependencies, response.dependents);
+  return mergeDetailIntoItem(summary, response.item, response.dependencies ?? [], response.dependents ?? []);
 }
 
 export function mergeDetailIntoBoard(board: Board, response: CompactBoardDetailResponse): Board {
@@ -79,14 +80,14 @@ function boardItemFromCompact(item: CompactBoardItem, epics: Map<string, Epic>, 
     tags: item.tags,
     lane: item.lane,
     reasons: item.reasons,
-    unresolvedDependsOn: item.unresolvedDependsOn,
+    unresolvedDependsOn: item.unresolvedDependsOn ?? [],
     activeTraceReasons: item.activeTraceReasons ?? [],
     blocked: item.blocked,
     ready: item.ready,
     reviewDue: item.reviewDue,
     closed: item.closed,
     ...(item.epic ? { epic: item.epic, epicRef: epicRef(item.epic, epics) } : {}),
-    dependencies: item.dependsOn.map((id) => dependencyRef(id, item.unresolvedDependsOn.includes(id))),
+    dependencies: (item.dependsOn ?? []).map((id) => dependencyRef(id, (item.unresolvedDependsOn ?? []).includes(id))),
     dependents: [],
     notes: { claim: '', evidence: '', recheck: '', promotionPaths: '' },
     ...(recEntry?.rank !== undefined ? { recRank: recEntry.rank } : {}),
@@ -97,7 +98,9 @@ function boardItemFromCompact(item: CompactBoardItem, epics: Map<string, Epic>, 
 }
 
 function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, dependencies: CompactBoardItem[], dependents: CompactBoardItem[]): BoardItem {
-  const section = (name: string) => detail.sections[name] ?? detail.sections[name.toLowerCase()] ?? '';
+  const sections = detail.sections ?? {};
+  const unresolvedDependsOn = detail.unresolvedDependsOn ?? [];
+  const section = (name: string) => sections[name] ?? sections[name.toLowerCase()] ?? '';
   return {
     ...summary,
     ...boardItemFromCompact(detail, new Map(), recommendationIndex(null)),
@@ -105,7 +108,7 @@ function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, depe
     recRank: summary.recRank,
     recLanes: summary.recLanes,
     recUnblock: summary.recUnblock,
-    dependencies: dependencies.map((item) => dependencyRef(item.id, detail.unresolvedDependsOn.includes(item.id), item.title, item.status)),
+    dependencies: dependencies.map((item) => dependencyRef(item.id, unresolvedDependsOn.includes(item.id), item.title, item.status)),
     dependents: dependents.map((item) => dependencyRef(item.id, false, item.title, item.status)),
     notes: {
       claim: section('Claim'),
@@ -113,9 +116,9 @@ function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, depe
       recheck: section('Recheck'),
       promotionPaths: section('Promotion Paths'),
     },
-    linkRows: detail.linkRows,
-    lifecycleLinks: detail.linkRows,
-    failureEvidence: detail.failureEvidence,
+    linkRows: detail.linkRows ?? [],
+    lifecycleLinks: detail.linkRows ?? [],
+    failureEvidence: detail.failureEvidence ?? [],
     lifecycleState: detail.lifecycleState,
   };
 }
@@ -131,6 +134,20 @@ function compactEpics(response: Pick<CompactBoardResponse, 'epics'>): Epic[] {
     openItemCount: epic.openItemCount,
     hasBody: epic.hasBody,
   }));
+}
+
+function laneSummariesFromItems(items: BoardItem[]) {
+  return [...groupItemsByLane(items).entries()].map(([lane, laneItems]) => ({
+    lane,
+    title: lane,
+    count: laneItems.length,
+    openCount: laneItems.filter((item) => !item.closed).length,
+    closedCount: laneItems.filter((item) => item.closed).length,
+  }));
+}
+
+function countsFromItems(items: BoardItem[]) {
+  return { total: items.length, open: items.filter((item) => !item.closed).length, closed: items.filter((item) => item.closed).length };
 }
 
 function groupItemsByLane(items: BoardItem[]): Map<string, BoardItem[]> {

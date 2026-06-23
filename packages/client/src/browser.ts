@@ -195,12 +195,30 @@ export {
 export {
   formatExtensionContributionOutput,
   formatExtensionContributionOutputText,
+  formatExtensionContributionDetail,
+  formatExtensionContributionDetailText,
+  formatExtensionContributionFailedInvocationEnvelope,
+  formatExtensionContributionFailedInvocationEnvelopeText,
+  formatExtensionContributionList,
+  formatExtensionContributionListText,
 } from './extension-contribution-output-formatting.js';
 export type {
   ExtensionContributionFormattedOutputKind,
   FormatExtensionContributionOutputOptions,
   FormattedExtensionContributionOutput,
+  FormatExtensionContributionHostTextOptions,
 } from './extension-contribution-output-formatting.js';
+export type {
+  ExtensionHostContributionDetailOptions,
+  ExtensionHostContributionDetailResponse,
+  ExtensionHostContributionEntry,
+  ExtensionHostContributionFailedInvocationEnvelope,
+  ExtensionHostContributionInputSummary,
+  ExtensionHostContributionKind,
+  ExtensionHostContributionListResponse,
+  ExtensionHostContributionProjection,
+  ExtensionHostContributionProjectionOptions,
+} from './api/extension-contribution-dispatch.js';
 // --- eforge:region extension-agent-task-contracts ---
 export * from './extension-agent-tasks.js';
 export {

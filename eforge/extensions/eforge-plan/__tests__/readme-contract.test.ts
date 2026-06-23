@@ -32,6 +32,18 @@ function sectionBetween(readme: string, heading: string, nextHeading: string): s
 }
 
 describe('eforge-plan README planner contract', () => {
+  it('documents direct compact agent backlog workflow actions', async () => {
+    const readme = await readFile(README, 'utf-8');
+    const workflow = sectionBetween(readme, '## Direct agent backlog workflow', '## Storage model');
+
+    for (const actionId of ['search-items', 'get-item', 'get-epic', 'capture-item', 'update-item']) {
+      expect(workflow).toContain(actionId);
+    }
+    for (const projectionFlag of ['includeEpics', 'includeDependencies', 'includeEpic', 'includeSections', 'includeLifecycleRows', 'includeDependents', 'includeItems', 'includeItemDependencies', 'includeLaneCounts']) {
+      expect(workflow).toContain(projectionFlag);
+    }
+  });
+
   it('documents private recommendations, promotion sources, planner boundaries, and non-goals', async () => {
     const readme = await readFile(README, 'utf-8');
 
@@ -249,7 +261,12 @@ describe('eforge-plan README planner contract', () => {
     expect(boundary).toMatch(/defers all-open-backlog curation source assembly to that background task/);
     expect(boundary).toMatch(/`backlogCurationDraft` plus `recommendations`/);
     expect(boundary).toMatch(/Planning activity monitor labels curation tasks and supports retry, redraft, cancel, remove, and apply/);
-    expect(boundary).toMatch(/task result is read-only until the user previews it/);
+    // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+    expect(boundary).toMatch(/auto-applies only completed available unapplied ready single-output `sessionPlanCreationDraft` creation tasks/);
+    expect(boundary).toMatch(/opens the created plan in Plans focus/);
+    expect(boundary).toMatch(/Readiness checks, sign-off, and handoff remain separate explicit Plan actions/);
+    // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
+    expect(boundary).toMatch(/task result is otherwise read-only until the user previews it/i);
     expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, unresolved exceptions, needs-input cases, generated recommendation details/);
     expect(boundary).toMatch(/preview-time invalid generated recommendation references/);
     expect(boundary).toMatch(/Invalid generated recommendations block normal curation apply/);
@@ -259,4 +276,16 @@ describe('eforge-plan README planner contract', () => {
     expect(boundary).toMatch(/autonomous backlog draining|auto-mode backlog draining/);
     expect(boundary).toMatch(/queue orchestration/);
   });
+
+  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
+  it('documents automatic session-plan creation and visible non-success states', async () => {
+    const readme = await readFile(README, 'utf-8');
+
+    expect(readme).toContain('The workstation automatically sends exactly `{ "taskId": "task_123", "applySessionPlanCreationDraft": {} }` once');
+    expect(readme).toMatch(/failed, cancelled, unavailable, needs-input, recommendation refresh, backlog curation, handoff, recommendation, patch, revision, and ambiguous multi-output tasks remain visible/);
+    expect(readme).toMatch(/Automatic creation failures, including collision errors/);
+    expect(readme).toContain('opens `focus=plans` with the created `plan` selected');
+    expect(readme).toContain('readiness/sign-off continues in Plans focus');
+  });
+  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
 });

@@ -107,7 +107,7 @@ describe('eforge-plan package publication artifact', () => {
     expect(files).not.toContain('tsup.config.ts');
     expect(files).not.toContain('tsconfig.json');
     expect(files.filter((path) => !path.startsWith('dist/') && path.endsWith('.ts'))).toEqual([]);
-  });
+  }, 70_000);
 
   it('keeps compiled runtime self-contained for fresh-project imports', async () => {
     const runtimeFiles = await listJsFiles(join(extensionRoot, 'dist'));

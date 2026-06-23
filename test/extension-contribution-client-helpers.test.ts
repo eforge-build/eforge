@@ -179,15 +179,19 @@ describe('extension contribution Node client helpers', () => {
     const manifest = await apiGetExtensionContributionManifest({ cwd: tmpDir });
     const summary = summarizeExtensionContributionManifest(manifest);
 
+    expect(summary.diagnosticCount).toBe(0);
     expect(summary.entries.find((entry) => entry.kind === 'command' && entry.id === 'eforge-plan:open-planning-entry')).toMatchObject({
       actionId: 'eforge-plan:open-planning-entry',
       actionBacked: true,
+      hasInputSchema: true,
     });
-    expect(summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'eforge-plan:planning-workstation')).toMatchObject({
+    const planningDeepLink = summary.entries.find((entry) => entry.kind === 'deep-link' && entry.id === 'eforge-plan:planning-workstation');
+    expect(planningDeepLink).toMatchObject({
       actionId: 'eforge-plan:open-planning-entry',
       urlTemplate: '/console/workstations/eforge-plan%3Aplanning-workstation',
       actionBacked: true,
     });
+    expect(planningDeepLink?.inputSchema).toBeUndefined();
     expect(resolveExtensionContributionInvocation(manifest, { kind: 'command', id: 'eforge-plan:open-planning-entry', input: {}, requestedBy: { host: 'cli' } }).target).toMatchObject({
       actionId: 'eforge-plan:open-planning-entry',
       id: 'eforge-plan:open-planning-entry',

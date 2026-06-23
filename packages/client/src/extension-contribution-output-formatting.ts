@@ -1,4 +1,10 @@
 import type { ExtensionActionOutputProfile } from './extension-contributions.js';
+import type {
+  ExtensionHostContributionDetailResponse,
+  ExtensionHostContributionEntry,
+  ExtensionHostContributionFailedInvocationEnvelope,
+  ExtensionHostContributionListResponse,
+} from './api/extension-contribution-dispatch.js';
 
 const DEFAULT_MAX_CHARS = 12_000;
 const DEFAULT_ARRAY_ITEMS = 5;
@@ -83,6 +89,150 @@ export function formatExtensionContributionOutputText(
   options: FormatExtensionContributionOutputOptions = {},
 ): string {
   return formatExtensionContributionOutput(output, options).text;
+}
+
+export interface FormatExtensionContributionHostTextOptions {
+  maxChars?: number;
+}
+
+export function formatExtensionContributionList(
+  response: ExtensionHostContributionListResponse,
+  options: FormatExtensionContributionHostTextOptions = {},
+): FormattedExtensionContributionOutput {
+  return formatHostText(renderContributionList(response), options.maxChars);
+}
+
+export function formatExtensionContributionListText(
+  response: ExtensionHostContributionListResponse,
+  options: FormatExtensionContributionHostTextOptions = {},
+): string {
+  return formatExtensionContributionList(response, options).text;
+}
+
+export function formatExtensionContributionDetail(
+  response: ExtensionHostContributionDetailResponse,
+  options: FormatExtensionContributionHostTextOptions = {},
+): FormattedExtensionContributionOutput {
+  return formatHostText(renderContributionDetail(response), options.maxChars);
+}
+
+export function formatExtensionContributionDetailText(
+  response: ExtensionHostContributionDetailResponse,
+  options: FormatExtensionContributionHostTextOptions = {},
+): string {
+  return formatExtensionContributionDetail(response, options).text;
+}
+
+export function formatExtensionContributionFailedInvocationEnvelope(
+  envelope: ExtensionHostContributionFailedInvocationEnvelope,
+  options: FormatExtensionContributionHostTextOptions = {},
+): FormattedExtensionContributionOutput {
+  return formatHostText(renderFailureEnvelope(envelope), options.maxChars);
+}
+
+export function formatExtensionContributionFailedInvocationEnvelopeText(
+  envelope: ExtensionHostContributionFailedInvocationEnvelope,
+  options: FormatExtensionContributionHostTextOptions = {},
+): string {
+  return formatExtensionContributionFailedInvocationEnvelope(envelope, options).text;
+}
+
+function renderContributionList(response: ExtensionHostContributionListResponse): string {
+  const header = [
+    `Extension contributions: ${response.returned} returned of ${response.total} total`,
+    `Generated: ${response.generatedAt}`,
+    `Diagnostics: ${response.diagnosticCount}${response.diagnostics ? ' included' : ' hidden'}`,
+    `Page: offset ${response.offset}${response.limit !== undefined ? `, limit ${response.limit}` : ''}${response.hasMore ? `, nextOffset ${response.nextOffset}` : ', complete'}`,
+  ];
+  const entries = response.entries.flatMap(renderContributionListEntry);
+  const diagnostics = response.diagnostics?.map((diagnostic) => `  - ${diagnostic.severity}: ${diagnostic.code}: ${diagnostic.message}`) ?? [];
+  return [...header, ...entries, ...(diagnostics.length > 0 ? ['Diagnostics detail:', ...diagnostics] : [])].join('\n');
+}
+
+function renderContributionDetail(response: ExtensionHostContributionDetailResponse): string {
+  const entry = response.entry;
+  const lines = [
+    `Extension contribution: ${entry.kind}:${entry.id}`,
+    `Generated: ${response.generatedAt}`,
+    renderContributionEntrySummary(entry),
+    `Extension path: ${entry.extensionPath}`,
+    `Input: ${renderInputMetadata(entry)}`,
+    `Diagnostics: ${response.diagnosticCount}${response.diagnostics ? ' included' : ' hidden'}`,
+  ];
+  if (entry.description) lines.push(`Description: ${entry.description}`);
+  if (entry.inputSchema) lines.push('Input schema:', fencedJson(entry.inputSchema));
+  if (entry.inputDefaults) lines.push('Input defaults:', fencedJson(entry.inputDefaults));
+  if (entry.availability?.available === false) lines.push(`Unavailable: ${entry.availability.message ?? 'no message'}`);
+  if (response.diagnostics) lines.push('Diagnostics detail:', fencedJson(response.diagnostics));
+  return lines.join('\n');
+}
+
+function renderFailureEnvelope(envelope: ExtensionHostContributionFailedInvocationEnvelope): string {
+  return [
+    'Extension contribution invocation failed',
+    `Invocation: ${envelope.invocationId}`,
+    `Target: ${envelope.target.kind}:${envelope.target.id} (action ${envelope.target.actionId})`,
+    `Extension: ${envelope.target.extensionName}`,
+    `Requested by: ${envelope.requestedBy.host}`,
+    `Error: ${envelope.error.code}: ${envelope.error.message}`,
+    `Input summary: ${renderFailureInputSummary(envelope.inputSummary)}`,
+  ].join('\n');
+}
+
+function renderFailureInputSummary(inputSummary: ExtensionHostContributionFailedInvocationEnvelope['inputSummary']): string {
+  const details = [
+    `${inputSummary.inputKeyCount} keys [${inputSummary.inputKeys.join(', ')}]`,
+    `serialized size ${inputSummary.serializedInputSize} chars`,
+    inputSummary.omittedInputKeyCount ? `${inputSummary.omittedInputKeyCount} omitted keys` : undefined,
+    inputSummary.truncatedInputKeyCount ? `${inputSummary.truncatedInputKeyCount} truncated keys` : undefined,
+  ];
+  return details.filter((detail): detail is string => detail !== undefined).join(', ');
+}
+
+function renderContributionListEntry(entry: ExtensionHostContributionEntry): string[] {
+  const lines = [`- ${renderContributionEntrySummary(entry)}`];
+  if (entry.inputSchema) lines.push('  Input schema:', indentBlock(fencedJson(entry.inputSchema), '  '));
+  if (entry.inputDefaults) lines.push('  Input defaults:', indentBlock(fencedJson(entry.inputDefaults), '  '));
+  return lines;
+}
+
+function renderContributionEntrySummary(entry: ExtensionHostContributionEntry): string {
+  return [
+    `${entry.kind}:${entry.id}`,
+    `— ${entry.label}`,
+    `[${entry.extensionName}]`,
+    entry.actionId ? `action=${entry.actionId}` : 'action=none',
+    entry.urlTemplate ? `url=${entry.urlTemplate}` : undefined,
+    `actionBacked=${entry.actionBacked}`,
+    entry.outputProfile ? `output=${entry.outputProfile}` : undefined,
+    entry.sideEffects?.length ? `sideEffects=${entry.sideEffects.join(',')}` : undefined,
+    entry.availability?.available === false ? `unavailable=${entry.availability.message ?? 'true'}` : undefined,
+    `input=${renderInputMetadata(entry)}`,
+  ].filter((part): part is string => Boolean(part)).join(' ');
+}
+
+function renderInputMetadata(entry: ExtensionHostContributionEntry): string {
+  const parts = [
+    entry.hasInputSchema ? 'schema=yes' : 'schema=no',
+    (entry.requiredInputKeys ?? []).length > 0 ? `required=${entry.requiredInputKeys?.join(',')}` : 'required=none',
+    (entry.conditionalRequiredInputAlternatives ?? []).length > 0 ? `conditionalRequired=${entry.conditionalRequiredInputAlternatives?.map((fields) => fields.join(',')).join('|')}` : undefined,
+    (entry.inputPropertyKeys ?? []).length > 0 ? `properties=${entry.inputPropertyKeys?.join(',')}` : 'properties=none',
+    (entry.inputDefaultKeys ?? []).length > 0 ? `defaults=${entry.inputDefaultKeys?.join(',')}` : 'defaults=none',
+  ];
+  return parts.filter((part): part is string => Boolean(part)).join('; ');
+}
+
+function formatHostText(text: string, maxChars = DEFAULT_MAX_CHARS): FormattedExtensionContributionOutput {
+  const capped = capText(text, Math.max(400, maxChars));
+  return { kind: 'text', text: capped.text, warnings: [], truncated: capped.truncated, rawLength: text.length };
+}
+
+function fencedJson(value: unknown): string {
+  return `\`\`\`json\n${stringifyJson(value)}\n\`\`\``;
+}
+
+function indentBlock(text: string, prefix: string): string {
+  return text.split('\n').map((line) => `${prefix}${line}`).join('\n');
 }
 
 function formatMarkdownOutput(markdown: string, warnings: string[], maxChars: number): FormattedExtensionContributionOutput {

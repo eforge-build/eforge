@@ -3,6 +3,7 @@ import { getBridge } from '@/bridge';
 import { useToast } from '@/components/toast';
 import type {
   AnalyzeAllBacklogResponse,
+  AppliedSessionPlanCreationDraft,
   ApplyPlanningTaskResponse,
   JsonObject,
   ListPlanningAgentTasksResponse,
@@ -10,11 +11,42 @@ import type {
   PlanningAgentTaskRecord,
   PlanningAgentTaskResponse,
   PlanningAgentTaskWorkflowStartResponse,
+  PlanningTaskApplyError,
+  PlanningTaskResult,
   RemovePlanningTaskResponse,
 } from '@/types';
 
 const bridge = getBridge();
 const POLL_MS = 1600;
+const AUTO_APPLY_ATTEMPT_STORAGE_PREFIX = 'eforge-plan:auto-apply-attempted:';
+
+function autoApplyAttemptKey(taskId: string): string {
+  return `${AUTO_APPLY_ATTEMPT_STORAGE_PREFIX}${taskId}`;
+}
+
+function hasPersistedAutoApplyAttempt(taskId: string): boolean {
+  try {
+    return window.localStorage.getItem(autoApplyAttemptKey(taskId)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function persistAutoApplyAttempt(taskId: string): void {
+  try {
+    window.localStorage.setItem(autoApplyAttemptKey(taskId), new Date().toISOString());
+  } catch {
+    // Best-effort only: in-memory guards still prevent retry loops during this mount.
+  }
+}
+
+function clearPersistedAutoApplyAttempt(taskId: string): void {
+  try {
+    window.localStorage.removeItem(autoApplyAttemptKey(taskId));
+  } catch {
+    // Best-effort only.
+  }
+}
 
 export interface RedraftInput { answers?: string[]; steering?: string; }
 export interface AnalyzeBacklogInput { itemAuditConcurrency?: number; }
@@ -23,6 +55,7 @@ export interface PlanningTaskWorkflowsApi {
   items: PlanningAgentTaskListItem[];
   loading: boolean;
   busy: boolean;
+  applyErrors: Record<string, PlanningTaskApplyError>;
   reload: () => Promise<void>;
   start: (input: JsonObject) => Promise<PlanningAgentTaskRecord | null>;
   analyzeAllBacklog: (input?: AnalyzeBacklogInput) => Promise<PlanningAgentTaskRecord | null>;
@@ -31,6 +64,69 @@ export interface PlanningTaskWorkflowsApi {
   cancel: (taskId: string) => Promise<void>;
   remove: (taskId: string) => Promise<void>;
   apply: (taskId: string, input: JsonObject) => Promise<ApplyPlanningTaskResponse | null>;
+}
+
+type CreatedSessionPlanCallback = (draft: AppliedSessionPlanCreationDraft) => void;
+
+interface ApplyPlanningTaskOptions {
+  automatic?: boolean;
+  suppressSuccessToast?: boolean;
+}
+
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+function hasText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasSingleCreationRequestedOutput(item: PlanningAgentTaskListItem): boolean {
+  const sections = item.entry.requestedOutputSections;
+  return sections.length === 0 || (sections.length === 1 && sections[0] === 'sessionPlanCreationDraft');
+}
+
+function hasOtherApplyableResultOutputs(result: PlanningTaskResult): boolean {
+  return Boolean(
+    result.backlogCurationDraft ||
+    result.recommendations ||
+    result.handoffDraft ||
+    (result.handoffDrafts && result.handoffDrafts.length > 0) ||
+    result.sessionPlanPatch ||
+    result.planRevisionTurn ||
+    result.planDrafts ||
+    result.playbookDraft,
+  );
+}
+
+function isReadyCreationDraftResult(result: PlanningTaskResult): boolean {
+  const draft = result.sessionPlanCreationDraft;
+  return result.decision === 'ready' &&
+    Boolean(draft) &&
+    hasText(draft?.session) &&
+    hasText(draft?.topic) &&
+    hasText(draft?.planningType) &&
+    hasText(draft?.planningDepth) &&
+    Boolean(draft?.sections.length);
+}
+
+function isAutoApplyCreationTask(item: PlanningAgentTaskListItem): boolean {
+  const status = item.task?.status ?? item.status;
+  const result = item.task?.result;
+  if (!item.available || status !== 'completed' || item.entry.appliedAt || item.entry.purpose || !result) return false;
+  if (!hasSingleCreationRequestedOutput(item) || hasOtherApplyableResultOutputs(result)) return false;
+  return isReadyCreationDraftResult(result);
+}
+
+function isSessionPlanCreationApplyInput(input: JsonObject): boolean {
+  return Object.prototype.hasOwnProperty.call(input, 'applySessionPlanCreationDraft');
+}
+
+function withoutApplyError(errors: Record<string, PlanningTaskApplyError>, taskId: string): Record<string, PlanningTaskApplyError> {
+  if (!errors[taskId]) return errors;
+  const next = { ...errors };
+  delete next[taskId];
+  return next;
 }
 
 function isRunning(item: PlanningAgentTaskListItem): boolean {
@@ -46,24 +142,30 @@ function isTerminalStatus(status: PlanningAgentTaskRecord['status']): boolean {
  * Shared workflow hook for the durable planning task monitor. Task discovery is
  * extension-owned: the hook always lists tasks through `list-planning-agent-tasks`
  * on mount, after every mutation, and after polling observes a terminal task
- * status, caches the current render in React state, and polls running tasks
- * through `get-planning-agent-task`.
+ * status, caches the current render in React state, polls running tasks through
+ * `get-planning-agent-task`, and auto-applies eligible ready session-plan
+ * creation drafts exactly once while preserving apply errors for review.
  */
-export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): PlanningTaskWorkflowsApi {
+export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreatedSessionPlan?: CreatedSessionPlanCallback): PlanningTaskWorkflowsApi {
   const toast = useToast();
   const [items, setItems] = React.useState<PlanningAgentTaskListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
+  const [applyErrors, setApplyErrors] = React.useState<Record<string, PlanningTaskApplyError>>({});
+  const autoApplyInFlightRef = React.useRef<Set<string>>(new Set());
+  const autoApplyAttemptedRef = React.useRef<Set<string>>(new Set());
+  const autoApplyFailedRef = React.useRef<Set<string>>(new Set());
+  const autoAppliedRef = React.useRef<Set<string>>(new Set());
 
   const reportError = React.useCallback((caught: unknown) => {
-    toast.push(caught instanceof Error ? caught.message : String(caught), 'error');
+    toast.push(errorMessage(caught), 'error');
   }, [toast]);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
     try {
       const response = await bridge.invokeAction<ListPlanningAgentTasksResponse>('list-planning-agent-tasks', {});
-      setItems(response.tasks ?? []);
+      setItems((response.tasks ?? []).filter((item) => !autoAppliedRef.current.has(item.entry.taskId)));
     } catch (caught) {
       reportError(caught);
     } finally {
@@ -96,7 +198,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
           if (isTerminalStatus(response.task.status)) void reload();
         }).catch((caught) => {
           if (cancelled) return;
-          const message = caught instanceof Error ? caught.message : String(caught);
+          const message = errorMessage(caught);
           if (pollErrorRef.current.get(item.entry.taskId) === message) return;
           pollErrorRef.current.set(item.entry.taskId, message);
           reportError(caught);
@@ -143,6 +245,8 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     try {
       const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('retry-planning-agent-task', { taskId });
       toast.push(`Retrying as ${response.task.taskId}.`, 'success');
+      clearPersistedAutoApplyAttempt(taskId);
+      setApplyErrors((prev) => withoutApplyError(prev, taskId));
       await reload();
     } catch (caught) {
       reportError(caught);
@@ -159,6 +263,8 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
       if (input.steering && input.steering.trim().length > 0) payload.steering = input.steering.trim();
       const response = await bridge.invokeAction<PlanningAgentTaskWorkflowStartResponse>('redraft-planning-agent-task', payload);
       toast.push(`Redrafting as ${response.task.taskId}.`, 'success');
+      clearPersistedAutoApplyAttempt(taskId);
+      setApplyErrors((prev) => withoutApplyError(prev, taskId));
       await reload();
     } catch (caught) {
       reportError(caught);
@@ -188,6 +294,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
       const response = await bridge.invokeAction<RemovePlanningTaskResponse>('remove-planning-agent-task', { taskId });
       toast.push(response.removed ? `Removed ${response.taskId} from the planning task list.` : `${response.taskId} was not in the planning task list.`, 'success');
       setItems((prev) => prev.filter((existing) => existing.entry.taskId !== taskId));
+      setApplyErrors((prev) => withoutApplyError(prev, taskId));
       await reload();
     } catch (caught) {
       reportError(caught);
@@ -196,24 +303,74 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>): Planni
     }
   }, [reload, reportError, toast]);
 
-  const apply = React.useCallback(async (taskId: string, input: JsonObject): Promise<ApplyPlanningTaskResponse | null> => {
-    setBusy(true);
+  const applyPlanningTaskResult = React.useCallback(async (taskId: string, input: JsonObject, options: ApplyPlanningTaskOptions = {}): Promise<ApplyPlanningTaskResponse | null> => {
+    if (!options.automatic) setBusy(true);
     try {
-      const response = await bridge.invokeAction<ApplyPlanningTaskResponse>('apply-planning-agent-task-result', { taskId, ...input });
-      toast.push(`Applied generated output from ${response.taskId}.`, 'success');
-      if (response.sessionPlanCreationDraft !== undefined) {
+      let response: ApplyPlanningTaskResponse;
+      try {
+        response = await bridge.invokeAction<ApplyPlanningTaskResponse>('apply-planning-agent-task-result', { taskId, ...input });
+      } catch (caught) {
+        const message = errorMessage(caught);
+        if (options.automatic || isSessionPlanCreationApplyInput(input)) {
+          if (options.automatic) autoApplyFailedRef.current.add(taskId);
+          setApplyErrors((prev) => ({
+            ...prev,
+            [taskId]: { taskId, message, automatic: Boolean(options.automatic), occurredAt: new Date().toISOString() },
+          }));
+        }
+        if (!options.automatic) reportError(caught);
+        return null;
+      }
+
+      if (!options.suppressSuccessToast) toast.push(`Applied generated output from ${response.taskId}.`, 'success');
+      clearPersistedAutoApplyAttempt(taskId);
+      setApplyErrors((prev) => withoutApplyError(prev, taskId));
+      autoApplyFailedRef.current.delete(taskId);
+      const createdDraft = response.sessionPlanCreationDraft;
+      if (createdDraft !== undefined) {
+        autoAppliedRef.current.add(taskId);
         setItems((prev) => prev.filter((existing) => existing.entry.taskId !== taskId));
       }
-      await onRefresh();
-      await reload();
+      try {
+        await onRefresh();
+      } catch (caught) {
+        reportError(caught);
+      }
+      try {
+        await reload();
+      } catch (caught) {
+        reportError(caught);
+      }
+      if (createdDraft !== undefined && options.automatic) {
+        try {
+          onCreatedSessionPlan?.(createdDraft);
+        } catch (caught) {
+          reportError(caught);
+        }
+      }
       return response;
-    } catch (caught) {
-      reportError(caught);
-      return null;
     } finally {
-      setBusy(false);
+      if (!options.automatic) setBusy(false);
     }
-  }, [onRefresh, reload, reportError, toast]);
+  }, [onCreatedSessionPlan, onRefresh, reload, reportError, toast]);
 
-  return { items, loading, busy, reload, start, analyzeAllBacklog, retry, redraft, cancel, remove, apply };
+  React.useEffect(() => {
+    for (const item of items) {
+      const taskId = item.entry.taskId;
+      if (!isAutoApplyCreationTask(item)) continue;
+      if (autoAppliedRef.current.has(taskId) || autoApplyAttemptedRef.current.has(taskId) || autoApplyInFlightRef.current.has(taskId) || autoApplyFailedRef.current.has(taskId) || hasPersistedAutoApplyAttempt(taskId)) continue;
+      autoApplyAttemptedRef.current.add(taskId);
+      persistAutoApplyAttempt(taskId);
+      autoApplyInFlightRef.current.add(taskId);
+      void applyPlanningTaskResult(taskId, { applySessionPlanCreationDraft: {} }, { automatic: true, suppressSuccessToast: true })
+        .finally(() => { autoApplyInFlightRef.current.delete(taskId); });
+    }
+  }, [applyPlanningTaskResult, items]);
+
+  const apply = React.useCallback(async (taskId: string, input: JsonObject): Promise<ApplyPlanningTaskResponse | null> => {
+    if (isSessionPlanCreationApplyInput(input) && autoApplyInFlightRef.current.has(taskId)) return null;
+    return applyPlanningTaskResult(taskId, input);
+  }, [applyPlanningTaskResult]);
+
+  return { items, loading, busy, applyErrors, reload, start, analyzeAllBacklog, retry, redraft, cancel, remove, apply };
 }

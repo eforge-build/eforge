@@ -3,17 +3,44 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
+  apiGetExtensionContributionManifest,
+  createExtensionContributionFailedInvocationEnvelope,
+  formatExtensionContributionDetailText,
+  formatExtensionContributionFailedInvocationEnvelopeText,
+  formatExtensionContributionListText,
   formatExtensionContributionOutputText,
   invokeEforgeExtensionContribution,
   listEforgeExtensionContributions,
-  type ExtensionHostContributionEntry,
+  showExtensionContributionManifestEntry,
+  type ExtensionActionOutputProfile,
+  type ExtensionHostContributionDetailResponse,
   type ExtensionHostContributionKind,
+  type ExtensionHostContributionProjection,
   type ExtensionJsonObject,
 } from '@eforge-build/client';
 import { formatCliError } from './errors.js';
 
+const OUTPUT_PROFILES = ['agent-compact', 'agent-paginated', 'markdown', 'ui-rich', 'debug-rich'] as const;
+
 interface ListOptions {
   kind?: ExtensionHostContributionKind | 'all';
+  extensionName?: string;
+  search?: string;
+  idPrefix?: string;
+  outputProfile?: ExtensionActionOutputProfile;
+  limit?: number;
+  offset?: number;
+  includeSchema?: boolean;
+  includeDiagnostics?: boolean;
+  full?: boolean;
+  json?: boolean;
+}
+
+interface ShowOptions {
+  kind?: ExtensionHostContributionKind;
+  includeSchema?: boolean;
+  includeDiagnostics?: boolean;
+  full?: boolean;
   json?: boolean;
 }
 
@@ -33,15 +60,57 @@ export function registerExtensionContributionCommands(extension: Command): void 
     .command('list')
     .description('List extension-provided actions, integration commands, and deep links')
     .option('--kind <kind>', 'Contribution kind: action, command, deep-link, or all', validateListKind, 'all')
+    .option('--extension-name <name>', 'Filter to one extension name')
+    .option('--search <text>', 'Search id, label, description, extension, and action metadata')
+    .option('--id-prefix <prefix>', 'Filter to contribution ids with this prefix')
+    .option('--output-profile <profile>', 'Filter by action output profile', validateOutputProfile)
+    .option('--limit <number>', 'Maximum entries to return', validatePositiveInteger)
+    .option('--offset <number>', 'Zero-based pagination offset', validateNonNegativeInteger)
+    .option('--include-schema', 'Include input schemas/defaults in the list projection')
+    .option('--include-diagnostics', 'Include manifest diagnostics in the list projection')
+    .option('--full', 'Use the full projection, including schemas and diagnostics')
     .option('--json', 'Output JSON')
     .action(async (options: ListOptions) => {
       try {
-        const result = await listEforgeExtensionContributions({ cwd: process.cwd(), kind: options.kind ?? 'all' });
+        const result = await listEforgeExtensionContributions({
+          cwd: process.cwd(),
+          kind: options.kind ?? 'all',
+          extensionName: options.extensionName,
+          search: options.search,
+          idPrefix: options.idPrefix,
+          outputProfile: options.outputProfile,
+          limit: options.limit,
+          offset: options.offset,
+          includeInputSchema: options.includeSchema,
+          includeDiagnostics: options.includeDiagnostics,
+          projection: projectionFromFullFlag(options.full),
+        });
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
           return;
         }
-        renderContributionTable(result.entries);
+        console.log(formatExtensionContributionListText(result));
+      } catch (err) {
+        renderCliError(err);
+      }
+    });
+
+  contributions
+    .command('show <id>')
+    .description('Show one extension action, integration command, or deep link contribution')
+    .option('--kind <kind>', 'Contribution kind: action, command, or deep-link', validateInvokeKind)
+    .option('--include-schema', 'Include input schema/defaults in the detail projection')
+    .option('--include-diagnostics', 'Include manifest diagnostics in the detail projection')
+    .option('--full', 'Use the full projection, including schema and diagnostics')
+    .option('--json', 'Output JSON')
+    .action(async (id: string, options: ShowOptions) => {
+      try {
+        const result = await loadContributionDetail(id, options);
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        console.log(formatExtensionContributionDetailText(result));
       } catch (err) {
         renderCliError(err);
       }
@@ -77,6 +146,17 @@ export function registerExtensionContributionCommands(extension: Command): void 
     });
 }
 
+async function loadContributionDetail(id: string, options: ShowOptions): Promise<ExtensionHostContributionDetailResponse> {
+  const manifest = await apiGetExtensionContributionManifest({ cwd: process.cwd() });
+  return showExtensionContributionManifestEntry(manifest, {
+    id,
+    kind: options.kind,
+    includeInputSchema: options.includeSchema,
+    includeDiagnostics: options.includeDiagnostics,
+    projection: projectionFromFullFlag(options.full),
+  });
+}
+
 export async function parseJsonObjectInput(options: { inputJson?: string; inputFile?: string }): Promise<ExtensionJsonObject> {
   if (options.inputJson !== undefined && options.inputFile !== undefined) {
     throw new Error('--input-json and --input-file are mutually exclusive');
@@ -93,29 +173,8 @@ export async function parseJsonObjectInput(options: { inputJson?: string; inputF
   return parsed;
 }
 
-function renderContributionTable(entries: ExtensionHostContributionEntry[]): void {
-  if (entries.length === 0) {
-    console.log(chalk.dim('No extension host contributions found'));
-    return;
-  }
-  const headers = ['kind', 'id', 'label', 'action', 'extension', 'backed'] as const;
-  const rows = entries.map((entry) => ({
-    kind: entry.kind,
-    id: entry.id,
-    label: entry.label,
-    action: entry.actionId ?? '-',
-    extension: entry.extensionName,
-    backed: entry.kind === 'deep-link' ? (entry.actionBacked ? 'yes' : 'no') : '-',
-  }));
-  const widths = Object.fromEntries(headers.map((header) => [
-    header,
-    Math.max(header.length, ...rows.map((row) => row[header].length)),
-  ])) as Record<typeof headers[number], number>;
-  console.log(headers.map((header) => header.padEnd(widths[header])).join('  '));
-  console.log(headers.map((header) => '-'.repeat(widths[header])).join('  '));
-  for (const row of rows) {
-    console.log(headers.map((header) => row[header].padEnd(widths[header])).join('  '));
-  }
+function projectionFromFullFlag(full: boolean | undefined): ExtensionHostContributionProjection | undefined {
+  return full ? 'full' : undefined;
 }
 
 function renderInvokeResult(result: Awaited<ReturnType<typeof invokeEforgeExtensionContribution>>): void {
@@ -125,10 +184,10 @@ function renderInvokeResult(result: Awaited<ReturnType<typeof invokeEforgeExtens
   if (result.response.ok) {
     console.log('  Output:');
     console.log(formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }));
-  } else {
-    console.error(`${result.response.error.code}: ${result.response.error.message}`);
-    if (result.response.error.details !== undefined) console.error(JSON.stringify(result.response.error.details, null, 2));
+    return;
   }
+  const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
+  console.error(failureEnvelope ? formatExtensionContributionFailedInvocationEnvelopeText(failureEnvelope) : `${result.response.error.code}: ${result.response.error.message}`);
 }
 
 function validateListKind(value: string): ExtensionHostContributionKind | 'all' {
@@ -143,6 +202,23 @@ function validateInvokeKind(value: string): ExtensionHostContributionKind {
     return value as ExtensionHostContributionKind;
   }
   throw new Error('--kind must be one of: action, command, deep-link');
+}
+
+function validateOutputProfile(value: string): ExtensionActionOutputProfile {
+  if (OUTPUT_PROFILES.includes(value as ExtensionActionOutputProfile)) return value as ExtensionActionOutputProfile;
+  throw new Error('--output-profile must be one of: agent-compact, agent-paginated, markdown, ui-rich, debug-rich');
+}
+
+function validatePositiveInteger(value: string): number {
+  const parsed = Number(value);
+  if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  throw new Error('--limit must be a positive integer');
+}
+
+function validateNonNegativeInteger(value: string): number {
+  const parsed = Number(value);
+  if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+  throw new Error('--offset must be a non-negative integer');
 }
 
 function isJsonObject(value: unknown): value is ExtensionJsonObject {

@@ -150,8 +150,8 @@ export interface CompactBoardItem {
   tags: string[];
   lane: string;
   reasons: string[];
-  dependsOn: string[];
-  unresolvedDependsOn: string[];
+  dependsOn?: string[];
+  unresolvedDependsOn?: string[];
   activeTraceReasons?: string[];
   blocked: boolean;
   ready: boolean;
@@ -162,15 +162,15 @@ export interface CompactBoardItem {
 }
 export interface CompactItemDetail extends CompactBoardItem {
   path: string;
-  sections: Record<string, string>;
-  linkRows: LifecycleLinkRow[];
-  failureEvidence: LifecycleLinkRow[];
+  sections?: Record<string, string>;
+  linkRows?: LifecycleLinkRow[];
+  failureEvidence?: LifecycleLinkRow[];
   body?: string;
 }
 export interface CompactEpic extends Epic { tags: string[]; itemCount: number; openItemCount: number; sections?: Record<string, string>; path?: string; body?: string; }
 export interface CompactLaneSummary { lane: string; title: string; count: number; openCount: number; closedCount: number; pagination?: BoardPagination; }
-export interface CompactBoardResponse { schemaVersion: 1; items: CompactBoardItem[]; total: number; limit: number; offset: number; lanes: CompactLaneSummary[]; epics: CompactEpic[]; counts: BoardCounts; pagination: BoardPagination; }
-export interface CompactBoardDetailResponse { schemaVersion: 1; item: CompactItemDetail; epic?: CompactEpic; dependencies: CompactBoardItem[]; dependents: CompactBoardItem[]; }
+export interface CompactBoardResponse { schemaVersion: 1; items: CompactBoardItem[]; total: number; limit: number; offset: number; lanes?: CompactLaneSummary[]; epics?: CompactEpic[]; counts?: BoardCounts; pagination?: BoardPagination; }
+export interface CompactBoardDetailResponse { schemaVersion: 1; item: CompactItemDetail; epic?: CompactEpic; dependencies?: CompactBoardItem[]; dependents?: CompactBoardItem[]; }
 export type DetailLoadingState = { state: 'idle' } | { state: 'loading' } | { state: 'loaded'; item: BoardItem } | { state: 'error'; message: string };
 
 export interface RecommendationEntry { ref?: string; itemId: string; rationale?: string; title?: string; }
@@ -376,6 +376,13 @@ export interface PlanningTaskWorkflowEntry {
   appliedAt?: string;
   createdAt: string;
 }
+export interface PlanningTaskApplyError {
+  taskId: string;
+  message: string;
+  automatic: boolean;
+  occurredAt?: string;
+}
+
 export interface PlanningAgentTaskListItem {
   entry: PlanningTaskWorkflowEntry;
   available: boolean;

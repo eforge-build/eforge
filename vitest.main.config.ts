@@ -11,7 +11,7 @@ export default defineConfig({
   },
   test: {
     setupFiles: ['./test/setup-test-env.ts'],
-    fileParallelism: false,
+    fileParallelism: true,
     include: [
       'test/**/*.test.ts',
       'packages/engine/test/**/*.test.ts',

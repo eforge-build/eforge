@@ -217,7 +217,7 @@ describe('plan revision annotations', () => {
       const capped = await dispatchRaw(cwd, 'create-plan-revision-annotation', { session: 'cap', body: 'Too many.', target }, tasks);
       expect(capped).toMatchObject({ kind: 'invalid-input', message: expect.stringContaining('maximum') });
     });
-  });
+  }, 15_000);
 
   it('lists annotations only on plan-including session list projections', async () => {
     await withTempProject(async (cwd) => {

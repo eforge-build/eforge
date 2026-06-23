@@ -18,7 +18,7 @@ A lower-tier playbook with the same name **shadows** a higher-tier one. eforge a
 Every playbook has a `mode` field in its frontmatter:
 
 - **`mode: autonomous`** — eforge builds the playbook end-to-end without further prompting. Hand-off-and-forget: the daemon enqueues it and runs it. Suitable for mechanical, repeatable workflows where the build agent does not need to consult the user mid-run.
-- **`mode: planning`** — running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata. Continue through `mcp__eforge__eforge_extension_contribution` or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff. The daemon does not create the session plan directly or enqueue a PRD.
+- **`mode: planning`** — running the playbook checks the `eforge.plan.planning-mode-playbook` capability from eforge-plan and returns generic planning entry metadata. Continue through `mcp__eforge__eforge_extension_contribution` list/show/invoke or the eforge-plan workstation deep link; the workstation owns the investigation-first flow, session-plan drafting, revision, and handoff. The daemon does not create the session plan directly or enqueue a PRD.
 
 The `mode` field governs what happens when you run a playbook: `autonomous` enqueues a build; `planning` resolves generic eforge-plan planning entry metadata or unavailable capability diagnostics.
 
@@ -252,7 +252,7 @@ Same as Step 3.5. Validate before saving, surface errors verbatim, do NOT write 
 
 ## Branch: Run (Step 5)
 
-Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks, first check the `eforge.plan.planning-mode-playbook` capability and continue through generic extension contribution discovery/invocation into the eforge-plan workstation/deep-link entry.
+Run a playbook. For autonomous playbooks this enqueues a build (with an optional wait for an in-flight build to finish first). For planning playbooks, first check the `eforge.plan.planning-mode-playbook` capability and continue through generic extension contribution discovery/detail/invocation into the eforge-plan workstation/deep-link entry.
 
 ### 5.1: Pick a playbook
 
@@ -365,9 +365,9 @@ Planning-mode playbook continuation is owned by eforge-plan. Do not create a ses
    - If the response is `{ kind: "planning-unavailable", requiredCapability, diagnostics }`, show the required capability and diagnostics verbatim. Tell the user to load, trust, and reload eforge-plan before continuing.
    - If the response is `{ kind: "requires-agent", planningEntry, requiredCapability }`, continue with the generic planning entry metadata.
 
-2. **Discover the generic contribution**: Call `mcp__eforge__eforge_extension_contribution { action: "list", kind: "all" }` and confirm that `eforge-plan:open-planning-entry` and/or `eforge-plan:planning-workstation` are available. If an entry is unavailable, surface its availability message instead of continuing.
+2. **Discover the generic contribution**: Call `mcp__eforge__eforge_extension_contribution { action: "list", kind: "all", search: "planning" }` and confirm that `eforge-plan:open-planning-entry` and/or `eforge-plan:planning-workstation` are available. If an entry is unavailable, surface its availability message instead of continuing.
 
-3. **Invoke the planning entry**: Prefer invoking the action-backed integration command with `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-plan:open-planning-entry", input: {} }`. If the host exposes deep-link opening, the equivalent deep link is `eforge-plan:planning-workstation`.
+3. **Inspect or invoke the planning entry**: Use `mcp__eforge__eforge_extension_contribution { action: "show", kind: "command", id: "eforge-plan:open-planning-entry" }` when you need focused detail; prefer invoking the action-backed integration command with `mcp__eforge__eforge_extension_contribution { action: "invoke", kind: "command", id: "eforge-plan:open-planning-entry", input: {} }`. If the host exposes deep-link opening, the equivalent deep link is `eforge-plan:planning-workstation`.
 
 4. **Continue in the eforge-plan workstation**: Open the returned or declared workstation route `/console/workstations/eforge-plan%3Aplanning-workstation`. Carry the selected playbook name and the loaded playbook content as context for the workstation planning continuation. The workstation owns the investigation-first flow, session-plan drafting, revision, and handoff.
 

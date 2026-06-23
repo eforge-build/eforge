@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type {
   JsonObject,
   PlanningAgentTaskListItem,
+  PlanningTaskApplyError,
   PlanningTaskClarificationQuestion,
   PlanningTaskResult,
 } from '@/types';
@@ -17,9 +18,10 @@ interface PlanningTaskResultPreviewProps {
   busy: boolean;
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
   onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
+  applyError?: PlanningTaskApplyError;
 }
 
-export function PlanningTaskResultPreview({ item, busy, onRedraft, onApply }: PlanningTaskResultPreviewProps) {
+export function PlanningTaskResultPreview({ item, busy, onRedraft, onApply, applyError }: PlanningTaskResultPreviewProps) {
   const taskId = item.entry.taskId;
   const result = item.task?.result;
   if (!result) return null;
@@ -44,7 +46,7 @@ export function PlanningTaskResultPreview({ item, busy, onRedraft, onApply }: Pl
 
   if (result.backlogCurationDraft) return <CurationUnavailablePreview taskId={taskId} result={result} busy={busy} onRedraft={onRedraft} />;
 
-  return <ReadyResultPreview taskId={taskId} result={result} sessionHint={item.entry.session} busy={busy} onApply={onApply} />;
+  return <ReadyResultPreview taskId={taskId} result={result} sessionHint={item.entry.session} busy={busy} onApply={onApply} applyError={applyError} />;
 }
 
 interface CurationUnavailablePreviewProps {
@@ -138,9 +140,10 @@ interface ReadyResultPreviewProps {
   sessionHint?: string;
   busy: boolean;
   onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
+  applyError?: PlanningTaskApplyError;
 }
 
-function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: ReadyResultPreviewProps) {
+function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply, applyError }: ReadyResultPreviewProps) {
   const [confirming, setConfirming] = React.useState<string | null>(null);
   const creationDraft = result.sessionPlanCreationDraft;
   const recommendations = result.recommendations;
@@ -167,6 +170,12 @@ function ReadyResultPreview({ taskId, result, sessionHint, busy, onApply }: Read
       {/* Primary actions stay visible; the verbose summary/sections/assumptions
           collapse so a list of ready cards stays scannable. The card header
           already carries the plan topic, so it is not repeated here. */}
+      {applyError && creationDraft && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive-foreground">
+          {applyError.automatic ? 'Automatic session-plan creation failed' : 'Session-plan creation failed'}: <span className="break-words">{applyError.message}</span>. Manual creation remains available below after review.
+        </div>
+      )}
+
       {creationDraft && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-2xs uppercase tracking-wide text-muted-foreground">Session-plan draft · {creationDraft.planningType}/{creationDraft.planningDepth} · {creationDraft.sections.length} section{creationDraft.sections.length === 1 ? '' : 's'}</span>
