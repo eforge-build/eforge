@@ -111,7 +111,6 @@ function invalidContributionRequest(message: string): McpUserError {
   return new McpUserError({ code: 'invalid-request', message });
 }
 
-// --- eforge:region plan-02-host-contribution-surfaces ---
 function contributionInvocationFailed(result: ExtensionHostContributionInvokeResult): McpUserError {
   const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
   return new McpUserError(failureEnvelope ?? {
@@ -131,7 +130,6 @@ function contributionInvocationFailed(result: ExtensionHostContributionInvokeRes
     inputSummary: { inputKeys: [], inputKeyCount: 0, serializedInputSize: 0 },
   });
 }
-// --- eforge:endregion plan-02-host-contribution-surfaces ---
 
 function isContributionRequestError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;

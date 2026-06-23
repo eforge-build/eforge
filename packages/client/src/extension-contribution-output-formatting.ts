@@ -179,7 +179,6 @@ function renderFailureEnvelope(envelope: ExtensionHostContributionFailedInvocati
   ].join('\n');
 }
 
-// --- eforge:region plan-01-shared-contribution-projection ---
 function renderFailureInputSummary(inputSummary: ExtensionHostContributionFailedInvocationEnvelope['inputSummary']): string {
   const details = [
     `${inputSummary.inputKeyCount} keys [${inputSummary.inputKeys.join(', ')}]`,
@@ -189,7 +188,6 @@ function renderFailureInputSummary(inputSummary: ExtensionHostContributionFailed
   ];
   return details.filter((detail): detail is string => detail !== undefined).join(', ');
 }
-// --- eforge:endregion plan-01-shared-contribution-projection ---
 
 function renderContributionListEntry(entry: ExtensionHostContributionEntry): string[] {
   const lines = [`- ${renderContributionEntrySummary(entry)}`];

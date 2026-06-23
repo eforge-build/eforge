@@ -154,9 +154,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
   const [applyErrors, setApplyErrors] = React.useState<Record<string, PlanningTaskApplyError>>({});
   const autoApplyInFlightRef = React.useRef<Set<string>>(new Set());
   const autoApplyAttemptedRef = React.useRef<Set<string>>(new Set());
-  // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
   const autoApplyFailedRef = React.useRef<Set<string>>(new Set());
-  // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
   const autoAppliedRef = React.useRef<Set<string>>(new Set());
 
   const reportError = React.useCallback((caught: unknown) => {
@@ -314,9 +312,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       } catch (caught) {
         const message = errorMessage(caught);
         if (options.automatic || isSessionPlanCreationApplyInput(input)) {
-          // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
           if (options.automatic) autoApplyFailedRef.current.add(taskId);
-          // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
           setApplyErrors((prev) => ({
             ...prev,
             [taskId]: { taskId, message, automatic: Boolean(options.automatic), occurredAt: new Date().toISOString() },
@@ -329,9 +325,7 @@ export function usePlanningTaskWorkflows(onRefresh: () => Promise<void>, onCreat
       if (!options.suppressSuccessToast) toast.push(`Applied generated output from ${response.taskId}.`, 'success');
       clearPersistedAutoApplyAttempt(taskId);
       setApplyErrors((prev) => withoutApplyError(prev, taskId));
-      // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
       autoApplyFailedRef.current.delete(taskId);
-      // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
       const createdDraft = response.sessionPlanCreationDraft;
       if (createdDraft !== undefined) {
         autoAppliedRef.current.add(taskId);
