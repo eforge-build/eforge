@@ -4902,7 +4902,7 @@ than embedding literal path strings.
 
 ## Routes
 
-`sessionPlan` and `sessionPlanSet` route families remain daemon API producer surfaces for project-local planning artifacts, not kernel-owned planning capabilities. Playbooks are owned by the first-party `eforge-playbooks` extension and are reached through generic extension contribution manifest/action invocation routes, not playbook-specific daemon or client APIs.
+Routes whose keys begin with `playbook`, `sessionPlan`, or `sessionPlanSet` are optional workflow compatibility and producer surfaces, not kernel-owned planning capabilities. `sessionPlan` and `sessionPlanSet` route families remain daemon API producer surfaces for project-local planning artifacts. Playbooks are owned by the first-party `eforge-playbooks` extension and are reached through generic extension contribution manifest/action invocation routes, not playbook-specific daemon or client APIs.
 
 Total routes: 86
 
@@ -5489,7 +5489,7 @@ eforge exposes its capabilities through two integration surfaces:
 
 Both surfaces are kept in parity per `AGENTS.md`.
 
-Playbook and session-plan host tools are host surfaces, not kernel-owned planning capabilities. `eforge_playbook` is a compatibility facade over the first-party `eforge-playbooks` extension contributions, including list/show/save/validate/copy/promote/demote/run behavior. Session-plan host tools manage project-local planning artifacts separately.
+Playbook and session-plan host tools are optional workflow compatibility or host surfaces, not kernel-owned planning capabilities. `eforge_playbook` is a compatibility facade over the first-party `eforge-playbooks` extension contributions, including list/show/save/validate/copy/promote/demote/run behavior. Session-plan host tools manage project-local planning artifacts separately.
 
 ## MCP tools (Claude Code)
 

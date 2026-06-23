@@ -857,7 +857,7 @@ profile: docs-heavy    # Optional — omit to allow router/active-profile/defaul
 
 **Validation timing**: the named profile is validated at execution time, not when the playbook is saved or validated. A typo in `profile` is surfaced as an error when the playbook runs, not when it is created or edited. Inherited `agent_profile` values on session plans are validated when the session plan is enqueued.
 
-**Planning playbooks and `agent_profile`**: when a planning-mode playbook has a `profile` field, `eforge-playbooks:run-playbook` includes it in the eforge-plan planning handoff seed. The eforge-plan flow applies it as the session plan's `agent_profile` frontmatter when a plan is created; when the session plan is later enqueued via `/eforge:build`, `agent_profile` is used as the effective profile unless an explicit enqueue/build `profile` override is supplied.
+**Planning playbooks and `agent_profile`**: when a planning-mode playbook has a `profile` field, `eforge-playbooks:run-playbook` includes it in the eforge-plan planning handoff seed. The eforge-plan planning flow applies it as the session plan's `agent_profile` frontmatter when a plan is created; when the session plan is later enqueued via `/eforge:build`, `agent_profile` is used as the effective profile unless an explicit enqueue/build `profile` override is supplied.
 
 **Blank profile fallback**: if `profile` is omitted or left empty, eforge resolves the profile at run time using:
 1. Any registered `registerProfileRouter` extension that selects a profile for the queued PRD

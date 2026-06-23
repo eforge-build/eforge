@@ -29,7 +29,7 @@
 - **Native TypeScript extensions (deferred phases)** - `beforeEnqueue` and `beforeValidation` policy gates, approval workflow/state/UI, `modify` policy decisions, raw extension-owned HTTP routes, arbitrary frontend plugin bundles outside registered workstation iframes, and user-authored custom session-plan/playbook extraction remain deferred. Shipped capabilities are documented in `docs/extensions.md` and `docs/extensions-api.md`.
 - **Broader extension surface** - Continue clarifying how native extensions relate to playbooks, session plans, toolbelts, shell hooks, host integrations, worktree-backed workspaces, and wrapper apps without treating every surface as engine functionality.
 - **Workspace/process extension seams** - Add reusable platform support for extension-managed workspace state, long-running dev-server/process supervision, action progress/log streaming, and workstation artifact serving so packages like `eforge-webux` do not need private daemon or Console hooks.
-- **User-authored workflow registration** - Explore native extension APIs for custom session-plan extraction and custom playbook extraction while keeping shipped first-party playbook behavior owned by `eforge-playbooks`.
+- **User-authored workflow registration** - Explore native extension APIs for custom session-plan extraction and custom playbook extraction. Keep first-party playbook behavior owned by `eforge-playbooks`.
 
 ---
 
