@@ -88,4 +88,29 @@ describe('PlanningTaskResultPreview session-plan creation confirmation', () => {
 
     expect(onApply).toHaveBeenCalledWith('task-creation', { applySessionPlanCreationDraft: {} });
   });
+
+  it('shows manual apply failures while keeping the confirmation flow available', () => {
+    const onApply = vi.fn(async () => undefined);
+    render(
+      <PlanningTaskResultPreview
+        item={creationItem()}
+        busy={false}
+        onRedraft={vi.fn(async () => undefined)}
+        onApply={onApply}
+        applyError={{ taskId: 'task-creation', message: 'Session plan already exists', automatic: false }}
+      />,
+    );
+
+    expect(screen.getByText(/Session-plan creation failed/)).toBeTruthy();
+    expect(screen.getByText(/Session plan already exists/)).toBeTruthy();
+    const create = screen.getByRole('button', { name: 'Create session plan' });
+    expect(create).toHaveProperty('disabled', false);
+
+    fireEvent.click(create);
+    const confirm = screen.getByRole('button', { name: 'Confirm create session plan' });
+    expect(confirm).toHaveProperty('disabled', false);
+    fireEvent.click(confirm);
+
+    expect(onApply).toHaveBeenCalledWith('task-creation', { applySessionPlanCreationDraft: {} });
+  });
 });

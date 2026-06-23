@@ -264,7 +264,7 @@ describe('eforge-plan README planner contract', () => {
     // --- eforge:region plan-04-workstation-session-plan-auto-apply ---
     expect(boundary).toMatch(/auto-applies only completed available unapplied ready single-output `sessionPlanCreationDraft` creation tasks/);
     expect(boundary).toMatch(/opens the created plan in Plans focus/);
-    expect(boundary).toMatch(/readiness checks, sign-off, and handoff remain separate explicit Plan actions/);
+    expect(boundary).toMatch(/Readiness checks, sign-off, and handoff remain separate explicit Plan actions/);
     // --- eforge:endregion plan-04-workstation-session-plan-auto-apply ---
     expect(boundary).toMatch(/task result is otherwise read-only until the user previews it/i);
     expect(boundary).toMatch(/Completed curation task previews include item changes, epic changes, no-op rechecks, unresolved exceptions, needs-input cases, generated recommendation details/);

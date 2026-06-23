@@ -112,6 +112,7 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('applySessionPlanCreationDraft: {}');
     expect(source).toContain('suppressSuccessToast');
     expect(source).toContain('autoApplyAttemptedRef');
+    expect(source).toContain('autoApplyFailedRef');
     expect(source).toContain('onCreatedSessionPlan');
     expect(source).not.toMatch(/fetch\s*\(/);
   });

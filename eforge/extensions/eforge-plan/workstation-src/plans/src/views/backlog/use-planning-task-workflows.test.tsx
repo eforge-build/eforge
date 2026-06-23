@@ -225,7 +225,7 @@ describe('usePlanningTaskWorkflows curation actions', () => {
     await waitFor(() => expect(result.current.items.map((entry) => entry.entry.taskId)).toEqual([]));
 
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'apply-planning-agent-task-result')).toHaveLength(1);
-    expect(screen.queryByText('Applied generated output from task-creation.')).toBeNull();
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ session: 'created-session' }));
   });
@@ -383,5 +383,59 @@ describe('usePlanningTaskWorkflows curation actions', () => {
 
     expect(result.current.applyErrors[creationTask.taskId]).toBeUndefined();
     expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'apply-planning-agent-task-result')).toHaveLength(2);
+  });
+
+  it('clears automatic apply failures when retrying a task', async () => {
+    const onRefresh = vi.fn(async () => undefined);
+    let listCalls = 0;
+    const retriedTask: PlanningAgentTaskRecord = { ...creationTask, taskId: 'task-retry', status: 'queued', result: undefined };
+    const invokeAction = vi.fn(async (actionId: string) => {
+      if (actionId === 'list-planning-agent-tasks') {
+        listCalls += 1;
+        return { tasks: listCalls === 1 ? [autoCreationItem()] : [] };
+      }
+      if (actionId === 'apply-planning-agent-task-result') throw new Error('Session plan already exists');
+      if (actionId === 'retry-planning-agent-task') return { task: retriedTask, entry: { ...creationItem.entry, taskId: retriedTask.taskId } };
+      throw new Error(`unexpected ${actionId}`);
+    });
+    setBridge({ invokeAction: invokeAction as EforgeBridge['invokeAction'] });
+
+    const { usePlanningTaskWorkflows, wrapper } = await loadHookWithWrapper();
+    const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
+
+    await waitFor(() => expect(result.current.applyErrors[creationTask.taskId]?.automatic).toBe(true));
+
+    await act(async () => { await result.current.retry(creationTask.taskId); });
+
+    expect(invokeAction).toHaveBeenCalledWith('retry-planning-agent-task', { taskId: creationTask.taskId });
+    expect(result.current.applyErrors[creationTask.taskId]).toBeUndefined();
+    expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
+  });
+
+  it('clears automatic apply failures when redrafting a task', async () => {
+    const onRefresh = vi.fn(async () => undefined);
+    let listCalls = 0;
+    const redraftedTask: PlanningAgentTaskRecord = { ...creationTask, taskId: 'task-redraft', status: 'queued', result: undefined };
+    const invokeAction = vi.fn(async (actionId: string) => {
+      if (actionId === 'list-planning-agent-tasks') {
+        listCalls += 1;
+        return { tasks: listCalls === 1 ? [autoCreationItem()] : [] };
+      }
+      if (actionId === 'apply-planning-agent-task-result') throw new Error('Session plan already exists');
+      if (actionId === 'redraft-planning-agent-task') return { task: redraftedTask, entry: { ...creationItem.entry, taskId: redraftedTask.taskId } };
+      throw new Error(`unexpected ${actionId}`);
+    });
+    setBridge({ invokeAction: invokeAction as EforgeBridge['invokeAction'] });
+
+    const { usePlanningTaskWorkflows, wrapper } = await loadHookWithWrapper();
+    const { result } = renderHook(() => usePlanningTaskWorkflows(onRefresh), { wrapper });
+
+    await waitFor(() => expect(result.current.applyErrors[creationTask.taskId]?.automatic).toBe(true));
+
+    await act(async () => { await result.current.redraft(creationTask.taskId, { steering: 'Try a different session id.' }); });
+
+    expect(invokeAction).toHaveBeenCalledWith('redraft-planning-agent-task', { taskId: creationTask.taskId, steering: 'Try a different session id.' });
+    expect(result.current.applyErrors[creationTask.taskId]).toBeUndefined();
+    expect(invokeAction.mock.calls.filter(([actionId]) => actionId === 'list-planning-agent-tasks')).toHaveLength(2);
   });
 });

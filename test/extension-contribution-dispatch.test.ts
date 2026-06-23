@@ -426,6 +426,42 @@ describe('extension contribution host dispatcher invocation', () => {
     })).resolves.toMatchObject({ response: { ok: false, invocationId: 'invoke-failed', error: { code: 'invalid-input' } } });
   });
 
+  it('returns client-side unavailable failures without posting to the invoke route', async () => {
+    serverState = await startServer({ ok: true, invocationId: 'should-not-invoke', output: null });
+    writeLockfile(tmpDir, { pid: process.pid, port: serverState.port, startedAt: new Date().toISOString() });
+
+    serverState.manifest.actions[0].availability = { available: false, message: 'action unavailable' };
+    await expect(invokeEforgeExtensionContribution({
+      cwd: tmpDir,
+      kind: 'action',
+      id: 'ext.run',
+      input: {},
+      requestedBy: { host: 'cli' },
+    })).resolves.toMatchObject({ response: { ok: false, error: { code: 'unavailable', message: 'action unavailable' } } });
+
+    delete serverState.manifest.actions[0].availability;
+    serverState.manifest.integrationCommands[0].availability = { available: false, message: 'command unavailable' };
+    await expect(invokeEforgeExtensionContribution({
+      cwd: tmpDir,
+      kind: 'command',
+      id: 'ext.command',
+      input: {},
+      requestedBy: { host: 'cli' },
+    })).resolves.toMatchObject({ response: { ok: false, error: { code: 'unavailable', message: 'command unavailable' } } });
+
+    delete serverState.manifest.integrationCommands[0].availability;
+    serverState.manifest.deepLinks[0].availability = { available: false, message: 'deep link unavailable' };
+    await expect(invokeEforgeExtensionContribution({
+      cwd: tmpDir,
+      kind: 'deep-link',
+      id: 'ext.deep',
+      input: {},
+      requestedBy: { host: 'cli' },
+    })).resolves.toMatchObject({ response: { ok: false, error: { code: 'unavailable', message: 'deep link unavailable' } } });
+
+    expect(serverState.requests.filter((request) => request.url === API_ROUTES.extensionActionInvoke)).toHaveLength(0);
+  });
+
   it('creates a failed invocation envelope without echoing raw target input', async () => {
     const largeValue = 'secret-large-value-'.repeat(200);
     serverState = await startServer({ ok: false, invocationId: 'invoke-failed', error: { code: 'invalid-input', message: `Bad input ${largeValue} ${'x'.repeat(1200)}` } });

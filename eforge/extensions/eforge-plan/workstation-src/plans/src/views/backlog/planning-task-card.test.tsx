@@ -95,7 +95,9 @@ describe('PlanningTaskCard curation behavior', () => {
     unmount();
 
     renderCard(curationItem('failed'));
+    expect(screen.getAllByText('failed').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Retry with preserved context' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
   });
 
   it('keeps cancelled and unavailable task messaging visible', () => {
