@@ -15,7 +15,7 @@ import { isRegisteredRemote, validateBranchName, validateRemoteName } from './tr
 const exec = promisify(execFile);
 
 export const DIRECT_PR_REMOTE = 'origin';
-export const DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS = 3;
+export const DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS = 12;
 export const DEFAULT_DIRECT_PR_FRESHNESS_RETRIES = 2;
 
 export interface DirectPrBaseSyncPoint {

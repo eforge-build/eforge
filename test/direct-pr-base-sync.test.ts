@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import {
   checkDirectPrBaseFreshness,
   DEFAULT_DIRECT_PR_FRESHNESS_RETRIES,
+  DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS,
   syncDirectPrBase,
 } from '@eforge-build/engine/direct-pr-base-sync';
 import { executeLandingAction } from '@eforge-build/engine/landing';
@@ -263,7 +264,7 @@ describe('direct PR base sync', () => {
     expect(ghLog).not.toContain('"create"');
   }, 10_000);
 
-  it('exhausts a bounded rebase conflict-resolution budget and aborts without creating a PR', async () => {
+  it('exhausts an explicitly bounded rebase conflict-resolution budget', async () => {
     const tmp = makeTempDir();
     const { origin, repo } = initOriginAndRepo(tmp);
     makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
@@ -274,7 +275,6 @@ describe('direct PR base sync', () => {
     makeCommit(repo, 'conflict.txt', 'feature three\n', 'feature side three');
     makeCommit(repo, 'conflict.txt', 'feature four\n', 'feature side four');
     advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
-    const { bin, log } = fakeGh(tmp, 'create');
     let resolverCalls = 0;
     const resolver: MergeResolver = async (cwd, info) => {
       resolverCalls += 1;
@@ -284,36 +284,51 @@ describe('direct PR base sync', () => {
       return true;
     };
 
-    const sync = await withPath(bin, async () => syncDirectPrBase({
+    const sync = await syncDirectPrBase({
       cwd: repo,
       featureBranch: 'eforge/conflict-budget',
       baseBranch: 'main',
       mergeResolver: resolver,
       conflictAttempts: 1,
-    }));
+    });
 
     expect(sync.ok).toBe(false);
     if (!sync.ok) expect(sync.reason).toBe('conflict-attempts-exhausted');
     expect(resolverCalls).toBe(1);
     expect(existsSync(join(repo, '.git', 'rebase-merge')) || existsSync(join(repo, '.git', 'rebase-apply'))).toBe(false);
+  }, 10_000);
 
-    resolverCalls = 0;
-    const state = minimalState('eforge/conflict-budget');
-    const ctx = phaseCtx({
-      repoRoot: repo,
-      mergeWorktreePath: repo,
-      featureBranch: 'eforge/conflict-budget',
-      state,
+  it('uses a default conflict budget large enough for multi-wave resumed branch rebases', async () => {
+    expect(DEFAULT_DIRECT_PR_REBASE_CONFLICT_ATTEMPTS).toBeGreaterThan(3);
+    const tmp = makeTempDir();
+    const { origin, repo } = initOriginAndRepo(tmp);
+    makeCommit(repo, 'conflict.txt', 'base\n', 'base file');
+    git(repo, ['push', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'eforge/multi-wave-conflict']);
+    for (let i = 1; i <= 4; i += 1) {
+      makeCommit(repo, 'conflict.txt', `feature ${i}\n`, `feature side ${i}`);
+    }
+    const advancedSha = advanceRemote(tmp, origin, 'main', 'conflict.txt', 'remote\n');
+    let resolverCalls = 0;
+    const resolver: MergeResolver = async (cwd, info) => {
+      resolverCalls += 1;
+      expect(info.conflictedFiles).toContain('conflict.txt');
+      writeFileSync(join(cwd, 'conflict.txt'), `resolved ${resolverCalls}\n`);
+      git(cwd, ['add', 'conflict.txt']);
+      return true;
+    };
+
+    const sync = await syncDirectPrBase({
+      cwd: repo,
+      featureBranch: 'eforge/multi-wave-conflict',
+      baseBranch: 'main',
       mergeResolver: resolver,
     });
-    const events = await withPath(bin, async () => drainEvents(syncDirectPrBaseBeforeValidation(ctx)));
-    const skipped = events.find((event) => event.type === 'landing:skipped');
-    expect(skipped?.type).toBe('landing:skipped');
-    if (skipped?.type === 'landing:skipped') expect(skipped.reason).toContain('conflict-resolution attempt');
-    expect(state.status).toBe('failed');
-    expect(existsSync(join(repo, '.git', 'rebase-merge')) || existsSync(join(repo, '.git', 'rebase-apply'))).toBe(false);
-    const ghLog = existsSync(log) ? readFileSync(log, 'utf8') : '';
-    expect(ghLog).not.toContain('"create"');
+
+    expect(sync.ok).toBe(true);
+    expect(resolverCalls).toBe(4);
+    expect(readFileSync(join(repo, 'conflict.txt'), 'utf8')).toBe('resolved 4\n');
+    expect(isAncestor(repo, advancedSha)).toBe(true);
   }, 10_000);
 
   it('reruns sync, validation, PRD validation, artifact recording, and PR creation after a final freshness retry', async () => {

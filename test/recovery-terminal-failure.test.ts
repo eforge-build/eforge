@@ -76,6 +76,35 @@ describe('recovery run selection', () => {
     expect(summary.plans).toContainEqual(expect.objectContaining({ planId: 'plan-failed', status: 'failed' }));
   });
 
+  it('selects a newer failed resume run with terminal validation evidence and no plan events', async () => {
+    const dir = makeTempDir();
+    mkdirSync(join(dir, '.eforge'), { recursive: true });
+    const dbPath = join(dir, '.eforge', 'run-selection-terminal-resume.db');
+    const db = openDatabase(dbPath);
+
+    db.insertRun({ id: 'run-build-failed-old', sessionId: 'session-build-failed-old', planSet: 'selection-terminal-set', command: 'build', status: 'failed', startedAt: new Date('2026-01-01T10:00:00.000Z').toISOString(), cwd: dir, pid: 9999 });
+    db.insertEvent({ runId: 'run-build-failed-old', type: 'plan:status:change', planId: 'plan-done', data: JSON.stringify({ status: 'merged' }), timestamp: new Date('2026-01-01T10:10:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-build-failed-old', type: 'plan:merge:complete', planId: 'plan-done', data: JSON.stringify({ type: 'plan:merge:complete', planId: 'plan-done', commitSha: 'abc123' }), timestamp: new Date('2026-01-01T10:10:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-build-failed-old', type: 'plan:status:change', planId: 'plan-old', data: JSON.stringify({ status: 'failed' }), timestamp: new Date('2026-01-01T10:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-build-failed-old', type: 'plan:build:failed', planId: 'plan-old', data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-old', error: 'Older build failure' }), timestamp: new Date('2026-01-01T10:30:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-build-failed-old', 'failed');
+
+    db.insertRun({ id: 'run-continue-repair-new', sessionId: 'session-continue-repair-new', planSet: 'selection-terminal-set', command: 'continue-repair', status: 'failed', startedAt: new Date('2026-01-01T12:00:00.000Z').toISOString(), cwd: dir, pid: 9998 });
+    db.insertEvent({ runId: 'run-continue-repair-new', type: 'acceptance_validation:complete', data: JSON.stringify({ type: 'acceptance_validation:complete', passed: false, verdicts: [{ criterion: 'C1', verdict: 'unknown', evidence: 'Inconclusive' }], source: 'prd' }), timestamp: new Date('2026-01-01T12:20:00.000Z').toISOString() });
+    db.insertEvent({ runId: 'run-continue-repair-new', type: 'build:terminal-failure', data: JSON.stringify({ type: 'build:terminal-failure', runId: 'run-continue-repair-new', failure: { scope: 'acceptance-validation', message: 'Acceptance validation inconclusive', authoritative: true, sourceEventType: 'acceptance_validation:complete', acceptanceValidationPassed: false } }), timestamp: new Date('2026-01-01T12:25:00.000Z').toISOString() });
+    insertPhaseEnd(db, 'run-continue-repair-new', 'failed');
+    db.close();
+
+    const fragment = synthesizeFromEvents({ setName: 'selection-terminal-set', prdId: 'selection-terminal-prd', dbPath });
+
+    expect(fragment).not.toBeNull();
+    expect(fragment!.terminalFailure).toEqual(expect.objectContaining({ scope: 'acceptance-validation', authoritative: true }));
+    expect(fragment!.acceptanceValidation).toEqual(expect.objectContaining({ passed: false }));
+    expect(fragment!.failingPlan?.planId).toBe('acceptance-validation');
+    expect(fragment!.plans).toContainEqual(expect.objectContaining({ planId: 'plan-done', status: 'merged', commitSha: 'abc123' }));
+    expect(fragment!.plans).not.toContainEqual(expect.objectContaining({ planId: 'plan-old' }));
+  });
+
   it('falls back to the newest run when no failed build run exists', async () => {
     const dir = makeTempDir();
     mkdirSync(join(dir, '.eforge'), { recursive: true });
