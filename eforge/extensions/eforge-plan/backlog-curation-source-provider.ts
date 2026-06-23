@@ -2,13 +2,24 @@ import { safeParseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { ItemAuditConcurrencySchema } from './backlog-curation-schemas.js';
+import type { BacklogCurationMapReduceSourceBundle } from '@eforge-build/client';
 
-export async function buildSource(context: { cwd: string; signal: AbortSignal; input?: { itemAuditConcurrency?: unknown; redraft?: unknown } }): Promise<{ sourceText: string }> {
+// --- eforge:region plan-01-curation-packets-cache ---
+export {
+  buildBacklogCurationItemAuditCacheKey,
+  defaultBacklogCurationItemAuditPromptVersion,
+  readBacklogCurationItemAuditCache,
+  resolveBacklogCurationItemAuditCachePath,
+  writeBacklogCurationItemAuditCache,
+} from './backlog-curation-item-audit-cache.js';
+// --- eforge:endregion plan-01-curation-packets-cache ---
+
+export async function buildSource(context: { cwd: string; signal: AbortSignal; input?: { itemAuditConcurrency?: unknown; redraft?: unknown } }): Promise<{ sourceText: string; backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle }> {
   const itemAuditConcurrency = parseSourceProviderItemAuditConcurrency(context.input?.itemAuditConcurrency);
   const redraft = parseSourceProviderRedraft(context.input?.redraft);
   const source = await buildBacklogCurationSource(context.cwd, redraft, { signal: context.signal, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) });
   await writeBacklogCurationSourcePreviewMetadata(context.cwd, source);
-  return { sourceText: source.sourceText };
+  return { sourceText: source.sourceText, backlogCurationMapReduce: source.backlogCurationMapReduce };
 }
 
 function parseSourceProviderItemAuditConcurrency(value: unknown): number | undefined {

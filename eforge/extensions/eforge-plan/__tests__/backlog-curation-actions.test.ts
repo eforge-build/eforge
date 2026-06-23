@@ -173,9 +173,11 @@ describe('analyze-all-backlog action', () => {
 
       await analyzeAllBacklogAction.handler({}, ctx as never);
       expect(starts[0]).toMatchObject({ input: { sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
-      const { sourceText } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: {} });
-      const packet = JSON.parse(sourceText) as { shippedEvidenceCandidates: Array<Record<string, unknown>> };
+      const { sourceText, backlogCurationMapReduce } = await buildBacklogCurationTaskSource({ cwd, signal: new AbortController().signal, input: {} });
+      const packet = JSON.parse(sourceText) as { sourceFingerprint: string; shippedEvidenceCandidates: Array<Record<string, unknown>> };
 
+      expect(backlogCurationMapReduce.sourceFingerprint).toBe(packet.sourceFingerprint);
+      expect(backlogCurationMapReduce.globalContext.itemCount).toBe(1);
       expect(packet.shippedEvidenceCandidates).toEqual([expect.objectContaining({ itemId: 'action-evidence', confidence: 'strong', evidenceSource: 'git-history' })]);
       expect(sourceText).toContain('shippedEvidenceCandidates');
       expect(sourceText).toContain('src/action-evidence.ts');
