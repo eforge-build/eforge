@@ -1,0 +1,121 @@
+name: context-safe-backlog-curation-analysis
+description: Convert eforge-plan analyze-all backlog curation to a bounded
+  map/reduce workflow with per-item packets, cached compact findings,
+  reducer-compatible output, progress telemetry, and degradation on bounded
+  failures.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm maintainability:check
+  - pnpm test
+plans:
+  - id: plan-01-curation-packets-cache
+    name: Backlog Curation Packets and Item Audit Cache
+    depends_on: []
+    branch: context-safe-backlog-curation-analysis/plan-01-curation-packets-cache
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Defines shared schemas, byte/count caps, canonical hashes, and
+          durable cache behavior that all later plans depend on.
+      reviewer:
+        effort: high
+        rationale: Shared package contracts and cache-key semantics require a careful
+          compatibility review.
+  - id: plan-02-engine-item-audit-reducer
+    name: Engine Item Audit and Reducer Agents
+    depends_on:
+      - plan-01-curation-packets-cache
+    branch: context-safe-backlog-curation-analysis/plan-02-engine-item-audit-reducer
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds two strict agent runners, prompt contracts, bounded repair
+          behavior, and shared submission tooling without changing the generic
+          planner path.
+      reviewer:
+        effort: high
+        rationale: Agent isolation, schema enforcement, and failure degradation need
+          careful review against context-safety requirements.
+  - id: plan-03-daemon-map-reduce-integration
+    name: Daemon Map/Reduce Orchestration and Compatibility
+    depends_on:
+      - plan-02-engine-item-audit-reducer
+    branch: context-safe-backlog-curation-analysis/plan-03-daemon-map-reduce-integration
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Coordinates monitor background task orchestration, dynamic provider
+          hooks, progress telemetry, cache usage, reducer validation, and
+          compatibility tests across packages.
+      reviewer:
+        effort: high
+        rationale: Daemon task branching and extension-provider boundaries need review
+          for ordinary planning task isolation and API compatibility.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - test-cycle
+    - doc-sync
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a large, multi-package feature, but the work is tightly
+    coupled around one analyze-all map/reduce workflow with shared schemas,
+    cache keys, engine orchestration, daemon routing, and compatibility tests. A
+    single planner should be able to produce ordered implementation plans, so
+    excursion is preferable to expedition. The plan-review gate is included
+    because scope control and dependency ordering are important. Build includes
+    implementation, test generation/execution, documentation sync for
+    user-facing behavior and shared APIs, the registered maintainability
+    validation gate, and an iterative review cycle. Review focuses on API
+    compatibility and test coverage with strict evaluation because the feature
+    must preserve existing result/apply semantics while adding bounded failure
+    handling and cache behavior.
+diff_base_ref: f232bd84b4131e1bfb0b06aaa8fb69967819a0b5
