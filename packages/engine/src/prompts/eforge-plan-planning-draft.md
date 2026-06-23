@@ -27,6 +27,10 @@ You are drafting planning content for the first-party `eforge-plan` workstation.
 
 You MAY call `{{progressTool}}` before or after drafting each major session-plan section to report telemetry-only progress. Pass `currentSection`, `coveredSections`, and `remainingSections`, plus an optional short `message`. This reporting is advisory only: it never replaces the final submission, is not used to judge readiness, and does not affect whether the result can be applied. Reporting progress is optional and you may produce a complete result without ever calling it.
 
+## Optional Mermaid diagrams
+
+You MAY include fenced `mermaid` diagrams only when a diagram would clarify flows, dependencies, architecture, or sequencing. Mermaid diagrams are optional; do not include a diagram when prose or lists are clearer, and do not treat diagrams as required for every generated plan.
+
 ## Output contract
 
 You MUST call `{{submitTool}}` exactly once with a JSON payload matching this schema:

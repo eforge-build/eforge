@@ -12,8 +12,18 @@ interface PlanContextRailProps {
   titles: Map<string, string>;
 }
 
+function safeExternalUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function buildPrUrl(artifact: Artifact): string | undefined {
-  return artifact.prRefs?.find((ref) => ref.url)?.url ?? artifact.linkRows?.find((row) => row.prUrl)?.prUrl;
+  return safeExternalUrl(artifact.prRefs?.find((ref) => ref.url)?.url ?? artifact.linkRows?.find((row) => row.prUrl)?.prUrl);
 }
 
 /**

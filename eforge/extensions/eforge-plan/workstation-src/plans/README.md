@@ -29,6 +29,8 @@ Needs-input evidence labels must preserve the server wording, including `Ambiguo
 
 Flat session-plan detail renders the `## Executive Summary` first when present, then readiness diagnostics, open questions, and collapsed detailed sections. This gives reviewers a fast sign-off artifact while keeping readiness problems visible. Detailed sections start collapsed; expanding a section reveals rendered Markdown, edit controls, and annotation target-selection buttons.
 
+Fenced `mermaid` code blocks render as diagrams in workstation Markdown views. Raw SVG and resource-loading HTML remain disallowed in normal Markdown and are stripped by the sanitizer.
+
 ## Freshness labels
 
 Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness state.
