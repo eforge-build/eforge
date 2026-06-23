@@ -210,10 +210,11 @@ function renderInputMetadata(entry: ExtensionHostContributionEntry): string {
   const parts = [
     entry.hasInputSchema ? 'schema=yes' : 'schema=no',
     (entry.requiredInputKeys ?? []).length > 0 ? `required=${entry.requiredInputKeys?.join(',')}` : 'required=none',
+    (entry.conditionalRequiredInputAlternatives ?? []).length > 0 ? `conditionalRequired=${entry.conditionalRequiredInputAlternatives?.map((fields) => fields.join(',')).join('|')}` : undefined,
     (entry.inputPropertyKeys ?? []).length > 0 ? `properties=${entry.inputPropertyKeys?.join(',')}` : 'properties=none',
     (entry.inputDefaultKeys ?? []).length > 0 ? `defaults=${entry.inputDefaultKeys?.join(',')}` : 'defaults=none',
   ];
-  return parts.join('; ');
+  return parts.filter((part): part is string => Boolean(part)).join('; ');
 }
 
 function formatHostText(text: string, maxChars = DEFAULT_MAX_CHARS): FormattedExtensionContributionOutput {

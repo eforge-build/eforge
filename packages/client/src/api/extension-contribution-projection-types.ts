@@ -57,6 +57,7 @@ export interface ExtensionHostContributionEntry {
   outputProfile?: ExtensionActionOutputProfile;
   hasInputSchema?: boolean;
   requiredInputKeys?: string[];
+  conditionalRequiredInputAlternatives?: string[][];
   inputPropertyKeys?: string[];
   inputDefaultKeys?: string[];
   inputSchema?: ExtensionJsonObject;

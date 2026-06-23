@@ -39,6 +39,9 @@ describe('eforge-plan README planner contract', () => {
     for (const actionId of ['search-items', 'get-item', 'get-epic', 'capture-item', 'update-item']) {
       expect(workflow).toContain(actionId);
     }
+    for (const projectionFlag of ['includeEpics', 'includeDependencies', 'includeEpic', 'includeSections', 'includeLifecycleRows', 'includeDependents', 'includeItems', 'includeItemDependencies', 'includeLaneCounts']) {
+      expect(workflow).toContain(projectionFlag);
+    }
   });
 
   it('documents private recommendations, promotion sources, planner boundaries, and non-goals', async () => {

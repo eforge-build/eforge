@@ -21,7 +21,7 @@ export function schemaInputTemplate(entry: ExtensionHostContributionEntry): Json
   const defaults = isRecord(entry.inputDefaults) ? entry.inputDefaults : {};
   const template: JsonObject = { ...defaults };
   const properties = schemaProperties(entry.inputSchema);
-  for (const field of requiredFields(entry.inputSchema)) {
+  for (const field of [...requiredFields(entry.inputSchema), ...templateAlternativeFields(entry.inputSchema, defaults)]) {
     if (Object.prototype.hasOwnProperty.call(template, field)) continue;
     defineJsonProperty(template, field, placeholderForSchema(properties[field]));
   }
@@ -39,7 +39,10 @@ function defineJsonProperty(target: JsonObject, key: string, value: unknown): vo
 
 export function canInvokeWithoutPrompt(entry: ExtensionHostContributionEntry): boolean {
   const defaults = isRecord(entry.inputDefaults) ? entry.inputDefaults : {};
-  return requiredFields(entry.inputSchema).every((field) => Object.prototype.hasOwnProperty.call(defaults, field));
+  const rootRequiredSatisfied = requiredFields(entry.inputSchema).every((field) => Object.prototype.hasOwnProperty.call(defaults, field));
+  if (!rootRequiredSatisfied) return false;
+  const alternatives = conditionalRequiredAlternatives(entry.inputSchema);
+  return alternatives.length === 0 || alternatives.some((fields) => fields.every((field) => Object.prototype.hasOwnProperty.call(defaults, field)));
 }
 
 export function prepareContributionInput(entry: ExtensionHostContributionEntry): ContributionInputDecision {
@@ -79,7 +82,32 @@ export function formatInvocationPanel(result: ExtensionHostContributionInvokeRes
 
 function missingRequiredFields(entry: ExtensionHostContributionEntry): string[] {
   const defaults = isRecord(entry.inputDefaults) ? entry.inputDefaults : {};
-  return requiredFields(entry.inputSchema).filter((field) => !Object.prototype.hasOwnProperty.call(defaults, field));
+  const missing = requiredFields(entry.inputSchema).filter((field) => !Object.prototype.hasOwnProperty.call(defaults, field));
+  const alternatives = conditionalRequiredAlternatives(entry.inputSchema);
+  if (alternatives.length > 0 && !alternatives.some((fields) => fields.every((field) => Object.prototype.hasOwnProperty.call(defaults, field)))) {
+    missing.push(`one of: ${alternatives.map((fields) => fields.join(',')).join(' | ')}`);
+  }
+  return missing;
+}
+
+function conditionalRequiredAlternatives(schema: unknown): string[][] {
+  if (!isRecord(schema)) return [];
+  const alternatives: string[][] = [];
+  for (const key of ['oneOf', 'anyOf']) {
+    const variants = schema[key];
+    if (!Array.isArray(variants)) continue;
+    for (const variant of variants) {
+      const fields = requiredFields(variant);
+      if (fields.length > 0) alternatives.push(fields);
+    }
+  }
+  return alternatives;
+}
+
+function templateAlternativeFields(schema: unknown, defaults: JsonObject): string[] {
+  const alternatives = conditionalRequiredAlternatives(schema);
+  if (alternatives.length === 0 || alternatives.some((fields) => fields.every((field) => Object.prototype.hasOwnProperty.call(defaults, field)))) return [];
+  return alternatives[0] ?? [];
 }
 
 function schemaProperties(schema: unknown): Record<string, unknown> {

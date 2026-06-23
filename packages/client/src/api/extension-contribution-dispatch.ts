@@ -67,7 +67,7 @@ const EXTENSION_ACTION_OUTPUT_PROFILES: ExtensionActionOutputProfile[] = ['agent
 
 type ExtensionHostContributionBaseEntry = Omit<
   ExtensionHostContributionEntry,
-  'hasInputSchema' | 'requiredInputKeys' | 'inputPropertyKeys' | 'inputDefaultKeys'
+  'hasInputSchema' | 'requiredInputKeys' | 'conditionalRequiredInputAlternatives' | 'inputPropertyKeys' | 'inputDefaultKeys'
 >;
 
 // --- eforge:region public-dispatch-api ---
@@ -371,13 +371,30 @@ function projectEntry(entry: ExtensionHostContributionBaseEntry, options: Extens
 function contributionInputMetadata(
   inputSchema: ExtensionJsonObject | undefined,
   inputDefaults: ExtensionJsonObject | undefined,
-): Pick<ExtensionHostContributionEntry, 'hasInputSchema' | 'requiredInputKeys' | 'inputPropertyKeys' | 'inputDefaultKeys'> {
+): Pick<ExtensionHostContributionEntry, 'hasInputSchema' | 'requiredInputKeys' | 'conditionalRequiredInputAlternatives' | 'inputPropertyKeys' | 'inputDefaultKeys'> {
+  const conditionalRequiredInputAlternatives = conditionalRequiredAlternatives(inputSchema);
   return {
     hasInputSchema: inputSchema !== undefined,
     requiredInputKeys: stringArrayProperty(inputSchema, 'required'),
+    ...(conditionalRequiredInputAlternatives.length > 0 && { conditionalRequiredInputAlternatives }),
     inputPropertyKeys: objectKeysProperty(inputSchema, 'properties'),
     inputDefaultKeys: inputDefaults ? Object.keys(inputDefaults).sort((left, right) => left.localeCompare(right)) : [],
   };
+}
+
+function conditionalRequiredAlternatives(inputSchema: ExtensionJsonObject | undefined): string[][] {
+  const alternatives: string[][] = [];
+  for (const key of ['oneOf', 'anyOf']) {
+    const variants = inputSchema?.[key];
+    if (!Array.isArray(variants)) continue;
+    for (const variant of variants) {
+      const fields = variant !== null && typeof variant === 'object' && !Array.isArray(variant)
+        ? stringArrayProperty(variant as ExtensionJsonObject, 'required')
+        : [];
+      if (fields.length > 0) alternatives.push(fields);
+    }
+  }
+  return alternatives;
 }
 
 function stringArrayProperty(value: ExtensionJsonObject | undefined, key: string): string[] {
