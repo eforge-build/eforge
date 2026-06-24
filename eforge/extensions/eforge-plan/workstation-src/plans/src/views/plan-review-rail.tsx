@@ -1,11 +1,10 @@
 import * as React from 'react';
-import { Bot } from 'lucide-react';
+import { Bot, ClipboardList, type LucideIcon } from 'lucide-react';
 import { RailCard } from '@/components/ui/rail-card';
-import type { Artifact, PlanData, PlanRevisionAnnotationTarget } from '@/types';
-import { PlanContextRail } from './plan-context-rail';
-import { PendingAnnotationComposer } from './plans/pending-annotation-composer';
+import { cn } from '@/lib/utils';
+import type { Artifact, PlanData } from '@/types';
+import { PlanContextRailContent } from './plan-context-rail';
 import { PlanRevisionAnnotationsPanel } from './plans/plan-revision-annotations-panel';
-import { PlanRevisionPanel } from './plans/plan-revision-panel';
 import type { PlanRevisionSessionApi } from './plans/use-plan-revision-session';
 
 interface PlanReviewRailProps {
@@ -13,21 +12,50 @@ interface PlanReviewRailProps {
   titles: Map<string, string>;
   plan: PlanData;
   revision: PlanRevisionSessionApi;
-  pendingAnnotationTarget: PlanRevisionAnnotationTarget | null;
-  onSavePendingAnnotation: (body: string) => Promise<boolean>;
-  onCancelPendingAnnotation: () => void;
 }
 
-export function PlanReviewRail({ artifact, titles, plan, revision, pendingAnnotationTarget, onSavePendingAnnotation, onCancelPendingAnnotation }: PlanReviewRailProps) {
+type RailMode = 'review' | 'context';
+
+/**
+ * The plan review rail: one focal job at a time instead of a single long stack.
+ * "Review" holds the annotation and AI-revision workspace; "Context" demotes the
+ * plan's lineage (source items, build state) to a secondary, on-demand view.
+ */
+export function PlanReviewRail({ artifact, titles, plan, revision }: PlanReviewRailProps) {
+  const [mode, setMode] = React.useState<RailMode>('review');
   return (
     <div className="grid gap-3" aria-label={`Plan review rail for ${plan.session}`}>
-      <PlanContextRail artifact={artifact} titles={titles} />
+      <div className="flex gap-1 rounded-md border bg-background/50 p-1" role="tablist" aria-label="Rail mode">
+        <RailModeButton active={mode === 'review'} icon={Bot} onClick={() => setMode('review')}>Review</RailModeButton>
+        <RailModeButton active={mode === 'context'} icon={ClipboardList} onClick={() => setMode('context')}>Context</RailModeButton>
+      </div>
 
-      <RailCard icon={Bot} title="Review controls" contentClassName="grid gap-3">
-        <PendingAnnotationComposer target={pendingAnnotationTarget} busy={revision.busy || revision.loading || revision.hasRunningTurn} onSave={onSavePendingAnnotation} onCancel={onCancelPendingAnnotation} />
-        <PlanRevisionAnnotationsPanel plan={plan} api={revision} disabled={revision.hasRunningTurn} />
-        <PlanRevisionPanel plan={plan} api={revision} rail />
-      </RailCard>
+      {mode === 'review' ? (
+        <RailCard icon={Bot} title="Review controls" contentClassName="grid gap-3">
+          <PlanRevisionAnnotationsPanel plan={plan} api={revision} disabled={revision.hasRunningTurn} />
+        </RailCard>
+      ) : (
+        <RailCard icon={ClipboardList} title="Plan context">
+          <PlanContextRailContent artifact={artifact} titles={titles} />
+        </RailCard>
+      )}
     </div>
+  );
+}
+
+function RailModeButton({ active, icon: Icon, onClick, children }: { active: boolean; icon: LucideIcon; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        'flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors',
+        active ? 'bg-card text-text-bright shadow-sm' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" /> {children}
+    </button>
   );
 }

@@ -56,6 +56,8 @@ Useful focused commands while changing this area:
 pnpm dev:eforge-plan-workstation          # mock bridge / fixture data
 pnpm dev:eforge-plan-workstation:daemon   # live daemon data through the Vite proxy
 pnpm build:eforge-plan-workstation
+pnpm storybook:eforge-plan                # isolated component stories
+pnpm storybook:build:eforge-plan
 pnpm test -- eforge/extensions/eforge-plan/__tests__/workstation-docs.test.ts eforge/extensions/eforge-plan/__tests__/workstation-assets.test.ts
 pnpm --filter @eforge-build/eforge-plan-workstation test
 pnpm --filter @eforge-build/eforge-plan-workstation build

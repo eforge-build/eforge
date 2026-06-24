@@ -76,10 +76,13 @@ describe('PlanDetailCard revision workstation', () => {
       screen.getByRole('button', { name: /Mark ready/ }),
       screen.getByRole('button', { name: /Handoff/ }),
       screen.getByRole('button', { name: /Annotate whole plan/ }),
-      screen.getByRole('button', { name: /Annotate section Scope/ }),
-      screen.getByRole('button', { name: /Annotate focused block in Scope/ }),
+      screen.getByRole('button', { name: /Annotate the entire Scope section/ }),
     ].forEach((button) => expect((button as HTMLButtonElement).disabled).toBe(true));
     screen.getAllByRole('button', { name: /Edit/ }).forEach((button) => expect((button as HTMLButtonElement).disabled).toBe(true));
+    // The contextual block-annotate affordance never surfaces while the page is locked.
+    const lockedBlock = document.querySelector('[data-plan-annotation-block]');
+    if (lockedBlock) fireEvent.focus(lockedBlock);
+    expect(screen.queryByRole('button', { name: /Annotate this block in Scope/ })).toBeNull();
     fireEvent.click(within(rail).getByRole('button', { name: /Cancel/ }));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('cancel-plan-revision-turn', { session: 's', turnId: 'turn-running' }));
   });
@@ -89,7 +92,7 @@ describe('PlanDetailCard revision workstation', () => {
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'start-plan-revision-turn' ? { session } : session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
     expect(screen.getByText('Revise with AI')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Ask the AI for plan revisions or answers'), { target: { value: 'Why?' } });
+    fireEvent.change(screen.getByLabelText('Message to AI'), { target: { value: 'Why?' } });
     const send = screen.getByRole('button', { name: /Send to AI/ });
     await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(send);

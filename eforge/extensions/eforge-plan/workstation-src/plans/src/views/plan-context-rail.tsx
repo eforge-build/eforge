@@ -1,7 +1,6 @@
-import { ClipboardList, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { RailCard } from '@/components/ui/rail-card';
 import { planBuildState, sourceEpicIds, sourceItemIds, usePlanNavigation } from '@/lib/plan-links';
 import { planDisplayTitle } from '@/lib/plan-title';
 import type { Artifact } from '@/types';
@@ -96,13 +95,5 @@ export function PlanContextRailContent({ artifact, titles }: PlanContextRailProp
 
       <p className="text-2xs leading-relaxed text-muted-foreground">Builds run in the global queue (see the top bar). Full build trace is in the plan footer.</p>
     </div>
-  );
-}
-
-export function PlanContextRail({ artifact, titles }: PlanContextRailProps) {
-  return (
-    <RailCard icon={ClipboardList} title="Plan context">
-      <PlanContextRailContent artifact={artifact} titles={titles} />
-    </RailCard>
   );
 }

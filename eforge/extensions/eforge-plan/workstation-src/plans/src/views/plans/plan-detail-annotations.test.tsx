@@ -32,15 +32,15 @@ function expandPlanSection(title = 'Scope') {
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
 }
 
-function renderedSectionFor(buttonName: RegExp) {
-  const button = screen.getByRole('button', { name: buttonName });
-  const section = button.closest('section');
+function sectionFor(title = 'Scope') {
+  const toggle = screen.getByRole('button', { name: `Toggle ${title} section` });
+  const section = toggle.closest('section');
   expect(section).toBeTruthy();
   return section as HTMLElement;
 }
 
-function decoratedBlockFor(buttonName: RegExp, text: string) {
-  const section = renderedSectionFor(buttonName);
+function decoratedBlockFor(text: string, title = 'Scope') {
+  const section = sectionFor(title);
   const block = Array.from(section.querySelectorAll<HTMLElement>('[data-plan-annotation-block]')).find((element) => element.textContent?.includes(text));
   expect(block).toBeTruthy();
   return block as HTMLElement;
@@ -54,7 +54,7 @@ function firstTextNode(element: HTMLElement): Text {
 }
 
 async function selectSubstringInside(fullText: string, selectedText: string) {
-  const block = decoratedBlockFor(/Annotate selection in Scope/, fullText);
+  const block = decoratedBlockFor(fullText);
   const node = firstTextNode(block);
   const start = (node.textContent ?? '').indexOf(selectedText);
   expect(start).toBeGreaterThanOrEqual(0);
@@ -87,11 +87,10 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    await screen.findByRole('button', { name: /Annotate selection in Scope/ });
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
-    const selectionButton = screen.getByRole('button', { name: /Annotate selection in Scope/ }) as HTMLButtonElement;
-    await waitFor(() => expect(selectionButton.disabled).toBe(false));
+    const selectionButton = await screen.findByRole('button', { name: 'Annotate' }) as HTMLButtonElement;
     fireEvent.mouseDown(selectionButton);
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
     fireEvent.click(selectionButton);
@@ -109,16 +108,15 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    await screen.findByRole('button', { name: /Annotate selection in Scope/ });
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
-    const annotateSelection = screen.getByRole('button', { name: /Annotate selection in Scope/ }) as HTMLButtonElement;
-    await waitFor(() => expect(annotateSelection.disabled).toBe(false));
+    const annotateSelection = await screen.findByRole('button', { name: 'Annotate' }) as HTMLButtonElement;
     fireEvent.mouseDown(annotateSelection);
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
     fireEvent.click(annotateSelection);
     const composer = await screen.findByLabelText('Pending annotation composer');
     fireEvent.click(within(composer).getByRole('button', { name: /Cancel annotation/ }));
-    expect(screen.getByLabelText('Pending annotation composer empty')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('Pending annotation composer')).toBeNull());
     expect(invokeAction.mock.calls.map(([id]) => id)).not.toContain('create-plan-revision-annotation');
   });
 
@@ -126,26 +124,26 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    const button = await screen.findByRole('button', { name: /Annotate selection in Scope/ });
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
     selectOutsideRenderedSections('outside selection');
-    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
-    fireEvent.click(button);
+    // A selection outside the rendered section never surfaces the floating Annotate affordance.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Annotate' })).toBeNull());
     expect(invokeAction.mock.calls.map(([id]) => id)).not.toContain('create-plan-revision-annotation');
   });
 
-  it('captures block, section, and whole-plan targets in the rail composer and save payloads', async () => {
+  it('captures block, section, and whole-plan targets in the inline composer and save payloads', async () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    await screen.findByRole('button', { name: /Annotate focused block in Scope/ });
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
-    const block = await waitFor(() => decoratedBlockFor(/Annotate focused block in Scope/, 'Selected scope words for annotations.'));
+    const block = await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     fireEvent.focus(block);
+    await screen.findByRole('button', { name: /Annotate this block in Scope/ });
 
     const cases = [
-      { kind: 'block', button: /Annotate focused block in Scope/, target: 'Scope focused block', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'block note' },
-      { kind: 'section', button: /Annotate section Scope/, target: 'Scope', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'section note' },
+      { kind: 'block', button: /Annotate this block in Scope/, target: 'Scope block', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'block note' },
+      { kind: 'section', button: /Annotate the entire Scope section/, target: 'Scope', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'section note' },
       { kind: 'whole-plan', button: /Annotate whole plan/, target: 'Topic whole plan', dimension: null, excerpt: /Done means visible controls/, exact: /# Topic/, exactPayload: /# Topic/, note: 'whole plan note' },
     ] as const;
 
@@ -157,17 +155,10 @@ describe('PlanDetailCard annotations', () => {
       const composer = screen.getByLabelText('Pending annotation composer');
       expect(invokeAction.mock.calls.filter(([id]) => id === 'create-plan-revision-annotation')).toHaveLength(createCount);
       const scoped = within(composer);
+      // Compact composer: a kind badge, the target title, and the captured quote
+      // shown once in context (no separate Target/Dimension/Captured-excerpt rows).
       expect(scoped.getByText(entry.kind)).toBeTruthy();
-      expect(scoped.getByText('Target')).toBeTruthy();
       expect(scoped.getAllByText(entry.target).length).toBeGreaterThan(0);
-      if (entry.dimension) {
-        expect(scoped.getByText('Dimension')).toBeTruthy();
-        expect(scoped.getAllByText(entry.dimension).length).toBeGreaterThan(0);
-      }
-      expect(scoped.getByText('Captured excerpt')).toBeTruthy();
-      expect(scoped.getAllByText(entry.excerpt).length).toBeGreaterThan(0);
-      expect(scoped.getByText('Quote context')).toBeTruthy();
-      expect(scoped.getByText('Exact:')).toBeTruthy();
       expect(scoped.getAllByText(entry.exact).length).toBeGreaterThan(0);
       const note = scoped.getByLabelText('Annotation note');
       expect(note).toBeTruthy();
@@ -191,6 +182,8 @@ describe('PlanDetailCard annotations', () => {
     };
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] }, artifact, new Map([['item-1', 'Backlog source title']]));
     const rail = await screen.findByLabelText(/Plan review rail for s/);
+    // Lineage lives behind the rail's "Context" mode, not the default Review mode.
+    fireEvent.click(within(rail).getByRole('tab', { name: 'Context' }));
     expect(within(rail).getByText('Plan context')).toBeTruthy();
     expect(within(rail).getByText('Backlog source title')).toBeTruthy();
     expect(within(rail).getByText('epic-1')).toBeTruthy();
@@ -205,17 +198,15 @@ describe('PlanDetailCard annotations', () => {
     const rail = screen.getByLabelText(/Plan review rail for s/);
     const main = screen.getAllByText('Topic')[0].closest('section') as HTMLElement;
     expect(within(rail).getByLabelText(/Revision annotations for s/)).toBeTruthy();
-    expect(within(rail).getByRole('button', { name: /Revise with AI from annotations/ })).toBeTruthy();
     expect(within(rail).getByRole('button', { name: /Send to AI/ })).toBeTruthy();
     expect(within(rail).getByRole('button', { name: /Edit note for annotation ann-1/ })).toBeTruthy();
     expect(within(main).queryByLabelText(/Revision annotations for s/)).toBeNull();
-    expect(within(main).queryByRole('button', { name: /Revise with AI from annotations/ })).toBeNull();
     expect(within(main).queryByRole('button', { name: /Send to AI/ })).toBeNull();
     expect(within(main).queryByRole('button', { name: /Edit note for annotation ann-1/ })).toBeNull();
     const card = within(panel).getByText(/Selected scope/);
     expect(card).toBeTruthy();
     expect(within(panel).getAllByText(/words for annotations/).length).toBeGreaterThan(0);
-    expect(panel.querySelectorAll('time[dateTime]').length).toBeGreaterThanOrEqual(2);
+    expect(panel.querySelectorAll('time[dateTime]')).toHaveLength(1);
     fireEvent.click(within(panel).getByRole('button', { name: /Edit note for annotation ann-1/ }));
     fireEvent.change(within(panel).getByLabelText(/Note for annotation ann-1/), { target: { value: ' revised note ' } });
     fireEvent.click(within(panel).getByRole('button', { name: /Save note for annotation ann-1/ }));
@@ -230,32 +221,35 @@ describe('PlanDetailCard annotations', () => {
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('delete-plan-revision-annotation', { session: 's', annotationId: 'ann-1' }));
   });
 
-  it('submits sticky annotation revision payloads and preserves manual prompt payloads', async () => {
+  it('sends grounded annotation revisions and bare messages through one composer', async () => {
     const two = { ...session, annotations: [annotation, { ...annotation, annotationId: 'ann-2', createdAt: '2026-01-01T00:01:00.000Z' }] };
     const invokeAction = createBridge(two);
     renderDetail(invokeAction as EforgeBridge['invokeAction'], two);
     const panel = await screen.findByLabelText(/Revision annotations for s/);
-    await waitFor(() => expect(within(panel).getAllByText(/2 open annotations/).length).toBeGreaterThan(0));
+    const rail = screen.getByLabelText(/Plan review rail for s/);
+    await waitFor(() => expect(within(panel).getByText(/2 open annotations/)).toBeTruthy());
+
+    // Grounded: deselect ann-2 via its per-card Include toggle, steer with a message -> annotation revision payload.
     fireEvent.click(within(panel).getByLabelText(/Select annotation ann-2 for revision/));
-    fireEvent.click(within(panel).getByLabelText('Include all open annotations'));
-    fireEvent.change(within(panel).getByPlaceholderText(/Tell the AI/), { target: { value: ' revise tightly ' } });
-    fireEvent.click(within(panel).getByRole('button', { name: /Revise with AI from annotations/ }));
+    fireEvent.change(within(rail).getByLabelText('Message to AI'), { target: { value: ' revise tightly ' } });
+    fireEvent.click(within(rail).getByRole('button', { name: /Send to AI/ }));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', annotationIds: ['ann-1'], includeOpenAnnotations: false, steering: 'revise tightly' }));
-    fireEvent.click(within(panel).getByLabelText(/Select annotation ann-2 for revision/));
-    fireEvent.click(within(panel).getByLabelText('Include all open annotations'));
-    fireEvent.change(within(panel).getByPlaceholderText(/Tell the AI/), { target: { value: ' revise broadly ' } });
-    fireEvent.click(within(panel).getByRole('button', { name: /Revise with AI from annotations/ }));
-    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', annotationIds: ['ann-1', 'ann-2'], includeOpenAnnotations: true, steering: 'revise broadly' }));
-    fireEvent.change(screen.getByLabelText('Ask the AI for plan revisions or answers'), { target: { value: ' revise ' } });
-    fireEvent.click(screen.getByRole('button', { name: /Send to AI/ }));
-    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', message: 'revise' }));
+
+    // Bare: deselect the last annotation too -> a plain message turn with no annotation payload.
+    fireEvent.click(within(panel).getByLabelText(/Select annotation ann-1 for revision/));
+    fireEvent.change(within(rail).getByLabelText('Message to AI'), { target: { value: ' just ask ' } });
+    fireEvent.click(within(rail).getByRole('button', { name: /Send to AI/ }));
+    await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('start-plan-revision-turn', { session: 's', message: 'just ask' }));
+    const bare = invokeAction.mock.calls.filter(([id]) => id === 'start-plan-revision-turn').at(-1)?.[1] as Record<string, unknown>;
+    expect(bare).not.toHaveProperty('annotationIds');
+    expect(bare).not.toHaveProperty('includeOpenAnnotations');
   });
 
   it.each(['queued', 'running'] as const)('disables annotation revision submission when a turn is %s', async (status) => {
     const active = { ...session, turns: [{ turnId: status, taskId: 'task', userMessage: 'm', basePlanFingerprint: 'h', baseSectionHashes: [], createdAt: '', task: { taskId: 'task', kind: 'k', status, createdAt: '', updatedAt: '' } }] };
     const invokeAction = createBridge(active);
     renderDetail(invokeAction as EforgeBridge['invokeAction'], active);
-    const button = await screen.findByRole('button', { name: /Revise with AI from annotations/ });
+    const button = await screen.findByRole('button', { name: /Send to AI/ });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);
     expect(invokeAction.mock.calls.filter(([id]) => id === 'start-plan-revision-turn')).toHaveLength(0);

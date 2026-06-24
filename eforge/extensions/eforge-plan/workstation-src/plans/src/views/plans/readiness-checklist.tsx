@@ -26,9 +26,21 @@ interface ReadinessChecklistProps {
  */
 export function ReadinessChecklist({ plan, readiness, disabled, onSetSection, onSelectDimensions }: ReadinessChecklistProps) {
   const [editing, setEditing] = React.useState<string | null>(null);
-  const missing = readiness.missingDimensions ?? [];
-  const covered = readiness.coveredDimensions ?? [];
-  const skipped = readiness.skippedDimensions ?? [];
+  // A dimension can erroneously land in more than one readiness bucket (e.g.
+  // both covered and skipped). Show it once with a single state, preferring the
+  // most actionable: missing > skipped > covered. Deduping in that order also
+  // keeps the row count consistent with the header summary.
+  const claimed = new Set<string>();
+  const dedupe = (list: string[] | undefined) => {
+    const out: string[] = [];
+    for (const dimension of list ?? []) {
+      if (!claimed.has(dimension)) { claimed.add(dimension); out.push(dimension); }
+    }
+    return out;
+  };
+  const missing = dedupe(readiness.missingDimensions);
+  const skipped = dedupe(readiness.skippedDimensions);
+  const covered = dedupe(readiness.coveredDimensions);
   const acDiagnostics = readiness.acDiagnostics ?? [];
   const noDimensions = missing.length === 0 && covered.length === 0 && skipped.length === 0
     && (plan.required_dimensions ?? []).length === 0;

@@ -31,12 +31,18 @@ export function SafeMarkdown({ markdown, className, forbidResourceLoading = fals
       FORBID_ATTR: ['src', 'srcset', 'style'],
     } : undefined);
   }, [markdown, forbidResourceLoading]);
+  // Stable object identity so React only re-applies `innerHTML` when the
+  // sanitized HTML actually changes. A fresh `{ __html }` literal on every
+  // render makes React's `nextProp !== lastProp` check always true, which
+  // tears down and rebuilds the prose DOM on unrelated re-renders and
+  // collapses any active text selection - making the body feel un-selectable.
+  const innerHtml = React.useMemo(() => ({ __html: html }), [html]);
 
   return (
     <div
       className={`plan-prose${className ? ` ${className}` : ''}`}
       // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }

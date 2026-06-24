@@ -25,7 +25,7 @@ interface PlanDetailCardProps {
   detail: PlanDetail & { plan: PlanData };
   revision: PlanRevisionSessionApi;
   locked: boolean;
-  onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget) => void;
+  onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget, anchor?: DOMRect | null) => void;
   onApply: (result: MutationResult) => void;
   onRefresh: () => Promise<void>;
   onDeleted: () => Promise<void>;
@@ -172,7 +172,7 @@ export function PlanDetailCard({ detail, revision, locked, onSelectAnnotationTar
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sections</h4>
-              <Button className="ml-auto" size="sm" variant="outline" disabled={locked || revision.busy || revision.loading} onClick={() => { const target = buildWholePlanAnnotationTarget(plan); if (target) onSelectAnnotationTarget(target); }}>Annotate whole plan</Button>
+              <Button className="ml-auto" size="sm" variant="outline" disabled={locked || revision.busy || revision.loading} onClick={(event) => { const target = buildWholePlanAnnotationTarget(plan); if (target) onSelectAnnotationTarget(target, event.currentTarget.getBoundingClientRect()); }}>Annotate whole plan</Button>
             </div>
             {detailSectionEntries.map(([key, content]) => (
               <AnnotatablePlanSection key={key} plan={plan} dimension={key} content={content} disabled={locked || revision.busy || revision.loading} onSaveSection={setSection} onSelectAnnotationTarget={onSelectAnnotationTarget} />
