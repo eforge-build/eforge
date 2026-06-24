@@ -32,15 +32,15 @@ function expandPlanSection(title = 'Scope') {
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
 }
 
-function renderedSectionFor(buttonName: RegExp) {
-  const button = screen.getByRole('button', { name: buttonName });
-  const section = button.closest('section');
+function sectionFor(title = 'Scope') {
+  const toggle = screen.getByRole('button', { name: `Toggle ${title} section` });
+  const section = toggle.closest('section');
   expect(section).toBeTruthy();
   return section as HTMLElement;
 }
 
-function decoratedBlockFor(buttonName: RegExp, text: string) {
-  const section = renderedSectionFor(buttonName);
+function decoratedBlockFor(text: string, title = 'Scope') {
+  const section = sectionFor(title);
   const block = Array.from(section.querySelectorAll<HTMLElement>('[data-plan-annotation-block]')).find((element) => element.textContent?.includes(text));
   expect(block).toBeTruthy();
   return block as HTMLElement;
@@ -54,7 +54,7 @@ function firstTextNode(element: HTMLElement): Text {
 }
 
 async function selectSubstringInside(fullText: string, selectedText: string) {
-  const block = decoratedBlockFor(/Annotate selection in Scope/, fullText);
+  const block = decoratedBlockFor(fullText);
   const node = firstTextNode(block);
   const start = (node.textContent ?? '').indexOf(selectedText);
   expect(start).toBeGreaterThanOrEqual(0);
@@ -87,11 +87,10 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    await screen.findByRole('button', { name: /Annotate selection in Scope/ });
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
-    const selectionButton = screen.getByRole('button', { name: /Annotate selection in Scope/ }) as HTMLButtonElement;
-    await waitFor(() => expect(selectionButton.disabled).toBe(false));
+    const selectionButton = await screen.findByRole('button', { name: 'Annotate' }) as HTMLButtonElement;
     fireEvent.mouseDown(selectionButton);
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
     fireEvent.click(selectionButton);
@@ -109,10 +108,9 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    await screen.findByRole('button', { name: /Annotate selection in Scope/ });
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
-    const annotateSelection = screen.getByRole('button', { name: /Annotate selection in Scope/ }) as HTMLButtonElement;
-    await waitFor(() => expect(annotateSelection.disabled).toBe(false));
+    const annotateSelection = await screen.findByRole('button', { name: 'Annotate' }) as HTMLButtonElement;
     fireEvent.mouseDown(annotateSelection);
     await selectSubstringInside('Selected scope words for annotations.', 'Selected scope');
     fireEvent.click(annotateSelection);
@@ -126,11 +124,11 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    const button = await screen.findByRole('button', { name: /Annotate selection in Scope/ });
+    await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
     selectOutsideRenderedSections('outside selection');
-    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
-    fireEvent.click(button);
+    // A selection outside the rendered section never surfaces the floating Annotate affordance.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Annotate' })).toBeNull());
     expect(invokeAction.mock.calls.map(([id]) => id)).not.toContain('create-plan-revision-annotation');
   });
 
@@ -138,14 +136,14 @@ describe('PlanDetailCard annotations', () => {
     const invokeAction = createBridge();
     renderDetail(invokeAction as EforgeBridge['invokeAction'], { ...session, annotations: [] });
     expandPlanSection();
-    await screen.findByRole('button', { name: /Annotate focused block in Scope/ });
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('get-plan-revision-session', { session: 's', includePlan: false }));
-    const block = await waitFor(() => decoratedBlockFor(/Annotate focused block in Scope/, 'Selected scope words for annotations.'));
+    const block = await waitFor(() => decoratedBlockFor('Selected scope words for annotations.'));
     fireEvent.focus(block);
+    await screen.findByRole('button', { name: /Annotate this block in Scope/ });
 
     const cases = [
-      { kind: 'block', button: /Annotate focused block in Scope/, target: 'Scope focused block', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'block note' },
-      { kind: 'section', button: /Annotate section Scope/, target: 'Scope', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'section note' },
+      { kind: 'block', button: /Annotate this block in Scope/, target: 'Scope block', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'block note' },
+      { kind: 'section', button: /Annotate the entire Scope section/, target: 'Scope', dimension: 'Scope', excerpt: /Selected scope words for annotations/, exact: /Selected scope words for annotations\./, exactPayload: /Selected scope words for annotations\./, note: 'section note' },
       { kind: 'whole-plan', button: /Annotate whole plan/, target: 'Topic whole plan', dimension: null, excerpt: /Done means visible controls/, exact: /# Topic/, exactPayload: /# Topic/, note: 'whole plan note' },
     ] as const;
 

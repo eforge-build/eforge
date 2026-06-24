@@ -37,7 +37,7 @@ function AnnotatableSectionStory() {
     <div className="grid max-w-5xl gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="grid gap-2">
         <p className="text-sm text-muted-foreground">
-          This story isolates the rendered session-plan section used by the Plans workstation. Browser text selection should work directly in the markdown body; the selection button enables only while the selected range is inside this section.
+          This story isolates the rendered session-plan section used by the Plans workstation. Annotation affordances are contextual: drag-select text to reveal a floating <em>Annotate</em> button over the selection, hover (or keyboard-focus) a block to reveal its inline annotate icon, and use the header icons to edit or annotate the whole section.
         </p>
         <AnnotatablePlanSection
           plan={currentPlan}

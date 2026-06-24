@@ -76,10 +76,13 @@ describe('PlanDetailCard revision workstation', () => {
       screen.getByRole('button', { name: /Mark ready/ }),
       screen.getByRole('button', { name: /Handoff/ }),
       screen.getByRole('button', { name: /Annotate whole plan/ }),
-      screen.getByRole('button', { name: /Annotate section Scope/ }),
-      screen.getByRole('button', { name: /Annotate focused block in Scope/ }),
+      screen.getByRole('button', { name: /Annotate the entire Scope section/ }),
     ].forEach((button) => expect((button as HTMLButtonElement).disabled).toBe(true));
     screen.getAllByRole('button', { name: /Edit/ }).forEach((button) => expect((button as HTMLButtonElement).disabled).toBe(true));
+    // The contextual block-annotate affordance never surfaces while the page is locked.
+    const lockedBlock = document.querySelector('[data-plan-annotation-block]');
+    if (lockedBlock) fireEvent.focus(lockedBlock);
+    expect(screen.queryByRole('button', { name: /Annotate this block in Scope/ })).toBeNull();
     fireEvent.click(within(rail).getByRole('button', { name: /Cancel/ }));
     await waitFor(() => expect(invokeAction).toHaveBeenCalledWith('cancel-plan-revision-turn', { session: 's', turnId: 'turn-running' }));
   });

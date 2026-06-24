@@ -67,6 +67,6 @@ describe('PlanDetailCard executive summary', () => {
     const scoped = within(section as HTMLElement);
     expect(scoped.getByText('Problem details hidden until expanded.')).toBeTruthy();
     expect(scoped.getByRole('button', { name: /Edit Problem Statement/i })).toBeTruthy();
-    expect(scoped.getByRole('button', { name: /Annotate section Problem Statement/i })).toBeTruthy();
+    expect(scoped.getByRole('button', { name: /Annotate the entire Problem Statement section/i })).toBeTruthy();
   });
 });
