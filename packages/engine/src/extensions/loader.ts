@@ -146,6 +146,9 @@ function createEmptyRegistry(candidates: NativeExtensionCandidate[]): NativeExte
     tools: [],
     prdEnrichers: [],
     actions: [],
+    // --- eforge:region plan-01-agent-task-contribution-contract ---
+    agentTasks: [],
+    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributions: [],
     consoleWorkstations: [],
     integrationCommands: [],
@@ -168,6 +171,9 @@ function registrationCounts(registry: NativeExtensionRegistry): RegistrationCoun
     tools: registry.tools.length,
     prdEnrichers: registry.prdEnrichers.length,
     actions: registry.actions.length,
+    // --- eforge:region plan-01-agent-task-contribution-contract ---
+    agentTasks: registry.agentTasks.length,
+    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributions: registry.consoleContributions.length,
     consoleWorkstations: registry.consoleWorkstations.length,
     integrationCommands: registry.integrationCommands.length,
@@ -187,6 +193,9 @@ function diffRegistrationCounts(before: RegistrationCounts, after: RegistrationC
     tools: after.tools - before.tools,
     prdEnrichers: after.prdEnrichers - before.prdEnrichers,
     actions: after.actions - before.actions,
+    // --- eforge:region plan-01-agent-task-contribution-contract ---
+    agentTasks: after.agentTasks - before.agentTasks,
+    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributions: after.consoleContributions - before.consoleContributions,
     consoleWorkstations: after.consoleWorkstations - before.consoleWorkstations,
     integrationCommands: after.integrationCommands - before.integrationCommands,

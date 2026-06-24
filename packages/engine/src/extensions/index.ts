@@ -70,6 +70,9 @@ export type {
   ToolRegistration,
   PrdEnricherRegistration,
   ActionRegistration,
+  AgentTaskRegistration,
+  AgentTaskRegistrationSpec,
+  AgentTaskPromptSourceSpec,
   ConsoleContributionRegistration,
   ConsoleWorkstationRegistration,
   IntegrationCommandRegistration,
@@ -175,6 +178,7 @@ export type {
 export {
   buildExtensionContributionManifest,
   buildActionDetails,
+  buildAgentTaskDetails,
   buildConsoleContributionDetails,
   buildConsoleWorkstationDetails,
   buildIntegrationCommandDetails,

@@ -54,6 +54,8 @@ export class AgentTaskServiceError extends Error {
   }
 }
 
+type LegacyExtensionAgentTaskStartRequest = Extract<ExtensionAgentTaskStartRequest, { kind: ExtensionAgentTaskKind }>;
+
 export interface ExtensionAgentTaskStartOptions {
   owner?: ExtensionAgentTaskOwner;
   requestedBy?: ExtensionAgentTaskRequestedBy;
@@ -72,6 +74,9 @@ export class ExtensionAgentTaskService {
       throw new AgentTaskServiceError(`Invalid task start request: ${parsed.error.message}`, 400);
     }
     const validRequest = parsed.data;
+    if (!('kind' in validRequest)) {
+      throw new AgentTaskServiceError(`Unsupported task contribution: ${validRequest.task.id}`, 400);
+    }
     if (validRequest.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) {
       throw new AgentTaskServiceError(`Unsupported task kind: ${validRequest.kind as string}`, 400);
     }
@@ -132,7 +137,7 @@ export class ExtensionAgentTaskService {
     return { task: projectAgentTaskRecord(cancelled) };
   }
 
-  private async runInBackground(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; startedAtMs: number; owner?: ExtensionAgentTaskOwner }): Promise<void> {
+  private async runInBackground(options: { taskId: string; request: LegacyExtensionAgentTaskStartRequest; controller: AbortController; startedAtMs: number; owner?: ExtensionAgentTaskOwner }): Promise<void> {
     try {
       const result = await this.runPlannerTask(options);
       await this.complete(options.taskId, result, options.startedAtMs);
@@ -143,7 +148,7 @@ export class ExtensionAgentTaskService {
     }
   }
 
-  private async runPlannerTask(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<EforgePlanPlanningDraftResult> {
+  private async runPlannerTask(options: { taskId: string; request: LegacyExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<EforgePlanPlanningDraftResult> {
     const cwd = this.requireCwd();
     const deferredSource = await this.resolveDeferredSourceInput(options);
     const input = deferredSource.input;
@@ -198,7 +203,7 @@ export class ExtensionAgentTaskService {
     return next.value;
   }
 
-  private async resolveDeferredSourceInput(options: { taskId: string; request: ExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<ResolvedDeferredSourceInput> {
+  private async resolveDeferredSourceInput(options: { taskId: string; request: LegacyExtensionAgentTaskStartRequest; controller: AbortController; owner?: ExtensionAgentTaskOwner }): Promise<ResolvedDeferredSourceInput> {
     const provider = options.request.input.sourceProvider;
     if (provider === undefined) return { input: options.request.input };
     if (options.owner === undefined) throw new AgentTaskServiceError('Deferred source providers require an extension owner', 400);
@@ -381,11 +386,11 @@ function countOutputSections(result: EforgePlanPlanningDraftResult): number {
   return (taskResult.recommendations ? 1 : 0) + backlogCurationDraft + planRevisionTurn + (taskResult.handoffDraft ? 1 : 0) + (Array.isArray(taskResult.handoffDrafts) ? taskResult.handoffDrafts.length : 0) + (Array.isArray(taskResult.planDrafts) ? taskResult.planDrafts.length : 0) + (taskResult.playbookDraft ? 1 : 0) + (taskResult.sessionPlanPatch ? 1 : 0) + creationDraft;
 }
 
-type DeferredSourceProviderSpec = NonNullable<ExtensionAgentTaskStartRequest['input']['sourceProvider']>;
+type DeferredSourceProviderSpec = NonNullable<LegacyExtensionAgentTaskStartRequest['input']['sourceProvider']>;
 type DeferredSourceProviderHandler = (context: { cwd: string; input: Record<string, unknown>; signal: AbortSignal }) => Promise<unknown> | unknown;
 
 interface ResolvedDeferredSourceInput {
-  input: ExtensionAgentTaskStartRequest['input'];
+  input: LegacyExtensionAgentTaskStartRequest['input'];
   sourceText?: string;
   structuredSource?: unknown;
   providerHooks?: BacklogCurationMapReduceProviderHooks;
@@ -466,7 +471,7 @@ function isEforgePlanCurationMapReduceTask(source: ResolvedDeferredSourceInput, 
   return owner?.extensionName === 'eforge-plan' || bundle.globalContext.purpose === 'backlog-curation-map-reduce';
 }
 
-function sourceProviderItemAuditConcurrency(request: ExtensionAgentTaskStartRequest): number | undefined {
+function sourceProviderItemAuditConcurrency(request: LegacyExtensionAgentTaskStartRequest): number | undefined {
   const input = request.input.sourceProvider?.input as { itemAuditConcurrency?: unknown } | undefined;
   return numberValue(input?.itemAuditConcurrency);
 }

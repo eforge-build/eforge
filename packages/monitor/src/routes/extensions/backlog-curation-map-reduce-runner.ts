@@ -16,9 +16,9 @@ import {
   type BacklogCurationMapReduceReducerInput,
   type BacklogCurationMapReduceRuntimeIdentity,
   type BacklogCurationMapReduceSourceBundle,
+  type EforgePlanPlanningDraftInput,
   type EforgePlanPlanningDraftResult,
   type ExtensionAgentTaskBacklogCurationProgress,
-  type ExtensionAgentTaskStartRequest,
 } from '@eforge-build/client';
 import type { AgentHarness, SdkPassthroughConfig } from '@eforge-build/engine/harness';
 import type { ToolbeltSummary } from '@eforge-build/engine/agent-runtime-registry';
@@ -36,7 +36,7 @@ export interface BacklogCurationMapReduceProviderHooks {
 export interface BacklogCurationMapReduceRunnerOptions extends SdkPassthroughConfig {
   cwd: string;
   taskId: string;
-  input: ExtensionAgentTaskStartRequest['input'];
+  input: EforgePlanPlanningDraftInput;
   harness: AgentHarness;
   sourceBundle: BacklogCurationMapReduceSourceBundle;
   providerHooks: BacklogCurationMapReduceProviderHooks;

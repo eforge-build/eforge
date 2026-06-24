@@ -3,6 +3,8 @@ import type {
   ConsoleContributionManifestEntry,
   ConsoleWorkstationManifestEntry,
   ExtensionActionManifestEntry,
+  ExtensionAgentTaskManifestEntry,
+  ExtensionAgentTaskPromptSourceManifest,
   ExtensionAvailabilityDiagnostic,
   ExtensionCapabilityRequirement,
   ExtensionDeepLinkManifestEntry,
@@ -163,6 +165,11 @@ export interface ValidationProviderDetail {
   extensionPath: string;
 }
 
+// --- eforge:region plan-01-agent-task-contribution-contract ---
+export interface AgentTaskContributionDetail extends ExtensionAgentTaskManifestEntry {}
+export type AgentTaskPromptSourceDetail = ExtensionAgentTaskPromptSourceManifest;
+// --- eforge:endregion plan-01-agent-task-contribution-contract ---
+
 export type ExtensionStatus = 'pending' | 'loaded' | 'shadowed' | 'skipped' | 'error' | 'excluded';
 export type ExtensionDiagnosticSeverity = 'warning' | 'error';
 export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
@@ -183,10 +190,10 @@ export interface ExtensionShadow { name: string; path: string; entrypoint?: stri
 
 export interface ExtensionRegistrationSummary {
   eventHooks: number; agentRunHooks: number; policyGates: number; profileRouters: number; inputSources: number; reviewerPerspectives: number; validationProviders: number; tools: number; prdEnrichers: number;
-  actions: number; consoleContributions: number; consoleWorkstations: number; integrationCommands: number; deepLinks: number;
+  actions: number; agentTasks: number; consoleContributions: number; consoleWorkstations: number; integrationCommands: number; deepLinks: number;
 }
 
-export type ExtensionActionDetail = ExtensionActionManifestEntry; export type ConsoleContributionDetail = ConsoleContributionManifestEntry; export type ConsoleWorkstationDetail = ConsoleWorkstationManifestEntry; export type IntegrationCommandDetail = IntegrationCommandManifestEntry; export type ExtensionDeepLinkDetail = ExtensionDeepLinkManifestEntry;
+export type ExtensionActionDetail = ExtensionActionManifestEntry; export type AgentTaskDetail = AgentTaskContributionDetail; export type ConsoleContributionDetail = ConsoleContributionManifestEntry; export type ConsoleWorkstationDetail = ConsoleWorkstationManifestEntry; export type IntegrationCommandDetail = IntegrationCommandManifestEntry; export type ExtensionDeepLinkDetail = ExtensionDeepLinkManifestEntry;
 
 export interface ExtensionEntry {
   name: string;
@@ -219,7 +226,7 @@ export interface ExtensionEntry {
   reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
   /** Metadata for each validation provider registered by this extension. Absent when the extension has no registered providers. */
   validationProviderDetails?: ValidationProviderDetail[];
-  actionDetails?: ExtensionActionDetail[]; consoleContributionDetails?: ConsoleContributionDetail[]; consoleWorkstationDetails?: ConsoleWorkstationDetail[]; integrationCommandDetails?: IntegrationCommandDetail[]; deepLinkDetails?: ExtensionDeepLinkDetail[];
+  actionDetails?: ExtensionActionDetail[]; agentTaskDetails?: AgentTaskDetail[]; consoleContributionDetails?: ConsoleContributionDetail[]; consoleWorkstationDetails?: ConsoleWorkstationDetail[]; integrationCommandDetails?: IntegrationCommandDetail[]; deepLinkDetails?: ExtensionDeepLinkDetail[];
   capabilities?: ExtensionCapabilityDeclaration[]; dependencies?: ExtensionDependencyManifest; resolvedDependencies?: ExtensionResolvedDependencyState;
   /** Package provenance, populated for directory-layout extensions with a `package.json`. */
   package?: ExtensionPackageProvenance;
@@ -281,7 +288,7 @@ export type ExtensionTestDiagnosticEvent = Extract<
 
 export type ExtensionTestDeferredRegistrationFamily =
   | 'agentRunHooks' | 'policyGates' | 'profileRouters' | 'inputSources' | 'reviewerPerspectives' | 'validationProviders' | 'tools' | 'prdEnrichers'
-  | 'actions' | 'consoleContributions' | 'consoleWorkstations' | 'integrationCommands' | 'deepLinks';
+  | 'actions' | 'agentTasks' | 'consoleContributions' | 'consoleWorkstations' | 'integrationCommands' | 'deepLinks';
 
 export interface ExtensionTestDeferredRegistrationSummary {
   family: ExtensionTestDeferredRegistrationFamily;

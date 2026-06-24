@@ -7,6 +7,7 @@ import type {
 
 import type {
   ActionRegistration,
+  AgentTaskRegistration,
   ConsoleContributionRegistration,
   ConsoleWorkstationRegistration,
   DeepLinkRegistration,
@@ -452,11 +453,14 @@ function diagnostic(
 // --- eforge:endregion dependency-resolution-core ---
 
 // --- eforge:region dependency-resolution-contributions ---
-type ContributionRegistration = ActionRegistration | ConsoleContributionRegistration | ConsoleWorkstationRegistration | IntegrationCommandRegistration | DeepLinkRegistration;
+type ContributionRegistration = ActionRegistration | AgentTaskRegistration | ConsoleContributionRegistration | ConsoleWorkstationRegistration | IntegrationCommandRegistration | DeepLinkRegistration;
 
 function contributionRegistrations(registry: NativeExtensionRegistry): ContributionRegistration[] {
   return [
     ...registry.actions,
+    // --- eforge:region plan-01-agent-task-contribution-contract ---
+    ...registry.agentTasks,
+    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     ...registry.consoleContributions,
     ...registry.consoleWorkstations,
     ...registry.integrationCommands,

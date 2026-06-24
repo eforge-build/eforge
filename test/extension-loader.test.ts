@@ -600,6 +600,7 @@ describe('native extension loader', () => {
       eventHooks: 1,
       agentRunHooks: 1,
       actions: 0,
+      agentTasks: 0,
       consoleContributions: 0,
       consoleWorkstations: 0,
       integrationCommands: 0,

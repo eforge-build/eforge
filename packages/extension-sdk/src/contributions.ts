@@ -31,8 +31,12 @@ export type ExtensionActionSideEffect =
   | 'build-queue';
 
 // --- eforge:region extension-agent-task-context ---
+type ExtensionAgentTaskStartRequestWithoutRequester = ExtensionAgentTaskStartRequest extends infer T
+  ? T extends unknown ? Omit<T, 'requestedBy'> : never
+  : never;
+
 export interface ExtensionAgentTasksApi {
-  start(request: Omit<ExtensionAgentTaskStartRequest, 'requestedBy'>): Promise<ExtensionAgentTaskStartResponse>;
+  start(request: ExtensionAgentTaskStartRequestWithoutRequester): Promise<ExtensionAgentTaskStartResponse>;
   get(taskId: string): Promise<ExtensionAgentTaskGetResponse>;
   cancel(taskId: string, reason?: string): Promise<ExtensionAgentTaskCancelResponse>;
 }
