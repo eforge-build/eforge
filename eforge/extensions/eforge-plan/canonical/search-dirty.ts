@@ -1,5 +1,5 @@
 import type { EforgePlanStore, SearchDocumentType } from '../sqlite/index.js';
-import { markSearchIndexDirty, markSearchIndexDirtyBatch } from '../sqlite/index.js';
+import { listProjectionRecommendationLanes, markSearchIndexDirty, markSearchIndexDirtyBatch } from '../sqlite/index.js';
 import { canonicalNowIso } from './store.js';
 
 export interface DirtyDocumentRef { documentType: SearchDocumentType; documentId: string; reason?: string }
@@ -21,5 +21,10 @@ export function markSessionPlanDirty(store: EforgePlanStore, session: string, re
 }
 
 export function markRecommendationDirty(store: EforgePlanStore, runId: string, reason = 'canonical-recommendation-write'): void {
-  markSearchIndexDirty(store, { documentType: 'recommendation', documentId: runId, reason });
+  const lanes = listProjectionRecommendationLanes(store, runId);
+  if (lanes.length === 0) {
+    markSearchIndexDirty(store, { documentType: 'recommendation', documentId: runId, reason });
+    return;
+  }
+  markSearchIndexDirtyBatch(store, lanes.map((lane) => ({ documentType: 'recommendation', documentId: lane.laneId, reason })));
 }

@@ -34,6 +34,10 @@ export interface CompactItemProjection {
   dependsOn?: string[]; unresolvedDependsOn?: string[]; activeTraceReasons: string[]; blocked: boolean; ready: boolean; reviewDue: boolean; closed: boolean;
   epic?: string; lifecycleState: LifecycleState | 'queue'; effectiveLifecycle: LifecycleState | 'queue'; associatedLinks?: AssociatedPlanBuildLink[]; path?: string; hasBody?: boolean; updatedAt?: string;
 }
+// --- eforge:region plan-05-fts-search-bounded-actions ---
+export interface CompactItemSearchHydrationInput { ids?: string[]; includeArchive?: boolean; epic?: string; status?: UserStatus; lane?: KanbanLane; tags?: string[]; includeDependencies?: boolean; includeLinks?: boolean; limit?: number; offset?: number }
+export interface CompactItemSearchHydrationOutput { items: CompactItemProjection[]; total: number; limit: number; offset: number }
+// --- eforge:endregion plan-05-fts-search-bounded-actions ---
 export interface GetItemProjectionInput { id: string; includeBody?: boolean; includeEpic?: boolean; includeSections?: boolean; includeLifecycleRows?: boolean; includeDependencies?: boolean; includeDependents?: boolean }
 export interface GetEpicProjectionInput { id: string; includeBody?: boolean; includeItems?: boolean; includeSections?: boolean; includeItemDependencies?: boolean; limit?: number; offset?: number }
 export interface ListBoardCompactProjectionInput { epic?: string; lane?: KanbanLane; includeClosed?: boolean; includeArchive?: boolean; includeEpics?: boolean; includeLaneCounts?: boolean; includeDependencies?: boolean; limit?: number; offset?: number }

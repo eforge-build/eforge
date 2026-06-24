@@ -91,6 +91,7 @@ export function upsertCanonicalBacklogItem(store: EforgePlanStore, input: Canoni
   if (input.sections) replaceBacklogItemSections(store, input.id, input.sections);
   if (input.dependencies ?? input.dependsOn) replaceItemDependencies(store, input.id, input.dependencies ?? (input.dependsOn ?? []).map((dependencyRef) => ({ dependencyRef })));
   markItemDirty(store, input.id);
+  if (existing?.epicRef !== epicRef || existing?.epicId !== epicId) for (const epicDocumentId of new Set([existing?.epicRef, existing?.epicId, epicRef, epicId].filter((value): value is string => !!value))) markEpicDirty(store, epicDocumentId);
   return row;
 }
 

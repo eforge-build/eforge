@@ -73,3 +73,10 @@ export interface SearchDocumentUpsert { documentType: SearchDocumentType; docume
 export interface SearchDocumentRow extends SearchDocumentUpsert { dirty: boolean }
 export interface SearchIndexDirtyInput { documentType: SearchDocumentType; documentId: string; reason?: string; markedAt?: string }
 export interface SearchIndexStateRow { id: 1; dirty: boolean; dirtySince?: string; dirtyReason?: string; lastRebuiltAt?: string }
+// --- eforge:region plan-05-fts-search-bounded-actions ---
+export interface SearchHitRow { documentType: SearchDocumentType; documentId: string; title: string; rank?: number; snippet?: string; updatedAt?: string; itemIdsText?: string; epicIdsText?: string; recommendationRefsText?: string }
+export interface SearchIndexStatusRow { dirty: boolean; dirtyCount: number; dirtyTypes: SearchDocumentType[]; dirtySince?: string; dirtyReason?: string; lastRebuiltAt?: string }
+export interface SearchPaginationInput { limit?: number; offset?: number }
+export interface SearchPaginationPage { limit: number; offset: number; returned: number; hasMore: boolean; nextOffset?: number }
+export type SearchSelectedField = 'rank' | 'snippet' | 'refs' | 'updatedAt';
+// --- eforge:endregion plan-05-fts-search-bounded-actions ---

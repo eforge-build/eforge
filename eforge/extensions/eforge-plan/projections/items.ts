@@ -6,7 +6,7 @@ import { withProjectionStore } from './store.js';
 import { computeEffectiveLifecycle, isTerminalProjectionStatus } from './lifecycle.js';
 import { getAssociatedPlanBuildLinksForItemsFromStore } from './links.js';
 import { paginateProjection, uniqueStrings } from './pagination.js';
-import type { CompactItemProjection, GetEpicProjectionInput, GetItemProjectionInput } from './types.js';
+import type { CompactItemProjection, CompactItemSearchHydrationInput, CompactItemSearchHydrationOutput, GetEpicProjectionInput, GetItemProjectionInput } from './types.js';
 
 export async function getItemDetailProjection(cwd: string, input: GetItemProjectionInput): Promise<any> { return withProjectionStore<any>(cwd, (store) => getItemDetailFromStore(cwd, store, input), () => { throw new Error(`Backlog item "${input.id}" was not found.`); }); }
 export async function getEpicDetailProjection(cwd: string, input: GetEpicProjectionInput): Promise<any> { return withProjectionStore<any>(cwd, (store) => getEpicDetailFromStore(cwd, store, input), () => { throw new Error(`Backlog epic "${input.id}" was not found.`); }); }
@@ -21,7 +21,7 @@ function durableQueueBuildEvidence(store: EforgePlanStore, itemId: string, sessi
     const state = row.kind === 'landing' ? (status === 'shipped' ? 'shipped' : status === 'merged' ? 'merged' : status && !isTerminalProjectionStatus(status) ? 'pr-open' : undefined) : status === 'failed' ? 'failed' : isTerminalProjectionStatus(status) ? undefined : row.kind === 'queue-prd' ? 'queued' : 'build';
     if (!state) return [];
     const reasonCode = state === 'shipped' ? 'shipped' : state === 'merged' ? 'merged' : state === 'failed' ? 'failed' : row.kind === 'queue-prd' ? 'queued-trace' : row.kind === 'build-session' ? 'active-build-session-trace' : state === 'pr-open' ? 'pr-open' : 'building-trace';
-    return [{ evidenceKey: `durable:${row.kind}:${row.id}:${itemId}`, itemId, itemRef: itemId, lifecycleState: state, reasonCode, status: row.status, session: row.session, queuePrdId: row.queuePrdId, runId: row.runId, buildSessionId: row.buildSessionId, landingId: row.kind === 'landing' ? row.id : undefined, occurredAt: row.timestamp, isCurrent: true, isTerminal: state === 'shipped' || state === 'merged' || state === 'failed' || state === 'partial' }];
+    return [{ evidenceKey: `durable:${row.kind}:${row.id}:${itemId}`, itemId, itemRef: itemId, lifecycleState: state, reasonCode, status: row.status, session: row.session, queuePrdId: row.queuePrdId, runId: row.runId, buildSessionId: row.buildSessionId, landingId: row.kind === 'landing' ? row.id : undefined, occurredAt: row.timestamp, isCurrent: true, isTerminal: state === 'shipped' || state === 'merged' || state === 'failed' }];
   });
 }
 
@@ -45,3 +45,22 @@ function getEpicDetailFromStore(cwd: string, store: EforgePlanStore, input: GetE
 function compactItemContext(store: EforgePlanStore): CompactItemContext { return { dependencies: listProjectionDependencies(store), sessionItems: listProjectionSessionItems(store), evidenceRows: listCurrentLifecycleEvidence(store), taskItems: listProjectionPlanningTaskItems(store), queueBuildLinks: listProjectionQueueBuildLinks(store) }; }
 export function listAllCompactItemsFromStore(store: EforgePlanStore, input: { includeArchive?: boolean; epic?: string; includeDependencies?: boolean; includeLinks?: boolean } = {}) { const context = compactItemContext(store); return listProjectionItems(store).filter((i) => input.epic === undefined || i.epicId === input.epic).map((i) => compactItemFromStore(store, i, { includeDependencies: input.includeDependencies !== false, includeLinks: input.includeLinks === true, context })).filter((i) => input.includeArchive === true || i.lane !== 'archive'); }
 export function listAllCompactEpicsFromStore(store: EforgePlanStore) { const items = listProjectionItems(store); return listProjectionEpics(store).map((e) => compactEpicFromRows(e, items)); }
+// --- eforge:region plan-05-fts-search-bounded-actions ---
+export function hydrateCompactItemSearchResults(store: EforgePlanStore, input: CompactItemSearchHydrationInput): CompactItemSearchHydrationOutput {
+  const wanted = input.ids ? new Set(input.ids) : undefined;
+  const order = new Map((input.ids ?? []).map((id, index) => [id, index]));
+  const context = compactItemContext(store);
+  const compact = listProjectionItems(store)
+    .filter((item) => wanted === undefined || wanted.has(item.id))
+    .map((item) => compactItemFromStore(store, item, { includeDependencies: input.includeDependencies !== false, includeLinks: input.includeLinks === true, context }))
+    .filter((item) => input.includeArchive === true || item.lane !== 'archive')
+    .filter((item) => input.epic === undefined || item.epic === input.epic)
+    .filter((item) => input.status === undefined || item.status === input.status)
+    .filter((item) => input.lane === undefined || item.lane === input.lane)
+    .filter((item) => input.tags === undefined || input.tags.every((tag) => item.tags.includes(tag)))
+    .sort((a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
+  const limit = Math.min(Math.max(Math.trunc(input.limit ?? 20), 1), 100);
+  const offset = Math.max(Math.trunc(input.offset ?? 0), 0);
+  return { items: compact.slice(offset, offset + limit), total: compact.length, limit, offset };
+}
+// --- eforge:endregion plan-05-fts-search-bounded-actions ---

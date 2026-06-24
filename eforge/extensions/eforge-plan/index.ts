@@ -15,6 +15,9 @@ import {
 import { extractMarkdownSections } from './backlog-domain.js';
 import { listBoard, renderBoardMarkdown } from './board-actions.js';
 import { backlogQueryActions } from './backlog-query-actions.js';
+// --- eforge:region plan-05-fts-search-bounded-actions ---
+import { searchActions } from './search/index.js';
+// --- eforge:endregion plan-05-fts-search-bounded-actions ---
 import {
   importLegacyBacklog,
   readBacklogEpic,
@@ -226,6 +229,9 @@ export default defineEforgeExtension((eforge) => {
   // registration erases those generics (see registerActions), so cast through
   // unknown to the schema-erased element type.
   registerActions(eforge, backlogQueryActions as unknown as readonly RegistrableAction[]);
+  // --- eforge:region plan-05-fts-search-bounded-actions ---
+  registerActions(eforge, searchActions as unknown as readonly RegistrableAction[]);
+  // --- eforge:endregion plan-05-fts-search-bounded-actions ---
   registerActions(eforge, recommendationActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, plannerActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, backlogCurationActions as unknown as readonly RegistrableAction[]);
@@ -249,6 +255,9 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Get backlog item', content: 'Read one compact backlog item detail with sections and lifecycle rows without listing the board.', action: { actionId: 'get-item' } },
       { rendererId: 'action-form', title: 'Get backlog epic', content: 'Read one compact backlog epic detail and paginated item summaries.', action: { actionId: 'get-epic' } },
       { rendererId: 'action-form', title: 'Search backlog items', content: 'Search compact backlog item summaries with bounded output.', action: { actionId: 'search-items' } },
+      // --- eforge:region plan-05-fts-search-bounded-actions ---
+      { rendererId: 'action-form', title: 'Search planning records', content: 'Search backlog items, epics, session-plan summaries, and recommendation text.', action: { actionId: 'search-planning-records' } },
+      // --- eforge:endregion plan-05-fts-search-bounded-actions ---
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-button', title: 'Get roadmap state', content: 'Read local focus and shared/discovered roadmap context.', action: { actionId: 'get-roadmap-state' } },
       { rendererId: 'action-form', title: 'Update roadmap state', content: 'Update private local focus roadmap and shared source configuration.', action: { actionId: 'update-roadmap-state' } },
@@ -291,6 +300,9 @@ export default defineEforgeExtension((eforge) => {
       'get-item',
       'get-epic',
       'search-items',
+      // --- eforge:region plan-05-fts-search-bounded-actions ---
+      'search-planning-records',
+      // --- eforge:endregion plan-05-fts-search-bounded-actions ---
       'update-item',
       'render-board-markdown',
       'get-recommendations',

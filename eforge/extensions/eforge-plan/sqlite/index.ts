@@ -11,7 +11,11 @@ export { rowToLifecycleEvent, rowToLifecycleEvidence, recordLifecycleEvent, reco
 export { rowToQueuePrd, rowToBuildRun, rowToBuildSession, rowToLandingLink, upsertQueuePrd, upsertBuildRun, upsertBuildSession, upsertLandingLink, recordQueueBuildCorrelation } from './repositories/queue-build.js';
 export { rowToImportRun, rowToImportDiagnostic, recordImportRun, recordImportDiagnostic } from './repositories/import-runs.js';
 export { rowToMaintenanceRun, recordMaintenanceRun } from './repositories/maintenance.js';
-export { rowToSearchDocument, replaceSearchDocument, markSearchIndexDirty, markSearchIndexDirtyBatch, clearSearchIndexDirty, getSearchIndexState } from './repositories/search-documents.js';
+export { rowToSearchDocument, replaceSearchDocument, replaceSearchDocuments, deleteSearchDocument, deleteSearchDocumentsByType, deleteStaleSearchDocumentsByType, listSearchIndexDirtyRecords, clearSearchIndexDirtyRecords, rebuildSearchDocumentsFts, optimizeSearchDocumentsFts, markSearchIndexDirty, markSearchIndexDirtyBatch, clearSearchIndexDirty, getSearchIndexState } from './repositories/search-documents.js';
+// --- eforge:region plan-05-fts-search-bounded-actions ---
+export * from './repositories/search-document-projections.js';
+export { querySearchDocuments, countSearchDocuments, countSearchDocumentsByType, getSearchDirtyStatus, rowToSearchHitRow, hitRefs } from './repositories/search-queries.js';
+// --- eforge:endregion plan-05-fts-search-bounded-actions ---
 // --- eforge:region plan-04-projections-lifecycle ---
 export * from './repositories/projections/items.js';
 export * from './repositories/projections/lifecycle.js';

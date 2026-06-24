@@ -315,8 +315,8 @@ listPlanningArtifacts(store: EforgePlanStore, input: PageInput): PlanningArtifac
 getRecommendationActionability(store: EforgePlanStore, input: { runId?: string; laneRef?: string; fields?: string[] }): RecommendationActionabilityProjection;
 getAssociatedPlanBuildLinks(store: EforgePlanStore, input: { itemIds: string[] }): AssociatedPlanBuildLink[];
 findNonterminalCoverage(store: EforgePlanStore, input: { itemIds: string[]; includeTerminalReasons?: boolean }): CoverageResult;
-searchPlanningRecords(store: EforgePlanStore, input: PageInput & { query: string; types?: string[] }): SearchPage;
-refreshSearchDocuments(store: EforgePlanStore, input: { types?: string[]; ids?: string[]; reason: string }): void;
+searchPlanningRecords(store: EforgePlanStore, input: PageInput & { query?: string; types?: string[] }): SearchPage;
+refreshSearchDocuments(store: EforgePlanStore, input: { types?: string[]; records?: Array<{ type: string; id: string }>; reason?: string }): void;
 ```
 
 ### Action/UI contract
@@ -346,11 +346,12 @@ Producer/consumer contract: `retention-maintenance` may delete or archive only r
 | File | Modules | Region Strategy |
 | --- | --- | --- |
 | `eforge/extensions/eforge-plan/index.ts` | importer-reporting, canonical-write-paths, fts-search-bounded-actions, retention-maintenance | Each module owns a small import/action-registration block. Existing mutation handlers are owned only by canonical-write-paths. |
-| `eforge/extensions/eforge-plan/backlog-query-actions.ts` | projections-lifecycle, fts-search-bounded-actions | projections-lifecycle owns non-search compact board/item/epic projections; fts-search-bounded-actions owns `search-items` schema/action/handler and any all-domain search action wiring. |
+| `eforge/extensions/eforge-plan/backlog-query-actions.ts` | projections-lifecycle | projections-lifecycle owns non-search compact board/item/epic projections. Search actions now live under `eforge/extensions/eforge-plan/search/`. |
 | `eforge/extensions/eforge-plan/session-plan-actions.ts` | canonical-write-paths, projections-lifecycle | canonical-write-paths owns mutation/handoff SQL writes; projections-lifecycle owns list/show lifecycle SQL reads and helper functions. |
 | `eforge/extensions/eforge-plan/recommendation-actions.ts` | projections-lifecycle, fts-search-bounded-actions | projections-lifecycle owns actionability/freshness SQL projection; fts-search-bounded-actions may add recommendation search snippets/counts via a separate action import. |
 | `eforge/extensions/eforge-plan/README.md` | storage-schema, importer-reporting, fts-search-bounded-actions, retention-maintenance, workstation-docs-integration | Module-owned documentation sections under stable headings: storage model, import workflow, search behavior, retention/compaction, changed actions. |
 | `web/content/docs/eforge-plan.md` | workstation-docs-integration, retention-maintenance | workstation-docs-integration owns storage/import/search user guide text; retention-maintenance owns compaction policy subsection. |
+| `eforge/extensions/eforge-plan/search/` | fts-search-bounded-actions | Owns FTS document projection, maintenance helpers, action schemas, `search-items`, and `search-planning-records`. |
 | `eforge/extensions/eforge-plan/workstation-src/plans/src/types.ts` | fts-search-bounded-actions, workstation-docs-integration | fts-search-bounded-actions owns action response/search types; workstation-docs-integration owns view-model/UI state types. |
 
 If implementation discovers another file that must be edited by more than one architecture module, module planners must add it to this registry before making overlapping edits. Files edited by only one module are intentionally omitted from the shared-file registry.
@@ -369,7 +370,10 @@ When module planners emit implementation plans for shared TypeScript files, use 
 **`eforge/extensions/eforge-plan/backlog-query-actions.ts`**:
 
 - `projections-lifecycle`: owns `GetItem`, `GetEpic`, `ListBoardCompact` SQL projection loading and compact item/epic mapping.
-- `fts-search-bounded-actions`: owns `SearchItemsInputSchema`, `SearchItemsOutputSchema`, `search-items` handler, snippets/counts output, and any new all-domain search action.
+
+**`eforge/extensions/eforge-plan/search/`**:
+
+- `fts-search-bounded-actions`: owns `SearchItemsInputSchema`, `SearchItemsOutputSchema`, `search-items`, `search-planning-records`, snippets/counts output, selected search fields, and search maintenance exports.
 
 **`eforge/extensions/eforge-plan/session-plan-actions.ts`**:
 

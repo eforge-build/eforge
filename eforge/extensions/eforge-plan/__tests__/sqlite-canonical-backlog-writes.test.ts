@@ -87,7 +87,7 @@ describe('canonical SQLite backlog writes', () => {
     expect((db.prepare('SELECT count(*) AS count FROM recommendation_lanes WHERE run_id = ?').get(first.runId) as { count: number }).count).toBe(5);
     expect((db.prepare('SELECT count(*) AS count FROM recommendation_lane_items rli JOIN recommendation_lanes rl ON rl.lane_id = rli.lane_id WHERE rl.run_id = ? AND rli.item_ref = ?').get(first.runId, 'ready-1') as { count: number }).count).toBeGreaterThan(0);
     expect(db.prepare('SELECT json_extract(freshness_json, ?) AS status, json_extract(freshness_json, ?) AS reason FROM recommendation_runs WHERE run_id = ?').get('$.status', '$.reason', first.runId)).toMatchObject({ status: 'stale', reason: 'item-updated' });
-    expect((db.prepare('SELECT count(*) AS count FROM search_index_dirty_records WHERE document_type = ? AND document_id = ?').get('recommendation', first.runId) as { count: number }).count).toBe(1);
+    expect((db.prepare('SELECT count(*) AS count FROM search_index_dirty_records sir JOIN recommendation_lanes rl ON rl.lane_id = sir.document_id WHERE sir.document_type = ? AND rl.run_id = ?').get('recommendation', first.runId) as { count: number }).count).toBe(5);
     db.close();
   });
 });
