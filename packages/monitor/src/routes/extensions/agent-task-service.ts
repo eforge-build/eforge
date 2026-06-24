@@ -14,7 +14,7 @@ import {
   type ExtensionAgentTaskStartRequest,
   type ExtensionAgentTaskStartResponse,
 } from '@eforge-build/client';
-import type { AgentHarness } from '@eforge-build/engine/harness';
+import type { AgentHarness, CustomTool } from '@eforge-build/engine/harness';
 import type { AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { AgentRole } from '@eforge-build/engine/events';
 import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
@@ -88,6 +88,49 @@ function isPlanningDraftOutputSchema(schema: unknown): boolean {
   return schema === EforgePlanPlanningDraftResultSchema || JSON.stringify(schema) === JSON.stringify(EforgePlanPlanningDraftResultSchema);
 }
 
+function legacyPlanningPromptTemplate(): string {
+  return `You are drafting eforge-plan planning output for {{topic}}.
+
+Session: {{session}}
+Planning type: {{planningType}}
+Planning depth: {{planningDepth}}
+Requested output sections: {{requestedOutputSections}}
+Existing session plan:
+{{existingSessionPlan}}
+
+Source context:
+{{sourceText}}
+
+Call {{submitTool}} exactly once with a valid eforge-plan planning draft result. Use {{progressTool}} for section progress updates when useful.`;
+}
+
+function legacyPlanningPromptVariables(input: LegacyExtensionAgentTaskStartRequest['input'], effectiveToolName: (name: string) => string): Record<string, string> {
+  return {
+    topic: input.topic,
+    session: input.session ?? '(none)',
+    planningType: input.planningType ?? '(unspecified)',
+    planningDepth: input.planningDepth ?? '(unspecified)',
+    sourceText: input.sourceText ?? '(none)',
+    existingSessionPlan: input.existingSessionPlan ?? '(none)',
+    requestedOutputSections: input.requestedOutputSections?.join(', ') ?? '(agent should choose applicable sections)',
+    submitTool: effectiveToolName('submit_eforge_plan_planning_result'),
+    progressTool: effectiveToolName('report_eforge_plan_planning_progress'),
+  };
+}
+
+function isSectionProgressUpdate(input: unknown): input is SectionProgressUpdate {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return false;
+  const candidate = input as Record<string, unknown>;
+  return (candidate.currentSection === undefined || typeof candidate.currentSection === 'string')
+    && (candidate.message === undefined || typeof candidate.message === 'string')
+    && (candidate.coveredSections === undefined || isStringArray(candidate.coveredSections))
+    && (candidate.remainingSections === undefined || isStringArray(candidate.remainingSections));
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
 // --- eforge:region agent-task-service-class ---
 export class ExtensionAgentTaskService {
   private readonly controllers = new Map<string, AbortController>();
@@ -103,9 +146,7 @@ export class ExtensionAgentTaskService {
     const validRequest = parsed.data;
     const contribution = 'task' in validRequest
       ? await this.resolveContributionStart(validRequest, options)
-      : validRequest.input.sourceProvider === undefined
-        ? await this.resolveLegacyContributionStart(validRequest.input, options)
-        : undefined;
+      : undefined;
     if ('kind' in validRequest && validRequest.kind !== EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT) {
       throw new AgentTaskServiceError(`Unsupported task kind: ${validRequest.kind as string}`, 400);
     }
@@ -300,8 +341,72 @@ export class ExtensionAgentTaskService {
         sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
       });
     }
-    const contribution = await this.resolveLegacyContributionStart(input, { owner: options.owner });
-    return await this.runContributionTask({ taskId: options.taskId, contribution, controller: options.controller, owner: options.owner });
+    try {
+      const contribution = await this.resolveLegacyContributionStart(input, { owner: options.owner, registry: options.registry });
+      return await this.runContributionTask({ taskId: options.taskId, contribution, controller: options.controller, owner: options.owner });
+    } catch (err) {
+      if (!(err instanceof AgentTaskServiceError) || err.status !== 404) throw err;
+      return await this.runLegacyPlanningTask({ taskId: options.taskId, input, controller: options.controller, plannerConfig, harness, cwd });
+    }
+  }
+
+  private async runLegacyPlanningTask(options: { taskId: string; input: LegacyExtensionAgentTaskStartRequest['input']; controller: AbortController; plannerConfig: ReturnType<typeof import('@eforge-build/engine/pipeline').resolveAgentConfig>; harness: AgentHarness; cwd: string }): Promise<EforgePlanPlanningDraftResult> {
+    const { runResolvedAgentTask } = await import('@eforge-build/engine/agents/resolved-agent-task');
+    let submitted: EforgePlanPlanningDraftResult | undefined;
+    const submitTool: CustomTool = {
+      name: 'submit_eforge_plan_planning_result',
+      description: 'Submit the final eforge-plan planning draft result.',
+      inputSchema: EforgePlanPlanningDraftResultSchema as unknown as CustomTool['inputSchema'],
+      handler: async (input: unknown) => {
+        submitted = parseEforgePlanPlanningDraftResult(input);
+        return 'Accepted eforge-plan planning draft result.';
+      },
+    };
+    const progressTool: CustomTool = {
+      name: 'report_eforge_plan_planning_progress',
+      description: 'Report progress drafting eforge-plan planning output sections.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          currentSection: { type: 'string' },
+          coveredSections: { type: 'array', items: { type: 'string' } },
+          remainingSections: { type: 'array', items: { type: 'string' } },
+          message: { type: 'string' },
+        },
+      } as unknown as CustomTool['inputSchema'],
+      handler: async (input: unknown) => {
+        await this.updateSectionProgress(options.taskId, isSectionProgressUpdate(input) ? input : {});
+        return 'Progress recorded.';
+      },
+    };
+    const task = runResolvedAgentTask({
+      ...options.plannerConfig,
+      harness: options.harness,
+      cwd: options.cwd,
+      promptTemplate: legacyPlanningPromptTemplate(),
+      variables: legacyPlanningPromptVariables(options.input, (name) => options.harness.effectiveCustomToolName(name)),
+      promptLabel: 'extension agent task legacy planning-draft',
+      role: 'planner',
+      tools: 'read-only',
+      customTools: [submitTool, progressTool],
+      abortController: options.controller,
+      maxTurns: options.plannerConfig.maxTurns,
+      taskId: options.taskId,
+      phase: 'standalone',
+      stage: 'extension-agent-task',
+      getResult: () => submitted,
+      missingResultMessage: `eforge-plan planning draft task did not call ${options.harness.effectiveCustomToolName('submit_eforge_plan_planning_result')}.`,
+    });
+    let sawProgress = false;
+    let next = await task.next();
+    while (!next.done) {
+      if (!sawProgress) {
+        sawProgress = true;
+        await this.updateProgress(options.taskId, 'Planner task is running');
+      }
+      next = await task.next();
+    }
+    return parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(next.value)));
   }
 
   private async resolveBacklogCurationContributions(options: { owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<{ itemAuditContribution: BacklogCurationAgentTaskContributionHandle; reducerContribution: BacklogCurationAgentTaskContributionHandle }> {
