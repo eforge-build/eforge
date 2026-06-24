@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, relative } from 'node:path';
+import { basename } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { resolveProjectLocalStoragePath, type InputTransformContext } from '@eforge-build/extension-sdk';
 import { normalizeBuildSource } from '@eforge-build/input';
@@ -13,9 +13,11 @@ import {
   type BacklogItem,
   type BacklogStatus,
 } from './backlog-domain.js';
-import { readBacklogEpic, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
+import { readBacklogEpic, readBacklogItem } from './markdown-store.js';
+import { backlogItemRowToDomain, epicRowToDomain, readCanonicalBacklogItem, readCanonicalEpic } from './canonical/backlog-records.js';
+import { assertNoCanonicalNonterminalCoverage } from './canonical/coverage.js';
+import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
 import { resolvePromotionSelection, type PromotionSelection } from './promotion-selection.js';
-import { upsertPromotedSessionPlan } from './trace-store.js';
 
 export interface SynthesisInput {
   item: BacklogItem;
@@ -148,6 +150,7 @@ export async function promoteBacklogSelection(input: {
   title?: string;
 }): Promise<PromotionSelectionResult> {
   const selection = await resolvePromotionSelection(input);
+  assertNoCanonicalNonterminalCoverage(input.cwd, selection.itemIds);
   const root = resolveSessionPlanRoot(input.cwd);
   await mkdir(root, { recursive: true });
   const { session, sessionPlanPath } = resolveSelectionPromotionTarget(input.cwd, selection.items, selection.session);
@@ -165,24 +168,7 @@ export async function promoteBacklogSelection(input: {
   });
   await writeFile(sessionPlanPath, sessionPlan, { encoding: 'utf-8', flag: 'wx' });
   const updated = new Date().toISOString();
-  for (const item of selection.items) {
-    await updateBacklogItemFrontmatter(input.cwd, item.id, {
-      status: selection.status,
-      updated,
-      eforge_plan: {
-        ...(item.eforge_plan ?? {}),
-        promoted_session: session,
-        promoted_session_path: relative(input.cwd, sessionPlanPath),
-        promoted_at: updated,
-      },
-    });
-    await upsertPromotedSessionPlan(input.cwd, item.id, {
-      session,
-      path: sessionPlanPath,
-      status: 'ready',
-      promotedAt: updated,
-    }, item.epic);
-  }
+  syncSessionPlanArtifact(input.cwd, { session, path: sessionPlanPath, content: sessionPlan, status: 'ready', profile: selection.profile, sourceItemIds: selection.itemIds, sourceEpicIds: selection.epicIds, sourceRecommendationRef: selection.recommendationRef, provenance: 'promotion', updatedAt: updated });
   return {
     itemIds: selection.itemIds,
     epicIds: selection.epicIds,
@@ -206,9 +192,11 @@ export async function fetchEforgePlanInputSource(id: string, ctx?: InputTransfor
       'This adapter intentionally does not read from `process.cwd()`.',
     ].join('\n');
   }
-  const item = await readBacklogItem(ctx.cwd, id);
+  const canonicalItem = readCanonicalBacklogItem(ctx.cwd, id);
+  const item = canonicalItem !== undefined ? backlogItemRowToDomain(canonicalItem) : await readBacklogItem(ctx.cwd, id);
   if (!item) return null;
-  const epic = item.epic ? await readBacklogEpic(ctx.cwd, item.epic) : null;
+  const canonicalEpic = item.epic ? readCanonicalEpic(ctx.cwd, item.epic) : undefined;
+  const epic = canonicalEpic !== undefined ? epicRowToDomain(canonicalEpic) : item.epic ? await readBacklogEpic(ctx.cwd, item.epic) : null;
   return synthesizeBuildSourceMarkdown({ cwd: ctx.cwd, item, epic, session: `direct-${slugify(item.id)}` });
 }
 

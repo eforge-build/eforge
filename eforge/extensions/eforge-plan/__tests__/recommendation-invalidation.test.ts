@@ -9,6 +9,7 @@ import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@efo
 import { createEforgeProjectPaths, type EventHookContext } from '@eforge-build/extension-sdk';
 import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import eforgePlanExtension from '../index.js';
+import { captureCanonicalBacklogItem, upsertCanonicalEpic } from '../canonical/backlog-records.js';
 import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, resolveRecommendationsPathForCwd } from '../recommendations-store.js';
 import { resolveRecommendationStatusPathForCwd } from '../recommendation-status.js';
@@ -35,6 +36,9 @@ function validModel(itemId = 'item-one') {
 }
 
 async function seedBacklog(cwd: string): Promise<void> {
+  upsertCanonicalEpic(cwd, { id: 'epic-one', status: 'planned', title: 'Epic One', body: '# Epic One\n' });
+  captureCanonicalBacklogItem(cwd, { id: 'item-one', status: 'candidate', epic: 'epic-one', title: 'Item One', body: '# Item One\n\n## Claim\n\nFirst.\n' });
+  captureCanonicalBacklogItem(cwd, { id: 'item-two', status: 'candidate', title: 'Item Two', body: '# Item Two\n\n## Claim\n\nSecond.\n' });
   await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n' });
   await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', epic: 'epic-one', body: '# Item One\n\n## Claim\n\nFirst.\n' });
   await writeBacklogItem(cwd, { id: 'item-two', status: 'candidate', body: '# Item Two\n\n## Claim\n\nSecond.\n' });
@@ -157,7 +161,7 @@ describe('recommendation invalidation', () => {
         const beforeCurrent = await readFile(resolveRecommendationsPathForCwd(cwd), 'utf-8');
         await invokeRegisteredHook(cwd, event);
 
-        expect(JSON.stringify(await readTraceSidecar(cwd, 'item-one'))).not.toBe(beforeTrace);
+        expect(JSON.stringify(await readTraceSidecar(cwd, 'item-one'))).toBe(beforeTrace);
         const status = (await getRecommendations(cwd)).status;
         expect(status).toMatchObject({ state: 'stale' });
         expect(JSON.stringify(status)).toMatch(match);
@@ -166,7 +170,7 @@ describe('recommendation invalidation', () => {
     }
   });
 
-  it('records structured lifecycle reason fields after correlated trace mutation', async () => {
+  it('records structured lifecycle reason fields after correlated lifecycle mutation', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
       await putBaseline(cwd);
@@ -184,7 +188,7 @@ describe('recommendation invalidation', () => {
         timestamp: '2026-01-01T00:00:00.000Z',
       });
 
-      expect(JSON.stringify(await readTraceSidecar(cwd, 'item-one'))).not.toBe(beforeTrace);
+      expect(JSON.stringify(await readTraceSidecar(cwd, 'item-one'))).toBe(beforeTrace);
       const output = await getRecommendations(cwd);
       const status = output.status as { state?: unknown; reasons?: Array<Record<string, unknown>>; staleReasons?: Array<Record<string, unknown>> };
       const reason = status.reasons?.find((entry) => entry.eventType === 'session:end');

@@ -1,17 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/extension-sdk';
-import { parseMarkdownRecord, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
-import {
-  listTraceSidecars,
-  updateLastEventMetadata,
-  upsertBuildRun,
-  upsertBuildSession,
-  upsertLandingResult,
-  upsertQueuePrd,
-  type TraceLastEventMetadata,
-  type TraceSidecar,
-} from './trace-store.js';
+import { parseMarkdownRecord, readBacklogItem } from './markdown-store.js';
+import { listTraceSidecars, type TraceSidecar } from './trace-store.js';
+import { recordCanonicalLifecycleEvent } from './canonical/lifecycle-records.js';
+import { withCanonicalTransaction } from './canonical/store.js';
+import { getDatabase } from './sqlite/store-internal.js';
 import type { BacklogItem, BacklogStatus } from './backlog-domain.js';
 import { markRecommendationsStaleForLifecycleUpdate } from './recommendation-status.js';
 
@@ -64,6 +58,9 @@ export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Reco
       : [];
   let bootstrapped: { itemIds: string[]; epicIdsByItemId: Map<string, string | undefined> } | undefined;
   if (itemIds.length === 0 && decision.correlation.kind === 'none') {
+    itemIds = canonicalLifecycleItemRefs(cwd, event);
+  }
+  if (itemIds.length === 0 && decision.correlation.kind === 'none') {
     bootstrapped = await bootstrapItemFromQueuedPrd(cwd, event);
     itemIds = bootstrapped?.itemIds ?? [];
   }
@@ -71,14 +68,8 @@ export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Reco
     return decision;
   }
   const traceMutation = decision.trace ?? (bootstrapped ? traceMutationForEvent(event) : undefined);
-  for (const itemId of itemIds) {
-    const epicId = bootstrapped?.epicIdsByItemId.get(itemId) ?? traces.find((candidate) => candidate.itemId === itemId)?.epicId;
-    await applyTraceMutation(cwd, itemId, epicId, traceMutation);
-    await updateLastEventMetadata(cwd, itemId, lastEventMetadata(event), epicId);
-    if (decision.status === 'shipped') {
-      await updateBacklogItemFrontmatter(cwd, itemId, { status: 'shipped', updated: timestampOf(event) });
-    }
-  }
+  void traceMutation;
+  recordCanonicalLifecycleEvent(cwd, event, itemIds);
   const effectiveCorrelation = decision.correlation.kind === 'none' && bootstrapped
     ? bootstrapped.itemIds.length === 1
       ? { kind: 'single' as const, itemId: bootstrapped.itemIds[0]!, reason: 'bootstrapped from queued eforge-plan PRD' }
@@ -130,6 +121,20 @@ function traceMatchesSharedLifecycleEvidence(trace: TraceSidecar, keys: Set<stri
     || trace.landingResults.some((entry) => hasAny(keys, [entry.featureBranch, entry.commitSha]));
 }
 
+function canonicalLifecycleItemRefs(cwd: string, event: EforgeEvent | Record<string, unknown>): string[] {
+  const keys = [...eventCorrelationKeys(event, cwd)];
+  if (keys.length === 0) return [];
+  return withCanonicalTransaction(cwd, (store) => {
+    const db = getDatabase(store);
+    const refs = new Set<string>();
+    for (const key of keys) {
+      const rows = db.prepare(`SELECT DISTINCT spi.item_ref FROM session_plan_items spi JOIN session_plans sp ON sp.session = spi.session LEFT JOIN queue_prds qp ON qp.session = sp.session LEFT JOIN build_runs br ON br.queue_prd_id = qp.prd_id OR br.session = sp.session LEFT JOIN build_sessions bs ON bs.session = sp.session LEFT JOIN landing_links ll ON ll.session = sp.session WHERE sp.session = ? OR sp.path = ? OR qp.prd_id = ? OR qp.source_path = ? OR br.run_id = ? OR bs.build_session_id = ? OR ll.landing_id = ? OR ll.pr_url = ? OR ll.feature_branch = ? OR ll.commit_sha = ?`).all(key, key, key, key, key, key, key, key, key, key) as Array<{ item_ref?: unknown }>;
+      for (const row of rows) if (typeof row.item_ref === 'string') refs.add(row.item_ref);
+    }
+    return [...refs];
+  });
+}
+
 function traceMutationForEvent(event: EforgeEvent | Record<string, unknown>): TraceMutation | undefined {
   const type = stringValue(valueAt(event, 'type'));
   const timestamp = timestampOf(event);
@@ -169,15 +174,6 @@ function statusForEvent(event: EforgeEvent | Record<string, unknown>): BacklogSt
   return undefined;
 }
 
-async function applyTraceMutation(cwd: string, itemId: string, epicId: string | undefined, mutation: TraceMutation | undefined): Promise<void> {
-  if (!mutation) return;
-  if (mutation.kind === 'queue-prd') await upsertQueuePrd(cwd, itemId, { prdId: mutation.prdId, path: mutation.path, status: mutation.status, queuedAt: mutation.queuedAt }, epicId);
-  if (mutation.kind === 'build-run') await upsertBuildRun(cwd, itemId, { runId: mutation.runId, sessionId: mutation.sessionId, status: mutation.status, startedAt: mutation.startedAt, completedAt: mutation.completedAt }, epicId);
-  if (mutation.kind === 'build-session') await upsertBuildSession(cwd, itemId, { sessionId: mutation.sessionId, runId: mutation.runId, status: mutation.status, startedAt: mutation.startedAt, completedAt: mutation.completedAt }, epicId);
-  if (mutation.kind === 'landing' && mutation.featureBranch) await upsertLandingResult(cwd, itemId, { featureBranch: mutation.featureBranch, commitSha: mutation.commitSha, status: mutation.status, landedAt: mutation.landedAt, prUrl: mutation.prUrl }, epicId);
-  if (mutation.kind === 'landing' && !mutation.featureBranch && mutation.commitSha) await upsertLandingResult(cwd, itemId, { commitSha: mutation.commitSha, status: mutation.status, landedAt: mutation.landedAt, prUrl: mutation.prUrl }, epicId);
-}
-
 function landingStatus(event: EforgeEvent | Record<string, unknown>): string {
   if (stringValue(valueAt(event, 'prUrl')) && valueAt(event, 'action') === 'pr') return 'pr-open';
   if (valueAt(event, 'action') === 'merge' && stringValue(valueAt(event, 'commitSha'))) return 'merged';
@@ -187,20 +183,6 @@ function landingStatus(event: EforgeEvent | Record<string, unknown>): string {
 function sessionEndStatus(event: EforgeEvent | Record<string, unknown>): string {
   const result = valueAt(event, 'result');
   return result && typeof result === 'object' && 'status' in result ? String((result as { status?: unknown }).status ?? 'completed') : 'completed';
-}
-
-function lastEventMetadata(event: EforgeEvent | Record<string, unknown>): TraceLastEventMetadata {
-  return {
-    type: stringValue(valueAt(event, 'type')),
-    timestamp: timestampOf(event),
-    sessionId: stringValue(valueAt(event, 'sessionId')),
-    runId: stringValue(valueAt(event, 'runId')),
-    source: stringValue(valueAt(event, 'source')),
-    filePath: stringValue(valueAt(event, 'filePath')),
-    path: stringValue(valueAt(event, 'path')),
-    id: stringValue(valueAt(event, 'id')),
-    cursor: numberValue(valueAt(event, 'cursor')),
-  };
 }
 
 function directInputItemId(event: EforgeEvent | Record<string, unknown>): string | undefined {

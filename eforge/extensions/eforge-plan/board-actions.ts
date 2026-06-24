@@ -20,7 +20,7 @@ import {
 export const listBoard = defineExtensionAction({
   id: 'list-board',
   title: 'List eforge-plan board',
-  description: 'Read compatibility/debug rich backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and trace summaries for hosts that explicitly need the full board payload.',
+  description: 'Read compatibility/debug rich backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and lifecycle summaries for hosts that explicitly need the full board payload.',
   inputSchema: BoardActionInputSchema,
   outputSchema: ListBoardOutputSchema,
   outputProfile: CONTRIBUTION_OUTPUT_PROFILES.debugRich,

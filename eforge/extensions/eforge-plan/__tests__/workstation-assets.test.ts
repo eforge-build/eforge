@@ -308,7 +308,7 @@ describe('eforge-plan planning workstation assets', () => {
     expect(source).toContain('.eforge/storage/extensions/eforge-plan/planning-tasks/index.json');
     expect(source).toContain('.eforge/session-plans/');
     expect(source).toContain('For AI session-plan creation drafts, source backlog item ids and epic ids are trusted only from the preserved workflow selection');
-    expect(source).toContain('PR-open, failed, skipped, cancelled, and ambiguous evidence updates trace evidence and UI lifecycle rows but does not close backlog items');
+    expect(source).toContain('PR-open, failed, skipped, cancelled, and ambiguous evidence updates lifecycle evidence and UI lifecycle rows but does not close backlog items');
     expect(source).toContain('may mark only correlated item ids `shipped`');
     expect(source).toContain('partial');
     expect(source).toContain('Freshness is restored only through explicit recommendation apply or refresh paths');

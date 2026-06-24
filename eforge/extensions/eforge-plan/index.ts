@@ -21,10 +21,8 @@ import {
   readBacklogItem,
   resolveBacklogEpicRelativePath,
   resolveBacklogItemRelativePath,
-  updateBacklogItemFrontmatter,
-  writeBacklogEpic,
-  writeBacklogItem,
 } from './markdown-store.js';
+import { captureCanonicalBacklogItem, readCanonicalBacklogItem, readCanonicalEpic, updateCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
 import { applyLifecycleEvent } from './lifecycle.js';
 import { fetchEforgePlanInputSource, promoteBacklogItem, promoteBacklogSelection } from './promote.js';
 import { toJsonSafeObject } from './json-safe.js';
@@ -118,9 +116,9 @@ const captureItem = defineExtensionAction({
     const id = await resolveNewItemId(ctx.cwd, input.id, input.title);
     const now = new Date().toISOString();
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria, ''].join('\n');
-    const item = await writeBacklogItem(ctx.cwd, { id, status: 'candidate', priority: input.priority, tags: input.tags ?? [], depends_on: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
+    const item = captureCanonicalBacklogItem(ctx.cwd, { id, title: input.title, status: 'candidate', priority: input.priority, tags: input.tags ?? [], dependsOn: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
-    return toJsonSafeObject({ itemId: item.id, status: item.status, path: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
+    return toJsonSafeObject({ itemId: item.id, status: item.userStatus, storage: { kind: 'canonical-sqlite', id: item.id }, legacyPathDeprecated: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
   },
 });
 
@@ -130,16 +128,16 @@ const upsertEpic = defineExtensionAction({
   async handler(input, ctx) {
     const id = input.id ?? slugify(input.title);
     const now = new Date().toISOString();
-    const existing = await readBacklogEpic(ctx.cwd, id);
-    const body = input.body ?? (existing ? undefined : `# ${input.title}\n\n`);
-    const epic = await writeBacklogEpic(ctx.cwd, { id, status: normalizedStatus(input.status, 'candidate'), priority: input.priority, tags: input.tags ?? [], updated: now, body });
+    const existing = readCanonicalEpic(ctx.cwd, id) ?? await readBacklogEpic(ctx.cwd, id);
+    const body = input.body ?? existing?.body ?? `# ${input.title}\n\n`;
+    const epic = upsertCanonicalEpic(ctx.cwd, { id, title: input.title, ...(input.status !== undefined && { status: normalizedStatus(input.status, 'candidate') }), priority: input.priority, tags: input.tags, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'upsert-epic', [epic.id]);
-    return toJsonSafeObject({ epicId: epic.id, status: epic.status, path: resolveBacklogEpicRelativePath(ctx.cwd, epic.id) });
+    return toJsonSafeObject({ epicId: epic.id, status: epic.userStatus, storage: { kind: 'canonical-sqlite', id: epic.id }, legacyPathDeprecated: resolveBacklogEpicRelativePath(ctx.cwd, epic.id) });
   },
 });
 
 const updateItem = defineExtensionAction({
-  id: 'update-item', title: 'Update backlog item', description: 'Direct agent backlog workflow: update visible eforge-plan item metadata in private storage while preserving Markdown body content.',
+  id: 'update-item', title: 'Update backlog item', description: 'Direct agent backlog workflow: update visible eforge-plan item metadata in canonical private SQLite storage while preserving body content.',
   inputSchema: UpdateInput, outputSchema: ActionObjectOutput, outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentCompact, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const updates: Record<string, unknown> = { updated: new Date().toISOString() };
@@ -147,19 +145,18 @@ const updateItem = defineExtensionAction({
     if (input.priority !== undefined) updates.priority = input.priority;
     if (input.tags !== undefined) updates.tags = input.tags;
     if (input.dependsOn !== undefined) updates.depends_on = input.dependsOn;
-    // Empty string clears the epic link: the undefined value is dropped from
-    // frontmatter during serialization rather than written as `epic: ''`.
-    if (input.epic !== undefined) updates.epic = input.epic.length > 0 ? input.epic : undefined;
+    // Empty string explicitly clears the canonical epic link.
+    if (input.epic !== undefined) updates.epic = input.epic.length > 0 ? input.epic : null;
     if (input.evidenceNotes !== undefined) updates.evidence_notes = input.evidenceNotes;
     if (input.recheckNotes !== undefined) updates.recheck_notes = input.recheckNotes;
-    const item = await updateBacklogItemFrontmatter(ctx.cwd, input.id, updates);
+    const item = updateCanonicalBacklogItem(ctx.cwd, input.id, { status: updates.status as Parameters<typeof updateCanonicalBacklogItem>[2]['status'], priority: updates.priority as string | undefined, tags: updates.tags as string[] | undefined, dependsOn: updates.depends_on as string[] | undefined, epic: updates.epic as string | null | undefined, frontmatter: updates });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
-    return toJsonSafeObject({ itemId: item.id, status: item.status });
+    return toJsonSafeObject({ itemId: item.id, status: item.userStatus });
   },
 });
 
 const promoteItem = defineExtensionAction({
-  id: 'promote-item', title: 'Promote backlog item', description: 'Write a session plan, private backlog metadata updates, and trace evidence for a visible eforge-plan backlog item.',
+  id: 'promote-item', title: 'Promote backlog item', description: 'Reject duplicate coverage, write a session plan, and sync canonical SQLite metadata and lifecycle evidence for a visible eforge-plan backlog item.',
   inputSchema: PromoteInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null });
@@ -169,7 +166,7 @@ const promoteItem = defineExtensionAction({
 });
 
 const promoteSelection = defineExtensionAction({
-  id: 'promote-selection', title: 'Promote backlog selection', description: 'Write one session plan and private storage updates for selected visible eforge-plan backlog items, an epic, or a recommendation ref.',
+  id: 'promote-selection', title: 'Promote backlog selection', description: 'Reject duplicate coverage, write one session plan, and sync canonical SQLite records for selected visible eforge-plan backlog items, an epic, or a recommendation ref.',
   inputSchema: PromoteSelectionInput, outputSchema: PromoteSelectionOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
     const result = await promoteBacklogSelection({
@@ -241,12 +238,12 @@ export default defineEforgeExtension((eforge) => {
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',
     blocks: [
       { rendererId: 'markdown', title: 'Board summary', content: 'Use **Render board** to display the current derived kanban board from visible eforge-plan backlog records.' },
-      { rendererId: 'status-badge', title: 'Lifecycle linkage', content: 'Trace sidecars enabled', status: 'active' },
+      { rendererId: 'status-badge', title: 'Lifecycle linkage', content: 'Canonical SQLite lifecycle evidence enabled', status: 'active' },
       { rendererId: 'action-button', title: 'List board data', content: 'Return current board JSON.', action: { actionId: 'list-board' } },
       { rendererId: 'action-button', title: 'List compact board data', content: 'Return bounded open-first board JSON with counts and pagination for agents and compact hosts.', action: { actionId: 'list-board-compact' } },
       { rendererId: 'action-button', title: 'Render board', content: 'Show current board Markdown', action: { actionId: 'render-board-markdown' } },
-      { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md`.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
-      { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
+      { rendererId: 'action-form', title: 'Promote item', content: 'Promote a backlog item to `.eforge/session-plans/<session>.md` after duplicate coverage checks.', action: { actionId: 'promote-item', inputDefaults: { status: 'active' } } },
+      { rendererId: 'action-form', title: 'Promote selection', content: 'Promote selected backlog items, an epic, or a recommendation ref to one session plan after duplicate coverage checks.', action: { actionId: 'promote-selection', inputDefaults: { status: 'active' } } },
       { rendererId: 'action-button', title: 'Get recommendations', content: 'Read private recommendation summary data.', action: { actionId: 'get-recommendations' } },
       { rendererId: 'action-button', title: 'Analyze all backlog', content: 'Curate backlog records with source-first analysis and refresh recommendations.', action: { actionId: 'analyze-all-backlog' } },
       { rendererId: 'action-form', title: 'Get backlog item', content: 'Read one compact backlog item detail with sections and lifecycle rows without listing the board.', action: { actionId: 'get-item' } },
@@ -371,13 +368,13 @@ function normalizedStatus(value: string | undefined, fallback: 'candidate') {
 
 async function resolveNewItemId(cwd: string, explicitId: string | undefined, title: string): Promise<string> {
   if (explicitId !== undefined) {
-    if (await readBacklogItem(cwd, explicitId)) throw new Error(`Backlog item "${explicitId}" already exists.`);
+    if (readCanonicalBacklogItem(cwd, explicitId) || await readBacklogItem(cwd, explicitId)) throw userActionError(`Backlog item "${explicitId}" already exists.`, { path: 'id', details: { itemId: explicitId } });
     return explicitId;
   }
   const base = slugify(title);
   for (let index = 0; ; index += 1) {
     const candidate = index === 0 ? base : `${base}-${index + 1}`;
-    if (!(await readBacklogItem(cwd, candidate))) return candidate;
+    if (!readCanonicalBacklogItem(cwd, candidate) && !(await readBacklogItem(cwd, candidate))) return candidate;
   }
 }
 

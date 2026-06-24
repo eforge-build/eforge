@@ -37,7 +37,8 @@ import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, 
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { userActionError } from './action-errors.js';
-import { upsertPromotedSessionPlan } from './trace-store.js';
+import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
+import { findCanonicalNonterminalCoverage } from './canonical/coverage.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
@@ -157,7 +158,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
   const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
-  const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
+  const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, creationDraftLinkage, workflowEntry, task.taskId);
 
   const applyKey = creationDraft !== undefined ? creationDraftApplyKey(cwd, task.taskId) : undefined;
   if (applyKey !== undefined) {
@@ -272,8 +273,13 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
     ...(resolved.openQuestions !== undefined && { openQuestions: resolved.openQuestions }),
   });
   const sourceRefs = linkage !== undefined ? await applyCreationDraftSourceLinkage(cwd, session, linkage) : undefined;
+  const path = planning.flat.resolvePath({ cwd, session });
+  if (linkage === undefined) {
+    const loaded = await planning.flat.load({ cwd, session });
+    syncSessionPlanArtifact(cwd, { session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-creation-draft' });
+  }
   const readiness = await planning.flat.readiness({ cwd, session });
-  const relativePath = relative(cwd, planning.flat.resolvePath({ cwd, session })).replace(/\\/g, '/');
+  const relativePath = relative(cwd, path).replace(/\\/g, '/');
   return {
     session,
     relativePath,
@@ -390,9 +396,7 @@ async function applyCreationDraftSourceLinkage(cwd: string, session: string, lin
   const loaded = await planning.flat.load({ cwd, session });
   const path = planning.flat.resolvePath({ cwd, session });
   const status = loaded.plan.status ?? metadata.status ?? 'planning';
-  for (const item of linkage.items) {
-    await upsertPromotedSessionPlan(cwd, item.id, { session, path, status, promotedAt }, item.epic);
-  }
+  syncSessionPlanArtifact(cwd, { session, path, status, sourceItemIds: linkage.sourceItemIds, sourceEpicIds: linkage.sourceEpicIds, sourceRecommendationRef: linkage.sourceRecommendationRef, provenance: 'planning-task-creation-draft', updatedAt: promotedAt });
   return {
     sourceItemIds: linkage.sourceItemIds,
     sourceEpicIds: linkage.sourceEpicIds,
@@ -424,7 +428,9 @@ async function validatePlanningAgentTaskApplyTargets(
   handoffDrafts: PlannerHandoffDraft[] | undefined,
   sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
   creationDraft: ResolvedSessionPlanCreationDraft | undefined,
+  creationDraftLinkage: CreationDraftSourceLinkage | undefined,
   workflowEntry: PlanningTaskWorkflowEntry | undefined,
+  taskId: string,
 ): Promise<PlanningAgentTaskApplyTargets> {
   const targets: PlanningAgentTaskApplyTargets = {};
   if (creationDraft !== undefined) {
@@ -434,16 +440,23 @@ async function validatePlanningAgentTaskApplyTargets(
     }
     targets.creationDraftTarget = await resolveCreationDraftTargetDisposition(cwd, creationDraft.session);
   }
-  await Promise.all([
-    ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
-      cwd,
-      ...draft.selection,
-      session: draft.session ?? draft.selection.session,
-      title: draft.title ?? draft.selection.title,
-      profile: draft.profile ?? draft.selection.profile,
-    })),
-    ...sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })),
-  ]);
+  const resolvedHandoffs = await Promise.all((handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
+    cwd,
+    ...draft.selection,
+    session: draft.session ?? draft.selection.session,
+    title: draft.title ?? draft.selection.title,
+    profile: draft.profile ?? draft.selection.profile,
+  })));
+  await Promise.all(sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })));
+  const coveredItemIds = [...new Set([
+    ...resolvedHandoffs.flatMap((selection) => selection.itemIds),
+    ...(creationDraft !== undefined ? creationDraftLinkage?.sourceItemIds ?? [] : []),
+  ])];
+  const coverage = findCanonicalNonterminalCoverage(cwd, coveredItemIds, { excludePlanningTaskIds: [taskId] });
+  if (!coverage.ok) {
+    const reasons = [...new Set(coverage.entries.map((entry) => entry.reasonCode))].join(', ');
+    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: coverage.entries as never } });
+  }
   return targets;
 }
 
@@ -513,6 +526,9 @@ async function applySelectedSessionPlanSections(
     for (const section of selection.sections) {
       await planning.flat.setSection({ cwd, session: selection.session, dimension: section.dimension, content: section.content });
     }
+    const path = planning.flat.resolvePath({ cwd, session: selection.session });
+    const loaded = await planning.flat.load({ cwd, session: selection.session });
+    syncSessionPlanArtifact(cwd, { session: selection.session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-section-patch' });
     applied.push({ session: selection.session, sections: selection.sections.map((section) => section.dimension) });
   }
   return applied;

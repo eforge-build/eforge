@@ -3,7 +3,11 @@ import { dirname } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type PlanningTaskWorkflowIndex } from './planning-agent-task-schemas.js';
+import { getDatabase } from './sqlite/store-internal.js';
+import { withCanonicalTransaction } from './canonical/store.js';
+import { markPlanningTaskWorkflowEntryApplied as markCanonicalPlanningTaskWorkflowEntryApplied, markPlanningTaskWorkflowEntryDismissed as markCanonicalPlanningTaskWorkflowEntryDismissed, recordPlanningTaskWorkflowEntry as recordCanonicalPlanningTaskWorkflowEntry } from './canonical/planning-task-records.js';
 import { DEFAULT_ITEM_AUDIT_CONCURRENCY, MAX_ITEM_AUDIT_CONCURRENCY } from './backlog-curation-schemas.js';
+import { readRecommendations } from './recommendations-store.js';
 
 const EXTENSION_NAME = 'eforge-plan';
 const INDEX_SEGMENTS = ['planning-tasks', 'index.json'] as const;
@@ -50,6 +54,8 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
  * failures are surfaced to avoid hiding durable tasks.
  */
 export async function readPlanningTaskWorkflowIndex(cwd: string): Promise<PlanningTaskWorkflowIndex> {
+  const canonical = readCanonicalWorkflowIndex(cwd);
+  if (canonical.hasRows || canonical.index.entries.length > 0) return canonical.index;
   let raw: string;
   try {
     raw = await readFile(resolvePlanningTaskWorkflowIndexPath(cwd), 'utf-8');
@@ -75,11 +81,7 @@ export async function readPlanningTaskWorkflowIndex(cwd: string): Promise<Planni
 export async function recordPlanningTaskWorkflowEntry(cwd: string, entry: PlanningTaskWorkflowEntry): Promise<PlanningTaskWorkflowEntry> {
   const path = resolvePlanningTaskWorkflowIndexPath(cwd);
   return runExclusive(path, async () => {
-    // Re-read and merge under the lock so concurrent entries are never lost.
-    const index = await readPlanningTaskWorkflowIndex(cwd);
-    const entries = index.entries.filter((existing) => existing.taskId !== entry.taskId);
-    entries.push(entry);
-    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries });
+    recordCanonicalPlanningTaskWorkflowEntry(cwd, await canonicalPlanningTaskInput(cwd, entry));
     return entry;
   });
 }
@@ -87,23 +89,19 @@ export async function recordPlanningTaskWorkflowEntry(cwd: string, entry: Planni
 export async function removePlanningTaskWorkflowEntry(cwd: string, taskId: string): Promise<boolean> {
   const path = resolvePlanningTaskWorkflowIndexPath(cwd);
   return runExclusive(path, async () => {
-    const index = await readPlanningTaskWorkflowIndex(cwd);
-    const entries = index.entries.filter((existing) => existing.taskId !== taskId);
-    if (entries.length === index.entries.length) return false;
-    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries });
-    return true;
+    const existed = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId) !== undefined;
+    if (existed) markCanonicalPlanningTaskWorkflowEntryDismissed(cwd, taskId);
+    return existed;
   });
 }
 
 export async function markPlanningTaskWorkflowEntryApplied(cwd: string, taskId: string, appliedAt: string): Promise<PlanningTaskWorkflowEntry> {
   const path = resolvePlanningTaskWorkflowIndexPath(cwd);
   return runExclusive(path, async () => {
-    const index = await readPlanningTaskWorkflowIndex(cwd);
-    const entry = index.entries.find((candidate) => candidate.taskId === taskId);
+    const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
     if (entry === undefined) throw new Error(`No planning task workflow entry found for ${taskId}; cannot mark applied.`);
-    const updated = { ...entry, appliedAt };
-    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries: index.entries.map((candidate) => candidate.taskId === taskId ? updated : candidate) });
-    return updated;
+    markCanonicalPlanningTaskWorkflowEntryApplied(cwd, taskId, appliedAt);
+    return { ...entry, appliedAt };
   });
 }
 
@@ -142,6 +140,58 @@ export function listBacklogCurationWorkflowEntries(index: PlanningTaskWorkflowIn
 
 export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowIndex, sourceFingerprint: string, itemAuditConcurrency?: number): PlanningTaskWorkflowEntry | undefined {
   return listBacklogCurationWorkflowEntries(index, sourceFingerprint, itemAuditConcurrency)[0];
+}
+
+function readCanonicalWorkflowIndex(cwd: string): { index: PlanningTaskWorkflowIndex; hasRows: boolean } {
+  return withCanonicalTransaction(cwd, (store) => {
+    const db = getDatabase(store);
+    const hasRows = (db.prepare('SELECT 1 FROM planning_tasks LIMIT 1').get() as unknown) !== undefined;
+    const rows = db.prepare("SELECT raw_request_json, task_id, created_at, applied_at FROM planning_tasks WHERE COALESCE(status_snapshot, '') <> 'dismissed' ORDER BY created_at DESC, task_id").all() as Array<Record<string, unknown>>;
+    const entries = rows.map((row) => entryFromCanonicalRow(row)).filter((entry): entry is PlanningTaskWorkflowEntry => entry !== undefined);
+    return { index: orderIndex({ schemaVersion: 1, entries }), hasRows };
+  });
+}
+
+function entryFromCanonicalRow(row: Record<string, unknown>): PlanningTaskWorkflowEntry | undefined {
+  const raw = typeof row.raw_request_json === 'string' ? JSON.parse(row.raw_request_json) as unknown : undefined;
+  const parsed = safeParseWithSchema(PlanningTaskWorkflowIndexSchema.properties.entries.items, raw);
+  if (!parsed.success) return undefined;
+  return { ...parsed.data, ...(typeof row.applied_at === 'string' ? { appliedAt: row.applied_at } : {}) };
+}
+
+async function canonicalPlanningTaskInput(cwd: string, entry: PlanningTaskWorkflowEntry): Promise<Parameters<typeof recordCanonicalPlanningTaskWorkflowEntry>[1]> {
+  return {
+    taskId: entry.taskId,
+    purpose: entry.purpose,
+    status: entry.appliedAt !== undefined ? 'applied' : 'active',
+    sourceFingerprint: entry.sourceFingerprint,
+    requestedSections: entry.requestedOutputSections as never,
+    selectionSummary: entry.selection as never,
+    rawRequest: entry as never,
+    parentTaskId: entry.parentTaskId,
+    itemRefs: await resolveWorkflowSelectionItemIds(cwd, entry),
+    epicRefs: entry.selection.epicId !== undefined ? [entry.selection.epicId] : undefined,
+    recommendationRefs: entry.selection.recommendationRef !== undefined ? [entry.selection.recommendationRef] : undefined,
+  };
+}
+
+async function resolveWorkflowSelectionItemIds(cwd: string, entry: PlanningTaskWorkflowEntry): Promise<string[] | undefined> {
+  const itemIds = new Set(entry.selection.itemIds ?? []);
+  withCanonicalTransaction(cwd, (store) => {
+    const db = getDatabase(store);
+    if (entry.selection.epicId !== undefined) {
+      const rows = db.prepare('SELECT id FROM backlog_items WHERE epic_id = ? OR epic_ref = ?').all(entry.selection.epicId, entry.selection.epicId) as Array<{ id?: unknown }>;
+      for (const row of rows) if (typeof row.id === 'string') itemIds.add(row.id);
+    }
+  });
+  if (entry.selection.recommendationRef !== undefined) {
+    const recommendations = await readRecommendations(cwd);
+    const group = recommendations?.safeParallelizableGroups.find((candidate) => candidate.ref === entry.selection.recommendationRef);
+    for (const itemId of group?.itemIds ?? []) itemIds.add(itemId);
+    const item = recommendations?.recommendedNextSequence.find((candidate) => candidate.ref === entry.selection.recommendationRef);
+    if (item !== undefined) itemIds.add(item.itemId);
+  }
+  return itemIds.size > 0 ? [...itemIds] : undefined;
 }
 
 function normalizeStoredItemAuditConcurrency(value: unknown): number {

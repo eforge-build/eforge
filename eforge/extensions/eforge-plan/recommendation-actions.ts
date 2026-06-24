@@ -15,7 +15,7 @@ import {
 import { findActiveRecommendationRefreshTask, refreshRecommendationsAction } from './recommendation-refresh.js';
 import { buildRecommendationActionability } from './recommendation-actionability.js';
 import {
-  readRecommendationsFromPath,
+  readRecommendations,
   resolveRecommendationsPath,
   summarizeRecommendations,
   writeRecommendations,
@@ -30,7 +30,7 @@ export const getRecommendations = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(_input, ctx) {
     const path = resolveRecommendationsPath(ctx.paths);
-    const recommendations = await readRecommendationsFromPath(path);
+    const recommendations = await readRecommendations(ctx.cwd);
     const status = await readDerivedRecommendationStatus(ctx.cwd, path);
     const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
     const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd, status.sourceFingerprint);
@@ -50,7 +50,7 @@ export const getRecommendations = defineExtensionAction({
 export const putRecommendations = defineExtensionAction({
   id: 'put-recommendations',
   title: 'Put eforge-plan recommendations',
-  description: 'Validate and write the project-local private recommendation model for eforge-plan, then mark the status sidecar fresh for put-recommendations.',
+  description: 'Validate and write the project-local private recommendation model for eforge-plan, then mark freshness metadata fresh for put-recommendations.',
   inputSchema: PutRecommendationsInputSchema,
   outputSchema: PutRecommendationsOutputSchema,
   sideEffects: ['local-write'],

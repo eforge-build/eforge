@@ -10,6 +10,8 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
+import { recordSessionPlanSubmitted, syncSessionPlanFile } from './canonical/session-plan-records.js';
+import { withCanonicalTransaction } from './canonical/store.js';
 import {
   projectPlanningArtifacts,
   projectSessionPlanDetail,
@@ -128,6 +130,7 @@ export const createSessionPlanAction = defineExtensionAction({
       agentProfile: input.agentProfile,
     });
     const readiness = await planning.flat.readiness({ cwd: ctx.cwd, session: result.plan.session });
+    await syncFlatSessionPlan(ctx.cwd, result.plan.session, result.path);
     return toJsonSafeObject({ session: result.plan.session, path: result.path, plan: projectSessionPlan(result.plan), readiness });
   },
 });
@@ -147,7 +150,9 @@ export const setSessionPlanSectionAction = defineExtensionAction({
       dimension: input.dimension,
       content: input.content,
     });
-    return toJsonSafeObject({ session: input.session, path: planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }), readiness: result.readiness, plan: projectSessionPlan(result.plan) });
+    const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
+    await syncFlatSessionPlan(ctx.cwd, input.session, path);
+    return toJsonSafeObject({ session: input.session, path, readiness: result.readiness, plan: projectSessionPlan(result.plan) });
   },
 });
 
@@ -167,9 +172,11 @@ export const selectSessionPlanDimensions = defineExtensionAction({
       planningDepth: input.planningDepth,
       overwrite: input.overwrite,
     });
+    const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
+    await syncFlatSessionPlan(ctx.cwd, input.session, path);
     return toJsonSafeObject({
       session: input.session,
-      path: planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }),
+      path,
       required_dimensions: result.plan.required_dimensions,
       optional_dimensions: result.plan.optional_dimensions,
       readiness: result.readiness,
@@ -204,6 +211,7 @@ export const setSessionPlanReady = defineExtensionAction({
       return toJsonSafeObject({ kind: 'not-ready', session: input.session, readiness, message: 'Session plan is not ready; status was left unchanged.' });
     }
     const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'ready' });
+    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }));
     return toJsonSafeObject({ kind: 'ready', session: input.session, status: result.plan.status, readiness, plan: projectSessionPlan(result.plan) });
   },
 });
@@ -216,7 +224,9 @@ export const deleteSessionPlanAction = defineExtensionAction({
   outputSchema: DeleteSessionPlanOutputSchema,
   sideEffects: ['local-write'],
   async handler(input, ctx) {
-    const result = await adapter().flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'abandoned' });
+    const planning = adapter();
+    const result = await planning.flat.setStatus({ cwd: ctx.cwd, session: input.session, status: 'abandoned' });
+    await syncFlatSessionPlan(ctx.cwd, input.session, planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }));
     return toJsonSafeObject({
       kind: 'deleted',
       session: input.session,
@@ -243,9 +253,11 @@ export const updateSessionPlanMetadataAction = defineExtensionAction({
       openQuestions: input.openQuestions,
     });
     const planning = adapter();
+    const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
+    await syncFlatSessionPlan(ctx.cwd, input.session, path);
     return toJsonSafeObject({
       session: input.session,
-      path: planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session }),
+      path,
       readiness: await planning.flat.readiness({ cwd: ctx.cwd, session: input.session }),
       plan: projectSessionPlan(plan),
     });
@@ -271,19 +283,9 @@ export const handoffSessionPlan = defineExtensionAction({
     await readFile(loaded.path, 'utf-8');
     const sourcePath = relative(ctx.cwd, loaded.path).replace(/\\/g, '/');
     const command = `eforge build ${quoteShellArg(sourcePath)}`;
+    let enqueued: Awaited<ReturnType<typeof ctx.buildQueue.enqueue>>;
     try {
-      const enqueued = await ctx.buildQueue.enqueue({ source: sourcePath });
-      return toJsonSafeObject({
-        kind: 'enqueued',
-        session: input.session,
-        sourcePath,
-        absolutePath: loaded.path,
-        queueSessionId: enqueued.sessionId,
-        pid: enqueued.pid,
-        autoBuild: enqueued.autoBuild,
-        message: `Enqueued ${sourcePath} for build${enqueued.autoBuild ? '; auto-build is enabled.' : '.'}`,
-        readiness: loaded.readiness,
-      });
+      enqueued = await ctx.buildQueue.enqueue({ source: sourcePath });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return toJsonSafeObject({
@@ -296,6 +298,25 @@ export const handoffSessionPlan = defineExtensionAction({
         readiness: loaded.readiness,
       });
     }
+    let canonicalSyncWarning: string | undefined;
+    try {
+      const sourceRefs = projectSessionPlanSourceRefs(loaded.plan);
+      withCanonicalTransaction(ctx.cwd, (store) => recordSessionPlanSubmitted(store, { session: input.session, queuePrdId: enqueued.sessionId, path: sourcePath, itemIds: sourceRefs.sourceItemIds, timestamp: new Date().toISOString() }));
+    } catch (err) {
+      canonicalSyncWarning = err instanceof Error ? err.message : String(err);
+    }
+    return toJsonSafeObject({
+      kind: 'enqueued',
+      session: input.session,
+      sourcePath,
+      absolutePath: loaded.path,
+      queueSessionId: enqueued.sessionId,
+      pid: enqueued.pid,
+      autoBuild: enqueued.autoBuild,
+      message: `Enqueued ${sourcePath} for build${enqueued.autoBuild ? '; auto-build is enabled.' : '.'}`,
+      readiness: loaded.readiness,
+      ...(canonicalSyncWarning !== undefined && { canonicalSyncWarning }),
+    });
   },
 });
 
@@ -312,6 +333,10 @@ export const sessionPlanActions = [
   updateSessionPlanMetadataAction,
   handoffSessionPlan,
 ] as const;
+
+async function syncFlatSessionPlan(cwd: string, session: string, path: string): Promise<void> {
+  await syncSessionPlanFile(cwd, session, path);
+}
 
 async function buildLifecycleBySession(cwd: string, sessions: readonly string[]): Promise<Map<string, SessionPlanLifecycleProjection>> {
   const planning = adapter();
