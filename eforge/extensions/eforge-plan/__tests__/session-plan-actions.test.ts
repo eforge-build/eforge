@@ -84,8 +84,27 @@ describe('eforge-plan session-plan extension actions', () => {
 
       expect(collectUndefinedPaths(output)).toEqual([]);
       expect((output.artifacts as Array<{ key: string }>).map((artifact) => artifact.key).sort()).toEqual(['plan-set:set-one', 'plan:flat-one']);
+      expect(output).toMatchObject({ total: 2, limit: 50, offset: 0 });
       expect('board' in output).toBe(false);
       expect(JSON.stringify(output)).not.toContain('Plan it.');
+    });
+  });
+
+  it('paginates planning artifacts and derives plans and plan sets from the same returned page', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'flat-one', readyBody('Flat One'));
+      await writeSessionPlanRaw(cwd, 'flat-two', readyBody('Flat Two'));
+      await writePlanSet(cwd, 'set-one');
+
+      const output = await dispatch(cwd, 'list-planning-artifacts', { limit: 1, offset: 2 });
+
+      expect(collectUndefinedPaths(output)).toEqual([]);
+      expect(output).toMatchObject({ total: 3, limit: 1, offset: 2 });
+      expect(output.artifacts).toHaveLength(1);
+      expect((output.plans as unknown[]).length + (output.planSets as unknown[]).length).toBe(1);
+      expect(new Set([...(output.plans as Array<{ key: string }>), ...(output.planSets as Array<{ key: string }>)].map((artifact) => artifact.key))).toEqual(new Set((output.artifacts as Array<{ key: string }>).map((artifact) => artifact.key)));
+      expect(JSON.stringify(output)).not.toContain('Flat One');
+      expect(JSON.stringify(output)).not.toContain('Flat Two');
     });
   });
 

@@ -188,7 +188,7 @@ export interface RecommendationModel {
 
 // Draft plan unit shapes live in a sibling module to keep this barrel under the
 // file-size cap; re-export so `@/types` stays the single import surface.
-export type { DraftPlanUnitProvenance, DraftPlanUnitItemOrigin, DraftPlanUnitItem, DraftPlanUnit, PlanningProfile, UpdateDraftUnitInput, ListDraftUnitsResponse, DraftUnitResponse, PromoteDraftUnitResponse, DraftUnitAdvisorySeverity, DraftUnitAdvisoryFindingCode, DraftUnitAdvisoryFinding, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, SplitDraftUnitInput, SplitDraftUnitResponse, AdvisoryResponse } from './draft-unit-types';
+export type { DraftPlanUnitProvenance, DraftPlanUnitItemOrigin, DraftPlanUnitItem, DraftPlanUnit, DraftPlanUnitListItem, PlanningProfile, UpdateDraftUnitInput, ListDraftUnitsResponse, DraftUnitResponse, PromoteDraftUnitResponse, DraftUnitAdvisorySeverity, DraftUnitAdvisoryFindingCode, DraftUnitAdvisoryFinding, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, SplitDraftUnitInput, SplitDraftUnitResponse, AdvisoryResponse } from './draft-unit-types';
 export { PLANNING_PROFILES } from './draft-unit-types';
 
 export type RecommendationStatusState = 'missing' | 'fresh' | 'stale';
@@ -409,10 +409,11 @@ export interface PlanningAgentTaskListItem {
   available: boolean;
   status?: AgentTaskStatus;
   task?: PlanningAgentTaskRecord;
+  resultOmitted?: boolean;
   staleReason?: string;
   backlogCurationPreview?: BacklogCurationPreviewDetails;
 }
-export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; }
+export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; total: number; limit: number; offset: number; }
 export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry; }
 export interface GetRecommendationsResponse {
   recommendations: RecommendationModel | null;

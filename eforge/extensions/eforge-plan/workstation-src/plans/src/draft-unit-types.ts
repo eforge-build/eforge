@@ -23,10 +23,24 @@ export interface DraftPlanUnit {
   createdAt: string;
   updatedAt: string;
 }
+export interface DraftPlanUnitListItem {
+  unitId: string;
+  title: string;
+  provenance: DraftPlanUnitProvenance;
+  sourceRecommendationRef?: string;
+  profile?: PlanningProfile;
+  itemIds: string[];
+  itemCount: number;
+  status: 'draft' | 'promoted';
+  promotedSession?: string;
+  promotedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 // `profile: ''` clears a previously-set profile (mirrors the backend
 // UpdateDraftUnitInputSchema, which accepts PlanningProfile | '').
 export interface UpdateDraftUnitInput { unitId: string; title?: string; intent?: string; profile?: PlanningProfile | ''; addItemIds?: string[]; removeItemIds?: string[]; itemOrder?: string[]; }
-export interface ListDraftUnitsResponse { units: DraftPlanUnit[]; }
+export interface ListDraftUnitsResponse { units: DraftPlanUnitListItem[]; total: number; limit: number; offset: number; }
 export interface DraftUnitResponse { unit: DraftPlanUnit; }
 export interface PromoteDraftUnitResponse { unit: DraftPlanUnit; promotion: { session: string; sessionPlanPath: string } & Record<string, unknown>; }
 

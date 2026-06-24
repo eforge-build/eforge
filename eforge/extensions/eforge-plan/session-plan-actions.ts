@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
-import { defineExtensionAction } from '@eforge-build/extension-sdk';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, paginateContributionItems } from '@eforge-build/extension-sdk';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { buildBoard, projectBoardOutput } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
@@ -51,6 +51,7 @@ export const listPlanningArtifacts = defineExtensionAction({
   description: 'List flat session plans and session plan sets for the planning workstation, with legacy board data available by explicit opt-in.',
   inputSchema: ListPlanningArtifactsInputSchema,
   outputSchema: ListPlanningArtifactsOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const planning = adapter();
@@ -59,12 +60,22 @@ export const listPlanningArtifacts = defineExtensionAction({
       planning.planSets.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
     ]);
     const lifecycleBySession = await buildLifecycleBySession(ctx.cwd, plans.map((plan) => plan.session));
-    if (input.includeBoard !== true) return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, lifecycleBySession }));
+    const projection = projectPlanningArtifacts({ plans, planSets, lifecycleBySession });
+    const page = paginateContributionItems(projection.artifacts, input, { defaultLimit: 50, maxLimit: 100 });
+    const base = {
+      artifacts: page.items,
+      plans: page.items.filter((artifact) => artifact.kind === 'plan'),
+      planSets: page.items.filter((artifact) => artifact.kind === 'plan-set'),
+      total: page.total,
+      limit: page.limit,
+      offset: page.offset,
+    };
+    if (input.includeBoard !== true) return toJsonSafeObject(base);
     try {
       const board = await buildBoard(ctx.cwd, { epic: input.epic, includeArchive: input.includeArchive });
-      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, board: projectBoardOutput(board), lifecycleBySession }));
+      return toJsonSafeObject({ ...base, board: projectBoardOutput(board) });
     } catch {
-      return toJsonSafeObject(projectPlanningArtifacts({ plans, planSets, lifecycleBySession }));
+      return toJsonSafeObject(base);
     }
   },
 });

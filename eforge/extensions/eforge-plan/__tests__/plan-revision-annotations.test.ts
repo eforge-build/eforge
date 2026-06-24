@@ -225,7 +225,8 @@ describe('plan revision annotations', () => {
       const tasks = new Map<string, ExtensionAgentTaskRecord>();
       await dispatch(cwd, 'create-plan-revision-annotation', { session: 'projection', body: 'Projected when plan included.', target }, tasks);
 
-      const withoutPlan = await dispatch(cwd, 'list-plan-revision-sessions', { includePlan: false }, tasks);
+      const withoutPlan = await dispatch(cwd, 'list-plan-revision-sessions', { includePlan: false, limit: 1, offset: 0 }, tasks);
+      expect(withoutPlan).toMatchObject({ total: 1, limit: 1, offset: 0 });
       expect((withoutPlan.sessions as Array<Record<string, unknown>>)[0]).not.toHaveProperty('annotations');
       expect((withoutPlan.sessions as Array<Record<string, unknown>>)[0]).not.toHaveProperty('plan');
 

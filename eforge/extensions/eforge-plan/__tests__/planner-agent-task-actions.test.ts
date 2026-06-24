@@ -92,6 +92,37 @@ function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
   });
 }
 
+function creationDraftTask(taskId = 'task-creation', session = 'created-session'): ExtensionAgentTaskRecord {
+  return parseExtensionAgentTaskRecord({
+    taskId,
+    kind: 'eforge-plan.planning-draft',
+    status: 'completed',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:01.000Z',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    completedAt: '2026-01-01T00:00:01.000Z',
+    result: {
+      summary: 'Drafted a plan.',
+      assumptionsOpenQuestions: ['Assumes API stable.'],
+      decision: 'ready',
+      sessionPlanCreationDraft: {
+        session,
+        topic: 'Created topic',
+        planningType: 'feature',
+        planningDepth: 'focused',
+        sections: [
+          { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
+          { dimension: 'scope', content: 'Generated scope content.' },
+          { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
+          { dimension: 'code-impact', content: 'Update extension apply behavior and tests.' },
+          { dimension: 'design-decisions', content: 'Validate generated drafts before persistence.' },
+          { dimension: 'assumptions-and-validation', content: 'Run extension action tests and type checking.' },
+        ],
+      },
+    },
+  });
+}
+
 describe('planning agent task actions', () => {
   it('prepares planner context before starting a daemon-owned planning task', async () => {
     await withTempProject(async (cwd) => {
@@ -648,6 +679,7 @@ describe('planning agent task actions', () => {
       expect(result.kind).toBe('success');
       if (result.kind !== 'success') throw new Error(result.message);
       const tasks = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      expect((result.output as { total: number; limit: number; offset: number })).toMatchObject({ total: 5, limit: 50, offset: 0 });
       expect(tasks.map((task) => (task.entry as { taskId: string }).taskId)).toEqual(['task-missing', 'task-cancelled', 'task-failed', 'task-complete', 'task-running']);
       const byId = new Map(tasks.map((task) => [(task.entry as { taskId: string }).taskId, task]));
       expect(byId.get('task-running')).toMatchObject({ available: true, status: 'running' });
@@ -688,6 +720,75 @@ describe('planning agent task actions', () => {
       expect(task).not.toHaveProperty('entry');
       expect(task).not.toHaveProperty('task');
     });
+  });
+
+  it('paginates planning task list rows and only fetches daemon records for the page', async () => {
+    await withTempProject(async (cwd) => {
+      const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-oldest', createdAt: '2026-01-01T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-middle', createdAt: '2026-01-02T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-newest', createdAt: '2026-01-03T00:00:00.000Z', ...base });
+      const fetched: string[] = [];
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:list-planning-agent-tasks',
+        input: { limit: 1, offset: 1 },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get(taskId: string) { fetched.push(taskId); return { task: runningTask(taskId) }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      expect(result.output).toMatchObject({ total: 3, returned: 1, limit: 1, offset: 1, hasMore: true, nextOffset: 2 });
+      const tasks = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      expect(tasks).toHaveLength(1);
+      expect((tasks[0]!.entry as { taskId: string }).taskId).toBe('task-middle');
+      expect(fetched).toEqual(['task-middle']);
+    });
+  });
+
+  it('keeps non-heavy planning task list results and omits verbose completed payloads', async () => {
+    const cases: Array<{ name: string; task: ExtensionAgentTaskRecord; requestedOutputSections: Array<'sessionPlanCreationDraft' | 'planDrafts' | 'playbookDraft'>; resultKey?: string; omitted: boolean }> = [
+      { name: 'ready sessionPlanCreationDraft', task: creationDraftTask('task-creation-compact'), requestedOutputSections: ['sessionPlanCreationDraft'], resultKey: 'sessionPlanCreationDraft', omitted: false },
+      { name: 'needs-input clarification', task: needsInputTask('task-needs-input-compact'), requestedOutputSections: ['sessionPlanCreationDraft'], resultKey: 'clarificationQuestions', omitted: false },
+      { name: 'planDrafts', task: completedTask({ taskId: 'task-plan-drafts-compact', result: { summary: 'Drafted a plan.', assumptionsOpenQuestions: [], planDrafts: [{ title: 'Implement the feature', body: '# Plan\n\nDo the work.' }] } }), requestedOutputSections: ['planDrafts'], omitted: true },
+      { name: 'playbookDraft', task: completedTask({ taskId: 'task-playbook-compact', result: { summary: 'Drafted a playbook.', assumptionsOpenQuestions: [], playbookDraft: { name: 'planning-playbook', body: '# Playbook\n\nUse it.' } } }), requestedOutputSections: ['playbookDraft'], omitted: true },
+    ];
+
+    for (const testCase of cases) {
+      await withTempProject(async (cwd) => {
+        await recordPlanningTaskWorkflowEntry(cwd, { taskId: testCase.task.taskId, createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan', derivedRequest: 'Draft planning output.', selection: { itemIds: ['item-one'] }, requestedOutputSections: testCase.requestedOutputSections });
+        const result = await dispatchExtensionAction(load(), {
+          actionId: 'eforge-plan:list-planning-agent-tasks',
+          input: {},
+          requestedBy: { host: 'console' },
+          cwd,
+          timeoutMs: 1000,
+          agentTasks: () => ({
+            async start() { throw new Error('unexpected start'); },
+            async get() { return { task: testCase.task }; },
+            async cancel() { throw new Error('unexpected cancel'); },
+          }),
+        });
+        expect(result.kind).toBe('success');
+        if (result.kind !== 'success') throw new Error(result.message);
+        const [row] = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+        expect(row).toMatchObject({ available: true, status: 'completed' });
+        const task = row?.task as Record<string, unknown> | undefined;
+        expect(task).toMatchObject({ taskId: testCase.task.taskId, status: 'completed', createdAt: testCase.task.createdAt, updatedAt: testCase.task.updatedAt, completedAt: testCase.task.completedAt });
+        if (testCase.omitted) {
+          expect(row).toMatchObject({ resultOmitted: true });
+          expect(task).not.toHaveProperty('result');
+        } else {
+          expect(row?.resultOmitted).toBeUndefined();
+          expect((task?.result as Record<string, unknown> | undefined)?.[testCase.resultKey!]).toBeDefined();
+        }
+      });
+    }
   });
 
   it('previews backlog curation validation on demand without coupling it to task list rendering', async () => {
@@ -742,8 +843,27 @@ describe('planning agent task actions', () => {
       });
       expect(list.kind).toBe('success');
       if (list.kind !== 'success') throw new Error(list.message);
-      const tasks = (list.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      const tasks = (list.output as { tasks: Array<Record<string, unknown>>; total: number; limit: number; offset: number }).tasks;
+      expect(list.output).toMatchObject({ total: 2, limit: 50, offset: 0 });
+      expect(tasks).toHaveLength(2);
       expect(tasks.every((task) => task.backlogCurationPreview === undefined)).toBe(true);
+      for (const row of tasks) {
+        expect(row).toMatchObject({ available: true, status: 'completed', resultOmitted: true });
+        const task = row.task as Record<string, unknown> | undefined;
+        expect(task).toBeDefined();
+        expect(task).toMatchObject({ taskId: expect.any(String), status: 'completed', createdAt: expect.any(String), updatedAt: expect.any(String), completedAt: expect.any(String) });
+        expect(task).not.toHaveProperty('result');
+      }
+
+      const validDetail = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:get-planning-agent-task',
+        input: { taskId: 'task-curation-valid-preview' },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks,
+      });
+      expect(validDetail).toMatchObject({ kind: 'success', output: { task: { result: { backlogCurationDraft: expect.any(Object), recommendations: expect.any(Object) } } } });
 
       const validPreview = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:preview-backlog-curation-task',

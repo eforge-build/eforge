@@ -1,9 +1,10 @@
-import { Type, type Static } from '@eforge-build/extension-sdk';
+import { createContributionPaginationInputFields, Type, type Static } from '@eforge-build/extension-sdk';
 import {
   EforgePlanPlanningRequestedOutputSectionSchema,
   ExtensionAgentTaskCancelResponseSchema,
   ExtensionAgentTaskGetResponseSchema,
   ExtensionAgentTaskIdSchema,
+  ExtensionAgentTaskKindSchema,
   ExtensionAgentTaskRecordSchema,
   ExtensionAgentTaskStartResponseSchema,
   ExtensionAgentTaskStatusSchema,
@@ -40,6 +41,8 @@ export const StartPlanningAgentRequestedOutputSectionSchema = Type.Union([
 export const MAX_PLANNING_AGENT_USER_GOAL_LENGTH = 4000;
 const MAX_PLAN_REVISION_LIST_LIMIT = 100;
 const DEFAULT_PLAN_REVISION_LIST_LIMIT = 50;
+const MAX_PLANNING_AGENT_TASK_LIST_LIMIT = 100;
+const DEFAULT_PLANNING_AGENT_TASK_LIST_LIMIT = 50;
 const MAX_PLAN_REVISION_ANSWER_COUNT = 20;
 const MAX_PLAN_REVISION_ANSWER_LENGTH = 4000;
 const MAX_PLAN_REVISION_PROMPT_LENGTH = 2000;
@@ -175,11 +178,10 @@ export const PlanningTaskWorkflowIndexSchema = Type.Object({
   entries: Type.Array(PlanningTaskWorkflowEntrySchema),
 }, { additionalProperties: false });
 
-const MAX_PLANNING_AGENT_TASK_LIST_LIMIT = 100;
+const PlanningAgentTaskPageInputFields = createContributionPaginationInputFields({ maxLimit: MAX_PLANNING_AGENT_TASK_LIST_LIMIT });
 
 export const ListPlanningAgentTasksInputSchema = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_PLANNING_AGENT_TASK_LIST_LIMIT })),
-  offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  ...PlanningAgentTaskPageInputFields,
   includeEntry: Type.Optional(Type.Boolean()),
   includeTask: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
@@ -210,7 +212,7 @@ export const PlanningTaskWorkflowEntrySummarySchema = Type.Object({
 
 export const PlanningAgentTaskSummarySchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,
-  kind: Type.String(),
+  kind: ExtensionAgentTaskKindSchema,
   status: ExtensionAgentTaskStatusSchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -227,13 +229,30 @@ export const PlanningAgentTaskSummarySchema = Type.Object({
   }, { additionalProperties: false })),
 }, { additionalProperties: false });
 
+export const PlanningAgentTaskListCompactCompletedRecordSchema = Type.Object({
+  taskId: ExtensionAgentTaskIdSchema,
+  kind: ExtensionAgentTaskKindSchema,
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  metadata: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)),
+  status: Type.Literal('completed'),
+  startedAt: Type.Optional(Type.String()),
+  completedAt: Type.String(),
+}, { additionalProperties: false });
+
+export const PlanningAgentTaskListTaskRecordSchema = Type.Union([
+  ExtensionAgentTaskRecordSchema,
+  PlanningAgentTaskListCompactCompletedRecordSchema,
+]);
+
 export const PlanningAgentTaskListItemSchema = Type.Object({
   entry: Type.Optional(PlanningTaskWorkflowEntrySchema),
   entrySummary: PlanningTaskWorkflowEntrySummarySchema,
   available: Type.Boolean(),
   status: Type.Optional(ExtensionAgentTaskStatusSchema),
   taskSummary: Type.Optional(PlanningAgentTaskSummarySchema),
-  task: Type.Optional(ExtensionAgentTaskRecordSchema),
+  task: Type.Optional(PlanningAgentTaskListTaskRecordSchema),
+  resultOmitted: Type.Optional(Type.Boolean()),
   staleReason: Type.Optional(Type.String()),
 }, JsonObjectAdditionalProperties);
 
@@ -241,8 +260,8 @@ export const ListPlanningAgentTasksOutputSchema = Type.Object({
   tasks: Type.Array(PlanningAgentTaskListItemSchema),
   total: Type.Integer({ minimum: 0 }),
   returned: Type.Integer({ minimum: 0 }),
-  limit: Type.Integer({ minimum: 1 }),
-  offset: Type.Integer({ minimum: 0 }),
+  limit: Type.Integer({ minimum: 1, maximum: MAX_PLANNING_AGENT_TASK_LIST_LIMIT, default: DEFAULT_PLANNING_AGENT_TASK_LIST_LIMIT }),
+  offset: Type.Integer({ minimum: 0, default: 0 }),
   hasMore: Type.Boolean(),
   nextOffset: Type.Optional(Type.Integer({ minimum: 0 })),
 }, JsonObjectAdditionalProperties);

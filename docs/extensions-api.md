@@ -373,16 +373,21 @@ const listPlanningArtifacts = defineExtensionAction({
     includeBoard: Type.Optional(Type.Boolean()),
     includeArchive: Type.Optional(Type.Boolean()),
     epic: Type.Optional(Type.String()),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    offset: Type.Optional(Type.Integer({ minimum: 0 })),
   }),
   outputSchema: Type.Object({
     artifacts: Type.Array(Type.Unknown()),
     plans: Type.Array(Type.Unknown()),
     planSets: Type.Array(Type.Unknown()),
+    total: Type.Integer({ minimum: 0 }),
+    limit: Type.Integer({ minimum: 1 }),
+    offset: Type.Integer({ minimum: 0 }),
     board: Type.Optional(Type.Unknown()),
   }),
   outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ["local-read"],
-  handler: () => ({ artifacts: [], plans: [], planSets: [] }),
+  handler: () => ({ artifacts: [], plans: [], planSets: [], total: 0, limit: 50, offset: 0 }),
 });
 
 eforge.registerAction(listPlanningArtifacts);

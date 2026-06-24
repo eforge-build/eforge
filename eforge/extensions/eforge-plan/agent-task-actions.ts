@@ -1,5 +1,5 @@
-import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness } from '@eforge-build/client';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, paginateContributionItems, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '@eforge-build/input';
 import {
   applyCompletedPlanningAgentTaskResult,
@@ -154,28 +154,54 @@ export const listPlanningAgentTasksAction = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const entries = listPlanningTaskWorkflowEntries(await readPlanningTaskWorkflowIndex(ctx.cwd)).filter((entry) => !isConsumedSessionPlanCreationEntry(entry));
-    const projection = normalizePlanningAgentTaskListProjection(input, ctx.requestedBy.host, entries.length);
-    const pageEntries = entries.slice(projection.offset, projection.offset + projection.limit);
-    const tasks = await Promise.all(pageEntries.map(async (entry) => {
+    const projection = normalizePlanningAgentTaskListProjection(input, ctx.requestedBy.host);
+    const page = paginateContributionItems(entries, { limit: projection.limit, offset: projection.offset }, { defaultLimit: 50, maxLimit: 100 });
+    const tasks = await Promise.all(page.items.map(async (entry) => {
       try {
         const response = await ctx.agentTasks.get(entry.taskId);
-        return projectPlanningAgentTaskListItem({ entry, task: response.task, includeEntry: projection.includeEntry, includeTask: projection.includeTask });
+        const originalResult = taskResult(response.task);
+        const task = projectTaskForList(response.task);
+        return {
+          ...projectPlanningAgentTaskListItem({ entry, task: response.task, includeEntry: projection.includeEntry, includeTask: false }),
+          ...(projection.includeTask ? { task } : {}),
+          ...(taskResult(task) === undefined && originalResult !== undefined ? { resultOmitted: true } : {}),
+        };
       } catch (err) {
         return projectMissingPlanningAgentTaskListItem({ entry, includeEntry: projection.includeEntry, staleReason: errorMessage(err) });
       }
     }));
-    const nextOffset = projection.offset + tasks.length;
+    const nextOffset = page.offset + tasks.length;
     return toJsonSafeObject({
       tasks,
-      total: entries.length,
+      total: page.total,
       returned: tasks.length,
-      limit: projection.limit,
-      offset: projection.offset,
-      hasMore: nextOffset < entries.length,
-      ...(nextOffset < entries.length ? { nextOffset } : {}),
+      limit: page.limit,
+      offset: page.offset,
+      hasMore: nextOffset < page.total,
+      ...(nextOffset < page.total ? { nextOffset } : {}),
     });
   },
 });
+
+function projectTaskForList(task: ExtensionAgentTaskRecord): ExtensionAgentTaskRecord {
+  const result = taskResult(task);
+  if (result === undefined || !shouldOmitTaskResultFromList(result)) return task;
+  const { result: _omitted, ...compactTask } = task as ExtensionAgentTaskRecord & { result?: unknown };
+  return compactTask as ExtensionAgentTaskRecord;
+}
+
+function taskResult(task: ExtensionAgentTaskRecord): unknown {
+  return 'result' in task ? task.result : undefined;
+}
+
+function shouldOmitTaskResultFromList(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false;
+  const record = result as Record<string, unknown>;
+  return record.backlogCurationDraft !== undefined
+    || record.recommendations !== undefined
+    || record.planDrafts !== undefined
+    || record.playbookDraft !== undefined;
+}
 
 export const removePlanningAgentTaskAction = defineExtensionAction({
   id: 'remove-planning-agent-task',

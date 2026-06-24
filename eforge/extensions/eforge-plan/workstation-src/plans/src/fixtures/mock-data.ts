@@ -489,8 +489,11 @@ function pushDynamicTask(params: { selection?: PlanningTaskWorkflowSelection; de
   return { task, entry };
 }
 
-export function listMockPlanningTasks(): PlanningAgentTaskListItem[] {
-  return [...dynamicPlanningTasks, ...mockPlanningTaskList];
+export function listMockPlanningTasks(input: JsonObject = {}): { tasks: PlanningAgentTaskListItem[]; total: number; limit: number; offset: number } {
+  const all = [...dynamicPlanningTasks, ...mockPlanningTaskList];
+  const limit = typeof input.limit === 'number' && Number.isInteger(input.limit) && input.limit > 0 ? Math.min(input.limit, 100) : 50;
+  const offset = typeof input.offset === 'number' && Number.isInteger(input.offset) && input.offset >= 0 ? input.offset : 0;
+  return { tasks: all.slice(offset, offset + limit), total: all.length, limit, offset };
 }
 
 export function startMockPlanningTaskFromInput(input: JsonObject): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
@@ -507,7 +510,7 @@ export function getMockRecommendationsResponse(): GetRecommendationsResponse {
 
 export function analyzeMockBacklog(input: JsonObject = {}): AnalyzeAllBacklogResponse {
   const itemAuditConcurrency = parseMockItemAuditConcurrency(input.itemAuditConcurrency);
-  const reusable = listMockPlanningTasks().find((item) => item.entry.purpose === 'backlog-curation' && item.entry.itemAuditConcurrency === itemAuditConcurrency && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
+  const reusable = listMockPlanningTasks().tasks.find((item) => item.entry.purpose === 'backlog-curation' && item.entry.itemAuditConcurrency === itemAuditConcurrency && !item.entry.appliedAt && (item.status === 'queued' || item.status === 'running' || item.status === 'completed'));
   if (reusable?.task) return { task: reusable.task, entry: reusable.entry, sourceFingerprint: reusable.entry.sourceFingerprint ?? mockBacklogCurationDraft.sourceFingerprint, reused: true };
   const response = pushDynamicTask({
     selection: {},
@@ -523,7 +526,7 @@ function parseMockItemAuditConcurrency(value: unknown): number {
 }
 
 export function relinkMockPlanningTask(parentTaskId: string, mode: 'retry' | 'redraft'): { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry } {
-  const parent = listMockPlanningTasks().find((item) => item.entry.taskId === parentTaskId)?.entry;
+  const parent = listMockPlanningTasks().tasks.find((item) => item.entry.taskId === parentTaskId)?.entry;
   const isCuration = parent?.purpose === 'backlog-curation';
   return pushDynamicTask({
     parentTaskId,
@@ -567,7 +570,7 @@ export function updateMockItem(input: JsonObject): { itemId: string; status: str
 }
 
 export function applyMockBacklogCurationDraft(taskId: string) {
-  const item = listMockPlanningTasks().find((entry) => entry.entry.taskId === taskId);
+  const item = listMockPlanningTasks().tasks.find((entry) => entry.entry.taskId === taskId);
   if (item) item.entry.appliedAt = '2026-06-07T00:40:00.000Z';
   const details = {
     itemChanges: mockBacklogCurationDraft.itemChanges.length,

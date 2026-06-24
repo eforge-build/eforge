@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { defineExtensionAction, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
 import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { toJsonSafeObject } from './json-safe.js';
 import {
@@ -75,6 +75,7 @@ export const listPlanRevisionSessionsAction = defineExtensionAction({
   description: 'List eforge-plan-owned revision sessions joined to daemon task records.',
   inputSchema: ListPlanRevisionSessionsInputSchema,
   outputSchema: PlanRevisionSessionsListOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const index = await readPlanRevisionIndex(ctx.cwd);

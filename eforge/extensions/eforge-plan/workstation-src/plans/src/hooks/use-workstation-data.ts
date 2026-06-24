@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
-import type { AdvisoryResponse, Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftUnitAdvisory, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
+import type { AdvisoryResponse, Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftPlanUnitListItem, DraftUnitAdvisory, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
@@ -16,7 +16,7 @@ export interface WorkstationDataState {
   recommendationFreshness: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   roadmapState: RoadmapStateResponse | null;
-  draftUnits: DraftPlanUnit[];
+  draftUnits: DraftPlanUnitListItem[];
   saveRoadmapState: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
   refreshRecommendations: () => Promise<RefreshRecommendationsResponse>;
   forkRecommendationToDraftUnit: (recommendationRef: string, title?: string) => Promise<DraftPlanUnit>;
@@ -43,7 +43,7 @@ export function useWorkstationData(): WorkstationDataState {
   const [recommendationFreshness, setRecommendationFreshness] = React.useState<RecommendationFreshnessView | null>(null);
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
   const [roadmapState, setRoadmapState] = React.useState<RoadmapStateResponse | null>(null);
-  const [draftUnits, setDraftUnits] = React.useState<DraftPlanUnit[]>([]);
+  const [draftUnits, setDraftUnits] = React.useState<DraftPlanUnitListItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 

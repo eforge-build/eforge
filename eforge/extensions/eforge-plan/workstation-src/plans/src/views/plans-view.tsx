@@ -12,7 +12,7 @@ import { ToneChip } from '@/components/ui/tone-chip';
 import { useToast } from '@/components/toast';
 import { useRouter } from '@/router';
 import type { Tone } from '@/lib/tone';
-import type { Artifact, Detail, DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
+import type { Artifact, Detail, DraftPlanUnit, DraftPlanUnitListItem, DraftUnitAdvisory, DraftUnitResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanData, PlanDetail, PlanSetDetail, PromoteDraftUnitResponse, Readiness, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput } from '@/types';
 import { planDisplayTitle } from '@/lib/plan-title';
 import { draftKey, parseDraftKey, usePlanNavigation } from '@/lib/plan-links';
 import { PlanDetailWorkspace } from './plans/plan-detail-workspace';
@@ -24,7 +24,7 @@ const bridge = getBridge();
 
 interface PlansViewProps {
   artifacts: Artifact[];
-  draftUnits: DraftPlanUnit[];
+  draftUnits: DraftPlanUnitListItem[];
   titles: Map<string, string>;
   onRefresh: () => Promise<void>;
   onUpdateDraftUnit: (input: UpdateDraftUnitInput) => Promise<DraftPlanUnit>;
@@ -57,13 +57,24 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
   const exitMergeMode = React.useCallback(() => { setMergeMode(false); setMerging(false); setMergeSelection(new Set()); }, []);
   const mergeUnits = React.useMemo(() => draftUnits.filter((unit) => mergeSelection.has(unit.unitId)), [draftUnits, mergeSelection]);
   const selectedDraftId = parseDraftKey(selectedKey);
-  const selectedDraft = selectedDraftId !== null ? draftUnits.find((unit) => unit.unitId === selectedDraftId) ?? null : null;
+  const selectedDraftListItem = selectedDraftId !== null ? draftUnits.find((unit) => unit.unitId === selectedDraftId) ?? null : null;
+  const [selectedDraftDetail, setSelectedDraftDetail] = React.useState<DraftPlanUnit | null>(null);
+  const selectedDraft = selectedDraftDetail?.unitId === selectedDraftId ? selectedDraftDetail : null;
   // The key still names a draft but no unit matches it (deleted elsewhere, or a
   // stale/shared URL): show an explicit gone state rather than a silent empty
   // placeholder.
-  const staleDraft = selectedDraftId !== null && selectedDraft === null;
+  const staleDraft = selectedDraftId !== null && selectedDraftListItem === null;
   const [detail, setDetail] = React.useState<Detail>(null);
   const [creating, setCreating] = React.useState(false);
+
+  React.useEffect(() => {
+    if (selectedDraftId === null || selectedDraftListItem === null) { setSelectedDraftDetail(null); return; }
+    let active = true;
+    void bridge.invokeAction<DraftUnitResponse>('get-draft-unit', { unitId: selectedDraftId })
+      .then((response) => { if (active) setSelectedDraftDetail(response.unit); })
+      .catch(() => { if (active) setSelectedDraftDetail(null); });
+    return () => { active = false; };
+  }, [selectedDraftId, selectedDraftListItem]);
 
   React.useEffect(() => {
     // Draft units render from in-memory state, not a detail fetch.
@@ -138,7 +149,7 @@ export function PlansView({ artifacts, draftUnits, titles, onRefresh, onUpdateDr
                           <span className="truncate font-medium text-text-bright">{unit.title}</span>
                           <Badge variant={unit.status === 'promoted' ? 'default' : 'outline'}>{unit.status}</Badge>
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{unit.items.length} item{unit.items.length === 1 ? '' : 's'}{unit.sourceRecommendationRef ? ` · ${unit.sourceRecommendationRef}` : ''}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{unit.itemCount} item{unit.itemCount === 1 ? '' : 's'}{unit.sourceRecommendationRef ? ` · ${unit.sourceRecommendationRef}` : ''}</p>
                       </button>
                     </div>
                   );

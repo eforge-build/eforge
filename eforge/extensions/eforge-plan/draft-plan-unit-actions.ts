@@ -1,4 +1,4 @@
-import { defineExtensionAction } from '@eforge-build/extension-sdk';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, paginateContributionItems } from '@eforge-build/extension-sdk';
 import { toJsonSafeObject } from './json-safe.js';
 import { userActionError } from './action-errors.js';
 import { listBacklogItems, readBacklogItem } from './markdown-store.js';
@@ -26,6 +26,7 @@ import {
   type DraftPlanUnit,
   type DraftPlanUnitIndex,
   type DraftPlanUnitItem,
+  type DraftPlanUnitListItem,
 } from './draft-plan-unit-schemas.js';
 import {
   createDraftPlanUnit,
@@ -133,15 +134,34 @@ const createDraftUnit = defineExtensionAction({
 const listDraftUnits = defineExtensionAction({
   id: 'list-draft-units',
   title: 'List draft plan units',
-  description: 'List all draft plan units newest-first, including promoted units.',
+  description: 'List draft plan units newest-first as compact paginated rows; use get-draft-unit for full intent and item-origin details.',
   inputSchema: ListDraftUnitsInputSchema,
   outputSchema: ListDraftUnitsOutputSchema,
+  outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ['local-read'],
-  async handler(_input, ctx) {
-    const units = listDraftPlanUnits(await readDraftPlanUnitIndex(ctx.cwd));
-    return toJsonSafeObject({ units });
+  async handler(input, ctx) {
+    const units = listDraftPlanUnits(await readDraftPlanUnitIndex(ctx.cwd)).map(projectDraftPlanUnitListItem);
+    const page = paginateContributionItems(units, input, { defaultLimit: 50, maxLimit: 100 });
+    return toJsonSafeObject({ units: page.items, total: page.total, limit: page.limit, offset: page.offset });
   },
 });
+
+function projectDraftPlanUnitListItem(unit: DraftPlanUnit): DraftPlanUnitListItem {
+  return {
+    unitId: unit.unitId,
+    title: unit.title,
+    provenance: unit.provenance,
+    ...(unit.sourceRecommendationRef !== undefined && { sourceRecommendationRef: unit.sourceRecommendationRef }),
+    ...(unit.profile !== undefined && { profile: unit.profile }),
+    itemIds: unit.items.map((item) => item.itemId),
+    itemCount: unit.items.length,
+    status: unit.status,
+    ...(unit.promotedSession !== undefined && { promotedSession: unit.promotedSession }),
+    ...(unit.promotedAt !== undefined && { promotedAt: unit.promotedAt }),
+    createdAt: unit.createdAt,
+    updatedAt: unit.updatedAt,
+  };
+}
 
 const getDraftUnit = defineExtensionAction({
   id: 'get-draft-unit',

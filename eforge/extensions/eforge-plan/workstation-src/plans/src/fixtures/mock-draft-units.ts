@@ -1,4 +1,4 @@
-import type { DraftPlanUnit, DraftPlanUnitItem, DraftUnitAdvisory, JsonObject, PlanningProfile } from '@/types';
+import type { DraftPlanUnit, DraftPlanUnitItem, DraftPlanUnitListItem, DraftUnitAdvisory, JsonObject, PlanningProfile } from '@/types';
 import { PLANNING_PROFILES } from '@/types';
 import { mockBoard, mockRecommendations } from './mock-data';
 
@@ -41,8 +41,24 @@ export function resetMockDraftUnits(): void {
   sequence = 0;
 }
 
-export function listMockDraftUnits(): { units: DraftPlanUnit[] } {
-  return { units: ordered().map(clone) };
+export function listMockDraftUnits(input: JsonObject = {}): { units: DraftPlanUnitListItem[]; total: number; limit: number; offset: number } {
+  const all = ordered().map((unit) => ({
+    unitId: unit.unitId,
+    title: unit.title,
+    provenance: unit.provenance,
+    ...(unit.sourceRecommendationRef !== undefined && { sourceRecommendationRef: unit.sourceRecommendationRef }),
+    ...(unit.profile !== undefined && { profile: unit.profile }),
+    itemIds: unit.items.map((item) => item.itemId),
+    itemCount: unit.items.length,
+    status: unit.status,
+    ...(unit.promotedSession !== undefined && { promotedSession: unit.promotedSession }),
+    ...(unit.promotedAt !== undefined && { promotedAt: unit.promotedAt }),
+    createdAt: unit.createdAt,
+    updatedAt: unit.updatedAt,
+  }));
+  const limit = typeof input.limit === 'number' && Number.isInteger(input.limit) && input.limit > 0 ? Math.min(input.limit, 100) : 50;
+  const offset = typeof input.offset === 'number' && Number.isInteger(input.offset) && input.offset >= 0 ? input.offset : 0;
+  return { units: all.slice(offset, offset + limit), total: all.length, limit, offset };
 }
 
 export function getMockDraftUnit(input: JsonObject): { unit: DraftPlanUnit } {

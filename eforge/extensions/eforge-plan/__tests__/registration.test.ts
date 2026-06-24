@@ -174,6 +174,9 @@ describe('eforge-plan extension registration', () => {
       'get-epic': 'agent-paginated',
       'search-items': 'agent-paginated',
       'list-board-compact': 'agent-paginated',
+      'list-draft-units': 'agent-paginated',
+      'list-planning-artifacts': 'agent-paginated',
+      'list-plan-revision-sessions': 'agent-paginated',
       'list-planning-agent-tasks': 'agent-paginated',
       'capture-item': 'agent-compact',
       'update-item': 'agent-compact',
@@ -184,10 +187,10 @@ describe('eforge-plan extension registration', () => {
     const listBoardOutput = actions.find((action) => action.id === 'list-board')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(listBoardOutput.properties as Record<string, unknown>).sort()).toEqual(['blockedReasons', 'epicProgress', 'epics', 'items', 'lanes', 'lifecycleLinks', 'recommendationStatus', 'recommendationSummary', 'traceSummaries']);
     const listPlanningArtifactsInput = actions.find((action) => action.id === 'list-planning-artifacts')?.inputSchema as Record<string, unknown>;
-    expect(Object.keys(listPlanningArtifactsInput.properties as Record<string, unknown>).sort()).toEqual(['epic', 'includeArchive', 'includeBoard', 'includeSubmitted']);
+    expect(Object.keys(listPlanningArtifactsInput.properties as Record<string, unknown>).sort()).toEqual(['epic', 'includeArchive', 'includeBoard', 'includeSubmitted', 'limit', 'offset']);
     const listPlanningArtifactsOutput = actions.find((action) => action.id === 'list-planning-artifacts')?.outputSchema as Record<string, unknown>;
-    expect(Object.keys(listPlanningArtifactsOutput.properties as Record<string, unknown>).sort()).toEqual(['artifacts', 'board', 'planSets', 'plans']);
-    expect(listPlanningArtifactsOutput.required).toEqual(['artifacts', 'plans', 'planSets']);
+    expect(Object.keys(listPlanningArtifactsOutput.properties as Record<string, unknown>).sort()).toEqual(['artifacts', 'board', 'limit', 'offset', 'planSets', 'plans', 'total']);
+    expect(listPlanningArtifactsOutput.required).toEqual(['artifacts', 'plans', 'planSets', 'total', 'limit', 'offset']);
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationFreshness', 'recommendationSummary', 'recommendations', 'status']);
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);
@@ -207,11 +210,42 @@ describe('eforge-plan extension registration', () => {
     expect(JSON.stringify(applyPlanningInput)).toMatch(/applyBacklogCurationDraft|previewAcknowledged|confirmApply|applyCurationOnly/);
     const previewCurationOutput = actions.find((action) => action.id === 'preview-backlog-curation-task')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation|recommendationFreshness|gitDelta/);
+    const listDraftUnitsInput = actions.find((action) => action.id === 'list-draft-units')?.inputSchema as Record<string, unknown>;
+    expect(Object.keys(listDraftUnitsInput.properties as Record<string, unknown>).sort()).toEqual(['limit', 'offset']);
+    const listDraftUnitsOutput = actions.find((action) => action.id === 'list-draft-units')?.outputSchema as Record<string, unknown>;
+    expect(Object.keys(listDraftUnitsOutput.properties as Record<string, unknown>).sort()).toEqual(['limit', 'offset', 'total', 'units']);
+    const listDraftUnitItemProperties = (((listDraftUnitsOutput.properties as Record<string, unknown>).units as { items: { properties: Record<string, unknown> } }).items.properties);
+    expect(listDraftUnitItemProperties.itemCount).toBeDefined();
+    expect(listDraftUnitItemProperties.itemIds).toBeDefined();
+    expect(listDraftUnitItemProperties.items).toBeUndefined();
+    expect(listDraftUnitItemProperties.intent).toBeUndefined();
     const listPlanningInput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.inputSchema as Record<string, unknown>;
     expect(Object.keys(listPlanningInput.properties as Record<string, unknown>).sort()).toEqual(['includeEntry', 'includeTask', 'limit', 'offset']);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
-    expect(JSON.stringify(listPlanningOutput)).toMatch(/taskSummary|total|returned|hasMore|nextOffset/);
+    const listPlanningProperties = listPlanningOutput.properties as Record<string, unknown>;
+    expect(listPlanningProperties.total).toBeDefined();
+    expect(listPlanningProperties.returned).toBeDefined();
+    expect(listPlanningProperties.limit).toBeDefined();
+    expect(listPlanningProperties.offset).toBeDefined();
+    expect(listPlanningProperties.hasMore).toBeDefined();
+    expect(listPlanningProperties.nextOffset).toBeDefined();
+    const listPlanningTaskProperties = ((listPlanningProperties.tasks as { items: { properties: Record<string, unknown> } }).items.properties);
+    expect(listPlanningTaskProperties.entrySummary).toBeDefined();
+    expect(listPlanningTaskProperties.taskSummary).toBeDefined();
+    expect(listPlanningTaskProperties.resultOmitted).toBeDefined();
     expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
+    const listRevisionInput = actions.find((action) => action.id === 'list-plan-revision-sessions')?.inputSchema as Record<string, unknown>;
+    const listRevisionInputProperties = listRevisionInput.properties as Record<string, Record<string, unknown>>;
+    expect(Object.keys(listRevisionInputProperties).sort()).toEqual(['includeDismissed', 'includePlan', 'limit', 'offset']);
+    expect(listRevisionInputProperties.limit).toMatchObject({ minimum: 1, maximum: expect.any(Number) });
+    expect(listRevisionInputProperties.offset).toMatchObject({ minimum: 0 });
+    const listRevisionOutput = actions.find((action) => action.id === 'list-plan-revision-sessions')?.outputSchema as Record<string, unknown>;
+    const listRevisionOutputProperties = listRevisionOutput.properties as Record<string, Record<string, unknown>>;
+    expect(Object.keys(listRevisionOutputProperties).sort()).toEqual(['limit', 'offset', 'sessions', 'total']);
+    expect(listRevisionOutput.required).toEqual(['sessions', 'total', 'limit', 'offset']);
+    expect(listRevisionOutputProperties.limit).toMatchObject({ minimum: 1, maximum: expect.any(Number) });
+    expect(listRevisionOutputProperties.offset).toMatchObject({ minimum: 0 });
+    expect(listRevisionOutputProperties.total).toMatchObject({ minimum: 0 });
     const planRevisionOutput = actions.find((action) => action.id === 'get-plan-revision-session')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(planRevisionOutput)).toMatch(/annotations|annotationSnapshot|quoteContext|capturedText/);
     const planningEntryOutput = actions.find((action) => action.id === 'open-planning-entry')?.outputSchema as Record<string, unknown>;

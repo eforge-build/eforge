@@ -90,7 +90,13 @@ function createMockBridge(): EforgeBridge {
     async invokeAction<TOutput>(actionId: string, input: JsonObject = {}): Promise<TOutput> {
       await new Promise((resolve) => setTimeout(resolve, 120));
       switch (actionId) {
-        case 'list-planning-artifacts': return { artifacts: getMockArtifacts(), ...(input.includeBoard === true ? { board: mockBoard } : {}) } as TOutput;
+        case 'list-planning-artifacts': {
+          const artifacts = getMockArtifacts();
+          const limit = typeof input.limit === 'number' && Number.isInteger(input.limit) && input.limit > 0 ? Math.min(input.limit, 100) : 50;
+          const offset = typeof input.offset === 'number' && Number.isInteger(input.offset) && input.offset >= 0 ? input.offset : 0;
+          const page = artifacts.slice(offset, offset + limit);
+          return { artifacts: page, plans: page.filter((artifact) => artifact.kind === 'plan'), planSets: page.filter((artifact) => artifact.kind === 'plan-set'), total: artifacts.length, limit, offset, ...(input.includeBoard === true ? { board: mockBoard } : {}) } as TOutput;
+        }
         case 'list-board': return mockBoard as TOutput;
         case 'list-board-compact': return getMockCompactBoard(input) as TOutput;
         case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;
@@ -107,7 +113,7 @@ function createMockBridge(): EforgeBridge {
         case 'start-planning-agent-task': return { task: startMockPlanningTaskFromInput(input).task } as TOutput;
         case 'get-planning-agent-task': return { task: { ...mockPlanningTask, taskId: String(input.taskId ?? mockPlanningTask.taskId) } } as TOutput;
         case 'preview-backlog-curation-task': return String(input.taskId ?? '').includes('full') ? mockFullAuditBacklogCurationPreview as TOutput : mockBacklogCurationPreview as TOutput;
-        case 'list-planning-agent-tasks': return { tasks: listMockPlanningTasks() } as TOutput;
+        case 'list-planning-agent-tasks': return listMockPlanningTasks(input) as TOutput;
         case 'retry-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'retry') as TOutput;
         case 'redraft-planning-agent-task': return relinkMockPlanningTask(String(input.taskId ?? ''), 'redraft') as TOutput;
         case 'cancel-planning-agent-task': return { task: cancelMockPlanningTask(String(input.taskId ?? mockPlanningTask.taskId), typeof input.reason === 'string' ? input.reason : undefined) } as TOutput;
@@ -142,7 +148,7 @@ function createMockBridge(): EforgeBridge {
         case 'update-session-plan-metadata': return mockMutationResult(String(input.session ?? ''), { profile: (input.profile as PlanData['profile']) ?? null, agent_profile: (input.agentProfile as string) ?? null, open_questions: (input.openQuestions as string[]) ?? [] }) as TOutput;
         case 'delete-session-plan': return { kind: 'deleted', session: String(input.session ?? ''), status: 'abandoned', message: `Deleted ${String(input.session ?? 'mock')} from active plans by marking it abandoned.` } as TOutput;
         case 'handoff-session-plan': return { kind: 'enqueued', message: `Enqueued .eforge/session-plans/${String(input.session ?? 'mock')}.md for build.`, queueSessionId: 'mock-build-session', pid: 1234, autoBuild: true } as TOutput;
-        case 'list-draft-units': return listMockDraftUnits() as TOutput;
+        case 'list-draft-units': return listMockDraftUnits(input) as TOutput;
         case 'get-draft-unit': return getMockDraftUnit(input) as TOutput;
         case 'fork-recommendation-to-draft-unit': return forkMockDraftUnit(input) as TOutput;
         case 'update-draft-unit': return updateMockDraftUnit(input) as TOutput;
