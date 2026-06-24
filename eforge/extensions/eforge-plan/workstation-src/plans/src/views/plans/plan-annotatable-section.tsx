@@ -15,7 +15,7 @@ interface Props {
   disabled: boolean;
   defaultOpen?: boolean;
   onSaveSection?: (dimension: string, content: string) => Promise<void>;
-  onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget) => void;
+  onSelectAnnotationTarget: (target: PlanRevisionAnnotationTarget, anchor?: DOMRect | null) => void;
 }
 
 /** A floating annotate affordance pinned to a rect inside the section root. */
@@ -130,9 +130,9 @@ export function AnnotatablePlanSection({ plan, dimension, content, disabled, def
     }
   }, [editing, expanded]);
 
-  const selectTarget = (target: PlanRevisionAnnotationTarget | null) => {
+  const selectTarget = (target: PlanRevisionAnnotationTarget | null, anchor?: DOMRect | null) => {
     if (!target) return;
-    onSelectAnnotationTarget(target);
+    onSelectAnnotationTarget(target, anchor ?? null);
     setSelection(null);
     setBlock(null);
     window.getSelection()?.removeAllRanges();
@@ -174,7 +174,7 @@ export function AnnotatablePlanSection({ plan, dimension, content, disabled, def
               {onSaveSection && !editing && (
                 <IconAction label={`Edit ${title}`} icon={<Pencil className="h-3.5 w-3.5" />} disabled={disabled} onClick={() => setEditing(true)} />
               )}
-              <IconAction label={`Annotate the entire ${title} section`} icon={<MessageSquarePlus className="h-3.5 w-3.5" />} disabled={disabled || !hasContent} onClick={() => selectTarget(buildSectionAnnotationTarget(dimension, title, content))} />
+              <IconAction label={`Annotate the entire ${title} section`} icon={<MessageSquarePlus className="h-3.5 w-3.5" />} disabled={disabled || !hasContent} onClick={(event) => selectTarget(buildSectionAnnotationTarget(dimension, title, content), event.currentTarget.getBoundingClientRect())} />
             </div>
           )}
         </div>
@@ -185,14 +185,14 @@ export function AnnotatablePlanSection({ plan, dimension, content, disabled, def
               <SafeMarkdown markdown={content} />
               {selection && !disabled && (
                 <div className="absolute z-20" style={{ top: selectionTop, left: selection.left, transform: selectionTransform }}>
-                  <Button type="button" size="xs" className="shadow-md" onMouseDown={(event) => event.preventDefault()} onClick={() => selectTarget(selection.target)}>
+                  <Button type="button" size="xs" className="shadow-md" onMouseDown={(event) => event.preventDefault()} onClick={(event) => selectTarget(selection.target, event.currentTarget.getBoundingClientRect())}>
                     <MessageSquarePlus className="h-3.5 w-3.5" /> Annotate
                   </Button>
                 </div>
               )}
               {block && !selection && !disabled && (
                 <div className="absolute z-10" style={{ top: block.top + 4, left: block.left, transform: 'translateX(-100%)' }}>
-                  <IconAction label={`Annotate this block in ${title}`} icon={<MessageSquarePlus className="h-3.5 w-3.5" />} variant="secondary" className="border border-border shadow-sm" onClick={() => selectTarget(block.target)} />
+                  <IconAction label={`Annotate this block in ${title}`} icon={<MessageSquarePlus className="h-3.5 w-3.5" />} variant="secondary" className="border border-border shadow-sm" onClick={(event) => selectTarget(block.target, event.currentTarget.getBoundingClientRect())} />
                 </div>
               )}
             </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanRevisionAnnotation } from '@/types';
 import { buildBlockAnnotationTarget, buildQuoteContext, buildSectionAnnotationTarget, buildSelectionAnnotationTarget, buildWholePlanAnnotationTarget, MAX_CAPTURED_TEXT, MAX_CONTEXT_TEXT, MAX_STEERING_TEXT } from './plan-revision-annotation-targets';
-import { annotationSubmitDisabledReason, openAnnotations, syncSelectedAnnotationIds } from './plan-revision-annotation-view-model';
+import { openAnnotations, revisionComposerDisabledReason, syncSelectedAnnotationIds, targetLabel } from './plan-revision-annotation-view-model';
 
 const brittleTargetKeys = ['offset', 'startOffset', 'endOffset', 'range', 'nodePath', 'selector', 'xpath'];
 
@@ -95,10 +95,23 @@ describe('plan revision annotation view model', () => {
     expect(syncSelectedAnnotationIds(['old', 'b'], open)).toEqual(['b', 'a']);
   });
 
-  it('reports disabled reasons for sticky annotation revision submission', () => {
-    expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: true, selectedCount: 1, includeOpenAnnotations: false, steering: '' })).toMatch(/already running/);
-    expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, selectedCount: 0, includeOpenAnnotations: false, steering: '' })).toMatch(/Select annotations/);
-    expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, selectedCount: 1, includeOpenAnnotations: false, steering: 'x'.repeat(MAX_STEERING_TEXT + 1) })).toMatch(/too long/);
-    expect(annotationSubmitDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, selectedCount: 0, includeOpenAnnotations: true, steering: '' })).toBeNull();
+  it('labels targets without repeating the dimension title', () => {
+    const withTarget = (overrides: Partial<PlanRevisionAnnotation['target']>): PlanRevisionAnnotation => ({ ...base, target: { ...base.target, ...overrides } });
+    // Distinct label keeps the "Dimension · Label" form.
+    expect(targetLabel(withTarget({ dimension: 'scope', label: 'Edge cases' }))).toBe('Scope · Edge cases');
+    // Label equal to the dimension title is shown once, not "Scope · Scope".
+    expect(targetLabel(withTarget({ dimension: 'scope', label: 'Scope' }))).toBe('Scope');
+    // No dimension falls back to the label (or the title-cased kind when label is absent).
+    expect(targetLabel(withTarget({ dimension: undefined, label: 'Custom label' }))).toBe('Custom label');
+    expect(targetLabel(withTarget({ kind: 'whole-plan', dimension: undefined, label: undefined }))).toBe('Whole Plan');
+  });
+
+  it('reports disabled reasons for the unified revision composer', () => {
+    expect(revisionComposerDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: true, grounded: true, message: '' })).toMatch(/already running/);
+    expect(revisionComposerDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, grounded: false, message: '' })).toMatch(/Add a message or include annotations/);
+    expect(revisionComposerDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, grounded: true, message: 'x'.repeat(MAX_STEERING_TEXT + 1) })).toMatch(/too long/);
+    // A bare message with no grounding is allowed - it becomes a plain message turn.
+    expect(revisionComposerDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, grounded: false, message: 'ask a question' })).toBeNull();
+    expect(revisionComposerDisabledReason({ disabled: false, loading: false, busy: false, hasRunningTurn: false, grounded: true, message: '' })).toBeNull();
   });
 });

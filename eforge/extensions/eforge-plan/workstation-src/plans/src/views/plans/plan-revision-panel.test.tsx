@@ -92,7 +92,7 @@ describe('PlanDetailCard revision workstation', () => {
     const invokeAction = vi.fn(async (actionId: string) => actionId === 'start-plan-revision-turn' ? { session } : session);
     renderDetail(invokeAction as EforgeBridge['invokeAction']);
     expect(screen.getByText('Revise with AI')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Ask the AI for plan revisions or answers'), { target: { value: 'Why?' } });
+    fireEvent.change(screen.getByLabelText('Message to AI'), { target: { value: 'Why?' } });
     const send = screen.getByRole('button', { name: /Send to AI/ });
     await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(send);

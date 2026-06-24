@@ -34,7 +34,10 @@ describe('AnnotatablePlanSection block granularity', () => {
     });
     fireEvent.focus(second);
     fireEvent.click(await screen.findByRole('button', { name: /Annotate this block in Design Decisions/ }));
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ kind: 'block', dimension: 'design-decisions', capturedText: 'Second decision' }));
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'block', dimension: 'design-decisions', capturedText: 'Second decision' }),
+      expect.objectContaining({ left: expect.any(Number), top: expect.any(Number) }),
+    );
   });
 
   it('treats a non-list paragraph as a single block', async () => {

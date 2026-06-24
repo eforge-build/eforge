@@ -28,8 +28,12 @@ export function shortAnnotationId(id: string): string {
 export function targetLabel(annotation: PlanRevisionAnnotation): string {
   const target = annotation.target;
   const kind = titleCase(target.kind);
-  const dimension = target.dimension ? `${titleCase(target.dimension)} · ` : '';
-  return `${dimension}${target.label || kind}`;
+  const dimension = target.dimension ? titleCase(target.dimension) : '';
+  const label = target.label || kind;
+  // Avoid repeating the dimension when the label is just its title (e.g. "Scope · Scope").
+  // `label` is always non-empty (falls back to `kind`), so it is the base result.
+  if (dimension && label !== dimension) return `${dimension} · ${label}`;
+  return label;
 }
 
 export function contextExcerpt(annotation: PlanRevisionAnnotation): string {
@@ -39,18 +43,17 @@ export function contextExcerpt(annotation: PlanRevisionAnnotation): string {
   return `${prefix}${capturedText || quoteContext.exact}${suffix}`;
 }
 
-export function timestampLabelData(annotation: PlanRevisionAnnotation) {
-  return [
-    { label: 'Created', value: annotation.createdAt },
-    { label: 'Updated', value: annotation.updatedAt },
-  ];
-}
-
-export function annotationSubmitDisabledReason(input: { loading: boolean; busy: boolean; hasRunningTurn: boolean; disabled: boolean; selectedCount: number; includeOpenAnnotations: boolean; steering: string }): string | null {
+/**
+ * Disabled reason for the unified revision composer. Annotations are the
+ * primary grounding, but a bare message is allowed (it becomes a plain
+ * question/global-change turn), so the only hard requirement is that there is
+ * either grounding or a non-empty message.
+ */
+export function revisionComposerDisabledReason(input: { loading: boolean; busy: boolean; hasRunningTurn: boolean; disabled: boolean; grounded: boolean; message: string }): string | null {
   if (input.disabled) return 'Plan is locked.';
   if (input.loading || input.busy) return 'Revision actions are busy.';
   if (input.hasRunningTurn) return 'A revision turn is already running.';
-  if (input.steering.length > MAX_STEERING_TEXT) return 'Steering text is too long.';
-  if (input.selectedCount === 0 && !input.includeOpenAnnotations) return 'Select annotations or include all open annotations.';
+  if (input.message.length > MAX_STEERING_TEXT) return 'Message is too long.';
+  if (!input.grounded && input.message.trim().length === 0) return 'Add a message or include annotations.';
   return null;
 }
