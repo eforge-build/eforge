@@ -12,15 +12,8 @@ import {
   type PlanningDepth,
   type PlanningType,
 } from '@eforge-build/input';
-import {
-  blockerRiskProjection,
-  dependencyProjection,
-  extractMarkdownSections,
-  isOpenStatus,
-  orderedSourceReferenceSummaries,
-  type BacklogEpic,
-  type BacklogItem,
-} from './backlog-domain.js';
+import { isOpenStatus, orderedSourceReferenceSummaries, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
+import { buildDependencyContext, projectPlannerEpic, projectPlannerItem } from './planner-context-projections.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { promoteBacklogSelection } from './promote.js';
 import { resolvePromotionSelection } from './promotion-selection.js';
@@ -73,11 +66,11 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
       ...(input.recommendationRef !== undefined && { recommendationRef: input.recommendationRef }),
       ...(input.itemIds !== undefined && input.sourceRecommendationRef !== undefined && { sourceRecommendationRef: input.sourceRecommendationRef }),
     },
-    items: selected.items.map((item, index) => projectItem(item, sourceRefs[index])),
-    epics: selected.epics.map((epic) => projectEpic(epic)),
+    items: selected.items.map((item, index) => projectPlannerItem(item, sourceRefs[index])),
+    epics: selected.epics.map((epic) => projectPlannerEpic(epic)),
     recommendations: { exists: recommendationModel !== null, model: recommendations, summary: summarizeRecommendations(recommendations) },
     recommendationRationale: recommendations.rationaleAndAssumptions,
-    dependencies: dependencyContext(selected.items),
+    dependencies: buildDependencyContext(selected.items),
     roadmapContext: await buildRoadmapContext(cwd, { includeRoadmap }),
     traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
   };
@@ -573,34 +566,3 @@ function selectionKind(input: PlannerContextInput): string {
   return 'open-backlog';
 }
 
-function projectItem(item: BacklogItem, sourceReference: string | undefined) {
-  return {
-    id: item.id,
-    title: item.title,
-    status: item.status,
-    ...(item.epic !== undefined && { epic: item.epic }),
-    tags: item.tags,
-    dependencies: item.depends_on,
-    sections: Object.fromEntries(extractMarkdownSections(item.body)),
-    sourceReferences: sourceReference ? [sourceReference] : [],
-  };
-}
-
-function projectEpic(epic: BacklogEpic) {
-  return {
-    id: epic.id,
-    title: epic.title,
-    status: epic.status,
-    tags: epic.tags,
-    sections: Object.fromEntries(extractMarkdownSections(epic.body)),
-  };
-}
-
-function dependencyContext(items: readonly BacklogItem[]) {
-  const risks = new Map(blockerRiskProjection(items).map((entry) => [entry.itemId, entry]));
-  return dependencyProjection(items).map((entry) => ({
-    ...entry,
-    blockers: risks.get(entry.itemId)?.blockers ?? [],
-    risks: risks.get(entry.itemId)?.risks ?? [],
-  }));
-}

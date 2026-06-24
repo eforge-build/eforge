@@ -12,3 +12,9 @@ export { rowToQueuePrd, rowToBuildRun, rowToBuildSession, rowToLandingLink, upse
 export { rowToImportRun, rowToImportDiagnostic, recordImportRun, recordImportDiagnostic } from './repositories/import-runs.js';
 export { rowToMaintenanceRun, recordMaintenanceRun } from './repositories/maintenance.js';
 export { rowToSearchDocument, replaceSearchDocument, markSearchIndexDirty, markSearchIndexDirtyBatch, clearSearchIndexDirty, getSearchIndexState } from './repositories/search-documents.js';
+// --- eforge:region plan-04-projections-lifecycle ---
+export * from './repositories/projections/items.js';
+export * from './repositories/projections/lifecycle.js';
+export * from './repositories/projections/recommendations.js';
+export * from './repositories/projections/session-plans.js';
+// --- eforge:endregion plan-04-projections-lifecycle ---

@@ -11,6 +11,9 @@ import { summarizeProjectTraces } from './trace-activity.js';
 import type { SessionPlanLifecycleProjection } from './backlog-domain.js';
 import { updateSessionPlanMetadata } from './session-plan-metadata.js';
 import { recordSessionPlanSubmitted, syncSessionPlanFile } from './canonical/session-plan-records.js';
+// --- eforge:region plan-04-projections-lifecycle ---
+import { getSessionPlanLifecycleProjection, listPlanningArtifactsProjection, showSessionPlanProjection } from './projections/index.js';
+// --- eforge:endregion plan-04-projections-lifecycle ---
 import { withCanonicalTransaction } from './canonical/store.js';
 import {
   projectPlanningArtifacts,
@@ -55,7 +58,10 @@ export const listPlanningArtifacts = defineExtensionAction({
   outputSchema: ListPlanningArtifactsOutputSchema,
   outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
   sideEffects: ['local-read'],
-  async handler(input, ctx) {
+  async handler(input, ctx): Promise<any> {
+    // --- eforge:region plan-04-projections-lifecycle ---
+    return toJsonSafeObject(await listPlanningArtifactsProjection(ctx.cwd, input));
+    // --- eforge:endregion plan-04-projections-lifecycle ---
     const planning = adapter();
     const [plans, planSets] = await Promise.all([
       planning.flat.list({ cwd: ctx.cwd, includeSubmitted: input.includeSubmitted }),
@@ -89,7 +95,10 @@ export const showSessionPlan = defineExtensionAction({
   inputSchema: ShowSessionPlanInputSchema,
   outputSchema: ShowSessionPlanOutputSchema,
   sideEffects: ['local-read'],
-  async handler(input, ctx) {
+  async handler(input, ctx): Promise<any> {
+    // --- eforge:region plan-04-projections-lifecycle ---
+    return toJsonSafeObject(await showSessionPlanProjection(ctx.cwd, input.session));
+    // --- eforge:endregion plan-04-projections-lifecycle ---
     const loaded = await adapter().flat.load({ cwd: ctx.cwd, session: input.session });
     const lifecycle = await buildLifecycleForPlan(ctx.cwd, loaded.plan);
     return toJsonSafeObject(projectSessionPlanDetail({ ...loaded, lifecycle }));
@@ -339,6 +348,10 @@ async function syncFlatSessionPlan(cwd: string, session: string, path: string): 
 }
 
 async function buildLifecycleBySession(cwd: string, sessions: readonly string[]): Promise<Map<string, SessionPlanLifecycleProjection>> {
+  // --- eforge:region plan-04-projections-lifecycle ---
+  const sqlEntries = await Promise.all(sessions.map(async (session) => [session, await getSessionPlanLifecycleProjection(cwd, session)] as const));
+  return new Map(sqlEntries as unknown as readonly (readonly [string, SessionPlanLifecycleProjection])[]);
+  // --- eforge:endregion plan-04-projections-lifecycle ---
   const planning = adapter();
   const entries = await Promise.all(sessions.map(async (session) => {
     try {
@@ -352,6 +365,9 @@ async function buildLifecycleBySession(cwd: string, sessions: readonly string[])
 }
 
 async function buildLifecycleForPlan(cwd: string, plan: Parameters<typeof projectSessionPlanSourceRefs>[0]): Promise<SessionPlanLifecycleProjection> {
+  // --- eforge:region plan-04-projections-lifecycle ---
+  return await getSessionPlanLifecycleProjection(cwd, plan.session) as unknown as SessionPlanLifecycleProjection;
+  // --- eforge:endregion plan-04-projections-lifecycle ---
   const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
   const traceSummaries = await summarizeProjectTraces(cwd, traces);
   return projectSessionPlanLifecycle({ session: plan.session, sourceRefs: projectSessionPlanSourceRefs(plan), items, epics, traceSummaries });

@@ -7,6 +7,9 @@ import {
   type Static,
 } from '@eforge-build/extension-sdk';
 import { extractMarkdownSections, isClosedStatus, type BacklogEpic, type BacklogItem, type KanbanLane } from './backlog-domain.js';
+// --- eforge:region plan-04-projections-lifecycle ---
+import { getEpicDetailProjection, getItemDetailProjection, listBoardCompactProjection } from './projections/index.js';
+// --- eforge:endregion plan-04-projections-lifecycle ---
 import { projectKanbanBoard, type KanbanCard } from './kanban.js';
 import {
   listBacklogEpics,
@@ -36,8 +39,16 @@ const CompactItemSchema = Type.Object({
   ready: Type.Boolean(),
   reviewDue: Type.Boolean(),
   closed: Type.Boolean(),
+  hasBody: Type.Optional(Type.Boolean()),
+  updatedAt: Type.Optional(Type.String()),
   epic: Type.Optional(Type.String()),
   lifecycleState: LifecycleStateSchema,
+  // --- eforge:region plan-04-projections-lifecycle ---
+  userStatus: Type.Optional(BacklogStatusSchema),
+  effectiveLifecycle: Type.Optional(LifecycleStateSchema),
+  reasonCodes: Type.Optional(Type.Array(Type.String())),
+  associatedLinks: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: Type.Unknown() }))),
+  // --- eforge:endregion plan-04-projections-lifecycle ---
 }, { additionalProperties: false });
 
 const CompactLifecycleLinkRowSchema = Type.Object({}, { additionalProperties: Type.Unknown() });
@@ -46,9 +57,11 @@ const CompactEpicSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
   status: BacklogStatusSchema,
+  userStatus: Type.Optional(BacklogStatusSchema),
   priority: Type.Optional(Type.String()),
   tags: Type.Array(Type.String()),
   itemCount: Type.Integer({ minimum: 0 }),
+  totalItems: Type.Optional(Type.Integer({ minimum: 0 })),
   openItemCount: Type.Integer({ minimum: 0 }),
   hasBody: Type.Boolean(),
 }, { additionalProperties: false });
@@ -99,6 +112,8 @@ const GetEpicOutputSchema = Type.Object({
   }, { additionalProperties: false }),
   items: Type.Array(CompactItemSchema),
   totalItems: Type.Integer({ minimum: 0 }),
+  itemCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  openItemCount: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Integer({ minimum: 1 }),
   offset: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
@@ -224,47 +239,16 @@ export const backlogQueryActions = [
 // --- eforge:endregion compact-query-actions ---
 
 // --- eforge:region compact-query-projection ---
-async function getItemDetail(cwd: string, input: GetItemInput) {
-  const [items, epics, cards] = await loadBoardCards(cwd, true);
-  const selected = items.find((candidate) => candidate.id === input.id);
-  if (!selected) throw new Error(`Backlog item "${input.id}" was not found.`);
-  const card = cards.byId.get(selected.id) ?? cardForItem(selected, items, epics);
-  const epic = selected.epic ? epics.find((candidate) => candidate.id === selected.epic) : undefined;
-  return {
-    schemaVersion: 1 as const,
-    item: {
-      ...compactItem(card, { includeDependencies: input.includeDependencies !== false }),
-      path: resolveBacklogItemRelativePath(cwd, selected.id),
-      ...(input.includeSections !== false ? { sections: Object.fromEntries(extractMarkdownSections(selected.body)) } : {}),
-      ...(input.includeLifecycleRows !== false ? { linkRows: card.linkRows, failureEvidence: card.failureEvidence } : {}),
-      ...(input.includeBody ? { body: selected.body } : {}),
-    },
-    ...(input.includeEpic !== false && epic ? { epic: compactEpic(epic, items) } : {}),
-    ...(input.includeDependencies !== false ? { dependencies: card.dependencies.filter((dependency) => !dependency.missing).map((dependency) => compactItem(cards.byId.get(dependency.id) ?? cardForRequiredItem(dependency.id, items, epics))) } : {}),
-    ...(input.includeDependents !== false ? { dependents: card.dependents.filter((dependent) => !dependent.missing).map((dependent) => compactItem(cards.byId.get(dependent.id) ?? cardForRequiredItem(dependent.id, items, epics), { includeDependencies: input.includeDependencies !== false })) } : {}),
-  };
+async function getItemDetail(cwd: string, input: GetItemInput): Promise<any> {
+  // --- eforge:region plan-04-projections-lifecycle ---
+  return getItemDetailProjection(cwd, input);
+  // --- eforge:endregion plan-04-projections-lifecycle ---
 }
-
-async function getEpicDetail(cwd: string, input: GetEpicInput) {
-  const [epic, items, epics, cards] = await loadEpicProjection(cwd, input.id);
-  if (!epic) throw new Error(`Backlog epic "${input.id}" was not found.`);
-  const allEpicItems = input.includeItems === false ? [] : cards.all.filter((card) => card.epic === epic.id);
-  const page = paginate(allEpicItems, input);
-  return {
-    schemaVersion: 1 as const,
-    epic: {
-      ...compactEpic(epic, items),
-      path: resolveBacklogEpicRelativePath(cwd, epic.id),
-      ...(input.includeSections !== false ? { sections: Object.fromEntries(extractMarkdownSections(epic.body)) } : {}),
-      ...(input.includeBody ? { body: epic.body } : {}),
-    },
-    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeItemDependencies !== false })),
-    totalItems: allEpicItems.length,
-    limit: page.limit,
-    offset: page.offset,
-  };
+async function getEpicDetail(cwd: string, input: GetEpicInput): Promise<any> {
+  // --- eforge:region plan-04-projections-lifecycle ---
+  return getEpicDetailProjection(cwd, input);
+  // --- eforge:endregion plan-04-projections-lifecycle ---
 }
-
 async function searchItems(cwd: string, input: SearchItemsInput) {
   const [items, epics, cards] = await loadBoardCards(cwd, input.includeArchive);
   const query = input.query?.trim().toLowerCase();
@@ -289,38 +273,11 @@ async function searchItems(cwd: string, input: SearchItemsInput) {
   };
 }
 
-async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
-  const [items, epics, cards] = await loadBoardCards(cwd, input.includeArchive === true, input.epic);
-  const scopedCards = cards.all;
-  const scopedIds = new Set(scopedCards.map((card) => card.id));
-  const scopedLanes = cards.lanes.map((lane) => ({ ...lane, items: lane.items.filter((card) => scopedIds.has(card.id)) }));
-  const filtered = scopedCards.filter((card) => {
-    if (input.lane !== undefined && card.lane !== input.lane) return false;
-    if (!input.includeClosed && card.closed) return false;
-    return true;
-  });
-  const selectedLaneFilteredTotal = input.lane === undefined ? undefined : filtered.length;
-  const page = paginate(filtered, input);
-  const pagination = pageMetadata(page, filtered.length);
-  return {
-    schemaVersion: 1 as const,
-    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeDependencies !== false })),
-    total: filtered.length,
-    limit: page.limit,
-    offset: page.offset,
-    ...(input.includeLaneCounts !== false ? {
-      lanes: scopedLanes.map((lane) => laneSummary(lane, page, input.lane, selectedLaneFilteredTotal)),
-      counts: {
-        total: scopedCards.length,
-        open: scopedCards.filter((card) => !card.closed).length,
-        closed: scopedCards.filter((card) => card.closed).length,
-      },
-    } : {}),
-    ...(input.includeEpics !== false ? { epics: epics.filter((epic) => input.epic === undefined || epic.id === input.epic).map((epic) => compactEpic(epic, items)) } : {}),
-    pagination,
-  };
+async function listBoardCompact(cwd: string, input: ListBoardCompactInput): Promise<any> {
+  // --- eforge:region plan-04-projections-lifecycle ---
+  return listBoardCompactProjection(cwd, input);
+  // --- eforge:endregion plan-04-projections-lifecycle ---
 }
-
 async function loadEpicProjection(cwd: string, epicId: string): Promise<[BacklogEpic | null, BacklogItem[], BacklogEpic[], { all: KanbanCard[]; byId: Map<string, KanbanCard> }]> {
   const [items, epics, cards] = await loadBoardCards(cwd, true, epicId);
   return [await readBacklogEpic(cwd, epicId), items, epics, cards];

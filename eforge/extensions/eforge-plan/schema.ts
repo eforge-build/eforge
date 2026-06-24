@@ -177,6 +177,7 @@ export const GetRecommendationsOutputSchema = Type.Object({
     recommendationActionability: Type.Optional(RecommendationActionabilityProjectionSchema),
   path: Type.String(),
   status: RecommendationDerivedStatusSchema,
+  recommendationFreshness: Type.Optional(Type.Unknown()),
   activeRefreshTask: Type.Optional(ExtensionAgentTaskRecordSchema),
 }, { additionalProperties: false });
 export const PutRecommendationsInputSchema = BacklogRecommendationModelSchema;

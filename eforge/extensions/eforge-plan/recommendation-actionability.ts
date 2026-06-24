@@ -25,6 +25,9 @@ import type {
   RecommendationGroupActionability,
   RecommendationItemActionability,
 } from './schema.js';
+// --- eforge:region plan-04-projections-lifecycle ---
+import { buildRecommendationActionability as buildSqlRecommendationActionability, findNonterminalCoverage } from './projections/index.js';
+// --- eforge:endregion plan-04-projections-lifecycle ---
 
 export interface AgentTaskReader {
   get(taskId: string): Promise<{ task: ExtensionAgentTaskRecord }>;
@@ -44,6 +47,9 @@ export async function buildRecommendationActionability(
   recommendations: BacklogRecommendationModel,
   agentTasks?: AgentTaskReader,
 ): Promise<RecommendationActionabilityProjection> {
+  // --- eforge:region plan-04-projections-lifecycle ---
+  return await buildSqlRecommendationActionability(cwd, recommendations) as RecommendationActionabilityProjection;
+  // --- eforge:endregion plan-04-projections-lifecycle ---
   const index = await buildRecommendationActionabilityIndex(cwd, recommendations, agentTasks);
   return {
     schemaVersion: 1,
@@ -73,6 +79,15 @@ export async function assertRecommendationSelectionActionable(
   selectorPath = 'itemIds',
 ): Promise<void> {
   if (selectedItemIds.length === 0) return;
+  // --- eforge:region plan-04-projections-lifecycle ---
+  const coverage = await findNonterminalCoverage(cwd, { itemIds: [...new Set(selectedItemIds)] });
+  if (!coverage.ok) {
+    const suppressedItems = coverage.entries.map((entry) => ({ itemId: entry.itemId, state: 'non-actionable' as const, lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemId} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks }));
+    const summary = suppressedItems.map((item) => `${item.itemId}: ${item.reasonMessage}`).join('; ');
+    throw userActionError(`Selected backlog work is already planned or in process: ${summary}.`, { path: selectorPath, details: { suppressedItems: jsonSafe(suppressedItems) } });
+  }
+  return;
+  // --- eforge:endregion plan-04-projections-lifecycle ---
   const recommendations = await readRecommendations(cwd);
   const index = await buildRecommendationActionabilityIndex(cwd, recommendations ?? undefined, agentTasks);
   const suppressed = [...new Set(selectedItemIds)]

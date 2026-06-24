@@ -14,7 +14,7 @@ Required preview payload fields for curation UI and fixtures are:
 - `recommendationProjection` — the prospective overlay used by both preview and apply validation.
 - `recommendationProjection.effectiveRecommendations` / `effectiveRecommendations` display counts and expandable details — the generated recommendations after closed targets are removed and active/planned targets are repositioned or excluded by the server.
 - `recommendationFreshness` — server labels and fingerprint comparison state for `missing`, `fresh`, or `stale`.
-- `recommendationActionability` — read-time server projection for recommendation entries and safe-parallel groups, including actionable/non-actionable state, lifecycle state, reason codes/messages, associated links, and group `actionableItemIds`/`suppressedItemIds`.
+- `recommendationActionability` — read-time server projection for recommendation entries and safe-parallel groups, including compatibility actionable/non-actionable state, disposition (`actionable`, `suppressed`, `de-actioned`, or `relocated`), lifecycle state, reason codes/messages, associated links, and group `actionableItemIds`/`suppressedItemIds`.
 - `generatedRecommendationValidation` — validation issues for unknown, closed, empty, or `wrong-lane` references.
 - Draft rows for item changes, epic changes, no-op rechecks, unresolved-exception rows, and needs-input rows.
 
@@ -34,7 +34,7 @@ Fenced `mermaid` code blocks render as diagrams in workstation Markdown views. R
 
 ## Freshness labels
 
-Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. Render `recommendationActionability` exactly as returned for recommendation enablement, suppression reasons, lifecycle evidence links, and mixed safe-parallel groups; do not derive suppression from local board lifecycle fields. Direct `start-planning-agent-task` calls remain guarded server-side for stale UIs or external invocation. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness and actionability state.
+Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. Render `recommendationActionability` exactly as returned for recommendation enablement, disposition, suppression/de-action reasons, lifecycle evidence links, and mixed safe-parallel groups; do not derive suppression from local board lifecycle fields. Direct `start-planning-agent-task` calls remain guarded server-side for stale UIs or external invocation. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness and actionability state.
 
 ## Mock bridge and fixtures
 

@@ -20,6 +20,9 @@ import {
   summarizeRecommendations,
   writeRecommendations,
 } from './recommendations-store.js';
+// --- eforge:region plan-04-projections-lifecycle ---
+import { getRecommendationProjection } from './projections/index.js';
+// --- eforge:endregion plan-04-projections-lifecycle ---
 
 export const getRecommendations = defineExtensionAction({
   id: 'get-recommendations',
@@ -28,22 +31,12 @@ export const getRecommendations = defineExtensionAction({
   inputSchema: GetRecommendationsInputSchema,
   outputSchema: GetRecommendationsWithStatusOutputSchema,
   sideEffects: ['local-read'],
-  async handler(_input, ctx) {
-    const path = resolveRecommendationsPath(ctx.paths);
-    const recommendations = await readRecommendations(ctx.cwd);
-    const status = await readDerivedRecommendationStatus(ctx.cwd, path);
-    const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
-    const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd, status.sourceFingerprint);
-    const recommendationActionability = recommendations === null ? undefined : await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks);
-    return toJsonSafeObject({
-      recommendations,
-      recommendationSummary: summarizeRecommendations(recommendations),
-      ...(recommendationActionability !== undefined && { recommendationActionability }),
-      path,
-      status,
-      recommendationFreshness,
-      ...(activeRefresh !== undefined && { activeRefreshTask: activeRefresh.task }),
-    });
+  async handler(_input, ctx): Promise<any> {
+    // --- eforge:region plan-04-projections-lifecycle ---
+    const projection = await getRecommendationProjection(ctx.cwd);
+    const activeRefresh = projection.activeRefreshTask ?? (await readActiveRefreshTaskIfAvailable(ctx))?.task;
+    return toJsonSafeObject({ ...projection, ...(activeRefresh ? { activeRefreshTask: activeRefresh } : {}) });
+    // --- eforge:endregion plan-04-projections-lifecycle ---
   },
 });
 
