@@ -58,6 +58,9 @@ export function matchesQuery(item: BoardItem, query: string): boolean {
     item.dependencies.map((dep) => dep.id).join(' '), item.epic ?? '', item.epicRef?.title ?? '',
     item.notes?.claim ?? '', item.notes?.evidence ?? '', item.notes?.recheck ?? '',
     lifecycleSearchText,
+    item.userStatus ?? '', item.effectiveLifecycle ?? '', (item.reasonCodes ?? []).join(' '),
+    (item.associatedLinks ?? []).map((row) => [row.kind, row.label, row.session, row.runId, row.prUrl, row.commitSha].filter(Boolean).join(' ')).join(' '),
+    (item.snippets ?? []).join(' '),
   ].join('\n').toLowerCase();
   return haystack.includes(query);
 }

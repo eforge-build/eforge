@@ -23,6 +23,7 @@ export const RecommendationFreshnessViewSchema = Type.Object({
   storedSourceFingerprint: Type.Optional(Type.String()),
   comparedSourceFingerprint: Type.String(),
   baselineTaskId: Type.Optional(Type.String()),
+  staleReasons: Type.Optional(Type.Array(RecommendationStaleReasonSchema, { maxItems: 20 })),
 }, { additionalProperties: false });
 
 export const GetRecommendationsWithStatusOutputSchema = Type.Object({

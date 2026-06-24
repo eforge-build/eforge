@@ -22,6 +22,8 @@ import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-a
 import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
+import { assertNoCanonicalNonterminalCoverage } from './canonical/coverage.js';
+import { resolvePromotionSelection } from './promotion-selection.js';
 import { normalizePlanningAgentTaskListProjection, projectMissingPlanningAgentTaskListItem, projectPlanningAgentTaskListItem } from './planning-agent-task-projection.js';
 import { assertRecommendationSelectionActionable } from './recommendation-actionability.js';
 import {
@@ -69,7 +71,9 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
       includeRoadmap: input.includeRoadmap,
     });
     throwIfAborted(ctx.signal);
-    await assertRecommendationSelectionActionable(ctx.cwd, hasBacklogSelection(selection) ? context.items.map((item) => item.id) : [], ctx.agentTasks, selectionValidationPath(selection));
+    const selectedItemIds = hasBacklogSelection(selection) ? context.items.map((item) => item.id) : [];
+    assertNoCanonicalNonterminalCoverage(ctx.cwd, selectedItemIds);
+    await assertRecommendationSelectionActionable(ctx.cwd, selectedItemIds, ctx.agentTasks, selectionValidationPath(selection));
     const derivedGoal = deriveUserGoal(input.userGoal, selection, context);
     const requestedOutputSections = resolveRequestedOutputSections(input, selection);
     const planningType = typeof input.planningType === 'string' ? input.planningType : undefined;
@@ -320,6 +324,10 @@ interface StartLinkedTaskParams {
 async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedTaskParams): Promise<PlanningAgentTaskWorkflowStartOutput> {
   const { parent } = params;
   const requested = params.requestedOutputSections.length > 0 ? params.requestedOutputSections : undefined;
+  if (!isBacklogCurationWorkflowEntry(parent) && hasBacklogSelection(parent.selection)) {
+    const selection = await resolvePromotionSelection({ cwd: ctx.cwd, itemIds: parent.selection.itemIds, epicId: parent.selection.epicId, recommendationRef: parent.selection.recommendationRef });
+    assertNoCanonicalNonterminalCoverage(ctx.cwd, selection.itemIds, { excludePlanningTaskIds: [parent.taskId] });
+  }
   const sessionPlanCreationReadiness = buildSessionPlanCreationReadiness(requested, parent.planningType, parent.planningDepth);
   const response = await ctx.agentTasks.start({
     kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,

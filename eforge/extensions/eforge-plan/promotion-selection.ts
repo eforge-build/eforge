@@ -7,6 +7,7 @@ import {
   type BacklogItem,
 } from './backlog-domain.js';
 import { listBacklogItems, readBacklogEpic, readBacklogItem } from './markdown-store.js';
+import { backlogItemRowToDomain, epicRowToDomain, listCanonicalBacklogItems, readCanonicalBacklogItem, readCanonicalEpic } from './canonical/backlog-records.js';
 import { readRecommendations } from './recommendations-store.js';
 import { userActionError } from './action-errors.js';
 import type { BacklogRecommendationModel, PlanningProfileInput, RecommendationGroup, RecommendationItemRef } from './schema.js';
@@ -88,9 +89,9 @@ async function resolveExplicitItems(cwd: string, itemIds: string[]): Promise<Res
 }
 
 async function resolveEpicItems(cwd: string, epicId: string): Promise<ResolvedSelection> {
-  const epic = await readBacklogEpic(cwd, epicId);
+  const epic = await readCanonicalEpicDomain(cwd, epicId);
   if (!epic) throw userActionError(`Backlog epic not found: ${epicId}`, { path: 'epicId', details: { epicId } });
-  const items = sortItemsDependencyBeforeDependent(itemsForEpic(await listBacklogItems(cwd), epicId));
+  const items = sortItemsDependencyBeforeDependent(itemsForEpic(await listCanonicalBacklogItemsDomain(cwd), epicId));
   if (items.length === 0) throw userActionError(`No open backlog items found for epic: ${epicId}`, { path: 'epicId', details: { epicId } });
   return { items, extraEpicIds: [epicId], title: epic.title };
 }
@@ -123,7 +124,7 @@ async function resolveRecommendationItems(cwd: string, recommendationRef: string
 async function readRequiredItems(cwd: string, itemIds: string[]): Promise<BacklogItem[]> {
   const items: BacklogItem[] = [];
   for (const itemId of itemIds) {
-    const item = await readBacklogItem(cwd, itemId);
+    const item = await readCanonicalBacklogItemDomain(cwd, itemId);
     if (!item) throw userActionError(`Backlog item not found: ${itemId}`, { path: 'itemIds', details: { itemId } });
     items.push(item);
   }
@@ -137,10 +138,26 @@ function relatedEpicIds(items: readonly BacklogItem[], extraEpicIds: readonly st
 async function resolveRelatedEpics(cwd: string, epicIds: readonly string[]): Promise<BacklogEpic[]> {
   const epics: BacklogEpic[] = [];
   for (const epicId of epicIds) {
-    const epic = await readBacklogEpic(cwd, epicId);
+    const epic = await readCanonicalEpicDomain(cwd, epicId);
     if (epic) epics.push(epic);
   }
   return epics;
+}
+
+async function readCanonicalBacklogItemDomain(cwd: string, itemId: string): Promise<BacklogItem | undefined> {
+  const canonical = readCanonicalBacklogItem(cwd, itemId);
+  return canonical ? backlogItemRowToDomain(canonical) : (await readBacklogItem(cwd, itemId) ?? undefined);
+}
+
+async function readCanonicalEpicDomain(cwd: string, epicId: string): Promise<BacklogEpic | undefined> {
+  const canonical = readCanonicalEpic(cwd, epicId);
+  return canonical ? epicRowToDomain(canonical) : (await readBacklogEpic(cwd, epicId) ?? undefined);
+}
+
+async function listCanonicalBacklogItemsDomain(cwd: string): Promise<BacklogItem[]> {
+  const canonical = listCanonicalBacklogItems(cwd).map(backlogItemRowToDomain);
+  if (canonical.length > 0) return canonical;
+  return await listBacklogItems(cwd);
 }
 
 function resolveProfile(input: PromotionSelectionInput, group: RecommendationGroup | undefined, itemCount: number): PlanningProfileInput | null {

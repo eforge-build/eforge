@@ -83,8 +83,8 @@ describe('eforge-plan README mature package and workflow contract', () => {
     expect(text).toMatch(/optional PR enrichment through `gh`.*not required/is);
     expect(text).toMatch(/unavailable `gh`.*leave bounded git-only candidate evidence in place/s);
     expect(text).not.toMatch(/requires GitHub|requires `gh`|GitHub dependency is required/i);
-    expect(text).toMatch(/Trace sidecars.*durable audit evidence/s);
-    expect(text).toMatch(/submitted session-plan traces alone do not mark items active or planned/);
+    expect(text).toMatch(/Evidence rows are durable audit evidence/s);
+    expect(text).toMatch(/submitted session-plan evidence alone does not mark items active or planned/);
     expect(text).toMatch(/current editable session plan, live queue\/run\/build evidence, current PR-open\/landing evidence, or explicit `active` backlog status/);
   });
 });

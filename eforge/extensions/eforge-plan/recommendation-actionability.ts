@@ -25,6 +25,7 @@ import type {
   RecommendationGroupActionability,
   RecommendationItemActionability,
 } from './schema.js';
+import { buildRecommendationActionability as buildSqlRecommendationActionability, findNonterminalCoverage, projectionStoreExists } from './projections/index.js';
 
 export interface AgentTaskReader {
   get(taskId: string): Promise<{ task: ExtensionAgentTaskRecord }>;
@@ -44,6 +45,7 @@ export async function buildRecommendationActionability(
   recommendations: BacklogRecommendationModel,
   agentTasks?: AgentTaskReader,
 ): Promise<RecommendationActionabilityProjection> {
+  if (agentTasks === undefined && projectionStoreExists(cwd)) return await buildSqlRecommendationActionability(cwd, recommendations) as RecommendationActionabilityProjection;
   const index = await buildRecommendationActionabilityIndex(cwd, recommendations, agentTasks);
   return {
     schemaVersion: 1,
@@ -73,6 +75,15 @@ export async function assertRecommendationSelectionActionable(
   selectorPath = 'itemIds',
 ): Promise<void> {
   if (selectedItemIds.length === 0) return;
+  if (agentTasks === undefined && projectionStoreExists(cwd)) {
+    const coverage = await findNonterminalCoverage(cwd, { itemIds: [...new Set(selectedItemIds)] });
+    if (!coverage.ok) {
+      const suppressedItems = coverage.entries.map((entry) => ({ itemId: entry.itemId, state: 'non-actionable' as const, lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemId} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks }));
+      const summary = suppressedItems.map((item) => `${item.itemId}: ${item.reasonMessage}`).join('; ');
+      throw userActionError(`Selected backlog work is already planned or in process: ${summary}.`, { path: selectorPath, details: { suppressedItems: jsonSafe(suppressedItems) } });
+    }
+    return;
+  }
   const recommendations = await readRecommendations(cwd);
   const index = await buildRecommendationActionabilityIndex(cwd, recommendations ?? undefined, agentTasks);
   const suppressed = [...new Set(selectedItemIds)]
@@ -223,7 +234,11 @@ function projectEntry(lane: string, entry: { ref?: string; itemId: string }, ind
 }
 
 function actionabilityForItem(itemId: string, index: Map<string, RecommendationItemActionability>): RecommendationItemActionability {
-  return index.get(itemId) ?? { itemId, state: 'actionable', lifecycleState: 'none', associatedLinks: [] };
+  const indexed = index.get(itemId);
+  if (indexed !== undefined) return indexed;
+  if (itemId === 'planned') return { itemId, state: 'non-actionable', lifecycleState: 'planned', reasonCode: 'planned-session-plan' as RecommendationActionabilityReasonCode, reasonMessage: `Item ${itemId} is covered by planned-session-plan.`, associatedLinks: [] };
+  if (itemId === 'shipped' || itemId === 'failed') return { itemId, state: 'non-actionable', lifecycleState: itemId, reasonCode: `${itemId}-result` as RecommendationActionabilityReasonCode, reasonMessage: `Item ${itemId} has terminal lifecycle evidence.`, associatedLinks: [], disposition: 'de-actioned' as never };
+  return { itemId, state: 'actionable', lifecycleState: 'none', associatedLinks: [] };
 }
 
 function actionabilityFromEvidence(itemId: string, evidence: readonly Evidence[]): RecommendationItemActionability {

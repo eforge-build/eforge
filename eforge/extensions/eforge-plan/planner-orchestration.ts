@@ -12,15 +12,8 @@ import {
   type PlanningDepth,
   type PlanningType,
 } from '@eforge-build/input';
-import {
-  blockerRiskProjection,
-  dependencyProjection,
-  extractMarkdownSections,
-  isOpenStatus,
-  orderedSourceReferenceSummaries,
-  type BacklogEpic,
-  type BacklogItem,
-} from './backlog-domain.js';
+import { isOpenStatus, orderedSourceReferenceSummaries, type BacklogEpic, type BacklogItem } from './backlog-domain.js';
+import { buildDependencyContext, projectPlannerEpic, projectPlannerItem } from './planner-context-projections.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { promoteBacklogSelection } from './promote.js';
 import { resolvePromotionSelection } from './promotion-selection.js';
@@ -37,8 +30,10 @@ import { markRecommendationsStaleForBacklogMutation, readPlannerTraceSummaries, 
 import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { userActionError } from './action-errors.js';
-import { upsertPromotedSessionPlan } from './trace-store.js';
-import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
+import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
+import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from './trace-store.js';
+import { findCanonicalNonterminalCoverage } from './canonical/coverage.js';
+import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, listRecommendationRefreshWorkflowEntries, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
   PLANNING_PROFILES,
@@ -72,11 +67,11 @@ export async function preparePlannerContext(cwd: string, input: PlannerContextIn
       ...(input.recommendationRef !== undefined && { recommendationRef: input.recommendationRef }),
       ...(input.itemIds !== undefined && input.sourceRecommendationRef !== undefined && { sourceRecommendationRef: input.sourceRecommendationRef }),
     },
-    items: selected.items.map((item, index) => projectItem(item, sourceRefs[index])),
-    epics: selected.epics.map((epic) => projectEpic(epic)),
+    items: selected.items.map((item, index) => projectPlannerItem(item, sourceRefs[index])),
+    epics: selected.epics.map((epic) => projectPlannerEpic(epic)),
     recommendations: { exists: recommendationModel !== null, model: recommendations, summary: summarizeRecommendations(recommendations) },
     recommendationRationale: recommendations.rationaleAndAssumptions,
-    dependencies: dependencyContext(selected.items),
+    dependencies: buildDependencyContext(selected.items),
     roadmapContext: await buildRoadmapContext(cwd, { includeRoadmap }),
     traceSummaries: await readPlannerTraceSummaries(cwd, selected.items.map((item) => item.id)),
   };
@@ -157,7 +152,7 @@ export async function applyCompletedPlanningAgentTaskResult(
   const sessionPlanDrafts = input.applySessionPlanDrafts !== undefined ? resolveSelectedSessionPlanSections(rawResult, input.applySessionPlanDrafts) : undefined;
   const creationDraft = input.applySessionPlanCreationDraft !== undefined ? resolveSessionPlanCreationDraft(rawResult, input.applySessionPlanCreationDraft) : undefined;
   const creationDraftLinkage = creationDraft !== undefined ? await resolveCreationDraftSourceLinkage(cwd, task.taskId) : undefined;
-  const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, workflowEntry);
+  const applyTargets = await validatePlanningAgentTaskApplyTargets(cwd, handoffDrafts, sessionPlanDrafts, creationDraft, creationDraftLinkage, workflowEntry, task.taskId);
 
   const applyKey = creationDraft !== undefined ? creationDraftApplyKey(cwd, task.taskId) : undefined;
   if (applyKey !== undefined) {
@@ -272,8 +267,13 @@ async function applySessionPlanCreationDraft(cwd: string, resolved: ResolvedSess
     ...(resolved.openQuestions !== undefined && { openQuestions: resolved.openQuestions }),
   });
   const sourceRefs = linkage !== undefined ? await applyCreationDraftSourceLinkage(cwd, session, linkage) : undefined;
+  const path = planning.flat.resolvePath({ cwd, session });
+  if (linkage === undefined) {
+    const loaded = await planning.flat.load({ cwd, session });
+    syncSessionPlanArtifact(cwd, { session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-creation-draft' });
+  }
   const readiness = await planning.flat.readiness({ cwd, session });
-  const relativePath = relative(cwd, planning.flat.resolvePath({ cwd, session })).replace(/\\/g, '/');
+  const relativePath = relative(cwd, path).replace(/\\/g, '/');
   return {
     session,
     relativePath,
@@ -390,8 +390,11 @@ async function applyCreationDraftSourceLinkage(cwd: string, session: string, lin
   const loaded = await planning.flat.load({ cwd, session });
   const path = planning.flat.resolvePath({ cwd, session });
   const status = loaded.plan.status ?? metadata.status ?? 'planning';
-  for (const item of linkage.items) {
-    await upsertPromotedSessionPlan(cwd, item.id, { session, path, status, promotedAt }, item.epic);
+  syncSessionPlanArtifact(cwd, { session, path, status, sourceItemIds: linkage.sourceItemIds, sourceEpicIds: linkage.sourceEpicIds, sourceRecommendationRef: linkage.sourceRecommendationRef, provenance: 'planning-task-creation-draft', updatedAt: promotedAt });
+  for (const itemId of linkage.sourceItemIds) {
+    const trace = await readTraceSidecar(cwd, itemId) ?? createTraceSidecar(itemId);
+    trace.promotedSessionPlans = [...trace.promotedSessionPlans.filter((entry) => entry.session !== session), { session, path: relative(cwd, path).replace(/\\/g, '/'), status, promotedAt }];
+    await writeTraceSidecar(cwd, trace);
   }
   return {
     sourceItemIds: linkage.sourceItemIds,
@@ -424,7 +427,9 @@ async function validatePlanningAgentTaskApplyTargets(
   handoffDrafts: PlannerHandoffDraft[] | undefined,
   sessionPlanDrafts: Array<{ session: string; sections: Array<{ dimension: string; content: string }> }> | undefined,
   creationDraft: ResolvedSessionPlanCreationDraft | undefined,
+  creationDraftLinkage: CreationDraftSourceLinkage | undefined,
   workflowEntry: PlanningTaskWorkflowEntry | undefined,
+  taskId: string,
 ): Promise<PlanningAgentTaskApplyTargets> {
   const targets: PlanningAgentTaskApplyTargets = {};
   if (creationDraft !== undefined) {
@@ -434,16 +439,23 @@ async function validatePlanningAgentTaskApplyTargets(
     }
     targets.creationDraftTarget = await resolveCreationDraftTargetDisposition(cwd, creationDraft.session);
   }
-  await Promise.all([
-    ...(handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
-      cwd,
-      ...draft.selection,
-      session: draft.session ?? draft.selection.session,
-      title: draft.title ?? draft.selection.title,
-      profile: draft.profile ?? draft.selection.profile,
-    })),
-    ...sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })),
-  ]);
+  const resolvedHandoffs = await Promise.all((handoffDrafts ?? []).map((draft) => resolvePromotionSelection({
+    cwd,
+    ...draft.selection,
+    session: draft.session ?? draft.selection.session,
+    title: draft.title ?? draft.selection.title,
+    profile: draft.profile ?? draft.selection.profile,
+  })));
+  await Promise.all(sessionPlanSessions(sessionPlanDrafts).map((session) => createSessionPlanningWorkflowAdapter().flat.load({ cwd, session })));
+  const coveredItemIds = [...new Set([
+    ...resolvedHandoffs.flatMap((selection) => selection.itemIds),
+    ...(creationDraft !== undefined ? creationDraftLinkage?.sourceItemIds ?? [] : []),
+  ])];
+  const coverage = findCanonicalNonterminalCoverage(cwd, coveredItemIds, { excludePlanningTaskIds: [taskId] });
+  if (!coverage.ok) {
+    const reasons = [...new Set(coverage.entries.map((entry) => entry.reasonCode))].join(', ');
+    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: coverage.entries as never, suppressedItems: coverage.entries.map((entry) => ({ itemId: entry.itemRef, state: 'non-actionable', lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemRef} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks })) as never } });
+  }
   return targets;
 }
 
@@ -513,6 +525,9 @@ async function applySelectedSessionPlanSections(
     for (const section of selection.sections) {
       await planning.flat.setSection({ cwd, session: selection.session, dimension: section.dimension, content: section.content });
     }
+    const path = planning.flat.resolvePath({ cwd, session: selection.session });
+    const loaded = await planning.flat.load({ cwd, session: selection.session });
+    syncSessionPlanArtifact(cwd, { session: selection.session, path, status: loaded.plan.status ?? 'planning', provenance: 'planning-task-section-patch' });
     applied.push({ session: selection.session, sections: selection.sections.map((section) => section.dimension) });
   }
   return applied;
@@ -536,9 +551,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function resolveRecommendationApplySourceFingerprint(cwd: string, taskId: string): Promise<string | undefined> {
-  const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
-  if (entry === undefined || !isRecommendationRefreshWorkflowEntry(entry)) return undefined;
-  return entry.sourceFingerprint;
+  const index = await readPlanningTaskWorkflowIndex(cwd);
+  const entry = findPlanningTaskWorkflowEntry(index, taskId);
+  if (entry !== undefined && isRecommendationRefreshWorkflowEntry(entry)) return entry.sourceFingerprint;
+  return listRecommendationRefreshWorkflowEntries(index).find((candidate) => candidate.appliedAt === undefined)?.sourceFingerprint;
 }
 
 async function resolvePlannerSelection(cwd: string, input: PlannerContextInput): Promise<{ items: BacklogItem[]; epics: BacklogEpic[] }> {
@@ -557,34 +573,3 @@ function selectionKind(input: PlannerContextInput): string {
   return 'open-backlog';
 }
 
-function projectItem(item: BacklogItem, sourceReference: string | undefined) {
-  return {
-    id: item.id,
-    title: item.title,
-    status: item.status,
-    ...(item.epic !== undefined && { epic: item.epic }),
-    tags: item.tags,
-    dependencies: item.depends_on,
-    sections: Object.fromEntries(extractMarkdownSections(item.body)),
-    sourceReferences: sourceReference ? [sourceReference] : [],
-  };
-}
-
-function projectEpic(epic: BacklogEpic) {
-  return {
-    id: epic.id,
-    title: epic.title,
-    status: epic.status,
-    tags: epic.tags,
-    sections: Object.fromEntries(extractMarkdownSections(epic.body)),
-  };
-}
-
-function dependencyContext(items: readonly BacklogItem[]) {
-  const risks = new Map(blockerRiskProjection(items).map((entry) => [entry.itemId, entry]));
-  return dependencyProjection(items).map((entry) => ({
-    ...entry,
-    blockers: risks.get(entry.itemId)?.blockers ?? [],
-    risks: risks.get(entry.itemId)?.risks ?? [],
-  }));
-}

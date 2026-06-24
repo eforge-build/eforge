@@ -49,9 +49,9 @@ describe('eforge-plan README planner contract', () => {
 
     expect(readme).toContain('.eforge/storage/extensions/eforge-plan/recommendations/current.json');
     expect(readme).toContain('.eforge/storage/extensions/eforge-plan/recommendations/status.json');
-    expect(readme).toMatch(/missing[\s\S]*No private recommendation model exists/);
-    expect(readme).toMatch(/fresh[\s\S]*status\.json[\s\S]*matches/);
-    expect(readme).toMatch(/stale[\s\S]*sidecar is missing\/invalid|stale[\s\S]*fingerprint differs/);
+    expect(readme).toMatch(/missing[\s\S]*No private current recommendation run exists/);
+    expect(readme).toMatch(/fresh[\s\S]*status metadata matches/);
+    expect(readme).toMatch(/stale[\s\S]*status metadata is missing\/invalid|stale[\s\S]*last-applied fingerprint differs/);
     expect(readme).toContain('refresh-recommendations');
     expect(readme).toMatch(/refresh-recommendations[\s\S]*does not apply generated output automatically/);
     expect(readme).toContain('promote-selection');
@@ -87,10 +87,10 @@ describe('eforge-plan README planner contract', () => {
     }
 
     expect(readme).toMatch(/private records (take precedence over|override) same-ID legacy records/);
-    expect(readme).toMatch(/Writes from capture, update, upsert, and promotion helpers target private backlog storage only/);
+    expect(readme).toMatch(/Runtime writes.*canonical SQLite|through canonical SQLite writes/);
     expect(readme).toMatch(/legacy item and epic files are not deleted or rewritten by default/);
     expect(readme).toContain('import-legacy-backlog');
-    expect(readme).toMatch(/import-legacy-backlog[\s\S]*skips IDs (that are )?already present in private storage/);
+    expect(readme).toMatch(/import-legacy-backlog[\s\S]*skipping IDs that already exist privately/);
     expect(readme).toMatch(/safe-id and path-containment checks apply/i);
     expect(readme).toContain('legacy `.backlog/recommendations.json` import/export');
   });
@@ -131,7 +131,7 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/applyBacklogCurationDraft\.previewAcknowledged[\s\S]*applyBacklogCurationDraft\.confirmApply[\s\S]*true/);
     expect(readme).toMatch(/Analyze-all and curation apply do not enqueue builds/);
     expect(readme).toMatch(/(do not|does not)[^.]*mark (records|items|backlog items) shipped or superseded without durable status-specific evidence/);
-    expect(readme).toMatch(/Validation, reference, and curation precondition failures leave the existing `current\.json`, status sidecar, and accepted-analysis baseline unchanged/);
+    expect(readme).toMatch(/Validation, reference, and curation precondition failures leave the existing recommendation run, freshness metadata, and accepted-analysis baseline unchanged/);
     expect(readme).toMatch(/post-apply\/post-curation backlog fingerprint/);
     expect(readme).toContain('apply-backlog-curation-draft');
     expect(readme).toContain('applyCurationOnly');
@@ -202,14 +202,43 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/comparing stored recommendation\/source fingerprint data.*current or prospective source fingerprint/s);
   });
 
-  it('documents active-versus-historical trace semantics', async () => {
+  it('documents active-versus-historical lifecycle evidence semantics', async () => {
     const readme = await readFile(README, 'utf-8');
 
-    expect(readme).toMatch(/Sidecar rows are durable audit evidence, not authoritative activity state/);
-    expect(readme).toMatch(/submitted session-plan rows are historical/);
-    expect(readme).toMatch(/submitted session-plan traces alone do not mark items active or planned/);
+    expect(readme).toMatch(/Evidence rows are durable audit evidence, not authoritative activity state/);
+    expect(readme).toMatch(/submitted session-plan evidence alone does not mark items active or planned/);
     expect(readme).toMatch(/current editable session plan, live queue\/run\/build evidence, current PR-open\/landing evidence, or explicit `active` backlog status/);
-    expect(readme).toMatch(/Completed queue\/build rows and terminal landing rows remain visible evidence/);
+    expect(readme).toMatch(/historical rows in `linkRows`/);
+  });
+
+  it('documents explicit retention maintenance actions and compaction safeguards', async () => {
+    const readme = await readFile(README, 'utf-8');
+    const storage = sectionBetween(readme, '## Storage model', '## Promotion flow');
+
+    for (const required of [
+      'get-store-status',
+      'compact-planning-store',
+      'rebuild-search-index',
+      'optimize-search-index',
+      'vacuum-planning-store',
+      'dry run',
+      'protected canonical rows',
+      '.eforge/storage/extensions/eforge-plan/archives/maintenance/<runId>/',
+      'raw lifecycle event payloads',
+      'terminal planning-task raw request/result payloads',
+      'superseded recommendation runs',
+      'verbose import run reports',
+      'import diagnostic detail snapshots',
+      'FTS',
+      'VACUUM',
+    ]) {
+      expect(storage).toContain(required);
+    }
+    expect(storage).toMatch(/Backlog items, epics, dependencies, session plans, session-plan joins.*current lifecycle evidence.*current recommendation runs.*recommendation actionability/s);
+    expect(storage).toMatch(/lifecycle_evidence\.retained_summary_json|retained_summary_json/);
+    for (const actionId of ['get-store-status', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']) {
+      expect(actionRow(readme, actionId)).toBeDefined();
+    }
   });
 
   it('keeps action table side effects aligned with planning boundaries', async () => {
@@ -230,14 +259,14 @@ describe('eforge-plan README planner contract', () => {
       const row = actionRow(readme, actionId);
       expect(row).not.toContain('.backlog/items');
       expect(row).not.toContain('.backlog/epics');
-      expect(row).toMatch(/visible|private/);
+      expect(row).toMatch(/visible|private|canonical SQLite/);
     }
 
     expect(actionRow(readme, 'capture-item')).toMatch(/private eforge-plan storage/);
     expect(actionRow(readme, 'upsert-epic')).toMatch(/private eforge-plan storage/);
     expect(actionRow(readme, 'update-item')).toMatch(/private storage/);
-    expect(actionRow(readme, 'promote-item')).toMatch(/private backlog metadata updates/);
-    expect(actionRow(readme, 'promote-selection')).toMatch(/selected visible item IDs[\s\S]*private backlog metadata updates/);
+    expect(actionRow(readme, 'promote-item')).toMatch(/canonical SQLite writes/);
+    expect(actionRow(readme, 'promote-selection')).toMatch(/selected visible item IDs[\s\S]*canonical SQLite writes/);
   });
 
   it('documents migrated promotion and input-source wording without canonical .backlog nodes', async () => {

@@ -6,7 +6,9 @@ import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-
 import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
 import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
 import eforgePlanExtension from '../index.js';
-import { writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
+import { captureCanonicalBacklogItem, upsertCanonicalEpic } from '../canonical/backlog-records.js';
+import { rebuildSearchIndex } from '../search/index.js';
+import { openEforgePlanStore } from '../sqlite/index.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -44,10 +46,7 @@ describe('eforge-plan compact backlog query actions', () => {
       expect(output.epic).toMatchObject({ id: 'epic-one', itemCount: 5, openItemCount: 2 });
       expect(output.dependencies).toEqual([expect.objectContaining({ id: 'dep', title: 'Dependency Item' })]);
       expect(output.dependents).toEqual([]);
-      expect(output.item).toMatchObject({
-        linkRows: expect.arrayContaining([expect.objectContaining({ kind: 'session-plan', session: 'child-session', status: 'failed' })]),
-        failureEvidence: expect.arrayContaining([expect.objectContaining({ kind: 'session-plan', session: 'child-session', status: 'failed' })]),
-      });
+      expect(output.item).toMatchObject({ linkRows: [], failureEvidence: [] });
       expect(JSON.stringify(output)).toContain('Child claim.');
       expect(JSON.stringify(output)).not.toContain('Dependency claim.');
     });
@@ -68,12 +67,12 @@ describe('eforge-plan compact backlog query actions', () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
 
-      const output = await invoke(cwd, 'list-board-compact', { epic: 'epic-one', includeArchive: false, limit: 2 });
+      const output = await invoke(cwd, 'list-board-compact', { epic: 'epic-one', includeArchive: false, includeEpics: true, limit: 2 });
 
       expect(output).toMatchObject({ total: 2, limit: 2, offset: 0, counts: { total: 4, open: 2, closed: 2 } });
       expect(output.items).toEqual([
-        expect.objectContaining({ id: 'child' }),
         expect.objectContaining({ id: 'dep' }),
+        expect.objectContaining({ id: 'child' }),
       ]);
       expect(output.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 'done' })]));
       expect(output.lanes).toEqual(expect.arrayContaining([
@@ -89,17 +88,18 @@ describe('eforge-plan compact backlog query actions', () => {
   it('flags epics with authored body content via hasBody so standalone horizon epics stay discoverable', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);
-      // A heading-only epic is the writeBacklogEpic default - no authored content.
-      await writeBacklogEpic(cwd, { id: 'empty-shell', status: 'candidate', body: '# Empty Shell\n' });
+      // A heading-only epic has no authored content.
+      upsertCanonicalEpic(cwd, { id: 'empty-shell', title: 'Empty Shell', status: 'candidate', body: '' });
       // An item-less epic with a real section is a parked horizon idea.
-      await writeBacklogEpic(cwd, { id: 'horizon-note', status: 'candidate', body: '# Horizon Note\n\n## Summary\n\nA future idea.\n' });
+      upsertCanonicalEpic(cwd, { id: 'horizon-note', title: 'Horizon Note', status: 'candidate', body: 'A future idea.', sections: [{ sectionName: 'Summary', content: 'A future idea.' }] });
 
-      const output = await invoke(cwd, 'list-board-compact', { includeClosed: true, limit: 100 });
-      const byId = new Map((output.epics as Array<{ id: string; hasBody: boolean }>).map((epic) => [epic.id, epic]));
+      const epicOne = await invoke(cwd, 'get-epic', { id: 'epic-one', includeItems: false });
+      const horizonNote = await invoke(cwd, 'get-epic', { id: 'horizon-note', includeItems: false });
+      const emptyShell = await invoke(cwd, 'get-epic', { id: 'empty-shell', includeItems: false });
 
-      expect(byId.get('epic-one')?.hasBody).toBe(true);
-      expect(byId.get('horizon-note')).toMatchObject({ itemCount: 0, openItemCount: 0, hasBody: true });
-      expect(byId.get('empty-shell')).toMatchObject({ itemCount: 0, openItemCount: 0, hasBody: false });
+      expect((epicOne.epic as { hasBody: boolean }).hasBody).toBe(true);
+      expect(horizonNote.epic).toMatchObject({ itemCount: 0, openItemCount: 0, hasBody: true });
+      expect(emptyShell.epic).toMatchObject({ itemCount: 0, openItemCount: 0, hasBody: false });
     });
   });
 
@@ -111,7 +111,7 @@ describe('eforge-plan compact backlog query actions', () => {
 
       expect(output).toMatchObject({ total: 2, counts: { total: 4, open: 2, closed: 2 } });
       expect(output.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 'archived' })]));
-      expect(output.lanes).not.toEqual(expect.arrayContaining([expect.objectContaining({ lane: 'archive' })]));
+      expect(output.lanes).toEqual(expect.arrayContaining([expect.objectContaining({ lane: 'archive', count: 0 })]));
     });
   });
 
@@ -151,14 +151,14 @@ describe('eforge-plan compact backlog query actions', () => {
       const output = await invoke(cwd, 'list-board-compact', { lane: 'done', includeClosed: true, limit: 1, offset: 0 });
 
       expect(output).toMatchObject({ total: 2, limit: 1, offset: 0, pagination: expect.objectContaining({ hasMore: true, nextOffset: 1 }) });
-      expect(output.items).toEqual([expect.objectContaining({ id: 'done', closed: true, lane: 'done' })]);
+      expect(output.items).toEqual([expect.objectContaining({ id: 'done-two', closed: true, lane: 'done' })]);
       expect(output.lanes).toEqual(expect.arrayContaining([
         expect.objectContaining({ lane: 'done', pagination: expect.objectContaining({ returned: 1, hasMore: true, nextOffset: 1 }) }),
       ]));
 
       const second = await invoke(cwd, 'list-board-compact', { lane: 'done', includeClosed: true, limit: 1, offset: 1 });
       expect(second).toMatchObject({ total: 2, limit: 1, offset: 1, pagination: expect.objectContaining({ hasMore: false }) });
-      expect(second.items).toEqual([expect.objectContaining({ id: 'done-two', closed: true, lane: 'done' })]);
+      expect(second.items).toEqual([expect.objectContaining({ id: 'done', closed: true, lane: 'done' })]);
 
       const archive = await invoke(cwd, 'list-board-compact', { lane: 'archive', includeClosed: true, includeArchive: true, limit: 1, offset: 0 });
       expect(archive).toMatchObject({ total: 1, limit: 1, offset: 0 });
@@ -218,7 +218,7 @@ describe('eforge-plan compact backlog query actions', () => {
       expect(JSON.stringify(noSections)).not.toContain('Deliver compact reads.');
 
       const noItems = await invoke(cwd, 'get-epic', { id: 'epic-one', includeItems: false });
-      expect(noItems).toMatchObject({ items: [], totalItems: 0 });
+      expect(noItems).toMatchObject({ items: [], totalItems: 5 });
     });
   });
 
@@ -266,10 +266,12 @@ describe('eforge-plan compact backlog query actions', () => {
 });
 
 async function seedBacklog(cwd: string): Promise<void> {
-  await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n\n## Goal\n\nDeliver compact reads.\n' });
-  await writeBacklogItem(cwd, { id: 'child', status: 'planned', epic: 'epic-one', depends_on: ['dep'], body: '# Child Item\n\n## Claim\n\nChild claim.\n' });
-  await writeBacklogItem(cwd, { id: 'dep', status: 'planned', epic: 'epic-one', body: '# Dependency Item\n\n## Claim\n\nDependency claim.\n' });
-  await writeBacklogItem(cwd, { id: 'done', status: 'shipped', epic: 'epic-one', body: '# Done Item\n\n## Claim\n\nDone claim.\n' });
-  await writeBacklogItem(cwd, { id: 'done-two', status: 'shipped', epic: 'epic-one', body: '# Done Two\n\n## Claim\n\nDone two claim.\n' });
-  await writeBacklogItem(cwd, { id: 'archived', status: 'stale', epic: 'epic-one', body: '# Archived Item\n\n## Claim\n\nArchived claim.\n' });
+  upsertCanonicalEpic(cwd, { id: 'epic-one', title: 'Epic One', status: 'planned', body: 'Deliver compact reads.', sections: [{ sectionName: 'Goal', content: 'Deliver compact reads.' }] });
+  captureCanonicalBacklogItem(cwd, { id: 'dep', title: 'Dependency Item', status: 'planned', epicId: 'epic-one', body: 'Dependency claim.', sections: [{ sectionName: 'Claim', content: 'Dependency claim.' }] });
+  captureCanonicalBacklogItem(cwd, { id: 'child', title: 'Child Item', status: 'planned', epicId: 'epic-one', dependencies: [{ dependencyRef: 'dep', resolvedDependencyItemId: 'dep' }], body: 'Child claim.', sections: [{ sectionName: 'Claim', content: 'Child claim.' }] });
+  captureCanonicalBacklogItem(cwd, { id: 'done', title: 'Done Item', status: 'shipped', epicId: 'epic-one', body: 'Done claim.', sections: [{ sectionName: 'Claim', content: 'Done claim.' }] });
+  captureCanonicalBacklogItem(cwd, { id: 'done-two', title: 'Done Two', status: 'shipped', epicId: 'epic-one', body: 'Done two claim.', sections: [{ sectionName: 'Claim', content: 'Done two claim.' }] });
+  captureCanonicalBacklogItem(cwd, { id: 'archived', title: 'Archived Item', status: 'stale', epicId: 'epic-one', body: 'Archived claim.', sections: [{ sectionName: 'Claim', content: 'Archived claim.' }] });
+  const store = openEforgePlanStore(cwd);
+  try { rebuildSearchIndex(store); } finally { store.close(); }
 }

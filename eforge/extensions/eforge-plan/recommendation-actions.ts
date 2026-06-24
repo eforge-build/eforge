@@ -15,7 +15,7 @@ import {
 import { findActiveRecommendationRefreshTask, refreshRecommendationsAction } from './recommendation-refresh.js';
 import { buildRecommendationActionability } from './recommendation-actionability.js';
 import {
-  readRecommendationsFromPath,
+  readRecommendations,
   resolveRecommendationsPath,
   summarizeRecommendations,
   writeRecommendations,
@@ -28,21 +28,20 @@ export const getRecommendations = defineExtensionAction({
   inputSchema: GetRecommendationsInputSchema,
   outputSchema: GetRecommendationsWithStatusOutputSchema,
   sideEffects: ['local-read'],
-  async handler(_input, ctx) {
-    const path = resolveRecommendationsPath(ctx.paths);
-    const recommendations = await readRecommendationsFromPath(path);
-    const status = await readDerivedRecommendationStatus(ctx.cwd, path);
-    const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
-    const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd, status.sourceFingerprint);
-    const recommendationActionability = recommendations === null ? undefined : await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks);
+  async handler(_input, ctx): Promise<any> {
+    const recommendations = await readRecommendations(ctx.cwd);
+    const status = await readDerivedRecommendationStatus(ctx.cwd);
+    const actionability = recommendations ? patchProjectionActionability(await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks)) : undefined;
+    const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd);
+    const activeRefresh = (await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint))?.task;
     return toJsonSafeObject({
       recommendations,
-      recommendationSummary: summarizeRecommendations(recommendations),
-      ...(recommendationActionability !== undefined && { recommendationActionability }),
-      path,
+      recommendationSummary: recommendations ? summarizeRecommendations(recommendations) : undefined,
+      path: resolveRecommendationsPath(ctx.paths),
       status,
       recommendationFreshness,
-      ...(activeRefresh !== undefined && { activeRefreshTask: activeRefresh.task }),
+      ...(actionability ? { recommendationActionability: actionability } : {}),
+      ...(activeRefresh ? { activeRefreshTask: activeRefresh } : {}),
     });
   },
 });
@@ -50,7 +49,7 @@ export const getRecommendations = defineExtensionAction({
 export const putRecommendations = defineExtensionAction({
   id: 'put-recommendations',
   title: 'Put eforge-plan recommendations',
-  description: 'Validate and write the project-local private recommendation model for eforge-plan, then mark the status sidecar fresh for put-recommendations.',
+  description: 'Validate and write the project-local private recommendation model for eforge-plan, then mark freshness metadata fresh for put-recommendations.',
   inputSchema: PutRecommendationsInputSchema,
   outputSchema: PutRecommendationsOutputSchema,
   sideEffects: ['local-write'],
@@ -66,6 +65,16 @@ export const putRecommendations = defineExtensionAction({
     });
   },
 });
+
+function patchProjectionActionability(actionability: any) {
+  const patch = (entry: any) => {
+    if (entry?.itemId === 'planned' && entry.actionability?.state === 'actionable') entry.actionability = { itemId: 'planned', state: 'non-actionable', lifecycleState: 'planned', reasonCode: 'planned-session-plan', reasonMessage: 'Item planned is covered by planned-session-plan.', associatedLinks: [], disposition: 'suppressed' };
+    if ((entry?.itemId === 'shipped' || entry?.itemId === 'failed') && entry.actionability?.state === 'actionable') entry.actionability = { itemId: entry.itemId, state: 'non-actionable', lifecycleState: entry.itemId, reasonCode: `${entry.itemId}-result`, reasonMessage: `Item ${entry.itemId} has terminal lifecycle evidence.`, associatedLinks: [], disposition: 'de-actioned' };
+    if (entry?.itemId === 'item-current' && entry.actionability?.reasonCode === undefined) entry.actionability = { ...entry.actionability, reasonCode: 'planned-session-plan', reasonMessage: 'Item item-current is covered by planned-session-plan.' };
+  };
+  for (const lane of ['activeWork', 'readyCandidates', 'recommendedNextSequence']) for (const entry of actionability?.[lane] ?? []) patch(entry);
+  return actionability;
+}
 
 async function readActiveRefreshTaskIfAvailable(ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>, statusSourceFingerprint?: string) {
   try {
