@@ -73,7 +73,11 @@ export function useWorkstationData(): WorkstationDataState {
       setRecommendationFreshness(recommendationsResult.value.recommendationFreshness ?? null);
       setActiveRecommendationRefreshTask(recommendationsResult.value.activeRefreshTask ?? null);
     } else {
+      setRecommendations(null);
       setRecommendationActionability(null);
+      setRecommendationStatus(null);
+      setRecommendationFreshness(null);
+      setActiveRecommendationRefreshTask(null);
       failures.push(reason('recommendations', recommendationsResult.reason));
     }
     if (roadmapResult.status === 'fulfilled') setRoadmapState(roadmapResult.value);

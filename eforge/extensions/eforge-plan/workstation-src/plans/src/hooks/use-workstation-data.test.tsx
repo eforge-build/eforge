@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMockArtifacts, getMockCompactBoard, mockGetRecommendationsFreshResponse, mockGetRecommendationsStaleResponse } from '@/fixtures/mock-data';
 import { getMockRoadmapState } from '@/fixtures/mock-roadmap';
-import type { CompactBoardResponse, EforgeBridge, RefreshRecommendationsResponse, RoadmapStateResponse } from '@/types';
+import type { CompactBoardResponse, EforgeBridge, GetRecommendationsResponse, RefreshRecommendationsResponse, RoadmapStateResponse } from '@/types';
 
 function setBridge(bridge: EforgeBridge) {
   (window as Window & { eforge?: EforgeBridge }).eforge = bridge;
@@ -42,6 +42,8 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(fullBoardCalls).toEqual([]);
 
     expect(result.current.recommendations?.recommendedNextSequence[0]?.itemId).toBe('recommend-next-work');
+    expect(result.current.recommendationActionability?.safeParallelizableGroups[0]?.actionableItemIds).toEqual(['recommend-next-work']);
+    expect(result.current.recommendationActionability?.safeParallelizableGroups[0]?.suppressedItemIds).toEqual(['add-import-preview']);
     expect(result.current.recommendationStatus?.staleReasons.map((reason) => reason.code)).toContain('source-fingerprint-drift');
     expect(result.current.recommendationFreshness?.storedSourceFingerprint).toBe('old-source-fingerprint');
     expect(result.current.recommendationFreshness?.comparedSourceFingerprint).toBe('current-source-fingerprint');
@@ -144,6 +146,57 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(calls).not.toContainEqual({ actionId: 'list-board-compact', input: expect.objectContaining({ lane: 'done', offset: 37 }) });
   });
 
+  it('clears stale recommendation state when get-recommendations fails after a successful load', async () => {
+    let getRecommendationsCalls = 0;
+    const bridge = bridgeWithDefaults(async (actionId) => {
+      if (actionId === 'get-recommendations') {
+        getRecommendationsCalls += 1;
+        if (getRecommendationsCalls === 1) return mockGetRecommendationsStaleResponse;
+        throw new Error('recommendations unavailable');
+      }
+      if (actionId === 'list-draft-units') return { units: [] };
+      return undefined;
+    });
+    setBridge(bridge);
+
+    const { useWorkstationData } = await import('./use-workstation-data');
+    const { result } = renderHook(() => useWorkstationData());
+
+    await waitFor(() => expect(result.current.recommendations?.recommendedNextSequence[0]?.itemId).toBe('recommend-next-work'));
+    expect(result.current.recommendationActionability).not.toBeNull();
+    expect(result.current.recommendationStatus?.state).toBe('stale');
+    expect(result.current.activeRecommendationRefreshTask?.taskId).toBe('task-refresh-recommendations');
+
+    await act(async () => { await result.current.refresh(); });
+
+    await waitFor(() => expect(result.current.error).toContain('recommendations: recommendations unavailable'));
+    expect(result.current.recommendations).toBeNull();
+    expect(result.current.recommendationActionability).toBeNull();
+    expect(result.current.recommendationStatus).toBeNull();
+    expect(result.current.recommendationFreshness).toBeNull();
+    expect(result.current.activeRecommendationRefreshTask).toBeNull();
+    expect(result.current.board.items.length).toBeGreaterThan(0);
+    expect(result.current.artifacts.length).toBeGreaterThan(0);
+  });
+
+  it('keeps legacy recommendations when a fulfilled response omits actionability', async () => {
+    const withoutActionability: GetRecommendationsResponse = { ...mockGetRecommendationsFreshResponse };
+    delete withoutActionability.recommendationActionability;
+    setBridge(bridgeWithDefaults(async (actionId) => {
+      if (actionId === 'get-recommendations') return withoutActionability;
+      if (actionId === 'list-draft-units') return { units: [] };
+      return undefined;
+    }));
+
+    const { useWorkstationData } = await import('./use-workstation-data');
+    const { result } = renderHook(() => useWorkstationData());
+
+    await waitFor(() => expect(result.current.recommendationStatus?.state).toBe('fresh'));
+    expect(result.current.recommendations?.recommendedNextSequence.length).toBeGreaterThan(0);
+    expect(result.current.recommendationActionability).toBeNull();
+    expect(result.current.recommendationFreshness?.state).toBe('fresh');
+  });
+
   it('keeps board and artifacts populated when roadmap loading fails', async () => {
     setBridge(bridgeWithDefaults(async (actionId) => actionId === 'get-roadmap-state' ? Promise.reject(new Error('roadmap unavailable')) : undefined));
 
@@ -203,6 +256,7 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(calls.filter((call) => call.actionId === 'get-recommendations').length).toBeGreaterThanOrEqual(2);
     expect(result.current.activeRecommendationRefreshTask?.taskId).toBe('task-refresh-from-test');
     expect(result.current.recommendationFreshness?.state).toBe('fresh');
+    expect(result.current.recommendationActionability?.recommendedNextSequence[1]?.actionability.state).toBe('non-actionable');
   });
 });
 

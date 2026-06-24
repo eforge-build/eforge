@@ -1200,40 +1200,13 @@ describe('planning agent task actions', () => {
   it('rejects redraft when the parent is not a completed needs-input clarification result and starts no new task', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
-      await recordPlanningTaskWorkflowEntry(cwd, {
-        taskId: 'task-parent',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        originalRequest: 'Plan the auth refactor',
-        derivedRequest: 'Draft a session plan for Item One.',
-        selection: { itemIds: ['item-one'] },
-        requestedOutputSections: ['sessionPlanCreationDraft'],
-      });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-parent', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan the auth refactor', derivedRequest: 'Draft a session plan for Item One.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft'] });
       const readyResult = parseExtensionAgentTaskRecord({
-        taskId: 'task-parent',
-        kind: 'eforge-plan.planning-draft',
-        status: 'completed',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:01.000Z',
-        startedAt: '2026-01-01T00:00:00.000Z',
-        completedAt: '2026-01-01T00:00:01.000Z',
-        result: {
-          summary: 'Ready to draft.',
-          assumptionsOpenQuestions: [],
-          decision: 'ready',
-          sessionPlanCreationDraft: { session: 'task-parent', topic: 'Topic', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Scope.' }] },
-        },
+        taskId: 'task-parent', kind: 'eforge-plan.planning-draft', status: 'completed', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:00:01.000Z',
+        result: { summary: 'Ready to draft.', assumptionsOpenQuestions: [], decision: 'ready', sessionPlanCreationDraft: { session: 'task-parent', topic: 'Topic', planningType: 'feature', planningDepth: 'focused', sections: [{ dimension: 'scope', content: 'Scope.' }] } },
       });
-      // needs-input requires >= 1 clarification question at the schema level, so an
-      // empty-questions record can only be hand-crafted through unknown to exercise
-      // the handler guard's question check.
       const needsInputNoQuestions = {
-        taskId: 'task-parent',
-        kind: 'eforge-plan.planning-draft',
-        status: 'completed',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:01.000Z',
-        startedAt: '2026-01-01T00:00:00.000Z',
-        completedAt: '2026-01-01T00:00:01.000Z',
+        taskId: 'task-parent', kind: 'eforge-plan.planning-draft', status: 'completed', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:00:01.000Z',
         result: { summary: 'Need more detail.', assumptionsOpenQuestions: [], decision: 'needs-input', clarificationQuestions: [], rationale: 'Ambiguous.' },
       } as unknown as ExtensionAgentTaskRecord;
       const parents: ExtensionAgentTaskRecord[] = [

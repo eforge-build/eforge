@@ -34,7 +34,7 @@ Fenced `mermaid` code blocks render as diagrams in workstation Markdown views. R
 
 ## Freshness labels
 
-Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. Render `recommendationActionability` exactly as returned for recommendation enablement, suppression reasons, lifecycle evidence links, and mixed safe-parallel groups; do not derive suppression from local board lifecycle fields. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness and actionability state.
+Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. Render `recommendationActionability` exactly as returned for recommendation enablement, suppression reasons, lifecycle evidence links, and mixed safe-parallel groups; do not derive suppression from local board lifecycle fields. Direct `start-planning-agent-task` calls remain guarded server-side for stale UIs or external invocation. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness and actionability state.
 
 ## Mock bridge and fixtures
 

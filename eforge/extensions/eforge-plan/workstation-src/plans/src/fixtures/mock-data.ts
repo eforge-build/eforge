@@ -1,4 +1,4 @@
-import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { AnalyzeAllBacklogResponse, AppliedSessionPlanCreationDraft, Artifact, BacklogCurationDraft, Board, BoardItem, CompactBoardDetailResponse, CompactBoardItem, CompactBoardResponse, Detail, EpicProgress, GetRecommendationsResponse, JsonObject, LifecycleLinkRow, PlanData, PlanDetail, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskWorkflowEntry, PlanningTaskWorkflowSelection, Readiness, RecommendationActionabilityProjection, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 
 function card(input: Partial<BoardItem> & Pick<BoardItem, 'id' | 'title' | 'status' | 'lane'>): BoardItem {
   return {
@@ -127,6 +127,15 @@ export const mockRecommendations: RecommendationModel = {
   rationaleAndAssumptions: ['Favor extension-owned workflow UX over engine changes.', 'Keep recommendations in private extension storage.'],
 };
 
+const importPreviewSuppression = { itemId: 'add-import-preview', state: 'non-actionable' as const, lifecycleState: 'planned' as const, reasonCode: 'planned-session-plan' as const, reasonMessage: 'An editable session plan already covers add-import-preview.', associatedLinks: [{ kind: 'session-plan', label: 'Session plan 2026-06-07-import-preview', itemIds: ['add-import-preview'], session: '2026-06-07-import-preview', status: 'planning', path: '.eforge/session-plans/2026-06-07-import-preview.md', timestamp: '2026-06-07T00:00:00.000Z' }] };
+const recommendationsActionable = { itemId: 'recommend-next-work', state: 'actionable' as const, lifecycleState: 'none' as const, associatedLinks: [] };
+export const mockRecommendationActionability: RecommendationActionabilityProjection = {
+  schemaVersion: 1, activeWork: [],
+  readyCandidates: [{ lane: 'readyCandidates', ref: 'ready-import-preview', itemId: 'add-import-preview', actionability: importPreviewSuppression }, { lane: 'readyCandidates', ref: 'ready-traceability', itemId: 'traceability', actionability: { itemId: 'traceability', state: 'actionable', lifecycleState: 'none', associatedLinks: [] } }],
+  recommendedNextSequence: [{ lane: 'recommendedNextSequence', ref: 'next-recommendations', itemId: 'recommend-next-work', actionability: recommendationsActionable }, { lane: 'recommendedNextSequence', ref: 'next-import-preview', itemId: 'add-import-preview', actionability: importPreviewSuppression }],
+  safeParallelizableGroups: [{ ref: 'planning-foundations', state: 'partially-actionable', itemIds: ['add-import-preview', 'recommend-next-work'], actionableItemIds: ['recommend-next-work'], suppressedItemIds: ['add-import-preview'], items: [importPreviewSuppression, recommendationsActionable] }],
+};
+
 export const mockRecommendationFreshnessMissing: RecommendationFreshnessView = { state: 'missing', reason: 'No recommendation model has been generated for the current source.', comparedSourceFingerprint: 'fresh-source-fingerprint' };
 export const mockRecommendationFreshnessFresh: RecommendationFreshnessView = { state: 'fresh', reason: 'Recommendation model matches the current source fingerprint.', storedSourceFingerprint: 'fresh-source-fingerprint', comparedSourceFingerprint: 'fresh-source-fingerprint', baselineTaskId: 'task-refresh-recommendations' };
 export const mockRecommendationFreshnessStale: RecommendationFreshnessView = { state: 'stale', reason: 'Recommendation source fingerprint drifted since the model was last applied.', storedSourceFingerprint: 'old-source-fingerprint', comparedSourceFingerprint: 'current-source-fingerprint', baselineTaskId: 'task-backlog-curation-ready' };
@@ -205,28 +214,11 @@ export const mockActiveRecommendationRefreshTask: PlanningAgentTaskRecord = {
   metadata: { progressMessage: 'Refreshing recommendations…', sectionProgress: { currentSection: 'recommendations', coveredSections: [], remainingSections: [] } },
 };
 
-export const mockGetRecommendationsFreshResponse: GetRecommendationsResponse = {
-  recommendations: mockRecommendations,
-  recommendationSummary: { recommendedNextItemIds: ['recommend-next-work', 'add-import-preview'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['add-import-preview', 'recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockRecommendations.rationaleAndAssumptions ?? [] },
-  path: 'mock://recommendations/current.json',
-  status: mockRecommendationStatusFresh,
-  recommendationFreshness: mockRecommendationFreshnessFresh,
-};
+export const mockGetRecommendationsFreshResponse: GetRecommendationsResponse = { recommendations: mockRecommendations, recommendationSummary: { recommendedNextItemIds: ['recommend-next-work', 'add-import-preview'], safeParallelizableGroups: [{ ref: 'planning-foundations', itemIds: ['add-import-preview', 'recommend-next-work'] }], blockedChainCount: 1, rationaleAndAssumptions: mockRecommendations.rationaleAndAssumptions ?? [] }, recommendationActionability: mockRecommendationActionability, path: 'mock://recommendations/current.json', status: mockRecommendationStatusFresh, recommendationFreshness: mockRecommendationFreshnessFresh };
 
-export const mockGetRecommendationsMissingResponse: GetRecommendationsResponse = {
-  recommendations: null,
-  path: 'mock://recommendations/current.json',
-  status: mockRecommendationStatusMissing,
-  recommendationFreshness: mockRecommendationFreshnessMissing,
-};
+export const mockGetRecommendationsMissingResponse: GetRecommendationsResponse = { recommendations: null, path: 'mock://recommendations/current.json', status: mockRecommendationStatusMissing, recommendationFreshness: mockRecommendationFreshnessMissing };
 
-export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = {
-  recommendations: mockRecommendations,
-  path: 'mock://recommendations/current.json',
-  status: mockRecommendationStatusStale,
-  recommendationFreshness: mockRecommendationFreshnessStale,
-  activeRefreshTask: mockActiveRecommendationRefreshTask,
-};
+export const mockGetRecommendationsStaleResponse: GetRecommendationsResponse = { recommendations: mockRecommendations, recommendationActionability: mockRecommendationActionability, path: 'mock://recommendations/current.json', status: mockRecommendationStatusStale, recommendationFreshness: mockRecommendationFreshnessStale, activeRefreshTask: mockActiveRecommendationRefreshTask };
 
 export const mockArtifacts: Artifact[] = [
   {

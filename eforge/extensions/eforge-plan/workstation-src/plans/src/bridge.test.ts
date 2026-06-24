@@ -7,9 +7,11 @@ describe('mock bridge roadmap recommendations refresh', () => {
     const bridge = getBridge();
 
     const refresh = await bridge.invokeAction<{ task: { taskId: string } }>('refresh-recommendations');
-    const recommendations = await bridge.invokeAction<{ activeRefreshTask?: { taskId: string } }>('get-recommendations');
+    const recommendations = await bridge.invokeAction<{ activeRefreshTask?: { taskId: string }; recommendationActionability?: { safeParallelizableGroups: Array<{ actionableItemIds: string[]; suppressedItemIds: string[] }> } }>('get-recommendations');
 
     expect(recommendations.activeRefreshTask?.taskId).toBe(refresh.task.taskId);
+    expect(recommendations.recommendationActionability?.safeParallelizableGroups[0]?.actionableItemIds).toEqual(['recommend-next-work']);
+    expect(recommendations.recommendationActionability?.safeParallelizableGroups[0]?.suppressedItemIds).toEqual(['add-import-preview']);
   });
 
   it('omits mock planning artifact board data unless explicitly requested', async () => {

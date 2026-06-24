@@ -185,31 +185,15 @@ export interface RecommendationModel {
   blockedChains?: RecommendationBlockedChain[];
   rationaleAndAssumptions?: string[];
 }
-export interface RecommendationActionabilityLink extends LifecycleLinkRow { taskId?: string; itemIds?: string[]; }
-export interface RecommendationItemActionability {
-  itemId: string;
-  state: 'actionable' | 'non-actionable';
-  lifecycleState: string;
-  reasonCode?: string;
-  reasonMessage?: string;
-  associatedLinks: RecommendationActionabilityLink[];
-}
+export type RecommendationActionabilityState = 'actionable' | 'non-actionable';
+export type RecommendationGroupActionabilityState = 'actionable' | 'partially-actionable' | 'non-actionable';
+export type RecommendationActionabilityReasonCode = 'planned-session-plan' | 'submitted-session-plan' | 'active-planning-task' | 'queued-trace' | 'building-trace' | 'active-build-session-trace' | 'open-pr-trace';
+export type RecommendationActionabilityLifecycleState = 'none' | 'planned' | 'active' | 'queue' | 'build' | 'pr-open' | 'merged' | 'shipped' | 'failed' | 'partial';
+export interface RecommendationActionabilityLink { kind: string; label: string; itemIds: string[]; status?: string; session?: string; taskId?: string; prdId?: string; runId?: string; sessionId?: string; featureBranch?: string; commitSha?: string; prUrl?: string; path?: string; timestamp?: string; }
+export interface RecommendationItemActionability { itemId: string; state: RecommendationActionabilityState; lifecycleState: RecommendationActionabilityLifecycleState; reasonCode?: RecommendationActionabilityReasonCode; reasonMessage?: string; associatedLinks: RecommendationActionabilityLink[]; }
 export interface RecommendationEntryActionability extends RecommendationEntry { lane: string; actionability: RecommendationItemActionability; }
-export interface RecommendationGroupActionability {
-  ref: string;
-  state: 'actionable' | 'partially-actionable' | 'non-actionable';
-  itemIds: string[];
-  actionableItemIds: string[];
-  suppressedItemIds: string[];
-  items: RecommendationItemActionability[];
-}
-export interface RecommendationActionabilityProjection {
-  schemaVersion: 1;
-  activeWork: RecommendationEntryActionability[];
-  readyCandidates: RecommendationEntryActionability[];
-  recommendedNextSequence: RecommendationEntryActionability[];
-  safeParallelizableGroups: RecommendationGroupActionability[];
-}
+export interface RecommendationGroupActionability { ref: string; state: RecommendationGroupActionabilityState; itemIds: string[]; actionableItemIds: string[]; suppressedItemIds: string[]; items: RecommendationItemActionability[]; }
+export interface RecommendationActionabilityProjection { schemaVersion: 1; activeWork: RecommendationEntryActionability[]; readyCandidates: RecommendationEntryActionability[]; recommendedNextSequence: RecommendationEntryActionability[]; safeParallelizableGroups: RecommendationGroupActionability[]; }
 
 // Draft plan unit shapes live in a sibling module to keep this barrel under the
 // file-size cap; re-export so `@/types` stays the single import surface.
