@@ -13,9 +13,7 @@ import {
   recordRecommendationPutApplied,
 } from './recommendation-status.js';
 import { findActiveRecommendationRefreshTask, refreshRecommendationsAction } from './recommendation-refresh.js';
-// --- eforge:region plan-04-recommendation-actionability-server ---
 import { buildRecommendationActionability } from './recommendation-actionability.js';
-// --- eforge:endregion plan-04-recommendation-actionability-server ---
 import {
   readRecommendationsFromPath,
   resolveRecommendationsPath,
@@ -36,15 +34,11 @@ export const getRecommendations = defineExtensionAction({
     const status = await readDerivedRecommendationStatus(ctx.cwd, path);
     const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
     const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd, status.sourceFingerprint);
-    // --- eforge:region plan-04-recommendation-actionability-server ---
     const recommendationActionability = recommendations === null ? undefined : await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks);
-    // --- eforge:endregion plan-04-recommendation-actionability-server ---
     return toJsonSafeObject({
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
-      // --- eforge:region plan-04-recommendation-actionability-server ---
       ...(recommendationActionability !== undefined && { recommendationActionability }),
-      // --- eforge:endregion plan-04-recommendation-actionability-server ---
       path,
       status,
       recommendationFreshness,

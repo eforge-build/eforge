@@ -32,10 +32,8 @@ const OUTPUT_PROFILES = new Set<ExtensionActionOutputProfile>([
   'debug-rich',
 ]);
 const BROAD_ACTION_TERMS = ['list', 'search', 'board'];
-// --- eforge:region plan-03-broad-action-diagnostics ---
 const SINGLE_RECORD_ACTION_PREFIXES = ['get-', 'preview-', 'remove-'];
 const BROAD_WARNING_SUPPRESSING_SIDE_EFFECTS = new Set<ExtensionActionSideEffect>(['local-write', 'network', 'daemon-state', 'build-queue']);
-// --- eforge:endregion plan-03-broad-action-diagnostics ---
 const LIMIT_CONTROL_NAMES = new Set(['limit', 'maxlimit', 'maxresults', 'pagesize', 'perpage', 'first', 'take']);
 const CURSOR_CONTROL_NAMES = new Set(['cursor', 'offset', 'page', 'pagetoken', 'nexttoken', 'after', 'before']);
 const PROJECTION_CONTROL_TERMS = ['field', 'projection', 'select', 'include', 'exclude', 'summary', 'compact', 'detail', 'body', 'raw', 'format'];
@@ -472,7 +470,6 @@ function isBroadContributionAction(spec: ExtensionActionSpec, context: ActionSpe
     && hasBroadContributionIdShape(context);
 }
 
-// --- eforge:region plan-03-broad-action-diagnostics ---
 function hasBroadWarningSuppressingPrefix(context: ActionSpecWarningContext): boolean {
   return contributionIdCandidates(context).some((id) => SINGLE_RECORD_ACTION_PREFIXES.some((prefix) => id.startsWith(prefix)));
 }
@@ -493,7 +490,6 @@ function contributionIdCandidates(context: ActionSpecWarningContext): string[] {
 function hasIdSegment(id: string, segment: string): boolean {
   return new RegExp(`(^|[^a-z0-9])${segment}([^a-z0-9]|$)`, 'u').test(id);
 }
-// --- eforge:endregion plan-03-broad-action-diagnostics ---
 
 function collectSchemaPropertyNames(schema: unknown): string[] {
   if (!isNonArrayObject(schema)) return [];

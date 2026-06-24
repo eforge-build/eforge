@@ -194,9 +194,7 @@ describe('eforge-plan extension registration', () => {
     const getRecommendationsOutput = actions.find((action) => action.id === 'get-recommendations')?.outputSchema as Record<string, unknown>;
     expect(Object.keys(getRecommendationsOutput.properties as Record<string, unknown>).sort()).toEqual(['activeRefreshTask', 'path', 'recommendationActionability', 'recommendationFreshness', 'recommendationSummary', 'recommendations', 'status']);
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/statusPath|currentPath|freshAt|staleSince|lastRefreshedBy|reasons|staleReasons|missing|fresh|stale|activeRefreshTask/);
-    // --- eforge:region plan-04-recommendation-actionability-server ---
     expect(JSON.stringify(getRecommendationsOutput.properties)).toMatch(/recommendationActionability|actionableItemIds|suppressedItemIds|reasonCode|associatedLinks/);
-    // --- eforge:endregion plan-04-recommendation-actionability-server ---
     const roadmapOutput = actions.find((action) => action.id === 'get-roadmap-state')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(roadmapOutput)).toMatch(/context|localSteering|sharedContextSources|discoveredContextSources/);
     const refreshOutput = actions.find((action) => action.id === 'refresh-recommendations')?.outputSchema as Record<string, unknown>;

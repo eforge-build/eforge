@@ -557,8 +557,6 @@ export type BacklogRecommendationModel = Static<typeof BacklogRecommendationMode
 export type RecommendationSummary = Static<typeof RecommendationSummarySchema>;
 export type RecommendationStaleReason = Static<typeof RecommendationStaleReasonSchema>; export type RecommendationStatusSidecar = Static<typeof RecommendationStatusSidecarSchema>;
 export type RecommendationDerivedStatus = Static<typeof RecommendationDerivedStatusSchema>;
-// --- eforge:region plan-04-recommendation-actionability-server ---
-// --- eforge:endregion plan-04-recommendation-actionability-server ---
 export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
 export type GetRecommendationsOutput = Static<typeof GetRecommendationsOutputSchema>;
 export type PutRecommendationsInput = Static<typeof PutRecommendationsInputSchema>;

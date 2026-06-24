@@ -14,9 +14,7 @@ import { createEmptyRecommendationModel, readRecommendations, writeRecommendatio
 import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { ApplyPlanningAgentTaskResultInputSchema } from '../planning-agent-task-schemas.js';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
-// --- eforge:region plan-04-recommendation-actionability-server ---
 import { updateSessionPlanSourceMetadata } from '../session-plan-metadata.js';
-// --- eforge:endregion plan-04-recommendation-actionability-server ---
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-agent-task-'));
   try { return await fn(cwd); } finally { await rm(cwd, { recursive: true, force: true }); }
@@ -194,7 +192,6 @@ describe('planning agent task actions', () => {
       expect(sourceText).toContain('…[truncated]');
     });
   });
-  // --- eforge:region plan-04-recommendation-actionability-server ---
   it('does not start a daemon task when selected work is already covered by a session plan', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -260,7 +257,6 @@ describe('planning agent task actions', () => {
       expect(starts).toBe(1);
     });
   });
-  // --- eforge:endregion plan-04-recommendation-actionability-server ---
   it('does not start a daemon task when planner selection is invalid', async () => {
     await withTempProject(async (cwd) => {
       let starts = 0;

@@ -9,11 +9,9 @@ function recordAction(action: Record<string, unknown>) {
   return state;
 }
 
-// --- eforge:region plan-03-broad-action-diagnostics ---
 function broadActionWarnings(state: ReturnType<typeof recordAction>) {
   return state.diagnostics.filter((diagnostic) => diagnostic.code.startsWith('extension:action-'));
 }
-// --- eforge:endregion plan-03-broad-action-diagnostics ---
 
 describe('extension contribution validation warnings', () => {
   it('emits separate warning diagnostics for unbounded broad list/search/board actions', () => {
@@ -59,7 +57,6 @@ describe('extension contribution validation warnings', () => {
     expect(state.diagnostics).toEqual([]);
   });
 
-  // --- eforge:region plan-03-broad-action-diagnostics ---
   it('does not classify single-record and write-like actions from title or description text', () => {
     const cases = [
       {
@@ -101,7 +98,6 @@ describe('extension contribution validation warnings', () => {
     }
   });
 
-  // --- eforge:endregion plan-03-broad-action-diagnostics ---
 
   it('recognizes broad action controls inside composed input schemas', () => {
     const state = recordAction({

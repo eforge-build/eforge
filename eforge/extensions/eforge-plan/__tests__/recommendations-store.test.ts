@@ -151,17 +151,13 @@ describe('eforge-plan recommendation storage', () => {
           blockedChainCount: 1,
           rationaleAndAssumptions: ['Assume dependencies stay stable.'],
         },
-        // --- eforge:region plan-04-recommendation-actionability-server ---
         recommendationActionability: {
           recommendedNextSequence: [{ itemId: 'item-one', actionability: { state: 'actionable', lifecycleState: 'none' } }],
           safeParallelizableGroups: [{ ref: 'group-one', actionableItemIds: ['item-one', 'item-two'], suppressedItemIds: [] }],
         },
-        // --- eforge:endregion plan-04-recommendation-actionability-server ---
       });
-      // --- eforge:region plan-04-recommendation-actionability-server ---
       const raw = JSON.parse(await readFile(resolveRecommendationsPath(createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' })), 'utf-8')) as Record<string, unknown>;
       expect(raw).not.toHaveProperty('recommendationActionability');
-      // --- eforge:endregion plan-04-recommendation-actionability-server ---
     });
   });
 

@@ -23,9 +23,7 @@ import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
 import { normalizePlanningAgentTaskListProjection, projectMissingPlanningAgentTaskListItem, projectPlanningAgentTaskListItem } from './planning-agent-task-projection.js';
-// --- eforge:region plan-04-recommendation-actionability-server ---
 import { assertRecommendationSelectionActionable } from './recommendation-actionability.js';
-// --- eforge:endregion plan-04-recommendation-actionability-server ---
 import {
   ApplyPlanningAgentTaskResultInputSchema,
   ApplyPlanningAgentTaskResultOutputSchema,
@@ -71,9 +69,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
       includeRoadmap: input.includeRoadmap,
     });
     throwIfAborted(ctx.signal);
-    // --- eforge:region plan-04-recommendation-actionability-server ---
     await assertRecommendationSelectionActionable(ctx.cwd, hasBacklogSelection(selection) ? context.items.map((item) => item.id) : [], ctx.agentTasks, selectionValidationPath(selection));
-    // --- eforge:endregion plan-04-recommendation-actionability-server ---
     const derivedGoal = deriveUserGoal(input.userGoal, selection, context);
     const requestedOutputSections = resolveRequestedOutputSections(input, selection);
     const planningType = typeof input.planningType === 'string' ? input.planningType : undefined;
