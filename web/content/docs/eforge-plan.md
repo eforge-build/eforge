@@ -14,7 +14,7 @@ The detailed, canonical product documentation lives in [`eforge/extensions/eforg
 Install `@eforge-build/eforge-plan` when you want first-party planning UX in addition to direct prompt, PRD, or file builds:
 
 - Project-local backlog capture, search, board rendering, epics, dependencies, and promotion, with direct compact agent operations (`search-items`, `get-item`, `get-epic`, `capture-item`, and `update-item`) and projection flags for smaller payloads (epics, lane counts, sections, lifecycle rows, dependencies, dependents, and body text remain opt-in or omittable where supported).
-- Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks.
+- Recommendation refresh and backlog curation workflows backed by daemon-owned agent tasks, with server-derived recommendation actionability and duplicate planning guards.
 - A Console planning workstation for investigation-first planning and handoff.
 - Session-plan creation, including one automatic apply attempt for eligible ready creation drafts, persistence of the task summary as a leading `## Executive Summary`, visible failed apply attempts, readiness checks, and handoff into ordinary eforge builds.
 - Revise with AI workflows for existing flat session plans, including durable annotations and revision turns.
@@ -49,7 +49,7 @@ Session plans created for handoff live under `.eforge/session-plans/` and are su
 `eforge-plan` owns product-specific concepts that generic core and extension-platform docs intentionally do not describe in detail:
 
 - `backlogCurationDraft` outputs from backlog curation tasks.
-- Generated recommendations and recommendation freshness/staleness projection.
+- Generated recommendations plus read-time freshness/staleness and actionability projections.
 - `planRevisionTurn` output for Revise with AI, including answer-only and patch-bearing turns.
 - Annotation-backed revision sessions and durable quote-context targets.
 - Daemon-owned `ctx.agentTasks` execution boundaries: the extension owns product storage and apply semantics, including one-attempt workstation auto-apply for eligible ready `sessionPlanCreationDraft` tasks and summary-to-Executive-Summary persistence, while the daemon owns task records, status, cancellation, and sanitized results.

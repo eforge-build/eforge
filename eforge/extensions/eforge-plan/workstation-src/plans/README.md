@@ -1,6 +1,6 @@
 # eforge-plan workstation developer contract
 
-The planning workstation is an extension-owned Vite iframe. It talks to the host only through `window.eforge.invokeAction` and the manifest `allowedActions`; it does not read private extension storage, run local `git` commands, call `gh`, scan daemon routes, recompute the recommendation overlay, or infer recommendation freshness from the presence of a recommendation model.
+The planning workstation is an extension-owned Vite iframe. It talks to the host only through `window.eforge.invokeAction` and the manifest `allowedActions`; it does not read private extension storage, run local `git` commands, call `gh`, scan daemon routes, recompute the recommendation overlay, infer recommendation actionability, or infer recommendation freshness from the presence of a recommendation model.
 
 ## Server-authoritative curation preview
 
@@ -14,6 +14,7 @@ Required preview payload fields for curation UI and fixtures are:
 - `recommendationProjection` — the prospective overlay used by both preview and apply validation.
 - `recommendationProjection.effectiveRecommendations` / `effectiveRecommendations` display counts and expandable details — the generated recommendations after closed targets are removed and active/planned targets are repositioned or excluded by the server.
 - `recommendationFreshness` — server labels and fingerprint comparison state for `missing`, `fresh`, or `stale`.
+- `recommendationActionability` — read-time server projection for recommendation entries and safe-parallel groups, including actionable/non-actionable state, lifecycle state, reason codes/messages, associated links, and group `actionableItemIds`/`suppressedItemIds`.
 - `generatedRecommendationValidation` — validation issues for unknown, closed, empty, or `wrong-lane` references.
 - Draft rows for item changes, epic changes, no-op rechecks, unresolved-exception rows, and needs-input rows.
 
@@ -33,11 +34,11 @@ Fenced `mermaid` code blocks render as diagrams in workstation Markdown views. R
 
 ## Freshness labels
 
-Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness state.
+Show `recommendationFreshness` labels exactly as returned: `missing`, `fresh`, or `stale`. A recommendation model being present is not enough to show fresh. Render `recommendationActionability` exactly as returned for recommendation enablement, suppression reasons, lifecycle evidence links, and mixed safe-parallel groups; do not derive suppression from local board lifecycle fields. After backlog mutation, curation preview, or curation-only apply, use the server's current/prospective fingerprint comparison and stale reasons. After normal curation+recommendations apply, reload server data and render the returned freshness and actionability state.
 
 ## Mock bridge and fixtures
 
-Local Vite development uses the mock bridge in `src/bridge.ts` and fixtures in `src/fixtures/mock-data.ts`. Mock list responses include pagination metadata (`total`, `limit`, and `offset`) for planning artifacts, draft units, and planning tasks so the iframe contract matches the extension actions. Fixtures that exercise curation preview must include `gitDelta`, analysis coverage/caps/concurrency/diagnostics/per-item outcomes/current-source citations/historical navigation hints, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped/superseded needs-input labels. Mock analyze-all behavior should keep active/reused curation tasks separated by analysis concurrency only. Mock behavior should model the server contract rather than adding local git scanning, `gh` enrichment, overlay recomputation, or freshness inference.
+Local Vite development uses the mock bridge in `src/bridge.ts` and fixtures in `src/fixtures/mock-data.ts`. Mock list responses include pagination metadata (`total`, `limit`, and `offset`) for planning artifacts, draft units, and planning tasks so the iframe contract matches the extension actions. Fixtures that exercise recommendation rendering and curation preview must include `gitDelta`, analysis coverage/caps/concurrency/diagnostics/per-item outcomes/current-source citations/historical navigation hints, `recommendationProjection`, `effectiveRecommendations`, `recommendationFreshness`, `recommendationActionability`, `generatedRecommendationValidation`, removed targets, repositioned targets, `wrong-lane` validation, and ambiguous shipped/superseded needs-input labels. Mock analyze-all behavior should keep active/reused curation tasks separated by analysis concurrency only. Mock behavior should model the server contract rather than adding local git scanning, `gh` enrichment, overlay recomputation, actionability inference, or freshness inference.
 
 ## Targeted checks
 

@@ -185,6 +185,31 @@ export interface RecommendationModel {
   blockedChains?: RecommendationBlockedChain[];
   rationaleAndAssumptions?: string[];
 }
+export interface RecommendationActionabilityLink extends LifecycleLinkRow { taskId?: string; itemIds?: string[]; }
+export interface RecommendationItemActionability {
+  itemId: string;
+  state: 'actionable' | 'non-actionable';
+  lifecycleState: string;
+  reasonCode?: string;
+  reasonMessage?: string;
+  associatedLinks: RecommendationActionabilityLink[];
+}
+export interface RecommendationEntryActionability extends RecommendationEntry { lane: string; actionability: RecommendationItemActionability; }
+export interface RecommendationGroupActionability {
+  ref: string;
+  state: 'actionable' | 'partially-actionable' | 'non-actionable';
+  itemIds: string[];
+  actionableItemIds: string[];
+  suppressedItemIds: string[];
+  items: RecommendationItemActionability[];
+}
+export interface RecommendationActionabilityProjection {
+  schemaVersion: 1;
+  activeWork: RecommendationEntryActionability[];
+  readyCandidates: RecommendationEntryActionability[];
+  recommendedNextSequence: RecommendationEntryActionability[];
+  safeParallelizableGroups: RecommendationGroupActionability[];
+}
 
 // Draft plan unit shapes live in a sibling module to keep this barrel under the
 // file-size cap; re-export so `@/types` stays the single import surface.
@@ -418,6 +443,7 @@ export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTas
 export interface GetRecommendationsResponse {
   recommendations: RecommendationModel | null;
   recommendationSummary?: RecommendationSummary;
+  recommendationActionability?: RecommendationActionabilityProjection;
   path: string;
   status: RecommendationStatus;
   recommendationFreshness?: RecommendationFreshnessView;

@@ -14,27 +14,41 @@ import { createEmptyRecommendationModel, readRecommendations, writeRecommendatio
 import { readPlanningTaskWorkflowIndex, recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
 import { ApplyPlanningAgentTaskResultInputSchema } from '../planning-agent-task-schemas.js';
 import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from '../backlog-curation-source.js';
-
+// --- eforge:region plan-04-recommendation-actionability-server ---
+import { updateSessionPlanSourceMetadata } from '../session-plan-metadata.js';
+// --- eforge:endregion plan-04-recommendation-actionability-server ---
 async function withTempProject<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'eforge-plan-agent-task-'));
   try { return await fn(cwd); } finally { await rm(cwd, { recursive: true, force: true }); }
 }
-
 function load(): NativeExtensionRegistry {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
   eforgePlanExtension(api as never);
   expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
   return registryFromRecorderState(state);
 }
-
 function registryFromRecorderState(state: NativeExtensionRecorderState): NativeExtensionRegistry {
   return { ...state, extensions: [], candidates: [] };
 }
-
 function runningTask(taskId = 'task-running'): ExtensionAgentTaskRecord {
   return { taskId, kind: 'eforge-plan.planning-draft', status: 'running', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', startedAt: '2026-01-01T00:00:00.000Z' };
 }
-
+function expectSuppressedInvalidInput(result: unknown, expected: { reasonCode: string; lifecycleState: string; associatedLink: Record<string, unknown> }): void {
+  expect(result).toMatchObject({
+    kind: 'invalid-input',
+    validationErrors: [expect.objectContaining({
+      path: 'itemIds',
+      suppressedItems: [expect.objectContaining({
+        itemId: 'item-one',
+        state: 'non-actionable',
+        reasonCode: expected.reasonCode,
+        reasonMessage: expect.stringMatching(/\S/),
+        lifecycleState: expected.lifecycleState,
+        associatedLinks: expect.arrayContaining([expect.objectContaining(expected.associatedLink)]),
+      })],
+    })],
+  });
+}
 function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId: 'task-complete',
@@ -54,7 +68,6 @@ function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): Exten
     ...overrides,
   });
 }
-
 function curationCompletedTask(taskId = 'task-curation'): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId,
@@ -72,7 +85,6 @@ function curationCompletedTask(taskId = 'task-curation'): ExtensionAgentTaskReco
     },
   });
 }
-
 function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId,
@@ -91,7 +103,6 @@ function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
     },
   });
 }
-
 function creationDraftTask(taskId = 'task-creation', session = 'created-session'): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId,
@@ -122,7 +133,6 @@ function creationDraftTask(taskId = 'task-creation', session = 'created-session'
     },
   });
 }
-
 describe('planning agent task actions', () => {
   it('prepares planner context before starting a daemon-owned planning task', async () => {
     await withTempProject(async (cwd) => {
@@ -151,7 +161,6 @@ describe('planning agent task actions', () => {
       expect(calls).toEqual([expect.objectContaining({ kind: 'eforge-plan.planning-draft', input: expect.objectContaining({ topic: 'Plan item one' }) })]);
     });
   });
-
   it('bounds planner context before starting a daemon-owned planning task', async () => {
     await withTempProject(async (cwd) => {
       const longBody = `# Long\n\n## Claim\n\n${'x'.repeat(5000)}\n`;
@@ -185,7 +194,73 @@ describe('planning agent task actions', () => {
       expect(sourceText).toContain('…[truncated]');
     });
   });
-
+  // --- eforge:region plan-04-recommendation-actionability-server ---
+  it('does not start a daemon task when selected work is already covered by a session plan', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'planned-session', topic: 'Existing plan' });
+      await updateSessionPlanSourceMetadata({ cwd, session: 'planned-session', sourceItemIds: ['item-one'], sourceEpicIds: [], promotedAt: '2026-01-01T00:00:00.000Z' });
+      let starts = 0;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { itemIds: ['item-one'], includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { starts += 1; throw new Error('unexpected start'); },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expectSuppressedInvalidInput(result, { reasonCode: 'planned-session-plan', lifecycleState: 'planned', associatedLink: { kind: 'session-plan', session: 'planned-session', status: 'planning' } });
+      expect(starts).toBe(0);
+    });
+  });
+  it('does not start a daemon task when selected work has an active planning task', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-active', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan', derivedRequest: 'Plan item one.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['handoffDrafts'] });
+      let starts = 0;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { itemIds: ['item-one'], includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { starts += 1; throw new Error('unexpected start'); },
+          async get(taskId: string) { return { task: runningTask(taskId) }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expectSuppressedInvalidInput(result, { reasonCode: 'active-planning-task', lifecycleState: 'active', associatedLink: { kind: 'planning-task', taskId: 'task-active', status: 'running' } });
+      expect(starts).toBe(0);
+    });
+  });
+  it('starts a user-goal planning task even when contextual backlog work is already planned', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
+      await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'planned-session', topic: 'Existing plan' });
+      await updateSessionPlanSourceMetadata({ cwd, session: 'planned-session', sourceItemIds: ['item-one'], sourceEpicIds: [], promotedAt: '2026-01-01T00:00:00.000Z' });
+      let starts = 0;
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:start-planning-agent-task',
+        input: { userGoal: 'Explore broad planning options', includeRoadmap: false },
+        requestedBy: { host: 'console' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { starts += 1; return { task: runningTask('task-user-goal') }; },
+          async get() { throw new Error('unexpected get'); },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result).toMatchObject({ kind: 'success', output: { task: { taskId: 'task-user-goal' } } });
+      expect(starts).toBe(1);
+    });
+  });
+  // --- eforge:endregion plan-04-recommendation-actionability-server ---
   it('does not start a daemon task when planner selection is invalid', async () => {
     await withTempProject(async (cwd) => {
       let starts = 0;
@@ -205,7 +280,6 @@ describe('planning agent task actions', () => {
       expect(starts).toBe(0);
     });
   });
-
   it('delegates get and cancel to the daemon task API', async () => {
     await withTempProject(async (cwd) => {
       const calls: string[] = [];
@@ -222,7 +296,6 @@ describe('planning agent task actions', () => {
       expect(calls).toEqual(['get:task-one', 'cancel:task-one:user']);
     });
   });
-
   it('applies selected recommendations and session-plan sections without enqueueing builds or shipping backlog items', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -246,7 +319,6 @@ describe('planning agent task actions', () => {
       expect((await readBacklogItem(cwd, 'item-one'))?.status).toBe('planned');
     });
   });
-
   it('validates all selected task output before applying any local writes', async () => {
     await withTempProject(async (cwd) => {
       await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'session-one', topic: 'Item one' });
@@ -266,7 +338,6 @@ describe('planning agent task actions', () => {
       expect(await readRecommendations(cwd)).toBeNull();
     });
   });
-
   it('encodes apply-selection requirements in the action input schema', () => {
     const schema = ApplyPlanningAgentTaskResultInputSchema as unknown as { anyOf?: unknown[]; not?: { anyOf?: unknown[] } };
     expect(schema.anyOf).toEqual(expect.arrayContaining([
@@ -281,7 +352,6 @@ describe('planning agent task actions', () => {
     expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }).success).toBe(true);
     expect(safeParseWithSchema(ApplyPlanningAgentTaskResultInputSchema, { taskId: 'task-complete', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true, applyCurationOnly: true } }).success).toBe(true);
   });
-
   it('rejects apply requests without a selected generated output section', async () => {
     await withTempProject(async (cwd) => {
       for (const input of [{ taskId: 'task-complete' }, { taskId: 'task-complete', applyRecommendations: false }]) {
@@ -297,7 +367,6 @@ describe('planning agent task actions', () => {
       }
     });
   });
-
   it('rejects non-completed, failed, cancelled, wrong-kind, and missing-result task records', async () => {
     await withTempProject(async (cwd) => {
       const cases: ExtensionAgentTaskRecord[] = [
@@ -320,7 +389,6 @@ describe('planning agent task actions', () => {
       }
     });
   });
-
   it('returns invalid input instead of handler error for invalid backlog curation task state', async () => {
     await withTempProject(async (cwd) => {
       await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-curation', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111', createdAt: 'now' });
@@ -336,12 +404,10 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result).toMatchObject({ kind: 'invalid-input' });
       expect(JSON.stringify(result)).toContain('only completed tasks can be applied');
     });
   });
-
   it('rejects backlog curation apply selection when the workflow entry is not a backlog-curation workflow', async () => {
     await withTempProject(async (cwd) => {
       const result = await dispatchExtensionAction(load(), {
@@ -356,12 +422,10 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result.kind).toBe('invalid-input');
       expect(await readRecommendations(cwd)).toBeNull();
     });
   });
-
   it('rejects standalone recommendation apply for a backlog-curation workflow entry', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
@@ -388,12 +452,10 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result.kind).toBe('invalid-input');
       expect(await readRecommendations(cwd)).toBeNull();
     });
   });
-
   it('reports recommendations applied when confirmed backlog curation writes generated recommendations', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
@@ -426,7 +488,6 @@ describe('planning agent task actions', () => {
         },
         recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-one', rationale: 'Ready after curation.' }] },
       };
-
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:apply-planning-agent-task-result',
         input: { taskId: 'task-curation', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } },
@@ -439,12 +500,10 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result).toMatchObject({ kind: 'success', output: { applied: { recommendations: true, backlogCuration: 1 } } });
       expect(await readRecommendations(cwd)).toMatchObject({ readyCandidates: [{ itemId: 'item-one' }] });
     });
   });
-
   it('records a durable workflow index entry when starting from selected items without a user goal', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -490,7 +549,6 @@ describe('planning agent task actions', () => {
       expect(entry.createdAt.length).toBeGreaterThan(0);
     });
   });
-
   it('derives a goal from a recommendation ref and records its selection when no user goal is supplied', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -522,7 +580,6 @@ describe('planning agent task actions', () => {
       expect(entry.derivedRequest).toContain('recommendation next-one');
     });
   });
-
   it('includes the canonical creation-readiness contract when starting a recommendation-lane creation draft', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -546,7 +603,6 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result.kind).toBe('success');
       const readiness = taskInput?.sessionPlanCreationReadiness as {
         dimensionContract: Record<string, Record<string, { requiredDimensions: string[]; optionalDimensions: string[] }>>;
@@ -566,7 +622,6 @@ describe('planning agent task actions', () => {
       });
     });
   });
-
   it('plans an explicit ready item subset while preserving its source recommendation ref', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -594,7 +649,6 @@ describe('planning agent task actions', () => {
       expect(entry.selection).not.toHaveProperty('recommendationRef');
     });
   });
-
   it('rejects source recommendation provenance without an explicit item selection', async () => {
     await withTempProject(async (cwd) => {
       const result = await dispatchExtensionAction(load(), {
@@ -613,7 +667,6 @@ describe('planning agent task actions', () => {
       expect(JSON.stringify(result)).toContain('sourceRecommendationRef requires itemIds');
     });
   });
-
   it('derives a goal from an epic id and records its selection when no user goal is supplied', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogEpic(cwd, { id: 'epic-one', status: 'planned', body: '# Epic One\n\n## Goal\n\nDo epic.\n' });
@@ -645,7 +698,6 @@ describe('planning agent task actions', () => {
       expect(entry.derivedRequest).toContain('epic epic-one');
     });
   });
-
   it('lists indexed running, completed, failed, cancelled, and missing daemon task records without a caller-supplied task id', async () => {
     await withTempProject(async (cwd) => {
       const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
@@ -750,7 +802,6 @@ describe('planning agent task actions', () => {
       expect(fetched).toEqual(['task-middle']);
     });
   });
-
   it('keeps non-heavy planning task list results and omits verbose completed payloads', async () => {
     const cases: Array<{ name: string; task: ExtensionAgentTaskRecord; requestedOutputSections: Array<'sessionPlanCreationDraft' | 'planDrafts' | 'playbookDraft'>; resultKey?: string; omitted: boolean }> = [
       { name: 'ready sessionPlanCreationDraft', task: creationDraftTask('task-creation-compact'), requestedOutputSections: ['sessionPlanCreationDraft'], resultKey: 'sessionPlanCreationDraft', omitted: false },
@@ -758,7 +809,6 @@ describe('planning agent task actions', () => {
       { name: 'planDrafts', task: completedTask({ taskId: 'task-plan-drafts-compact', result: { summary: 'Drafted a plan.', assumptionsOpenQuestions: [], planDrafts: [{ title: 'Implement the feature', body: '# Plan\n\nDo the work.' }] } }), requestedOutputSections: ['planDrafts'], omitted: true },
       { name: 'playbookDraft', task: completedTask({ taskId: 'task-playbook-compact', result: { summary: 'Drafted a playbook.', assumptionsOpenQuestions: [], playbookDraft: { name: 'planning-playbook', body: '# Playbook\n\nUse it.' } } }), requestedOutputSections: ['playbookDraft'], omitted: true },
     ];
-
     for (const testCase of cases) {
       await withTempProject(async (cwd) => {
         await recordPlanningTaskWorkflowEntry(cwd, { taskId: testCase.task.taskId, createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan', derivedRequest: 'Draft planning output.', selection: { itemIds: ['item-one'] }, requestedOutputSections: testCase.requestedOutputSections });
@@ -790,7 +840,6 @@ describe('planning agent task actions', () => {
       });
     }
   });
-
   it('previews backlog curation validation on demand without coupling it to task list rendering', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
@@ -826,13 +875,11 @@ describe('planning agent task actions', () => {
         result: { summary: 'Malformed.', assumptionsOpenQuestions: [], recommendations: createEmptyRecommendationModel() },
       });
       const records: Record<string, ExtensionAgentTaskRecord> = { [validPreviewTask.taskId]: validPreviewTask, [malformedTask.taskId]: malformedTask };
-
       const agentTasks = () => ({
         async start() { throw new Error('unexpected start'); },
         async get(taskId: string) { return { task: records[taskId]! }; },
         async cancel() { throw new Error('unexpected cancel'); },
       });
-
       const list = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:list-planning-agent-tasks',
         input: {},
@@ -854,7 +901,6 @@ describe('planning agent task actions', () => {
         expect(task).toMatchObject({ taskId: expect.any(String), status: 'completed', createdAt: expect.any(String), updatedAt: expect.any(String), completedAt: expect.any(String) });
         expect(task).not.toHaveProperty('result');
       }
-
       const validDetail = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:get-planning-agent-task',
         input: { taskId: 'task-curation-valid-preview' },
@@ -864,7 +910,6 @@ describe('planning agent task actions', () => {
         agentTasks,
       });
       expect(validDetail).toMatchObject({ kind: 'success', output: { task: { result: { backlogCurationDraft: expect.any(Object), recommendations: expect.any(Object) } } } });
-
       const validPreview = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:preview-backlog-curation-task',
         input: { taskId: 'task-curation-valid-preview' },
@@ -885,7 +930,6 @@ describe('planning agent task actions', () => {
       expect(malformedPreview).toMatchObject({ kind: 'success', output: { valid: false, errors: expect.any(Array) } });
     });
   });
-
   it('removes non-running planning tasks from the workflow index and rejects running tasks', async () => {
     await withTempProject(async (cwd) => {
       const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
@@ -900,17 +944,14 @@ describe('planning agent task actions', () => {
         },
         async cancel() { throw new Error('unexpected cancel'); },
       });
-
       const removed = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:remove-planning-agent-task', input: { taskId: 'task-failed' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
       expect(removed).toMatchObject({ kind: 'success', output: { taskId: 'task-failed', removed: true } });
       expect((await readPlanningTaskWorkflowIndex(cwd)).entries.map((entry) => entry.taskId)).toEqual(['task-running']);
-
       const rejected = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:remove-planning-agent-task', input: { taskId: 'task-running' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
       expect(rejected.kind).toBe('invalid-input');
       expect((await readPlanningTaskWorkflowIndex(cwd)).entries.map((entry) => entry.taskId)).toEqual(['task-running']);
     });
   });
-
   it.each([
     { includeRoadmap: false },
     { includeRoadmap: true },
@@ -960,7 +1001,6 @@ describe('planning agent task actions', () => {
       expect(index.entries.map((entry) => entry.taskId).sort()).toEqual(['task-original', 'task-retry']);
     });
   });
-
   it('retries from the preserved workflow entry without consulting the daemon parent status (status validation out of scope)', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -987,7 +1027,6 @@ describe('planning agent task actions', () => {
       expect(result.kind).toBe('success');
     });
   });
-
   it('retries a backlog-curation workflow with current curation source and preserved purpose', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
@@ -1000,7 +1039,6 @@ describe('planning agent task actions', () => {
         requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
         includeRoadmap: true,
         purpose: 'backlog-curation',
-       
         itemAuditConcurrency: 6,
         sourceFingerprint: 'old-fingerprint',
       });
@@ -1017,14 +1055,12 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation-original', purpose: 'backlog-curation', itemAuditConcurrency: 6, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
       expect(started?.input).toMatchObject({ requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 6 } } });
       expect(started?.input.sourceText).toBeUndefined();
     });
   });
-
   it('redrafts a completed backlog curation task with prior draft context and steering', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'candidate', body: '# Item One\n\n## Claim\n\nCurate it.\n' });
@@ -1037,7 +1073,6 @@ describe('planning agent task actions', () => {
         requestedOutputSections: ['backlogCurationDraft', 'recommendations'],
         includeRoadmap: true,
         purpose: 'backlog-curation',
-       
         itemAuditConcurrency: 7,
         sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111',
       });
@@ -1054,14 +1089,12 @@ describe('planning agent task actions', () => {
           async cancel() { throw new Error('unexpected cancel'); },
         }),
       });
-
       expect(result).toMatchObject({ kind: 'success', output: { entry: { parentTaskId: 'task-curation', purpose: 'backlog-curation', itemAuditConcurrency: 7, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] } } });
       expect((result as { output: { entry: { sourceFingerprint?: string } } }).output.entry.sourceFingerprint).toBeUndefined();
       expect(started?.input.sourceText).toBeUndefined();
       expect(started?.input).toMatchObject({ sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 7, redraft: { parentTaskId: 'task-curation', steering: 'Prefer conservative status changes.', previousBacklogCurationDraft: expect.any(Object) } } } });
     });
   });
-
   it('redrafts from a needs-input parent including the original request, prior summary or questions, and user answers and steering', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -1097,7 +1130,6 @@ describe('planning agent task actions', () => {
       expect((result.output as { entry: { parentTaskId?: string } }).entry.parentTaskId).toBe('task-needs-input');
     });
   });
-
   it('bounds oversized redraft context within the configured source-text cap while preserving essential fields', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -1165,7 +1197,6 @@ describe('planning agent task actions', () => {
       expect(parsed.context.items).toBeUndefined();
     });
   });
-
   it('rejects redraft when the parent is not a completed needs-input clarification result and starts no new task', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
@@ -1231,5 +1262,4 @@ describe('planning agent task actions', () => {
       }
     });
   });
-
 });

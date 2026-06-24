@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { RailCard } from '@/components/ui/rail-card';
 import { RecommendationFreshnessBadge } from '@/components/recommendation-freshness';
 import { formatRelativeTime } from '@/lib/format-time';
-import type { RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
+import type { RecommendationActionabilityProjection, RecommendationFreshnessView, RecommendationModel, RecommendationStatus } from '@/types';
 import type { BacklogSelection } from '@/hooks/use-backlog-selection';
 import { AnalyzeBacklogControl } from './backlog/analyze-backlog-control';
 
@@ -29,6 +29,7 @@ function freshnessSummary(status: RecommendationStatus | null): { text: string; 
 
 interface RecommendationsRailProps {
   recommendations: RecommendationModel | null;
+  actionability: RecommendationActionabilityProjection | null;
   status: RecommendationStatus | null;
   freshness: RecommendationFreshnessView | null;
   selection: BacklogSelection;
@@ -47,7 +48,7 @@ interface RecommendationsRailProps {
  * and the planning lanes, each actionable, with blocked chains and rationale a
  * disclosure away. The board stays the focal pane; this rides alongside it.
  */
-export function RecommendationsRail({ recommendations, status, freshness, selection, busy, analyzing, onAnalyze, onForkLane }: RecommendationsRailProps) {
+export function RecommendationsRail({ recommendations, actionability, status, freshness, selection, busy, analyzing, onAnalyze, onForkLane }: RecommendationsRailProps) {
   const [forkingRef, setForkingRef] = React.useState<string | null>(null);
   const fork = (ref: string) => { setForkingRef(ref); void onForkLane(ref).finally(() => setForkingRef(null)); };
   const next = (recommendations?.recommendedNextSequence ?? []).slice(0, MAX_NEXT);
@@ -56,6 +57,8 @@ export function RecommendationsRail({ recommendations, status, freshness, select
   const rationale = recommendations?.rationaleAndAssumptions ?? [];
   const label = (id: string) => selection.titles.get(id) ?? id;
   const freshnessLine = freshnessSummary(status);
+  const nextActionability = new Map((actionability?.recommendedNextSequence ?? []).map((entry) => [entry.itemId, entry.actionability]));
+  const groupActionability = new Map((actionability?.safeParallelizableGroups ?? []).map((entry) => [entry.ref, entry]));
 
   return (
     <RailCard
@@ -75,19 +78,24 @@ export function RecommendationsRail({ recommendations, status, freshness, select
           <div>
             <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Next up</span>
             <ol className="grid gap-1">
-              {next.map((entry, index) => (
-                <li key={entry.ref ?? `seq-${index}-${entry.itemId}`}>
-                  <button
-                    type="button"
-                    onClick={() => selection.pickItem(entry.itemId)}
-                    title="Toggle this item in the backlog selection"
-                    className={`flex w-full items-center gap-2 rounded border px-1.5 py-1 text-left transition-colors hover:border-primary ${selection.selected.has(entry.itemId) ? 'border-primary bg-primary/10' : 'border-border'}`}
-                  >
-                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[color:var(--lane-ready)]/20 text-2xs font-bold text-[color:var(--lane-ready)]">{index + 1}</span>
-                    <span className="line-clamp-2 min-w-0 break-words text-2xs leading-snug text-foreground">{label(entry.itemId)}</span>
-                  </button>
-                </li>
-              ))}
+              {next.map((entry, index) => {
+                const itemActionability = nextActionability.get(entry.itemId);
+                const blocked = itemActionability?.state === 'non-actionable';
+                return (
+                  <li key={entry.ref ?? `seq-${index}-${entry.itemId}`}>
+                    <button
+                      type="button"
+                      disabled={blocked}
+                      onClick={() => selection.pickItem(entry.itemId)}
+                      title={blocked ? itemActionability?.reasonMessage : 'Toggle this item in the backlog selection'}
+                      className={`flex w-full items-center gap-2 rounded border px-1.5 py-1 text-left transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-60 ${selection.selected.has(entry.itemId) ? 'border-primary bg-primary/10' : 'border-border'}`}
+                    >
+                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[color:var(--lane-ready)]/20 text-2xs font-bold text-[color:var(--lane-ready)]">{index + 1}</span>
+                      <span className="line-clamp-2 min-w-0 break-words text-2xs leading-snug text-foreground">{label(entry.itemId)}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ol>
           </div>
         )}
@@ -98,7 +106,9 @@ export function RecommendationsRail({ recommendations, status, freshness, select
             <div className="grid gap-1.5">
               {groups.map((group) => {
                 const title = group.title ?? group.ref;
-                const readyCount = group.itemIds.filter((id) => selection.readyIds.has(id)).length;
+                const actionableIds = groupActionability.get(group.ref)?.actionableItemIds ?? group.itemIds;
+                const readyItemIds = actionableIds.filter((id) => selection.readyIds.has(id));
+                const readyCount = readyItemIds.length;
                 return (
                   <div key={group.ref} className="rounded-md border border-border p-2">
                     <span className="block min-w-0 truncate text-2xs font-semibold text-text-bright" title={title}>{title}</span>
@@ -106,8 +116,8 @@ export function RecommendationsRail({ recommendations, status, freshness, select
                       <Button
                         size="xs"
                         disabled={busy || readyCount === 0}
-                        title={readyCount === 0 ? 'No items in this lane are ready to plan.' : 'Start an AI planning task for this lane’s ready items.'}
-                        onClick={() => void selection.planLane(group.itemIds, group.ref)}
+                        title={readyCount === 0 ? groupActionability.get(group.ref)?.items.find((item) => item.state === 'non-actionable')?.reasonMessage ?? 'No items in this lane are ready to plan.' : 'Start an AI planning task for this lane’s ready items.'}
+                        onClick={() => void selection.planLane(readyItemIds, group.ref)}
                       >
                         Plan{readyCount < group.itemIds.length ? ` (${readyCount})` : ''}
                       </Button>

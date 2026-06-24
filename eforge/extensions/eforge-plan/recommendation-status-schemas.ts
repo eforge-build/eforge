@@ -2,6 +2,9 @@ import { ExtensionAgentTaskRecordSchema } from '@eforge-build/client';
 import { Type, type Static } from '@eforge-build/extension-sdk';
 import {
   GetRecommendationsOutputSchema,
+  // --- eforge:region plan-04-recommendation-actionability-server ---
+  RecommendationActionabilityProjectionSchema,
+  // --- eforge:endregion plan-04-recommendation-actionability-server ---
   RecommendationDerivedStatusSchema,
   RecommendationStaleReasonSchema,
   RecommendationStatusSidecarSchema,
@@ -10,6 +13,9 @@ import { PlanningTaskWorkflowEntrySchema } from './planning-agent-task-schemas.j
 import { SourceFingerprintSchema } from './backlog-curation-schemas.js';
 
 export {
+  // --- eforge:region plan-04-recommendation-actionability-server ---
+  RecommendationActionabilityProjectionSchema,
+  // --- eforge:endregion plan-04-recommendation-actionability-server ---
   RecommendationDerivedStatusSchema,
   RecommendationStaleReasonSchema,
   RecommendationStatusSidecarSchema,
@@ -39,6 +45,9 @@ export const RefreshRecommendationsOutputSchema = Type.Object({
 
 export type RecommendationStaleReason = Static<typeof RecommendationStaleReasonSchema>;
 export type RecommendationStatusSidecar = Static<typeof RecommendationStatusSidecarSchema>;
+// --- eforge:region plan-04-recommendation-actionability-server ---
+export type RecommendationActionabilityProjection = Static<typeof RecommendationActionabilityProjectionSchema>;
+// --- eforge:endregion plan-04-recommendation-actionability-server ---
 export type RecommendationDerivedStatus = Static<typeof RecommendationDerivedStatusSchema>;
 export type RecommendationFreshnessView = Static<typeof RecommendationFreshnessViewSchema>;
 export type GetRecommendationsWithStatusOutput = Static<typeof GetRecommendationsWithStatusOutputSchema>;

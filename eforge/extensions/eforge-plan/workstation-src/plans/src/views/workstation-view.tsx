@@ -157,6 +157,7 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
                 <SelectionRail selection={selection} busy={workflows.busy} />
                 <RecommendationsRail
                   recommendations={data.recommendations}
+                  actionability={data.recommendationActionability}
                   status={data.recommendationStatus}
                   freshness={data.recommendationFreshness}
                   selection={selection}
