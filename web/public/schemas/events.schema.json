@@ -863,6 +863,116 @@
                       }
                     }
                   }
+                },
+                "backlogCurationProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "cacheHits",
+                    "misses",
+                    "running",
+                    "completed",
+                    "remaining",
+                    "items"
+                  ],
+                  "properties": {
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "cacheHits": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "misses": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "running": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "completed": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remaining": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "itemId",
+                          "status"
+                        ],
+                        "properties": {
+                          "itemId": {
+                            "minLength": 1,
+                            "maxLength": 240,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cache-hit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "summary": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -943,6 +1053,116 @@
                       "items": {
                         "maxLength": 500,
                         "type": "string"
+                      }
+                    }
+                  }
+                },
+                "backlogCurationProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "cacheHits",
+                    "misses",
+                    "running",
+                    "completed",
+                    "remaining",
+                    "items"
+                  ],
+                  "properties": {
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "cacheHits": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "misses": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "running": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "completed": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remaining": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "itemId",
+                          "status"
+                        ],
+                        "properties": {
+                          "itemId": {
+                            "minLength": 1,
+                            "maxLength": 240,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cache-hit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "summary": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -1027,6 +1247,116 @@
                       "items": {
                         "maxLength": 500,
                         "type": "string"
+                      }
+                    }
+                  }
+                },
+                "backlogCurationProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "cacheHits",
+                    "misses",
+                    "running",
+                    "completed",
+                    "remaining",
+                    "items"
+                  ],
+                  "properties": {
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "cacheHits": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "misses": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "running": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "completed": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remaining": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "itemId",
+                          "status"
+                        ],
+                        "properties": {
+                          "itemId": {
+                            "minLength": 1,
+                            "maxLength": 240,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cache-hit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "summary": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -1121,6 +1451,116 @@
                       }
                     }
                   }
+                },
+                "backlogCurationProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "cacheHits",
+                    "misses",
+                    "running",
+                    "completed",
+                    "remaining",
+                    "items"
+                  ],
+                  "properties": {
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "cacheHits": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "misses": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "running": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "completed": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remaining": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "itemId",
+                          "status"
+                        ],
+                        "properties": {
+                          "itemId": {
+                            "minLength": 1,
+                            "maxLength": 240,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cache-hit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "summary": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1200,6 +1640,116 @@
                       "items": {
                         "maxLength": 500,
                         "type": "string"
+                      }
+                    }
+                  }
+                },
+                "backlogCurationProgress": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "cacheHits",
+                    "misses",
+                    "running",
+                    "completed",
+                    "remaining",
+                    "items"
+                  ],
+                  "properties": {
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "cacheHits": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "misses": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "running": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "completed": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "remaining": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "itemId",
+                          "status"
+                        ],
+                        "properties": {
+                          "itemId": {
+                            "minLength": 1,
+                            "maxLength": 240,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "running",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cache-hit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "maxLength": 80,
+                            "type": "string"
+                          },
+                          "summary": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "maxLength": 120,
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -14488,6 +15038,116 @@
                                     }
                                   }
                                 }
+                              },
+                              "backlogCurationProgress": {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": [
+                                  "total",
+                                  "cacheHits",
+                                  "misses",
+                                  "running",
+                                  "completed",
+                                  "remaining",
+                                  "items"
+                                ],
+                                "properties": {
+                                  "total": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "cacheHits": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "misses": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "running": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "completed": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "remaining": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "items": {
+                                    "maxItems": 1000,
+                                    "type": "array",
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "type": "object",
+                                      "required": [
+                                        "itemId",
+                                        "status"
+                                      ],
+                                      "properties": {
+                                        "itemId": {
+                                          "minLength": 1,
+                                          "maxLength": 240,
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "maxLength": 300,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "pending",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "running",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cache-hit",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "completed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "failed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cancelled",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "outcome": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "verdict": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "maxLength": 500,
+                                          "type": "string"
+                                        },
+                                        "startedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        },
+                                        "completedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -14568,6 +15228,116 @@
                                     "items": {
                                       "maxLength": 500,
                                       "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              "backlogCurationProgress": {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": [
+                                  "total",
+                                  "cacheHits",
+                                  "misses",
+                                  "running",
+                                  "completed",
+                                  "remaining",
+                                  "items"
+                                ],
+                                "properties": {
+                                  "total": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "cacheHits": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "misses": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "running": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "completed": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "remaining": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "items": {
+                                    "maxItems": 1000,
+                                    "type": "array",
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "type": "object",
+                                      "required": [
+                                        "itemId",
+                                        "status"
+                                      ],
+                                      "properties": {
+                                        "itemId": {
+                                          "minLength": 1,
+                                          "maxLength": 240,
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "maxLength": 300,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "pending",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "running",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cache-hit",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "completed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "failed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cancelled",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "outcome": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "verdict": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "maxLength": 500,
+                                          "type": "string"
+                                        },
+                                        "startedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        },
+                                        "completedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        }
+                                      }
                                     }
                                   }
                                 }
@@ -14652,6 +15422,116 @@
                                     "items": {
                                       "maxLength": 500,
                                       "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              "backlogCurationProgress": {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": [
+                                  "total",
+                                  "cacheHits",
+                                  "misses",
+                                  "running",
+                                  "completed",
+                                  "remaining",
+                                  "items"
+                                ],
+                                "properties": {
+                                  "total": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "cacheHits": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "misses": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "running": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "completed": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "remaining": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "items": {
+                                    "maxItems": 1000,
+                                    "type": "array",
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "type": "object",
+                                      "required": [
+                                        "itemId",
+                                        "status"
+                                      ],
+                                      "properties": {
+                                        "itemId": {
+                                          "minLength": 1,
+                                          "maxLength": 240,
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "maxLength": 300,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "pending",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "running",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cache-hit",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "completed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "failed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cancelled",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "outcome": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "verdict": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "maxLength": 500,
+                                          "type": "string"
+                                        },
+                                        "startedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        },
+                                        "completedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        }
+                                      }
                                     }
                                   }
                                 }
@@ -14746,6 +15626,116 @@
                                     }
                                   }
                                 }
+                              },
+                              "backlogCurationProgress": {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": [
+                                  "total",
+                                  "cacheHits",
+                                  "misses",
+                                  "running",
+                                  "completed",
+                                  "remaining",
+                                  "items"
+                                ],
+                                "properties": {
+                                  "total": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "cacheHits": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "misses": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "running": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "completed": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "remaining": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "items": {
+                                    "maxItems": 1000,
+                                    "type": "array",
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "type": "object",
+                                      "required": [
+                                        "itemId",
+                                        "status"
+                                      ],
+                                      "properties": {
+                                        "itemId": {
+                                          "minLength": 1,
+                                          "maxLength": 240,
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "maxLength": 300,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "pending",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "running",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cache-hit",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "completed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "failed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cancelled",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "outcome": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "verdict": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "maxLength": 500,
+                                          "type": "string"
+                                        },
+                                        "startedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        },
+                                        "completedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -14825,6 +15815,116 @@
                                     "items": {
                                       "maxLength": 500,
                                       "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              "backlogCurationProgress": {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": [
+                                  "total",
+                                  "cacheHits",
+                                  "misses",
+                                  "running",
+                                  "completed",
+                                  "remaining",
+                                  "items"
+                                ],
+                                "properties": {
+                                  "total": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "cacheHits": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "misses": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "running": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "completed": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "remaining": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "items": {
+                                    "maxItems": 1000,
+                                    "type": "array",
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "type": "object",
+                                      "required": [
+                                        "itemId",
+                                        "status"
+                                      ],
+                                      "properties": {
+                                        "itemId": {
+                                          "minLength": 1,
+                                          "maxLength": 240,
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "maxLength": 300,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "pending",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "running",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cache-hit",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "completed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "failed",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "cancelled",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "outcome": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "verdict": {
+                                          "maxLength": 80,
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "maxLength": 500,
+                                          "type": "string"
+                                        },
+                                        "startedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        },
+                                        "completedAt": {
+                                          "maxLength": 120,
+                                          "type": "string"
+                                        }
+                                      }
                                     }
                                   }
                                 }
