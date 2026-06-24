@@ -167,7 +167,7 @@ Non-JSON output prints concrete next steps after install. When the returned entr
 
 ### Optional first-party packages
 
-`@eforge-build/eforge-plan` is the optional first-party planning package. `@eforge-build/eforge-playbooks` is the first-party playbooks package; it declares playbook management/run capabilities and optionally uses the `eforge-plan` planning-mode capability when available. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, revision flows, playbook management, and playbook run handoff is documented in `/docs/eforge-plan`, `/docs/playbooks`, and the extension-owned READMEs.
+`@eforge-build/eforge-plan` is the optional first-party planning package. `@eforge-build/eforge-playbooks` is the first-party playbooks package; it declares playbook management/run capabilities and optionally uses the `eforge-plan` planning-mode capability when available. This generic extension guide intentionally covers only package installation and the platform boundary; product behavior such as backlog workflows, recommendation refresh, workstation planning UX, revision flows, explicit planning-store maintenance, playbook management, and playbook run handoff is documented in `/docs/eforge-plan`, `/docs/playbooks`, and the extension-owned READMEs.
 
 ```bash
 # Local install (trusted by default)

@@ -18,6 +18,7 @@ Install `@eforge-build/eforge-plan` when you want first-party planning UX in add
 - A Console planning workstation for investigation-first planning and handoff.
 - Session-plan creation, including one automatic apply attempt for eligible ready creation drafts, persistence of the task summary as a leading `## Executive Summary`, visible failed apply attempts, readiness checks, and handoff into ordinary eforge builds.
 - Revise with AI workflows for existing flat session plans, including durable annotations and revision turns.
+- Explicit local store maintenance actions for status, dry-run-first retention compaction, FTS rebuild/optimize, and SQLite `VACUUM`.
 
 These are extension-owned product semantics, not kernel behavior. The engine receives the resulting normalized build source the same way it receives a prompt, PRD file, playbook output, or wrapper-app artifact.
 
@@ -43,6 +44,12 @@ eforge extension reload
 `eforge-plan` runs as trusted extension code in the daemon process. Its private planning state lives under `.eforge/storage/extensions/eforge-plan/`, including the normalized SQLite store at `.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite`, backlog records, recommendation runs/models, backlog curation previews, planning task indexes, lifecycle evidence, accepted-analysis baselines, and plan revision threads. Treat that directory as local/private project metadata.
 
 Runtime planning mutations write canonical SQLite rows for queryable metadata, provenance, item/plan joins, lifecycle evidence, search documents, and queue/build/session/landing links. FTS-backed `search-items` and `search-planning-records` return bounded ranked/snippet results plus dirty-index metadata rather than scanning legacy Markdown, recommendation JSON, or session-plan bodies. Session plans created for handoff live under `.eforge/session-plans/` and are submitted to eforge as build source when ready; SQLite records metadata and links, not the Markdown body as canonical content. AI-created session plans preserve the task summary as a leading `## Executive Summary` before readiness dimensions. They are local and gitignored; committed build provenance is still the engine's artifact-branch PRD and plan records.
+
+### Retention and compaction
+
+Planning-store maintenance is explicit local extension behavior. `get-store-status` reports whether the private SQLite store exists, file sizes, table counts, retention eligibility counts, FTS status, and recent maintenance runs without creating a missing store. `compact-planning-store` is dry-run-first and only applies when called with `dryRun: false`; it may compact prunable lifecycle event payloads, terminal planning-task raw payloads, superseded non-current recommendation runs, verbose import reports, and import diagnostic details.
+
+Compaction preserves canonical backlog items, epics, dependencies, session plans and joins, current lifecycle evidence summaries, current recommendation state, actionability projections, associated links, and duplicate-coverage policy. Optional JSONL archives are written under `.eforge/storage/extensions/eforge-plan/archives/maintenance/<runId>/` before mutation and are reported by path/count rather than returned inline. Search maintenance stays explicit through `rebuild-search-index` and `optimize-search-index`; SQLite file reclamation stays separate through `vacuum-planning-store`.
 
 ## Product semantics owned here
 

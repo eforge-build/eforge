@@ -211,6 +211,36 @@ describe('eforge-plan README planner contract', () => {
     expect(readme).toMatch(/historical rows in `linkRows`/);
   });
 
+  it('documents explicit retention maintenance actions and compaction safeguards', async () => {
+    const readme = await readFile(README, 'utf-8');
+    const storage = sectionBetween(readme, '## Storage model', '## Promotion flow');
+
+    for (const required of [
+      'get-store-status',
+      'compact-planning-store',
+      'rebuild-search-index',
+      'optimize-search-index',
+      'vacuum-planning-store',
+      'dry run',
+      'protected canonical rows',
+      '.eforge/storage/extensions/eforge-plan/archives/maintenance/<runId>/',
+      'raw lifecycle event payloads',
+      'terminal planning-task raw request/result payloads',
+      'superseded recommendation runs',
+      'verbose import run reports',
+      'import diagnostic detail snapshots',
+      'FTS',
+      'VACUUM',
+    ]) {
+      expect(storage).toContain(required);
+    }
+    expect(storage).toMatch(/Backlog items, epics, dependencies, session plans, session-plan joins.*current lifecycle evidence.*current recommendation runs.*recommendation actionability/s);
+    expect(storage).toMatch(/lifecycle_evidence\.retained_summary_json|retained_summary_json/);
+    for (const actionId of ['get-store-status', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']) {
+      expect(actionRow(readme, actionId)).toBeDefined();
+    }
+  });
+
   it('keeps action table side effects aligned with planning boundaries', async () => {
     const readme = await readFile(README, 'utf-8');
     const rows = actionTableRows(readme);

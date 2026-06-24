@@ -10,7 +10,10 @@ export { rowToSessionPlan, upsertSessionPlan, getSessionPlan, listSessionPlans, 
 export { rowToLifecycleEvent, rowToLifecycleEvidence, recordLifecycleEvent, recordLifecycleEvidence } from './repositories/lifecycle.js';
 export { rowToQueuePrd, rowToBuildRun, rowToBuildSession, rowToLandingLink, upsertQueuePrd, upsertBuildRun, upsertBuildSession, upsertLandingLink, recordQueueBuildCorrelation } from './repositories/queue-build.js';
 export { rowToImportRun, rowToImportDiagnostic, recordImportRun, recordImportDiagnostic } from './repositories/import-runs.js';
-export { rowToMaintenanceRun, recordMaintenanceRun } from './repositories/maintenance.js';
+export { rowToMaintenanceRun, recordMaintenanceRun, listRecentMaintenanceRuns, recordFailedMaintenanceRun } from './repositories/maintenance.js';
+// --- eforge:region plan-06-retention-maintenance ---
+export * from './repositories/maintenance-pruning.js';
+// --- eforge:endregion plan-06-retention-maintenance ---
 export { rowToSearchDocument, replaceSearchDocument, replaceSearchDocuments, deleteSearchDocument, deleteSearchDocumentsByType, deleteStaleSearchDocumentsByType, listSearchIndexDirtyRecords, clearSearchIndexDirtyRecords, rebuildSearchDocumentsFts, optimizeSearchDocumentsFts, markSearchIndexDirty, markSearchIndexDirtyBatch, clearSearchIndexDirty, getSearchIndexState } from './repositories/search-documents.js';
 // --- eforge:region plan-05-fts-search-bounded-actions ---
 export * from './repositories/search-document-projections.js';

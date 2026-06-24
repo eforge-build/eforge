@@ -39,6 +39,9 @@ import { backlogCurationActions } from './backlog-curation-actions.js';
 import { planRevisionActions } from './plan-revision-actions.js';
 import { draftPlanUnitActions } from './draft-plan-unit-actions.js';
 import { roadmapActions } from './roadmap-actions.js';
+// --- eforge:region plan-06-retention-maintenance ---
+import { maintenanceActions } from './maintenance/index.js';
+// --- eforge:endregion plan-06-retention-maintenance ---
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 const BoardInput = BoardActionInputSchema;
@@ -239,6 +242,9 @@ export default defineEforgeExtension((eforge) => {
   registerActions(eforge, planRevisionActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, draftPlanUnitActions as unknown as readonly RegistrableAction[]);
   registerActions(eforge, roadmapActions as unknown as readonly RegistrableAction[]);
+  // --- eforge:region plan-06-retention-maintenance ---
+  registerActions(eforge, maintenanceActions as unknown as readonly RegistrableAction[]);
+  // --- eforge:endregion plan-06-retention-maintenance ---
   eforge.registerInputSource({ name: 'eforge-plan', description: 'Compile visible private and compatible legacy eforge-plan backlog items into ordinary eforge build-source Markdown.', fetch: fetchEforgePlanInputSource });
   eforge.registerConsoleContribution(defineConsoleContribution({
     id: 'board', title: 'eforge-plan board', description: 'Declarative System surface for project-local visible backlog curation backed by private extension storage.',
@@ -258,6 +264,13 @@ export default defineEforgeExtension((eforge) => {
       // --- eforge:region plan-05-fts-search-bounded-actions ---
       { rendererId: 'action-form', title: 'Search planning records', content: 'Search backlog items, epics, session-plan summaries, and recommendation text.', action: { actionId: 'search-planning-records' } },
       // --- eforge:endregion plan-05-fts-search-bounded-actions ---
+      // --- eforge:region plan-06-retention-maintenance ---
+      { rendererId: 'action-button', title: 'Get store status', content: 'Report store size, schema, retention eligibility, search freshness, and recent maintenance runs.', action: { actionId: 'get-store-status' } },
+      { rendererId: 'action-form', title: 'Dry-run store compaction', content: 'Preview retention compaction candidates without mutating the SQLite store.', action: { actionId: 'compact-planning-store', inputDefaults: { dryRun: true } } },
+      { rendererId: 'action-form', title: 'Rebuild search index', content: 'Explicitly rebuild SQLite FTS search documents for selected types.', action: { actionId: 'rebuild-search-index' } },
+      { rendererId: 'action-button', title: 'Optimize search index', content: 'Run SQLite FTS optimize maintenance.', action: { actionId: 'optimize-search-index' } },
+      { rendererId: 'action-form', title: 'VACUUM planning store', content: 'Run explicit WAL checkpoint and SQLite VACUUM maintenance.', action: { actionId: 'vacuum-planning-store', inputDefaults: { checkpointWal: true } } },
+      // --- eforge:endregion plan-06-retention-maintenance ---
       { rendererId: 'action-form', title: 'Prepare planner context', content: 'Prepare JSON-safe planner evidence without starting a chat runtime.', action: { actionId: 'prepare-planner-context', inputDefaults: { includeRoadmap: true } } },
       { rendererId: 'action-button', title: 'Get roadmap state', content: 'Read local focus and shared/discovered roadmap context.', action: { actionId: 'get-roadmap-state' } },
       { rendererId: 'action-form', title: 'Update roadmap state', content: 'Update private local focus roadmap and shared source configuration.', action: { actionId: 'update-roadmap-state' } },
@@ -303,6 +316,13 @@ export default defineEforgeExtension((eforge) => {
       // --- eforge:region plan-05-fts-search-bounded-actions ---
       'search-planning-records',
       // --- eforge:endregion plan-05-fts-search-bounded-actions ---
+      // --- eforge:region plan-06-retention-maintenance ---
+      'get-store-status',
+      'compact-planning-store',
+      'rebuild-search-index',
+      'optimize-search-index',
+      'vacuum-planning-store',
+      // --- eforge:endregion plan-06-retention-maintenance ---
       'update-item',
       'render-board-markdown',
       'get-recommendations',
