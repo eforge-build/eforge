@@ -5,9 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import { dispatchExtensionAction } from '@eforge-build/engine/extensions/action-runtime.js';
 import { createExtensionRecorder } from '@eforge-build/engine/extensions/recorder.js';
-import type { NativeExtensionRecorderState, NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
-import { safeParseWithSchema } from '@eforge-build/client';
-import { parseExtensionAgentTaskRecord, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/types.js';
+import { parseExtensionAgentTaskRecord, safeParseWithSchema, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import eforgePlanExtension from '../index.js';
 import { readBacklogItem, writeBacklogEpic, writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel, readRecommendations, writeRecommendations } from '../recommendations-store.js';
@@ -23,42 +22,20 @@ function load(): NativeExtensionRegistry {
   const { api, state } = createExtensionRecorder('eforge-plan', '/project/eforge/extensions/eforge-plan/index.ts');
   eforgePlanExtension(api as never);
   expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
-  return registryFromRecorderState(state);
-}
-function registryFromRecorderState(state: NativeExtensionRecorderState): NativeExtensionRegistry {
   return { ...state, extensions: [], candidates: [] };
 }
 function runningTask(taskId = 'task-running'): ExtensionAgentTaskRecord {
   return { taskId, kind: 'eforge-plan.planning-draft', status: 'running', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', startedAt: '2026-01-01T00:00:00.000Z' };
 }
 function expectSuppressedInvalidInput(result: unknown, expected: { reasonCode: string; lifecycleState: string; associatedLink: Record<string, unknown> }): void {
-  expect(result).toMatchObject({
-    kind: 'invalid-input',
-    validationErrors: [expect.objectContaining({
-      path: 'itemIds',
-      suppressedItems: [expect.objectContaining({
-        itemId: 'item-one',
-        state: 'non-actionable',
-        reasonCode: expected.reasonCode,
-        reasonMessage: expect.stringMatching(/\S/),
-        lifecycleState: expected.lifecycleState,
-        associatedLinks: expect.arrayContaining([expect.objectContaining(expected.associatedLink)]),
-      })],
-    })],
-  });
+  expect(result).toMatchObject({ kind: 'invalid-input', validationErrors: [expect.objectContaining({ path: 'itemIds', suppressedItems: [expect.objectContaining({ itemId: 'item-one', state: 'non-actionable', reasonCode: expected.reasonCode, reasonMessage: expect.stringMatching(/\S/), lifecycleState: expected.lifecycleState, associatedLinks: expect.arrayContaining([expect.objectContaining(expected.associatedLink)]) })] })] });
 }
+const completedTimestamps = { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:00:01.000Z' };
 function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
-    taskId: 'task-complete',
-    kind: 'eforge-plan.planning-draft',
-    status: 'completed',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:01.000Z',
-    startedAt: '2026-01-01T00:00:00.000Z',
-    completedAt: '2026-01-01T00:00:01.000Z',
+    taskId: 'task-complete', kind: 'eforge-plan.planning-draft', status: 'completed', ...completedTimestamps,
     result: {
-      summary: 'Generated planning output.',
-      assumptionsOpenQuestions: [],
+      summary: 'Generated planning output.', assumptionsOpenQuestions: [],
       recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-one', rationale: 'Ready.' }] },
       handoffDrafts: [{ selection: { itemIds: ['item-one'], status: 'active' }, session: 'task-handoff' }],
       sessionPlanPatch: { sections: [{ dimension: 'scope', content: 'Generated scope.' }] },
@@ -68,16 +45,9 @@ function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): Exten
 }
 function curationCompletedTask(taskId = 'task-curation'): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
-    taskId,
-    kind: 'eforge-plan.planning-draft',
-    status: 'completed',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:01.000Z',
-    startedAt: '2026-01-01T00:00:00.000Z',
-    completedAt: '2026-01-01T00:00:01.000Z',
+    taskId, kind: 'eforge-plan.planning-draft', status: 'completed', ...completedTimestamps,
     result: {
-      summary: 'Drafted backlog curation.',
-      assumptionsOpenQuestions: [],
+      summary: 'Drafted backlog curation.', assumptionsOpenQuestions: [],
       backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: '1111111111111111111111111111111111111111111111111111111111111111', summary: [], itemChanges: [], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] },
       recommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'item-one', rationale: 'Ready after curation.' }] },
     },
@@ -85,40 +55,17 @@ function curationCompletedTask(taskId = 'task-curation'): ExtensionAgentTaskReco
 }
 function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
-    taskId,
-    kind: 'eforge-plan.planning-draft',
-    status: 'completed',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:01.000Z',
-    startedAt: '2026-01-01T00:00:00.000Z',
-    completedAt: '2026-01-01T00:00:01.000Z',
-    result: {
-      summary: 'Need more detail before drafting.',
-      assumptionsOpenQuestions: ['Assumes REST transport.'],
-      decision: 'needs-input',
-      clarificationQuestions: [{ question: 'What is the target API surface?' }],
-      rationale: 'Scope is ambiguous.',
-    },
+    taskId, kind: 'eforge-plan.planning-draft', status: 'completed', ...completedTimestamps,
+    result: { summary: 'Need more detail before drafting.', assumptionsOpenQuestions: ['Assumes REST transport.'], decision: 'needs-input', clarificationQuestions: [{ question: 'What is the target API surface?' }], rationale: 'Scope is ambiguous.' },
   });
 }
 function creationDraftTask(taskId = 'task-creation', session = 'created-session'): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
-    taskId,
-    kind: 'eforge-plan.planning-draft',
-    status: 'completed',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:01.000Z',
-    startedAt: '2026-01-01T00:00:00.000Z',
-    completedAt: '2026-01-01T00:00:01.000Z',
+    taskId, kind: 'eforge-plan.planning-draft', status: 'completed', ...completedTimestamps,
     result: {
-      summary: 'Drafted a plan.',
-      assumptionsOpenQuestions: ['Assumes API stable.'],
-      decision: 'ready',
+      summary: 'Drafted a plan.', assumptionsOpenQuestions: ['Assumes API stable.'], decision: 'ready',
       sessionPlanCreationDraft: {
-        session,
-        topic: 'Created topic',
-        planningType: 'feature',
-        planningDepth: 'focused',
+        session, topic: 'Created topic', planningType: 'feature', planningDepth: 'focused',
         sections: [
           { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
           { dimension: 'scope', content: 'Generated scope content.' },

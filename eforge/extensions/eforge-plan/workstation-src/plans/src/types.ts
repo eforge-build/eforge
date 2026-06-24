@@ -72,7 +72,6 @@ export interface PlanLifecycleProjection {
   linkRows: LifecycleLinkRow[];
   failureEvidence?: LifecycleLinkRow[];
 }
-
 export interface PullRequestRef {
   url?: string;
   status?: string;
@@ -85,8 +84,6 @@ export interface LandingRef {
   commitSha?: string;
   landedAt?: string;
 }
-
-
 export interface Artifact {
   key: string;
   kind: 'plan' | 'plan-set';
@@ -412,7 +409,6 @@ export interface PlanningTaskApplyError {
   automatic: boolean;
   occurredAt?: string;
 }
-
 export interface PlanningAgentTaskListItem {
   entry: PlanningTaskWorkflowEntry;
   available: boolean;
@@ -483,14 +479,12 @@ export interface RefreshRecommendationsResponse {
   sourceFingerprint: string;
   reused?: boolean;
 }
-
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
   entry: PlanningTaskWorkflowEntry;
   sourceFingerprint?: string;
   reused?: boolean;
 }
-
 export interface AppliedSessionPlanCreationDraft { session: string; relativePath: string; readiness: Readiness; }
 export interface ApplyPlanningTaskResponse {
   schemaVersion: 1;
