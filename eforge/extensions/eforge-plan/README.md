@@ -324,6 +324,8 @@ The workstation has a frontend development loop independent of eforge builds:
 pnpm dev:eforge-plan-workstation          # mock bridge / fixture data
 pnpm dev:eforge-plan-workstation:daemon   # auto-detect or start daemon, then proxy /api to it
 pnpm build:eforge-plan-workstation
+pnpm storybook:eforge-plan                # isolated component stories
+pnpm storybook:build:eforge-plan
 ```
 
 `dev:eforge-plan-workstation` runs the Vite app with a mock `window.eforge.invokeAction` bridge and fixture data for rapid UI iteration. `dev:eforge-plan-workstation:daemon` reads the project daemon lockfile, starts the daemon when needed, sets `VITE_EFORGE_DAEMON_URL` automatically, and launches the same Vite app against live daemon data; Vite proxies `/api` to the daemon so local-only action security still sees same-origin requests. Production Console rendering uses the built files in `workstation-assets/plans`.

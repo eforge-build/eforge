@@ -21,3 +21,4 @@ web/tsconfig.tsbuildinfo
 # Built workstation bundles are generated from workstation-src (root `pnpm build`
 # or `pnpm build:eforge-plan-workstation`); never commit them.
 eforge/extensions/eforge-plan/workstation-assets/
+eforge/extensions/eforge-plan/workstation-src/plans/storybook-static/
