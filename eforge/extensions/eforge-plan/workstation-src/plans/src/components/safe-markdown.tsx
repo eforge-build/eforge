@@ -79,6 +79,13 @@ function mountMermaidDiagrams(container: HTMLElement, mermaidBlocks: string[]): 
 export function SafeMarkdown({ markdown, className }: SafeMarkdownProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const rendered = React.useMemo(() => renderMarkdown(markdown), [markdown]);
+  // Stable object identity so React only re-applies `innerHTML` when the
+  // rendered HTML actually changes. A fresh `{ __html }` literal on every
+  // render makes React's `nextProp !== lastProp` check always true, which
+  // tears down and rebuilds the prose DOM on unrelated re-renders (e.g. a
+  // parent reacting to `selectionchange`) and collapses any active text
+  // selection - making the body feel un-selectable.
+  const innerHtml = React.useMemo(() => ({ __html: rendered.html }), [rendered]);
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -96,7 +103,7 @@ export function SafeMarkdown({ markdown, className }: SafeMarkdownProps) {
       ref={containerRef}
       className={`plan-prose${className ? ` ${className}` : ''}`}
       // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: rendered.html }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
