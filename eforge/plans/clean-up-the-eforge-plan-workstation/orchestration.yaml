@@ -1,0 +1,156 @@
+name: clean-up-the-eforge-plan-workstation
+description: Clean up the eforge-plan workstation by tightening
+  executive-summary guidance, bounding list action payloads, narrowing
+  broad-action diagnostics, and adding server-owned recommendation actionability
+  with workstation rendering and duplicate guards.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm maintainability:check
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+  - pnpm docs:check
+plans:
+  - id: plan-01-executive-summary-prompt
+    name: Executive Summary Prompt and Regression Coverage
+    depends_on: []
+    branch: clean-up-the-eforge-plan-workstation/plan-01-executive-summary-prompt
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-compact-list-actions
+    name: Compact Paginated eforge-plan List Actions
+    depends_on: []
+    branch: clean-up-the-eforge-plan-workstation/plan-02-compact-list-actions
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Multiple extension action schemas, handlers, registration tests,
+          workstation task-list behavior, and docs must move together without
+          breaking existing workstation flows.
+      reviewer:
+        effort: high
+        rationale: Action wire-shape and UI compatibility changes need careful API review.
+  - id: plan-03-broad-action-diagnostics
+    name: Structured Broad Action Diagnostics
+    depends_on:
+      - plan-02-compact-list-actions
+    branch: clean-up-the-eforge-plan-workstation/plan-03-broad-action-diagnostics
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-04-recommendation-actionability-server
+    name: Server Recommendation Actionability and Duplicate Guards
+    depends_on:
+      - plan-02-compact-list-actions
+    branch: clean-up-the-eforge-plan-workstation/plan-04-recommendation-actionability-server
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan introduces an extension-owned projection that joins
+          recommendation models, session plans, workflow tasks, and lifecycle
+          traces, then reuses it for direct action duplicate guards.
+      reviewer:
+        effort: high
+        rationale: The server projection changes action wire shapes and
+          duplicate-prevention behavior, requiring careful API and test review.
+  - id: plan-05-recommendation-actionability-workstation
+    name: Workstation Recommendation Actionability Rendering
+    depends_on:
+      - plan-04-recommendation-actionability-server
+    branch: clean-up-the-eforge-plan-workstation/plan-05-recommendation-actionability-workstation
+    build:
+      - implement
+      - test-cycle
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: The UI must consume a new server projection while preserving existing
+          recommendation selection and planning workflows.
+      reviewer:
+        effort: high
+        rationale: Plan CTA suppression and mixed-lane behavior are user-facing and need
+          close review against duplicate-work risks.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - test-cycle
+    - validate
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: strict
+  rationale: "This is a bounded but multi-file eforge-plan/workstation cleanup, so
+    excursion fits: one planner can cover the prompt, list projections, linter,
+    recommendation actionability, UI, duplicate guards, docs, and tests without
+    expedition module delegation. A plan-review cycle is included because the
+    PRD has many acceptance criteria and cross-surface dependencies. The build
+    runs implementation with possible docs authoring, writes and runs focused
+    tests, syncs docs/reference material, runs the loaded maintainability
+    validation provider before review, then uses an iterative review cycle. API
+    and test perspectives are prioritized because the riskiest changes are
+    wire/action metadata, server-owned projections, duplicate guards, and
+    regression coverage."
+diff_base_ref: 1a0838eb70669ae3c649a62efea250c10b32f978
