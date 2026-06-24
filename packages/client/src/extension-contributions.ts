@@ -180,17 +180,10 @@ const TypeBoxObjectWireSchema = Type.Intersect([
 ]);
 
 // --- eforge:region plan-01-agent-task-contribution-contract ---
-export const ExtensionAgentTaskPromptSourceManifestSchema = Type.Union([
-  Type.Object({
-    kind: Type.Literal('asset'),
-    asset: Type.String({ minLength: 1, pattern: EXTENSION_AGENT_TASK_PROMPT_ASSET_PATTERN }),
-  }, { additionalProperties: false }),
-  Type.Object({
-    kind: Type.Literal('export'),
-    module: Type.String({ minLength: 1, pattern: '\\S' }),
-    exportName: Type.Optional(Type.String({ minLength: 1, pattern: '\\S' })),
-  }, { additionalProperties: false }),
-]);
+export const ExtensionAgentTaskPromptSourceManifestSchema = Type.Object({
+  kind: Type.Literal('asset'),
+  asset: Type.String({ minLength: 1, pattern: EXTENSION_AGENT_TASK_PROMPT_ASSET_PATTERN }),
+}, { additionalProperties: false });
 
 export const ExtensionAgentTaskManifestEntrySchema = Type.Object({
   id: Type.String(),

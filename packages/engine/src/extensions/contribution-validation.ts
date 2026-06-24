@@ -103,17 +103,12 @@ export function validateAgentTaskSpec(value: unknown): RegistrationValidationRes
 }
 
 function normalizeAgentTaskPromptSource(value: unknown): RegistrationValidationResult<AgentTaskRegistrationSpec['prompt']> {
-  if (!isNonArrayObject(value)) return fail(undefined, 'registerAgentTask prompt must be { kind: "asset", asset } or { kind: "export", module }');
+  if (!isNonArrayObject(value)) return fail(undefined, 'registerAgentTask prompt must be { kind: "asset", asset }');
   if (value.kind === 'asset') {
     if (!isSafePromptAsset(value.asset)) return fail(undefined, 'registerAgentTask prompt asset must be a non-empty relative path without absolute roots, NULs, or .. segments');
     return { ok: true, value: { kind: 'asset', asset: value.asset } };
   }
-  if (value.kind === 'export') {
-    if (!isNonBlankString(value.module)) return fail(undefined, 'registerAgentTask export prompt source requires a non-empty module');
-    if (value.exportName !== undefined && !isNonBlankString(value.exportName)) return fail(undefined, 'registerAgentTask exportName must be a non-empty string when present');
-    return { ok: true, value: { kind: 'export', module: value.module, ...(value.exportName !== undefined && { exportName: value.exportName }) } };
-  }
-  return fail(undefined, 'registerAgentTask prompt kind must be "asset" or "export"');
+  return fail(undefined, 'registerAgentTask prompt kind must be "asset"');
 }
 
 function isSafePromptAsset(value: unknown): value is string {

@@ -1,5 +1,5 @@
 import { defineExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { toJsonSafeObject } from './json-safe.js';
 import { AnalyzeAllBacklogInputSchema, AnalyzeAllBacklogOutputSchema, type AnalyzeAllBacklogInput, type AnalyzeAllBacklogTaskSummary } from './backlog-curation-schemas.js';
 import { normalizeItemAuditConcurrency } from './backlog-curation-source-first-audit.js';
@@ -17,7 +17,7 @@ export const BACKLOG_CURATION_REQUESTED_OUTPUT_SECTIONS = ['backlogCurationDraft
 const analyzeStartChains = new Map<string, Promise<unknown>>();
 
 type AnalyzeAllStartRequest = {
-  kind: typeof EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT;
+  task: { id: 'planning-draft'; extensionName: 'eforge-plan' };
   input: {
     topic: string;
     sourceProvider: typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number } };
@@ -83,7 +83,7 @@ export function buildBacklogCurationEntry(taskId: string, sourceFingerprint?: st
 
 async function startBacklogCurationTask(ctx: ExtensionActionContext, itemAuditConcurrency?: number): Promise<{ task: ExtensionAgentTaskRecord }> {
   const request: AnalyzeAllStartRequest = {
-    kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT,
+    task: { id: 'planning-draft', extensionName: 'eforge-plan' },
     input: {
       topic: ANALYZE_ALL_TOPIC,
       sourceProvider: { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) } },
