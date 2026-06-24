@@ -5,7 +5,7 @@ export type * from './types.js';
 export { rowToBacklogItem, upsertBacklogItem, getBacklogItem, listBacklogItems, replaceBacklogItemTags, replaceBacklogItemSections, replaceItemDependencies, listItemDependencies } from './repositories/items.js';
 export { rowToEpic, upsertEpic, getEpic, listEpics, replaceEpicTags, replaceEpicSections } from './repositories/epics.js';
 export { rowToRecommendationRun, rowToRecommendationLane, upsertRecommendationRun, upsertRecommendationLane, replaceRecommendationLaneItems, clearCurrentRecommendationRuns, getCurrentRecommendationRun, listRecommendationRuns, deleteRecommendationLanesForRun } from './repositories/recommendations.js';
-export { rowToPlanningTask, upsertPlanningTask, replacePlanningTaskRefs } from './repositories/planning-tasks.js';
+export { rowToPlanningTask, listPlanningTasks, upsertPlanningTask, replacePlanningTaskRefs } from './repositories/planning-tasks.js';
 export { rowToSessionPlan, upsertSessionPlan, getSessionPlan, listSessionPlans, linkSessionPlanItems, linkSessionPlanEpics, replaceAllSessionPlanItems, replaceAllSessionPlanEpics } from './repositories/session-plans.js';
 export { rowToLifecycleEvent, rowToLifecycleEvidence, recordLifecycleEvent, recordLifecycleEvidence } from './repositories/lifecycle.js';
 export { rowToQueuePrd, rowToBuildRun, rowToBuildSession, rowToLandingLink, upsertQueuePrd, upsertBuildRun, upsertBuildSession, upsertLandingLink, recordQueueBuildCorrelation } from './repositories/queue-build.js';

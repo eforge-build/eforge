@@ -39,6 +39,9 @@ import { backlogCurationActions } from './backlog-curation-actions.js';
 import { planRevisionActions } from './plan-revision-actions.js';
 import { draftPlanUnitActions } from './draft-plan-unit-actions.js';
 import { roadmapActions } from './roadmap-actions.js';
+// --- eforge:region plan-03-importer-reporting ---
+import { importPlanningStoreAction } from './importer/index.js';
+// --- eforge:endregion plan-03-importer-reporting ---
 // --- eforge:region plan-06-retention-maintenance ---
 import { maintenanceActions } from './maintenance/index.js';
 // --- eforge:endregion plan-06-retention-maintenance ---
@@ -224,6 +227,9 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerAction(upsertEpic);
   eforge.registerAction(updateItem);
   eforge.registerAction(importLegacyBacklogAction);
+  // --- eforge:region plan-03-importer-reporting ---
+  eforge.registerAction(importPlanningStoreAction as unknown as RegistrableAction);
+  // --- eforge:endregion plan-03-importer-reporting ---
   eforge.registerAction(openPlanningEntry);
   eforge.registerAction(promoteItem);
   eforge.registerAction(promoteSelection);
@@ -286,6 +292,9 @@ export default defineEforgeExtension((eforge) => {
       { rendererId: 'action-form', title: 'Capture item', content: 'Capture a session-plan-ready candidate backlog item with concrete acceptance criteria.', action: { actionId: 'capture-item' } },
       { rendererId: 'action-form', title: 'Update item', content: 'Update backlog item metadata.', action: { actionId: 'update-item' } },
       { rendererId: 'action-form', title: 'Import legacy backlog', content: 'Copy selected legacy .backlog records into private eforge-plan storage.', action: { actionId: 'import-legacy-backlog', inputDefaults: { kind: 'all' } } },
+      // --- eforge:region plan-03-importer-reporting ---
+      { rendererId: 'action-form', title: 'Import planning store', content: 'Dry-run-first legacy importer for canonical SQLite planning-store rows.', action: { actionId: 'import-planning-store', inputDefaults: {} } },
+      // --- eforge:endregion plan-03-importer-reporting ---
       { rendererId: 'action-form', title: 'Fork recommendation to draft unit', content: 'Create an editable draft plan unit from a recommendation safe-to-parallelize lane.', action: { actionId: 'fork-recommendation-to-draft-unit' } },
       { rendererId: 'action-form', title: 'Create draft unit', content: 'Create a user-authored draft plan unit from hand-picked backlog items.', action: { actionId: 'create-draft-unit' } },
       { rendererId: 'action-button', title: 'List draft units', content: 'List all draft plan units newest-first.', action: { actionId: 'list-draft-units' } },
@@ -324,6 +333,9 @@ export default defineEforgeExtension((eforge) => {
       'vacuum-planning-store',
       // --- eforge:endregion plan-06-retention-maintenance ---
       'update-item',
+      // --- eforge:region plan-03-importer-reporting ---
+      'import-planning-store',
+      // --- eforge:endregion plan-03-importer-reporting ---
       'render-board-markdown',
       'get-recommendations',
       'put-recommendations',

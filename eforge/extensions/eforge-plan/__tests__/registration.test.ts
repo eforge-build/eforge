@@ -15,7 +15,7 @@ import { createEmptyRecommendationModel, writeRecommendations } from '../recomme
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 
 const CLOSED_RENDERERS = new Set(['text', 'markdown', 'status-badge', 'link', 'action-button', 'action-form']);
-const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'update-roadmap-state', 'import-legacy-backlog', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation', 'fork-recommendation-to-draft-unit', 'create-draft-unit', 'update-draft-unit', 'delete-draft-unit', 'promote-draft-unit', 'merge-draft-units', 'split-draft-unit', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']);
+const WRITE_ACTIONS = new Set(['analyze-all-backlog', 'apply-planner-result', 'apply-planning-agent-task-result', 'cancel-planning-agent-task', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'remove-planning-agent-task', 'capture-item', 'upsert-epic', 'update-item', 'update-roadmap-state', 'import-legacy-backlog', 'import-planning-store', 'promote-item', 'promote-selection', 'create-session-plan', 'set-session-plan-section', 'select-session-plan-dimensions', 'set-session-plan-ready', 'delete-session-plan', 'update-session-plan-metadata', 'put-recommendations', 'handoff-session-plan', 'start-plan-revision-session', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn', 'apply-plan-revision-turn', 'create-plan-revision-annotation', 'update-plan-revision-annotation', 'delete-plan-revision-annotation', 'resolve-plan-revision-annotation', 'dismiss-plan-revision-annotation', 'fork-recommendation-to-draft-unit', 'create-draft-unit', 'update-draft-unit', 'delete-draft-unit', 'promote-draft-unit', 'merge-draft-units', 'split-draft-unit', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']);
 const READ_ACTIONS = new Set(['prepare-planner-context', 'get-roadmap-state', 'get-planning-agent-task', 'preview-backlog-curation-task', 'list-planning-agent-tasks', 'list-board', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'search-planning-records', 'get-store-status', 'render-board-markdown', 'list-planning-artifacts', 'show-session-plan', 'show-session-plan-set', 'check-session-plan-readiness', 'get-recommendations', 'list-plan-revision-sessions', 'get-plan-revision-session', 'list-draft-units', 'get-draft-unit', 'advise-merge-draft-units', 'advise-split-draft-unit']);
 const NONE_ACTIONS = new Set(['open-planning-entry']);
 const DAEMON_STATE_ACTIONS = new Set(['analyze-all-backlog', 'start-planning-agent-task', 'retry-planning-agent-task', 'redraft-planning-agent-task', 'refresh-recommendations', 'handoff-session-plan', 'start-plan-revision-turn', 'retry-plan-revision-turn', 'cancel-plan-revision-turn']);
@@ -113,6 +113,7 @@ describe('eforge-plan extension registration', () => {
       'get-store-status',
       'handoff-session-plan',
       'import-legacy-backlog',
+      'import-planning-store',
       'list-board',
       'list-board-compact',
       'list-draft-units',
@@ -164,7 +165,7 @@ describe('eforge-plan extension registration', () => {
       if (NONE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('none');
       if (WRITE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('local-write');
       if (DAEMON_STATE_ACTIONS.has(action.id)) expect(action.sideEffects).toContain('daemon-state');
-      if (action.id === 'refresh-recommendations' || action.id === 'update-roadmap-state' || action.id === 'import-legacy-backlog' || action.id === 'analyze-all-backlog') expect(action.sideEffects).toContain('local-read');
+      if (action.id === 'refresh-recommendations' || action.id === 'update-roadmap-state' || action.id === 'import-legacy-backlog' || action.id === 'import-planning-store' || action.id === 'analyze-all-backlog') expect(action.sideEffects).toContain('local-read');
       if (READ_ACTIONS.has(action.id)) {
         expect(action.sideEffects).toContain('local-read');
         expect(action.sideEffects).not.toContain('local-write');
@@ -433,7 +434,7 @@ describe('eforge-plan extension registration', () => {
     expect(contribution!.blocks.every((block) => CLOSED_RENDERERS.has(block.rendererId))).toBe(true);
     expect(contribution!.blocks.some((block) => (block.rendererId === 'text' || block.rendererId === 'markdown') && /board/i.test(block.title ?? block.content))).toBe(true);
     expect(contribution!.blocks.some((block) => block.rendererId === 'status-badge')).toBe(true);
-    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'get-roadmap-state', 'update-roadmap-state', 'refresh-recommendations', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'open-planning-entry', 'capture-item', 'update-item', 'import-legacy-backlog', 'get-store-status', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']) {
+    for (const actionId of ['render-board-markdown', 'list-board-compact', 'get-item', 'get-epic', 'search-items', 'promote-item', 'promote-selection', 'prepare-planner-context', 'get-roadmap-state', 'update-roadmap-state', 'refresh-recommendations', 'apply-planner-result', 'start-planning-agent-task', 'analyze-all-backlog', 'get-planning-agent-task', 'preview-backlog-curation-task', 'cancel-planning-agent-task', 'apply-planning-agent-task-result', 'open-planning-entry', 'capture-item', 'update-item', 'import-legacy-backlog', 'import-planning-store', 'get-store-status', 'compact-planning-store', 'rebuild-search-index', 'optimize-search-index', 'vacuum-planning-store']) {
       expect(contribution!.blocks.some((block) => 'action' in block && block.action.actionId === actionId)).toBe(true);
     }
 
