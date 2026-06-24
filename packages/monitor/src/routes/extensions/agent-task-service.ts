@@ -16,6 +16,7 @@ import {
 } from '@eforge-build/client';
 import type { AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import type { AgentRole } from '@eforge-build/engine/events';
+import type { CustomTool } from '@eforge-build/engine/harness';
 import type { NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import type { MonitorContext } from '../../context.js';
 import {
@@ -319,8 +320,83 @@ export class ExtensionAgentTaskService {
         sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
       });
     }
-    const contribution = await this.resolveLegacyContributionStart(input, { owner: options.owner, registry: options.registry });
-    return await this.runContributionTask({ taskId: options.taskId, contribution, controller: options.controller, owner: options.owner });
+    try {
+      const contribution = await this.resolveLegacyContributionStart(input, { owner: options.owner, registry: options.registry });
+      return await this.runContributionTask({ taskId: options.taskId, contribution, controller: options.controller, owner: options.owner });
+    } catch (err) {
+      if (!(err instanceof AgentTaskServiceError) || err.status !== 404) throw err;
+      return await this.runLegacyPlanningTask({ taskId: options.taskId, input, controller: options.controller });
+    }
+  }
+
+  private async runLegacyPlanningTask(options: { taskId: string; input: LegacyExtensionAgentTaskStartRequest['input']; controller: AbortController }): Promise<EforgePlanPlanningDraftResult> {
+    const cwd = this.requireCwd();
+    const { loadConfig } = await import('@eforge-build/engine/config');
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
+    const { buildAgentRuntimeRegistry, singletonRegistry } = await import('@eforge-build/engine/agent-runtime-registry');
+    const { runResolvedAgentTask } = await import('@eforge-build/engine/agents/resolved-agent-task');
+
+    const { config, warnings } = await loadConfig(cwd);
+    for (const warning of warnings) process.stderr.write(`${warning}\n`);
+    const agentRuntimes = await resolveAgentRuntimes(this.context.options.agentRuntimes, config, buildAgentRuntimeRegistry, singletonRegistry);
+    const { harness, toolbeltSummary } = agentRuntimes.forRoleResolved('planner');
+    const plannerConfig = resolveAgentConfig('planner', config, undefined, toolbeltSummary);
+    let submitted: EforgePlanPlanningDraftResult | undefined;
+    const submitToolName = harness.effectiveCustomToolName('submit_eforge_plan_planning_result');
+    const progressToolName = harness.effectiveCustomToolName('report_eforge_plan_planning_progress');
+    const customTools: CustomTool[] = [
+      {
+        name: submitToolName,
+        description: 'Submit the final eforge-plan planning draft result. This is the only accepted output channel for this task.',
+        inputSchema: EforgePlanPlanningDraftResultSchema as unknown as CustomTool['inputSchema'],
+        handler: async (input: unknown) => { submitted = parseEforgePlanPlanningDraftResult(input); return 'Planning draft result submitted successfully.'; },
+      },
+      {
+        name: progressToolName,
+        description: 'Report telemetry-only section progress while drafting.',
+        inputSchema: { type: 'object', additionalProperties: true } as CustomTool['inputSchema'],
+        handler: async (input: unknown) => { await this.updateSectionProgress(options.taskId, input as SectionProgressUpdate); return 'Section progress recorded.'; },
+      },
+    ];
+    const variables = {
+      topic: options.input.topic,
+      session: options.input.session ?? '(none)',
+      planningType: options.input.planningType ?? '(unspecified)',
+      planningDepth: options.input.planningDepth ?? '(unspecified)',
+      sourceText: options.input.sourceText ?? '(none)',
+      existingSessionPlan: options.input.existingSessionPlan ?? '(none)',
+      requestedOutputSections: options.input.requestedOutputSections?.join(', ') ?? '(agent should choose applicable sections)',
+      submitTool: submitToolName,
+      progressTool: progressToolName,
+    };
+    const task = runResolvedAgentTask({
+      ...plannerConfig,
+      harness,
+      cwd,
+      promptTemplate: 'Topic: {{topic}}\nSource:\n{{sourceText}}\nUse {{submitTool}} to submit the final planning result. Report progress with {{progressTool}}.',
+      variables,
+      promptLabel: 'extension agent task eforge-plan:planning-draft',
+      role: 'planner',
+      tools: 'read-only',
+      customTools,
+      abortController: options.controller,
+      maxTurns: plannerConfig.maxTurns,
+      taskId: options.taskId,
+      phase: 'standalone',
+      stage: 'extension-agent-task',
+      getResult: () => submitted,
+      missingResultMessage: `eforge-plan planning draft task did not call ${submitToolName}.`,
+    });
+    let sawProgress = false;
+    let next = await task.next();
+    while (!next.done) {
+      if (!sawProgress) {
+        sawProgress = true;
+        await this.updateProgress(options.taskId, 'Planner task is running');
+      }
+      next = await task.next();
+    }
+    return parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(next.value)));
   }
 
   private async resolveBacklogCurationContributions(options: { owner?: ExtensionAgentTaskOwner; registry?: NativeExtensionRegistry }): Promise<{ itemAuditContribution: BacklogCurationAgentTaskContributionHandle; reducerContribution: BacklogCurationAgentTaskContributionHandle }> {
