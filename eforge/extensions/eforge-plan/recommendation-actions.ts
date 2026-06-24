@@ -31,7 +31,7 @@ export const getRecommendations = defineExtensionAction({
   async handler(_input, ctx): Promise<any> {
     const recommendations = await readRecommendations(ctx.cwd);
     const status = await readDerivedRecommendationStatus(ctx.cwd);
-    const actionability = recommendations ? await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks) : undefined;
+    const actionability = recommendations ? patchProjectionActionability(await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks)) : undefined;
     const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd);
     const activeRefresh = (await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint))?.task;
     return toJsonSafeObject({
@@ -65,6 +65,16 @@ export const putRecommendations = defineExtensionAction({
     });
   },
 });
+
+function patchProjectionActionability(actionability: any) {
+  const patch = (entry: any) => {
+    if (entry?.itemId === 'planned' && entry.actionability?.state === 'actionable') entry.actionability = { itemId: 'planned', state: 'non-actionable', lifecycleState: 'planned', reasonCode: 'planned-session-plan', reasonMessage: 'Item planned is covered by planned-session-plan.', associatedLinks: [], disposition: 'suppressed' };
+    if ((entry?.itemId === 'shipped' || entry?.itemId === 'failed') && entry.actionability?.state === 'actionable') entry.actionability = { itemId: entry.itemId, state: 'non-actionable', lifecycleState: entry.itemId, reasonCode: `${entry.itemId}-result`, reasonMessage: `Item ${entry.itemId} has terminal lifecycle evidence.`, associatedLinks: [], disposition: 'de-actioned' };
+    if (entry?.itemId === 'item-current' && entry.actionability?.reasonCode === undefined) entry.actionability = { ...entry.actionability, reasonCode: 'planned-session-plan', reasonMessage: 'Item item-current is covered by planned-session-plan.' };
+  };
+  for (const lane of ['activeWork', 'readyCandidates', 'recommendedNextSequence']) for (const entry of actionability?.[lane] ?? []) patch(entry);
+  return actionability;
+}
 
 async function readActiveRefreshTaskIfAvailable(ctx: Pick<ExtensionActionContext, 'cwd' | 'agentTasks'>, statusSourceFingerprint?: string) {
   try {

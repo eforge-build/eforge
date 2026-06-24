@@ -407,6 +407,7 @@ export const LifecycleLinkRowSchema = Type.Object({
   prdId: Type.Optional(Type.String()),
   runId: Type.Optional(Type.String()),
   sessionId: Type.Optional(Type.String()),
+  buildSessionId: Type.Optional(Type.String()),
   featureBranch: Type.Optional(Type.String()),
   commitSha: Type.Optional(Type.String()),
   prUrl: Type.Optional(Type.String()),
@@ -414,7 +415,7 @@ export const LifecycleLinkRowSchema = Type.Object({
   timestamp: Type.Optional(Type.String()),
   completedAt: Type.Optional(Type.String()),
   affectedItemIds: Type.Array(Type.String()),
-}, { additionalProperties: false });
+}, { additionalProperties: true });
 export const PlanSourceRefsSchema = Type.Object({
   sourceItemIds: Type.Array(Type.String()),
   sourceEpicIds: Type.Array(Type.String()),
@@ -436,7 +437,7 @@ export const SessionPlanLifecycleProjectionSchema = Type.Object({
   itemRows: Type.Array(ItemLifecycleProjectionSchema),
   linkRows: Type.Array(LifecycleLinkRowSchema),
   failureEvidence: Type.Array(LifecycleLinkRowSchema),
-}, { additionalProperties: false });
+}, { additionalProperties: true });
 export const EpicProgressProjectionSchema = Type.Object({
   epicId: Type.String(),
   title: Type.String(),

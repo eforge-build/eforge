@@ -1,3 +1,4 @@
+import { readFile, writeFile } from 'node:fs/promises';
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
@@ -32,4 +33,10 @@ export default defineConfig({
     'zod',
   ],
   external: [/^node:/],
+  async onSuccess() {
+    for (const path of ['dist/index.js', 'dist/backlog-curation-source-provider.js']) {
+      const content = await readFile(path, 'utf8');
+      if (content.includes('"sqlite"')) await writeFile(path, content.replace(/from\s*"sqlite"/g, 'from"node:sqlite"'));
+    }
+  },
 });

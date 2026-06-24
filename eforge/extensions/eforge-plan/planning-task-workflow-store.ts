@@ -84,6 +84,8 @@ export async function recordPlanningTaskWorkflowEntry(cwd: string, entry: Planni
   const path = resolvePlanningTaskWorkflowIndexPath(cwd);
   return runExclusive(path, async () => {
     recordCanonicalPlanningTaskWorkflowEntry(cwd, await canonicalPlanningTaskInput(cwd, entry));
+    const existing = await readPlanningTaskWorkflowIndex(cwd);
+    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries: [...existing.entries.filter((candidate) => candidate.taskId !== entry.taskId), entry] });
     return entry;
   });
 }
@@ -92,7 +94,11 @@ export async function removePlanningTaskWorkflowEntry(cwd: string, taskId: strin
   const path = resolvePlanningTaskWorkflowIndexPath(cwd);
   return runExclusive(path, async () => {
     const existed = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId) !== undefined;
-    if (existed) markCanonicalPlanningTaskWorkflowEntryDismissed(cwd, taskId);
+    if (existed) {
+      markCanonicalPlanningTaskWorkflowEntryDismissed(cwd, taskId);
+      const existing = await readPlanningTaskWorkflowIndex(cwd);
+      await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries: existing.entries.filter((entry) => entry.taskId !== taskId) });
+    }
     return existed;
   });
 }
@@ -102,8 +108,11 @@ export async function markPlanningTaskWorkflowEntryApplied(cwd: string, taskId: 
   return runExclusive(path, async () => {
     const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
     if (entry === undefined) throw new Error(`No planning task workflow entry found for ${taskId}; cannot mark applied.`);
+    const updated = { ...entry, appliedAt };
     markCanonicalPlanningTaskWorkflowEntryApplied(cwd, taskId, appliedAt);
-    return { ...entry, appliedAt };
+    const existing = await readPlanningTaskWorkflowIndex(cwd);
+    await writePlanningTaskWorkflowIndex(cwd, { schemaVersion: 1, entries: existing.entries.map((candidate) => candidate.taskId === taskId ? updated : candidate) });
+    return updated;
   });
 }
 

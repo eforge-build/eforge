@@ -31,6 +31,7 @@ import { applyBacklogCurationDraftFromTask } from './backlog-curation-apply.js';
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { userActionError } from './action-errors.js';
 import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
+import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from './trace-store.js';
 import { findCanonicalNonterminalCoverage } from './canonical/coverage.js';
 import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, listRecommendationRefreshWorkflowEntries, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
@@ -390,6 +391,11 @@ async function applyCreationDraftSourceLinkage(cwd: string, session: string, lin
   const path = planning.flat.resolvePath({ cwd, session });
   const status = loaded.plan.status ?? metadata.status ?? 'planning';
   syncSessionPlanArtifact(cwd, { session, path, status, sourceItemIds: linkage.sourceItemIds, sourceEpicIds: linkage.sourceEpicIds, sourceRecommendationRef: linkage.sourceRecommendationRef, provenance: 'planning-task-creation-draft', updatedAt: promotedAt });
+  for (const itemId of linkage.sourceItemIds) {
+    const trace = await readTraceSidecar(cwd, itemId) ?? createTraceSidecar(itemId);
+    trace.promotedSessionPlans = [...trace.promotedSessionPlans.filter((entry) => entry.session !== session), { session, path: relative(cwd, path).replace(/\\/g, '/'), status, promotedAt }];
+    await writeTraceSidecar(cwd, trace);
+  }
   return {
     sourceItemIds: linkage.sourceItemIds,
     sourceEpicIds: linkage.sourceEpicIds,
@@ -448,7 +454,7 @@ async function validatePlanningAgentTaskApplyTargets(
   const coverage = findCanonicalNonterminalCoverage(cwd, coveredItemIds, { excludePlanningTaskIds: [taskId] });
   if (!coverage.ok) {
     const reasons = [...new Set(coverage.entries.map((entry) => entry.reasonCode))].join(', ');
-    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: coverage.entries as never } });
+    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: coverage.entries as never, suppressedItems: coverage.entries.map((entry) => ({ itemId: entry.itemRef, state: 'non-actionable', lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemRef} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks })) as never } });
   }
   return targets;
 }

@@ -1,12 +1,12 @@
 import {
   CONTRIBUTION_OUTPUT_PROFILES,
-  createContributionPaginationInputFields,
   defineExtensionAction,
   Type,
   type Static,
 } from '@eforge-build/extension-sdk';
 // --- eforge:region plan-04-projections-lifecycle ---
 import { getEpicDetailProjection, getItemDetailProjection, listBoardCompactProjection } from './projections/index.js';
+import { buildBoard } from './board-actions.js';
 // --- eforge:endregion plan-04-projections-lifecycle ---
 import { toJsonSafeObject } from './json-safe.js';
 import { BacklogStatusSchema, KanbanLaneSchema, LifecycleStateSchema } from './schema.js';
@@ -54,7 +54,10 @@ const CompactEpicSchema = Type.Object({
   hasBody: Type.Boolean(),
 }, { additionalProperties: false });
 
-const PageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
+const PageInputFields = {
+  limit: Type.Optional(Type.Integer({ minimum: 1, default: 20 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+};
 
 const GetItemInputSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
@@ -204,7 +207,16 @@ async function getEpicDetail(cwd: string, input: GetEpicInput): Promise<any> {
 }
 async function listBoardCompact(cwd: string, input: ListBoardCompactInput): Promise<any> {
   // --- eforge:region plan-04-projections-lifecycle ---
-  return listBoardCompactProjection(cwd, input);
+  const projected = await listBoardCompactProjection(cwd, input);
+  if (projected.items.length > 0) return projected;
+  const board = await buildBoard(cwd, { epic: input.epic, includeArchive: input.includeArchive });
+  const all = board.items.filter((item: any) => (input.lane === undefined || item.lane === input.lane) && (input.includeClosed === true || !item.closed));
+  const limit = Math.min(Math.max(input.limit ?? 20, 1), 100);
+  const offset = Math.max(input.offset ?? 0, 0);
+  const items = all.slice(offset, offset + limit).map((item: any) => ({ id: item.id, title: item.title, status: item.status, priority: item.priority ?? 'medium', tags: item.tags ?? [], lane: item.lane ?? (item.status === 'candidate' ? 'inbox' : item.status === 'active' ? 'in-progress' : item.status === 'planned' ? 'ready' : item.status === 'shipped' ? 'done' : 'inbox'), reasons: item.reasons ?? [], dependsOn: item.dependsOn ?? [], unresolvedDependsOn: item.unresolvedDependsOn ?? [], activeTraceReasons: item.activeTraceReasons ?? [], blocked: item.blocked ?? false, ready: item.ready ?? false, reviewDue: item.reviewDue ?? false, closed: item.closed ?? false, epic: item.epic, lifecycleState: ['none', 'planned', 'active', 'queue', 'build', 'pr-open', 'merged', 'shipped', 'failed', 'partial'].includes(item.lifecycleState) ? item.lifecycleState : 'none' }));
+  const pagination = { limit, offset, returned: items.length, hasMore: offset + items.length < all.length, ...(offset + items.length < all.length ? { nextOffset: offset + items.length } : {}) };
+  const lanes = ['inbox', 'ready', 'blocked', 'in-progress', 'done', 'archive'].map((lane) => ({ lane, title: lane, count: all.filter((item: any) => item.lane === lane).length, openCount: all.filter((item: any) => item.lane === lane && !item.closed).length, closedCount: all.filter((item: any) => item.lane === lane && item.closed).length, ...(input.lane === lane ? { pagination } : {}) }));
+  return { schemaVersion: 1, items, total: all.length, limit, offset, lanes, counts: { total: all.length, open: all.filter((item: any) => !item.closed).length, closed: all.filter((item: any) => item.closed).length }, pagination };
   // --- eforge:endregion plan-04-projections-lifecycle ---
 }
 // --- eforge:endregion compact-query-projection ---

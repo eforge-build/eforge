@@ -22,7 +22,7 @@ export function assertNoCanonicalNonterminalCoverage(cwd: string, itemRefs: read
   const result = findCanonicalNonterminalCoverage(cwd, itemRefs, options);
   if (!result.ok) {
     const reasons = [...new Set(result.entries.map((entry) => entry.reasonCode))].join(', ');
-    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: result.entries as never } });
+    throw userActionError(`Selected backlog items already have nonterminal planning coverage: ${reasons}`, { path: 'itemIds', details: { coverage: result.entries as never, suppressedItems: suppressedItems(result.entries) as never } });
   }
 }
 
@@ -48,7 +48,7 @@ function sessionPlanCoverage(store: EforgePlanStore, itemRef: string, includeTer
 
 function planningTaskCoverage(store: EforgePlanStore, itemRef: string, includeTerminal: boolean, excludedTaskIds: ReadonlySet<string>): CoverageEntry[] {
   const rows = all(store, `SELECT pt.task_id, pt.status_snapshot FROM planning_task_items pti JOIN planning_tasks pt ON pt.task_id = pti.task_id WHERE pti.item_ref = ? OR pti.item_id = ?`, itemRef, itemRef);
-  return rows.filter((row) => !excludedTaskIds.has(String(row.task_id)) && (includeTerminal || !TERMINAL_TASK_STATUSES.has(String(row.status_snapshot ?? '')))).map((row) => ({ itemRef, reasonCode: 'active-planning-task', lifecycleState: 'active', associatedLinks: [{ kind: 'planning-task', label: String(row.task_id), taskId: String(row.task_id), status: stringValue(row.status_snapshot) }] }));
+  return rows.filter((row) => !excludedTaskIds.has(String(row.task_id)) && (includeTerminal || !TERMINAL_TASK_STATUSES.has(String(row.status_snapshot ?? '')))).map((row) => ({ itemRef, reasonCode: 'active-planning-task', lifecycleState: 'active', associatedLinks: [{ kind: 'planning-task', label: String(row.task_id), taskId: String(row.task_id), status: String(row.status_snapshot ?? '') === 'active' ? 'running' : stringValue(row.status_snapshot) }] }));
 }
 
 function queueBuildCoverage(store: EforgePlanStore, itemRef: string, includeTerminal: boolean): CoverageEntry[] {
@@ -64,3 +64,4 @@ function lifecycleCoverage(store: EforgePlanStore, itemRef: string, includeTermi
 function all(store: EforgePlanStore, sql: string, ...params: unknown[]): Record<string, unknown>[] { return getDatabase(store).prepare(sql).all(...(params as never[])) as Record<string, unknown>[]; }
 function stringValue(value: unknown): string | undefined { return typeof value === 'string' && value.length > 0 ? value : undefined; }
 function reasonCode(state: string): string { if (state === 'pr-open') return 'pr-open'; if (state === 'build') return 'active-build'; if (state === 'queued') return 'queued-build'; if (state === 'planned') return 'planned-session-plan'; return state || 'active'; }
+function suppressedItems(entries: CoverageEntry[]) { return entries.map((entry) => ({ itemId: entry.itemRef, state: 'non-actionable', lifecycleState: entry.lifecycleState, reasonCode: entry.reasonCode, reasonMessage: `Item ${entry.itemRef} is covered by ${entry.reasonCode}.`, associatedLinks: entry.associatedLinks })); }

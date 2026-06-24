@@ -127,7 +127,7 @@ const captureItem = defineExtensionAction({
     const body = [`# ${input.title}`, '', '## Claim', '', input.claim, '', '## Evidence', '', input.evidence ?? 'No evidence recorded yet.', '', '## Acceptance Criteria', '', input.acceptanceCriteria, ''].join('\n');
     const item = captureCanonicalBacklogItem(ctx.cwd, { id, title: input.title, status: 'candidate', priority: input.priority, tags: input.tags ?? [], dependsOn: input.dependsOn ?? [], epic: input.epic, created: now, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'capture-item', [item.id]);
-    return toJsonSafeObject({ itemId: item.id, status: item.userStatus, storage: { kind: 'canonical-sqlite', id: item.id }, legacyPathDeprecated: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
+    return toJsonSafeObject({ itemId: item.id, status: item.userStatus, path: resolveBacklogItemRelativePath(ctx.cwd, item.id), storage: { kind: 'canonical-sqlite', id: item.id }, legacyPathDeprecated: resolveBacklogItemRelativePath(ctx.cwd, item.id) });
   },
 });
 
@@ -141,7 +141,7 @@ const upsertEpic = defineExtensionAction({
     const body = input.body ?? existing?.body ?? `# ${input.title}\n\n`;
     const epic = upsertCanonicalEpic(ctx.cwd, { id, title: input.title, ...(input.status !== undefined && { status: normalizedStatus(input.status, 'candidate') }), priority: input.priority, tags: input.tags, updated: now, body });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'upsert-epic', [epic.id]);
-    return toJsonSafeObject({ epicId: epic.id, status: epic.userStatus, storage: { kind: 'canonical-sqlite', id: epic.id }, legacyPathDeprecated: resolveBacklogEpicRelativePath(ctx.cwd, epic.id) });
+    return toJsonSafeObject({ epicId: epic.id, status: epic.userStatus, path: resolveBacklogEpicRelativePath(ctx.cwd, epic.id), storage: { kind: 'canonical-sqlite', id: epic.id }, legacyPathDeprecated: resolveBacklogEpicRelativePath(ctx.cwd, epic.id) });
   },
 });
 
@@ -158,6 +158,12 @@ const updateItem = defineExtensionAction({
     if (input.epic !== undefined) updates.epic = input.epic.length > 0 ? input.epic : null;
     if (input.evidenceNotes !== undefined) updates.evidence_notes = input.evidenceNotes;
     if (input.recheckNotes !== undefined) updates.recheck_notes = input.recheckNotes;
+    if (readCanonicalBacklogItem(ctx.cwd, input.id) === undefined) {
+      const legacy = await readBacklogItem(ctx.cwd, input.id);
+      if (legacy !== null) {
+        captureCanonicalBacklogItem(ctx.cwd, { id: legacy.id, title: legacy.title, status: legacy.status, priority: legacy.priority, tags: legacy.tags as string[], dependsOn: legacy.dependsOn as string[], epic: legacy.epic, created: legacy.created, updated: legacy.updated, body: legacy.body });
+      }
+    }
     const item = updateCanonicalBacklogItem(ctx.cwd, input.id, { status: updates.status as Parameters<typeof updateCanonicalBacklogItem>[2]['status'], priority: updates.priority as string | undefined, tags: updates.tags as string[] | undefined, dependsOn: updates.depends_on as string[] | undefined, epic: updates.epic as string | null | undefined, frontmatter: updates });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'update-item', [item.id]);
     return toJsonSafeObject({ itemId: item.id, status: item.userStatus });

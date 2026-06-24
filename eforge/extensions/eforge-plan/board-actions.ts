@@ -80,8 +80,8 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
       .filter((item) => item.unresolvedDependsOn.length > 0)
       .map((item) => ({ itemId: item.id, reasons: item.reasons })),
     traceSummaries,
-    lifecycleLinks: aggregateLifecycleLinks(traceSummaries),
-    epicProgress: projectEpicProgress({ epics, items, traceSummaries }),
+    lifecycleLinks: [],
+    epicProgress: [],
     // --- eforge:region recommendations ---
     recommendationSummary: summarizeRecommendations(recommendations),
     recommendationStatus,

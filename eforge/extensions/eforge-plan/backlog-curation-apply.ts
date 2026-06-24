@@ -1,20 +1,13 @@
 import { EforgePlanPlanningBacklogCurationDraftSchema, safeParseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError, Type } from '@eforge-build/extension-sdk';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem, type TraceSummary } from './backlog-domain.js';
-// --- eforge:region shipped-evidence-context ---
 import { buildProspectiveCurationProjection, type ProspectiveCurationProjection, type RecommendationReferenceRecord as ProjectionReferenceRecord } from './backlog-curation-recommendation-overlay.js';
-// --- eforge:endregion shipped-evidence-context ---
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX, SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX, validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
 import { appendEvidence, applySectionOperations, fieldPath } from './backlog-curation-apply-utils.js';
 export { applySectionOperations } from './backlog-curation-apply-utils.js';
 import { summarizeProjectTraces } from './trace-activity.js';
-import {
-  assertSafeBacklogId,
-  listBacklogEpicSnapshots,
-  listBacklogItemSnapshots,
-  type BacklogRecordSnapshot,
-} from './markdown-store.js';
+import { assertSafeBacklogId, listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
 import { captureCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
 import { computeRecommendationSourceFingerprint, computeRecommendationSourceFingerprintForRecords, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';

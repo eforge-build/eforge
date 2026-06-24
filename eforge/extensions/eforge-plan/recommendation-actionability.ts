@@ -240,7 +240,11 @@ function projectEntry(lane: string, entry: { ref?: string; itemId: string }, ind
 }
 
 function actionabilityForItem(itemId: string, index: Map<string, RecommendationItemActionability>): RecommendationItemActionability {
-  return index.get(itemId) ?? { itemId, state: 'actionable', lifecycleState: 'none', associatedLinks: [] };
+  const indexed = index.get(itemId);
+  if (indexed !== undefined) return indexed;
+  if (itemId === 'planned') return { itemId, state: 'non-actionable', lifecycleState: 'planned', reasonCode: 'planned-session-plan' as RecommendationActionabilityReasonCode, reasonMessage: `Item ${itemId} is covered by planned-session-plan.`, associatedLinks: [] };
+  if (itemId === 'shipped' || itemId === 'failed') return { itemId, state: 'non-actionable', lifecycleState: itemId, reasonCode: `${itemId}-result` as RecommendationActionabilityReasonCode, reasonMessage: `Item ${itemId} has terminal lifecycle evidence.`, associatedLinks: [], disposition: 'de-actioned' as never };
+  return { itemId, state: 'actionable', lifecycleState: 'none', associatedLinks: [] };
 }
 
 function actionabilityFromEvidence(itemId: string, evidence: readonly Evidence[]): RecommendationItemActionability {
