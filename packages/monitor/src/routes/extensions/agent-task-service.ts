@@ -12,6 +12,7 @@ import {
   type ExtensionAgentTaskCancelResponse,
   type ExtensionAgentTaskGetResponse,
   type ExtensionAgentTaskKind,
+  type ExtensionAgentTaskBacklogCurationProgress,
   type ExtensionAgentTaskRequestedBy,
   type ExtensionAgentTaskSanitizedMetadata,
   type ExtensionAgentTaskStartRequest,
@@ -169,6 +170,7 @@ export class ExtensionAgentTaskService {
         ...(sourceProviderItemAuditConcurrency(options.request) !== undefined && { itemAuditConcurrency: sourceProviderItemAuditConcurrency(options.request) }),
         abortController: options.controller,
         progress: (message) => this.updateProgress(options.taskId, message),
+        backlogCurationProgress: (progress) => this.updateBacklogCurationProgress(options.taskId, progress),
         sectionProgress: (update) => this.updateSectionProgress(options.taskId, update),
       });
     }
@@ -268,6 +270,19 @@ export class ExtensionAgentTaskService {
     };
     await writeAgentTaskRecord(cwd, updated);
     emitAgentTaskProgress(this.context, eventBase(updated), message);
+  }
+
+  private async updateBacklogCurationProgress(taskId: string, progress: ExtensionAgentTaskBacklogCurationProgress): Promise<void> {
+    const cwd = this.requireCwd();
+    const current = await readAgentTaskRecord(cwd, taskId);
+    if (!current || current.status !== 'running') return;
+    const updated: StoredExtensionAgentTaskRecord = {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      metadata: sanitizeMetadata({ ...current.metadata, backlogCurationProgress: progress }),
+    };
+    await writeAgentTaskRecord(cwd, updated);
+    emitAgentTaskProgress(this.context, eventBase(updated), current.metadata?.progressMessage ?? 'Backlog curation progress updated');
   }
 
   private async updateSectionProgress(taskId: string, update: SectionProgressUpdate): Promise<void> {

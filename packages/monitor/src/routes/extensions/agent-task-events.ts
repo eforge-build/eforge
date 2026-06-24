@@ -50,10 +50,13 @@ export function sanitizeMetadata(metadata: ExtensionAgentTaskSanitizedMetadata |
   if (metadata.warningCount !== undefined) result.warningCount = Math.max(0, Math.trunc(metadata.warningCount));
   const sectionProgress = sanitizeSectionProgress(metadata.sectionProgress);
   if (sectionProgress !== undefined) result.sectionProgress = sectionProgress;
+  const backlogCurationProgress = sanitizeBacklogCurationProgress(metadata.backlogCurationProgress);
+  if (backlogCurationProgress !== undefined) result.backlogCurationProgress = backlogCurationProgress;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
 const MAX_SECTION_PROGRESS_ITEMS = 50;
+const MAX_BACKLOG_CURATION_PROGRESS_ITEMS = 1_000;
 
 function sanitizeSectionProgress(sectionProgress: ExtensionAgentTaskSanitizedMetadata['sectionProgress']): ExtensionAgentTaskSanitizedMetadata['sectionProgress'] {
   if (!sectionProgress) return undefined;
@@ -75,6 +78,29 @@ function sanitizeSectionList(values: string[]): string[] {
   return values.slice(0, MAX_SECTION_PROGRESS_ITEMS).map(sanitizeEventMessage).filter((entry) => entry.length > 0);
 }
 
+function sanitizeBacklogCurationProgress(progress: ExtensionAgentTaskSanitizedMetadata['backlogCurationProgress']): ExtensionAgentTaskSanitizedMetadata['backlogCurationProgress'] {
+  if (!progress) return undefined;
+  const items = progress.items.slice(0, MAX_BACKLOG_CURATION_PROGRESS_ITEMS).map((item) => ({
+    itemId: sanitizeBoundedEventMessage(item.itemId, 240),
+    ...(item.title !== undefined && { title: sanitizeBoundedEventMessage(item.title, 300) }),
+    status: item.status,
+    ...(item.outcome !== undefined && { outcome: sanitizeBoundedEventMessage(item.outcome, 80) }),
+    ...(item.verdict !== undefined && { verdict: sanitizeBoundedEventMessage(item.verdict, 80) }),
+    ...(item.summary !== undefined && { summary: sanitizeBoundedEventMessage(item.summary, 500) }),
+    ...(item.startedAt !== undefined && { startedAt: sanitizeBoundedEventMessage(item.startedAt, 120) }),
+    ...(item.completedAt !== undefined && { completedAt: sanitizeBoundedEventMessage(item.completedAt, 120) }),
+  })).filter((item) => item.itemId.length > 0);
+  return {
+    total: sanitizeNonNegativeInteger(progress.total),
+    cacheHits: sanitizeNonNegativeInteger(progress.cacheHits),
+    misses: sanitizeNonNegativeInteger(progress.misses),
+    running: sanitizeNonNegativeInteger(progress.running),
+    completed: sanitizeNonNegativeInteger(progress.completed),
+    remaining: sanitizeNonNegativeInteger(progress.remaining),
+    items,
+  };
+}
+
 function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {
   const metadata = sanitizeMetadata(base.metadata);
   const eventBase = { taskId: base.taskId, taskKind: base.taskKind, extensionName: base.extensionName, status: base.status };
@@ -82,8 +108,18 @@ function withMetadata(base: AgentTaskEventBase): AgentTaskEventBase {
 }
 
 function sanitizeEventMessage(message: string): string {
+  return sanitizeBoundedEventMessage(message, 500);
+}
+
+function sanitizeBoundedEventMessage(message: string, maxLength: number): string {
   const trimmed = message.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
-  return trimmed.length > 500 ? `${trimmed.slice(0, 497)}...` : trimmed;
+  if (trimmed.length <= maxLength) return trimmed;
+  if (maxLength <= 3) return trimmed.slice(0, maxLength);
+  return `${trimmed.slice(0, maxLength - 3)}...`;
+}
+
+function sanitizeNonNegativeInteger(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function sanitizeErrorCode(code: string): string {

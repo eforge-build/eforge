@@ -212,8 +212,8 @@ function overlayBlockedChain(
     }
   }
   const blockedBy = chain.blockedBy.filter((itemId) => {
-    const remove = closedItemIds.has(itemId);
-    if (remove) removedItemIds.add(itemId);
+    const remove = closedItemIds.has(itemId) || !itemCatalog.has(itemId);
+    if (closedItemIds.has(itemId)) removedItemIds.add(itemId);
     return !remove;
   });
   if (itemIds.length === 0) return [];

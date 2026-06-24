@@ -101,6 +101,21 @@ describe('backlog curation recommendation overlay', () => {
     expect(readyActive.repositioned.map((entry) => entry.from)).toEqual(['readyCandidates', 'safeParallelizableGroups.active-group.itemIds']);
   });
 
+  it('drops non-backlog blockedBy references from generated blocked chains', () => {
+    const projection = buildProspectiveCurationProjection({
+      currentItems,
+      currentEpics,
+      draft: {},
+      generatedRecommendations: {
+        ...createEmptyRecommendationModel(),
+        blockedChains: [{ ref: 'decision-chain', itemIds: ['candidate-me'], blockedBy: ['product-decision:compatibility', 'open-blocker'], rationale: 'Needs a product decision.' }],
+      },
+    });
+
+    expect(projection.validation.valid).toBe(true);
+    expect(projection.effectiveRecommendations?.blockedChains).toEqual([{ ref: 'decision-chain', itemIds: ['candidate-me'], blockedBy: ['open-blocker'], rationale: 'Needs a product decision.' }]);
+  });
+
   it('keeps the compatibility helper compiling while delegating to the projection', () => {
     const model = { ...createEmptyRecommendationModel(), activeWork: [{ itemId: 'ship-me' }], readyCandidates: [{ itemId: 'activate-me' }] };
     const result = filterRecommendationsForCurationDraftStatusOverlay(model, draft);

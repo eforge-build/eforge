@@ -377,6 +377,34 @@ export const ExtensionAgentTaskCancelRequestSchema = Type.Object({
   reason: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
+export const ExtensionAgentTaskBacklogCurationItemProgressSchema = Type.Object({
+  itemId: Type.String({ minLength: 1, maxLength: 240 }),
+  title: Type.Optional(Type.String({ maxLength: 300 })),
+  status: Type.Union([
+    Type.Literal('pending'),
+    Type.Literal('running'),
+    Type.Literal('cache-hit'),
+    Type.Literal('completed'),
+    Type.Literal('failed'),
+    Type.Literal('cancelled'),
+  ]),
+  outcome: Type.Optional(Type.String({ maxLength: 80 })),
+  verdict: Type.Optional(Type.String({ maxLength: 80 })),
+  summary: Type.Optional(Type.String({ maxLength: 500 })),
+  startedAt: Type.Optional(Type.String({ maxLength: 120 })),
+  completedAt: Type.Optional(Type.String({ maxLength: 120 })),
+}, { additionalProperties: false });
+
+export const ExtensionAgentTaskBacklogCurationProgressSchema = Type.Object({
+  total: Type.Integer({ minimum: 0 }),
+  cacheHits: Type.Integer({ minimum: 0 }),
+  misses: Type.Integer({ minimum: 0 }),
+  running: Type.Integer({ minimum: 0 }),
+  completed: Type.Integer({ minimum: 0 }),
+  remaining: Type.Integer({ minimum: 0 }),
+  items: Type.Array(ExtensionAgentTaskBacklogCurationItemProgressSchema, { maxItems: 1_000 }),
+}, { additionalProperties: false });
+
 export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   label: Type.Optional(Type.String()),
   summary: Type.Optional(Type.String()),
@@ -386,6 +414,7 @@ export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   // --- eforge:region session-plan-creation-draft ---
   sectionProgress: Type.Optional(EforgePlanPlanningSectionProgressSchema),
   // --- eforge:endregion session-plan-creation-draft ---
+  backlogCurationProgress: Type.Optional(ExtensionAgentTaskBacklogCurationProgressSchema),
 }, { additionalProperties: false });
 
 const extensionAgentTaskRecordBaseFields = {
@@ -464,6 +493,8 @@ export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraf
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
 export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRequestSchema>;
 export type ExtensionAgentTaskCancelRequest = Static<typeof ExtensionAgentTaskCancelRequestSchema>;
+export type ExtensionAgentTaskBacklogCurationItemProgress = Static<typeof ExtensionAgentTaskBacklogCurationItemProgressSchema>;
+export type ExtensionAgentTaskBacklogCurationProgress = Static<typeof ExtensionAgentTaskBacklogCurationProgressSchema>;
 export type ExtensionAgentTaskSanitizedMetadata = Static<typeof ExtensionAgentTaskSanitizedMetadataSchema>;
 export type ExtensionAgentTaskRecord = Static<typeof ExtensionAgentTaskRecordSchema>;
 export type ExtensionAgentTaskStartResponse = Static<typeof ExtensionAgentTaskStartResponseSchema>;

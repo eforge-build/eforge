@@ -117,6 +117,8 @@ export type {
   ExtensionAgentTaskCancelResponse,
   ExtensionAgentTaskGetRequest,
   ExtensionAgentTaskGetResponse,
+  ExtensionAgentTaskBacklogCurationItemProgress,
+  ExtensionAgentTaskBacklogCurationProgress,
   ExtensionAgentTaskKind,
   ExtensionAgentTaskRecord,
   ExtensionAgentTaskSanitizedMetadata,

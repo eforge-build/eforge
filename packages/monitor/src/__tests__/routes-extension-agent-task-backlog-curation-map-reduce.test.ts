@@ -84,6 +84,17 @@ describe('backlog curation map/reduce runner', () => {
     expect(progress).toEqual(expect.arrayContaining(['Preparing curation source', 'Built 1 item packets', 'Cache hits 0, misses 1', 'Audited 1/1 items', 'Reducing 1 item outcomes', 'Validating curation draft']));
   });
 
+  it('reports structured item-agent progress for backlog curation', async () => {
+    const harness = new MapReduceHarness();
+    const curationProgress: Array<Parameters<NonNullable<RunnerOptions['backlogCurationProgress']>>[0]> = [];
+    await runBacklogCurationMapReduceTask(baseOptions({ harness, curationProgress }));
+
+    expect(curationProgress.length).toBeGreaterThan(0);
+    expect(curationProgress.at(0)).toMatchObject({ total: 1, completed: 0, remaining: 1, items: [expect.objectContaining({ itemId: 'item-1', title: 'Item 1', status: 'pending' })] });
+    expect(curationProgress).toEqual(expect.arrayContaining([expect.objectContaining({ running: 1, items: [expect.objectContaining({ itemId: 'item-1', status: 'running' })] })]));
+    expect(curationProgress.at(-1)).toMatchObject({ total: 1, completed: 1, remaining: 0, items: [expect.objectContaining({ itemId: 'item-1', status: 'completed', verdict: 'still-needed' })] });
+  });
+
   it('uses cache-hit outcomes without invoking an item audit agent', async () => {
     const harness = new MapReduceHarness();
     const cachedFinding = finding();
@@ -97,7 +108,12 @@ describe('backlog curation map/reduce runner', () => {
 
     expect(result).toMatchObject({ backlogCurationDraft: { sourceFingerprint: SHA } });
     expect(harness.itemAuditCalls).toBe(0);
-    expect(harness.reducerInputs.at(0)?.outcomes).toEqual([expect.objectContaining({ outcome: 'cache-hit', finding: cachedFinding })]);
+    // The reducer prompt JSON is compacted before prompting, so it carries the
+    // finding's stable identity/verdict fields rather than the verbatim record.
+    expect(harness.reducerInputs.at(0)?.outcomes).toEqual([expect.objectContaining({
+      outcome: 'cache-hit',
+      finding: expect.objectContaining({ itemId: cachedFinding.itemId, disposition: cachedFinding.disposition, verdict: cachedFinding.verdict, summary: cachedFinding.summary }),
+    })]);
   });
 
   it('degrades an item audit failure into a bounded outcome and still reduces', async () => {
@@ -157,7 +173,7 @@ describe('backlog curation map/reduce runner', () => {
 
 type RunnerOptions = Parameters<typeof runBacklogCurationMapReduceTask>[0];
 
-function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]; providerHooks?: RunnerOptions['providerHooks']; sourceBundle?: BacklogCurationMapReduceSourceBundle; abortController?: AbortController; itemAuditConcurrency?: number }): RunnerOptions {
+function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]; curationProgress?: Array<Parameters<NonNullable<RunnerOptions['backlogCurationProgress']>>[0]>; providerHooks?: RunnerOptions['providerHooks']; sourceBundle?: BacklogCurationMapReduceSourceBundle; abortController?: AbortController; itemAuditConcurrency?: number }): RunnerOptions {
   return {
     cwd: process.cwd(),
     taskId: 'task-map-reduce',
@@ -172,6 +188,7 @@ function baseOptions(overrides: { harness: MapReduceHarness; progress?: string[]
     ...(overrides.itemAuditConcurrency !== undefined && { itemAuditConcurrency: overrides.itemAuditConcurrency }),
     abortController: overrides.abortController ?? new AbortController(),
     progress: async (message) => { overrides.progress?.push(message); },
+    backlogCurationProgress: async (progress) => { overrides.curationProgress?.push(progress); },
     sectionProgress: async () => {},
   };
 }
@@ -245,6 +262,9 @@ function finding(): BacklogCurationMapReduceFinding {
     promptVersion: BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION,
     runtimeIdentity: { provider: 'stub', modelId: 'stub-model' },
     disposition: 'recheck',
+    verdict: 'still-needed',
+    closureEvidenceRoles: ['supporting'],
+    checkedPaths: [{ path: 'src/item.ts', reason: 'searched current source' }],
     summary: 'No change needed.',
     rationale: 'The packet contains no current-source closure evidence.',
     citations: [],

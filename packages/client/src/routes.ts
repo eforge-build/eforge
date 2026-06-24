@@ -143,6 +143,8 @@ export type {
   ExtensionAgentTaskGetRequest,
   ExtensionAgentTaskGetResponse,
   ExtensionAgentTaskId,
+  ExtensionAgentTaskBacklogCurationItemProgress,
+  ExtensionAgentTaskBacklogCurationProgress,
   ExtensionAgentTaskKind,
   ExtensionAgentTaskRecord,
   ExtensionAgentTaskSanitizedMetadata,

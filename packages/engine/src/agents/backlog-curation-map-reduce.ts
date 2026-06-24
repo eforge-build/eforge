@@ -311,11 +311,156 @@ function canonicalJson(value: unknown): string {
 }
 
 function sanitizeReducerPromptInput(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeReducerPromptInput);
+  const sanitized = stripBlockedReducerPromptKeys(value);
+  return compactReducerPromptInput(sanitized);
+}
+
+function stripBlockedReducerPromptKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripBlockedReducerPromptKeys);
   if (value === null || typeof value !== 'object') return value;
   const blockedKeys = new Set(['gitDelta', 'fullImplementationAudit', 'rawEvidence', 'rawBody', 'bodyMarkdown', 'fullBody']);
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([key]) => !blockedKeys.has(key))
-    .map(([key, child]) => [key, sanitizeReducerPromptInput(child)] as const);
+    .map(([key, child]) => [key, stripBlockedReducerPromptKeys(child)] as const);
   return Object.fromEntries(entries);
+}
+
+function compactReducerPromptInput(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.outcomes) || !isRecord(value.globalContext)) return value;
+  return {
+    schemaVersion: value.schemaVersion,
+    sourceFingerprint: value.sourceFingerprint,
+    generatedAt: value.generatedAt,
+    globalContext: compactReducerGlobalContext(value.globalContext),
+    outcomes: value.outcomes.map(compactReducerOutcome),
+    diagnostics: compactDiagnostics(value.diagnostics, 20),
+  };
+}
+
+function compactReducerGlobalContext(value: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schemaVersion: value.schemaVersion,
+    purpose: value.purpose,
+    sourceFingerprint: value.sourceFingerprint,
+    generatedAt: value.generatedAt,
+    curationGuidance: compactStringArray(value.curationGuidance, 6, 500),
+    caps: value.caps,
+    itemCount: value.itemCount,
+    openItemIds: value.openItemIds,
+    roadmapSummaries: compactObjectArray(value.roadmapSummaries, 10, 300),
+    dependencySummaries: compactObjectArray(value.dependencySummaries, 30, 300),
+    recommendationSummaries: compactObjectArray(value.recommendationSummaries, 30, 300),
+    redraftSummary: compactJsonValue(value.redraftSummary, 300),
+    diagnostics: compactDiagnostics(value.diagnostics, 20),
+  };
+}
+
+function compactReducerOutcome(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const compact: Record<string, unknown> = {
+    schemaVersion: value.schemaVersion,
+    outcome: value.outcome,
+    itemId: value.itemId,
+    sourceFingerprint: value.sourceFingerprint,
+    packetSha256: value.packetSha256,
+    bodySha256: value.bodySha256,
+    diagnostics: compactDiagnostics(value.diagnostics, 4),
+  };
+  if (isRecord(value.finding)) compact.finding = compactFindingForReducerPrompt(value.finding);
+  if (typeof value.error === 'string') compact.error = truncateText(value.error, 500);
+  if (Array.isArray(value.validationErrors)) compact.validationErrors = compactStringArray(value.validationErrors, BACKLOG_CURATION_VALIDATION_ERRORS_MAX, 300);
+  if (typeof value.reason === 'string') compact.reason = truncateText(value.reason, 300);
+  if (typeof value.byteLength === 'number') compact.byteLength = value.byteLength;
+  if (typeof value.byteCap === 'number') compact.byteCap = value.byteCap;
+  return compact;
+}
+
+function compactFindingForReducerPrompt(value: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schemaVersion: value.schemaVersion,
+    itemId: value.itemId,
+    sourceFingerprint: value.sourceFingerprint,
+    packetSha256: value.packetSha256,
+    bodySha256: value.bodySha256,
+    promptVersion: value.promptVersion,
+    disposition: value.disposition,
+    verdict: value.verdict,
+    closureEvidenceRoles: value.closureEvidenceRoles,
+    checkedPaths: compactCheckedPaths(value.checkedPaths),
+    summary: typeof value.summary === 'string' ? truncateText(value.summary, 500) : value.summary,
+    rationale: typeof value.rationale === 'string' ? truncateText(value.rationale, 900) : value.rationale,
+    citations: compactCitations(value.citations),
+    recommendationSignals: compactRecommendationSignals(value.recommendationSignals),
+    diagnostics: compactDiagnostics(value.diagnostics, 4),
+  };
+}
+
+function compactCitations(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  const priority = new Map<string, number>([['implementation', 0], ['product-surface', 1], ['replacement', 2], ['supporting', 3], ['current-source', 4]]);
+  return [...value]
+    .filter(isRecord)
+    .sort((left, right) => (priority.get(String(left.kind)) ?? 9) - (priority.get(String(right.kind)) ?? 9))
+    .slice(0, 6)
+    .map((citation) => ({
+      kind: citation.kind,
+      source: typeof citation.source === 'string' ? truncateText(citation.source, 160) : citation.source,
+      confidence: citation.confidence,
+      path: typeof citation.path === 'string' ? truncateText(citation.path, 220) : citation.path,
+      excerpt: typeof citation.excerpt === 'string' ? truncateText(citation.excerpt, 220) : citation.excerpt,
+      matchedBy: Array.isArray(citation.matchedBy) ? compactStringArray(citation.matchedBy, 4, 80) : undefined,
+    }));
+}
+
+function compactCheckedPaths(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).slice(0, 8).map((entry) => ({
+    path: typeof entry.path === 'string' ? truncateText(entry.path, 240) : entry.path,
+    reason: typeof entry.reason === 'string' ? truncateText(entry.reason, 180) : entry.reason,
+  }));
+}
+
+function compactRecommendationSignals(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).slice(0, 3).map((signal) => ({
+    source: signal.source,
+    ref: signal.ref,
+    signal: typeof signal.signal === 'string' ? truncateText(signal.signal, 220) : signal.signal,
+  }));
+}
+
+function compactDiagnostics(value: unknown, maxItems: number): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).slice(0, maxItems).map((diagnostic) => ({
+    code: diagnostic.code,
+    severity: diagnostic.severity,
+    message: typeof diagnostic.message === 'string' ? truncateText(diagnostic.message, 220) : diagnostic.message,
+    path: typeof diagnostic.path === 'string' ? truncateText(diagnostic.path, 180) : diagnostic.path,
+  }));
+}
+
+function compactObjectArray(value: unknown, maxItems: number, maxStringLength: number): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).map((entry) => compactJsonValue(entry, maxStringLength));
+}
+
+function compactStringArray(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => typeof entry === 'string' ? [truncateText(entry, maxLength)] : []).slice(0, maxItems);
+}
+
+function compactJsonValue(value: unknown, maxStringLength: number): unknown {
+  if (typeof value === 'string') return truncateText(value, maxStringLength);
+  if (Array.isArray(value)) return value.slice(0, 12).map((entry) => compactJsonValue(entry, maxStringLength));
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).slice(0, 20).map(([key, child]) => [key, compactJsonValue(child, maxStringLength)]));
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 24))}…[truncated ${value.length}]`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

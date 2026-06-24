@@ -154,6 +154,16 @@ describe('extension agent task contracts', () => {
       startedAt: '2025-01-01T00:00:01.000Z',
       metadata: { sectionProgress: { currentSection: 'scope', coveredSections: ['summary'], remainingSections: ['risks'] } },
     }).success).toBe(true);
+
+    expect(safeParseExtensionAgentTaskRecord({
+      taskId: 'task-1',
+      kind: 'eforge-plan.planning-draft',
+      status: 'running',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:01.000Z',
+      startedAt: '2025-01-01T00:00:01.000Z',
+      metadata: { backlogCurationProgress: { total: 2, cacheHits: 1, misses: 1, running: 1, completed: 1, remaining: 0, items: [{ itemId: 'item-1', title: 'One', status: 'running' }, { itemId: 'item-2', status: 'cache-hit', verdict: 'shipped' }] } },
+    }).success).toBe(true);
   });
 
   it('rejects oversized section-progress metadata beyond the daemon sanitizer bounds', () => {

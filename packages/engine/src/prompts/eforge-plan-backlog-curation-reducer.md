@@ -53,6 +53,7 @@ The payload MUST include:
 - Historical hints and recommendation summaries may guide recommendations but are not standalone closure authority.
 - Keep `skipped` exceptional. Use `needsInput` only for true product/user decisions that cannot be resolved from supplied summaries and findings.
 - Recommendations must target the prospective post-curation backlog state. Do not recommend closed items or epics. Items whose current or same-draft prospective status is `active` belong only in `activeWork`; do not place active items in ready candidates, next sequence, safe-parallel groups, or blocked-chain target lanes.
+- `blockedChains[].blockedBy` accepts only known open backlog item ids. Do not put product-decision placeholders, questions, labels, or synthetic ids there; put those in `rationale`, `rationaleAndAssumptions`, `assumptionsOpenQuestions`, or draft `needsInput` instead.
 - Do not include raw evidence, raw item bodies, raw packets, raw `gitDelta`, or raw `fullImplementationAudit` text in the submission.
 
 Submit exactly once. Do not finish with prose. The submission tool is the only accepted output channel.

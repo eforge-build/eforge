@@ -216,6 +216,40 @@ describe('backlog curation map/reduce agent runners', () => {
     expect(prompt).not.toContain('UNRELATED_FULL_ITEM_BODY_SENTINEL');
   });
 
+  it('compacts many source-backed item findings before reducer prompting', async () => {
+    const inputPacket = packet();
+    const outcomes = Array.from({ length: 18 }, (_, index) => {
+      const itemId = `item-${index}`;
+      const itemPacket = { ...inputPacket, itemId, bodySha256: `${index.toString(16).padStart(2, '0')}${BODY_SHA.slice(2)}` };
+      const fatFinding = {
+        ...finding(itemPacket),
+        disposition: 'change' as const,
+        verdict: index % 3 === 0 ? 'shipped' as const : 'partial' as const,
+        closureEvidenceRoles: ['implementation' as const, 'product-surface' as const, 'supporting' as const],
+        checkedPaths: Array.from({ length: 8 }, (__, pathIndex) => ({ path: `packages/example/src/item-${index}-${pathIndex}.ts`, reason: `inspected source surface ${'r'.repeat(40)}` })),
+        rationale: `source-backed rationale ${'r'.repeat(700)}`,
+        citations: Array.from({ length: 8 }, (__, citationIndex) => ({ kind: citationIndex % 2 === 0 ? 'implementation' as const : 'product-surface' as const, source: `source-${citationIndex}`, path: `packages/example/src/item-${index}-${citationIndex}.ts`, excerpt: `important excerpt ${'x'.repeat(180)}`, matchedBy: ['item-title', 'source-search'] })),
+        recommendationSignals: Array.from({ length: 3 }, (__, signalIndex) => ({ source: 'recommendations', ref: `ref-${signalIndex}`, signal: `signal ${'s'.repeat(180)}` })),
+      };
+      return { schemaVersion: 1 as const, outcome: 'audited-finding' as const, itemId, sourceFingerprint: SHA, packetSha256: sha256Json(itemPacket), bodySha256: itemPacket.bodySha256, diagnostics: [], finding: fatFinding };
+    });
+    const largeInput: BacklogCurationMapReduceReducerInput = {
+      ...reducerInput(),
+      globalContext: { ...reducerInput().globalContext, itemCount: outcomes.length, openItemIds: outcomes.map((outcome) => outcome.itemId) },
+      outcomes,
+    };
+    const harness = new StubHarness([{ toolCalls: [{ tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: validReducerSubmission, output: '' }] }]);
+
+    await collect(runBacklogCurationReducerTask({ harness, cwd: '/tmp', reducerInput: largeInput }));
+
+    const reducerJson = promptJsonBlock(harness.prompts[0] ?? '', '## Reducer input JSON');
+    expect(Buffer.byteLength(reducerJson, 'utf-8')).toBeLessThanOrEqual(BACKLOG_CURATION_REDUCER_INPUT_MAX_BYTES);
+    const promptInput = JSON.parse(reducerJson) as BacklogCurationMapReduceReducerInput;
+    expect(promptInput.outcomes).toHaveLength(18);
+    const firstFinding = promptInput.outcomes[0]?.outcome === 'audited-finding' ? promptInput.outcomes[0].finding : undefined;
+    expect(firstFinding?.citations).toHaveLength(6);
+  });
+
   it('runs reducer attempts with no repository tools and only submit/progress custom tools', async () => {
     const harness = new StubHarness([{ toolCalls: [{ tool: 'submit_eforge_plan_planning_result', toolUseId: 'tool-1', input: validReducerSubmission, output: '' }] }]);
 
