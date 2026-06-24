@@ -4,7 +4,8 @@ description: Migrate eforge-plan private planning state to a canonical local
   lifecycle/actionability evidence, bounded contribution outputs, and
   retention/maintenance.
 created: 2026-06-24
-status: draft
+status: compiled
+compiled: "2026-06-24"
 mode: expedition
 validate:
   - pnpm type-check

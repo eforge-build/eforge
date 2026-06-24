@@ -1,0 +1,112 @@
+name: sqlite-backed-eforge-plan-store
+description: Migrate eforge-plan private planning state to a canonical local
+  SQLite store with import, SQL projections, FTS5 search,
+  lifecycle/actionability evidence, bounded contribution outputs, and
+  retention/maintenance.
+created: 2026-06-24
+compiled: 2026-06-24
+mode: expedition
+base_branch: eforge/clean-up-the-eforge-plan-workstation
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm maintainability:check
+plans:
+  - id: plan-01-storage-schema
+    name: "Build the eforge-plan SQLite store foundation: DB path/opening, pragmas,
+      migrations, schema constraints, core typed repositories, and FTS5
+      capability validation."
+    depends_on: []
+    branch: sqlite-backed-eforge-plan-store/storage-schema
+    build: &a1
+      - - implement
+        - doc-author
+      - - test-write
+        - doc-sync
+      - test-cycle
+      - validate
+      - review-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 3
+      evaluatorStrictness: strict
+  - id: plan-02-canonical-write-paths
+    name: Move eforge-plan mutation paths to SQLite repositories while keeping
+      session-plan Markdown as build artifacts and centralizing duplicate
+      planning suppression.
+    depends_on:
+      - plan-01-storage-schema
+    branch: sqlite-backed-eforge-plan-store/canonical-write-paths
+    build: *a1
+    review: *a2
+  - id: plan-03-importer-reporting
+    name: Implement dry-run-first, idempotent legacy importer/reporting for existing
+      Markdown, JSON sidecars, session plans, traces,
+      queue/build/session/landing records, and recommendations.
+    depends_on:
+      - plan-01-storage-schema
+    branch: sqlite-backed-eforge-plan-store/importer-reporting
+    build: *a1
+    review: *a2
+  - id: plan-04-projections-lifecycle
+    name: Implement SQL-derived board lanes, item/session lifecycle, recommendation
+      actionability, associated plan/build links, active build linkage, and
+      compact projections.
+    depends_on:
+      - plan-02-canonical-write-paths
+    branch: sqlite-backed-eforge-plan-store/projections-lifecycle
+    build: *a1
+    review: *a2
+  - id: plan-05-fts-search-bounded-actions
+    name: Implement FTS5 ranked/snippet search and swap agent-facing
+      list/search/read contribution actions to bounded SQL-backed projections
+      with filters and pagination.
+    depends_on:
+      - plan-04-projections-lifecycle
+    branch: sqlite-backed-eforge-plan-store/fts-search-bounded-actions
+    build: *a1
+    review: *a2
+  - id: plan-06-retention-maintenance
+    name: Add explicit compaction/archive/VACUUM/FTS maintenance helpers that
+      preserve canonical rows and current projection explainability.
+    depends_on:
+      - plan-04-projections-lifecycle
+      - plan-05-fts-search-bounded-actions
+    branch: sqlite-backed-eforge-plan-store/retention-maintenance
+    build: *a1
+    review: *a2
+  - id: plan-07-workstation-docs-integration
+    name: Update the eforge-plan workstation, user-facing docs/help text, and
+      integration parity notes to consume and explain the SQLite-backed store,
+      import workflow, search, lifecycle, and retention semantics.
+    depends_on:
+      - plan-03-importer-reporting
+      - plan-05-fts-search-bounded-actions
+      - plan-06-retention-maintenance
+    branch: sqlite-backed-eforge-plan-store/workstation-docs-integration
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is expedition-scale work: it introduces a canonical SQLite
+    store, migrations, importer, projections, FTS search,
+    lifecycle/actionability logic, retention, bounded contribution APIs,
+    integrations, docs, and extensive tests across multiple subsystems.
+    Architecture and module planning are needed before implementation, with
+    cohesion review to keep schema, repositories, importers, projections, and
+    integration surfaces aligned. The build pipeline runs docs and tests
+    alongside implementation, then executes test and validation gates before an
+    iterative review cycle. Strict parallel code/API review is appropriate
+    because the work changes canonical local data storage, migration/import
+    behavior, and user-facing contribution APIs."
