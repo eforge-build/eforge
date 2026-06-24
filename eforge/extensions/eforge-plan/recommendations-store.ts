@@ -52,6 +52,7 @@ export async function writeRecommendationsToPath(filePath: string, value: unknow
 export async function writeRecommendations(cwd: string, value: unknown): Promise<BacklogRecommendationModel> {
   const model = parseRecommendationModel(value);
   await validateRecommendationReferences(cwd, model);
+  await writeRecommendationsToPath(resolveRecommendationsPathForCwd(cwd), model);
   writeCanonicalRecommendations(cwd, model, summarizeRecommendations(model));
   return model;
 }

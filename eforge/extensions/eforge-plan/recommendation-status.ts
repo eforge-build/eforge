@@ -19,7 +19,7 @@ import {
 } from './backlog-domain.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
 import { listCanonicalBacklogItems, listCanonicalEpics, backlogItemRowToDomain, epicRowToDomain } from './canonical/backlog-records.js';
-import { markCanonicalRecommendationsStale, readCanonicalRecommendations } from './canonical/recommendation-records.js';
+import { markCanonicalRecommendationsStale } from './canonical/recommendation-records.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import type { RoadmapContext } from './roadmap-schemas.js';
 import { listTraceSidecars } from './trace-store.js';
@@ -188,7 +188,7 @@ export async function buildRecommendationSourceProjection(cwd: string): Promise<
   const canonicalItems = listCanonicalBacklogItems(cwd).map(backlogItemRowToDomain);
   const canonicalEpics = listCanonicalEpics(cwd).map(epicRowToDomain);
   const [legacyItems, legacyEpics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
-  return buildRecommendationSourceProjectionFromRecords(cwd, mergeDomainRecords(legacyItems, canonicalItems), mergeDomainRecords(legacyEpics, canonicalEpics));
+  return buildRecommendationSourceProjectionFromRecords(cwd, mergeDomainRecords(canonicalItems, legacyItems), mergeDomainRecords(canonicalEpics, legacyEpics));
 }
 
 async function buildRecommendationSourceProjectionFromRecords(cwd: string, allItems: readonly BacklogItem[], allEpics: readonly BacklogEpic[]): Promise<Record<string, unknown>> {
@@ -306,8 +306,8 @@ export function throwRecommendationReferenceValidationError(issues: readonly Rec
 }
 // --- eforge:endregion recommendation-validation ---
 
-function currentRecommendationsExist(cwd: string, currentPath: string): boolean {
-  return readCanonicalRecommendations(cwd) !== null || existsSync(currentPath);
+function currentRecommendationsExist(_cwd: string, currentPath: string): boolean {
+  return existsSync(currentPath);
 }
 
 async function readRecommendationStatusSidecar(statusPath: string): Promise<RecommendationStatusSidecar | null> {

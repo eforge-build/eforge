@@ -1,8 +1,12 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
 import type { BacklogEpic, BacklogItem, BacklogStatus } from '../backlog-domain.js';
 import type { BacklogItemRow, BacklogItemUpsert, EforgePlanStore, EpicRow, EpicUpsert, ItemDependencyUpsert, JsonObject, SectionUpsert, UserStatus } from '../sqlite/index.js';
 import { getBacklogItem, getEpic, listBacklogItems, listEpics, replaceBacklogItemSections, replaceBacklogItemTags, replaceEpicSections, replaceEpicTags, replaceItemDependencies, upsertBacklogItem, upsertEpic } from '../sqlite/index.js';
 import { markEpicDirty, markItemDirty } from './search-dirty.js';
 import { canonicalNowIso, canonicalSha256, withCanonicalTransaction } from './store.js';
+import { resolveBacklogEpicPath, resolveBacklogItemPath } from '../markdown-store.js';
 
 export interface CanonicalBacklogItemInput {
   id: string;
@@ -90,6 +94,7 @@ export function upsertCanonicalBacklogItem(store: EforgePlanStore, input: Canoni
   if (input.tags) replaceBacklogItemTags(store, input.id, input.tags);
   if (input.sections) replaceBacklogItemSections(store, input.id, input.sections);
   if (input.dependencies ?? input.dependsOn) replaceItemDependencies(store, input.id, input.dependencies ?? (input.dependsOn ?? []).map((dependencyRef) => ({ dependencyRef })));
+  mirrorBacklogItem(storeCwd(store), input.id, row.frontmatter, body);
   markItemDirty(store, input.id);
   if (existing?.epicRef !== epicRef || existing?.epicId !== epicId) for (const epicDocumentId of new Set([existing?.epicRef, existing?.epicId, epicRef, epicId].filter((value): value is string => !!value))) markEpicDirty(store, epicDocumentId);
   return row;
@@ -121,6 +126,7 @@ export function upsertCanonicalEpicRecord(store: EforgePlanStore, input: Canonic
   } satisfies EpicUpsert);
   if (input.tags) replaceEpicTags(store, input.id, input.tags);
   if (input.sections) replaceEpicSections(store, input.id, input.sections);
+  mirrorBacklogEpic(storeCwd(store), input.id, row.frontmatter, body);
   markEpicDirty(store, input.id);
   return row;
 }
@@ -168,4 +174,25 @@ function arrayOfStrings(value: unknown): string[] {
 
 function objectOrUndefined(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+const ITEM_FRONTMATTER_ORDER = ['id', 'status', 'priority', 'source', 'created', 'updated', 'last_checked', 'stale_after', 'tags', 'depends_on', 'epic', 'eforge_plan'];
+const EPIC_FRONTMATTER_ORDER = ['id', 'status', 'priority', 'source', 'created', 'updated', 'last_checked', 'stale_after', 'tags', 'eforge_plan'];
+
+function mirrorBacklogItem(cwd: string, id: string, frontmatter: Record<string, unknown>, body: string): void {
+  writeMarkdownMirror(resolveBacklogItemPath(cwd, id), frontmatter, body, ITEM_FRONTMATTER_ORDER);
+}
+
+function mirrorBacklogEpic(cwd: string, id: string, frontmatter: Record<string, unknown>, body: string): void {
+  writeMarkdownMirror(resolveBacklogEpicPath(cwd, id), frontmatter, body, EPIC_FRONTMATTER_ORDER);
+}
+
+function writeMarkdownMirror(path: string, frontmatter: Record<string, unknown>, body: string, order: readonly string[]): void {
+  const ordered = Object.fromEntries([...order.filter((key) => frontmatter[key] !== undefined).map((key) => [key, frontmatter[key]]), ...Object.entries(frontmatter).filter(([key, value]) => !order.includes(key) && value !== undefined)]);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `---\n${stringifyYaml(ordered, { lineWidth: 0 }).trimEnd()}\n---\n${body}`);
+}
+
+function storeCwd(store: EforgePlanStore): string {
+  return resolve(dirname(store.path), '..', '..', '..', '..');
 }

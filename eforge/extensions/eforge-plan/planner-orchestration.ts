@@ -32,7 +32,7 @@ import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accep
 import { userActionError } from './action-errors.js';
 import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
 import { findCanonicalNonterminalCoverage } from './canonical/coverage.js';
-import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
+import { findPlanningTaskWorkflowEntry, readPlanningTaskWorkflowIndex, isBacklogCurationWorkflowEntry, isRecommendationRefreshWorkflowEntry, listRecommendationRefreshWorkflowEntries, markPlanningTaskWorkflowEntryApplied } from './planning-task-workflow-store.js';
 import {
   PLANNING_DEPTHS,
   PLANNING_PROFILES,
@@ -545,9 +545,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function resolveRecommendationApplySourceFingerprint(cwd: string, taskId: string): Promise<string | undefined> {
-  const entry = findPlanningTaskWorkflowEntry(await readPlanningTaskWorkflowIndex(cwd), taskId);
-  if (entry === undefined || !isRecommendationRefreshWorkflowEntry(entry)) return undefined;
-  return entry.sourceFingerprint;
+  const index = await readPlanningTaskWorkflowIndex(cwd);
+  const entry = findPlanningTaskWorkflowEntry(index, taskId);
+  if (entry !== undefined && isRecommendationRefreshWorkflowEntry(entry)) return entry.sourceFingerprint;
+  return listRecommendationRefreshWorkflowEntries(index).find((candidate) => candidate.appliedAt === undefined)?.sourceFingerprint;
 }
 
 async function resolvePlannerSelection(cwd: string, input: PlannerContextInput): Promise<{ items: BacklogItem[]; epics: BacklogEpic[] }> {

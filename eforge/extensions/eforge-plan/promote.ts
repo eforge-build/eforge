@@ -13,11 +13,12 @@ import {
   type BacklogItem,
   type BacklogStatus,
 } from './backlog-domain.js';
-import { readBacklogEpic, readBacklogItem } from './markdown-store.js';
+import { readBacklogEpic, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
 import { backlogItemRowToDomain, epicRowToDomain, readCanonicalBacklogItem, readCanonicalEpic } from './canonical/backlog-records.js';
 import { assertNoCanonicalNonterminalCoverage } from './canonical/coverage.js';
 import { syncSessionPlanArtifact } from './canonical/session-plan-records.js';
 import { resolvePromotionSelection, type PromotionSelection } from './promotion-selection.js';
+import { createTraceSidecar, readTraceSidecar, writeTraceSidecar } from './trace-store.js';
 
 export interface SynthesisInput {
   item: BacklogItem;
@@ -150,7 +151,7 @@ export async function promoteBacklogSelection(input: {
   title?: string;
 }): Promise<PromotionSelectionResult> {
   const selection = await resolvePromotionSelection(input);
-  assertNoCanonicalNonterminalCoverage(input.cwd, selection.itemIds);
+  if (input.itemIds !== undefined) assertNoCanonicalNonterminalCoverage(input.cwd, selection.itemIds);
   const root = resolveSessionPlanRoot(input.cwd);
   await mkdir(root, { recursive: true });
   const { session, sessionPlanPath } = resolveSelectionPromotionTarget(input.cwd, selection.items, selection.session);
@@ -169,6 +170,13 @@ export async function promoteBacklogSelection(input: {
   await writeFile(sessionPlanPath, sessionPlan, { encoding: 'utf-8', flag: 'wx' });
   const updated = new Date().toISOString();
   syncSessionPlanArtifact(input.cwd, { session, path: sessionPlanPath, content: sessionPlan, status: 'ready', profile: selection.profile, sourceItemIds: selection.itemIds, sourceEpicIds: selection.epicIds, sourceRecommendationRef: selection.recommendationRef, provenance: 'promotion', updatedAt: updated });
+  await Promise.all(selection.itemIds.map(async (itemId) => {
+    await updateBacklogItemFrontmatter(input.cwd, itemId, { status: selection.status });
+    const item = selection.items.find((candidate) => candidate.id === itemId);
+    const trace = await readTraceSidecar(input.cwd, itemId) ?? createTraceSidecar(itemId, item?.epic);
+    trace.promotedSessionPlans = [...trace.promotedSessionPlans.filter((entry) => entry.session !== session), { session, path: sessionPlanPath, status: 'ready', promotedAt: updated }];
+    await writeTraceSidecar(input.cwd, trace);
+  }));
   return {
     itemIds: selection.itemIds,
     epicIds: selection.epicIds,

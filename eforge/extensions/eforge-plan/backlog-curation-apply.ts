@@ -40,6 +40,10 @@ type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatt
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 
 function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCanonicalBacklogItem>[1] {
+  const normalized = normalizeBacklogItem(entry.frontmatter, entry.body);
+  const epic = normalized.epic;
+  const frontmatter = { ...entry.frontmatter };
+  if (epic === undefined) delete frontmatter.epic;
   return {
     id: entry.snapshot.id,
     title: stringValue(entry.frontmatter.title) ?? entry.snapshot.record.title,
@@ -48,10 +52,10 @@ function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCa
     priority: stringValue(entry.frontmatter.priority) ?? entry.snapshot.record.priority,
     tags: stringArray(entry.frontmatter.tags),
     dependsOn: stringArray(entry.frontmatter.depends_on),
-    epic: stringValue(entry.frontmatter.epic) ?? entry.snapshot.record.epic,
+    epic,
     created: stringValue(entry.frontmatter.created) ?? entry.snapshot.record.created,
     updated: stringValue(entry.frontmatter.updated) ?? new Date().toISOString(),
-    frontmatter: entry.frontmatter,
+    frontmatter,
   };
 }
 

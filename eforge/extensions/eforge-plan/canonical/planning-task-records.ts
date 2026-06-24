@@ -53,5 +53,5 @@ function getPlanningTask(store: EforgePlanStore, taskId: string): PlanningTaskRo
 }
 
 function refsInput(input: CanonicalPlanningTaskInput): PlanningTaskRefsInput {
-  return { taskId: input.taskId, items: (input.itemRefs ?? []).map((ref, sequence) => ({ ref, resolvedId: ref, role: 'source', sequence })), epics: (input.epicRefs ?? []).map((ref, sequence) => ({ ref, resolvedId: ref, role: 'source', sequence })), recommendationRefs: (input.recommendationRefs ?? []).map((ref, sequence) => ({ ref, role: 'source', sequence })) };
+  return { taskId: input.taskId, items: (input.itemRefs ?? []).map((ref, sequence) => ({ ref, role: 'source', sequence })), epics: (input.epicRefs ?? []).map((ref, sequence) => ({ ref, role: 'source', sequence })), recommendationRefs: (input.recommendationRefs ?? []).map((ref, sequence) => ({ ref, role: 'source', sequence })) };
 }

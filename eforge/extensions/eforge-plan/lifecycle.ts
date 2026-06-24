@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/extension-sdk';
-import { parseMarkdownRecord, readBacklogItem } from './markdown-store.js';
-import { listTraceSidecars, type TraceSidecar } from './trace-store.js';
+import { parseMarkdownRecord, readBacklogItem, updateBacklogItemFrontmatter } from './markdown-store.js';
+import { listTraceSidecars, readTraceSidecar, writeTraceSidecar, type TraceSidecar } from './trace-store.js';
 import { recordCanonicalLifecycleEvent } from './canonical/lifecycle-records.js';
 import { withCanonicalTransaction } from './canonical/store.js';
 import { getDatabase } from './sqlite/store-internal.js';
@@ -48,7 +48,7 @@ export function decideLifecycleUpdate(event: EforgeEvent | Record<string, unknow
   return { correlation, trace, status };
 }
 
-export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Record<string, unknown>): Promise<LifecycleDecision> {
+export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Record<string, unknown>, options: { mutateLegacyTraces?: boolean } = {}): Promise<LifecycleDecision> {
   const traces = await listTraceSidecars(cwd);
   const decision = decideLifecycleUpdate(event, traces, cwd);
   let itemIds = decision.correlation.kind === 'single'
@@ -68,7 +68,7 @@ export async function applyLifecycleEvent(cwd: string, event: EforgeEvent | Reco
     return decision;
   }
   const traceMutation = decision.trace ?? (bootstrapped ? traceMutationForEvent(event) : undefined);
-  void traceMutation;
+  if (options.mutateLegacyTraces !== false) await applyLegacyLifecycleMutation(cwd, itemIds, traceMutation, decision.status);
   recordCanonicalLifecycleEvent(cwd, event, itemIds);
   const effectiveCorrelation = decision.correlation.kind === 'none' && bootstrapped
     ? bootstrapped.itemIds.length === 1
@@ -159,6 +159,23 @@ function traceMutationForEvent(event: EforgeEvent | Record<string, unknown>): Tr
     return landingMutation(stringValue(valueAt(event, 'featureBranch')), stringValue(valueAt(event, 'commitSha')), 'auto-merged', timestamp, stringValue(valueAt(event, 'prUrl')));
   }
   return undefined;
+}
+
+async function applyLegacyLifecycleMutation(cwd: string, itemIds: readonly string[], mutation: TraceMutation | undefined, status: BacklogStatus | undefined): Promise<void> {
+  await Promise.all(itemIds.map(async (itemId) => {
+    if (status !== undefined) await updateBacklogItemFrontmatter(cwd, itemId, { status });
+    if (mutation === undefined) return;
+    const trace = await readTraceSidecar(cwd, itemId);
+    if (trace === null) return;
+    if (mutation.kind === 'queue-prd') trace.queuePrds = [...trace.queuePrds.filter((entry) => entry.prdId !== mutation.prdId), mutation];
+    if (mutation.kind === 'build-run') trace.buildRuns = [...trace.buildRuns.filter((entry) => entry.runId !== mutation.runId), mutation];
+    if (mutation.kind === 'build-session') trace.buildSessions = [...trace.buildSessions.filter((entry) => entry.sessionId !== mutation.sessionId), mutation];
+    if (mutation.kind === 'landing') {
+      const { kind: _kind, ...landing } = mutation;
+      trace.landingResults = [...trace.landingResults.filter((entry) => (landing.featureBranch === undefined || entry.featureBranch !== landing.featureBranch) && (landing.commitSha === undefined || entry.commitSha !== landing.commitSha)), landing as TraceSidecar['landingResults'][number]];
+    }
+    await writeTraceSidecar(cwd, trace);
+  }));
 }
 
 function landingMutation(featureBranch: string | undefined, commitSha: string | undefined, status: string, landedAt: string, prUrl?: string): TraceMutation | undefined {

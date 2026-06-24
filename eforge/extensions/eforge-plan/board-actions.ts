@@ -7,7 +7,7 @@ import { summarizeProjectTraces } from './trace-activity.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { aggregateLifecycleLinks, projectEpicProgress } from './lifecycle-projection.js';
 // --- eforge:region plan-04-projections-lifecycle ---
-import { buildBoardDebugProjection, renderBoardProjection } from './projections/index.js';
+import { buildBoardDebugProjection, projectionStoreExists, renderBoardProjection } from './projections/index.js';
 // --- eforge:endregion plan-04-projections-lifecycle ---
 // --- eforge:region recommendations ---
 import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
@@ -52,7 +52,7 @@ export const renderBoardMarkdown = defineExtensionAction({
 
 export async function buildBoard(cwd: string, input: BoardActionInput, recommendationsPath?: string): Promise<any> {
   // --- eforge:region plan-04-projections-lifecycle ---
-  return buildBoardDebugProjection(cwd, input);
+  if (projectionStoreExists(cwd)) return buildBoardDebugProjection(cwd, input);
   // --- eforge:endregion plan-04-projections-lifecycle ---
   const resolvedRecommendationsPath = recommendationsPath ?? resolveRecommendationsPathForCwd(cwd);
   const [epics, items, traces, recommendations, recommendationStatus] = await Promise.all([
@@ -95,6 +95,14 @@ export function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>
 
 export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
   // --- eforge:region plan-04-projections-lifecycle ---
-  return renderBoardProjection(board);
+  if (Array.isArray(board.items) && board.items.some((item: { lane?: unknown }) => item.lane !== undefined)) return renderBoardProjection(board);
   // --- eforge:endregion plan-04-projections-lifecycle ---
+  const lines = ['# eforge-plan board', ''];
+  for (const lane of board.lanes as Array<{ title: string; items: Array<{ id: string; status: string; title: string; reasons?: string[] }> }>) {
+    lines.push(`## ${lane.title}`, '');
+    if (lane.items.length === 0) lines.push('_No items._', '');
+    for (const item of lane.items) lines.push(`- **${item.id}** (${item.status}) ${item.title}${item.reasons?.length ? ` — ${item.reasons.join('; ')}` : ''}`);
+    lines.push('');
+  }
+  return lines.join('\n');
 }

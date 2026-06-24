@@ -20,9 +20,6 @@ import {
   summarizeRecommendations,
   writeRecommendations,
 } from './recommendations-store.js';
-// --- eforge:region plan-04-projections-lifecycle ---
-import { getRecommendationProjection, projectionStoreExists } from './projections/index.js';
-// --- eforge:endregion plan-04-projections-lifecycle ---
 
 export const getRecommendations = defineExtensionAction({
   id: 'get-recommendations',
@@ -32,11 +29,20 @@ export const getRecommendations = defineExtensionAction({
   outputSchema: GetRecommendationsWithStatusOutputSchema,
   sideEffects: ['local-read'],
   async handler(_input, ctx): Promise<any> {
-    // --- eforge:region plan-04-projections-lifecycle ---
-    const projection = await getRecommendationProjection(ctx.cwd);
-    const activeRefresh = projection.activeRefreshTask ?? (projectionStoreExists(ctx.cwd) ? (await readActiveRefreshTaskIfAvailable(ctx))?.task : undefined);
-    return toJsonSafeObject({ ...projection, ...(activeRefresh ? { activeRefreshTask: activeRefresh } : {}) });
-    // --- eforge:endregion plan-04-projections-lifecycle ---
+    const recommendations = await readRecommendations(ctx.cwd);
+    const status = await readDerivedRecommendationStatus(ctx.cwd);
+    const actionability = recommendations ? await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks) : undefined;
+    const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd);
+    const activeRefresh = (await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint))?.task;
+    return toJsonSafeObject({
+      recommendations,
+      recommendationSummary: recommendations ? summarizeRecommendations(recommendations) : undefined,
+      path: resolveRecommendationsPath(ctx.paths),
+      status,
+      recommendationFreshness,
+      ...(actionability ? { recommendationActionability: actionability } : {}),
+      ...(activeRefresh ? { activeRefreshTask: activeRefresh } : {}),
+    });
   },
 });
 

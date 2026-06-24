@@ -400,7 +400,7 @@ export default defineEforgeExtension((eforge) => {
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote', label: 'Promote eforge-plan item', action: { actionId: 'promote-item' } }));
   eforge.registerDeepLink(defineExtensionDeepLink({ id: 'promote-selection', label: 'Promote eforge-plan selection', action: { actionId: 'promote-selection' } }));
   for (const pattern of ['enqueue:start', 'enqueue:complete', 'queue:prd:start', 'queue:prd:complete', 'session:start', 'session:end', 'landing:complete', 'landing:auto-merge:complete'] as const) {
-    eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(await resolveHookCwd(ctx), event); });
+    eforge.onEvent(pattern, async (event, ctx) => { await applyLifecycleEvent(await resolveHookCwd(ctx), event, { mutateLegacyTraces: false }); });
   }
 });
 
