@@ -41,7 +41,7 @@ You MUST call `{{submitTool}}` exactly once with a JSON payload matching this sc
 
 The payload MUST include:
 
-1. `summary` — concise human-readable summary of the proposed planning draft. For session-plan creation drafts, this becomes the persisted `## Executive Summary`; make it useful for fast scope review and sign-off without reading every readiness section.
+1. `summary` — concise human-readable summary of the proposed planning draft. For session-plan creation drafts, this becomes the persisted `## Executive Summary`; make it useful for fast scope review and sign-off without reading every readiness section. Specifically cover changed surfaces, intended direction, out-of-scope boundaries, and validation/build confidence.
 2. `assumptionsOpenQuestions` — an array of assumptions or open questions. Use an empty array only when there are truly none.
 3. Exactly one of the following result shapes:
    - **A ready result** when you can produce the requested output. Include at least one applicable output section:
