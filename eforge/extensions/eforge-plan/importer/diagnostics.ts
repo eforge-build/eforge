@@ -1,4 +1,4 @@
-import type { ImportDiagnostic, ImportDiagnosticCode, ImportDiagnosticSeverity, LegacyImportGraph, PlanningStoreImportReport } from './types.js';
+import { MAX_IMPORT_DIAGNOSTIC_LIMIT, type ImportDiagnostic, type ImportDiagnosticCode, type ImportDiagnosticSeverity, type LegacyImportGraph, type PlanningStoreImportReport } from './types.js';
 import { canonicalJson, stableId } from './stable.js';
 
 export function diagnostic(input: Omit<ImportDiagnostic, 'diagnosticId'> & { diagnosticId?: string }): ImportDiagnostic {
@@ -10,6 +10,6 @@ export function addDiagnostic(graph: LegacyImportGraph, code: ImportDiagnosticCo
 export function sortDiagnostics(diags: readonly ImportDiagnostic[]): ImportDiagnostic[] { return [...diags].sort((a, b) => canonicalJson([a.code, a.path, a.ref, a.message]).localeCompare(canonicalJson([b.code, b.path, b.ref, b.message]))); }
 export function toPublicImportReport(graph: LegacyImportGraph, input: { dryRun: boolean; applied: boolean; replacedExisting: boolean; storePath: string; diagnosticLimit?: number }): PlanningStoreImportReport {
   const diagnostics = sortDiagnostics(graph.diagnostics);
-  const limit = Math.max(0, Math.trunc(input.diagnosticLimit ?? 50));
+  const limit = Math.min(MAX_IMPORT_DIAGNOSTIC_LIMIT, Math.max(0, Math.trunc(input.diagnosticLimit ?? 50)));
   return { schemaVersion: 1, dryRun: input.dryRun, applied: input.applied, replacedExisting: input.replacedExisting, storePath: input.storePath, include: graph.include, sourceFingerprint: graph.sourceFingerprint, counts: graph.counts, diagnosticCount: diagnostics.length, diagnostics: diagnostics.slice(0, limit), diagnosticsOmitted: Math.max(0, diagnostics.length - limit) };
 }

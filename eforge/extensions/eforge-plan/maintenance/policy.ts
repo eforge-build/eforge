@@ -34,7 +34,8 @@ export function normalizeMaintenancePolicy(input: CompactPlanningStoreInput = {}
 }
 
 export function normalizeCategories(categories?: MaintenanceCategory[]): MaintenanceCategory[] {
-  if (!categories?.length) return [...MAINTENANCE_CATEGORIES];
+  if (categories === undefined) return [...MAINTENANCE_CATEGORIES];
+  if (categories.length === 0) throw userActionError('categories must include at least one maintenance category.', { path: 'categories' });
   const allowed = new Set<string>(MAINTENANCE_CATEGORIES);
   const normalized: MaintenanceCategory[] = [];
   for (const category of categories) {

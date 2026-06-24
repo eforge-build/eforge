@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { ToneChip } from '@/components/ui/tone-chip';
 import { lifecycleChipTone, type Tone } from '@/lib/tone';
+import { lifecycleDisplay, reasonCodeDisplay } from '@/lib/sqlite-lifecycle-labels';
 import type { BoardItem, LifecycleLinkRow } from '@/types';
 import { shortId } from './board-model';
 
@@ -18,7 +19,7 @@ const SUMMARY_ATTENTION = new Set(['Failed', 'Partial', 'PR open', 'Run']);
  * item has a plan link, so on cards it is noise - the drawer still shows it.
  */
 export function summaryLifecycleChip(item: BoardItem): { label: string; tone: Tone } | null {
-  if ((item.lifecycleLinks ?? []).length === 0 && !item.lifecycleState) return null;
+  if ((item.lifecycleLinks ?? []).length === 0 && !item.lifecycleState && !item.effectiveLifecycle) return null;
   const chips = new Set(lifecycleChips(item));
   const label = CHIP_SEVERITY.find((candidate) => chips.has(candidate)) ?? [...chips][0];
   if (!label || label === 'Plan') return null;
@@ -26,13 +27,17 @@ export function summaryLifecycleChip(item: BoardItem): { label: string; tone: To
 }
 
 export function LifecyclePanel({ item }: { item: BoardItem }) {
-  const rows = item.lifecycleLinks ?? [];
-  if (rows.length === 0 && !item.lifecycleState) return null;
+  const rows = [...(item.lifecycleLinks ?? []), ...(item.associatedLinks ?? [])];
+  if (rows.length === 0 && !item.lifecycleState && !item.effectiveLifecycle && !item.userStatus && (item.reasonCodes ?? []).length === 0) return null;
   const chips = lifecycleChips(item);
+  const effective = lifecycleDisplay(item.effectiveLifecycle ?? item.lifecycleState);
   return (
     <div className="mt-2" onClick={(event) => event.stopPropagation()}>
       <div className="flex flex-wrap gap-1" aria-label="Lifecycle chips">
+        {item.userStatus && <ToneChip tone="neutral">Authored status: {item.userStatus}</ToneChip>}
+        {effective && <ToneChip tone={effective.tone}>Effective lifecycle: {effective.label}</ToneChip>}
         {chips.map((chip) => <LifecycleChip key={chip} label={chip} />)}
+        {(item.reasonCodes ?? []).map((code) => { const display = reasonCodeDisplay(code); return <ToneChip key={code} tone={display.tone}>{display.label}</ToneChip>; })}
       </div>
       {rows.length > 0 && (
         <details className="mt-2">
@@ -57,7 +62,7 @@ function lifecycleChips(item: BoardItem): string[] {
     if (row.kind === 'landing' && (stage.includes('landed') || stage.includes('merge'))) chips.add('Merged');
     if (stage.includes('fail')) chips.add('Failed');
   }
-  const state = (item.lifecycleState ?? '').toLowerCase();
+  const state = (item.effectiveLifecycle ?? item.lifecycleState ?? '').toLowerCase();
   if (state === 'partial') chips.add('Partial');
   if (state === 'failed') chips.add('Failed');
   if (state === 'merged' || state === 'shipped' || state === 'landed') chips.add('Merged');
@@ -74,7 +79,7 @@ function LifecycleRow({ row }: { row: LifecycleLinkRow }) {
   return (
     <div className="rounded border border-border bg-background/50 p-2 text-2xs">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="rounded bg-secondary px-1.5 py-0.5 font-semibold uppercase tracking-wide text-muted-foreground">{row.kind}</span>
+        <span className="rounded bg-secondary px-1.5 py-0.5 font-semibold uppercase tracking-wide text-muted-foreground">{evidenceLabel(row.kind)}</span>
         {row.stage && <span className="text-text-bright">{row.stage}</span>}
         {row.status && <span className="text-muted-foreground">{row.status}</span>}
       </div>
@@ -97,6 +102,15 @@ function LifecycleRow({ row }: { row: LifecycleLinkRow }) {
       )}
     </div>
   );
+}
+
+function evidenceLabel(kind: string): string {
+  if (kind === 'queue-prd') return 'queue evidence';
+  if (kind === 'build-run' || kind === 'build-session') return 'build evidence';
+  if (kind === 'session-plan') return 'session evidence';
+  if (kind === 'pr') return 'PR evidence';
+  if (kind === 'landing') return 'landing evidence';
+  return kind;
 }
 
 function Value({ label, value }: { label: string; value: string }) {

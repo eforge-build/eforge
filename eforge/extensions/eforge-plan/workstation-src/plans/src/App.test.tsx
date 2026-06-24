@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMockArtifacts, getMockCompactBoard, mockDetail, mockGetRecommendationsStaleResponse } from '@/fixtures/mock-data';
 import { getMockRoadmapState } from '@/fixtures/mock-roadmap';
+import { mockStoreStatus } from '@/fixtures/mock-storage';
 import { getMockPlanRevisionSession } from '@/fixtures/mock-plan-revisions';
 import type { EforgeBridge, JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord } from '@/types';
 
@@ -61,6 +62,7 @@ describe('App workstation surface', () => {
         if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
         if (actionId === 'get-roadmap-state') return getMockRoadmapState() as TOutput;
         if (actionId === 'list-draft-units') return { units: [] } as TOutput;
+        if (actionId === 'get-store-status') return mockStoreStatus as TOutput;
         if (actionId === 'list-planning-agent-tasks') return { tasks: [] } as TOutput;
         throw new Error(`unexpected action ${actionId}`);
       },
@@ -75,7 +77,7 @@ describe('App workstation surface', () => {
     await waitFor(() => expect(screen.getByText('Backlog')).toBeTruthy());
     expect(screen.getByText('Roadmap')).toBeTruthy();
     expect(screen.getByText('Planning activity')).toBeTruthy();
-    expect(calls.map((call) => call.actionId)).toEqual(expect.arrayContaining(['get-roadmap-state', 'get-recommendations', 'list-board-compact', 'list-planning-artifacts', 'list-draft-units', 'list-planning-agent-tasks']));
+    expect(calls.map((call) => call.actionId)).toEqual(expect.arrayContaining(['get-roadmap-state', 'get-recommendations', 'list-board-compact', 'list-planning-artifacts', 'list-draft-units', 'get-store-status', 'list-planning-agent-tasks']));
     expect(calls).toContainEqual({ actionId: 'list-planning-artifacts', input: { includeBoard: false } });
     expect(screen.queryByText(/unexpected action/)).toBeNull();
   });
@@ -92,6 +94,7 @@ describe('App workstation surface', () => {
         if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
         if (actionId === 'get-roadmap-state') return getMockRoadmapState() as TOutput;
         if (actionId === 'list-draft-units') return { units: [] } as TOutput;
+        if (actionId === 'get-store-status') return mockStoreStatus as TOutput;
         if (actionId === 'list-planning-agent-tasks') {
           taskListCalls += 1;
           return { tasks: taskListCalls === 1 ? [creationItem] : [] } as TOutput;
@@ -142,6 +145,7 @@ describe('App workstation surface', () => {
         if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
         if (actionId === 'get-roadmap-state') return getMockRoadmapState() as TOutput;
         if (actionId === 'list-draft-units') return { units: [] } as TOutput;
+        if (actionId === 'get-store-status') return mockStoreStatus as TOutput;
         if (actionId === 'list-planning-agent-tasks') return { tasks: applied ? [] : [manualCreationItem] } as TOutput;
         if (actionId === 'show-session-plan') return mockDetail(`plan:${String((input as { session?: string }).session ?? '')}`) as TOutput;
         if (actionId === 'get-plan-revision-session') return getMockPlanRevisionSession(input as JsonObject) as TOutput;

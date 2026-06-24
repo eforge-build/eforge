@@ -21,7 +21,7 @@ import {
   writeRecommendations,
 } from './recommendations-store.js';
 // --- eforge:region plan-04-projections-lifecycle ---
-import { getRecommendationProjection } from './projections/index.js';
+import { getRecommendationProjection, projectionStoreExists } from './projections/index.js';
 // --- eforge:endregion plan-04-projections-lifecycle ---
 
 export const getRecommendations = defineExtensionAction({
@@ -34,7 +34,7 @@ export const getRecommendations = defineExtensionAction({
   async handler(_input, ctx): Promise<any> {
     // --- eforge:region plan-04-projections-lifecycle ---
     const projection = await getRecommendationProjection(ctx.cwd);
-    const activeRefresh = projection.activeRefreshTask ?? (await readActiveRefreshTaskIfAvailable(ctx))?.task;
+    const activeRefresh = projection.activeRefreshTask ?? (projectionStoreExists(ctx.cwd) ? (await readActiveRefreshTaskIfAvailable(ctx))?.task : undefined);
     return toJsonSafeObject({ ...projection, ...(activeRefresh ? { activeRefreshTask: activeRefresh } : {}) });
     // --- eforge:endregion plan-04-projections-lifecycle ---
   },

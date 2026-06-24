@@ -1,6 +1,7 @@
 import type { BacklogItemUpsert, EpicUpsert, ItemDependencyUpsert, JsonValue, LifecycleEventInput, LifecycleEvidenceInput, PlanningTaskRefsInput, PlanningTaskUpsert, QueuePrdUpsert, BuildRunUpsert, BuildSessionUpsert, LandingLinkUpsert, RecommendationLaneItemUpsert, RecommendationLaneUpsert, RecommendationRunUpsert, SearchDocumentType, SessionPlanEpicLinkInput, SessionPlanItemLinkInput, SessionPlanUpsert, SectionUpsert } from '../sqlite/types.js';
 
 export const PLANNING_STORE_IMPORT_INCLUDES = ['backlog', 'epics', 'sessionPlans', 'traces', 'queue', 'monitor', 'recommendations', 'planningTasks'] as const;
+export const MAX_IMPORT_DIAGNOSTIC_LIMIT = 500;
 export type PlanningStoreImportInclude = typeof PLANNING_STORE_IMPORT_INCLUDES[number];
 export interface RunPlanningStoreImportOptions { dryRun?: boolean; replaceExisting?: boolean; include?: PlanningStoreImportInclude[]; diagnosticLimit?: number }
 export type ImportDiagnosticCode = 'orphan-ref' | 'missing-file' | 'duplicate-id' | 'invalid-trace-row' | 'stale-recommendation-ref' | 'unreadable-artifact' | 'unsupported-legacy-payload';

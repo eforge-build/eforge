@@ -12,6 +12,8 @@ import { PlansView } from './plans-view';
 import { ActivityRail } from './activity-rail';
 import { RecommendationsRail } from './recommendations-rail';
 import { SelectionRail } from './selection-rail';
+import { PlanningSearchPanel } from './search/planning-search-panel';
+import { StoreStatusCard } from './storage/store-status-card';
 import { usePlanningTaskWorkflows } from './backlog/use-planning-task-workflows';
 
 type Focus = 'roadmap' | 'board' | 'plans';
@@ -67,6 +69,13 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
 
   // Fork a recommendation lane into an editable draft plan unit, then jump to it
   // on the Plans focus so curation continues there.
+  const openSearchItem = React.useCallback((itemId: string) => {
+    router.setQuery((params) => { params.delete('focus'); params.set('item', itemId); });
+  }, [router]);
+  const openSearchPlan = React.useCallback((key: string) => {
+    router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', key); });
+  }, [router]);
+
   const onForkLane = React.useCallback(async (recommendationRef: string) => {
     const unit = await data.forkRecommendationToDraftUnit(recommendationRef);
     router.setQuery((params) => { params.set('focus', 'plans'); params.set('plan', draftKey(unit.unitId)); });
@@ -144,16 +153,20 @@ export function WorkstationView({ data }: { data: WorkstationDataState }) {
         {focus !== 'plans' && (
           <aside className="grid min-w-0 gap-3 lg:sticky lg:top-[5.5rem]">
             {focus === 'roadmap' ? (
-              <RoadmapContextRail
-                state={data.roadmapState}
-                loading={data.loading}
-                recommendationStatus={data.recommendationStatus}
-                recommendationFreshness={data.recommendationFreshness}
-                activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
-                onReloadRoadmap={data.refresh}
-              />
+              <>
+                <RoadmapContextRail
+                  state={data.roadmapState}
+                  loading={data.loading}
+                  recommendationStatus={data.recommendationStatus}
+                  recommendationFreshness={data.recommendationFreshness}
+                  activeRecommendationRefreshTask={data.activeRecommendationRefreshTask}
+                  onReloadRoadmap={data.refresh}
+                />
+                <StoreStatusCard status={data.storeStatus} error={data.storeStatusError} onRefresh={data.refreshStoreStatus} />
+              </>
             ) : (
               <>
+                <PlanningSearchPanel openItem={openSearchItem} openPlan={openSearchPlan} />
                 <SelectionRail selection={selection} busy={workflows.busy} />
                 <RecommendationsRail
                   recommendations={data.recommendations}

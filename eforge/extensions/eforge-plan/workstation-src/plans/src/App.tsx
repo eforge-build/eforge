@@ -7,6 +7,7 @@ import { ToastProvider } from '@/components/toast';
 import { RouterProvider } from '@/router';
 import { useWorkstationData } from '@/hooks/use-workstation-data';
 import { WorkstationView } from '@/views/workstation-view';
+import { StoreStatusBadge } from '@/views/storage/store-status-card';
 
 export function App() {
   return (
@@ -29,6 +30,7 @@ function Shell() {
             <Sparkles className="h-5 w-5 text-primary" /> eforge-plan
           </div>
           <div className="flex items-center gap-2">
+            <StoreStatusBadge status={data.storeStatus} error={data.storeStatusError} />
             <Badge variant="outline">{data.bridgeVersion ? `bridge v${data.bridgeVersion}` : 'mock bridge'}</Badge>
             <Button variant="outline" size="sm" onClick={() => void data.refresh()} disabled={data.loading}>
               {data.loading ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Refresh

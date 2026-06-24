@@ -1,9 +1,11 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createEforgeProjectPaths } from '@eforge-build/extension-sdk';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { PlanningTaskWorkflowIndexSchema, type PlanningTaskWorkflowEntry, type PlanningTaskWorkflowIndex } from './planning-agent-task-schemas.js';
 import { getDatabase } from './sqlite/store-internal.js';
+import { openEforgePlanStore, resolveEforgePlanStorePath } from './sqlite/index.js';
 import { withCanonicalTransaction } from './canonical/store.js';
 import { markPlanningTaskWorkflowEntryApplied as markCanonicalPlanningTaskWorkflowEntryApplied, markPlanningTaskWorkflowEntryDismissed as markCanonicalPlanningTaskWorkflowEntryDismissed, recordPlanningTaskWorkflowEntry as recordCanonicalPlanningTaskWorkflowEntry } from './canonical/planning-task-records.js';
 import { DEFAULT_ITEM_AUDIT_CONCURRENCY, MAX_ITEM_AUDIT_CONCURRENCY } from './backlog-curation-schemas.js';
@@ -143,13 +145,17 @@ export function findBacklogCurationWorkflowEntry(index: PlanningTaskWorkflowInde
 }
 
 function readCanonicalWorkflowIndex(cwd: string): { index: PlanningTaskWorkflowIndex; hasRows: boolean } {
-  return withCanonicalTransaction(cwd, (store) => {
-    const db = getDatabase(store);
-    const hasRows = (db.prepare('SELECT 1 FROM planning_tasks LIMIT 1').get() as unknown) !== undefined;
-    const rows = db.prepare("SELECT raw_request_json, task_id, created_at, applied_at FROM planning_tasks WHERE COALESCE(status_snapshot, '') <> 'dismissed' ORDER BY created_at DESC, task_id").all() as Array<Record<string, unknown>>;
-    const entries = rows.map((row) => entryFromCanonicalRow(row)).filter((entry): entry is PlanningTaskWorkflowEntry => entry !== undefined);
-    return { index: orderIndex({ schemaVersion: 1, entries }), hasRows };
-  });
+  if (!existsSync(resolveEforgePlanStorePath(cwd))) return { index: emptyIndex(), hasRows: false };
+  const store = openEforgePlanStore(cwd, { create: false, migrate: false, readonly: true });
+  try {
+    return store.transaction(() => {
+      const db = getDatabase(store);
+      const hasRows = (db.prepare('SELECT 1 FROM planning_tasks LIMIT 1').get() as unknown) !== undefined;
+      const rows = db.prepare("SELECT raw_request_json, task_id, created_at, applied_at FROM planning_tasks WHERE COALESCE(status_snapshot, '') <> 'dismissed' ORDER BY created_at DESC, task_id").all() as Array<Record<string, unknown>>;
+      const entries = rows.map((row) => entryFromCanonicalRow(row)).filter((entry): entry is PlanningTaskWorkflowEntry => entry !== undefined);
+      return { index: orderIndex({ schemaVersion: 1, entries }), hasRows };
+    });
+  } finally { store.close(); }
 }
 
 function entryFromCanonicalRow(row: Record<string, unknown>): PlanningTaskWorkflowEntry | undefined {
