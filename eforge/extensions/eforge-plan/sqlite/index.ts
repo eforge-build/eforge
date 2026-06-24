@@ -1,0 +1,14 @@
+export { EforgePlanStoreError, type EforgePlanStoreErrorCode } from './errors.js';
+export { assertFts5Available } from './fts.js';
+export { getEforgePlanSchemaVersion, openEforgePlanStore, resolveEforgePlanStorePath } from './db.js';
+export type * from './types.js';
+export { rowToBacklogItem, upsertBacklogItem, getBacklogItem, listBacklogItems, replaceBacklogItemTags, replaceBacklogItemSections, replaceItemDependencies, listItemDependencies } from './repositories/items.js';
+export { rowToEpic, upsertEpic, getEpic, listEpics, replaceEpicTags, replaceEpicSections } from './repositories/epics.js';
+export { rowToRecommendationRun, rowToRecommendationLane, upsertRecommendationRun, upsertRecommendationLane, replaceRecommendationLaneItems } from './repositories/recommendations.js';
+export { rowToPlanningTask, upsertPlanningTask, replacePlanningTaskRefs } from './repositories/planning-tasks.js';
+export { rowToSessionPlan, upsertSessionPlan, linkSessionPlanItems, linkSessionPlanEpics } from './repositories/session-plans.js';
+export { rowToLifecycleEvent, rowToLifecycleEvidence, recordLifecycleEvent, recordLifecycleEvidence } from './repositories/lifecycle.js';
+export { rowToQueuePrd, rowToBuildRun, rowToBuildSession, rowToLandingLink, upsertQueuePrd, upsertBuildRun, upsertBuildSession, upsertLandingLink, recordQueueBuildCorrelation } from './repositories/queue-build.js';
+export { rowToImportRun, rowToImportDiagnostic, recordImportRun, recordImportDiagnostic } from './repositories/import-runs.js';
+export { rowToMaintenanceRun, recordMaintenanceRun } from './repositories/maintenance.js';
+export { rowToSearchDocument, replaceSearchDocument, markSearchIndexDirty, clearSearchIndexDirty, getSearchIndexState } from './repositories/search-documents.js';

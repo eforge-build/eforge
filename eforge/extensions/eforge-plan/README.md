@@ -10,7 +10,7 @@ Extensions run as project-team code. Install and enable `eforge-plan` only in re
 
 `eforge-plan` is not a sandbox boundary. Actions can read and write project-local files, and the lifecycle hooks update extension-owned sidecars. The Console workstation is served from packaged browser assets whose files are covered by the extension trust hash. Review extension changes with the same care as build tooling, scripts, or other automation that runs in the repository.
 
-Private planning state is stored under `.eforge/storage/extensions/eforge-plan/`. Treat that directory as local/private project metadata: it can include backlog records, recommendation models, roadmap steering, lifecycle traces, accepted-analysis baselines, revision annotations, and AI task workflow indexes. Do not assume it is safe to publish without review.
+Private planning state is stored under `.eforge/storage/extensions/eforge-plan/`, including the normalized SQLite store at `.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite`. Treat that directory as local/private project metadata: it can include backlog records, recommendation models, roadmap steering, lifecycle traces, accepted-analysis baselines, revision annotations, and AI task workflow indexes. Do not assume it is safe to publish without review.
 
 ## Install and manage
 
@@ -140,8 +140,12 @@ Agents should use direct compact backlog actions instead of browsing broad manif
 
 `eforge-plan` uses project-local storage only:
 
-- `.eforge/storage/extensions/eforge-plan/backlog/items/<id>.md` stores canonical backlog items.
-- `.eforge/storage/extensions/eforge-plan/backlog/epics/<id>.md` stores canonical epics.
+<!-- region: storage-schema -->
+The private SQLite store lives at `.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite`. It is the extension-owned normalized store for backlog, epic, recommendation, planning-task, session-plan correlation, lifecycle evidence, import/maintenance metadata, and search-index records. Legacy Markdown and JSON files remain compatibility/import inputs unless explicitly imported; callers should use eforge-plan actions instead of reading the SQLite file directly.
+<!-- endregion: storage-schema -->
+
+- `.eforge/storage/extensions/eforge-plan/backlog/items/<id>.md` stores legacy/private backlog item Markdown used as compatibility and import input.
+- `.eforge/storage/extensions/eforge-plan/backlog/epics/<id>.md` stores legacy/private epic Markdown used as compatibility and import input.
 - `.backlog/items/<id>.md` and `.backlog/epics/<id>.md` are legacy read-through and explicit import inputs.
 - `.eforge/session-plans/<session>.md` stores promoted session-plan artifacts.
 - `.eforge/storage/extensions/eforge-plan/traces/<itemId>.json` stores lifecycle trace sidecars as extension-owned private metadata.

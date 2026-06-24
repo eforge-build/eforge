@@ -82,7 +82,7 @@ describe('eforge-plan package foundation', () => {
   it('scopes package type-check inputs away from generated and browser-only assets', async () => {
     const tsconfig = await readJson(join(extensionRoot, 'tsconfig.json'));
     expect(tsconfig.compilerOptions).toMatchObject({ noEmit: true, declaration: false });
-    expect(tsconfig.include).toEqual(expect.arrayContaining(['*.ts', 'tsup.config.ts']));
+    expect(tsconfig.include).toEqual(expect.arrayContaining(['**/*.ts', 'tsup.config.ts']));
     expect(tsconfig.exclude).toEqual(expect.arrayContaining(['dist', 'workstation-assets', 'workstation-src', '__tests__']));
   });
 

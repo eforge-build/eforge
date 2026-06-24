@@ -40,7 +40,7 @@ eforge extension reload
 
 ## Storage and trust boundary
 
-`eforge-plan` runs as trusted extension code in the daemon process. Its private planning state lives under `.eforge/storage/extensions/eforge-plan/`, including backlog records, recommendation models, backlog curation previews, planning task indexes, lifecycle traces, accepted-analysis baselines, and plan revision threads. Treat that directory as local/private project metadata.
+`eforge-plan` runs as trusted extension code in the daemon process. Its private planning state lives under `.eforge/storage/extensions/eforge-plan/`, including the normalized SQLite store at `.eforge/storage/extensions/eforge-plan/eforge-plan-private.sqlite`, backlog records, recommendation models, backlog curation previews, planning task indexes, lifecycle traces, accepted-analysis baselines, and plan revision threads. Treat that directory as local/private project metadata.
 
 Session plans created for handoff live under `.eforge/session-plans/` and are submitted to eforge as build source when ready. AI-created session plans preserve the task summary as a leading `## Executive Summary` before readiness dimensions. They are local and gitignored; committed build provenance is still the engine's artifact-branch PRD and plan records.
 
