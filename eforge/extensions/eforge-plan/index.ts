@@ -37,6 +37,7 @@ import { backlogCurationActions } from './backlog-curation-actions.js';
 import { planRevisionActions } from './plan-revision-actions.js';
 import { draftPlanUnitActions } from './draft-plan-unit-actions.js';
 import { roadmapActions } from './roadmap-actions.js';
+import { eforgePlanPlanningAgentTasks } from './agent-task-contributions.js';
 import { importPlanningStoreAction } from './importer/index.js';
 import { maintenanceActions } from './maintenance/index.js';
 import { ActionObjectOutputSchema, BoardActionInputSchema, PromotionSelectionInputSchema, PromotionSelectionOutputSchema } from './schema.js';
@@ -222,6 +223,7 @@ function registerActions(
 
 export default defineEforgeExtension((eforge) => {
   if (typeof eforge.registerAction !== 'function') return;
+  for (const task of eforgePlanPlanningAgentTasks) eforge.registerAgentTask(task);
   eforge.registerAction(listBoard);
   eforge.registerAction(captureItem);
   eforge.registerAction(upsertEpic);

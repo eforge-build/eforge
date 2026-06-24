@@ -91,7 +91,7 @@ export async function invokeExtensionAction(
       // --- eforge:region extension-agent-task-context ---
       ...(agentTaskService !== undefined && {
         agentTasks: (extension: { extensionName: string; extensionPath: string }) => ({
-          start: (taskRequest: ExtensionAgentTaskStartRequestWithoutRequester) => agentTaskService.start({ ...taskRequest, requestedBy: request.requestedBy } as ExtensionAgentTaskStartRequest, { owner: extension, requestedBy: request.requestedBy }),
+          start: (taskRequest: ExtensionAgentTaskStartRequestWithoutRequester) => agentTaskService.start({ ...taskRequest, requestedBy: request.requestedBy } as ExtensionAgentTaskStartRequest, { owner: extension, requestedBy: request.requestedBy, registry: runtime.registry as never }),
           get: (taskId: string) => agentTaskService.get(taskId, extension),
           cancel: (taskId: string, reason?: string) => agentTaskService.cancel(taskId, reason, extension),
         }),

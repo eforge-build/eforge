@@ -59,7 +59,7 @@ describe('extension content route source contracts', () => {
 
   it('keeps input and extension discovery dependencies lazy inside services', () => {
     for (const file of CONTENT_ROUTE_FILES) {
-      const staticFeatureImports = productionLines(file).filter((line) => /^import\s/.test(line))
+      const staticFeatureImports = productionLines(file).filter((line) => /^import(?!\s+type\b)\s/.test(line))
         .filter((line) => /from ['"](?:@eforge-build\/input|@eforge-build\/engine\/extensions\/index)['"]/.test(line));
       expect(staticFeatureImports, file).toEqual([]);
     }

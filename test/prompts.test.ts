@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadPrompt } from '@eforge-build/engine/prompts';
+import { loadPrompt, renderPromptTemplate } from '@eforge-build/engine/prompts';
 
 describe('loadPrompt() throws on unresolved template variables', () => {
   it('throws when called with partial vars for the planner prompt', async () => {
@@ -43,6 +43,17 @@ describe('loadPrompt() throws on unresolved template variables', () => {
 
     expect(typeof prompt).toBe('string');
     expect(prompt).not.toMatch(/\{\{[a-zA-Z0-9_]+\}\}/);
+  });
+
+  it('renders neutral prompt templates with the shared fail-closed interpolation helper', () => {
+    expect(renderPromptTemplate('Hello {{name}}', { name: 'Ada' }, undefined, 'neutral')).toBe('Hello Ada');
+    expect(renderPromptTemplate('Hello {{ name }}', { name: 'Ada' }, undefined, 'neutral')).toBe('Hello Ada');
+    expect(() => renderPromptTemplate('Hello {{missing}}', {}, undefined, 'neutral')).toThrow('neutral: unresolved template variables: missing');
+  });
+
+  it('throws for spaced and hyphenated unresolved template tokens', () => {
+    expect(() => renderPromptTemplate('Hello {{ missing }}', {}, undefined, 'neutral')).toThrow('neutral: unresolved template variables: missing');
+    expect(() => renderPromptTemplate('Hello {{source-text}}', {}, undefined, 'neutral')).toThrow('neutral: unresolved template variables: source-text');
   });
 
   it('includes open-target guidance in the eforge-plan planning draft prompt', async () => {

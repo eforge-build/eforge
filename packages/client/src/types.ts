@@ -35,10 +35,8 @@ export interface AutoBuildSchedulerState {
   alive: boolean;
   paused: boolean;
   lastMutationReason?: string;
-  /** Number of builds currently running, as reported by the scheduler. */
-  runningCount?: number;
-  /** Maximum concurrent build limit configured in the daemon, as reported by the scheduler. */
-  limit?: number;
+  /** Number of builds currently running, as reported by the scheduler. */ runningCount?: number;
+  /** Maximum concurrent build limit configured in the daemon, as reported by the scheduler. */ limit?: number;
 }
 
 export interface AutoBuildTransitionDetail {
@@ -80,10 +78,8 @@ export type ConfigShowResponse = unknown;
  * Describes where a config file was resolved from and whether it was found.
  */
 export interface ConfigSourceInfo {
-  /** Absolute path to the config file, or null when not resolved. */
-  path: string | null;
-  /** Whether the config file was found at the resolved path. */
-  found: boolean;
+  /** Absolute path to the config file, or null when not resolved. */ path: string | null;
+  /** Whether the config file was found at the resolved path. */ found: boolean;
 }
 
 /**
@@ -94,10 +90,8 @@ export interface ConfigSourceInfo {
  * provenance metadata useful for UI (e.g., offering to update a specific file).
  */
 export interface ConfigShowVerboseResponse {
-  /** Merged resolved config. Opaque; engine-internal shape. */
-  resolved?: Record<string, unknown>;
-  /** Per-source provenance info keyed by config scope. */
-  sources?: {
+  /** Merged resolved config. Opaque; engine-internal shape. */ resolved?: Record<string, unknown>;
+  /** Per-source provenance info keyed by config scope. */ sources?: {
     local?: ConfigSourceInfo;
     project?: ConfigSourceInfo;
     user?: ConfigSourceInfo;

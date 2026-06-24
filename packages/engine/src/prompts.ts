@@ -71,21 +71,32 @@ export async function loadPrompt(
     }
   }
 
+  return renderPromptTemplate(content, vars, append, `loadPrompt(${filename})`);
+}
+
+export function renderPromptTemplate(
+  template: string,
+  vars?: Record<string, string>,
+  append?: string,
+  label = 'renderPromptTemplate',
+): string {
   const allVars: Record<string, string> = { attribution: ATTRIBUTION, ...vars };
 
   // Determine expected variables from the template *before* substitution so that
   // any {{...}} appearing inside substituted values (e.g. plan content quoting
   // a downstream prompt's placeholders) is treated as literal text rather than
   // an unresolved variable.
-  const expected = [...content.matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]);
-  const missing = [...new Set(expected)].filter(name => !(name in allVars));
-  if (missing.length > 0) {
+  const tokens = [...template.matchAll(/\{\{([^{}]+)\}\}/g)].map(m => m[1]);
+  const unsupported = tokens.map(token => token.trim()).filter(name => !/^\w+$/.test(name));
+  const missing = tokens.map(token => token.trim()).filter(name => /^\w+$/.test(name) && !(name in allVars));
+  const unresolved = [...new Set([...unsupported, ...missing])];
+  if (unresolved.length > 0) {
     throw new Error(
-      `loadPrompt(${filename}): unresolved template variables: ${missing.join(', ')}`,
+      `${label}: unresolved template variables: ${unresolved.join(', ')}`,
     );
   }
 
-  content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => allVars[key] ?? match);
+  let content = template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key) => allVars[key] ?? match);
 
   if (append) {
     content = content + '\n\n' + append;

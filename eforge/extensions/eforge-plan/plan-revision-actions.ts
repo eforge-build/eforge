@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { type ExtensionAgentTaskRecord } from '@eforge-build/client';
+import { PLAN_REVISION_TASK_ID } from './agent-task-contributions.js';
 import { toJsonSafeObject } from './json-safe.js';
 import {
   ApplyPlanRevisionTurnInputSchema,
@@ -302,7 +303,7 @@ async function startTurn(ctx: ExtensionActionContext, params: { session: string;
   const recentTurns = await buildRecentRevisionTurnContext(ctx, session);
   const sourceText = buildPlanRevisionSourceText({ targetSession: params.session, plan: loaded.plan, readiness: loaded.readiness, path: loaded.path, sourceRefs: loaded.sourceRefs, lifecycle: loaded.lifecycle, basePlanFingerprint, baseSectionHashes, recentTurns, userMessage, annotationSnapshot: snapshot, redraft: params.redraft });
   const topic = `Revise session plan ${params.session}: ${userMessage}`;
-  const response = await ctx.agentTasks.start({ kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, input: { topic, session: params.session, planningType: loaded.plan.planning_type, planningDepth: loaded.plan.planning_depth, existingSessionPlan: loaded.rawMarkdown, sourceText, requestedOutputSections: [...PLAN_REVISION_REQUESTED_OUTPUT_SECTIONS] } });
+  const response = await ctx.agentTasks.start({ task: { id: PLAN_REVISION_TASK_ID }, input: { topic, session: params.session, planningType: loaded.plan.planning_type, planningDepth: loaded.plan.planning_depth, existingSessionPlan: loaded.rawMarkdown, sourceText, requestedOutputSections: [...PLAN_REVISION_REQUESTED_OUTPUT_SECTIONS] } });
   const turn: PlanRevisionTurnEntry = { turnId: randomUUID(), taskId: response.task.taskId, userMessage, basePlanFingerprint, baseSectionHashes, ...(params.parentTaskId !== undefined && { parentTaskId: params.parentTaskId }), ...(params.retryOfTaskId !== undefined && { retryOfTaskId: params.retryOfTaskId }), ...(params.redraftOfTaskId !== undefined && { redraftOfTaskId: params.redraftOfTaskId }), createdAt: new Date().toISOString(), ...(snapshot !== undefined && { annotationSnapshot: snapshot }) };
   try {
     await recordPlanRevisionTurn(ctx.cwd, params.session, turn);

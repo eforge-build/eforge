@@ -9,6 +9,7 @@ describe('eforge-plan Console workstation dogfood registration', () => {
     const api = {
       registerAction() {},
       registerInputSource() {},
+      registerAgentTask() {},
       registerConsoleContribution() {},
       registerConsoleWorkstation(workstation: ConsoleWorkstation) {
         workstations.push(workstation);

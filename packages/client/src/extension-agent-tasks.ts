@@ -14,22 +14,10 @@ export const EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT = 'eforge-plan
 
 export const ExtensionAgentTaskKindSchema = Type.Literal(EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT);
 
-export const ExtensionAgentTaskStatusSchema = Type.Union([
-  Type.Literal('queued'),
-  Type.Literal('running'),
-  Type.Literal('completed'),
-  Type.Literal('failed'),
-  Type.Literal('cancelled'),
-]);
+export const ExtensionAgentTaskStatusSchema = Type.Union([Type.Literal('queued'), Type.Literal('running'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]);
 
 export const ExtensionAgentTaskRequestedBySchema = Type.Object({
-  host: Type.Union([
-    Type.Literal('console'),
-    Type.Literal('pi'),
-    Type.Literal('claude'),
-    Type.Literal('mcp'),
-    Type.Literal('cli'),
-  ]),
+  host: Type.Union([Type.Literal('console'), Type.Literal('pi'), Type.Literal('claude'), Type.Literal('mcp'), Type.Literal('cli')]),
   surface: Type.Optional(Type.String()),
   sessionId: Type.Optional(Type.String()),
 }, { additionalProperties: false });
@@ -69,21 +57,9 @@ export const EforgePlanPlanningSourceProviderSchema = Type.Object({
 }, { additionalProperties: false });
 
 // --- eforge:region session-plan-creation-readiness ---
-export const EforgePlanPlanningTypeSchema = Type.Union([
-  Type.Literal('bugfix'),
-  Type.Literal('feature'),
-  Type.Literal('refactor'),
-  Type.Literal('architecture'),
-  Type.Literal('docs'),
-  Type.Literal('maintenance'),
-  Type.Literal('unknown'),
-]);
+export const EforgePlanPlanningTypeSchema = Type.Union([Type.Literal('bugfix'), Type.Literal('feature'), Type.Literal('refactor'), Type.Literal('architecture'), Type.Literal('docs'), Type.Literal('maintenance'), Type.Literal('unknown')]);
 
-export const EforgePlanPlanningDepthSchema = Type.Union([
-  Type.Literal('quick'),
-  Type.Literal('focused'),
-  Type.Literal('deep'),
-]);
+export const EforgePlanPlanningDepthSchema = Type.Union([Type.Literal('quick'), Type.Literal('focused'), Type.Literal('deep')]);
 
 export const EforgePlanPlanningCreationDraftDimensionIdSchema = Type.String({
   minLength: 1,
@@ -180,10 +156,7 @@ export const EforgePlanPlanningClarificationQuestionSchema = Type.Object({
   options: Type.Optional(Type.Array(Type.String())),
 }, { additionalProperties: false });
 
-export const EforgePlanPlanningDecisionSchema = Type.Union([
-  Type.Literal('ready'),
-  Type.Literal('needs-input'),
-]);
+export const EforgePlanPlanningDecisionSchema = Type.Union([Type.Literal('ready'), Type.Literal('needs-input')]);
 
 export const SECTION_PROGRESS_MAX_STRING_LENGTH = 500 as const;
 export const SECTION_PROGRESS_MAX_ITEMS = 50 as const;
@@ -401,14 +374,7 @@ export const ExtensionAgentTaskCancelRequestSchema = Type.Object({
 export const ExtensionAgentTaskBacklogCurationItemProgressSchema = Type.Object({
   itemId: Type.String({ minLength: 1, maxLength: 240 }),
   title: Type.Optional(Type.String({ maxLength: 300 })),
-  status: Type.Union([
-    Type.Literal('pending'),
-    Type.Literal('running'),
-    Type.Literal('cache-hit'),
-    Type.Literal('completed'),
-    Type.Literal('failed'),
-    Type.Literal('cancelled'),
-  ]),
+  status: Type.Union([Type.Literal('pending'), Type.Literal('running'), Type.Literal('cache-hit'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]),
   outcome: Type.Optional(Type.String({ maxLength: 80 })),
   verdict: Type.Optional(Type.String({ maxLength: 80 })),
   summary: Type.Optional(Type.String({ maxLength: 500 })),

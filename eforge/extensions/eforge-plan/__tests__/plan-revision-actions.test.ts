@@ -132,8 +132,8 @@ describe('plan revision actions', () => {
       expect(session).toMatchObject({ targetSession: 'revise-me', plan: expect.any(Object), readiness: expect.any(Object), path: expect.stringContaining('revise-me.md') });
 
       const turnOutput = await dispatch(cwd, 'start-plan-revision-turn', { session: 'revise-me', message: 'Tighten scope.' }, tasks, starts);
-      const started = starts[0] as { kind: string; input: Record<string, unknown> };
-      expect(started).toMatchObject({ kind: 'eforge-plan.planning-draft', input: { session: 'revise-me', planningType: 'feature', planningDepth: 'quick', requestedOutputSections: ['planRevisionTurn'], existingSessionPlan: expect.stringContaining('Existing scope.') } });
+      const started = starts[0] as { task?: { id: string }; input: Record<string, unknown> };
+      expect(started).toMatchObject({ task: { id: 'plan-revision' }, input: { session: 'revise-me', planningType: 'feature', planningDepth: 'quick', requestedOutputSections: ['planRevisionTurn'], existingSessionPlan: expect.stringContaining('Existing scope.') } });
       const source = JSON.parse(String(started.input.sourceText));
       expect(source.context).toMatchObject({ purpose: 'plan-revision-turn', targetSession: 'revise-me', userMessage: 'Tighten scope.', basePlanFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/), baseSectionHashes: expect.arrayContaining([expect.objectContaining({ dimension: 'scope' })]) });
       expect(turnOutput).toMatchObject({ turn: { taskId: 'task-1', userMessage: 'Tighten scope.', basePlanFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } });

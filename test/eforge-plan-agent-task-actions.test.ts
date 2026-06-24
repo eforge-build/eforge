@@ -39,9 +39,10 @@ describe('eforge-plan planning agent task actions', () => {
 
       await startPlanningAgentTaskAction.handler({ userGoal: oversizedGoal }, testContext(cwd, async (value) => {
         request = value;
-        return { task: { taskId: 'task-1', kind: value.kind, status: 'queued', createdAt: new Date().toISOString() } } as Awaited<ReturnType<ExtensionActionContext['agentTasks']['start']>>;
+        return { task: { taskId: 'task-1', kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, status: 'queued', createdAt: new Date().toISOString() } } as Awaited<ReturnType<ExtensionActionContext['agentTasks']['start']>>;
       }));
 
+      expect(request).toMatchObject({ task: { id: 'planning-draft' } });
       expect(request?.input.topic).toHaveLength(MAX_PLANNING_AGENT_USER_GOAL_LENGTH);
       expect(request?.input.topic).toContain('…[truncated]');
       expect(String(request?.input.sourceText)).toContain('…[truncated]');
@@ -140,9 +141,10 @@ describe('eforge-plan planning agent task actions', () => {
       let request: Parameters<ExtensionActionContext['agentTasks']['start']>[0] | undefined;
       const output = await retryPlanningAgentTaskAction.handler({ taskId: 'task-original' }, testContext(cwd, async (value) => {
         request = value;
-        return { task: { taskId: 'task-retry', kind: value.kind, status: 'queued', createdAt: new Date().toISOString() } } as Awaited<ReturnType<ExtensionActionContext['agentTasks']['start']>>;
+        return { task: { taskId: 'task-retry', kind: EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, status: 'queued', createdAt: new Date().toISOString() } } as Awaited<ReturnType<ExtensionActionContext['agentTasks']['start']>>;
       })) as { entry: { parentTaskId?: string; selection: { itemIds?: string[] } } };
 
+      expect(request).toMatchObject({ task: { id: 'session-plan-creation' } });
       expect(request?.input).toMatchObject({ topic: 'Draft a session plan for Item One.', session: 'session-x', planningType: 'feature', planningDepth: 'deep', requestedOutputSections: ['sessionPlanCreationDraft'] });
       expect((request?.input as Record<string, unknown> | undefined)?.sessionPlanCreationReadiness).toMatchObject({
         resolved: {
