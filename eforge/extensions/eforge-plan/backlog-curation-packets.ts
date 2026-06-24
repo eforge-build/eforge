@@ -199,8 +199,8 @@ function itemMetadata(item: Record<string, unknown>): BacklogCurationMapReduceIt
     updated: boundOptional(item.updated, 120),
     last_checked: boundOptional(item.last_checked, 120),
     stale_after: boundOptional(item.stale_after, 120),
-    evidence_notes: boundOptional(item.evidence_notes, 600),
-    recheck_notes: boundOptional(item.recheck_notes, 600),
+    evidence_notes: boundOptional(item.evidence_notes, 500),
+    recheck_notes: boundOptional(item.recheck_notes, 500),
   }) as BacklogCurationMapReduceItemPacket['metadata'];
 }
 

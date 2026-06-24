@@ -8,7 +8,7 @@ You are reducing capped backlog-curation map outcomes into the existing eforge-p
 
 ## Reducer input JSON
 
-This input is capped and contains global summaries, dependency/recommendation summaries, diagnostics, and compact per-item outcomes. It intentionally excludes raw backlog packets, raw item bodies, raw `gitDelta`, and raw `fullImplementationAudit` evidence.
+This input is capped and contains global summaries, dependency/recommendation summaries, diagnostics, and compact per-item outcomes. Item findings may include source-backed verdicts produced by read-only item agents. It intentionally excludes raw backlog packets, raw item bodies, raw `gitDelta`, and raw `fullImplementationAudit` evidence.
 
 ```json
 {{reducerInputJson}}
@@ -44,10 +44,16 @@ The payload MUST include:
 
 - Preserve the reducer input `sourceFingerprint` exactly in any `backlogCurationDraft`.
 - Engine emits, consumers apply: do not claim that backlog records were written, updated, shipped, or persisted.
-- Item audit findings are compact leads. Convert them into structured patches only when the finding contains enough current-source authority and a safe rationale.
-- Current-source closure authority must remain current-source based. Historical hints and recommendation summaries may guide recommendations but are not standalone closure authority.
+- Item audit findings are source-backed verdicts. Convert them into structured patches when the finding contains a safe rationale and current-source citations.
+- For `verdict: "shipped"`, create an item change setting `metadata.status: "shipped"` when citations/roles show implementation plus product-surface wiring, or when the finding explains the item is explicitly docs/config-only and cites that current surface.
+- For `verdict: "superseded"`, create an item change setting `metadata.status: "superseded"` when citations/roles show replacement/current direction plus product-surface or docs/config authority.
+- Closed-status item changes must include durable evidence strings beginning with `Shipped evidence: current source — ` or `Superseded evidence: current source — `. Include role labels in those evidence strings, e.g. `implementation: path`, `replacement: path`, and `product-surface: path`, so apply-time validation can verify both roles.
+- For `partial`, `still-needed`, or `stale-invalid`, prefer concrete open-item curation/recommendations over generic no-op rechecks.
+- Use `noOpRechecks` only when the finding says no backlog mutation is warranted after source inspection.
+- Historical hints and recommendation summaries may guide recommendations but are not standalone closure authority.
 - Keep `skipped` exceptional. Use `needsInput` only for true product/user decisions that cannot be resolved from supplied summaries and findings.
-- Recommendations must target the prospective post-curation backlog state. Do not recommend closed items or epics, and do not place same-draft active items in ready/next/parallel/blocking lanes.
+- Recommendations must target the prospective post-curation backlog state. Do not recommend closed items or epics. Items whose current or same-draft prospective status is `active` belong only in `activeWork`; do not place active items in ready candidates, next sequence, safe-parallel groups, or blocked-chain target lanes.
+- `blockedChains[].blockedBy` accepts only known open backlog item ids. Do not put product-decision placeholders, questions, labels, or synthetic ids there; put those in `rationale`, `rationaleAndAssumptions`, `assumptionsOpenQuestions`, or draft `needsInput` instead.
 - Do not include raw evidence, raw item bodies, raw packets, raw `gitDelta`, or raw `fullImplementationAudit` text in the submission.
 
 Submit exactly once. Do not finish with prose. The submission tool is the only accepted output channel.

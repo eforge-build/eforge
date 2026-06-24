@@ -1,6 +1,6 @@
 import { safeParseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError } from '@eforge-build/extension-sdk';
-import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata, type BacklogCurationSourceBuild } from './backlog-curation-source.js';
+import { buildBacklogCurationSource, writeBacklogCurationSourcePreviewMetadata } from './backlog-curation-source.js';
 import { validateBacklogCurationPlanningDraftResult } from './backlog-curation-apply.js';
 import { ItemAuditConcurrencySchema } from './backlog-curation-schemas.js';
 import type { BacklogCurationMapReduceSourceBundle } from '@eforge-build/client';
@@ -21,24 +21,12 @@ export {
   validateBacklogCurationPlanningDraftResult,
 };
 
-export async function buildSource(context: { cwd: string; signal: AbortSignal; input?: { itemAuditConcurrency?: unknown; redraft?: unknown; prebuiltSource?: unknown } }): Promise<{ sourceText: string; backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle }> {
+export async function buildSource(context: { cwd: string; signal: AbortSignal; input?: { itemAuditConcurrency?: unknown; redraft?: unknown } }): Promise<{ sourceText: string; backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle }> {
   const itemAuditConcurrency = parseSourceProviderItemAuditConcurrency(context.input?.itemAuditConcurrency);
-  const prebuiltSource = parseSourceProviderPrebuiltSource(context.input?.prebuiltSource);
-  const source = prebuiltSource ?? await buildBacklogCurationSource(context.cwd, parseSourceProviderRedraft(context.input?.redraft), { signal: context.signal, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) });
+  const redraft = parseSourceProviderRedraft(context.input?.redraft);
+  const source = await buildBacklogCurationSource(context.cwd, redraft, { signal: context.signal, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) });
   await writeBacklogCurationSourcePreviewMetadata(context.cwd, source);
   return { sourceText: source.sourceText, backlogCurationMapReduce: source.backlogCurationMapReduce };
-}
-
-function parseSourceProviderPrebuiltSource(value: unknown): BacklogCurationSourceBuild | undefined {
-  if (value === undefined) return undefined;
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)
-    && typeof (value as { sourceFingerprint?: unknown }).sourceFingerprint === 'string'
-    && typeof (value as { sourceText?: unknown }).sourceText === 'string'
-    && (value as { source?: unknown }).source !== null && typeof (value as { source?: unknown }).source === 'object'
-    && (value as { backlogCurationMapReduce?: unknown }).backlogCurationMapReduce !== null && typeof (value as { backlogCurationMapReduce?: unknown }).backlogCurationMapReduce === 'object') {
-    return value as BacklogCurationSourceBuild;
-  }
-  throw new ExtensionActionInputValidationError('Invalid prebuilt backlog curation source.', [{ path: 'prebuiltSource', message: 'prebuiltSource must be a complete backlog curation source build.' }]);
 }
 
 function parseSourceProviderItemAuditConcurrency(value: unknown): number | undefined {

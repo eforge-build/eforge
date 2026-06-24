@@ -175,18 +175,76 @@ export const PlanningTaskWorkflowIndexSchema = Type.Object({
   entries: Type.Array(PlanningTaskWorkflowEntrySchema),
 }, { additionalProperties: false });
 
-export const ListPlanningAgentTasksInputSchema = Type.Object({}, { additionalProperties: false });
+const MAX_PLANNING_AGENT_TASK_LIST_LIMIT = 100;
+
+export const ListPlanningAgentTasksInputSchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_PLANNING_AGENT_TASK_LIST_LIMIT })),
+  offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  includeEntry: Type.Optional(Type.Boolean()),
+  includeTask: Type.Optional(Type.Boolean()),
+}, { additionalProperties: false });
+
+export const PlanningTaskWorkflowSelectionSummarySchema = Type.Object({
+  itemCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  itemIds: Type.Optional(Type.Array(Type.String())),
+  epicId: Type.Optional(Type.String()),
+  recommendationRef: Type.Optional(Type.String()),
+  sourceRecommendationRef: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const PlanningTaskWorkflowEntrySummarySchema = Type.Object({
+  taskId: ExtensionAgentTaskIdSchema,
+  parentTaskId: Type.Optional(ExtensionAgentTaskIdSchema),
+  purpose: Type.Optional(Type.Union([Type.Literal('recommendation-refresh'), Type.Literal('backlog-curation')])),
+  requestedOutputSections: Type.Array(PlanningAgentRequestedOutputSectionSchema),
+  session: Type.Optional(Type.String()),
+  planningType: Type.Optional(Type.String()),
+  planningDepth: Type.Optional(Type.String()),
+  itemAuditConcurrency: Type.Optional(ItemAuditConcurrencySchema),
+  sourceFingerprint: Type.Optional(Type.String()),
+  appliedAt: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  derivedRequestSummary: Type.Optional(Type.String()),
+  selection: PlanningTaskWorkflowSelectionSummarySchema,
+}, { additionalProperties: false });
+
+export const PlanningAgentTaskSummarySchema = Type.Object({
+  taskId: ExtensionAgentTaskIdSchema,
+  kind: Type.String(),
+  status: ExtensionAgentTaskStatusSchema,
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  metadata: Type.Optional(Type.Object({}, JsonObjectAdditionalProperties)),
+  startedAt: Type.Optional(Type.String()),
+  completedAt: Type.Optional(Type.String()),
+  cancelledAt: Type.Optional(Type.String()),
+  errorCode: Type.Optional(Type.String()),
+  errorMessage: Type.Optional(Type.String()),
+  resultSummary: Type.Optional(Type.Object({
+    outputKeys: Type.Array(Type.String()),
+    decision: Type.Optional(Type.String()),
+    summary: Type.Optional(Type.String()),
+  }, { additionalProperties: false })),
+}, { additionalProperties: false });
 
 export const PlanningAgentTaskListItemSchema = Type.Object({
-  entry: PlanningTaskWorkflowEntrySchema,
+  entry: Type.Optional(PlanningTaskWorkflowEntrySchema),
+  entrySummary: PlanningTaskWorkflowEntrySummarySchema,
   available: Type.Boolean(),
   status: Type.Optional(ExtensionAgentTaskStatusSchema),
+  taskSummary: Type.Optional(PlanningAgentTaskSummarySchema),
   task: Type.Optional(ExtensionAgentTaskRecordSchema),
   staleReason: Type.Optional(Type.String()),
 }, JsonObjectAdditionalProperties);
 
 export const ListPlanningAgentTasksOutputSchema = Type.Object({
   tasks: Type.Array(PlanningAgentTaskListItemSchema),
+  total: Type.Integer({ minimum: 0 }),
+  returned: Type.Integer({ minimum: 0 }),
+  limit: Type.Integer({ minimum: 1 }),
+  offset: Type.Integer({ minimum: 0 }),
+  hasMore: Type.Boolean(),
+  nextOffset: Type.Optional(Type.Integer({ minimum: 0 })),
 }, JsonObjectAdditionalProperties);
 
 export const RetryPlanningAgentTaskInputSchema = Type.Object({

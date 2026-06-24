@@ -89,6 +89,38 @@ describe('PlanningTaskCard curation behavior', () => {
     expect(screen.queryByRole('button', { name: 'Redraft curation' })).toBeNull();
   });
 
+  it('shows backlog curation item-agent progress while running', () => {
+    const item = curationItem('running');
+    item.task!.metadata = {
+      progressMessage: 'Audited 2/4 items',
+      backlogCurationProgress: {
+        total: 5,
+        cacheHits: 1,
+        misses: 4,
+        completed: 3,
+        running: 1,
+        remaining: 1,
+        items: [
+          { itemId: 'item-running', title: 'Running item', status: 'running' },
+          { itemId: 'item-shipped', title: 'Shipped item', status: 'completed', verdict: 'shipped' },
+          { itemId: 'item-cache', title: 'Cached item', status: 'cache-hit', verdict: 'still-needed' },
+          { itemId: 'item-failed', title: 'Failed item', status: 'failed' },
+          { itemId: 'item-pending', title: 'Pending item', status: 'pending' },
+        ],
+      },
+    };
+
+    renderCard(item);
+
+    expect(screen.getByText('Backlog item agents')).toBeTruthy();
+    expect(screen.getByText(/3\/5 analyzed/)).toBeTruthy();
+    expect(screen.getByText('Running item')).toBeTruthy();
+    expect(screen.getByText('Shipped item')).toBeTruthy();
+    expect(screen.getByText('Failed item')).toBeTruthy();
+    expect(screen.getByText('Pending item')).toBeTruthy();
+    expect(screen.queryByText('2 +1 more')).toBeNull();
+  });
+
   it('shows cancel while running and retry for failed available tasks', () => {
     const { unmount } = renderCard(curationItem('running'));
     expect(screen.getByRole('button', { name: /Cancel/ })).toBeTruthy();

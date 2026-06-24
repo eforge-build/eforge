@@ -174,6 +174,7 @@ describe('eforge-plan extension registration', () => {
       'get-epic': 'agent-paginated',
       'search-items': 'agent-paginated',
       'list-board-compact': 'agent-paginated',
+      'list-planning-agent-tasks': 'agent-paginated',
       'capture-item': 'agent-compact',
       'update-item': 'agent-compact',
     });
@@ -206,7 +207,10 @@ describe('eforge-plan extension registration', () => {
     expect(JSON.stringify(applyPlanningInput)).toMatch(/applyBacklogCurationDraft|previewAcknowledged|confirmApply|applyCurationOnly/);
     const previewCurationOutput = actions.find((action) => action.id === 'preview-backlog-curation-task')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(previewCurationOutput)).toMatch(/generatedRecommendationValidation|recommendationFreshness|gitDelta/);
+    const listPlanningInput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.inputSchema as Record<string, unknown>;
+    expect(Object.keys(listPlanningInput.properties as Record<string, unknown>).sort()).toEqual(['includeEntry', 'includeTask', 'limit', 'offset']);
     const listPlanningOutput = actions.find((action) => action.id === 'list-planning-agent-tasks')?.outputSchema as Record<string, unknown>;
+    expect(JSON.stringify(listPlanningOutput)).toMatch(/taskSummary|total|returned|hasMore|nextOffset/);
     expect(JSON.stringify(listPlanningOutput)).not.toMatch(/backlogCurationPreview/);
     const planRevisionOutput = actions.find((action) => action.id === 'get-plan-revision-session')?.outputSchema as Record<string, unknown>;
     expect(JSON.stringify(planRevisionOutput)).toMatch(/annotations|annotationSnapshot|quoteContext|capturedText/);

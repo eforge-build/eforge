@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,6 +23,12 @@ describe('analyze-all-backlog action', () => {
     expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, {}).success).toBe(true);
     expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'delta' }).success).toBe(false);
     expect(safeParseWithSchema(AnalyzeAllBacklogInputSchema, { scanMode: 'invalid-mode' }).success).toBe(false);
+  });
+
+  it('keeps the action handler as a short task starter', async () => {
+    const source = await readFile(new URL('../backlog-curation-actions.ts', import.meta.url), 'utf-8');
+    expect(source).not.toContain('buildBacklogCurationSource');
+    expect(source).not.toContain('prebuiltSource');
   });
 
   it('validates source-first item audit concurrency bounds', async () => {
@@ -58,7 +64,7 @@ describe('analyze-all-backlog action', () => {
       const output = await analyzeAllBacklogAction.handler({}, ctx as never) as { sourceFingerprint?: string };
       expect(output.sourceFingerprint).toBeUndefined();
       expect(starts).toHaveLength(1);
-      expect(starts[0]).toMatchObject({ input: { requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
+      expect(starts[0]).toEqual({ kind: 'eforge-plan.planning-draft', input: { topic: 'Analyze and curate all open eforge-plan backlog records.', requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, sourceProvider: { module: './dist/backlog-curation-source-provider.js', exportName: 'buildSource', input: { itemAuditConcurrency: 4 } } } });
       const index = await readPlanningTaskWorkflowIndex(cwd);
       expect(index.entries[0]).toMatchObject({ taskId: 'task-1', purpose: 'backlog-curation', itemAuditConcurrency: 4, requestedOutputSections: ['backlogCurationDraft', 'recommendations'] });
     });
@@ -255,7 +261,7 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
-  it.each(['failed', 'cancelled'] as const)('starts a new task when the same-fingerprint entry points to a %s daemon task', async (status) => {
+  it.each(['failed', 'cancelled'] as const)('starts a new task when the same-concurrency entry points to a %s daemon task', async (status) => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       let starts = 0;
@@ -279,7 +285,7 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
-  it('starts a new task when a completed same-fingerprint curation entry has no applicable draft', async () => {
+  it('starts a new task when a completed same-concurrency curation entry has no applicable draft', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       let starts = 0;
@@ -348,7 +354,7 @@ describe('analyze-all-backlog action', () => {
     });
   });
 
-  it('starts a new task when a completed same-fingerprint curation entry has already been applied', async () => {
+  it('starts a new task when a completed same-concurrency curation entry has already been applied', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'item-1', status: 'candidate', body: '# Item 1\n\n## Claim\n\nClaim\n' });
       let starts = 0;

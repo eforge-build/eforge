@@ -89,12 +89,31 @@ describe('backlog curation recommendation overlay', () => {
     ]));
   });
 
-  it('validates wrong active-work and ready lanes against the prospective state', () => {
+  it('validates active-work and repositions prospective active items from non-active lanes', () => {
     const activeWrong = buildProspectiveCurationProjection({ currentItems, currentEpics, draft: {}, generatedRecommendations: { ...createEmptyRecommendationModel(), activeWork: [{ itemId: 'candidate-me' }] } });
     expect(activeWrong.validation.issues).toEqual([expect.objectContaining({ path: 'activeWork[0].itemId', reason: 'wrong-lane', id: 'candidate-me' })]);
 
-    const readyWrong = buildProspectiveCurationProjection({ currentItems, currentEpics, draft: {}, generatedRecommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'plan-me' }] } });
-    expect(readyWrong.validation.issues).toEqual([expect.objectContaining({ path: 'readyCandidates[0].itemId', reason: 'wrong-lane', id: 'plan-me' })]);
+    const readyActive = buildProspectiveCurationProjection({ currentItems, currentEpics, draft: {}, generatedRecommendations: { ...createEmptyRecommendationModel(), readyCandidates: [{ itemId: 'plan-me' }], safeParallelizableGroups: [{ ref: 'active-group', itemIds: ['plan-me'], rationale: 'Already active.' }] } });
+    expect(readyActive.validation.valid).toBe(true);
+    expect(readyActive.effectiveRecommendations?.readyCandidates).toEqual([]);
+    expect(readyActive.effectiveRecommendations?.safeParallelizableGroups).toEqual([]);
+    expect(readyActive.effectiveRecommendations?.activeWork.map((entry) => entry.itemId)).toEqual(['plan-me']);
+    expect(readyActive.repositioned.map((entry) => entry.from)).toEqual(['readyCandidates', 'safeParallelizableGroups.active-group.itemIds']);
+  });
+
+  it('drops non-backlog blockedBy references from generated blocked chains', () => {
+    const projection = buildProspectiveCurationProjection({
+      currentItems,
+      currentEpics,
+      draft: {},
+      generatedRecommendations: {
+        ...createEmptyRecommendationModel(),
+        blockedChains: [{ ref: 'decision-chain', itemIds: ['candidate-me'], blockedBy: ['product-decision:compatibility', 'open-blocker'], rationale: 'Needs a product decision.' }],
+      },
+    });
+
+    expect(projection.validation.valid).toBe(true);
+    expect(projection.effectiveRecommendations?.blockedChains).toEqual([{ ref: 'decision-chain', itemIds: ['candidate-me'], blockedBy: ['open-blocker'], rationale: 'Needs a product decision.' }]);
   });
 
   it('keeps the compatibility helper compiling while delegating to the projection', () => {

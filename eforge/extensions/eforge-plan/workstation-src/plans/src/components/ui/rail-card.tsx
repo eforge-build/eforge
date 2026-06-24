@@ -24,7 +24,7 @@ export interface RailCardProps {
  */
 export function RailCard({ icon: Icon, iconClassName, title, action, className, contentClassName, headerExtra, children, ...rest }: RailCardProps) {
   return (
-    <Card className={className} aria-label={rest['aria-label']}>
+    <Card className={cn('min-w-0', className)} aria-label={rest['aria-label']}>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           {Icon && <Icon className={cn('h-4 w-4 text-muted-foreground', iconClassName)} />}
@@ -33,7 +33,7 @@ export function RailCard({ icon: Icon, iconClassName, title, action, className, 
         </CardTitle>
         {headerExtra}
       </CardHeader>
-      <CardContent className={contentClassName}>{children}</CardContent>
+      <CardContent className={cn('min-w-0 [&_*]:min-w-0', contentClassName)}>{children}</CardContent>
     </Card>
   );
 }

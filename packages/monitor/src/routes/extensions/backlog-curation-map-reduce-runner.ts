@@ -17,6 +17,7 @@ import {
   type BacklogCurationMapReduceRuntimeIdentity,
   type BacklogCurationMapReduceSourceBundle,
   type EforgePlanPlanningDraftResult,
+  type ExtensionAgentTaskBacklogCurationProgress,
   type ExtensionAgentTaskStartRequest,
 } from '@eforge-build/client';
 import type { AgentHarness, SdkPassthroughConfig } from '@eforge-build/engine/harness';
@@ -43,6 +44,7 @@ export interface BacklogCurationMapReduceRunnerOptions extends SdkPassthroughCon
   itemAuditConcurrency?: number;
   abortController: AbortController;
   progress: (message: string) => Promise<void>;
+  backlogCurationProgress?: (progress: ExtensionAgentTaskBacklogCurationProgress) => Promise<void>;
   sectionProgress: (update: EforgePlanPlanningProgressUpdate) => Promise<void>;
 }
 
@@ -89,12 +91,16 @@ export function buildBacklogCurationRuntimeIdentity(config: SdkPassthroughConfig
 export async function runBacklogCurationMapReduceTask(options: BacklogCurationMapReduceRunnerOptions): Promise<EforgePlanPlanningDraftResult> {
   throwIfAborted(options.abortController.signal);
   const bundle = parseSourceBundle(options.sourceBundle);
+  const progressTracker = createBacklogCurationProgressTracker(options, bundle);
   await options.progress('Preparing curation source');
+  await progressTracker.emit();
   await options.progress(`Built ${bundle.packets.length} item packets`);
   const promptVersion = options.providerHooks.defaultBacklogCurationItemAuditPromptVersion?.() ?? BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION;
-  const cached = await resolveCacheAndMisses(options, bundle.packets, promptVersion);
+  const cached = await resolveCacheAndMisses(options, bundle.packets, promptVersion, progressTracker);
+  progressTracker.setCacheCounts(cached.hits, cached.misses);
+  await progressTracker.emit();
   await options.progress(`Cache hits ${cached.hits}, misses ${cached.misses}`);
-  const audited = await auditMisses(options, cached.missPackets, promptVersion, cached.outcomes.length, bundle.packets.length);
+  const audited = await auditMisses(options, cached.missPackets, promptVersion, cached.outcomes.length, bundle.packets.length, progressTracker);
   throwIfAborted(options.abortController.signal);
   const outcomes = [...bundle.degradedOutcomes, ...cached.outcomes, ...audited];
   await options.progress(`Reducing ${outcomes.length} item outcomes`);
@@ -103,7 +109,73 @@ export async function runBacklogCurationMapReduceTask(options: BacklogCurationMa
   return await runReducer(options, reducerInput);
 }
 
-async function resolveCacheAndMisses(options: BacklogCurationMapReduceRunnerOptions, packets: readonly BacklogCurationMapReduceItemPacket[], promptVersion: string): Promise<{ hits: number; misses: number; outcomes: BacklogCurationMapReduceItemOutcome[]; missPackets: BacklogCurationMapReduceItemPacket[] }> {
+type BacklogCurationProgressItem = ExtensionAgentTaskBacklogCurationProgress['items'][number];
+
+interface BacklogCurationProgressTracker {
+  emit: () => Promise<void>;
+  setCacheCounts: (hits: number, misses: number) => void;
+  markRunning: (packet: BacklogCurationMapReduceItemPacket) => Promise<void>;
+  markOutcome: (outcome: BacklogCurationMapReduceItemOutcome) => Promise<void>;
+}
+
+function createBacklogCurationProgressTracker(options: BacklogCurationMapReduceRunnerOptions, bundle: BacklogCurationMapReduceSourceBundle): BacklogCurationProgressTracker {
+  const items = new Map<string, BacklogCurationProgressItem>();
+  for (const packet of bundle.packets) items.set(packet.itemId, { itemId: packet.itemId, ...(packet.itemTitle !== undefined && { title: packet.itemTitle }), status: 'pending' });
+  for (const outcome of bundle.degradedOutcomes) items.set(outcome.itemId, itemFromOutcome(outcome));
+  let cacheHits = 0;
+  let misses = 0;
+  const emit = async () => {
+    if (options.backlogCurationProgress === undefined) return;
+    const snapshotItems = [...items.values()];
+    const completed = snapshotItems.filter((item) => item.status === 'cache-hit' || item.status === 'completed' || item.status === 'failed' || item.status === 'cancelled').length;
+    const running = snapshotItems.filter((item) => item.status === 'running').length;
+    await options.backlogCurationProgress({
+      total: snapshotItems.length,
+      cacheHits,
+      misses,
+      running,
+      completed,
+      remaining: Math.max(0, snapshotItems.length - completed - running),
+      items: snapshotItems,
+    });
+  };
+  return {
+    emit,
+    setCacheCounts: (hits, missCount) => { cacheHits = hits; misses = missCount; },
+    markRunning: async (packet) => {
+      const current = items.get(packet.itemId);
+      items.set(packet.itemId, { ...current, itemId: packet.itemId, ...(packet.itemTitle !== undefined && { title: packet.itemTitle }), status: 'running', startedAt: new Date().toISOString() });
+      await emit();
+    },
+    markOutcome: async (outcome) => {
+      items.set(outcome.itemId, itemFromOutcome(outcome, items.get(outcome.itemId)));
+      await emit();
+    },
+  };
+}
+
+function itemFromOutcome(outcome: BacklogCurationMapReduceItemOutcome, previous?: BacklogCurationProgressItem): BacklogCurationProgressItem {
+  const finding = 'finding' in outcome ? outcome.finding : undefined;
+  return {
+    ...previous,
+    itemId: outcome.itemId,
+    status: outcomeStatus(outcome),
+    outcome: outcome.outcome,
+    ...(finding?.verdict !== undefined && { verdict: finding.verdict }),
+    ...(finding?.summary !== undefined && { summary: finding.summary }),
+    ...(previous?.startedAt !== undefined && { startedAt: previous.startedAt }),
+    completedAt: new Date().toISOString(),
+  };
+}
+
+function outcomeStatus(outcome: BacklogCurationMapReduceItemOutcome): BacklogCurationProgressItem['status'] {
+  if (outcome.outcome === 'cache-hit') return 'cache-hit';
+  if (outcome.outcome === 'audited-finding') return 'completed';
+  if (outcome.outcome === 'cancelled') return 'cancelled';
+  return 'failed';
+}
+
+async function resolveCacheAndMisses(options: BacklogCurationMapReduceRunnerOptions, packets: readonly BacklogCurationMapReduceItemPacket[], promptVersion: string, progressTracker: BacklogCurationProgressTracker): Promise<{ hits: number; misses: number; outcomes: BacklogCurationMapReduceItemOutcome[]; missPackets: BacklogCurationMapReduceItemPacket[] }> {
   const outcomes: BacklogCurationMapReduceItemOutcome[] = [];
   const missPackets: BacklogCurationMapReduceItemPacket[] = [];
   let hits = 0;
@@ -119,7 +191,9 @@ async function resolveCacheAndMisses(options: BacklogCurationMapReduceRunnerOpti
     }
     if (cache.hit) {
       hits += 1;
-      outcomes.push(outcomeFromFinding('cache-hit', cache.finding));
+      const outcome = outcomeFromFinding('cache-hit', cache.finding);
+      outcomes.push(outcome);
+      await progressTracker.markOutcome(outcome);
     } else {
       missPackets.push(packet);
     }
@@ -127,7 +201,7 @@ async function resolveCacheAndMisses(options: BacklogCurationMapReduceRunnerOpti
   return { hits, misses: missPackets.length, outcomes, missPackets };
 }
 
-async function auditMisses(options: BacklogCurationMapReduceRunnerOptions, packets: readonly BacklogCurationMapReduceItemPacket[], promptVersion: string, completedBefore: number, totalPackets: number): Promise<BacklogCurationMapReduceItemOutcome[]> {
+async function auditMisses(options: BacklogCurationMapReduceRunnerOptions, packets: readonly BacklogCurationMapReduceItemPacket[], promptVersion: string, completedBefore: number, totalPackets: number, progressTracker: BacklogCurationProgressTracker): Promise<BacklogCurationMapReduceItemOutcome[]> {
   if (packets.length === 0) return [];
   const concurrency = itemAuditConcurrency(options.itemAuditConcurrency);
   const outcomes = new Array<BacklogCurationMapReduceItemOutcome>(packets.length);
@@ -138,7 +212,9 @@ async function auditMisses(options: BacklogCurationMapReduceRunnerOptions, packe
       const index = nextIndex;
       nextIndex += 1;
       const packet = packets[index]!;
+      await progressTracker.markRunning(packet);
       outcomes[index] = await auditOnePacket(options, packet, promptVersion);
+      await progressTracker.markOutcome(outcomes[index]!);
       completed += 1;
       await options.progress(`Audited ${Math.min(completed, totalPackets)}/${totalPackets} items`);
     }

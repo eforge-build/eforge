@@ -421,6 +421,36 @@ describe('backlog curation apply', () => {
     });
   });
 
+  it('accepts agent-verified current-source closure evidence with required role labels', async () => {
+    await withTempProject(async (cwd) => {
+      await writeBacklogItem(cwd, { id: 'agent-verified-widget', status: 'planned', body: '# Agent Verified Widget\n\n## Evidence\n\n- Prior\n' });
+      const source = await buildBacklogCurationSource(cwd, undefined, { enrichPullRequests: false });
+      const entry = await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-1', originalRequest: '', derivedRequest: 'curate', selection: {}, requestedOutputSections: ['backlogCurationDraft', 'recommendations'], includeRoadmap: true, purpose: 'backlog-curation', sourceFingerprint: source.sourceFingerprint, createdAt: 'now' });
+      const snapshot = await readBacklogItemSnapshot(cwd, 'agent-verified-widget');
+      await writeBacklogCurationSourcePreviewMetadata(cwd, source);
+      const task = curationTask(source.sourceFingerprint, {
+        itemChanges: [{
+          kind: 'item',
+          id: 'agent-verified-widget',
+          precondition: { kind: 'item', id: 'agent-verified-widget', bodySha256: snapshot!.bodySha256, recordSha256: snapshot!.recordSha256 },
+          metadata: { status: 'shipped' },
+          rationale: 'Read-only item audit verified implementation and product-surface wiring in current source.',
+          evidence: [
+            `${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} implementation: src/agent-verified-widget.ts — handler implements the widget`,
+            `${SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX} product-surface: src/index.ts — action exports the widget`,
+          ],
+        }],
+        epicChanges: [],
+        noOpRechecks: [],
+      });
+
+      const preview = await previewBacklogCurationDraftFromTask(cwd, task, entry);
+      expect(preview.valid).toBe(true);
+      await applyBacklogCurationDraftFromTask(cwd, task, { taskId: 'task-1', applyBacklogCurationDraft: { previewAcknowledged: true, confirmApply: true } }, entry);
+      expect((await readBacklogItem(cwd, 'agent-verified-widget'))?.status).toBe('shipped');
+    });
+  });
+
   it('rejects source-first closed-status patches supported only by historical or session-plan evidence in preview and apply', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'history-only-widget', status: 'planned', body: '# History Only Widget\n\n## Evidence\n\n- Prior\n' });

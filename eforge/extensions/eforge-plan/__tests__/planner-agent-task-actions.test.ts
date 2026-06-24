@@ -92,20 +92,6 @@ function needsInputTask(taskId: string): ExtensionAgentTaskRecord {
   });
 }
 
-function creationDraftTask(taskId = 'task-creation', session = 'created-session'): ExtensionAgentTaskRecord {
-  return parseExtensionAgentTaskRecord({
-    taskId, kind: 'eforge-plan.planning-draft', status: 'completed', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:00:01.000Z',
-    result: { summary: 'Drafted a plan.', assumptionsOpenQuestions: ['Assumes API stable.'], decision: 'ready', sessionPlanCreationDraft: { session, topic: 'Created topic', planningType: 'feature', planningDepth: 'focused', sections: [
-      { dimension: 'problem-statement', content: 'The generated feature needs a clear implementation plan.' },
-      { dimension: 'scope', content: 'Generated scope content.' },
-      { dimension: 'acceptance-criteria', content: '- Feature session plan includes every required readiness section.' },
-      { dimension: 'code-impact', content: 'Update extension apply behavior and tests.' },
-      { dimension: 'design-decisions', content: 'Validate generated drafts before persistence.' },
-      { dimension: 'assumptions-and-validation', content: 'Run extension action tests and type checking.' },
-    ] } },
-  });
-}
-
 describe('planning agent task actions', () => {
   it('prepares planner context before starting a daemon-owned planning task', async () => {
     await withTempProject(async (cwd) => {
@@ -673,6 +659,37 @@ describe('planning agent task actions', () => {
     });
   });
 
+  it('defaults planning task lists to compact paginated summaries for agent callers', async () => {
+    await withTempProject(async (cwd) => {
+      const base = { originalRequest: 'Plan', derivedRequest: 'Draft a session plan.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft' as const] };
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-one', createdAt: '2026-01-01T00:00:00.000Z', ...base });
+      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-two', createdAt: '2026-01-02T00:00:00.000Z', ...base });
+      const records: Record<string, ExtensionAgentTaskRecord> = {
+        'task-one': completedTask({ taskId: 'task-one' } as Partial<ExtensionAgentTaskRecord>),
+        'task-two': completedTask({ taskId: 'task-two' } as Partial<ExtensionAgentTaskRecord>),
+      };
+      const result = await dispatchExtensionAction(load(), {
+        actionId: 'eforge-plan:list-planning-agent-tasks',
+        input: { limit: 1 },
+        requestedBy: { host: 'pi' },
+        cwd,
+        timeoutMs: 1000,
+        agentTasks: () => ({
+          async start() { throw new Error('unexpected start'); },
+          async get(taskId: string) { return { task: records[taskId]! }; },
+          async cancel() { throw new Error('unexpected cancel'); },
+        }),
+      });
+      expect(result.kind).toBe('success');
+      if (result.kind !== 'success') throw new Error(result.message);
+      expect(result.output).toMatchObject({ total: 2, returned: 1, limit: 1, offset: 0, hasMore: true, nextOffset: 1 });
+      const [task] = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
+      expect(task).toMatchObject({ available: true, status: 'completed', entrySummary: { taskId: 'task-two', selection: { itemCount: 1 } }, taskSummary: { taskId: 'task-two', resultSummary: { outputKeys: expect.arrayContaining(['recommendations', 'sessionPlanPatch']) } } });
+      expect(task).not.toHaveProperty('entry');
+      expect(task).not.toHaveProperty('task');
+    });
+  });
+
   it('previews backlog curation validation on demand without coupling it to task list rendering', async () => {
     await withTempProject(async (cwd) => {
       await writeBacklogItem(cwd, { id: 'closed-dep', status: 'shipped', body: '# Closed Dependency\n' });
@@ -1095,100 +1112,4 @@ describe('planning agent task actions', () => {
     });
   });
 
-  it('applies an AI creation draft to a fresh session without enqueueing builds, shipping items, or submitting the plan', async () => {
-    await withTempProject(async (cwd) => {
-      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
-      const task = creationDraftTask();
-      const result = await dispatchExtensionAction(load(), {
-        actionId: 'eforge-plan:apply-planning-agent-task-result',
-        input: { taskId: 'task-creation', applySessionPlanCreationDraft: {} },
-        requestedBy: { host: 'console' },
-        cwd,
-        timeoutMs: 1000,
-        agentTasks: () => ({
-          async start() { throw new Error('unexpected start'); },
-          async get() { return { task }; },
-          async cancel() { throw new Error('unexpected cancel'); },
-        }),
-      });
-      expect(result).toMatchObject({ kind: 'success', output: { sessionPlanCreationDraft: { session: 'created-session', relativePath: '.eforge/session-plans/created-session.md' } } });
-      const markdown = await readFile(join(cwd, '.eforge', 'session-plans', 'created-session.md'), 'utf-8');
-      expect(markdown).toContain('Generated scope content.');
-      expect(markdown).not.toContain('status: submitted');
-      expect((await readBacklogItem(cwd, 'item-one'))?.status).toBe('planned');
-    });
-  });
-
-  it('rejects creation draft apply when the target session already exists', async () => {
-    await withTempProject(async (cwd) => {
-      await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'created-session', topic: 'Existing' });
-      const task = creationDraftTask();
-      const result = await dispatchExtensionAction(load(), {
-        actionId: 'eforge-plan:apply-planning-agent-task-result',
-        input: { taskId: 'task-creation', applyRecommendations: true, applySessionPlanCreationDraft: {} },
-        requestedBy: { host: 'console' },
-        cwd,
-        timeoutMs: 1000,
-        agentTasks: () => ({
-          async start() { throw new Error('unexpected start'); },
-          async get() { return { task }; },
-          async cancel() { throw new Error('unexpected cancel'); },
-        }),
-      });
-      expect(result.kind).toBe('invalid-input');
-      expect(await readRecommendations(cwd)).toBeNull();
-    });
-  });
-
-  it('marks a workflow-indexed session-plan creation draft applied and hides it from normal task lists', async () => {
-    await withTempProject(async (cwd) => {
-      await writeBacklogItem(cwd, { id: 'item-one', status: 'planned', body: '# Item One\n\n## Claim\n\nPlan it.\n' });
-      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-creation', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: '', derivedRequest: 'Draft a session plan for Item One.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft'] });
-      const task = creationDraftTask();
-      const registry = load();
-      const agentTasks = () => ({
-        async start() { throw new Error('unexpected start'); },
-        async get() { return { task }; },
-        async cancel() { throw new Error('unexpected cancel'); },
-      });
-      const applied = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:apply-planning-agent-task-result', input: { taskId: 'task-creation', applySessionPlanCreationDraft: {} }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(applied).toMatchObject({ kind: 'success', output: { sessionPlanCreationDraft: { session: 'created-session' } } });
-      const entry = (await readPlanningTaskWorkflowIndex(cwd)).entries.find((candidate) => candidate.taskId === 'task-creation');
-      expect(entry?.appliedAt).toEqual(expect.any(String));
-      const listed = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:list-planning-agent-tasks', input: {}, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(listed).toMatchObject({ kind: 'success', output: { tasks: [] } });
-    });
-  });
-
-  it('rejects reapplying an already-consumed creation draft even with a different session override', async () => {
-    await withTempProject(async (cwd) => {
-      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-creation', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: '', derivedRequest: 'Draft a session plan.', selection: {}, requestedOutputSections: ['sessionPlanCreationDraft'], appliedAt: '2026-01-01T00:00:02.000Z' });
-      const result = await dispatchExtensionAction(load(), {
-        actionId: 'eforge-plan:apply-planning-agent-task-result',
-        input: { taskId: 'task-creation', applySessionPlanCreationDraft: { session: 'different-session' } },
-        requestedBy: { host: 'console' },
-        cwd,
-        timeoutMs: 1000,
-        agentTasks: () => ({ async start() { throw new Error('unexpected start'); }, async get() { return { task: creationDraftTask() }; }, async cancel() { throw new Error('unexpected cancel'); } }),
-      });
-      expect(result.kind).toBe('invalid-input');
-      await expect(readFile(join(cwd, '.eforge', 'session-plans', 'different-session.md'), 'utf-8')).rejects.toThrow();
-    });
-  });
-
-  it('leaves a failed creation apply visible and manually dismissible', async () => {
-    await withTempProject(async (cwd) => {
-      await createSessionPlanningWorkflowAdapter().flat.create({ cwd, session: 'created-session', topic: 'Existing' });
-      await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-creation', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: '', derivedRequest: 'Draft a session plan.', selection: {}, requestedOutputSections: ['sessionPlanCreationDraft'] });
-      const registry = load();
-      const agentTasks = () => ({ async start() { throw new Error('unexpected start'); }, async get() { return { task: creationDraftTask() }; }, async cancel() { throw new Error('unexpected cancel'); } });
-      const failed = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:apply-planning-agent-task-result', input: { taskId: 'task-creation', applySessionPlanCreationDraft: {} }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(failed.kind).toBe('invalid-input');
-      expect((await readPlanningTaskWorkflowIndex(cwd)).entries[0]?.appliedAt).toBeUndefined();
-      const listed = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:list-planning-agent-tasks', input: {}, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(listed).toMatchObject({ kind: 'success', output: { tasks: [expect.objectContaining({ entry: expect.objectContaining({ taskId: 'task-creation' }) })] } });
-      const removed = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:remove-planning-agent-task', input: { taskId: 'task-creation' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(removed).toMatchObject({ kind: 'success', output: { removed: true } });
-    });
-  });
 });

@@ -7,7 +7,7 @@ import { useToast } from '@/components/toast';
 import { agentTaskTone } from '@/lib/tone';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { isGeneratedPlannerPrompt, selectionItemsLabel } from '@/lib/plan-title';
-import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
+import type { BacklogCurationProgress, JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -139,10 +139,12 @@ function TaskIdBadge({ taskId }: { taskId: string }) {
 
 function RunningProgress({ task }: { task?: PlanningAgentTaskRecord }) {
   const progress = task?.metadata?.sectionProgress;
+  const backlogCurationProgress = task?.metadata?.backlogCurationProgress;
   const message = task?.metadata?.progressMessage;
   return (
-    <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+    <div className="mt-2 grid gap-2 text-xs text-muted-foreground">
       <span className="flex items-start gap-2"><Spinner className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words">{message ?? 'Planning in progress…'}</span></span>
+      {backlogCurationProgress && <BacklogCurationProgressView progress={backlogCurationProgress} />}
       {progress && (
         <div className="grid gap-0.5 break-words">
           {progress.currentSection && <span>Current section: <span className="text-foreground">{progress.currentSection}</span></span>}
@@ -150,6 +152,57 @@ function RunningProgress({ task }: { task?: PlanningAgentTaskRecord }) {
           {progress.remainingSections && progress.remainingSections.length > 0 && <span>Remaining: {progress.remainingSections.join(', ')}</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+function BacklogCurationProgressView({ progress }: { progress: BacklogCurationProgress }) {
+  const total = Math.max(0, progress.total);
+  const percent = total === 0 ? 0 : Math.min(100, Math.round((progress.completed / total) * 100));
+  const runningItems = progress.items.filter((item) => item.status === 'running');
+  const allCompletedItems = progress.items.filter((item) => item.status === 'completed' || item.status === 'cache-hit');
+  const completedItems = allCompletedItems.slice(0, 8);
+  const allRemainingItems = progress.items.filter((item) => item.status === 'pending');
+  const remainingItems = allRemainingItems.slice(0, 8);
+  const failedItems = progress.items.filter((item) => item.status === 'failed' || item.status === 'cancelled');
+  return (
+    <div className="rounded-md border border-border/70 bg-muted/20 p-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-foreground">Backlog item agents</span>
+        <span>{progress.completed}/{total} analyzed · {progress.running} running · {progress.remaining} remaining</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+      </div>
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
+        <ProgressLane title="Running" items={runningItems} empty="No active item agents" />
+        <ProgressLane title="Completed" items={completedItems} empty="No completed items yet" suffix={allCompletedItems.length > completedItems.length ? `+${allCompletedItems.length - completedItems.length} more` : undefined} />
+        <ProgressLane title="Remaining" items={remainingItems} empty="No remaining items" suffix={allRemainingItems.length > remainingItems.length ? `+${allRemainingItems.length - remainingItems.length} more` : undefined} />
+      </div>
+      {failedItems.length > 0 && <ProgressLane className="mt-2" title="Needs attention" items={failedItems.slice(0, 6)} empty="" suffix={failedItems.length > 6 ? `+${failedItems.length - 6} more` : undefined} />}
+    </div>
+  );
+}
+
+function ProgressLane({ title, items, empty, suffix, className }: { title: string; items: BacklogCurationProgress['items']; empty: string; suffix?: string; className?: string }) {
+  return (
+    <div className={className}>
+      <div className="mb-1 flex items-center justify-between gap-2 text-2xs uppercase tracking-wide text-muted-foreground">
+        <span>{title}</span>
+        <span>{items.length}{suffix ? ` ${suffix}` : ''}</span>
+      </div>
+      <div className="grid gap-1">
+        {items.length === 0 && empty && <span className="rounded border border-dashed border-border px-2 py-1 text-muted-foreground">{empty}</span>}
+        {items.map((item) => (
+          <div key={`${title}-${item.itemId}`} title={item.summary ?? item.itemId} className="min-w-0 rounded border border-border/70 bg-background/70 px-2 py-1">
+            <div className="truncate text-foreground">{item.title ?? item.itemId}</div>
+            <div className="mt-0.5 flex flex-wrap gap-1 text-2xs">
+              <span className="rounded bg-muted px-1">{item.status}</span>
+              {item.verdict && <span className="rounded bg-primary/10 px-1 text-text-bright">{item.verdict}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

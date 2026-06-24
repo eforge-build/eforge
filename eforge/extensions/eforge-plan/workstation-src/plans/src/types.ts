@@ -332,6 +332,26 @@ export type PlanRevisionApplyOutput =
   | { kind: 'applied'; session: string; turnId: string; taskId: string; appliedSections: string[]; plan?: PlanData; readiness?: Readiness; path?: string; message: string }
   | { kind: 'not-applicable'; session: string; turnId?: string; taskId?: string; message: string };
 export interface PlanRevisionRedraftAnswer { questionId?: string; prompt?: string; answer: string; }
+export type BacklogCurationItemProgressStatus = 'pending' | 'running' | 'cache-hit' | 'completed' | 'failed' | 'cancelled';
+export interface BacklogCurationItemProgress {
+  itemId: string;
+  title?: string;
+  status: BacklogCurationItemProgressStatus;
+  outcome?: string;
+  verdict?: string;
+  summary?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+export interface BacklogCurationProgress {
+  total: number;
+  cacheHits: number;
+  misses: number;
+  running: number;
+  completed: number;
+  remaining: number;
+  items: BacklogCurationItemProgress[];
+}
 export interface PlanningAgentTaskMetadata {
   label?: string;
   summary?: string;
@@ -339,6 +359,7 @@ export interface PlanningAgentTaskMetadata {
   outputSectionCount?: number;
   warningCount?: number;
   sectionProgress?: PlanningTaskSectionProgress;
+  backlogCurationProgress?: BacklogCurationProgress;
 }
 export interface PlanningAgentTaskRecord {
   taskId: string;

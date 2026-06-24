@@ -6,6 +6,8 @@ import { buildProspectiveCurationProjection, type ProspectiveCurationProjection,
 // --- eforge:endregion shipped-evidence-context ---
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX, SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX, validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
+import { appendEvidence, applySectionOperations, fieldPath } from './backlog-curation-apply-utils.js';
+export { applySectionOperations } from './backlog-curation-apply-utils.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 import {
   assertSafeBacklogId,
@@ -146,13 +148,6 @@ export async function validateBacklogCurationPlanningDraftResult(cwd: string, re
   }
 }
 // --- eforge:endregion apply-entrypoint ---
-// --- eforge:region markdown-section-helpers ---
-export function applySectionOperations(body: string, operations: readonly { heading: string; action: 'replace' | 'append'; content: string }[]): string {
-  let next = body;
-  for (const operation of operations) next = applySectionOperation(next, operation);
-  return next;
-}
-// --- eforge:endregion markdown-section-helpers ---
 
 // --- eforge:region validation-helpers ---
 function parseDraft(value: unknown) {
@@ -319,8 +314,23 @@ function validateSourceFirstClosedPatch(audit: BacklogCurationFullImplementation
   const candidates = sourceFirstClosureCandidatesForPatch(audit, patch, status);
   const draftEvidence = (patch.evidence ?? []).join('\n').toLowerCase();
   const matching = candidates.filter(hasDisplayableSourceConfidence).filter((entry) => sourceFirstEvidenceMatchesDraft(entry, draftEvidence));
-  if (matching.length === 0) throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires matching strong current-source closure preview metadata and a draft evidence citation from that metadata.`);
-  if (!matching.some((entry) => sourceFirstCandidateHasRequiredEvidenceRoles(entry, status))) throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires closure preview metadata with both core ${status === 'superseded' ? 'replacement' : 'implementation'} and product-surface wiring evidence.`);
+  if (matching.length === 0) {
+    if (draftEvidenceHasRequiredClosureRoles(patch.evidence ?? [], status)) return;
+    throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires matching strong current-source closure preview metadata or agent-verified current-source evidence with both required role labels.`);
+  }
+  if (!matching.some((entry) => sourceFirstCandidateHasRequiredEvidenceRoles(entry, status))) {
+    if (draftEvidenceHasRequiredClosureRoles(patch.evidence ?? [], status)) return;
+    throw validationError(`${path}.evidence`, `Source-first ${status} patch for ${patch.id} requires closure preview metadata or agent-verified current-source evidence with both core ${status === 'superseded' ? 'replacement' : 'implementation'} and product-surface wiring evidence.`);
+  }
+}
+
+function draftEvidenceHasRequiredClosureRoles(evidence: readonly string[], status: 'shipped' | 'superseded'): boolean {
+  const requiredPrefix = status === 'shipped' ? SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX : SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX;
+  const currentSourceEvidence = evidence.map((entry) => entry.trim().toLowerCase()).filter((entry) => entry.startsWith(requiredPrefix.toLowerCase()));
+  const implementationRole = status === 'superseded' ? 'replacement' : 'implementation';
+  const hasImplementation = currentSourceEvidence.some((entry) => entry.includes(`${implementationRole}:`) || entry.includes('implementation:'));
+  const hasProductSurface = currentSourceEvidence.some((entry) => entry.includes('product-surface:'));
+  return hasImplementation && hasProductSurface;
 }
 
 function sourceFirstClosureCandidatesForPatch(audit: BacklogCurationFullImplementationAuditPreview | undefined, patch: { kind?: string; id?: string }, status: 'shipped' | 'superseded'): FullAuditEvidenceSummary[] {
@@ -552,47 +562,6 @@ function isEvidenceHeading(value: string): boolean {
 }
 // --- eforge:endregion validation-helpers ---
 
-// --- eforge:region markdown-section-helpers ---
-function applySectionOperation(body: string, operation: { heading: string; action: 'replace' | 'append'; content: string }): string {
-  const heading = operation.heading.trim();
-  const lines = splitLinesPreservingEndings(body);
-  const start = lines.findIndex((line) => new RegExp(`^#{2,6}\\s+${escapeRegExp(heading)}\\s*$`).test(line.replace(/\r?\n$/u, '')));
-  if (start === -1) return appendNewSection(body, heading, operation.content);
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (/^#{2,6}\s+/.test(lines[index])) { end = index; break; }
-  }
-  const prefix = lines.slice(0, start + 1).join('');
-  const existing = lines.slice(start + 1, end).join('').trim();
-  const suffix = lines.slice(end).join('');
-  const content = operation.action === 'replace' || existing.length === 0 ? operation.content.trim() : `${existing}\n\n${operation.content.trim()}`;
-  return `${prefix}\n${content}\n${suffix.startsWith('\n') || suffix.length === 0 ? '' : '\n'}${suffix}`;
-}
-
-function splitLinesPreservingEndings(value: string): string[] {
-  const matches = value.match(/.*(?:\r?\n|$)/gu) ?? [];
-  return matches.filter((line, index) => line.length > 0 || index < matches.length - 1);
-}
-
-function appendNewSection(body: string, heading: string, content: string): string {
-  return `${body.trimEnd()}\n\n## ${heading}\n\n${content.trim()}\n`;
-}
-
-function appendEvidence(body: string, evidence: readonly string[]): string {
-  const bullets = evidence.map((entry) => entry.trim()).filter(Boolean).map((entry) => `- ${entry}`).join('\n');
-  return bullets.length === 0 ? body : applySectionOperation(body, { heading: 'Evidence', action: 'append', content: bullets });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function fieldPath(root: string, pointer: string): string {
-  if (pointer.length === 0) return root;
-  return pointer.split('/').filter(Boolean).reduce((path, part) => (/^\d+$/.test(part) ? `${path}[${part}]` : `${path}.${part}`), root);
-}
-
 function validationError(path: string, message: string): ExtensionActionInputValidationError {
   return new ExtensionActionInputValidationError(message, [{ path, message }]);
 }
-// --- eforge:endregion markdown-section-helpers ---
