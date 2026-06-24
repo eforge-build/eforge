@@ -1,4 +1,4 @@
-import { Type, type Static } from '@eforge-build/extension-sdk';
+import { createContributionPaginationInputFields, Type, type Static } from '@eforge-build/extension-sdk';
 import { PlanningProfileSchema, PromotionSelectionOutputSchema } from './schema.js';
 
 // A draft plan unit is the editable convergence layer between an AI
@@ -72,7 +72,11 @@ export const CreateDraftUnitInputSchema = Type.Object({
   itemIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true })),
 }, { additionalProperties: false });
 
-export const ListDraftUnitsInputSchema = Type.Object({}, { additionalProperties: false });
+const DraftUnitPageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
+
+export const ListDraftUnitsInputSchema = Type.Object({
+  ...DraftUnitPageInputFields,
+}, { additionalProperties: false });
 
 export const DraftUnitIdInputSchema = Type.Object({
   unitId: Type.String({ minLength: 1 }),
@@ -95,8 +99,27 @@ export const DraftUnitOutputSchema = Type.Object({
   unit: DraftPlanUnitSchema,
 }, { additionalProperties: false });
 
+export const DraftPlanUnitListItemSchema = Type.Object({
+  unitId: Type.String({ minLength: 1 }),
+  title: Type.String({ minLength: 1 }),
+  provenance: DraftPlanUnitProvenanceSchema,
+  sourceRecommendationRef: Type.Optional(Type.String()),
+  profile: Type.Optional(PlanningProfileSchema),
+  itemIds: Type.Array(Type.String()),
+  itemCount: Type.Integer({ minimum: 0 }),
+  status: DraftPlanUnitStatusSchema,
+  promotedSession: Type.Optional(Type.String()),
+  promotedAt: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+}, { additionalProperties: false });
+export type DraftPlanUnitListItem = Static<typeof DraftPlanUnitListItemSchema>;
+
 export const ListDraftUnitsOutputSchema = Type.Object({
-  units: Type.Array(DraftPlanUnitSchema),
+  units: Type.Array(DraftPlanUnitListItemSchema),
+  total: Type.Integer({ minimum: 0 }),
+  limit: Type.Integer({ minimum: 1 }),
+  offset: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
 
 export const DeleteDraftUnitOutputSchema = Type.Object({

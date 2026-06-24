@@ -1,6 +1,29 @@
 import { ExtensionAgentTaskRecordSchema } from '@eforge-build/client';
 import { Type, type Static } from '@eforge-build/extension-sdk';
 import { RoadmapContextSchema } from './roadmap-schemas.js';
+import { RecommendationActionabilityProjectionSchema } from './recommendation-actionability-schemas.js';
+export {
+  RecommendationActionabilityLinkSchema,
+  RecommendationActionabilityLifecycleStateSchema,
+  RecommendationActionabilityProjectionSchema,
+  RecommendationActionabilityReasonCodeSchema,
+  RecommendationActionabilityStateSchema,
+  RecommendationEntryActionabilitySchema,
+  RecommendationGroupActionabilitySchema,
+  RecommendationGroupActionabilityStateSchema,
+  RecommendationItemActionabilitySchema,
+} from './recommendation-actionability-schemas.js';
+export type {
+  RecommendationActionabilityLifecycleState,
+  RecommendationActionabilityLink,
+  RecommendationActionabilityProjection,
+  RecommendationActionabilityReasonCode,
+  RecommendationActionabilityState,
+  RecommendationEntryActionability,
+  RecommendationGroupActionability,
+  RecommendationGroupActionabilityState,
+  RecommendationItemActionability,
+} from './recommendation-actionability-schemas.js';
 
 // --- eforge:region backlog-schemas ---
 export const BACKLOG_STATUSES = ['candidate', 'planned', 'active', 'shipped', 'stale', 'superseded'] as const;
@@ -151,6 +174,7 @@ export const GetRecommendationsInputSchema = Type.Object({});
 export const GetRecommendationsOutputSchema = Type.Object({
   recommendations: Type.Union([BacklogRecommendationModelSchema, Type.Null()]),
   recommendationSummary: Type.Optional(RecommendationSummarySchema),
+    recommendationActionability: Type.Optional(RecommendationActionabilityProjectionSchema),
   path: Type.String(),
   status: RecommendationDerivedStatusSchema,
   activeRefreshTask: Type.Optional(ExtensionAgentTaskRecordSchema),
@@ -532,7 +556,8 @@ export type RecommendationBlockedChain = Static<typeof RecommendationBlockedChai
 export type BacklogRecommendationModel = Static<typeof BacklogRecommendationModelSchema>;
 export type RecommendationSummary = Static<typeof RecommendationSummarySchema>;
 export type RecommendationStaleReason = Static<typeof RecommendationStaleReasonSchema>; export type RecommendationStatusSidecar = Static<typeof RecommendationStatusSidecarSchema>;
-export type RecommendationDerivedStatus = Static<typeof RecommendationDerivedStatusSchema>; export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
+export type RecommendationDerivedStatus = Static<typeof RecommendationDerivedStatusSchema>;
+export type GetRecommendationsInput = Static<typeof GetRecommendationsInputSchema>;
 export type GetRecommendationsOutput = Static<typeof GetRecommendationsOutputSchema>;
 export type PutRecommendationsInput = Static<typeof PutRecommendationsInputSchema>;
 export type PutRecommendationsOutput = Static<typeof PutRecommendationsOutputSchema>;

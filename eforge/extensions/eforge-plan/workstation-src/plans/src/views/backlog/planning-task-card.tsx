@@ -22,9 +22,11 @@ interface PlanningTaskCardProps {
   onRedraft: (taskId: string, input: RedraftInput) => Promise<void>;
   onApply: (taskId: string, input: JsonObject) => Promise<unknown>;
   applyError?: PlanningTaskApplyError;
+  detailLoading?: boolean;
+  detailError?: string;
 }
 
-export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, applyError }: PlanningTaskCardProps) {
+export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, applyError, detailLoading = false, detailError }: PlanningTaskCardProps) {
   const { entry, task } = item;
   const status = task?.status ?? item.status ?? 'queued';
   const running = status === 'queued' || status === 'running';
@@ -65,6 +67,13 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
 
       {running && <RunningProgress task={task} />}
 
+      {detailLoading && (
+        <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><Spinner className="h-3.5 w-3.5" /> Loading full task result…</p>
+      )}
+      {detailError && (
+        <p className="mt-2 text-xs text-destructive-foreground">Could not load full task result: {detailError}</p>
+      )}
+
       {applyError && (
         <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs">
           <p className="font-semibold text-destructive-foreground">{applyError.automatic ? 'Automatic session-plan creation failed.' : 'Session-plan creation failed.'}</p>
@@ -89,6 +98,9 @@ export function PlanningTaskCard({ item, busy, titles, onCancel, onRemove, onRet
 
       {status === 'completed' && task?.result && (
         <PlanningTaskResultPreview item={item} busy={busy} onRedraft={onRedraft} onApply={onApply} applyError={applyError} />
+      )}
+      {status === 'completed' && !task?.result && item.resultOmitted && !detailLoading && !detailError && (
+        <p className="mt-2 text-xs text-muted-foreground">Open the task details to load the full generated result.</p>
       )}
     </article>
   );

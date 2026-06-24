@@ -58,7 +58,7 @@ describe('DraftMergePanel', () => {
     const onMerge = vi.fn<(input: MergeDraftUnitsInput) => Promise<MergeDraftUnitsResponse>>(async () => ({ unit: { ...unitA, unitId: 'merged-1', title: 'Lane A' }, removedUnitIds: ['u1', 'u2'], advisory: okAdvisory }));
     const onClose = vi.fn();
     const onOpenUnit = vi.fn<(key: string) => void>();
-    render(<ToastProvider><DraftMergePanel units={[unitA, unitB]} onAdvise={onAdvise} onMerge={onMerge} onClose={onClose} onOpenUnit={onOpenUnit} /></ToastProvider>);
+    render(<ToastProvider><DraftMergePanel units={[{ ...unitA, itemIds: ['a'], itemCount: 1 }, { ...unitB, itemIds: ['b'], itemCount: 1 }]} onAdvise={onAdvise} onMerge={onMerge} onClose={onClose} onOpenUnit={onOpenUnit} /></ToastProvider>);
 
     await waitFor(() => expect(onAdvise).toHaveBeenCalledWith(['u1', 'u2']));
     expect(screen.getByText('Dependencies look consistent')).toBeDefined();

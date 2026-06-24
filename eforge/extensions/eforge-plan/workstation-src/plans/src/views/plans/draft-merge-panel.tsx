@@ -8,11 +8,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/components/toast';
 import { useEscapeToClose } from '@/hooks/use-escape-to-close';
 import { draftKey } from '@/lib/plan-links';
-import type { DraftPlanUnit, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse } from '@/types';
+import type { DraftPlanUnitListItem, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse } from '@/types';
 import { DraftUnitAdvisoryNotice } from './draft-unit-advisory';
 
 interface DraftMergePanelProps {
-  units: DraftPlanUnit[];
+  units: DraftPlanUnitListItem[];
   onAdvise: (unitIds: string[]) => Promise<DraftUnitAdvisory>;
   onMerge: (input: MergeDraftUnitsInput) => Promise<MergeDraftUnitsResponse>;
   onClose: () => void;
@@ -63,7 +63,7 @@ export function DraftMergePanel({ units, onAdvise, onMerge, onClose, onOpenUnit 
           {units.map((unit) => (
             <div key={unit.unitId} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-xs">
               <span className="min-w-0 flex-1 truncate text-text-bright">{unit.title}</span>
-              <Badge variant="outline" className="shrink-0 text-2xs">{unit.items.length} item{unit.items.length === 1 ? '' : 's'}</Badge>
+              <Badge variant="outline" className="shrink-0 text-2xs">{unit.itemCount} item{unit.itemCount === 1 ? '' : 's'}</Badge>
             </div>
           ))}
         </div>

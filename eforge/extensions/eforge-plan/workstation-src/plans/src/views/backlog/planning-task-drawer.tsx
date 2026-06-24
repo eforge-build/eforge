@@ -1,5 +1,7 @@
+import * as React from 'react';
+import { getBridge } from '@/bridge';
 import { Drawer } from '@/components/ui/drawer';
-import type { JsonObject, PlanningAgentTaskListItem, PlanningTaskApplyError } from '@/types';
+import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskResponse, PlanningTaskApplyError } from '@/types';
 import { PlanningTaskCard } from './planning-task-card';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -24,11 +26,37 @@ interface PlanningTaskDrawerProps {
  * the narrow rail. It reuses PlanningTaskCard verbatim, so there is no separate
  * result-rendering path to keep in sync.
  */
+const bridge = getBridge();
+
 export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onRetry, onRedraft, onApply, applyError, onClose }: PlanningTaskDrawerProps) {
+  const [detailItem, setDetailItem] = React.useState<PlanningAgentTaskListItem>(item);
+  const [detailState, setDetailState] = React.useState<'idle' | 'loading' | 'error'>('idle');
+  const [detailError, setDetailError] = React.useState<string | undefined>();
+
+  React.useEffect(() => {
+    setDetailItem(item);
+    setDetailError(undefined);
+    if (item.resultOmitted !== true) { setDetailState('idle'); return undefined; }
+    let active = true;
+    setDetailState('loading');
+    void bridge.invokeAction<PlanningAgentTaskResponse>('get-planning-agent-task', { taskId: item.entry.taskId })
+      .then((response) => {
+        if (!active) return;
+        setDetailItem({ ...item, available: true, status: response.task.status, task: response.task, resultOmitted: false });
+        setDetailState('idle');
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setDetailError(caught instanceof Error ? caught.message : String(caught));
+        setDetailState('error');
+      });
+    return () => { active = false; };
+  }, [item]);
+
   return (
     <Drawer ariaLabel="Planning task details" title="Planning task" headerAlign="center" closeLabel="Close planning task" onClose={onClose}>
       <PlanningTaskCard
-        item={item}
+        item={detailItem}
         busy={busy}
         titles={titles}
         onCancel={onCancel}
@@ -37,6 +65,8 @@ export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onR
         onRedraft={onRedraft}
         onApply={onApply}
         applyError={applyError}
+        detailLoading={detailState === 'loading'}
+        detailError={detailError}
       />
     </Drawer>
   );

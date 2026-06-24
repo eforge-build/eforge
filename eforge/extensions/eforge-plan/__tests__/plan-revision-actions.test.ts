@@ -147,7 +147,10 @@ describe('plan revision actions', () => {
       tasks.set('task-1', queuedTask('task-1'));
 
       const listed = await dispatch(cwd, 'list-plan-revision-sessions', {}, tasks);
+      expect(listed).toMatchObject({ total: 1, limit: 50, offset: 0 });
       expect(listed.sessions).toEqual([expect.objectContaining({ targetSession: 'revise-me', turns: [expect.objectContaining({ available: true, status: 'queued' })] })]);
+      const emptyPage = await dispatch(cwd, 'list-plan-revision-sessions', { limit: 1, offset: 1 }, tasks);
+      expect(emptyPage).toMatchObject({ sessions: [], total: 1, limit: 1, offset: 1 });
       const turnId = ((listed.sessions as Array<{ turns: Array<{ turn: { turnId: string } }> }>)[0].turns[0].turn.turnId);
       await dispatch(cwd, 'cancel-plan-revision-turn', { session: 'revise-me', turnId, reason: 'stop' }, tasks);
       expect(tasks.get('task-1')?.status).toBe('cancelled');

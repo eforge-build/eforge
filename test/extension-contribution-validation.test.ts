@@ -9,6 +9,10 @@ function recordAction(action: Record<string, unknown>) {
   return state;
 }
 
+function broadActionWarnings(state: ReturnType<typeof recordAction>) {
+  return state.diagnostics.filter((diagnostic) => diagnostic.code.startsWith('extension:action-'));
+}
+
 describe('extension contribution validation warnings', () => {
   it('emits separate warning diagnostics for unbounded broad list/search/board actions', () => {
     const state = recordAction({
@@ -30,7 +34,7 @@ describe('extension contribution validation warnings', () => {
     expect(state.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
   });
 
-  it('records broad paginated profiled actions with limit, cursor, and projection controls without warnings', () => {
+  it('records broad paginated profiled actions with limit and cursor controls without projection warnings', () => {
     const state = recordAction({
       id: 'search-items',
       title: 'Search items',
@@ -38,7 +42,6 @@ describe('extension contribution validation warnings', () => {
         query: Type.Optional(Type.String()),
         limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
-        fields: Type.Optional(Type.Array(Type.String())),
       }, { additionalProperties: false }),
       outputSchema: Type.Object({
         items: Type.Array(Type.Object({ id: Type.String() }, { additionalProperties: false })),
@@ -53,6 +56,48 @@ describe('extension contribution validation warnings', () => {
     expect(state.actions.map((action) => action.id)).toEqual(['validation-ext:search-items']);
     expect(state.diagnostics).toEqual([]);
   });
+
+  it('does not classify single-record and write-like actions from title or description text', () => {
+    const cases = [
+      {
+        id: 'get-item',
+        title: 'Get item from board list',
+        description: 'Reads one record while mentioning search and list terminology.',
+        sideEffects: ['local-read'],
+      },
+      {
+        id: 'preview-backlog-curation-task',
+        title: 'Preview board curation task',
+        description: 'Shows one search/list preview without dumping a board.',
+        sideEffects: ['local-read'],
+      },
+      {
+        id: 'remove-planning-agent-task',
+        title: 'Remove planning task from list',
+        description: 'Removes one board task selected by id.',
+        sideEffects: ['local-write'],
+      },
+      {
+        id: 'list-board-note',
+        title: 'Write board list note',
+        description: 'Updates a note whose copy mentions search and board lists.',
+        sideEffects: ['local-write'],
+      },
+    ];
+
+    for (const action of cases) {
+      const state = recordAction({
+        ...action,
+        inputSchema: Type.Object({ id: Type.String() }, { additionalProperties: false }),
+        outputSchema: Type.Object({ items: Type.Array(Type.Object({ id: Type.String() }, { additionalProperties: false })) }, { additionalProperties: false }),
+        handler: () => ({ items: [] }),
+      });
+
+      expect(state.actions.map((registeredAction) => registeredAction.id)).toEqual([`validation-ext:${action.id}`]);
+      expect(broadActionWarnings(state)).toEqual([]);
+    }
+  });
+
 
   it('recognizes broad action controls inside composed input schemas', () => {
     const state = recordAction({

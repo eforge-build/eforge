@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { boardFromCompact, mergeCompactLanePage } from '@/lib/compact-board-adapter';
-import type { AdvisoryResponse, Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftUnitAdvisory, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
+import type { AdvisoryResponse, Artifact, Board, CompactBoardResponse, DraftPlanUnit, DraftPlanUnitListItem, DraftUnitAdvisory, DraftUnitResponse, GetRecommendationsResponse, JsonObject, ListDraftUnitsResponse, MergeDraftUnitsInput, MergeDraftUnitsResponse, PlanningAgentTaskRecord, PromoteDraftUnitResponse, RecommendationActionabilityProjection, RecommendationFreshnessView, RecommendationModel, RecommendationStatus, RefreshRecommendationsResponse, RoadmapStateResponse, SplitDraftUnitInput, SplitDraftUnitResponse, UpdateDraftUnitInput, UpdateRoadmapStateRequest } from '@/types';
 
 const bridge = getBridge();
 const emptyBoard: Board = { lanes: [], items: [], epics: [], counts: { total: 0, open: 0, closed: 0 } };
@@ -12,11 +12,12 @@ export interface WorkstationDataState {
   board: Board;
   artifacts: Artifact[];
   recommendations: RecommendationModel | null;
+  recommendationActionability: RecommendationActionabilityProjection | null;
   recommendationStatus: RecommendationStatus | null;
   recommendationFreshness: RecommendationFreshnessView | null;
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   roadmapState: RoadmapStateResponse | null;
-  draftUnits: DraftPlanUnit[];
+  draftUnits: DraftPlanUnitListItem[];
   saveRoadmapState: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
   refreshRecommendations: () => Promise<RefreshRecommendationsResponse>;
   forkRecommendationToDraftUnit: (recommendationRef: string, title?: string) => Promise<DraftPlanUnit>;
@@ -39,11 +40,12 @@ export function useWorkstationData(): WorkstationDataState {
   const [board, setBoard] = React.useState<Board>(emptyBoard);
   const [artifacts, setArtifacts] = React.useState<Artifact[]>([]);
   const [recommendations, setRecommendations] = React.useState<RecommendationModel | null>(null);
+  const [recommendationActionability, setRecommendationActionability] = React.useState<RecommendationActionabilityProjection | null>(null);
   const [recommendationStatus, setRecommendationStatus] = React.useState<RecommendationStatus | null>(null);
   const [recommendationFreshness, setRecommendationFreshness] = React.useState<RecommendationFreshnessView | null>(null);
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
   const [roadmapState, setRoadmapState] = React.useState<RoadmapStateResponse | null>(null);
-  const [draftUnits, setDraftUnits] = React.useState<DraftPlanUnit[]>([]);
+  const [draftUnits, setDraftUnits] = React.useState<DraftPlanUnitListItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -66,10 +68,18 @@ export function useWorkstationData(): WorkstationDataState {
     else failures.push(reason('plans', artifactsResult.reason));
     if (recommendationsResult.status === 'fulfilled') {
       setRecommendations(recommendationModel);
+      setRecommendationActionability(recommendationsResult.value.recommendationActionability ?? null);
       setRecommendationStatus(recommendationsResult.value.status ?? null);
       setRecommendationFreshness(recommendationsResult.value.recommendationFreshness ?? null);
       setActiveRecommendationRefreshTask(recommendationsResult.value.activeRefreshTask ?? null);
-    } else failures.push(reason('recommendations', recommendationsResult.reason));
+    } else {
+      setRecommendations(null);
+      setRecommendationActionability(null);
+      setRecommendationStatus(null);
+      setRecommendationFreshness(null);
+      setActiveRecommendationRefreshTask(null);
+      failures.push(reason('recommendations', recommendationsResult.reason));
+    }
     if (roadmapResult.status === 'fulfilled') setRoadmapState(roadmapResult.value);
     else failures.push(reason('roadmap', roadmapResult.reason));
     if (draftUnitsResult.status === 'fulfilled') setDraftUnits(draftUnitsResult.value.units ?? []);
@@ -172,7 +182,7 @@ export function useWorkstationData(): WorkstationDataState {
 
   React.useEffect(() => { void refresh(); }, [refresh]);
 
-  return { board, artifacts, recommendations, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, draftUnits, saveRoadmapState, refreshRecommendations, forkRecommendationToDraftUnit, updateDraftUnit, deleteDraftUnit, promoteDraftUnit, mergeDraftUnits, splitDraftUnit, adviseMergeDraftUnits, adviseSplitDraftUnit, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
+  return { board, artifacts, recommendations, recommendationActionability, recommendationStatus, recommendationFreshness, activeRecommendationRefreshTask, roadmapState, draftUnits, saveRoadmapState, refreshRecommendations, forkRecommendationToDraftUnit, updateDraftUnit, deleteDraftUnit, promoteDraftUnit, mergeDraftUnits, splitDraftUnit, adviseMergeDraftUnits, adviseSplitDraftUnit, loading, error, refresh, loadMoreBoard, loadClosedLane, bridgeVersion: bridge.version };
 }
 
 function reason(label: string, caught: unknown): string {

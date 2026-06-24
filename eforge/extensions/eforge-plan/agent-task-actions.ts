@@ -1,5 +1,5 @@
-import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
-import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness } from '@eforge-build/client';
+import { CONTRIBUTION_OUTPUT_PROFILES, defineExtensionAction, ExtensionActionInputValidationError, paginateContributionItems, type ExtensionAction, type ExtensionActionContext } from '@eforge-build/extension-sdk';
+import { EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT, type EforgePlanPlanningSessionPlanCreationReadiness, type ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { getSessionPlanDimensionSpec, type PlanningDepth, type PlanningType } from '@eforge-build/input';
 import {
   applyCompletedPlanningAgentTaskResult,
@@ -23,6 +23,7 @@ import { previewBacklogCurationDraftFromTask } from './backlog-curation-apply.js
 import { boundedSourceText } from './planner-source-bounds.js';
 import { userActionError } from './action-errors.js';
 import { normalizePlanningAgentTaskListProjection, projectMissingPlanningAgentTaskListItem, projectPlanningAgentTaskListItem } from './planning-agent-task-projection.js';
+import { assertRecommendationSelectionActionable } from './recommendation-actionability.js';
 import {
   ApplyPlanningAgentTaskResultInputSchema,
   ApplyPlanningAgentTaskResultOutputSchema,
@@ -48,10 +49,7 @@ import {
   type StartPlanningAgentTaskInput,
 } from './planning-agent-task-schemas.js';
 import { PLANNING_DEPTHS, PLANNING_TYPES } from './schema.js';
-
-
 type RequestedOutputSections = PlanningTaskWorkflowEntry['requestedOutputSections'];
-
 export const startPlanningAgentTaskAction = defineExtensionAction({
   id: 'start-planning-agent-task',
   title: 'Start eforge-plan planning agent task',
@@ -71,6 +69,7 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
       includeRoadmap: input.includeRoadmap,
     });
     throwIfAborted(ctx.signal);
+    await assertRecommendationSelectionActionable(ctx.cwd, hasBacklogSelection(selection) ? context.items.map((item) => item.id) : [], ctx.agentTasks, selectionValidationPath(selection));
     const derivedGoal = deriveUserGoal(input.userGoal, selection, context);
     const requestedOutputSections = resolveRequestedOutputSections(input, selection);
     const planningType = typeof input.planningType === 'string' ? input.planningType : undefined;
@@ -104,7 +103,6 @@ export const startPlanningAgentTaskAction = defineExtensionAction({
     return response;
   },
 });
-
 export const getPlanningAgentTaskAction = defineExtensionAction({
   id: 'get-planning-agent-task',
   title: 'Get eforge-plan planning agent task',
@@ -116,7 +114,6 @@ export const getPlanningAgentTaskAction = defineExtensionAction({
     return await ctx.agentTasks.get(input.taskId);
   },
 });
-
 export const previewBacklogCurationTaskAction = defineExtensionAction({
   id: 'preview-backlog-curation-task',
   title: 'Preview backlog curation task validation',
@@ -131,7 +128,6 @@ export const previewBacklogCurationTaskAction = defineExtensionAction({
     return await previewBacklogCurationDraftFromTask(ctx.cwd, response.task, entry);
   },
 });
-
 export const cancelPlanningAgentTaskAction = defineExtensionAction({
   id: 'cancel-planning-agent-task',
   title: 'Cancel eforge-plan planning agent task',
@@ -143,7 +139,6 @@ export const cancelPlanningAgentTaskAction = defineExtensionAction({
     return await ctx.agentTasks.cancel(input.taskId, input.reason);
   },
 });
-
 export const listPlanningAgentTasksAction = defineExtensionAction({
   id: 'list-planning-agent-tasks',
   title: 'List eforge-plan planning agent tasks',
@@ -154,29 +149,51 @@ export const listPlanningAgentTasksAction = defineExtensionAction({
   sideEffects: ['local-read'],
   async handler(input, ctx) {
     const entries = listPlanningTaskWorkflowEntries(await readPlanningTaskWorkflowIndex(ctx.cwd)).filter((entry) => !isConsumedSessionPlanCreationEntry(entry));
-    const projection = normalizePlanningAgentTaskListProjection(input, ctx.requestedBy.host, entries.length);
-    const pageEntries = entries.slice(projection.offset, projection.offset + projection.limit);
-    const tasks = await Promise.all(pageEntries.map(async (entry) => {
+    const projection = normalizePlanningAgentTaskListProjection(input, ctx.requestedBy.host);
+    const page = paginateContributionItems(entries, { limit: projection.limit, offset: projection.offset }, { defaultLimit: 50, maxLimit: 100 });
+    const tasks = await Promise.all(page.items.map(async (entry) => {
       try {
         const response = await ctx.agentTasks.get(entry.taskId);
-        return projectPlanningAgentTaskListItem({ entry, task: response.task, includeEntry: projection.includeEntry, includeTask: projection.includeTask });
+        const originalResult = taskResult(response.task);
+        const task = projectTaskForList(response.task);
+        return {
+          ...projectPlanningAgentTaskListItem({ entry, task: response.task, includeEntry: projection.includeEntry, includeTask: false }),
+          ...(projection.includeTask ? { task } : {}),
+          ...(taskResult(task) === undefined && originalResult !== undefined ? { resultOmitted: true } : {}),
+        };
       } catch (err) {
         return projectMissingPlanningAgentTaskListItem({ entry, includeEntry: projection.includeEntry, staleReason: errorMessage(err) });
       }
     }));
-    const nextOffset = projection.offset + tasks.length;
+    const nextOffset = page.offset + tasks.length;
     return toJsonSafeObject({
       tasks,
-      total: entries.length,
+      total: page.total,
       returned: tasks.length,
-      limit: projection.limit,
-      offset: projection.offset,
-      hasMore: nextOffset < entries.length,
-      ...(nextOffset < entries.length ? { nextOffset } : {}),
+      limit: page.limit,
+      offset: page.offset,
+      hasMore: nextOffset < page.total,
+      ...(nextOffset < page.total ? { nextOffset } : {}),
     });
   },
 });
-
+function projectTaskForList(task: ExtensionAgentTaskRecord): ExtensionAgentTaskRecord {
+  const result = taskResult(task);
+  if (result === undefined || !shouldOmitTaskResultFromList(result)) return task;
+  const { result: _omitted, ...compactTask } = task as ExtensionAgentTaskRecord & { result?: unknown };
+  return compactTask as ExtensionAgentTaskRecord;
+}
+function taskResult(task: ExtensionAgentTaskRecord): unknown {
+  return 'result' in task ? task.result : undefined;
+}
+function shouldOmitTaskResultFromList(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false;
+  const record = result as Record<string, unknown>;
+  return record.backlogCurationDraft !== undefined
+    || record.recommendations !== undefined
+    || record.planDrafts !== undefined
+    || record.playbookDraft !== undefined;
+}
 export const removePlanningAgentTaskAction = defineExtensionAction({
   id: 'remove-planning-agent-task',
   title: 'Remove eforge-plan planning task from workflow list',
@@ -200,7 +217,6 @@ export const removePlanningAgentTaskAction = defineExtensionAction({
     return toJsonSafeObject({ taskId: input.taskId, removed });
   },
 });
-
 export const retryPlanningAgentTaskAction = defineExtensionAction({
   id: 'retry-planning-agent-task',
   title: 'Retry eforge-plan planning agent task',
@@ -238,7 +254,6 @@ export const retryPlanningAgentTaskAction = defineExtensionAction({
     });
   },
 });
-
 export const redraftPlanningAgentTaskAction = defineExtensionAction({
   id: 'redraft-planning-agent-task',
   title: 'Redraft eforge-plan planning agent task',
@@ -281,7 +296,6 @@ export const redraftPlanningAgentTaskAction = defineExtensionAction({
     });
   },
 });
-
 export const applyPlanningAgentTaskResultAction = defineExtensionAction({
   id: 'apply-planning-agent-task-result',
   title: 'Apply eforge-plan planning agent task result',
@@ -295,7 +309,6 @@ export const applyPlanningAgentTaskResultAction = defineExtensionAction({
     return await applyCompletedPlanningAgentTaskResult(ctx.cwd, response.task, input);
   },
 });
-
 interface StartLinkedTaskParams {
   parent: PlanningTaskWorkflowEntry;
   derivedGoal: string;
@@ -304,7 +317,6 @@ interface StartLinkedTaskParams {
   sourceFingerprint?: string;
   requestedOutputSections: RequestedOutputSections;
 }
-
 async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedTaskParams): Promise<PlanningAgentTaskWorkflowStartOutput> {
   const { parent } = params;
   const requested = params.requestedOutputSections.length > 0 ? params.requestedOutputSections : undefined;
@@ -340,7 +352,6 @@ async function startLinkedTask(ctx: ExtensionActionContext, params: StartLinkedT
   }));
   return toJsonSafeObject({ task: response.task, entry });
 }
-
 // Record the durable workflow index entry only after the daemon task has started.
 // If recording fails, the task would otherwise keep running without an index
 // entry, so reload/list/retry/redraft could never discover it. Cancel the
@@ -361,7 +372,6 @@ async function recordEntryOrCancelTask(
     throw recordError;
   }
 }
-
 interface BuildEntryParams {
   taskId: string;
   parentTaskId?: string;
@@ -377,11 +387,9 @@ interface BuildEntryParams {
   itemAuditConcurrency?: number;
   sourceFingerprint?: string;
 }
-
 function backlogCurationSourceProviderInput(redraft?: Record<string, unknown>, itemAuditConcurrency?: number): typeof BACKLOG_CURATION_SOURCE_PROVIDER & { input: { itemAuditConcurrency?: number; redraft?: Record<string, unknown> } } {
   return { ...BACKLOG_CURATION_SOURCE_PROVIDER, input: { ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }), ...(redraft !== undefined && { redraft }) } };
 }
-
 function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
   return {
     taskId: params.taskId,
@@ -400,13 +408,11 @@ function buildEntry(params: BuildEntryParams): PlanningTaskWorkflowEntry {
     createdAt: new Date().toISOString(),
   };
 }
-
 function validateSourceRecommendationRef(input: StartPlanningAgentTaskInput): void {
   if (input.sourceRecommendationRef !== undefined && input.itemIds === undefined) {
     throw new ExtensionActionInputValidationError('sourceRecommendationRef requires itemIds.', [{ path: 'sourceRecommendationRef', message: 'sourceRecommendationRef records recommendation-lane provenance for an explicit itemIds selection; use recommendationRef when the recommendation itself is the selector.' }]);
   }
 }
-
 function selectionFromInput(input: StartPlanningAgentTaskInput): PlanningTaskWorkflowSelection {
   return {
     ...(input.itemIds !== undefined && { itemIds: input.itemIds }),
@@ -415,7 +421,6 @@ function selectionFromInput(input: StartPlanningAgentTaskInput): PlanningTaskWor
     ...(input.sourceRecommendationRef !== undefined && { sourceRecommendationRef: input.sourceRecommendationRef }),
   };
 }
-
 function plannerSelection(entry: PlanningTaskWorkflowEntry) {
   return {
     itemIds: entry.selection.itemIds,
@@ -425,17 +430,20 @@ function plannerSelection(entry: PlanningTaskWorkflowEntry) {
     includeRoadmap: entry.includeRoadmap,
   };
 }
-
 function hasBacklogSelection(selection: PlanningTaskWorkflowSelection): boolean {
   return selection.itemIds !== undefined || selection.epicId !== undefined || selection.recommendationRef !== undefined;
 }
-
+function selectionValidationPath(selection: PlanningTaskWorkflowSelection): string {
+  if (selection.itemIds !== undefined) return 'itemIds';
+  if (selection.epicId !== undefined) return 'epicId';
+  if (selection.recommendationRef !== undefined) return 'recommendationRef';
+  return 'selection';
+}
 function isConsumedSessionPlanCreationEntry(entry: PlanningTaskWorkflowEntry): boolean {
   return entry.appliedAt !== undefined
     && !isBacklogCurationWorkflowEntry(entry)
     && entry.requestedOutputSections.includes('sessionPlanCreationDraft');
 }
-
 // --- eforge:region session-plan-creation-readiness ---
 function buildSessionPlanCreationReadiness(
   requestedOutputSections: RequestedOutputSections | undefined,
@@ -455,29 +463,23 @@ function buildSessionPlanCreationReadiness(
     ...(resolved !== undefined && { resolved }),
   };
 }
-
 function dimensionEntry(planningType: PlanningType, planningDepth: PlanningDepth): { requiredDimensions: string[]; optionalDimensions: string[] } {
   const spec = getSessionPlanDimensionSpec(planningType, planningDepth);
   return { requiredDimensions: [...spec.required], optionalDimensions: [...spec.optional] };
 }
-
 function isPlanningType(value: string | undefined): value is PlanningType {
   return value !== undefined && (PLANNING_TYPES as readonly string[]).includes(value);
 }
-
 function isPlanningDepth(value: string | undefined): value is PlanningDepth {
   return value !== undefined && (PLANNING_DEPTHS as readonly string[]).includes(value);
 }
 // --- eforge:endregion session-plan-creation-readiness ---
-
 function resolveRequestedOutputSections(input: StartPlanningAgentTaskInput, selection: PlanningTaskWorkflowSelection): RequestedOutputSections | undefined {
   if (input.requestedOutputSections !== undefined) return input.requestedOutputSections;
   if (hasBacklogSelection(selection)) return ['sessionPlanCreationDraft'];
   return undefined;
 }
-
 interface PlannerContextLike { items: Array<{ id: string; title?: string }> }
-
 function deriveUserGoal(explicit: string | undefined, selection: PlanningTaskWorkflowSelection, context: PlannerContextLike): string {
   if (explicit !== undefined && explicit.trim().length > 0) return boundedUserGoal(explicit);
   const titles = context.items.map((item) => (item.title?.trim() ? item.title.trim() : item.id));
@@ -488,13 +490,11 @@ function deriveUserGoal(explicit: string | undefined, selection: PlanningTaskWor
   if (hasBacklogSelection(selection) && titles.length > 0) return boundedUserGoal(`Draft a session plan for ${titles.join(', ')}.`);
   throw userActionError('start-planning-agent-task requires a userGoal or a backlog selection to derive a planning goal.', { path: 'userGoal' });
 }
-
 function explicitOrPreservedGoal(explicit: string | undefined, parent: PlanningTaskWorkflowEntry, context: PlannerContextLike): string {
   if (explicit !== undefined && explicit.trim().length > 0) return boundedUserGoal(explicit);
   if (parent.derivedRequest.trim().length > 0) return boundedUserGoal(parent.derivedRequest);
   return deriveUserGoal(undefined, parent.selection, context);
 }
-
 function buildRedraftContext(parent: PlanningTaskWorkflowEntry, task: unknown, input: { answers?: string[]; steering?: string }): Record<string, unknown> {
   const result = completedTaskResult(task);
   return {
@@ -507,7 +507,6 @@ function buildRedraftContext(parent: PlanningTaskWorkflowEntry, task: unknown, i
     ...(input.steering !== undefined && { steering: input.steering }),
   };
 }
-
 // Redraft is normally the clarification-answer flow: it only makes sense when
 // the parent task completed by requesting clarification (decision: needs-input
 // with at least one question). Backlog curation tasks also allow redrafting a
@@ -522,37 +521,30 @@ function assertRedraftableParent(task: unknown, taskId: string, allowCurationDra
     throw userActionError(`Planning task ${taskId} is not a completed needs-input clarification result; only tasks that requested clarification can be redrafted.`, { path: 'taskId', details: { taskId } });
   }
 }
-
 function completedTaskResult(task: unknown): Record<string, unknown> | undefined {
   if (task === null || typeof task !== 'object') return undefined;
   const record = task as Record<string, unknown>;
   if (record.status !== 'completed') return undefined;
   return record.result !== null && typeof record.result === 'object' ? record.result as Record<string, unknown> : undefined;
 }
-
 function requireWorkflowEntry(index: Awaited<ReturnType<typeof readPlanningTaskWorkflowIndex>>, taskId: string, operation: string): PlanningTaskWorkflowEntry {
   const entry = findPlanningTaskWorkflowEntry(index, taskId);
   if (entry === undefined) throw userActionError(`No preserved workflow context found for planning task ${taskId}; cannot ${operation}.`, { path: 'taskId', details: { taskId, operation } });
   return entry;
 }
-
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
-
 function isMissingTaskError(err: unknown): boolean {
   return /unknown task id|no such task|not found/i.test(errorMessage(err));
 }
-
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new Error('Planning agent task start was aborted before enqueueing the daemon task.');
 }
-
 function boundedUserGoal(userGoal: string): string {
   const suffix = '…[truncated]';
   return userGoal.length > MAX_PLANNING_AGENT_USER_GOAL_LENGTH ? `${userGoal.slice(0, MAX_PLANNING_AGENT_USER_GOAL_LENGTH - suffix.length)}${suffix}` : userGoal;
 }
-
 function assertApplySelection(input: { applyRecommendations?: boolean; applyHandoffDrafts?: unknown[]; applySessionPlanDrafts?: unknown[]; applySessionPlanCreationDraft?: unknown; applyBacklogCurationDraft?: unknown }): void {
   if (input.applyBacklogCurationDraft !== undefined) {
     if (input.applyRecommendations === true || (input.applyHandoffDrafts?.length ?? 0) > 0 || (input.applySessionPlanDrafts?.length ?? 0) > 0 || input.applySessionPlanCreationDraft !== undefined) {
@@ -568,7 +560,6 @@ function assertApplySelection(input: { applyRecommendations?: boolean; applyHand
   ) return;
   throw new ExtensionActionInputValidationError('Applying a planning agent task result requires an apply selection.', [{ path: '', message: 'Select recommendations, handoff drafts, session-plan sections, a session-plan creation draft, or a backlog curation draft.' }]);
 }
-
 export const planningAgentTaskActions: readonly ExtensionAction<any, any>[] = [
   startPlanningAgentTaskAction,
   getPlanningAgentTaskAction,

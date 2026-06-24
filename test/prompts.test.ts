@@ -131,6 +131,10 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(prompt).toContain('cover or explicitly skip every required id');
     expect(prompt).toContain('becomes the persisted `## Executive Summary`');
     expect(prompt).toContain('fast scope review and sign-off');
+    expect(prompt).toContain('changed surfaces');
+    expect(prompt).toContain('intended direction');
+    expect(prompt).toContain('out-of-scope boundaries');
+    expect(prompt).toContain('validation/build confidence');
     expect(prompt).toContain('emit `needs-input`');
     expect(prompt).toMatch(/Do not submit.*Goal.*Scope.*Context and Evidence.*Implementation Plan.*Validation.*Risks and Guardrails/s);
   });

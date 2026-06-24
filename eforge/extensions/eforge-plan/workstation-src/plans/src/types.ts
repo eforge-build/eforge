@@ -72,7 +72,6 @@ export interface PlanLifecycleProjection {
   linkRows: LifecycleLinkRow[];
   failureEvidence?: LifecycleLinkRow[];
 }
-
 export interface PullRequestRef {
   url?: string;
   status?: string;
@@ -85,8 +84,6 @@ export interface LandingRef {
   commitSha?: string;
   landedAt?: string;
 }
-
-
 export interface Artifact {
   key: string;
   kind: 'plan' | 'plan-set';
@@ -185,10 +182,19 @@ export interface RecommendationModel {
   blockedChains?: RecommendationBlockedChain[];
   rationaleAndAssumptions?: string[];
 }
+export type RecommendationActionabilityState = 'actionable' | 'non-actionable';
+export type RecommendationGroupActionabilityState = 'actionable' | 'partially-actionable' | 'non-actionable';
+export type RecommendationActionabilityReasonCode = 'planned-session-plan' | 'submitted-session-plan' | 'active-planning-task' | 'queued-trace' | 'building-trace' | 'active-build-session-trace' | 'open-pr-trace';
+export type RecommendationActionabilityLifecycleState = 'none' | 'planned' | 'active' | 'queue' | 'build' | 'pr-open' | 'merged' | 'shipped' | 'failed' | 'partial';
+export interface RecommendationActionabilityLink { kind: string; label: string; itemIds: string[]; status?: string; session?: string; taskId?: string; prdId?: string; runId?: string; sessionId?: string; featureBranch?: string; commitSha?: string; prUrl?: string; path?: string; timestamp?: string; }
+export interface RecommendationItemActionability { itemId: string; state: RecommendationActionabilityState; lifecycleState: RecommendationActionabilityLifecycleState; reasonCode?: RecommendationActionabilityReasonCode; reasonMessage?: string; associatedLinks: RecommendationActionabilityLink[]; }
+export interface RecommendationEntryActionability extends RecommendationEntry { lane: string; actionability: RecommendationItemActionability; }
+export interface RecommendationGroupActionability { ref: string; state: RecommendationGroupActionabilityState; itemIds: string[]; actionableItemIds: string[]; suppressedItemIds: string[]; items: RecommendationItemActionability[]; }
+export interface RecommendationActionabilityProjection { schemaVersion: 1; activeWork: RecommendationEntryActionability[]; readyCandidates: RecommendationEntryActionability[]; recommendedNextSequence: RecommendationEntryActionability[]; safeParallelizableGroups: RecommendationGroupActionability[]; }
 
 // Draft plan unit shapes live in a sibling module to keep this barrel under the
 // file-size cap; re-export so `@/types` stays the single import surface.
-export type { DraftPlanUnitProvenance, DraftPlanUnitItemOrigin, DraftPlanUnitItem, DraftPlanUnit, PlanningProfile, UpdateDraftUnitInput, ListDraftUnitsResponse, DraftUnitResponse, PromoteDraftUnitResponse, DraftUnitAdvisorySeverity, DraftUnitAdvisoryFindingCode, DraftUnitAdvisoryFinding, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, SplitDraftUnitInput, SplitDraftUnitResponse, AdvisoryResponse } from './draft-unit-types';
+export type { DraftPlanUnitProvenance, DraftPlanUnitItemOrigin, DraftPlanUnitItem, DraftPlanUnit, DraftPlanUnitListItem, PlanningProfile, UpdateDraftUnitInput, ListDraftUnitsResponse, DraftUnitResponse, PromoteDraftUnitResponse, DraftUnitAdvisorySeverity, DraftUnitAdvisoryFindingCode, DraftUnitAdvisoryFinding, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, SplitDraftUnitInput, SplitDraftUnitResponse, AdvisoryResponse } from './draft-unit-types';
 export { PLANNING_PROFILES } from './draft-unit-types';
 
 export type RecommendationStatusState = 'missing' | 'fresh' | 'stale';
@@ -403,20 +409,21 @@ export interface PlanningTaskApplyError {
   automatic: boolean;
   occurredAt?: string;
 }
-
 export interface PlanningAgentTaskListItem {
   entry: PlanningTaskWorkflowEntry;
   available: boolean;
   status?: AgentTaskStatus;
   task?: PlanningAgentTaskRecord;
+  resultOmitted?: boolean;
   staleReason?: string;
   backlogCurationPreview?: BacklogCurationPreviewDetails;
 }
-export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; }
+export interface ListPlanningAgentTasksResponse { tasks: PlanningAgentTaskListItem[]; total: number; limit: number; offset: number; }
 export interface PlanningAgentTaskWorkflowStartResponse { task: PlanningAgentTaskRecord; entry: PlanningTaskWorkflowEntry; }
 export interface GetRecommendationsResponse {
   recommendations: RecommendationModel | null;
   recommendationSummary?: RecommendationSummary;
+  recommendationActionability?: RecommendationActionabilityProjection;
   path: string;
   status: RecommendationStatus;
   recommendationFreshness?: RecommendationFreshnessView;
@@ -472,14 +479,12 @@ export interface RefreshRecommendationsResponse {
   sourceFingerprint: string;
   reused?: boolean;
 }
-
 export interface AnalyzeAllBacklogResponse {
   task: PlanningAgentTaskRecord;
   entry: PlanningTaskWorkflowEntry;
   sourceFingerprint?: string;
   reused?: boolean;
 }
-
 export interface AppliedSessionPlanCreationDraft { session: string; relativePath: string; readiness: Readiness; }
 export interface ApplyPlanningTaskResponse {
   schemaVersion: 1;

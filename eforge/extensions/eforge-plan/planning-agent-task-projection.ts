@@ -1,7 +1,8 @@
 import type { ExtensionActionRequestedByHost, ExtensionAgentTaskRecord } from '@eforge-build/client';
 import type { ListPlanningAgentTasksInput, PlanningAgentTaskListItem, PlanningTaskWorkflowEntry } from './planning-agent-task-schemas.js';
 
-const DEFAULT_AGENT_LIST_LIMIT = 20;
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 100;
 const MAX_SUMMARY_ITEM_IDS = 10;
 const SUMMARY_TEXT_LIMIT = 500;
 
@@ -15,12 +16,11 @@ export interface PlanningAgentTaskListProjectionOptions {
 export function normalizePlanningAgentTaskListProjection(
   input: ListPlanningAgentTasksInput,
   host: ExtensionActionRequestedByHost,
-  total: number,
 ): PlanningAgentTaskListProjectionOptions {
   const includeEntry = input.includeEntry ?? host === 'console';
   const includeTask = input.includeTask ?? host === 'console';
-  const offset = input.offset ?? 0;
-  const limit = input.limit ?? (host === 'console' ? Math.max(1, total) : DEFAULT_AGENT_LIST_LIMIT);
+  const offset = normalizeNonNegativeInteger(input.offset, 0);
+  const limit = Math.min(normalizePositiveInteger(input.limit, DEFAULT_LIST_LIMIT), MAX_LIST_LIMIT);
   return { includeEntry, includeTask, limit, offset };
 }
 
@@ -108,4 +108,12 @@ function summarizeResult(result: Record<string, unknown>): NonNullable<PlanningA
 
 function capText(value: string): string {
   return value.length <= SUMMARY_TEXT_LIMIT ? value : `${value.slice(0, SUMMARY_TEXT_LIMIT - 1)}…`;
+}
+
+function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function normalizeNonNegativeInteger(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
 }

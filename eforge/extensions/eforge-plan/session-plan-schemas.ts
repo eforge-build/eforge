@@ -1,4 +1,4 @@
-import { Type, type Static } from '@eforge-build/extension-sdk';
+import { createContributionPaginationInputFields, Type, type Static } from '@eforge-build/extension-sdk';
 import {
   ItemLifecycleProjectionSchema,
   JsonValueSchema,
@@ -67,16 +67,22 @@ export const PlanningArtifactSchema = Type.Object({
   linkRows: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
   failureEvidence: Type.Optional(Type.Array(LifecycleLinkRowSchema)),
 }, JsonObjectAdditionalProperties);
+const PlanningArtifactPageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
+
 export const ListPlanningArtifactsInputSchema = Type.Object({
   includeSubmitted: Type.Optional(Type.Boolean()),
   includeBoard: Type.Optional(Type.Boolean()),
   includeArchive: Type.Optional(Type.Boolean()),
   epic: Type.Optional(Type.String()),
+  ...PlanningArtifactPageInputFields,
 });
 export const ListPlanningArtifactsOutputSchema = Type.Object({
   artifacts: Type.Array(PlanningArtifactSchema),
   plans: Type.Array(PlanningArtifactSchema),
   planSets: Type.Array(PlanningArtifactSchema),
+  total: Type.Integer({ minimum: 0 }),
+  limit: Type.Integer({ minimum: 1 }),
+  offset: Type.Integer({ minimum: 0 }),
   board: Type.Optional(ListBoardOutputSchema),
 }, JsonObjectAdditionalProperties);
 export const ShowSessionPlanInputSchema = Type.Object({ session: Type.String() });

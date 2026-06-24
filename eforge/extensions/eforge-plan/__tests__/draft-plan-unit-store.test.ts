@@ -220,10 +220,15 @@ describe('draft plan unit actions', () => {
 
       const listed = await dispatch(cwd, 'list-draft-units', {});
       expect(listed.kind).toBe('success');
+      expect((listed as { output: { units: { unitId: string }[]; total: number; limit: number; offset: number } }).output).toMatchObject({ total: 1, limit: 50, offset: 0 });
       expect((listed as { output: { units: { unitId: string }[] } }).output.units.map((unit) => unit.unitId)).toEqual([unitId]);
+      expect((listed as { output: { units: Array<Record<string, unknown>> } }).output.units[0]).toMatchObject({ unitId, title: 'Hand-picked', provenance: 'user', itemIds: ['item-one'], itemCount: 1, status: 'draft' });
+      expect((listed as { output: { units: Array<Record<string, unknown>> } }).output.units[0]).not.toHaveProperty('intent');
+      expect((listed as { output: { units: Array<Record<string, unknown>> } }).output.units[0]).not.toHaveProperty('items');
 
       const got = await dispatch(cwd, 'get-draft-unit', { unitId });
-      expect((got as { output: { unit: { title: string } } }).output.unit.title).toBe('Hand-picked');
+      expect((got as { output: { unit: { title: string; items: unknown[] } } }).output.unit.title).toBe('Hand-picked');
+      expect((got as { output: { unit: { items: unknown[] } } }).output.unit.items).toEqual([{ itemId: 'item-one', origin: 'user' }]);
       expect((await dispatch(cwd, 'get-draft-unit', { unitId: 'ghost' })).kind).toBe('invalid-input');
 
       const deleted = await dispatch(cwd, 'delete-draft-unit', { unitId });
@@ -231,6 +236,57 @@ describe('draft plan unit actions', () => {
       expect((await dispatch(cwd, 'delete-draft-unit', { unitId })).kind).toBe('success');
       expect((await dispatch(cwd, 'delete-draft-unit', { unitId }) as { output: { deleted: boolean } }).output.deleted).toBe(false);
       expect((await dispatch(cwd, 'list-draft-units', {}) as { output: { units: unknown[] } }).output.units).toEqual([]);
+    });
+  });
+
+  it('preserves compact identity and promotion metadata for recommendation-derived draft units', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await seedLane(cwd);
+      const forked = await dispatch(cwd, 'fork-recommendation-to-draft-unit', { recommendationRef: 'lane-a' });
+      const unitId = (forked as { output: { unit: { unitId: string } } }).output.unit.unitId;
+      const promoted = await dispatch(cwd, 'promote-draft-unit', { unitId, session: 'lane-a-session' });
+      expect(promoted.kind).toBe('success');
+
+      const listed = await dispatch(cwd, 'list-draft-units', {});
+      expect(listed.kind).toBe('success');
+      const row = (listed as { output: { units: Array<Record<string, unknown>> } }).output.units[0];
+      expect(row).toMatchObject({
+        unitId,
+        sourceRecommendationRef: 'lane-a',
+        profile: 'excursion',
+        status: 'promoted',
+        promotedSession: 'lane-a-session',
+        promotedAt: expect.any(String),
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+        itemIds: ['item-one', 'item-two'],
+        itemCount: 2,
+      });
+      expect(row).not.toHaveProperty('intent');
+      expect(row).not.toHaveProperty('items');
+    });
+  });
+
+  it('paginates draft unit list rows newest-first while preserving full detail reads', async () => {
+    await withTempProject(async (cwd) => {
+      await seedBacklog(cwd);
+      await createDraftPlanUnit(cwd, { title: 'Oldest', intent: 'full intent one', provenance: 'user', items: [{ itemId: 'item-one', origin: 'user' }] }, '2026-01-01T00:00:00.000Z');
+      const second = await createDraftPlanUnit(cwd, { title: 'Second newest', intent: 'full intent two', provenance: 'user', items: [{ itemId: 'item-two', origin: 'user' }] }, '2026-01-02T00:00:00.000Z');
+      await createDraftPlanUnit(cwd, { title: 'Newest', provenance: 'user', items: [{ itemId: 'item-one', origin: 'user' }, { itemId: 'item-two', origin: 'user' }] }, '2026-01-03T00:00:00.000Z');
+      const secondUnitId = second.unitId;
+
+      const listed = await dispatch(cwd, 'list-draft-units', { limit: 1, offset: 1 });
+      expect(listed.kind).toBe('success');
+      const output = (listed as { output: { units: Array<Record<string, unknown>>; total: number; limit: number; offset: number } }).output;
+      expect(output).toMatchObject({ total: 3, limit: 1, offset: 1 });
+      expect(output.units).toHaveLength(1);
+      expect(output.units[0]).toMatchObject({ unitId: secondUnitId, title: 'Second newest', itemCount: 1, itemIds: ['item-two'] });
+      expect(output.units[0]).not.toHaveProperty('intent');
+      expect(output.units[0]).not.toHaveProperty('items');
+
+      const got = await dispatch(cwd, 'get-draft-unit', { unitId: secondUnitId });
+      expect((got as { output: { unit: { intent?: string } } }).output.unit.intent).toBe('full intent two');
     });
   });
 

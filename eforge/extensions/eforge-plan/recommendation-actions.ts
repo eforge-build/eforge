@@ -13,6 +13,7 @@ import {
   recordRecommendationPutApplied,
 } from './recommendation-status.js';
 import { findActiveRecommendationRefreshTask, refreshRecommendationsAction } from './recommendation-refresh.js';
+import { buildRecommendationActionability } from './recommendation-actionability.js';
 import {
   readRecommendationsFromPath,
   resolveRecommendationsPath,
@@ -33,9 +34,11 @@ export const getRecommendations = defineExtensionAction({
     const status = await readDerivedRecommendationStatus(ctx.cwd, path);
     const activeRefresh = await readActiveRefreshTaskIfAvailable(ctx, status.sourceFingerprint);
     const recommendationFreshness = await readRecommendationFreshnessView(ctx.cwd, status.sourceFingerprint);
+    const recommendationActionability = recommendations === null ? undefined : await buildRecommendationActionability(ctx.cwd, recommendations, ctx.agentTasks);
     return toJsonSafeObject({
       recommendations,
       recommendationSummary: summarizeRecommendations(recommendations),
+      ...(recommendationActionability !== undefined && { recommendationActionability }),
       path,
       status,
       recommendationFreshness,

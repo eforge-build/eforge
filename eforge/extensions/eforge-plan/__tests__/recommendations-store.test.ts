@@ -151,7 +151,13 @@ describe('eforge-plan recommendation storage', () => {
           blockedChainCount: 1,
           rationaleAndAssumptions: ['Assume dependencies stay stable.'],
         },
+        recommendationActionability: {
+          recommendedNextSequence: [{ itemId: 'item-one', actionability: { state: 'actionable', lifecycleState: 'none' } }],
+          safeParallelizableGroups: [{ ref: 'group-one', actionableItemIds: ['item-one', 'item-two'], suppressedItemIds: [] }],
+        },
       });
+      const raw = JSON.parse(await readFile(resolveRecommendationsPath(createEforgeProjectPaths({ cwd, extensionName: 'eforge-plan' })), 'utf-8')) as Record<string, unknown>;
+      expect(raw).not.toHaveProperty('recommendationActionability');
     });
   });
 
