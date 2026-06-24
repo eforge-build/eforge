@@ -360,3 +360,19 @@ Do not use `importer-reporting` as a cleanup-targeted source marker; it is the m
   }
 }
 </build-config>
+
+## Recovery Guidance
+
+- Failed PRD: "sqlite-backed-eforge-plan-store"
+- Root failed plan: "plan-03-importer-reporting"
+- Failure summary: "Compiled plan artifacts are eligible for continue-and-repair for sqlite-backed-eforge-plan-store. artifact source: feature-branch; 9 landed commit(s); failing plan: plan-03-importer-reporting; feature branch: eforge/sqlite-backed-eforge-plan-store. Queue the failed PRD through the compiled-artifact recovery path so preserved work is reused and the remaining build can be repaired without generating a successor PRD."
+- Failure detail: "1 blocking issue outcome(s) remain after 3 review round(s) (1 unresolved, 0 need human review; 1 rejected, 0 under review)."
+- Failure detail: "1 blocking issue outcome(s) remain after 3 review round(s) (1 unresolved, 0 need human review; 1 rejected, 0 under review)."
+- Recommended action: "Continue and repair build (Continue build): run `eforge continue-repair sqlite-backed-eforge-plan-store`. This queues the failed PRD through the compiled-artifact repair path and reuses preserved work; do not generate a successor PRD."
+- Remaining work:
+  - "plan-03-importer-reporting: repair the unresolved blocking review issue in legacy monitor import handling without broad unsafe synthesis of queue/build/landing records from arbitrary event payloads"
+  - "plan-07-workstation-docs-integration: unblock and complete after plan-03-importer-reporting is repaired"
+- Retry/resume guidance: Continue plan-03-importer-reporting for failed PRD sqlite-backed-eforge-plan-store from the preserved compiled artifacts; do not restart dependency-satisfied work that is already landed or complete.
+- Sidecar generated at: 2026-06-24T11:30:57.254Z
+- Source sidecar: .eforge/queue/failed/sqlite-backed-eforge-plan-store.recovery.json
+- Source identity: prdId=sqlite-backed-eforge-plan-store; setName=sqlite-backed-eforge-plan-store; featureBranch=eforge/sqlite-backed-eforge-plan-store; baseBranch=main
