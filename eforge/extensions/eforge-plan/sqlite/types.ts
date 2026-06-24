@@ -68,22 +68,18 @@ export interface ImportDiagnosticInput { diagnosticId: string; runId: string; se
 export interface ImportDiagnosticRow extends ImportDiagnosticInput {}
 export interface MaintenanceRunInput { runId: string; categories?: JsonValue; startedAt?: string; finishedAt?: string; prunedCounts?: JsonValue; archivedCounts?: JsonValue; preservedEvidenceCounts?: JsonValue; status?: string; errorSummary?: string }
 export interface MaintenanceRunRow extends MaintenanceRunInput {}
-// --- eforge:region plan-06-retention-maintenance ---
 export type MaintenanceCategory = 'lifecycle-event-payloads' | 'planning-task-payloads' | 'superseded-recommendation-runs' | 'import-report-payloads' | 'import-diagnostic-details';
 export interface MaintenanceCandidateSample { eventKey?: string; eventType?: string; taskId?: string; purpose?: string; status?: string; runId?: string; diagnosticId?: string; isCurrent?: boolean; occurredAt?: string; updatedAt?: string; createdAt?: string; summary?: string; laneCount?: number; laneItemCount?: number; hasRawRequest?: boolean; hasRawResult?: boolean }
 export interface ProtectedCount { name: string; count: number }
 export interface TableCountRow { table: string; count: number }
 export interface RecentMaintenanceRunRow extends MaintenanceRunRow {}
-// --- eforge:endregion plan-06-retention-maintenance ---
 
 export interface SearchDocumentUpsert { documentType: SearchDocumentType; documentId: string; title?: string; tagsText?: string; summaryText?: string; bodyText?: string; itemIdsText?: string; epicIdsText?: string; recommendationRefsText?: string; sourceSha256?: string; updatedAt?: string; dirty?: boolean }
 export interface SearchDocumentRow extends SearchDocumentUpsert { dirty: boolean }
 export interface SearchIndexDirtyInput { documentType: SearchDocumentType; documentId: string; reason?: string; markedAt?: string }
 export interface SearchIndexStateRow { id: 1; dirty: boolean; dirtySince?: string; dirtyReason?: string; lastRebuiltAt?: string }
-// --- eforge:region plan-05-fts-search-bounded-actions ---
 export interface SearchHitRow { documentType: SearchDocumentType; documentId: string; title: string; rank?: number; snippet?: string; updatedAt?: string; itemIdsText?: string; epicIdsText?: string; recommendationRefsText?: string }
 export interface SearchIndexStatusRow { dirty: boolean; dirtyCount: number; dirtyTypes: SearchDocumentType[]; dirtySince?: string; dirtyReason?: string; lastRebuiltAt?: string }
 export interface SearchPaginationInput { limit?: number; offset?: number }
 export interface SearchPaginationPage { limit: number; offset: number; returned: number; hasMore: boolean; nextOffset?: number }
 export type SearchSelectedField = 'rank' | 'snippet' | 'refs' | 'updatedAt';
-// --- eforge:endregion plan-05-fts-search-bounded-actions ---

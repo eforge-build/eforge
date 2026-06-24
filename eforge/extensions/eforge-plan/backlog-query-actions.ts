@@ -4,10 +4,8 @@ import {
   Type,
   type Static,
 } from '@eforge-build/extension-sdk';
-// --- eforge:region plan-04-projections-lifecycle ---
 import { getEpicDetailProjection, getItemDetailProjection, listBoardCompactProjection } from './projections/index.js';
 import { buildBoard } from './board-actions.js';
-// --- eforge:endregion plan-04-projections-lifecycle ---
 import { toJsonSafeObject } from './json-safe.js';
 import { BacklogStatusSchema, KanbanLaneSchema, LifecycleStateSchema } from './schema.js';
 
@@ -31,12 +29,10 @@ const CompactItemSchema = Type.Object({
   updatedAt: Type.Optional(Type.String()),
   epic: Type.Optional(Type.String()),
   lifecycleState: LifecycleStateSchema,
-  // --- eforge:region plan-04-projections-lifecycle ---
   userStatus: Type.Optional(BacklogStatusSchema),
   effectiveLifecycle: Type.Optional(LifecycleStateSchema),
   reasonCodes: Type.Optional(Type.Array(Type.String())),
   associatedLinks: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: Type.Unknown() }))),
-  // --- eforge:endregion plan-04-projections-lifecycle ---
 }, { additionalProperties: false });
 
 const CompactLifecycleLinkRowSchema = Type.Object({}, { additionalProperties: Type.Unknown() });
@@ -196,17 +192,12 @@ export const backlogQueryActions = [
 
 // --- eforge:region compact-query-projection ---
 async function getItemDetail(cwd: string, input: GetItemInput): Promise<any> {
-  // --- eforge:region plan-04-projections-lifecycle ---
   return getItemDetailProjection(cwd, input);
-  // --- eforge:endregion plan-04-projections-lifecycle ---
 }
 async function getEpicDetail(cwd: string, input: GetEpicInput): Promise<any> {
-  // --- eforge:region plan-04-projections-lifecycle ---
   return getEpicDetailProjection(cwd, input);
-  // --- eforge:endregion plan-04-projections-lifecycle ---
 }
 async function listBoardCompact(cwd: string, input: ListBoardCompactInput): Promise<any> {
-  // --- eforge:region plan-04-projections-lifecycle ---
   const projected = await listBoardCompactProjection(cwd, input);
   if (projected.items.length > 0) return projected;
   const board = await buildBoard(cwd, { epic: input.epic, includeArchive: input.includeArchive });
@@ -217,6 +208,5 @@ async function listBoardCompact(cwd: string, input: ListBoardCompactInput): Prom
   const pagination = { limit, offset, returned: items.length, hasMore: offset + items.length < all.length, ...(offset + items.length < all.length ? { nextOffset: offset + items.length } : {}) };
   const lanes = ['inbox', 'ready', 'blocked', 'in-progress', 'done', 'archive'].map((lane) => ({ lane, title: lane, count: all.filter((item: any) => item.lane === lane).length, openCount: all.filter((item: any) => item.lane === lane && !item.closed).length, closedCount: all.filter((item: any) => item.lane === lane && item.closed).length, ...(input.lane === lane ? { pagination } : {}) }));
   return { schemaVersion: 1, items, total: all.length, limit, offset, lanes, counts: { total: all.length, open: all.filter((item: any) => !item.closed).length, closed: all.filter((item: any) => item.closed).length }, pagination };
-  // --- eforge:endregion plan-04-projections-lifecycle ---
 }
 // --- eforge:endregion compact-query-projection ---

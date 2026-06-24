@@ -18,11 +18,9 @@ export interface WorkstationDataState {
   activeRecommendationRefreshTask: PlanningAgentTaskRecord | null;
   roadmapState: RoadmapStateResponse | null;
   draftUnits: DraftPlanUnitListItem[];
-  // --- eforge:region plan-07-workstation-docs-integration ---
   storeStatus: PlanningStoreStatus | null;
   storeStatusError: string | null;
   refreshStoreStatus: () => Promise<void>;
-  // --- eforge:endregion plan-07-workstation-docs-integration ---
   saveRoadmapState: (input: UpdateRoadmapStateRequest) => Promise<RoadmapStateResponse>;
   refreshRecommendations: () => Promise<RefreshRecommendationsResponse>;
   forkRecommendationToDraftUnit: (recommendationRef: string, title?: string) => Promise<DraftPlanUnit>;
@@ -51,10 +49,8 @@ export function useWorkstationData(): WorkstationDataState {
   const [activeRecommendationRefreshTask, setActiveRecommendationRefreshTask] = React.useState<PlanningAgentTaskRecord | null>(null);
   const [roadmapState, setRoadmapState] = React.useState<RoadmapStateResponse | null>(null);
   const [draftUnits, setDraftUnits] = React.useState<DraftPlanUnitListItem[]>([]);
-  // --- eforge:region plan-07-workstation-docs-integration ---
   const [storeStatus, setStoreStatus] = React.useState<PlanningStoreStatus | null>(null);
   const [storeStatusError, setStoreStatusError] = React.useState<string | null>(null);
-  // --- eforge:endregion plan-07-workstation-docs-integration ---
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -94,10 +90,8 @@ export function useWorkstationData(): WorkstationDataState {
     else failures.push(reason('roadmap', roadmapResult.reason));
     if (draftUnitsResult.status === 'fulfilled') setDraftUnits(draftUnitsResult.value.units ?? []);
     else failures.push(reason('drafts', draftUnitsResult.reason));
-    // --- eforge:region plan-07-workstation-docs-integration ---
     if (storeStatusResult.status === 'fulfilled') { setStoreStatus(storeStatusResult.value); setStoreStatusError(null); }
     else setStoreStatusError(reason('store status', storeStatusResult.reason));
-    // --- eforge:endregion plan-07-workstation-docs-integration ---
     setError(failures.length > 0 ? failures.join(' · ') : null);
     setLoading(false);
   }, []);
@@ -136,7 +130,6 @@ export function useWorkstationData(): WorkstationDataState {
     }
   }, [board.lanes, recommendations]);
 
-  // --- eforge:region plan-07-workstation-docs-integration ---
   const refreshStoreStatus = React.useCallback(async () => {
     try {
       setStoreStatus(await bridge.invokeAction<PlanningStoreStatus>('get-store-status', {}));
@@ -145,7 +138,6 @@ export function useWorkstationData(): WorkstationDataState {
       setStoreStatusError(reason('store status', caught));
     }
   }, []);
-  // --- eforge:endregion plan-07-workstation-docs-integration ---
 
   const saveRoadmapState = React.useCallback(async (input: UpdateRoadmapStateRequest) => {
     const response = await bridge.invokeAction<RoadmapStateResponse>('update-roadmap-state', input as unknown as JsonObject);

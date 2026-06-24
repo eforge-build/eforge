@@ -94,7 +94,6 @@ function boardItemFromCompact(item: CompactBoardItem, epics: Map<string, Epic>, 
     recLanes: recEntry?.lanes ?? [],
     ...(recEntry?.unblock ? { recUnblock: recEntry.unblock } : {}),
     lifecycleState: item.lifecycleState,
-    // --- eforge:region plan-07-workstation-docs-integration ---
     userStatus: item.userStatus,
     effectiveLifecycle: item.effectiveLifecycle,
     reasonCodes: item.reasonCodes ?? [],
@@ -102,7 +101,6 @@ function boardItemFromCompact(item: CompactBoardItem, epics: Map<string, Epic>, 
     linkRows: item.linkRows ?? item.associatedLinks ?? [],
     lifecycleLinks: item.linkRows ?? item.associatedLinks ?? [],
     snippets: item.snippet?.text ? [item.snippet.text] : [],
-    // --- eforge:endregion plan-07-workstation-docs-integration ---
   };
 }
 
@@ -129,13 +127,11 @@ function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, depe
     lifecycleLinks: detail.linkRows ?? detail.associatedLinks ?? [],
     failureEvidence: detail.failureEvidence ?? [],
     lifecycleState: detail.lifecycleState,
-    // --- eforge:region plan-07-workstation-docs-integration ---
     userStatus: detail.userStatus,
     effectiveLifecycle: detail.effectiveLifecycle,
     reasonCodes: detail.reasonCodes ?? [],
     associatedLinks: detail.associatedLinks ?? [],
     snippets: detail.snippet?.text ? [detail.snippet.text] : summary.snippets,
-    // --- eforge:endregion plan-07-workstation-docs-integration ---
   };
 }
 

@@ -145,9 +145,7 @@ export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[];
 
 export interface CompactBoardItem { id: string; title: string; status: string; priority: string; tags: string[]; lane: string; reasons: string[]; dependsOn?: string[]; unresolvedDependsOn?: string[]; activeTraceReasons?: string[]; blocked: boolean; ready: boolean; reviewDue: boolean; closed: boolean; epic?: string; lifecycleState?: string;
   userStatus?: string; effectiveLifecycle?: string; reasonCodes?: string[]; associatedLinks?: LifecycleLinkRow[]; linkRows?: LifecycleLinkRow[];
-  // --- eforge:region plan-05-fts-search-bounded-actions ---
   rank?: number; snippet?: SearchSnippet; matchedFields?: string[];
-  // --- eforge:endregion plan-05-fts-search-bounded-actions ---
 }
 export interface CompactItemDetail extends CompactBoardItem {
   path: string;
@@ -159,14 +157,12 @@ export interface CompactItemDetail extends CompactBoardItem {
 export interface CompactEpic extends Epic { tags: string[]; itemCount: number; openItemCount: number; sections?: Record<string, string>; path?: string; body?: string; }
 export interface CompactLaneSummary { lane: string; title: string; count: number; openCount: number; closedCount: number; pagination?: BoardPagination; }
 export interface CompactBoardResponse { schemaVersion: 1; items: CompactBoardItem[]; total: number; limit: number; offset: number; lanes?: CompactLaneSummary[]; epics?: CompactEpic[]; counts?: BoardCounts; pagination?: BoardPagination; indexDirty?: boolean; indexStatus?: SearchIndexStatus; snippets?: Record<string, SearchSnippet>; }
-// --- eforge:region plan-05-fts-search-bounded-actions ---
 export type SearchDocumentType = 'backlog_item' | 'epic' | 'session_plan' | 'recommendation';
 export interface SearchSnippet { text: string; field?: 'title' | 'tags' | 'summary' | 'body' | 'itemIds' | 'epicIds' | 'recommendationRefs'; highlights: string[] }
 export interface SearchIndexStatus { dirty: boolean; dirtyCount: number; dirtyTypes: SearchDocumentType[]; dirtySince?: string; dirtyReason?: string; lastRebuiltAt?: string }
 export interface SearchItemsResponse { schemaVersion: 1; items: CompactBoardItem[]; epics?: CompactEpic[]; total: number; limit: number; offset: number; counts: { total: number }; pagination: BoardPagination; indexDirty: boolean; indexStatus: SearchIndexStatus; snippets?: Record<string, SearchSnippet>; }
 export interface SearchResult { type: SearchDocumentType; id: string; title: string; rank?: number; snippet?: SearchSnippet; refs?: { itemIds?: string[]; epicIds?: string[]; session?: string; recommendationRef?: string; runId?: string }; updatedAt?: string }
 export interface SearchPlanningRecordsResponse { schemaVersion: 1; results: SearchResult[]; total: number; countsByType: Partial<Record<SearchDocumentType, number>>; page: BoardPagination; indexDirty: boolean; indexStatus: SearchIndexStatus }
-// --- eforge:endregion plan-05-fts-search-bounded-actions ---
 export interface CompactBoardDetailResponse { schemaVersion: 1; item: CompactItemDetail; epic?: CompactEpic; dependencies?: CompactBoardItem[]; dependents?: CompactBoardItem[]; }
 export type DetailLoadingState = { state: 'idle' } | { state: 'loading' } | { state: 'loaded'; item: BoardItem } | { state: 'error'; message: string };
 

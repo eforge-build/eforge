@@ -45,7 +45,6 @@ function getEpicDetailFromStore(cwd: string, store: EforgePlanStore, input: GetE
 function compactItemContext(store: EforgePlanStore): CompactItemContext { return { dependencies: listProjectionDependencies(store), sessionItems: listProjectionSessionItems(store), evidenceRows: listCurrentLifecycleEvidence(store), taskItems: listProjectionPlanningTaskItems(store), queueBuildLinks: listProjectionQueueBuildLinks(store) }; }
 export function listAllCompactItemsFromStore(store: EforgePlanStore, input: { includeArchive?: boolean; epic?: string; includeDependencies?: boolean; includeLinks?: boolean } = {}) { const context = compactItemContext(store); return listProjectionItems(store).filter((i) => input.epic === undefined || i.epicId === input.epic).map((i) => compactItemFromStore(store, i, { includeDependencies: input.includeDependencies !== false, includeLinks: input.includeLinks === true, context })).filter((i) => input.includeArchive === true || i.lane !== 'archive'); }
 export function listAllCompactEpicsFromStore(store: EforgePlanStore) { const items = listProjectionItems(store); return listProjectionEpics(store).map((e) => compactEpicFromRows(e, items)); }
-// --- eforge:region plan-05-fts-search-bounded-actions ---
 export function hydrateCompactItemSearchResults(store: EforgePlanStore, input: CompactItemSearchHydrationInput): CompactItemSearchHydrationOutput {
   const wanted = input.ids ? new Set(input.ids) : undefined;
   const order = new Map((input.ids ?? []).map((id, index) => [id, index]));
@@ -63,4 +62,3 @@ export function hydrateCompactItemSearchResults(store: EforgePlanStore, input: C
   const offset = Math.max(Math.trunc(input.offset ?? 0), 0);
   return { items: compact.slice(offset, offset + limit), total: compact.length, limit, offset };
 }
-// --- eforge:endregion plan-05-fts-search-bounded-actions ---

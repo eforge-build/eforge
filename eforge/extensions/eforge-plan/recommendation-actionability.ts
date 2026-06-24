@@ -25,9 +25,7 @@ import type {
   RecommendationGroupActionability,
   RecommendationItemActionability,
 } from './schema.js';
-// --- eforge:region plan-04-projections-lifecycle ---
 import { buildRecommendationActionability as buildSqlRecommendationActionability, findNonterminalCoverage, projectionStoreExists } from './projections/index.js';
-// --- eforge:endregion plan-04-projections-lifecycle ---
 
 export interface AgentTaskReader {
   get(taskId: string): Promise<{ task: ExtensionAgentTaskRecord }>;
@@ -47,9 +45,7 @@ export async function buildRecommendationActionability(
   recommendations: BacklogRecommendationModel,
   agentTasks?: AgentTaskReader,
 ): Promise<RecommendationActionabilityProjection> {
-  // --- eforge:region plan-04-projections-lifecycle ---
   if (agentTasks === undefined && projectionStoreExists(cwd)) return await buildSqlRecommendationActionability(cwd, recommendations) as RecommendationActionabilityProjection;
-  // --- eforge:endregion plan-04-projections-lifecycle ---
   const index = await buildRecommendationActionabilityIndex(cwd, recommendations, agentTasks);
   return {
     schemaVersion: 1,
@@ -79,7 +75,6 @@ export async function assertRecommendationSelectionActionable(
   selectorPath = 'itemIds',
 ): Promise<void> {
   if (selectedItemIds.length === 0) return;
-  // --- eforge:region plan-04-projections-lifecycle ---
   if (agentTasks === undefined && projectionStoreExists(cwd)) {
     const coverage = await findNonterminalCoverage(cwd, { itemIds: [...new Set(selectedItemIds)] });
     if (!coverage.ok) {
@@ -89,7 +84,6 @@ export async function assertRecommendationSelectionActionable(
     }
     return;
   }
-  // --- eforge:endregion plan-04-projections-lifecycle ---
   const recommendations = await readRecommendations(cwd);
   const index = await buildRecommendationActionabilityIndex(cwd, recommendations ?? undefined, agentTasks);
   const suppressed = [...new Set(selectedItemIds)]

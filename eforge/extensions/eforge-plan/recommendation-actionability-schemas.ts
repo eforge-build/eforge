@@ -10,7 +10,6 @@ export const RecommendationActionabilityReasonCodeSchema = Type.Union([
   Type.Literal('building-trace'),
   Type.Literal('active-build-session-trace'),
   Type.Literal('open-pr-trace'),
-  // --- eforge:region plan-04-projections-lifecycle ---
   Type.Literal('queued-build'),
   Type.Literal('running-build'),
   Type.Literal('active-build-session'),
@@ -19,7 +18,6 @@ export const RecommendationActionabilityReasonCodeSchema = Type.Union([
   Type.Literal('shipped-result'),
   Type.Literal('failed-result'),
   Type.Literal('partial-plan'),
-  // --- eforge:endregion plan-04-projections-lifecycle ---
 ]);
 export const RecommendationActionabilityLinkSchema = Type.Object({
   kind: Type.String(), label: Type.Optional(Type.String()), id: Type.Optional(Type.String()), itemIds: Type.Array(Type.String()), affectedItemIds: Type.Optional(Type.Array(Type.String())), status: Type.Optional(Type.String()), session: Type.Optional(Type.String()), taskId: Type.Optional(Type.String()), prdId: Type.Optional(Type.String()), runId: Type.Optional(Type.String()), sessionId: Type.Optional(Type.String()), buildSessionId: Type.Optional(Type.String()), featureBranch: Type.Optional(Type.String()), commitSha: Type.Optional(Type.String()), prUrl: Type.Optional(Type.String()), url: Type.Optional(Type.String()), path: Type.Optional(Type.String()), timestamp: Type.Optional(Type.String()), reasonCode: Type.Optional(Type.String()), missing: Type.Optional(Type.Boolean()), metadata: Type.Optional(Type.Unknown()),

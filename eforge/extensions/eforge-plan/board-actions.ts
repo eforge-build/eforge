@@ -6,9 +6,7 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { aggregateLifecycleLinks, projectEpicProgress } from './lifecycle-projection.js';
-// --- eforge:region plan-04-projections-lifecycle ---
 import { buildBoardDebugProjection, projectionStoreExists, renderBoardProjection } from './projections/index.js';
-// --- eforge:endregion plan-04-projections-lifecycle ---
 // --- eforge:region recommendations ---
 import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
 import { readDerivedRecommendationStatus } from './recommendation-status.js';
@@ -51,9 +49,7 @@ export const renderBoardMarkdown = defineExtensionAction({
 });
 
 export async function buildBoard(cwd: string, input: BoardActionInput, recommendationsPath?: string): Promise<any> {
-  // --- eforge:region plan-04-projections-lifecycle ---
   if (projectionStoreExists(cwd)) return buildBoardDebugProjection(cwd, input);
-  // --- eforge:endregion plan-04-projections-lifecycle ---
   const resolvedRecommendationsPath = recommendationsPath ?? resolveRecommendationsPathForCwd(cwd);
   const [epics, items, traces, recommendations, recommendationStatus] = await Promise.all([
     listBacklogEpics(cwd),
@@ -94,9 +90,7 @@ export function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>
 }
 
 export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
-  // --- eforge:region plan-04-projections-lifecycle ---
   if (Array.isArray(board.items) && board.items.some((item: { lane?: unknown }) => item.lane !== undefined)) return renderBoardProjection(board);
-  // --- eforge:endregion plan-04-projections-lifecycle ---
   const lines = ['# eforge-plan board', ''];
   for (const lane of board.lanes as Array<{ title: string; items: Array<{ id: string; status: string; title: string; reasons?: string[] }> }>) {
     lines.push(`## ${lane.title}`, '');
