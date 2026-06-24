@@ -71,6 +71,18 @@ describe('eforge-plan extension registration', () => {
     ]));
   });
 
+  it('registers all eforge-plan agent task contributions', () => {
+    const state = load();
+    expect(state.agentTasks.map((entry) => entry.localId).sort()).toEqual([
+      'backlog-item-audit',
+      'backlog-reducer',
+      'plan-revision',
+      'planning-draft',
+      'recommendation-refresh',
+      'session-plan-creation',
+    ]);
+  });
+
   it('loads without creating runtime storage', async () => {
     await withTempProject(async (cwd) => {
       load();

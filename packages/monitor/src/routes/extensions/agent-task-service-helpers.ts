@@ -288,10 +288,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-export function isEforgePlanCurationMapReduceTask(source: ResolvedDeferredSourceInput, owner: ExtensionAgentTaskOwner | undefined): source is ResolvedDeferredSourceInput & { structuredSource: BacklogCurationMapReduceSourceBundle; providerHooks: BacklogCurationMapReduceProviderHooks } {
+export function isEforgePlanCurationMapReduceTask(source: ResolvedDeferredSourceInput, _owner: ExtensionAgentTaskOwner | undefined): source is ResolvedDeferredSourceInput & { structuredSource: BacklogCurationMapReduceSourceBundle; providerHooks: BacklogCurationMapReduceProviderHooks } {
   if (source.structuredSource === undefined || source.providerHooks === undefined || !isBacklogCurationMapReduceBundle(source.structuredSource)) return false;
-  const bundle = source.structuredSource;
-  return owner?.extensionName === 'eforge-plan' || bundle.globalContext.purpose === 'backlog-curation-map-reduce';
+  return source.structuredSource.globalContext.purpose === 'backlog-curation-map-reduce';
 }
 
 export function sourceProviderItemAuditConcurrency(request: LegacyExtensionAgentTaskStartRequest): number | undefined {

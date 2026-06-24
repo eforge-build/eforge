@@ -69,7 +69,7 @@ describe('eforge-plan package publication artifact', () => {
     expect(pkg.name).toBe('@eforge-build/eforge-plan');
     expect(pkg.private).not.toBe(true);
     expect(pkg.publishConfig).toMatchObject({ access: 'public' });
-    expect(pkg.files).toEqual(expect.arrayContaining(['dist/', 'workstation-assets/', 'README.md', 'LICENSE']));
+    expect(pkg.files).toEqual(expect.arrayContaining(['dist/', 'prompts/', 'workstation-assets/', 'README.md', 'LICENSE']));
     expect(pkg.eforge).toMatchObject({ extension: { name: 'eforge-plan', entrypoint: './dist/index.js' } });
 
     const workspace = await readFile(join(repoRoot, 'pnpm-workspace.yaml'), 'utf-8');
@@ -96,6 +96,9 @@ describe('eforge-plan package publication artifact', () => {
       'dist/backlog-curation-source-provider.js',
       'workstation-assets/plans/index.js',
       'workstation-assets/plans/style.css',
+      'prompts/eforge-plan-planning-draft.md',
+      'prompts/eforge-plan-backlog-curation-item-audit.md',
+      'prompts/eforge-plan-backlog-curation-reducer.md',
       'README.md',
       'LICENSE',
       'package.json',

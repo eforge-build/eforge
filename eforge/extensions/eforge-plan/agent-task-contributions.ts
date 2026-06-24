@@ -13,6 +13,7 @@ import {
   PLANNING_PROGRESS_TOOL_NAME,
   type EforgePlanPlanningProgressUpdate,
 } from './planning-agent-tools.js';
+import { backlogCurationAgentTasks } from './backlog-curation-agent-tasks.js';
 
 export const PLANNING_DRAFT_TASK_ID = 'planning-draft' as const;
 export const SESSION_PLAN_CREATION_TASK_ID = 'session-plan-creation' as const;
@@ -85,4 +86,9 @@ export const eforgePlanPlanningAgentTasks = [
   planningContribution(SESSION_PLAN_CREATION_TASK_ID, 'Create an eforge-plan session-plan draft', 'Draft a ready session-plan creation payload using eforge-plan readiness contracts.'),
   planningContribution(PLAN_REVISION_TASK_ID, 'Draft an eforge-plan plan revision turn', 'Draft a bounded revision turn for an existing flat session plan.'),
   planningContribution(RECOMMENDATION_REFRESH_TASK_ID, 'Refresh eforge-plan recommendations', 'Refresh recommendation-only planning output for the current eforge-plan recommendation source.'),
+] as const;
+
+export const eforgePlanAgentTasks = [
+  ...eforgePlanPlanningAgentTasks,
+  ...backlogCurationAgentTasks,
 ] as const;
