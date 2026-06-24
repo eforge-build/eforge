@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMockArtifacts, getMockCompactBoard, mockGetRecommendationsFreshResponse, mockGetRecommendationsStaleResponse } from '@/fixtures/mock-data';
 import { getMockRoadmapState } from '@/fixtures/mock-roadmap';
+import { mockStoreStatus } from '@/fixtures/mock-storage';
 import type { CompactBoardResponse, EforgeBridge, GetRecommendationsResponse, RefreshRecommendationsResponse, RoadmapStateResponse } from '@/types';
 
 function setBridge(bridge: EforgeBridge) {
@@ -22,6 +23,8 @@ describe('useWorkstationData recommendations mapping', () => {
         if (actionId === 'list-planning-artifacts') return { artifacts: getMockArtifacts() } as TOutput;
         if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
         if (actionId === 'get-roadmap-state') return getMockRoadmapState() as TOutput;
+        if (actionId === 'list-draft-units') return { units: [] } as TOutput;
+        if (actionId === 'get-store-status') return mockStoreStatus as TOutput;
         throw new Error(`unexpected action ${actionId}`);
       },
     };
@@ -53,6 +56,52 @@ describe('useWorkstationData recommendations mapping', () => {
     expect(result.current.artifacts.length).toBeGreaterThan(0);
     expect(result.current.roadmapState?.context.localSteering.content).toContain('Prioritize workstation');
     expect(result.current.bridgeVersion).toBe(7);
+    expect(result.current.storeStatus?.initialized).toBe(true);
+    expect(result.current.storeStatusError).toBeNull();
+  });
+
+  it('isolates get-store-status failures from primary workstation data', async () => {
+    setBridge(bridgeWithDefaults(async (actionId) => {
+      if (actionId === 'get-store-status') throw new Error('sqlite status unavailable');
+      return undefined;
+    }));
+
+    const { useWorkstationData } = await import('./use-workstation-data');
+    const { result } = renderHook(() => useWorkstationData());
+
+    await waitFor(() => expect(result.current.storeStatusError).toBe('store status: sqlite status unavailable'));
+    expect(result.current.error).toBeNull();
+    expect(result.current.storeStatus).toBeNull();
+    expect(result.current.board.items.length).toBeGreaterThan(0);
+    expect(result.current.artifacts.length).toBeGreaterThan(0);
+    expect(result.current.recommendations?.recommendedNextSequence.length).toBeGreaterThan(0);
+    expect(result.current.roadmapState).not.toBeNull();
+    expect(result.current.draftUnits).toEqual([]);
+  });
+
+  it('refreshStoreStatus invokes only get-store-status and updates status state', async () => {
+    const calls: Array<{ actionId: string; input: unknown }> = [];
+    let statusCalls = 0;
+    const refreshedStatus = { ...mockStoreStatus, searchIndexStatus: { ...mockStoreStatus.searchIndexStatus!, dirty: false, dirtyCount: 0 } };
+    setBridge(bridgeWithDefaults(async (actionId, input) => {
+      calls.push({ actionId, input: input ?? {} });
+      if (actionId === 'get-store-status') {
+        statusCalls += 1;
+        return statusCalls === 1 ? mockStoreStatus : refreshedStatus;
+      }
+      return undefined;
+    }));
+
+    const { useWorkstationData } = await import('./use-workstation-data');
+    const { result } = renderHook(() => useWorkstationData());
+    await waitFor(() => expect(result.current.storeStatus?.searchIndexStatus?.dirty).toBe(true));
+    calls.length = 0;
+
+    await act(async () => { await result.current.refreshStoreStatus(); });
+
+    expect(calls).toEqual([{ actionId: 'get-store-status', input: {} }]);
+    expect(result.current.storeStatus?.searchIndexStatus?.dirty).toBe(false);
+    expect(result.current.storeStatusError).toBeNull();
   });
 
   it('loads additional open board pages through compact pagination', async () => {
@@ -269,6 +318,8 @@ function bridgeWithDefaults(custom: (actionId: string, input?: unknown) => unkno
       if (actionId === 'list-planning-artifacts') return { artifacts: getMockArtifacts() } as TOutput;
       if (actionId === 'get-recommendations') return mockGetRecommendationsStaleResponse as TOutput;
       if (actionId === 'get-roadmap-state') return getMockRoadmapState() as TOutput;
+      if (actionId === 'list-draft-units') return { units: [] } as TOutput;
+      if (actionId === 'get-store-status') return mockStoreStatus as TOutput;
       throw new Error(`unexpected action ${actionId}`);
     },
   };

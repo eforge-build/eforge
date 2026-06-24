@@ -18,6 +18,8 @@ import {
   type LifecycleLinkRow,
 } from './backlog-domain.js';
 import { listBacklogEpics, listBacklogItems } from './markdown-store.js';
+import { listCanonicalBacklogItems, listCanonicalEpics, backlogItemRowToDomain, epicRowToDomain } from './canonical/backlog-records.js';
+import { markCanonicalRecommendationsStale } from './canonical/recommendation-records.js';
 import { buildRoadmapContext } from './roadmap-context.js';
 import type { RoadmapContext } from './roadmap-schemas.js';
 import { listTraceSidecars } from './trace-store.js';
@@ -51,7 +53,8 @@ export async function readDerivedRecommendationStatus(cwd: string, currentPath =
     const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
     return staleStatus(currentPath, statusPath, sourceFingerprint, undefined, [invalidStatusSidecarReason(err)]);
   }
-  if (!existsSync(currentPath) && sidecar === null) return missingStatus(currentPath, statusPath);
+  const currentExists = currentRecommendationsExist(cwd, currentPath);
+  if (!currentExists && sidecar === null) return missingStatus(currentPath, statusPath);
 
   const sourceFingerprint = await computeRecommendationSourceFingerprint(cwd);
   if (sidecar === null) return staleStatus(currentPath, statusPath, sourceFingerprint, undefined, [missingStatusSidecarReason()]);
@@ -64,7 +67,7 @@ export async function readDerivedRecommendationStatus(cwd: string, currentPath =
   const persistedReasons = sidecarReasons(sidecar).filter((reason) => reason.code !== 'source-fingerprint-drift');
   const staleReasons = [...persistedReasons];
   const freshnessSidecar = sidecarWithReasons(sidecar, persistedReasons);
-  const freshnessView = deriveRecommendationFreshnessView({ storedStatus: { currentExists: existsSync(currentPath), sidecar: freshnessSidecar }, comparedSourceFingerprint: sourceFingerprint });
+  const freshnessView = deriveRecommendationFreshnessView({ storedStatus: { currentExists, sidecar: freshnessSidecar }, comparedSourceFingerprint: sourceFingerprint });
   if (sidecar.lastAppliedSourceFingerprint !== undefined && sidecar.lastAppliedSourceFingerprint !== sourceFingerprint) {
     staleReasons.push(sourceDriftReason(sourceFingerprint, sidecar.lastAppliedSourceFingerprint));
   }
@@ -75,7 +78,7 @@ export async function readDerivedRecommendationStatus(cwd: string, currentPath =
     sourceFingerprint,
     lastAppliedSourceFingerprint: sidecar.lastAppliedSourceFingerprint,
     freshAt: sidecar.freshAt ?? sidecar.lastAppliedAt,
-    staleSince: staleReasons.length > 0 || !existsSync(currentPath) ? sidecar.staleSince ?? sidecar.lastAppliedAt : undefined,
+    staleSince: staleReasons.length > 0 || !currentExists ? sidecar.staleSince ?? sidecar.lastAppliedAt : undefined,
     lastRefreshedBy: sidecar.lastRefreshedBy,
     reasons: staleReasons,
   });
@@ -87,12 +90,12 @@ export async function readRecommendationFreshnessView(cwd: string, comparedSourc
   const fingerprint = comparedSourceFingerprint ?? await computeRecommendationSourceFingerprint(cwd);
   try {
     return deriveRecommendationFreshnessView({
-      storedStatus: { currentExists: existsSync(currentPath), sidecar: await readRecommendationStatusSidecar(statusPath) },
+      storedStatus: { currentExists: currentRecommendationsExist(cwd, currentPath), sidecar: await readRecommendationStatusSidecar(statusPath) },
       comparedSourceFingerprint: fingerprint,
     });
   } catch (err) {
     return deriveRecommendationFreshnessView({
-      storedStatus: { currentExists: existsSync(currentPath), sidecar: null, invalidReason: invalidStatusSidecarReason(err) },
+      storedStatus: { currentExists: currentRecommendationsExist(cwd, currentPath), sidecar: null, invalidReason: invalidStatusSidecarReason(err) },
       comparedSourceFingerprint: fingerprint,
     });
   }
@@ -133,6 +136,7 @@ export async function markRecommendationsStale(cwd: string, reason: Recommendati
   const lastAppliedAt = previous?.lastAppliedAt ?? previous?.freshAt ?? now;
   const lastAppliedSourceFingerprint = previous?.lastAppliedSourceFingerprint ?? sourceFingerprint;
   const reasons = appendStaleReason(sidecarReasons(previous), reason);
+  markCanonicalRecommendationsStale(cwd, reason.message ?? reason.code ?? 'recommendations-stale', reason.refs ?? []);
   await writeRecommendationStatusSidecar(statusPath, {
     schemaVersion: 1,
     lastAppliedAt,
@@ -150,7 +154,7 @@ export async function markRecommendationsStale(cwd: string, reason: Recommendati
 export async function markRecommendationsStaleForBacklogMutation(cwd: string, actionId: string, refs: readonly string[]): Promise<RecommendationDerivedStatus | null> {
   const currentPath = resolveCurrentPath(cwd);
   const statusPath = resolveRecommendationStatusPathForCwd(cwd);
-  if (!existsSync(currentPath) && !existsSync(statusPath)) return null;
+  if (!currentRecommendationsExist(cwd, currentPath) && !existsSync(statusPath)) return null;
 
   const suffix = refs.length > 0 ? ` for ${refs.join(', ')}` : '';
   return markRecommendationsStale(cwd, {
@@ -181,8 +185,10 @@ export async function computeRecommendationSourceFingerprintForRecords(cwd: stri
 }
 
 export async function buildRecommendationSourceProjection(cwd: string): Promise<Record<string, unknown>> {
-  const [allItems, allEpics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
-  return buildRecommendationSourceProjectionFromRecords(cwd, allItems, allEpics);
+  const canonicalItems = listCanonicalBacklogItems(cwd).map(backlogItemRowToDomain);
+  const canonicalEpics = listCanonicalEpics(cwd).map(epicRowToDomain);
+  const [legacyItems, legacyEpics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
+  return buildRecommendationSourceProjectionFromRecords(cwd, mergeDomainRecords(canonicalItems, legacyItems), mergeDomainRecords(canonicalEpics, legacyEpics));
 }
 
 async function buildRecommendationSourceProjectionFromRecords(cwd: string, allItems: readonly BacklogItem[], allEpics: readonly BacklogEpic[]): Promise<Record<string, unknown>> {
@@ -243,8 +249,9 @@ export interface RecommendationReferenceRecord {
 }
 
 export async function validateRecommendationReferences(cwd: string, model: BacklogRecommendationModel): Promise<void> {
-  const [items, epics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
-  validateRecommendationReferencesAgainstRecords(model, items, epics);
+  const [canonicalItems, canonicalEpics] = [listCanonicalBacklogItems(cwd), listCanonicalEpics(cwd)];
+  const [legacyItems, legacyEpics] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd)]);
+  validateRecommendationReferencesAgainstRecords(model, mergeReferenceRecords(legacyItems, canonicalItems.map(backlogItemRowToDomain)), mergeReferenceRecords(legacyEpics, canonicalEpics.map(epicRowToDomain)));
 }
 
 export function validateRecommendationReferencesAgainstIds(model: BacklogRecommendationModel, itemIds: ReadonlySet<string>, epicIds: ReadonlySet<string>): void {
@@ -258,6 +265,14 @@ export function validateRecommendationReferencesAgainstIds(model: BacklogRecomme
 export function validateRecommendationReferencesAgainstRecords(model: BacklogRecommendationModel, items: readonly RecommendationReferenceRecord[], epics: readonly RecommendationReferenceRecord[]): void {
   const result = collectRecommendationReferenceValidationIssues(model, items, epics);
   if (!result.valid) throwRecommendationReferenceValidationError(result.issues);
+}
+
+function mergeReferenceRecords(fallback: readonly RecommendationReferenceRecord[], authoritative: readonly RecommendationReferenceRecord[]): RecommendationReferenceRecord[] {
+  return mergeDomainRecords(fallback, authoritative);
+}
+
+function mergeDomainRecords<T extends { id: string }>(fallback: readonly T[], authoritative: readonly T[]): T[] {
+  return [...new Map([...fallback, ...authoritative].map((record) => [record.id, record])).values()];
 }
 
 export function collectRecommendationReferenceValidationIssues(model: BacklogRecommendationModel, items: readonly RecommendationReferenceRecord[], epics: readonly RecommendationReferenceRecord[]): RecommendationReferenceValidationResult {
@@ -290,6 +305,10 @@ export function throwRecommendationReferenceValidationError(issues: readonly Rec
   throw new ExtensionActionInputValidationError(message, issues.map((issue) => ({ ...issue })) as Array<{ path: string; message: string }>);
 }
 // --- eforge:endregion recommendation-validation ---
+
+function currentRecommendationsExist(_cwd: string, currentPath: string): boolean {
+  return existsSync(currentPath);
+}
 
 async function readRecommendationStatusSidecar(statusPath: string): Promise<RecommendationStatusSidecar | null> {
   if (!existsSync(statusPath)) return null;

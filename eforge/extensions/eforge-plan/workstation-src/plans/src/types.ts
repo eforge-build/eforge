@@ -1,15 +1,12 @@
 import type { EforgePlanPlanningBacklogCurationDraft, EforgePlanPlanningPlanRevisionTurn, ExtensionJsonObject } from '@eforge-build/client/browser';
 import type { BacklogCurationPreviewDetails, BacklogCurationRecommendationProjection, BacklogCurationRecommendationsSkipped, RecommendationReferenceValidationResult } from './backlog-curation-types';
-
 export type JsonObject = ExtensionJsonObject;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
-
 export interface EforgeBridge {
   version?: number;
   invokeAction<TOutput = unknown>(actionId: string, input?: JsonObject): Promise<TOutput>;
 }
-
 export interface LifecycleLinkRow {
   kind: 'session-plan' | 'queue-prd' | 'build-run' | 'build-session' | 'pr' | 'landing' | 'last-event' | string;
   stage?: string;
@@ -34,7 +31,6 @@ export interface LifecycleLinkRow {
   affectedEpicIds?: string[];
   itemRows?: LifecycleItemProgressRow[];
 }
-
 export interface LifecycleItemProgressRow {
   itemId: string;
   title?: string;
@@ -44,7 +40,6 @@ export interface LifecycleItemProgressRow {
   evidence?: string;
   rows?: LifecycleLinkRow[];
 }
-
 export interface EpicProgress {
   epicId: string;
   title?: string;
@@ -71,6 +66,10 @@ export interface PlanLifecycleProjection {
   itemRows: LifecycleItemProgressRow[];
   linkRows: LifecycleLinkRow[];
   failureEvidence?: LifecycleLinkRow[];
+  userStatus?: string;
+  effectiveLifecycle?: string;
+  reasonCodes?: string[];
+  associatedLinks?: LifecycleLinkRow[];
 }
 export interface PullRequestRef {
   url?: string;
@@ -134,28 +133,19 @@ export interface BoardItem {
   failureEvidence?: LifecycleLinkRow[];
   lifecycleState?: string;
   epicProgress?: EpicProgress;
+  userStatus?: string;
+  effectiveLifecycle?: string;
+  reasonCodes?: string[];
+  associatedLinks?: LifecycleLinkRow[];
+  snippets?: string[];
 }
 export interface BoardLane { lane: string; title: string; items: BoardItem[]; count?: number; openCount?: number; closedCount?: number; pagination?: BoardPagination; }
 export interface Epic { id: string; title?: string; status?: string; priority?: string; tags?: string[]; itemCount?: number; openItemCount?: number; hasBody?: boolean; }
 export interface Board { lanes: BoardLane[]; items: BoardItem[]; epics?: Epic[]; lifecycleLinks?: LifecycleLinkRow[]; epicProgress?: EpicProgress[]; counts?: BoardCounts; pagination?: BoardPagination; }
 
-export interface CompactBoardItem {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-  tags: string[];
-  lane: string;
-  reasons: string[];
-  dependsOn?: string[];
-  unresolvedDependsOn?: string[];
-  activeTraceReasons?: string[];
-  blocked: boolean;
-  ready: boolean;
-  reviewDue: boolean;
-  closed: boolean;
-  epic?: string;
-  lifecycleState?: string;
+export interface CompactBoardItem { id: string; title: string; status: string; priority: string; tags: string[]; lane: string; reasons: string[]; dependsOn?: string[]; unresolvedDependsOn?: string[]; activeTraceReasons?: string[]; blocked: boolean; ready: boolean; reviewDue: boolean; closed: boolean; epic?: string; lifecycleState?: string;
+  userStatus?: string; effectiveLifecycle?: string; reasonCodes?: string[]; associatedLinks?: LifecycleLinkRow[]; linkRows?: LifecycleLinkRow[];
+  rank?: number; snippet?: SearchSnippet; matchedFields?: string[];
 }
 export interface CompactItemDetail extends CompactBoardItem {
   path: string;
@@ -166,7 +156,13 @@ export interface CompactItemDetail extends CompactBoardItem {
 }
 export interface CompactEpic extends Epic { tags: string[]; itemCount: number; openItemCount: number; sections?: Record<string, string>; path?: string; body?: string; }
 export interface CompactLaneSummary { lane: string; title: string; count: number; openCount: number; closedCount: number; pagination?: BoardPagination; }
-export interface CompactBoardResponse { schemaVersion: 1; items: CompactBoardItem[]; total: number; limit: number; offset: number; lanes?: CompactLaneSummary[]; epics?: CompactEpic[]; counts?: BoardCounts; pagination?: BoardPagination; }
+export interface CompactBoardResponse { schemaVersion: 1; items: CompactBoardItem[]; total: number; limit: number; offset: number; lanes?: CompactLaneSummary[]; epics?: CompactEpic[]; counts?: BoardCounts; pagination?: BoardPagination; indexDirty?: boolean; indexStatus?: SearchIndexStatus; snippets?: Record<string, SearchSnippet>; }
+export type SearchDocumentType = 'backlog_item' | 'epic' | 'session_plan' | 'recommendation';
+export interface SearchSnippet { text: string; field?: 'title' | 'tags' | 'summary' | 'body' | 'itemIds' | 'epicIds' | 'recommendationRefs'; highlights: string[] }
+export interface SearchIndexStatus { dirty: boolean; dirtyCount: number; dirtyTypes: SearchDocumentType[]; dirtySince?: string; dirtyReason?: string; lastRebuiltAt?: string }
+export interface SearchItemsResponse { schemaVersion: 1; items: CompactBoardItem[]; epics?: CompactEpic[]; total: number; limit: number; offset: number; counts: { total: number }; pagination: BoardPagination; indexDirty: boolean; indexStatus: SearchIndexStatus; snippets?: Record<string, SearchSnippet>; }
+export interface SearchResult { type: SearchDocumentType; id: string; title: string; rank?: number; snippet?: SearchSnippet; refs?: { itemIds?: string[]; epicIds?: string[]; session?: string; recommendationRef?: string; runId?: string }; updatedAt?: string }
+export interface SearchPlanningRecordsResponse { schemaVersion: 1; results: SearchResult[]; total: number; countsByType: Partial<Record<SearchDocumentType, number>>; page: BoardPagination; indexDirty: boolean; indexStatus: SearchIndexStatus }
 export interface CompactBoardDetailResponse { schemaVersion: 1; item: CompactItemDetail; epic?: CompactEpic; dependencies?: CompactBoardItem[]; dependents?: CompactBoardItem[]; }
 export type DetailLoadingState = { state: 'idle' } | { state: 'loading' } | { state: 'loaded'; item: BoardItem } | { state: 'error'; message: string };
 
@@ -184,18 +180,17 @@ export interface RecommendationModel {
 }
 export type RecommendationActionabilityState = 'actionable' | 'non-actionable';
 export type RecommendationGroupActionabilityState = 'actionable' | 'partially-actionable' | 'non-actionable';
-export type RecommendationActionabilityReasonCode = 'planned-session-plan' | 'submitted-session-plan' | 'active-planning-task' | 'queued-trace' | 'building-trace' | 'active-build-session-trace' | 'open-pr-trace';
+export type RecommendationActionabilityReasonCode = 'planned-session-plan' | 'submitted-session-plan' | 'active-planning-task' | 'queued-trace' | 'building-trace' | 'active-build-session-trace' | 'open-pr-trace' | 'queued-build' | 'running-build' | 'open-pr' | 'merged-result' | 'shipped-result' | 'failed-result' | 'partial-plan';
 export type RecommendationActionabilityLifecycleState = 'none' | 'planned' | 'active' | 'queue' | 'build' | 'pr-open' | 'merged' | 'shipped' | 'failed' | 'partial';
 export interface RecommendationActionabilityLink { kind: string; label: string; itemIds: string[]; status?: string; session?: string; taskId?: string; prdId?: string; runId?: string; sessionId?: string; featureBranch?: string; commitSha?: string; prUrl?: string; path?: string; timestamp?: string; }
-export interface RecommendationItemActionability { itemId: string; state: RecommendationActionabilityState; lifecycleState: RecommendationActionabilityLifecycleState; reasonCode?: RecommendationActionabilityReasonCode; reasonMessage?: string; associatedLinks: RecommendationActionabilityLink[]; }
+export interface RecommendationItemActionability { itemId: string; state: RecommendationActionabilityState; lifecycleState: RecommendationActionabilityLifecycleState; reasonCode?: RecommendationActionabilityReasonCode; reasonMessage?: string; associatedLinks: RecommendationActionabilityLink[]; disposition?: import('./workstation-view-model-types').RecommendationDisposition; }
 export interface RecommendationEntryActionability extends RecommendationEntry { lane: string; actionability: RecommendationItemActionability; }
 export interface RecommendationGroupActionability { ref: string; state: RecommendationGroupActionabilityState; itemIds: string[]; actionableItemIds: string[]; suppressedItemIds: string[]; items: RecommendationItemActionability[]; }
 export interface RecommendationActionabilityProjection { schemaVersion: 1; activeWork: RecommendationEntryActionability[]; readyCandidates: RecommendationEntryActionability[]; recommendedNextSequence: RecommendationEntryActionability[]; safeParallelizableGroups: RecommendationGroupActionability[]; }
 
-// Draft plan unit shapes live in a sibling module to keep this barrel under the
-// file-size cap; re-export so `@/types` stays the single import surface.
 export type { DraftPlanUnitProvenance, DraftPlanUnitItemOrigin, DraftPlanUnitItem, DraftPlanUnit, DraftPlanUnitListItem, PlanningProfile, UpdateDraftUnitInput, ListDraftUnitsResponse, DraftUnitResponse, PromoteDraftUnitResponse, DraftUnitAdvisorySeverity, DraftUnitAdvisoryFindingCode, DraftUnitAdvisoryFinding, DraftUnitAdvisory, MergeDraftUnitsInput, MergeDraftUnitsResponse, SplitDraftUnitInput, SplitDraftUnitResponse, AdvisoryResponse } from './draft-unit-types';
 export { PLANNING_PROFILES } from './draft-unit-types';
+export type { AssociatedPlanningLink, MaintenanceActionReport, PlanningSearchInput, PlanningSearchResultPage, PlanningStoreStatus, RecommendationDisposition, SQLiteLifecycleProjectionFields, SQLiteLifecycleReasonCode, StoreFileSizes, StoreTableCount } from './workstation-view-model-types';
 
 export type RecommendationStatusState = 'missing' | 'fresh' | 'stale';
 export interface RecommendationStaleReason {
@@ -223,7 +218,7 @@ export interface RecommendationStatus {
   staleReasons: RecommendationStaleReason[];
 }
 
-export interface RecommendationFreshnessView { state: 'missing' | 'fresh' | 'stale'; reason: string; storedSourceFingerprint?: string; comparedSourceFingerprint: string; baselineTaskId?: string; }
+export interface RecommendationFreshnessView { state: 'missing' | 'fresh' | 'stale'; reason: string; storedSourceFingerprint?: string; comparedSourceFingerprint: string; baselineTaskId?: string; staleReasons?: RecommendationStaleReason[]; }
 export interface RecommendationSummary { recommendedNextItemIds?: string[]; safeParallelizableGroups?: Array<{ ref: string; itemIds: string[]; epicIds?: string[] }>; blockedChainCount?: number; rationaleAndAssumptions?: string[]; }
 
 export type AgentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

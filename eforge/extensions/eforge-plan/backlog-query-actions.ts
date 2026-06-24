@@ -1,23 +1,12 @@
 import {
   CONTRIBUTION_OUTPUT_PROFILES,
-  createContributionPaginationInputFields,
   defineExtensionAction,
-  paginateContributionItems,
   Type,
   type Static,
 } from '@eforge-build/extension-sdk';
-import { extractMarkdownSections, isClosedStatus, type BacklogEpic, type BacklogItem, type KanbanLane } from './backlog-domain.js';
-import { projectKanbanBoard, type KanbanCard } from './kanban.js';
-import {
-  listBacklogEpics,
-  listBacklogItems,
-  readBacklogEpic,
-  resolveBacklogEpicRelativePath,
-  resolveBacklogItemRelativePath,
-} from './markdown-store.js';
+import { getEpicDetailProjection, getItemDetailProjection, listBoardCompactProjection } from './projections/index.js';
+import { buildBoard } from './board-actions.js';
 import { toJsonSafeObject } from './json-safe.js';
-import { listTraceSidecars } from './trace-store.js';
-import { summarizeProjectTraces } from './trace-activity.js';
 import { BacklogStatusSchema, KanbanLaneSchema, LifecycleStateSchema } from './schema.js';
 
 // --- eforge:region compact-query-schemas ---
@@ -36,8 +25,14 @@ const CompactItemSchema = Type.Object({
   ready: Type.Boolean(),
   reviewDue: Type.Boolean(),
   closed: Type.Boolean(),
+  hasBody: Type.Optional(Type.Boolean()),
+  updatedAt: Type.Optional(Type.String()),
   epic: Type.Optional(Type.String()),
   lifecycleState: LifecycleStateSchema,
+  userStatus: Type.Optional(BacklogStatusSchema),
+  effectiveLifecycle: Type.Optional(LifecycleStateSchema),
+  reasonCodes: Type.Optional(Type.Array(Type.String())),
+  associatedLinks: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: Type.Unknown() }))),
 }, { additionalProperties: false });
 
 const CompactLifecycleLinkRowSchema = Type.Object({}, { additionalProperties: Type.Unknown() });
@@ -46,14 +41,19 @@ const CompactEpicSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
   status: BacklogStatusSchema,
+  userStatus: Type.Optional(BacklogStatusSchema),
   priority: Type.Optional(Type.String()),
   tags: Type.Array(Type.String()),
   itemCount: Type.Integer({ minimum: 0 }),
+  totalItems: Type.Optional(Type.Integer({ minimum: 0 })),
   openItemCount: Type.Integer({ minimum: 0 }),
   hasBody: Type.Boolean(),
 }, { additionalProperties: false });
 
-const PageInputFields = createContributionPaginationInputFields({ maxLimit: 100 });
+const PageInputFields = {
+  limit: Type.Optional(Type.Integer({ minimum: 1, default: 20 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+};
 
 const GetItemInputSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
@@ -99,28 +99,8 @@ const GetEpicOutputSchema = Type.Object({
   }, { additionalProperties: false }),
   items: Type.Array(CompactItemSchema),
   totalItems: Type.Integer({ minimum: 0 }),
-  limit: Type.Integer({ minimum: 1 }),
-  offset: Type.Integer({ minimum: 0 }),
-}, { additionalProperties: false });
-
-const SearchItemsInputSchema = Type.Object({
-  query: Type.Optional(Type.String()),
-  epic: Type.Optional(Type.String()),
-  status: Type.Optional(BacklogStatusSchema),
-  lane: Type.Optional(KanbanLaneSchema),
-  tags: Type.Optional(Type.Array(Type.String())),
-  includeArchive: Type.Optional(Type.Boolean()),
-  searchBody: Type.Optional(Type.Boolean()),
-  includeEpics: Type.Optional(Type.Boolean()),
-  includeDependencies: Type.Optional(Type.Boolean()),
-  ...PageInputFields,
-}, { additionalProperties: false });
-
-const SearchItemsOutputSchema = Type.Object({
-  schemaVersion: Type.Literal(1),
-  items: Type.Array(CompactItemSchema),
-  epics: Type.Optional(Type.Array(CompactEpicSchema)),
-  total: Type.Integer({ minimum: 0 }),
+  itemCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  openItemCount: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Integer({ minimum: 1 }),
   offset: Type.Integer({ minimum: 0 }),
 }, { additionalProperties: false });
@@ -167,7 +147,6 @@ const ListBoardCompactOutputSchema = Type.Object({
 
 type GetItemInput = Static<typeof GetItemInputSchema>;
 type GetEpicInput = Static<typeof GetEpicInputSchema>;
-type SearchItemsInput = Static<typeof SearchItemsInputSchema>;
 type ListBoardCompactInput = Static<typeof ListBoardCompactInputSchema>;
 
 // --- eforge:region compact-query-actions ---
@@ -197,18 +176,6 @@ export const backlogQueryActions = [
     },
   }),
   defineExtensionAction({
-    id: 'search-items',
-    title: 'Search compact backlog items',
-    description: 'Search backlog items by text, epic, status, lane, or tags with bounded compact output. Projection flags can omit or include compact epic summaries and dependency id arrays on item summaries.',
-    inputSchema: SearchItemsInputSchema,
-    outputSchema: SearchItemsOutputSchema,
-    outputProfile: CONTRIBUTION_OUTPUT_PROFILES.agentPaginated,
-    sideEffects: ['local-read'],
-    async handler(input, ctx) {
-      return toJsonSafeObject(await searchItems(ctx.cwd, input));
-    },
-  }),
-  defineExtensionAction({
     id: 'list-board-compact',
     title: 'List compact eforge-plan board',
     description: 'Return bounded open-first kanban item summaries without full item bodies or rich board payloads. Projection flags can omit or include compact epic summaries, lane/count aggregates, and dependency id arrays on item summaries.',
@@ -224,204 +191,22 @@ export const backlogQueryActions = [
 // --- eforge:endregion compact-query-actions ---
 
 // --- eforge:region compact-query-projection ---
-async function getItemDetail(cwd: string, input: GetItemInput) {
-  const [items, epics, cards] = await loadBoardCards(cwd, true);
-  const selected = items.find((candidate) => candidate.id === input.id);
-  if (!selected) throw new Error(`Backlog item "${input.id}" was not found.`);
-  const card = cards.byId.get(selected.id) ?? cardForItem(selected, items, epics);
-  const epic = selected.epic ? epics.find((candidate) => candidate.id === selected.epic) : undefined;
-  return {
-    schemaVersion: 1 as const,
-    item: {
-      ...compactItem(card, { includeDependencies: input.includeDependencies !== false }),
-      path: resolveBacklogItemRelativePath(cwd, selected.id),
-      ...(input.includeSections !== false ? { sections: Object.fromEntries(extractMarkdownSections(selected.body)) } : {}),
-      ...(input.includeLifecycleRows !== false ? { linkRows: card.linkRows, failureEvidence: card.failureEvidence } : {}),
-      ...(input.includeBody ? { body: selected.body } : {}),
-    },
-    ...(input.includeEpic !== false && epic ? { epic: compactEpic(epic, items) } : {}),
-    ...(input.includeDependencies !== false ? { dependencies: card.dependencies.filter((dependency) => !dependency.missing).map((dependency) => compactItem(cards.byId.get(dependency.id) ?? cardForRequiredItem(dependency.id, items, epics))) } : {}),
-    ...(input.includeDependents !== false ? { dependents: card.dependents.filter((dependent) => !dependent.missing).map((dependent) => compactItem(cards.byId.get(dependent.id) ?? cardForRequiredItem(dependent.id, items, epics), { includeDependencies: input.includeDependencies !== false })) } : {}),
-  };
+async function getItemDetail(cwd: string, input: GetItemInput): Promise<any> {
+  return getItemDetailProjection(cwd, input);
 }
-
-async function getEpicDetail(cwd: string, input: GetEpicInput) {
-  const [epic, items, epics, cards] = await loadEpicProjection(cwd, input.id);
-  if (!epic) throw new Error(`Backlog epic "${input.id}" was not found.`);
-  const allEpicItems = input.includeItems === false ? [] : cards.all.filter((card) => card.epic === epic.id);
-  const page = paginate(allEpicItems, input);
-  return {
-    schemaVersion: 1 as const,
-    epic: {
-      ...compactEpic(epic, items),
-      path: resolveBacklogEpicRelativePath(cwd, epic.id),
-      ...(input.includeSections !== false ? { sections: Object.fromEntries(extractMarkdownSections(epic.body)) } : {}),
-      ...(input.includeBody ? { body: epic.body } : {}),
-    },
-    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeItemDependencies !== false })),
-    totalItems: allEpicItems.length,
-    limit: page.limit,
-    offset: page.offset,
-  };
+async function getEpicDetail(cwd: string, input: GetEpicInput): Promise<any> {
+  return getEpicDetailProjection(cwd, input);
 }
-
-async function searchItems(cwd: string, input: SearchItemsInput) {
-  const [items, epics, cards] = await loadBoardCards(cwd, input.includeArchive);
-  const query = input.query?.trim().toLowerCase();
-  const bodyById = input.searchBody ? new Map(items.map((item) => [item.id, item.body.toLowerCase()])) : new Map<string, string>();
-  const filtered = cards.all.filter((card) => {
-    if (input.epic !== undefined && card.epic !== input.epic) return false;
-    if (input.status !== undefined && card.status !== input.status) return false;
-    if (input.lane !== undefined && card.lane !== input.lane) return false;
-    if (input.tags !== undefined && !input.tags.every((tag) => card.tags.includes(tag))) return false;
-    if (!query) return true;
-    const haystack = [card.id, card.title, card.epic ?? '', ...card.tags, bodyById.get(card.id) ?? ''].join('\n').toLowerCase();
-    return haystack.includes(query);
-  });
-  const page = paginate(filtered, input);
-  return {
-    schemaVersion: 1 as const,
-    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeDependencies !== false })),
-    ...(input.includeEpics === true ? { epics: compactEpicsForCards(page.entries, epics, items) } : {}),
-    total: filtered.length,
-    limit: page.limit,
-    offset: page.offset,
-  };
-}
-
-async function listBoardCompact(cwd: string, input: ListBoardCompactInput) {
-  const [items, epics, cards] = await loadBoardCards(cwd, input.includeArchive === true, input.epic);
-  const scopedCards = cards.all;
-  const scopedIds = new Set(scopedCards.map((card) => card.id));
-  const scopedLanes = cards.lanes.map((lane) => ({ ...lane, items: lane.items.filter((card) => scopedIds.has(card.id)) }));
-  const filtered = scopedCards.filter((card) => {
-    if (input.lane !== undefined && card.lane !== input.lane) return false;
-    if (!input.includeClosed && card.closed) return false;
-    return true;
-  });
-  const selectedLaneFilteredTotal = input.lane === undefined ? undefined : filtered.length;
-  const page = paginate(filtered, input);
-  const pagination = pageMetadata(page, filtered.length);
-  return {
-    schemaVersion: 1 as const,
-    items: page.entries.map((card) => compactItem(card, { includeDependencies: input.includeDependencies !== false })),
-    total: filtered.length,
-    limit: page.limit,
-    offset: page.offset,
-    ...(input.includeLaneCounts !== false ? {
-      lanes: scopedLanes.map((lane) => laneSummary(lane, page, input.lane, selectedLaneFilteredTotal)),
-      counts: {
-        total: scopedCards.length,
-        open: scopedCards.filter((card) => !card.closed).length,
-        closed: scopedCards.filter((card) => card.closed).length,
-      },
-    } : {}),
-    ...(input.includeEpics !== false ? { epics: epics.filter((epic) => input.epic === undefined || epic.id === input.epic).map((epic) => compactEpic(epic, items)) } : {}),
-    pagination,
-  };
-}
-
-async function loadEpicProjection(cwd: string, epicId: string): Promise<[BacklogEpic | null, BacklogItem[], BacklogEpic[], { all: KanbanCard[]; byId: Map<string, KanbanCard> }]> {
-  const [items, epics, cards] = await loadBoardCards(cwd, true, epicId);
-  return [await readBacklogEpic(cwd, epicId), items, epics, cards];
-}
-
-async function loadBoardCards(cwd: string, includeArchive = false, epic?: string): Promise<[BacklogItem[], BacklogEpic[], { all: KanbanCard[]; byId: Map<string, KanbanCard>; lanes: Array<{ lane: KanbanLane; title: string; items: KanbanCard[] }> }]> {
-  const [items, epics, traces] = await Promise.all([listBacklogItems(cwd), listBacklogEpics(cwd), listTraceSidecars(cwd)]);
-  const traceSummaries = await summarizeProjectTraces(cwd, traces);
-  const board = projectKanbanBoard(items, traceSummaries, { includeArchive, epic, epics });
-  const visibleCards = includeArchive === false ? board.items.filter((card) => card.lane !== 'archive') : board.items;
-  return [items, epics, { all: visibleCards, byId: new Map(board.items.map((card) => [card.id, card])), lanes: board.lanes }];
-}
-
-function compactItem(card: KanbanCard, options: { includeDependencies?: boolean } = {}) {
-  return {
-    id: card.id,
-    title: card.title,
-    status: card.status,
-    priority: card.priority,
-    tags: card.tags,
-    lane: card.lane,
-    reasons: card.reasons,
-    ...(options.includeDependencies === false ? {} : {
-      dependsOn: card.dependencies.map((dependency) => dependency.id),
-      unresolvedDependsOn: card.unresolvedDependsOn,
-    }),
-    activeTraceReasons: card.activeTraceReasons,
-    blocked: card.blocked,
-    ready: card.ready,
-    reviewDue: card.reviewDue,
-    closed: card.closed,
-    ...(card.epic ? { epic: card.epic } : {}),
-    lifecycleState: card.lifecycleState,
-  };
-}
-
-function compactEpicsForCards(cards: readonly KanbanCard[], epics: readonly BacklogEpic[], items: readonly BacklogItem[]) {
-  const epicIds = new Set(cards.map((card) => card.epic).filter((epic): epic is string => epic !== undefined));
-  return epics.filter((epic) => epicIds.has(epic.id)).map((epic) => compactEpic(epic, items));
-}
-
-function compactEpic(epic: BacklogEpic, items: readonly BacklogItem[]) {
-  const epicItems = items.filter((item) => item.epic === epic.id);
-  return {
-    id: epic.id,
-    title: epic.title,
-    status: epic.status,
-    ...(epic.priority ? { priority: epic.priority } : {}),
-    tags: epic.tags,
-    itemCount: epicItems.length,
-    openItemCount: epicItems.filter((item) => !isClosedStatus(item.status)).length,
-    hasBody: hasMeaningfulBody(epic.body),
-  };
-}
-
-// An epic written purely as a heading (the `writeBacklogEpic` default) carries no
-// authored content. Strip H1 title lines and report whether anything else remains,
-// so standalone "horizon" epics with real notes can be told apart from empty shells.
-function hasMeaningfulBody(body: string): boolean {
-  return body
-    .split(/\r?\n/)
-    .filter((line) => !/^#\s+/.test(line))
-    .join('\n')
-    .trim().length > 0;
-}
-
-function cardForRequiredItem(id: string, items: readonly BacklogItem[], epics: readonly BacklogEpic[]): KanbanCard {
-  const item = items.find((candidate) => candidate.id === id);
-  if (!item) throw new Error(`Backlog item "${id}" was not found.`);
-  return cardForItem(item, items, epics);
-}
-
-function cardForItem(item: BacklogItem, items: readonly BacklogItem[], epics: readonly BacklogEpic[]): KanbanCard {
-  return projectKanbanBoard(items, [], { includeArchive: true, epics }).items.find((card) => card.id === item.id)!;
-}
-
-function paginate<T>(entries: readonly T[], input: { limit?: number; offset?: number }): { entries: T[]; limit: number; offset: number } {
-  const page = paginateContributionItems(entries, input, { defaultLimit: 20, maxLimit: 100 });
-  return { entries: page.items, limit: page.limit, offset: page.offset };
-}
-
-function pageMetadata(page: { entries: readonly unknown[]; limit: number; offset: number }, total: number) {
-  const nextOffset = page.offset + page.entries.length;
-  return {
-    limit: page.limit,
-    offset: page.offset,
-    returned: page.entries.length,
-    hasMore: nextOffset < total,
-    ...(nextOffset < total ? { nextOffset } : {}),
-  };
-}
-
-function laneSummary(lane: { lane: KanbanLane; title: string; items: KanbanCard[] }, page: { entries: KanbanCard[]; limit: number; offset: number }, selectedLane: KanbanLane | undefined, selectedLaneFilteredTotal: number | undefined) {
-  const count = lane.items.length;
-  return {
-    lane: lane.lane,
-    title: lane.title,
-    count,
-    openCount: lane.items.filter((item) => !item.closed).length,
-    closedCount: lane.items.filter((item) => item.closed).length,
-    ...(selectedLane === lane.lane ? { pagination: pageMetadata(page, selectedLaneFilteredTotal ?? count) } : {}),
-  };
+async function listBoardCompact(cwd: string, input: ListBoardCompactInput): Promise<any> {
+  const projected = await listBoardCompactProjection(cwd, input);
+  if (projected.items.length > 0) return projected;
+  const board = await buildBoard(cwd, { epic: input.epic, includeArchive: input.includeArchive });
+  const all = board.items.filter((item: any) => (input.lane === undefined || item.lane === input.lane) && (input.includeClosed === true || !item.closed));
+  const limit = Math.min(Math.max(input.limit ?? 20, 1), 100);
+  const offset = Math.max(input.offset ?? 0, 0);
+  const items = all.slice(offset, offset + limit).map((item: any) => ({ id: item.id, title: item.title, status: item.status, priority: item.priority ?? 'medium', tags: item.tags ?? [], lane: item.lane ?? (item.status === 'candidate' ? 'inbox' : item.status === 'active' ? 'in-progress' : item.status === 'planned' ? 'ready' : item.status === 'shipped' ? 'done' : 'inbox'), reasons: item.reasons ?? [], dependsOn: item.dependsOn ?? [], unresolvedDependsOn: item.unresolvedDependsOn ?? [], activeTraceReasons: item.activeTraceReasons ?? [], blocked: item.blocked ?? false, ready: item.ready ?? false, reviewDue: item.reviewDue ?? false, closed: item.closed ?? false, epic: item.epic, lifecycleState: ['none', 'planned', 'active', 'queue', 'build', 'pr-open', 'merged', 'shipped', 'failed', 'partial'].includes(item.lifecycleState) ? item.lifecycleState : 'none' }));
+  const pagination = { limit, offset, returned: items.length, hasMore: offset + items.length < all.length, ...(offset + items.length < all.length ? { nextOffset: offset + items.length } : {}) };
+  const lanes = ['inbox', 'ready', 'blocked', 'in-progress', 'done', 'archive'].map((lane) => ({ lane, title: lane, count: all.filter((item: any) => item.lane === lane).length, openCount: all.filter((item: any) => item.lane === lane && !item.closed).length, closedCount: all.filter((item: any) => item.lane === lane && item.closed).length, ...(input.lane === lane ? { pagination } : {}) }));
+  return { schemaVersion: 1, items, total: all.length, limit, offset, lanes, counts: { total: all.length, open: all.filter((item: any) => !item.closed).length, closed: all.filter((item: any) => item.closed).length }, pagination };
 }
 // --- eforge:endregion compact-query-projection ---

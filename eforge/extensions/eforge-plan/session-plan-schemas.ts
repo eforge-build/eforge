@@ -83,6 +83,12 @@ export const ListPlanningArtifactsOutputSchema = Type.Object({
   total: Type.Integer({ minimum: 0 }),
   limit: Type.Integer({ minimum: 1 }),
   offset: Type.Integer({ minimum: 0 }),
+  pagination: Type.Object({
+    limit: Type.Integer({ minimum: 1 }),
+    offset: Type.Integer({ minimum: 0 }),
+    returned: Type.Integer({ minimum: 0 }),
+    hasMore: Type.Boolean(),
+  }),
   board: Type.Optional(ListBoardOutputSchema),
 }, JsonObjectAdditionalProperties);
 export const ShowSessionPlanInputSchema = Type.Object({ session: Type.String() });

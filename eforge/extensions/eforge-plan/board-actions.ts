@@ -6,6 +6,7 @@ import { listTraceSidecars } from './trace-store.js';
 import { summarizeProjectTraces } from './trace-activity.js';
 import { toJsonSafeObject } from './json-safe.js';
 import { aggregateLifecycleLinks, projectEpicProgress } from './lifecycle-projection.js';
+import { buildBoardDebugProjection, projectionStoreExists, renderBoardProjection } from './projections/index.js';
 // --- eforge:region recommendations ---
 import { readRecommendationsFromPath, resolveRecommendationsPath, resolveRecommendationsPathForCwd, summarizeRecommendations } from './recommendations-store.js';
 import { readDerivedRecommendationStatus } from './recommendation-status.js';
@@ -20,7 +21,7 @@ import {
 export const listBoard = defineExtensionAction({
   id: 'list-board',
   title: 'List eforge-plan board',
-  description: 'Read compatibility/debug rich backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and trace summaries for hosts that explicitly need the full board payload.',
+  description: 'Read compatibility/debug rich backlog epics, items, kanban lanes, blocked reasons, recommendation status/summary, and lifecycle summaries for hosts that explicitly need the full board payload.',
   inputSchema: BoardActionInputSchema,
   outputSchema: ListBoardOutputSchema,
   outputProfile: CONTRIBUTION_OUTPUT_PROFILES.debugRich,
@@ -47,7 +48,8 @@ export const renderBoardMarkdown = defineExtensionAction({
   },
 });
 
-export async function buildBoard(cwd: string, input: BoardActionInput, recommendationsPath?: string) {
+export async function buildBoard(cwd: string, input: BoardActionInput, recommendationsPath?: string): Promise<any> {
+  if (projectionStoreExists(cwd)) return buildBoardDebugProjection(cwd, input);
   const resolvedRecommendationsPath = recommendationsPath ?? resolveRecommendationsPathForCwd(cwd);
   const [epics, items, traces, recommendations, recommendationStatus] = await Promise.all([
     listBacklogEpics(cwd),
@@ -74,8 +76,8 @@ export async function buildBoard(cwd: string, input: BoardActionInput, recommend
       .filter((item) => item.unresolvedDependsOn.length > 0)
       .map((item) => ({ itemId: item.id, reasons: item.reasons })),
     traceSummaries,
-    lifecycleLinks: aggregateLifecycleLinks(traceSummaries),
-    epicProgress: projectEpicProgress({ epics, items, traceSummaries }),
+    lifecycleLinks: [],
+    epicProgress: [],
     // --- eforge:region recommendations ---
     recommendationSummary: summarizeRecommendations(recommendations),
     recommendationStatus,
@@ -88,48 +90,12 @@ export function projectBoardOutput(board: Awaited<ReturnType<typeof buildBoard>>
 }
 
 export function renderBoard(board: Awaited<ReturnType<typeof buildBoard>>): string {
+  if (Array.isArray(board.items) && board.items.some((item: { lane?: unknown }) => item.lane !== undefined)) return renderBoardProjection(board);
   const lines = ['# eforge-plan board', ''];
-  // --- eforge:region recommendations ---
-  if (board.recommendationStatus?.state === 'fresh') lines.push('> Recommendations are fresh for the current backlog fingerprint.', '');
-  if (board.recommendationStatus?.state === 'stale') {
-    lines.push(`> Recommendations are stale${board.recommendationStatus.staleSince ? ` since ${board.recommendationStatus.staleSince}` : ''}; refresh recommendations before planning from them.`, '');
-    const summaries = board.recommendationStatus.reasons.map((reason) => reason.summary ?? reason.message).filter((value): value is string => value !== undefined && value.length > 0);
-    for (const summary of summaries) lines.push(`> - ${summary}`);
-    if (summaries.length > 0) lines.push('');
-  }
-  if (board.recommendationSummary) {
-    lines.push('## Recommended Next Work', '');
-    if (board.recommendationSummary.recommendedNextItemIds.length === 0) {
-      lines.push('_No recommended next items._', '');
-    } else {
-      for (const itemId of board.recommendationSummary.recommendedNextItemIds) {
-        lines.push(`- **${itemId}**`);
-      }
-      lines.push('');
-    }
-    if (board.recommendationSummary.safeParallelizableGroups.length > 0) {
-      lines.push('### Safe Parallelizable Groups', '');
-      for (const group of board.recommendationSummary.safeParallelizableGroups) {
-        lines.push(`- **${group.ref}**${group.title ? ` — ${group.title}` : ''}: ${group.itemIds.join(', ')}`);
-      }
-      lines.push('');
-    }
-    if (board.recommendationSummary.blockedChainCount > 0) {
-      lines.push(`Blocked chains: ${board.recommendationSummary.blockedChainCount}`, '');
-    }
-    if (board.recommendationSummary.rationaleAndAssumptions.length > 0) {
-      lines.push('### Rationale and Assumptions', '');
-      for (const entry of board.recommendationSummary.rationaleAndAssumptions) lines.push(`- ${entry}`);
-      lines.push('');
-    }
-  }
-  // --- eforge:endregion recommendations ---
-  for (const lane of board.lanes) {
+  for (const lane of board.lanes as Array<{ title: string; items: Array<{ id: string; status: string; title: string; reasons?: string[] }> }>) {
     lines.push(`## ${lane.title}`, '');
     if (lane.items.length === 0) lines.push('_No items._', '');
-    for (const item of lane.items) {
-      lines.push(`- **${item.id}** (${item.status}) ${item.title}${item.reasons.length ? ` — ${item.reasons.join('; ')}` : ''}`);
-    }
+    for (const item of lane.items) lines.push(`- **${item.id}** (${item.status}) ${item.title}${item.reasons?.length ? ` — ${item.reasons.join('; ')}` : ''}`);
     lines.push('');
   }
   return lines.join('\n');

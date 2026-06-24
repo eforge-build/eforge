@@ -21,6 +21,7 @@ import {
 } from '@/fixtures/mock-data';
 import { getMockRecommendationsWithRoadmapRefresh, getMockRoadmapState, refreshMockRecommendations, updateMockRoadmapState } from '@/fixtures/mock-roadmap';
 import { adviseMergeMockDraftUnits, adviseSplitMockDraftUnit, deleteMockDraftUnit, forkMockDraftUnit, getMockDraftUnit, listMockDraftUnits, mergeMockDraftUnits, promoteMockDraftUnit, splitMockDraftUnit, updateMockDraftUnit } from '@/fixtures/mock-draft-units';
+import { mockMaintenanceReport, mockStoreStatus, searchMockPlanningRecords } from '@/fixtures/mock-storage';
 import {
   applyMockPlanRevisionTurn,
   cancelMockPlanRevisionTurn,
@@ -102,6 +103,12 @@ function createMockBridge(): EforgeBridge {
         case 'get-item': return getMockCompactItemDetail(String(input.id ?? '')) as TOutput;
         case 'update-item': return updateMockItem(input) as TOutput;
         case 'get-roadmap-state': return getMockRoadmapState() as TOutput;
+        case 'get-store-status': return mockStoreStatus as TOutput;
+        case 'search-planning-records': return searchMockPlanningRecords(input) as TOutput;
+        case 'compact-planning-store': return mockMaintenanceReport('compact-planning-store', input) as TOutput;
+        case 'rebuild-search-index': return mockMaintenanceReport('rebuild-search-index', input) as TOutput;
+        case 'optimize-search-index': return mockMaintenanceReport('optimize-search-index', input) as TOutput;
+        case 'vacuum-planning-store': return mockMaintenanceReport('vacuum-planning-store', input) as TOutput;
         case 'update-roadmap-state': return updateMockRoadmapState(input) as TOutput;
         case 'refresh-recommendations': return refreshMockRecommendations() as TOutput;
         case 'get-recommendations': return getMockRecommendationsWithRoadmapRefresh() as TOutput;

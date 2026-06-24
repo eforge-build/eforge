@@ -9,6 +9,7 @@ import {
   type RecommendationSummary,
 } from './schema.js';
 import { validateRecommendationReferences } from './recommendation-status.js';
+import { readCanonicalRecommendations, writeCanonicalRecommendations } from './canonical/recommendation-records.js';
 
 export const RECOMMENDATIONS_SCHEMA_VERSION = 1;
 
@@ -38,7 +39,7 @@ export async function readRecommendationsFromPath(filePath: string): Promise<Bac
 }
 
 export async function readRecommendations(cwd: string): Promise<BacklogRecommendationModel | null> {
-  return readRecommendationsFromPath(resolveRecommendationsPathForCwd(cwd));
+  return readCanonicalRecommendations(cwd) ?? readRecommendationsFromPath(resolveRecommendationsPathForCwd(cwd));
 }
 
 export async function writeRecommendationsToPath(filePath: string, value: unknown): Promise<BacklogRecommendationModel> {
@@ -51,7 +52,9 @@ export async function writeRecommendationsToPath(filePath: string, value: unknow
 export async function writeRecommendations(cwd: string, value: unknown): Promise<BacklogRecommendationModel> {
   const model = parseRecommendationModel(value);
   await validateRecommendationReferences(cwd, model);
-  return writeRecommendationsToPath(resolveRecommendationsPathForCwd(cwd), model);
+  await writeRecommendationsToPath(resolveRecommendationsPathForCwd(cwd), model);
+  writeCanonicalRecommendations(cwd, model, summarizeRecommendations(model));
+  return model;
 }
 
 export function parseRecommendationModel(value: unknown): BacklogRecommendationModel {

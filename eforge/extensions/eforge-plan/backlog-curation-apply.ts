@@ -1,23 +1,15 @@
 import { EforgePlanPlanningBacklogCurationDraftSchema, safeParseWithSchema } from '@eforge-build/client';
 import { ExtensionActionInputValidationError, Type } from '@eforge-build/extension-sdk';
 import { isBacklogStatus, isClosedStatus, isOpenStatus, normalizeBacklogEpic, normalizeBacklogItem, type BacklogEpic, type BacklogItem, type TraceSummary } from './backlog-domain.js';
-// --- eforge:region shipped-evidence-context ---
 import { buildProspectiveCurationProjection, type ProspectiveCurationProjection, type RecommendationReferenceRecord as ProjectionReferenceRecord } from './backlog-curation-recommendation-overlay.js';
-// --- eforge:endregion shipped-evidence-context ---
 import { recordAcceptedAnalysisBaselineForApply } from './backlog-curation-accepted-baseline.js';
 import { SHIPPED_CURRENT_SOURCE_EVIDENCE_PREFIX, SUPERSEDED_CURRENT_SOURCE_EVIDENCE_PREFIX, validateClosedStatusEvidencePrefix } from './backlog-curation-evidence-prefixes.js';
 import { appendEvidence, applySectionOperations, fieldPath } from './backlog-curation-apply-utils.js';
 export { applySectionOperations } from './backlog-curation-apply-utils.js';
 import { summarizeProjectTraces } from './trace-activity.js';
-import {
-  assertSafeBacklogId,
-  listBacklogEpicSnapshots,
-  listBacklogItemSnapshots,
-  replaceBacklogEpicRecord,
-  replaceBacklogItemRecord,
-  type BacklogRecordSnapshot,
-} from './markdown-store.js';
+import { assertSafeBacklogId, listBacklogEpicSnapshots, listBacklogItemSnapshots, type BacklogRecordSnapshot } from './markdown-store.js';
 import { canonicalJson } from './markdown-store-support.js';
+import { captureCanonicalBacklogItem, upsertCanonicalEpic } from './canonical/backlog-records.js';
 import { computeRecommendationSourceFingerprint, computeRecommendationSourceFingerprintForRecords, markRecommendationsStaleForBacklogMutation, readRecommendationFreshnessView, recordPlannerRecommendationAppliedForSourceFingerprint, throwRecommendationReferenceValidationError } from './recommendation-status.js';
 import { resolveRecommendationsPathForCwd, summarizeRecommendations, writeRecommendations } from './recommendations-store.js';
 import { markPlanningTaskWorkflowEntryApplied, isBacklogCurationWorkflowEntry } from './planning-task-workflow-store.js';
@@ -39,6 +31,44 @@ type Recheck = Draft['noOpRechecks'][number];
 type Patch = ItemPatch | EpicPatch;
 type ProspectiveItem = { snapshot: BacklogRecordSnapshot<BacklogItem>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
 type ProspectiveEpic = { snapshot: BacklogRecordSnapshot<BacklogEpic>; frontmatter: Record<string, unknown>; body: string; changed: boolean; patchPath?: string };
+
+function canonicalItemInput(entry: ProspectiveItem): Parameters<typeof captureCanonicalBacklogItem>[1] {
+  const normalized = normalizeBacklogItem(entry.frontmatter, entry.body);
+  const epic = normalized.epic;
+  const frontmatter = { ...entry.frontmatter };
+  if (epic === undefined) delete frontmatter.epic;
+  return {
+    id: entry.snapshot.id,
+    title: stringValue(entry.frontmatter.title) ?? entry.snapshot.record.title,
+    body: entry.body,
+    status: canonicalStatus(stringValue(entry.frontmatter.status) ?? entry.snapshot.record.status),
+    priority: stringValue(entry.frontmatter.priority) ?? entry.snapshot.record.priority,
+    tags: stringArray(entry.frontmatter.tags),
+    dependsOn: stringArray(entry.frontmatter.depends_on),
+    epic,
+    created: stringValue(entry.frontmatter.created) ?? entry.snapshot.record.created,
+    updated: stringValue(entry.frontmatter.updated) ?? new Date().toISOString(),
+    frontmatter,
+  };
+}
+
+function canonicalEpicInput(entry: ProspectiveEpic): Parameters<typeof upsertCanonicalEpic>[1] {
+  return {
+    id: entry.snapshot.id,
+    title: stringValue(entry.frontmatter.title) ?? entry.snapshot.record.title,
+    body: entry.body,
+    status: canonicalStatus(stringValue(entry.frontmatter.status) ?? entry.snapshot.record.status),
+    priority: stringValue(entry.frontmatter.priority) ?? entry.snapshot.record.priority,
+    tags: stringArray(entry.frontmatter.tags),
+    created: stringValue(entry.frontmatter.created) ?? entry.snapshot.record.created,
+    updated: stringValue(entry.frontmatter.updated) ?? new Date().toISOString(),
+    frontmatter: entry.frontmatter,
+  };
+}
+
+function stringValue(value: unknown): string | undefined { return typeof value === 'string' && value.length > 0 ? value : undefined; }
+function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []; }
+function canonicalStatus(value: string | undefined): BacklogItem['status'] { return isBacklogStatus(value) ? value : 'candidate'; }
 // --- eforge:region apply-entrypoint ---
 export async function applyBacklogCurationDraftFromTask(
   cwd: string,
@@ -58,8 +88,8 @@ export async function applyBacklogCurationDraftFromTask(
   const preRecommendationFingerprint = prepared.generatedRecommendations === undefined || skipGeneratedRecommendations
     ? await computeRecommendationSourceFingerprint(cwd)
     : undefined;
-  for (const entry of prepared.changedItems) await replaceBacklogItemRecord(cwd, entry.snapshot.id, entry.frontmatter, entry.body);
-  for (const entry of prepared.changedEpics) await replaceBacklogEpicRecord(cwd, entry.snapshot.id, entry.frontmatter, entry.body);
+  for (const entry of prepared.changedItems) captureCanonicalBacklogItem(cwd, canonicalItemInput(entry));
+  for (const entry of prepared.changedEpics) upsertCanonicalEpic(cwd, canonicalEpicInput(entry));
   const changedIds = [...prepared.changedItems.map((entry) => entry.snapshot.id), ...prepared.changedEpics.map((entry) => entry.snapshot.id)];
   let recommendationBlock: BacklogCurationApplyDetails['recommendations'];
   let recommendationStatus: BacklogCurationApplyDetails['recommendationStatus'];
