@@ -32,6 +32,10 @@ const OUTPUT_PROFILES = new Set<ExtensionActionOutputProfile>([
   'debug-rich',
 ]);
 const BROAD_ACTION_TERMS = ['list', 'search', 'board'];
+// --- eforge:region plan-03-broad-action-diagnostics ---
+const SINGLE_RECORD_ACTION_PREFIXES = ['get-', 'preview-', 'remove-'];
+const BROAD_WARNING_SUPPRESSING_SIDE_EFFECTS = new Set<ExtensionActionSideEffect>(['local-write', 'network', 'daemon-state', 'build-queue']);
+// --- eforge:endregion plan-03-broad-action-diagnostics ---
 const LIMIT_CONTROL_NAMES = new Set(['limit', 'maxlimit', 'maxresults', 'pagesize', 'perpage', 'first', 'take']);
 const CURSOR_CONTROL_NAMES = new Set(['cursor', 'offset', 'page', 'pagetoken', 'nexttoken', 'after', 'before']);
 const PROJECTION_CONTROL_TERMS = ['field', 'projection', 'select', 'include', 'exclude', 'summary', 'compact', 'detail', 'body', 'raw', 'format'];
@@ -442,10 +446,13 @@ export function collectActionSpecWarnings(spec: ExtensionActionSpec, context: Ac
 
 function collectBroadActionControlWarnings(spec: ExtensionActionSpec, context: ActionSpecWarningContext): ActionSpecWarning[] {
   const propertyNames = collectSchemaPropertyNames(spec.inputSchema).map(normalizeControlName);
+  const hasLimitControl = hasControlName(propertyNames, LIMIT_CONTROL_NAMES);
+  const hasCursorControl = hasControlName(propertyNames, CURSOR_CONTROL_NAMES);
+  const hasBoundedAgentPagination = spec.outputProfile === 'agent-paginated' && hasLimitControl && hasCursorControl;
   return [
-    ...(!hasControlName(propertyNames, LIMIT_CONTROL_NAMES) ? [warning(context, 'extension:action-missing-limit-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose a limit control.`)] : []),
-    ...(!hasControlName(propertyNames, CURSOR_CONTROL_NAMES) ? [warning(context, 'extension:action-missing-cursor-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose a cursor, offset, or page control.`)] : []),
-    ...(!hasProjectionControl(propertyNames) ? [warning(context, 'extension:action-missing-projection-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose projection controls such as fields, include/exclude, or compact/detail options.`)] : []),
+    ...(!hasLimitControl ? [warning(context, 'extension:action-missing-limit-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose a limit control.`)] : []),
+    ...(!hasCursorControl ? [warning(context, 'extension:action-missing-cursor-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose a cursor, offset, or page control.`)] : []),
+    ...(!hasBoundedAgentPagination && !hasProjectionControl(propertyNames) ? [warning(context, 'extension:action-missing-projection-control', `Action "${context.effectiveId}" looks like a broad list/search/board action but its input schema does not expose projection controls such as fields, include/exclude, or compact/detail options.`)] : []),
   ];
 }
 
@@ -459,9 +466,34 @@ function warning(context: ActionSpecWarningContext, code: string, message: strin
 }
 
 function isBroadContributionAction(spec: ExtensionActionSpec, context: ActionSpecWarningContext): boolean {
-  const searchable = [context.localId, context.effectiveId, spec.title, spec.description ?? ''].join(' ').toLowerCase();
-  return BROAD_ACTION_TERMS.some((term) => new RegExp(`(^|[^a-z0-9])${term}([^a-z0-9]|$)`, 'u').test(searchable));
+  return !hasBroadWarningSuppressingPrefix(context)
+    && !hasBroadWarningSuppressingSideEffect(spec)
+    && schemaContainsArray(spec.outputSchema)
+    && hasBroadContributionIdShape(context);
 }
+
+// --- eforge:region plan-03-broad-action-diagnostics ---
+function hasBroadWarningSuppressingPrefix(context: ActionSpecWarningContext): boolean {
+  return contributionIdCandidates(context).some((id) => SINGLE_RECORD_ACTION_PREFIXES.some((prefix) => id.startsWith(prefix)));
+}
+
+function hasBroadWarningSuppressingSideEffect(spec: ExtensionActionSpec): boolean {
+  return spec.sideEffects?.some((sideEffect) => BROAD_WARNING_SUPPRESSING_SIDE_EFFECTS.has(sideEffect)) ?? false;
+}
+
+function hasBroadContributionIdShape(context: ActionSpecWarningContext): boolean {
+  return contributionIdCandidates(context).some((id) => BROAD_ACTION_TERMS.some((term) => hasIdSegment(id, term)));
+}
+
+function contributionIdCandidates(context: ActionSpecWarningContext): string[] {
+  const effectiveLocalId = context.effectiveId.includes(':') ? context.effectiveId.split(':').pop() ?? context.effectiveId : context.effectiveId;
+  return [context.localId, effectiveLocalId].map((id) => id.toLowerCase());
+}
+
+function hasIdSegment(id: string, segment: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${segment}([^a-z0-9]|$)`, 'u').test(id);
+}
+// --- eforge:endregion plan-03-broad-action-diagnostics ---
 
 function collectSchemaPropertyNames(schema: unknown): string[] {
   if (!isNonArrayObject(schema)) return [];

@@ -407,7 +407,7 @@ Host integrations format invocation output defensively. CLI non-`--json`, MCP/Cl
 
 The extension SDK exports small helpers for paginated actions: `createContributionPaginationInputFields()`, `createContributionPageOutputSchema(itemSchema)`, `resolveContributionPagination()`, `paginateContributionItems()`, `CONTRIBUTION_OUTPUT_PROFILES`, and `contributionOutputProfile()`. They standardize `limit`/`offset`, cap excessive limits, return the common `{ items, total, limit, offset }` shape, and keep profile strings typed and JSON-safe while leaving domain filters and projection fields to the extension.
 
-Broad list/search/board-style action registrations remain valid, but validation emits warning diagnostics when their input schemas lack limit controls, cursor/page controls, projection controls, or when their declared output schema contains broad array-shaped output and no explicit output profile. These warnings are advisory for extension ergonomics; invalid registration shapes still use error diagnostics and are not recorded.
+Broad list/search/board-style read action registrations remain valid, but validation emits warning diagnostics for id-shaped broad reads with array-shaped outputs when their input schemas lack limit or cursor/page controls, or when array-shaped output schemas omit an explicit output profile. `agent-paginated` actions with limit and cursor/page controls are considered bounded for agent use without separate projection controls. These warnings are advisory for extension ergonomics; invalid registration shapes still use error diagnostics and are not recorded.
 
 ```ts
 const Summary = Type.Object({ id: Type.String(), title: Type.String() }, { additionalProperties: false });

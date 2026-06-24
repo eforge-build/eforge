@@ -211,8 +211,8 @@ describe('extension contribution registry runtime', () => {
     const result = await loadFixture(makeTempDir(), {
       'first.js': `import { Type } from '@eforge-build/extension-sdk';
       export default function extension(eforge) {
-        eforge.registerAction({ id: 'list-board', title: 'First board list', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
-        eforge.registerAction({ id: 'list-board', title: 'Second board list', inputSchema: Type.Object({}), handler: () => ({ ok: true }) });
+        eforge.registerAction({ id: 'list-board', title: 'First board list', inputSchema: Type.Object({}), outputSchema: Type.Object({ items: Type.Array(Type.Object({ id: Type.String() })) }), handler: () => ({ items: [] }) });
+        eforge.registerAction({ id: 'list-board', title: 'Second board list', inputSchema: Type.Object({}), outputSchema: Type.Object({ items: Type.Array(Type.Object({ id: Type.String() })) }), handler: () => ({ items: [] }) });
       }`,
       'bad.js': `export default function extension(eforge) {
         eforge.registerAction({ id: 'bad-schema', title: 'Bad', inputSchema: { type: 'string' }, handler: () => ({}) });
