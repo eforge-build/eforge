@@ -14,9 +14,12 @@ import { textResult as piContributionTextResult } from '../packages/pi-eforge/ex
 
 const GIANT_MARKER = 'giant-host-boundary-marker:';
 const GIANT_TEXT = GIANT_MARKER.repeat(2_000);
+const GIANT_SCHEMA_CACHE = new Map<number, Record<string, unknown>>();
 
 function giantSchema(seed: number): Record<string, unknown> {
-  return {
+  const cached = GIANT_SCHEMA_CACHE.get(seed);
+  if (cached) return cached;
+  const schema = {
     type: 'object',
     properties: Object.fromEntries(
       Array.from({ length: 300 }, (_, index) => [
@@ -25,6 +28,8 @@ function giantSchema(seed: number): Record<string, unknown> {
       ]),
     ),
   };
+  GIANT_SCHEMA_CACHE.set(seed, schema);
+  return schema;
 }
 
 function giantExtension(name = 'giant-extension'): Record<string, unknown> {
