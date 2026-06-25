@@ -173,6 +173,8 @@ export {
 } from './api/extensions.js';
 
 export * from './extension-contributions.js'; export * from './extension-contribution-output-formatting.js';
+export * from './host-output.js';
+export * from './extension-management-output.js';
 export * from './api/extension-contributions.js';
 export * from './api/extension-contribution-dispatch.js';
 export * from './extension-agent-tasks.js';

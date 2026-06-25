@@ -1,3 +1,4 @@
+import { HOST_OUTPUT_CHAR_BUDGET, capHostOutputText } from './host-output.js';
 import type { ExtensionActionOutputProfile } from './extension-contributions.js';
 import type {
   ExtensionHostContributionDetailResponse,
@@ -6,7 +7,7 @@ import type {
   ExtensionHostContributionListResponse,
 } from './api/extension-contribution-dispatch.js';
 
-const DEFAULT_MAX_CHARS = 12_000;
+const DEFAULT_MAX_CHARS = HOST_OUTPUT_CHAR_BUDGET;
 const DEFAULT_ARRAY_ITEMS = 5;
 const FINAL_CAP_HEADROOM = 160;
 
@@ -265,9 +266,7 @@ function withWarnings(text: string, warnings: string[]): string {
 }
 
 function capText(text: string, maxChars: number): { text: string; truncated: boolean } {
-  if (text.length <= maxChars) return { text, truncated: false };
-  const suffix = '\n…\nWarning: preview reached the final host character budget; use a narrower query, limit/offset, cursor, or raw JSON mode for the complete output.';
-  return { text: `${text.slice(0, Math.max(0, maxChars - suffix.length))}${suffix}`, truncated: true };
+  return capHostOutputText(text, maxChars);
 }
 
 function exactMarkdownOutput(value: unknown): string | undefined {

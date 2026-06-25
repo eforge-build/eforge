@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HOST_OUTPUT_CHAR_BUDGET } from '../host-output.js';
 import {
   formatExtensionContributionDetailText,
   formatExtensionContributionFailedInvocationEnvelopeText,
@@ -172,6 +173,74 @@ describe('extension contribution output formatting', () => {
     expect(text).toContain('Input schema:');
     expect(text).toContain('```json');
     expect(text).toContain('"name"');
+  });
+
+  it('keeps default contribution host output within the shared budget and reports raw-size guidance', () => {
+    const output = {
+      items: Array.from({ length: 500 }, (_, index) => ({
+        id: `item-${index}`,
+        title: `Item ${index}`,
+        status: 'planned',
+        body: 'x'.repeat(500),
+      })),
+      total: 500,
+      limit: 5,
+      offset: 0,
+      nextOffset: 5,
+    };
+
+    const formatted = formatExtensionContributionOutput(output);
+
+    expect(formatted.text.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+    expect(formatted.rawLength).toBeGreaterThan(HOST_OUTPUT_CHAR_BUDGET);
+    expect(formatted.text).toContain(formatted.rawLength.toLocaleString());
+    expect(formatted.text).toContain('Hint: continuation fields preserved');
+  });
+
+  it('keeps default list, show, and debug-rich contribution output within the shared budget', () => {
+    const inputSchema = { type: 'object', properties: Object.fromEntries(Array.from({ length: 300 }, (_, index) => [`field${index}`, { type: 'string', description: 'x'.repeat(120) }])) };
+    const entry = {
+      kind: 'action' as const,
+      id: 'ext.run',
+      label: 'Run',
+      extensionName: 'example',
+      extensionPath: '/extensions/example',
+      actionId: 'ext.run',
+      actionBacked: true,
+      outputProfile: 'agent-compact' as const,
+      hasInputSchema: true,
+      requiredInputKeys: ['name'],
+      inputPropertyKeys: ['name'],
+      inputDefaultKeys: [],
+      inputSchema,
+    };
+    const listText = formatExtensionContributionListText({
+      generatedAt: '2026-06-03T00:00:00.000Z',
+      diagnosticCount: 0,
+      total: 1,
+      returned: 1,
+      offset: 0,
+      hasMore: false,
+      entries: [entry],
+    });
+    const showText = formatExtensionContributionDetailText({ generatedAt: '2026-06-03T00:00:00.000Z', diagnosticCount: 0, entry });
+    const debugRich = formatExtensionContributionOutput({ value: 'x'.repeat(30_000) }, { outputProfile: 'debug-rich' });
+
+    expect(listText.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+    expect(showText.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+    expect(debugRich.text.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+    expect(debugRich.text).toContain(debugRich.rawLength.toLocaleString());
+  });
+
+  it('reports raw size and continuation guidance for oversized output that fits after summarization', () => {
+    const formatted = formatExtensionContributionOutput({ body: 'x'.repeat(5_000), nextOffset: 2 }, { maxChars: 600 });
+
+    expect(formatted.text.length).toBeLessThanOrEqual(600);
+    expect(formatted.truncated).toBe(false);
+    expect(formatted.text).toContain(formatted.rawLength.toLocaleString());
+    expect(formatted.text).toContain('showing a semantic summary');
+    expect(formatted.text).toContain('Hint: continuation fields preserved: nextOffset');
+    expect(formatted.text).toContain('continue with a smaller read');
   });
 
   it('formats failure envelopes without raw input values', () => {
