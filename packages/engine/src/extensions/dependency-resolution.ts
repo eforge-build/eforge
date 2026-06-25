@@ -458,9 +458,7 @@ type ContributionRegistration = ActionRegistration | AgentTaskRegistration | Con
 function contributionRegistrations(registry: NativeExtensionRegistry): ContributionRegistration[] {
   return [
     ...registry.actions,
-    // --- eforge:region plan-01-agent-task-contribution-contract ---
     ...registry.agentTasks,
-    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     ...registry.consoleContributions,
     ...registry.consoleWorkstations,
     ...registry.integrationCommands,

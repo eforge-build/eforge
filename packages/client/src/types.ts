@@ -159,10 +159,8 @@ export interface ValidationProviderDetail {
   extensionPath: string;
 }
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export interface AgentTaskContributionDetail extends ExtensionAgentTaskManifestEntry {}
 export type AgentTaskPromptSourceDetail = ExtensionAgentTaskPromptSourceManifest;
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 export type ExtensionStatus = 'pending' | 'loaded' | 'shadowed' | 'skipped' | 'error' | 'excluded';
 export type ExtensionDiagnosticSeverity = 'warning' | 'error';

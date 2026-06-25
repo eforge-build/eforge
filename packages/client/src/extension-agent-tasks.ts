@@ -42,12 +42,10 @@ export const EforgePlanPlanningRequestedOutputSectionSchema = Type.Union([
 export const EXTENSION_AGENT_TASK_ID_PATTERN = '^[A-Za-z0-9._-]{1,128}$' as const;
 export const EXTENSION_AGENT_TASK_CONTRIBUTION_REF_ID_PATTERN = '^(?:[A-Za-z0-9._:-]{1,128}|(?=.{1,256}$)(?!.*[/\\\\\\u0000-\\u001F\\u007F-\\u009F])(?!(?:\\.|\\.\\.):).+:[a-z][a-z0-9-]{0,63})$' as const;
 export const ExtensionAgentTaskIdSchema = Type.String({ minLength: 1, maxLength: 128, pattern: EXTENSION_AGENT_TASK_ID_PATTERN });
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export const ExtensionAgentTaskContributionRefSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 256, pattern: EXTENSION_AGENT_TASK_CONTRIBUTION_REF_ID_PATTERN }),
   extensionName: Type.Optional(Type.String({ minLength: 1, pattern: '\\S' })),
 }, { additionalProperties: false });
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 export const EforgePlanPlanningTopicSchema = Type.String({ minLength: 1, pattern: '\\S' });
 
 export const EforgePlanPlanningSourceProviderSchema = Type.Object({
@@ -344,7 +342,6 @@ const EforgePlanPlanningStoredDraftResultSchema = Type.Union([
   EforgePlanPlanningLegacyCreationDraftRecordResultSchema,
 ]);
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export const ExtensionAgentTaskLegacyStartRequestSchema = Type.Object({
   kind: ExtensionAgentTaskKindSchema,
   input: EforgePlanPlanningDraftInputSchema,
@@ -361,7 +358,6 @@ export const ExtensionAgentTaskStartRequestSchema = Type.Union([
   ExtensionAgentTaskContributionStartRequestSchema,
   ExtensionAgentTaskLegacyStartRequestSchema,
 ]);
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 export const ExtensionAgentTaskGetRequestSchema = Type.Object({
   taskId: ExtensionAgentTaskIdSchema,
@@ -462,9 +458,7 @@ export type ExtensionAgentTaskKind = Static<typeof ExtensionAgentTaskKindSchema>
 export type ExtensionAgentTaskId = Static<typeof ExtensionAgentTaskIdSchema>;
 export type ExtensionAgentTaskStatus = Static<typeof ExtensionAgentTaskStatusSchema>;
 export type ExtensionAgentTaskRequestedBy = Static<typeof ExtensionAgentTaskRequestedBySchema>;
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export type ExtensionAgentTaskContributionRef = Static<typeof ExtensionAgentTaskContributionRefSchema>;
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 export type EforgePlanPlanningRequestedOutputSection = Static<typeof EforgePlanPlanningRequestedOutputSectionSchema>;
 export type EforgePlanPlanningDraftInput = Static<typeof EforgePlanPlanningDraftInputSchema>;
 export type EforgePlanPlanningPlanDraft = Static<typeof EforgePlanPlanningPlanDraftSchema>;
@@ -480,10 +474,8 @@ export type EforgePlanPlanningSectionProgress = Static<typeof EforgePlanPlanning
 export type EforgePlanPlanningRecommendations = Static<typeof EforgePlanPlanningRecommendationsSchema>;
 export type EforgePlanPlanningHandoffDraft = Static<typeof EforgePlanPlanningHandoffDraftSchema>;
 export type EforgePlanPlanningDraftResult = Static<typeof EforgePlanPlanningDraftResultSchema>;
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export type ExtensionAgentTaskLegacyStartRequest = Static<typeof ExtensionAgentTaskLegacyStartRequestSchema>;
 export type ExtensionAgentTaskContributionStartRequest = Static<typeof ExtensionAgentTaskContributionStartRequestSchema>;
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
 export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRequestSchema>;
 export type ExtensionAgentTaskCancelRequest = Static<typeof ExtensionAgentTaskCancelRequestSchema>;

@@ -108,7 +108,6 @@ export interface ReviewerPerspectiveSpec { key: string; label: string; descripti
 export interface ValidationProviderSpec { name: string; description: string; validate?: ExtensionHandler; commands?: string[] }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
 export interface PrdEnricherSpec { name: string; description: string; enrich: ExtensionHandler }
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export type AgentTaskPromptSourceSpec = ExtensionAgentTaskPromptSourceManifest;
 export interface AgentTaskRegistrationSpec {
   id: string;
@@ -122,7 +121,6 @@ export interface AgentTaskRegistrationSpec {
   tools?: ExtensionTool[];
   resolvePrompt?: ExtensionHandler;
 }
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
 export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
 
@@ -212,9 +210,7 @@ export interface EforgeExtensionAPIShape {
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
   registerValidationProvider(spec: ValidationProviderSpec): void;
   registerTool(tool: ExtensionTool): void;
-  // --- eforge:region plan-01-agent-task-contribution-contract ---
   registerAgentTask(task: AgentTaskRegistrationSpec): void;
-  // --- eforge:endregion plan-01-agent-task-contribution-contract ---
   registerAction(action: ExtensionActionSpec): void;
   registerConsoleContribution(contribution: ConsoleContributionSpec): void;
   registerConsoleWorkstation(workstation: ConsoleWorkstationSpec): void;
@@ -344,9 +340,7 @@ export type ToolRegistration = BaseExtensionRegistration<'tool', ExtensionTool> 
 export type PrdEnricherRegistration = BaseExtensionRegistration<'prdEnricher', PrdEnricherSpec> & { name: string };
 
 export type ActionRegistration = BaseExtensionRegistration<'action', ExtensionActionSpec> & { localId: string; id: string };
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export type AgentTaskRegistration = BaseExtensionRegistration<'agentTask', AgentTaskRegistrationSpec> & { localId: string; id: string };
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 export type ConsoleContributionRegistration = BaseExtensionRegistration<'consoleContribution', ConsoleContributionSpec> & { localId: string; id: string };
 export type ConsoleWorkstationRegistration = BaseExtensionRegistration<'consoleWorkstation', ConsoleWorkstationSpec> & { localId: string; id: string };
 export type IntegrationCommandRegistration = BaseExtensionRegistration<'integrationCommand', IntegrationCommandSpec> & { localId: string; id: string };
@@ -363,9 +357,7 @@ export interface NativeExtensionRecorderState {
   tools: ToolRegistration[];
   prdEnrichers: PrdEnricherRegistration[];
   actions: ActionRegistration[];
-  // --- eforge:region plan-01-agent-task-contribution-contract ---
   agentTasks: AgentTaskRegistration[];
-  // --- eforge:endregion plan-01-agent-task-contribution-contract ---
   consoleContributions: ConsoleContributionRegistration[];
   consoleWorkstations: ConsoleWorkstationRegistration[];
   integrationCommands: IntegrationCommandRegistration[];
@@ -398,9 +390,7 @@ export interface LoadedNativeExtension {
     tools: number;
     prdEnrichers: number;
     actions: number;
-    // --- eforge:region plan-01-agent-task-contribution-contract ---
     agentTasks: number;
-    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributions: number;
     consoleWorkstations: number;
     integrationCommands: number;

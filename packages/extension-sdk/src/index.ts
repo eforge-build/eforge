@@ -103,7 +103,6 @@ export { compileEventPattern, matchesEventPattern } from './patterns.js';
 export type { ExtensionTool } from './tools.js';
 export { defineExtensionTool } from './tools.js';
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export type {
   ExtensionAgentTaskContribution,
   ExtensionAgentTaskContributionOutput,
@@ -115,7 +114,6 @@ export type {
   ExtensionAgentTaskSectionProgressUpdate,
 } from './agent-tasks.js';
 export { defineExtensionAgentTaskContribution } from './agent-tasks.js';
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 // Project-local and scoped storage helpers
 export type { ProjectLocalStoragePathOptions } from './project-storage.js';

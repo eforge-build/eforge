@@ -68,7 +68,6 @@ export function isObjectRootSchema(value: unknown): value is Record<string, unkn
   return isNonArrayObject(value) && value.type === 'object';
 }
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export function validateAgentTaskSpec(value: unknown): RegistrationValidationResult<AgentTaskRegistrationSpec> {
   const base = validateBase(value, 'registerAgentTask', 'title');
   if (!base.ok) return base as RegistrationValidationResult<AgentTaskRegistrationSpec>;
@@ -131,7 +130,6 @@ function isSafePromptModule(value: unknown): value is string {
 function isValidAgentTaskTool(value: unknown): boolean {
   return isNonArrayObject(value) && isNonBlankString(value.name) && isNonBlankString(value.description) && isObjectRootSchema(value.inputSchema) && typeof value.handler === 'function';
 }
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 export function validateActionSpec(value: unknown): RegistrationValidationResult<ExtensionActionSpec> {
   const base = validateBase(value, 'registerAction', 'title');

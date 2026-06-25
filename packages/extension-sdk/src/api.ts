@@ -339,7 +339,6 @@ export interface EforgeExtensionAPI {
    */
   registerTool(tool: ExtensionTool): void;
 
-  // --- eforge:region plan-01-agent-task-contribution-contract ---
   /**
    * Register a prompt-backed agent task contribution owned by this extension.
    *
@@ -350,7 +349,6 @@ export interface EforgeExtensionAPI {
   registerAgentTask<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
     task: ExtensionAgentTaskContribution<TInput, TOutput>,
   ): void;
-  // --- eforge:endregion plan-01-agent-task-contribution-contract ---
   registerAction<TInput extends TObject, TOutput extends TSchema | undefined = undefined>(
     action: ExtensionAction<TInput, TOutput>,
   ): void;

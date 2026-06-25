@@ -179,7 +179,6 @@ const TypeBoxObjectWireSchema = Type.Intersect([
   Type.Object({ type: Type.Literal('object') }),
 ]);
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export const ExtensionAgentTaskPromptSourceManifestSchema = Type.Union([
   Type.Object({
     kind: Type.Literal('asset'),
@@ -205,7 +204,6 @@ export const ExtensionAgentTaskManifestEntrySchema = Type.Object({
   requirements: Type.Optional(ExtensionContributionRequirementsSchema),
   availability: Type.Optional(ExtensionContributionAvailabilitySchema),
 }, { additionalProperties: false });
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 export const ExtensionActionManifestEntrySchema = Type.Object({
   id: Type.String(),
@@ -349,9 +347,7 @@ export const ExtensionContributionManifestResponseSchema = Type.Object({
   schemaVersion: Type.Literal(EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION),
   generatedAt: Type.String(),
   actions: Type.Array(ExtensionActionManifestEntrySchema),
-  // --- eforge:region plan-01-agent-task-contribution-contract ---
   agentTasks: Type.Optional(Type.Array(ExtensionAgentTaskManifestEntrySchema)),
-  // --- eforge:endregion plan-01-agent-task-contribution-contract ---
   consoleContributions: Type.Array(ConsoleContributionManifestEntrySchema),
   consoleWorkstations: Type.Array(ConsoleWorkstationManifestEntrySchema),
   integrationCommands: Type.Array(IntegrationCommandManifestEntrySchema),
@@ -418,10 +414,8 @@ export type ExtensionContributionAvailability = Static<typeof ExtensionContribut
 export type ConsoleContributionRendererId = Static<typeof ConsoleContributionRendererIdSchema>;
 export type ConsoleContributionBlock = Static<typeof ConsoleContributionBlockSchema>;
 export type ExtensionActionManifestEntry = Static<typeof ExtensionActionManifestEntrySchema>;
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export type ExtensionAgentTaskPromptSourceManifest = Static<typeof ExtensionAgentTaskPromptSourceManifestSchema>;
 export type ExtensionAgentTaskManifestEntry = Static<typeof ExtensionAgentTaskManifestEntrySchema>;
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 export type ConsoleContributionManifestEntry = Static<typeof ConsoleContributionManifestEntrySchema>;
 export type ConsoleWorkstationFrameBundleAssetRef = Static<typeof ConsoleWorkstationFrameBundleAssetRefSchema>;
 export type ConsoleWorkstationFrameBundleManifest = Static<typeof ConsoleWorkstationFrameBundleManifestSchema>;

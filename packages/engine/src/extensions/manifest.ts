@@ -41,9 +41,7 @@ export function buildExtensionContributionManifest(registry: NativeExtensionRegi
     schemaVersion: EXTENSION_CONTRIBUTION_MANIFEST_SCHEMA_VERSION as 1,
     generatedAt: new Date().toISOString(),
     actions: registry.actions.map(buildActionManifestEntry).sort(sortById),
-    // --- eforge:region plan-01-agent-task-contribution-contract ---
     agentTasks: registry.agentTasks.map(buildAgentTaskManifestEntry).sort(sortById),
-    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributions: registry.consoleContributions.map(buildConsoleContributionManifestEntry).sort(sortById),
     consoleWorkstations: collectConsoleWorkstationManifestEntries(registry, projectionDiagnostics).sort(sortById),
     integrationCommands: registry.integrationCommands.map(buildIntegrationCommandManifestEntry).sort(sortById),
@@ -70,7 +68,6 @@ export function buildActionManifestEntry(reg: ActionRegistration): ExtensionActi
   }) as unknown as ExtensionActionManifestEntry;
 }
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export function buildAgentTaskManifestEntry(reg: AgentTaskRegistration): ExtensionAgentTaskManifestEntry {
   return omitUndefined({
     id: reg.id,
@@ -86,7 +83,6 @@ export function buildAgentTaskManifestEntry(reg: AgentTaskRegistration): Extensi
     availability: projectAvailability(reg.availability),
   }) as unknown as ExtensionAgentTaskManifestEntry;
 }
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 export function buildConsoleContributionManifestEntry(reg: ConsoleContributionRegistration): ConsoleContributionManifestEntry {
   return omitUndefined({
@@ -158,12 +154,10 @@ export function buildActionDetails(registry: NativeExtensionRegistry, extensionN
   return details.length > 0 ? details : undefined;
 }
 
-// --- eforge:region plan-01-agent-task-contribution-contract ---
 export function buildAgentTaskDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): AgentTaskDetail[] | undefined {
   const details = registry.agentTasks.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map(buildAgentTaskManifestEntry);
   return details.length > 0 ? details : undefined;
 }
-// --- eforge:endregion plan-01-agent-task-contribution-contract ---
 
 export function buildConsoleContributionDetails(registry: NativeExtensionRegistry, extensionName: string, extensionPath: string): ConsoleContributionDetail[] | undefined {
   const details = registry.consoleContributions.filter((reg) => belongsTo(reg, extensionName, extensionPath)).map(buildConsoleContributionManifestEntry);

@@ -23,9 +23,7 @@ export interface NativeExtensionRegistryProjection {
     reviewerPerspectiveDetails?: ReviewerPerspectiveDetail[];
     validationProviderDetails?: ValidationProviderDetail[];
     actionDetails?: ExtensionActionDetail[];
-    // --- eforge:region plan-01-agent-task-contribution-contract ---
     agentTaskDetails?: AgentTaskDetail[];
-    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributionDetails?: ConsoleContributionDetail[];
     consoleWorkstationDetails?: ConsoleWorkstationDetail[];
     integrationCommandDetails?: IntegrationCommandDetail[];
@@ -69,9 +67,7 @@ export interface NativeExtensionRegistryProjection {
     tools: number;
     prdEnrichers: number;
     actions: number;
-    // --- eforge:region plan-01-agent-task-contribution-contract ---
     agentTasks: number;
-    // --- eforge:endregion plan-01-agent-task-contribution-contract ---
     consoleContributions: number;
     consoleWorkstations: number;
     integrationCommands: number;
@@ -150,9 +146,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       const reviewerPerspectiveDetails = buildReviewerPerspectiveDetails(registry, extension.name, extension.path);
       const validationProviderDetails = buildValidationProviderDetails(registry, extension.name, extension.path);
       const actionDetails = buildActionDetails(registry, extension.name, extension.path);
-      // --- eforge:region plan-01-agent-task-contribution-contract ---
       const agentTaskDetails = buildAgentTaskDetails(registry, extension.name, extension.path);
-      // --- eforge:endregion plan-01-agent-task-contribution-contract ---
       const consoleContributionDetails = buildConsoleContributionDetails(registry, extension.name, extension.path);
       const consoleWorkstationDetails = buildConsoleWorkstationDetails(registry, extension.name, extension.path);
       const integrationCommandDetails = buildIntegrationCommandDetails(registry, extension.name, extension.path);
@@ -168,9 +162,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
         ...(reviewerPerspectiveDetails !== undefined && { reviewerPerspectiveDetails }),
         ...(validationProviderDetails !== undefined && { validationProviderDetails }),
         ...(actionDetails !== undefined && { actionDetails }),
-        // --- eforge:region plan-01-agent-task-contribution-contract ---
         ...(agentTaskDetails !== undefined && { agentTaskDetails }),
-        // --- eforge:endregion plan-01-agent-task-contribution-contract ---
         ...(consoleContributionDetails !== undefined && { consoleContributionDetails }),
         ...(consoleWorkstationDetails !== undefined && { consoleWorkstationDetails }),
         ...(integrationCommandDetails !== undefined && { integrationCommandDetails }),
@@ -195,9 +187,7 @@ export function projectExtensionRegistry(registry: NativeExtensionRegistry): Nat
       tools: registry.tools.length,
       prdEnrichers: registry.prdEnrichers.length,
       actions: registry.actions.length,
-      // --- eforge:region plan-01-agent-task-contribution-contract ---
       agentTasks: registry.agentTasks.length,
-      // --- eforge:endregion plan-01-agent-task-contribution-contract ---
       consoleContributions: registry.consoleContributions.length,
       consoleWorkstations: registry.consoleWorkstations.length,
       integrationCommands: registry.integrationCommands.length,
