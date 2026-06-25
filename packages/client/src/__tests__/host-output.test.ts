@@ -49,6 +49,23 @@ describe('host output rendering', () => {
     expectOversized(formatted.text, rawLength);
   });
 
+  it('preserves repeated non-cyclic references in small JSON', () => {
+    const shared = { id: 'shared' };
+    const formatted = renderHostOutput({ first: shared, second: shared });
+
+    expect(formatted.kind).toBe('json');
+    expect(JSON.parse(formatted.text)).toEqual({ first: { id: 'shared' }, second: { id: 'shared' } });
+  });
+
+  it('marks only true JSON cycles as circular', () => {
+    const value: { self?: unknown } = {};
+    value.self = value;
+    const formatted = renderHostOutput(value);
+
+    expect(formatted.kind).toBe('json');
+    expect(JSON.parse(formatted.text)).toEqual({ self: '[Circular]' });
+  });
+
   it('bounds recursive array summaries', () => {
     const value: unknown[] = ['x'.repeat(20_000)];
     value.unshift(value);
@@ -76,6 +93,16 @@ describe('host output rendering', () => {
     expect(formatted.kind).toBe('error');
     expect(formatted.text).toContain('Error');
     expectOversized(formatted.text, formatted.rawLength);
+  });
+
+  it('normalizes cyclic Error causes without overflowing', () => {
+    const error = new Error('failure') as Error & { cause?: unknown };
+    error.cause = error;
+    const formatted = renderHostOutput(error);
+
+    expect(formatted.kind).toBe('error');
+    const parsed = JSON.parse(formatted.text);
+    expect(parsed.cause ?? parsed.error?.cause).toEqual({ name: 'Error', message: '[Circular Error cause]' });
   });
 
   it('reports and warns when only an Error stack is oversized', () => {

@@ -68,19 +68,7 @@ export interface NormalizedHostError {
 }
 
 export function normalizeHostOutputError(error: unknown, options: { summarize?: boolean } = {}): NormalizedHostError {
-  const summarize = options.summarize ?? true;
-  if (error instanceof Error) {
-    const normalized: NormalizedHostError = {
-      name: error.name || 'Error',
-      message: error.message,
-    };
-    if (error.stack) normalized.stack = summarize ? summarizeString(error.stack, MAX_ERROR_STACK_CHARS) : error.stack;
-    if ('cause' in error) normalized.cause = summarize
-      ? summarizeHostValue((error as Error & { cause?: unknown }).cause, { arrayItems: 2, depth: 0 })
-      : normalizeRawErrorCause((error as Error & { cause?: unknown }).cause);
-    return normalized;
-  }
-  return { name: 'Error', message: String(error) };
+  return normalizeHostOutputErrorWithSeen(error, options, new WeakSet<Error>());
 }
 
 export function hostOutputMetadataDetail(result: Pick<HostOutputRenderResult, 'metadata' | 'warnings' | 'kind'>): Record<string, unknown> {
@@ -204,15 +192,16 @@ function safeStringifyJson(value: unknown): string {
 }
 
 function tryStringifyJson(value: unknown): { text: string; error?: Error } {
-  const seen = new WeakSet<object>();
+  const ancestors: object[] = [];
   try {
     return {
-      text: JSON.stringify(value, (_key, child) => {
+      text: JSON.stringify(value, function (this: object, _key, child) {
         if (typeof child === 'bigint') return child.toString();
         if (child instanceof Error) return normalizeHostOutputError(child);
         if (child && typeof child === 'object') {
-          if (seen.has(child)) return '[Circular]';
-          seen.add(child);
+          while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+          if (ancestors.includes(child)) return '[Circular]';
+          ancestors.push(child);
         }
         return child;
       }, 2) ?? 'null',
@@ -244,8 +233,29 @@ function renderJsonSerializationErrorHostOutput(value: unknown, error: Error, ma
   return buildResult('json-summary', capped.text, capped.truncated ? maxChars + 1 : text.length, capped.truncated, true, [warning], maxChars);
 }
 
-function normalizeRawErrorCause(value: unknown): unknown {
-  return value instanceof Error ? normalizeHostOutputError(value, { summarize: false }) : value;
+function normalizeHostOutputErrorWithSeen(error: unknown, options: { summarize?: boolean }, seen: WeakSet<Error>): NormalizedHostError {
+  const summarize = options.summarize ?? true;
+  if (error instanceof Error) {
+    if (seen.has(error)) return { name: error.name || 'Error', message: '[Circular Error cause]' };
+    seen.add(error);
+    try {
+      const normalized: NormalizedHostError = {
+        name: error.name || 'Error',
+        message: error.message,
+      };
+      if (error.stack) normalized.stack = summarize ? summarizeString(error.stack, MAX_ERROR_STACK_CHARS) : error.stack;
+      if ('cause' in error) normalized.cause = normalizeErrorCause((error as Error & { cause?: unknown }).cause, summarize, seen);
+      return normalized;
+    } finally {
+      seen.delete(error);
+    }
+  }
+  return { name: 'Error', message: String(error) };
+}
+
+function normalizeErrorCause(value: unknown, summarize: boolean, seen: WeakSet<Error>): unknown {
+  if (value instanceof Error) return normalizeHostOutputErrorWithSeen(value, { summarize }, seen);
+  return summarize ? summarizeHostValue(value, { arrayItems: 2, depth: 0 }) : value;
 }
 
 function describeHostValue(value: unknown): string {

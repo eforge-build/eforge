@@ -32,7 +32,8 @@ export type EforgeExtensionManagementProjectionAction =
   | 'list' | 'show' | 'validate' | 'reload' | 'test' | 'new' | 'trust' | 'untrust'
   | 'install' | 'update' | 'remove' | 'promote' | 'demote';
 
-export interface CompactExtensionDiagnosticsProjection { count: number; samples: ExtensionDiagnostic[]; omitted: number }
+export interface CompactExtensionDiagnosticSample { severity: ExtensionDiagnostic['severity']; code: string; name?: string; message?: string; scope?: ExtensionDiagnostic['scope']; source?: ExtensionDiagnostic['source']; dependencyName?: string; providerName?: string; capabilityName?: string; dependencyKind?: ExtensionDiagnostic['dependencyKind'] }
+export interface CompactExtensionDiagnosticsProjection { count: number; samples: CompactExtensionDiagnosticSample[]; omitted: number }
 export interface CompactExtensionDetailArrayProjection { count: number; samples: Array<Record<string, unknown>>; omitted: number }
 export interface CompactExtensionManagementProjection { action: EforgeExtensionManagementProjectionAction; nextSteps: string[]; [key: string]: unknown }
 export interface CompactExtensionProjectionOptions { diagnosticSamples?: number; detailSamples?: number }
@@ -146,7 +147,22 @@ export function projectExtensionManagementResponse(action: EforgeExtensionManage
 }
 
 function summarizeDiagnostics(diagnostics: ExtensionDiagnostic[], limit = 3): CompactExtensionDiagnosticsProjection {
-  return { count: diagnostics.length, samples: diagnostics.slice(0, limit), omitted: Math.max(0, diagnostics.length - limit) };
+  return { count: diagnostics.length, samples: diagnostics.slice(0, limit).map(sanitizeDiagnosticSample), omitted: Math.max(0, diagnostics.length - limit) };
+}
+
+function sanitizeDiagnosticSample(diagnostic: ExtensionDiagnostic): CompactExtensionDiagnosticSample {
+  return omitUndefined({
+    severity: diagnostic.severity,
+    code: diagnostic.code,
+    name: diagnostic.name,
+    message: diagnostic.message ? summarizePrimitive(diagnostic.message, 120) as string : undefined,
+    scope: diagnostic.scope,
+    source: diagnostic.source,
+    dependencyName: diagnostic.dependencyName,
+    providerName: diagnostic.providerName,
+    capabilityName: diagnostic.capabilityName,
+    dependencyKind: diagnostic.dependencyKind,
+  });
 }
 
 function summarizeDetailArray(key: (typeof DETAIL_ARRAY_KEYS)[number], value: unknown, limit: number): Array<[string, CompactExtensionDetailArrayProjection]> {
@@ -217,9 +233,9 @@ function registrationTotal(summary: ExtensionRegistrationSummary): number {
   return REGISTRATION_KEYS.reduce((total, key) => total + (summary[key] ?? 0), 0);
 }
 
-function summarizePrimitive(value: unknown): unknown {
-  if (typeof value !== 'string' || value.length <= 160) return value;
-  return `${value.slice(0, 140)}… (${value.length.toLocaleString()} chars)`;
+function summarizePrimitive(value: unknown, maxChars = 160): unknown {
+  if (typeof value !== 'string' || value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 24))}… (${value.length.toLocaleString()} chars)`;
 }
 
 function omitUndefined<T extends Record<string, unknown>>(value: T): T {

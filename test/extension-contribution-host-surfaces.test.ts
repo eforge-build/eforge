@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { HOST_OUTPUT_CHAR_BUDGET, HOST_OUTPUT_GUIDANCE, capHostOutputText, formatExtensionContributionDetailText, formatExtensionContributionListText, formatExtensionContributionOutputText } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { parseJsonObjectInput } from '../packages/eforge/src/cli/extension-contributions.js';
 import { readRepoFile } from './extension-tooling-wiring-helpers.js';
@@ -99,6 +100,8 @@ describe('host contribution MCP surface', () => {
     expect(source).toContain('createExtensionContributionFailedInvocationEnvelope');
     expect(source).toContain('showExtensionContributionManifestEntry');
     expect(source).toContain('formatResponse');
+    expect(source).toContain('capHostOutputText');
+    expect(source).toContain('textResult');
     expect(source).toContain("host: 'mcp'");
     expect(source).toContain('McpUserError');
     expect(source).toContain('new McpUserError(failureEnvelope');
@@ -111,6 +114,40 @@ describe('host contribution MCP surface', () => {
     expect(source).not.toContain('JSON.stringify(payload');
     expect(source).not.toContain('/api/');
     expect(source).not.toContain('dispatchEforgeExtensionAction');
+  });
+
+  it('caps MCP contribution list, show, and invoke text after MCP-specific headers', () => {
+    const entry = {
+      kind: 'action' as const,
+      id: 'giant.run',
+      label: 'Giant Run',
+      description: 'debug '.repeat(2_000),
+      extensionName: 'giant',
+      extensionPath: '/repo/.eforge/extensions/giant/index.ts',
+      actionId: 'giant.run',
+      actionBacked: true,
+      outputProfile: 'debug-rich' as const,
+      inputSchema: { type: 'object', properties: Object.fromEntries(Array.from({ length: 500 }, (_, index) => [`field_${index}`, { type: 'string', description: 'debug '.repeat(80) }])) },
+      inputPropertyKeys: Array.from({ length: 500 }, (_, index) => `field_${index}`),
+      inputPropertyCount: 500,
+      inputRequiredCount: 250,
+      inputDefaultKeys: Array.from({ length: 100 }, (_, index) => `field_${index}`),
+      diagnostics: Array.from({ length: 200 }, (_, index) => ({ severity: 'warning', code: `diag-${index}`, message: 'debug '.repeat(100) })),
+    };
+    const listText = capHostOutputText(formatExtensionContributionListText({ generatedAt: new Date(0).toISOString(), total: 200, returned: 1, offset: 0, limit: 1, hasMore: true, nextOffset: 1, diagnosticCount: 200, entries: [entry], diagnostics: entry.diagnostics })).text;
+    const showText = capHostOutputText(formatExtensionContributionDetailText({ generatedAt: new Date(0).toISOString(), entry, diagnosticCount: 200, diagnostics: entry.diagnostics })).text;
+    const invokeText = capHostOutputText([
+      'Invocation: invocation-1',
+      'Target: action:giant.run',
+      'Action: giant.run',
+      '',
+      formatExtensionContributionOutputText({ rows: Array.from({ length: 1_000 }, (_, index) => ({ index, debug: 'debug '.repeat(200) })), nextOffset: 1000 }, { outputProfile: 'debug-rich' }),
+    ].join('\n')).text;
+
+    for (const text of [listText, showText, invokeText]) {
+      expect(text.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+      if (text.includes('rawLength') || text.includes('final host character budget')) expect(text).toContain(HOST_OUTPUT_GUIDANCE);
+    }
   });
 
   it('registers the contribution tool after extension management and before models', () => {

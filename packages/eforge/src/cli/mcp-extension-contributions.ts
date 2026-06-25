@@ -15,6 +15,7 @@ import {
   type ExtensionHostContributionKind,
   type ExtensionHostContributionListResponse,
   type ExtensionHostContributionProjection,
+  capHostOutputText,
   type ExtensionJsonObject,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, type McpToolResult } from './mcp-tool-factory.js';
@@ -138,10 +139,10 @@ function isContributionRequestError(err: unknown): boolean {
 
 function formatContributionToolResponse(data: unknown): McpToolResult {
   if (isToolEnvelope(data) && data.action === 'list') {
-    return { content: [{ type: 'text', text: formatExtensionContributionListText(data.result) }] };
+    return textResult(formatExtensionContributionListText(data.result));
   }
   if (isToolEnvelope(data) && data.action === 'show') {
-    return { content: [{ type: 'text', text: formatExtensionContributionDetailText(data.result) }] };
+    return textResult(formatExtensionContributionDetailText(data.result));
   }
   if (isToolEnvelope(data) && data.action === 'invoke') {
     const { result } = data;
@@ -153,9 +154,13 @@ function formatContributionToolResponse(data: unknown): McpToolResult {
       '',
       formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
     ].join('\n');
-    return { content: [{ type: 'text', text }] };
+    return textResult(text);
   }
-  return { content: [{ type: 'text', text: String(data) }] };
+  return textResult(String(data));
+}
+
+function textResult(text: string): McpToolResult {
+  return { content: [{ type: 'text', text: capHostOutputText(text).text }] };
 }
 
 function isToolEnvelope(data: unknown): data is ContributionToolEnvelope {

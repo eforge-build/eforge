@@ -18,6 +18,7 @@ import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfil
   // --- eforge:endregion host-queue-controls ---
   apiContinueRepair,
   dispatchEforgeExtensionAction,
+  projectExtensionManagementResponse,
 } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
@@ -466,7 +467,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_extension
   createDaemonTool(server, cwd, {
     name: 'eforge_extension',
-    description: 'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope.',
+    description: 'Manage native eforge extensions with compact host-safe output by default; use CLI --json or daemon/client HTTP surfaces for raw schemas, diagnostics, and detail arrays. Actions: "list" returns compact extension entries with status/provenance/diagnostic counts; "show" returns one compact extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension; "install" installs a package extension from npm, a local path, or tarball; "update" updates an installed extension package; "remove" removes an installed extension package; "promote" promotes a project-local extension to project-team scope; "demote" demotes a project-team extension to project-local scope.',
     schema: {
       action: z.enum(['list', 'show', 'validate', 'test', 'new', 'reload', 'trust', 'untrust', 'install', 'update', 'remove', 'promote', 'demote']).describe('Extension operation to perform'),
       name: z.string().min(1).optional().describe('Extension name (required for "show" and "new", optional for "validate", "test", "trust", "untrust", "update", "remove", "promote", and "demote"; name override for "install")'),
@@ -489,7 +490,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         helpers: mcpExtensionActionHelpers,
       });
       if (result === null) throw new Error('Daemon not running');
-      return result.data;
+      return projectExtensionManagementResponse(action, result.data);
     },
   });
 

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { API_ROUTES, EFORGE_EXTENSION_ACTIONS, dispatchEforgeExtensionAction, type EforgeExtensionAction, type EforgeExtensionActionHelpers, type EforgeExtensionActionParams } from '@eforge-build/client';
+import { API_ROUTES, EFORGE_EXTENSION_ACTIONS, HOST_OUTPUT_CHAR_BUDGET, HOST_OUTPUT_GUIDANCE, dispatchEforgeExtensionAction, projectExtensionManagementResponse, renderHostOutputText, type EforgeExtensionAction, type EforgeExtensionActionHelpers, type EforgeExtensionActionParams } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { escapeRegExp, readRepoFile } from './extension-tooling-wiring-helpers.js';
 describe('Claude Code plugin metadata', () => {
@@ -56,6 +56,48 @@ describe('MCP/Pi eforge_extension parity', () => {
     for (const [action, helper] of Object.entries(mappings)) {
       expect(block, `${tableName}.${action}`).toMatch(new RegExp(`${action}:\\s*${helper}\\b`));
     }
+  }
+
+  function giantExtension(name: string) {
+    const registrations = {
+      eventHooks: 1, agentRunHooks: 1, policyGates: 1, profileRouters: 1, inputSources: 1,
+      reviewerPerspectives: 1, validationProviders: 1, tools: 1, prdEnrichers: 1, actions: 80,
+      agentTasks: 10, consoleContributions: 5, consoleWorkstations: 5, integrationCommands: 40, deepLinks: 40,
+    };
+    return {
+      name,
+      path: `/repo/.eforge/extensions/${name}/index.ts`,
+      entrypoint: 'index.ts',
+      scope: 'project-team',
+      source: 'explicit',
+      status: 'loaded',
+      enabled: true,
+      trust: 'trusted',
+      trustState: 'trusted',
+      currentHash: 'current-hash',
+      trustedHash: 'current-hash',
+      format: 'ts',
+      layout: 'directory',
+      strategy: 'native',
+      registrations,
+      diagnostics: Array.from({ length: 25 }, (_, index) => ({ severity: 'warning', code: `diag-${index}`, message: 'diagnostic '.repeat(80), path: `/repo/${index}.ts` })),
+      shadows: Array.from({ length: 20 }, (_, index) => ({ name: `shadow-${index}`, path: `/shadow/${index}.ts` })),
+      actionDetails: Array.from({ length: 80 }, (_, index) => ({ id: `${name}:action-${index}`, label: `Action ${index}`, inputSchema: giantSchema(index), outputProfile: 'debug-rich' })),
+      integrationCommandDetails: Array.from({ length: 80 }, (_, index) => ({ id: `${name}:command-${index}`, actionId: `${name}:action-${index}`, inputSchema: giantSchema(index) })),
+      deepLinkDetails: Array.from({ length: 80 }, (_, index) => ({ id: `${name}:link-${index}`, actionId: `${name}:action-${index}`, inputSchema: giantSchema(index) })),
+      capabilities: Array.from({ length: 40 }, (_, index) => ({ name: `${name}.cap.${index}`, detail: 'schema-detail-'.repeat(80) })),
+      dependencies: { required: Array.from({ length: 30 }, (_, index) => ({ name: `dep-${index}`, detail: 'schema-detail-'.repeat(80) })) },
+      resolvedDependencies: { available: true, required: [], optional: [], diagnostics: [] },
+      package: { packageName: name, version: '1.0.0', description: 'schema-detail-'.repeat(120) },
+      install: { sourceKind: 'npm', sourceSpec: name, resolvedVersion: '1.0.0' },
+    };
+  }
+
+  function giantSchema(index: number) {
+    return {
+      type: 'object',
+      properties: Object.fromEntries(Array.from({ length: 150 }, (_, keyIndex) => [`field_${index}_${keyIndex}`, { type: 'string', description: 'schema-detail-'.repeat(40) }])),
+    };
   }
 
   const requiredMessages = [
@@ -129,9 +171,34 @@ describe('MCP/Pi eforge_extension parity', () => {
     expect(block).toContain('dispatchEforgeExtensionAction');
     expect(block).toContain('params: { action, name, path, fixture, run, event, scope, template, force, trustedBy, source, trust, version }');
     expect(block).toContain('helpers: mcpExtensionActionHelpers');
-    expect(block).toContain('return result.data');
+    expect(block).toContain('projectExtensionManagementResponse(action, result.data)');
+    expect(block).not.toContain('return result.data');
     expect(block).not.toContain("'/api/");
     expect(block).not.toContain('"/api/');
+  });
+
+  it('MCP eforge_extension compact projections render giant daemon data within the host budget', () => {
+    const extensions = Array.from({ length: 80 }, (_, index) => giantExtension(`giant-${index}`));
+    const responses = [
+      ['list', { extensions, diagnostics: extensions[0].diagnostics, totals: extensions[0].registrations }],
+      ['show', { extension: extensions[0] }],
+      ['validate', { valid: false, extensions, diagnostics: extensions[0].diagnostics }],
+      ['reload', { extensions, diagnostics: extensions[0].diagnostics, totals: extensions[0].registrations, wasRunning: true, restarted: true, running: true, previousSessionId: null, sessionId: 'session-1', message: 'reloaded', watcher: { running: true } }],
+      ['test', { valid: true, source: { kind: 'fixture', fixture: 'fixture.json' }, replay: { inputEventCount: 200, filteredEventCount: 100, emittedEventCount: 50, diagnosticEventCount: 20 }, matches: Array.from({ length: 120 }, (_, index) => ({ eventIndex: index, eventType: 'plan:status:change', extensionName: 'giant-0', pattern: '*' })), emittedDiagnostics: Array.from({ length: 40 }, (_, index) => ({ index, message: 'debug '.repeat(500) })), deferredRegistrations: [{ family: 'actions', count: 80 }], extensions, diagnostics: extensions[0].diagnostics }],
+      ['install', { extension: extensions[0], message: 'installed' }],
+      ['update', { extension: extensions[0], previousVersion: '0.1.0', message: 'updated' }],
+      ['remove', { extension: extensions[0], message: 'removed' }],
+      ['promote', { extension: extensions[0], message: 'promoted' }],
+      ['demote', { extension: extensions[0], message: 'demoted' }],
+    ] as const;
+
+    for (const [action, response] of responses) {
+      const text = renderHostOutputText(projectExtensionManagementResponse(action, response));
+      expect(text.length, action).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+      expect(text, action).not.toContain('field_0_120');
+      expect(text, action).not.toContain('schema-detail-'.repeat(20));
+      if (text.includes('rawLength')) expect(text, action).toContain(HOST_OUTPUT_GUIDANCE);
+    }
   });
 
   it('Pi extension registers eforge_extension and delegates to the shared dispatcher', () => {
