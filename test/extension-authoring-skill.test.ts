@@ -153,7 +153,9 @@ describe('/eforge:extend workflow content', () => {
     expect(end).toBeGreaterThan(start);
     return source
       .slice(start, end)
+      .replaceAll('MCP/Claude tool text', 'Pi tool text')
       .replaceAll('mcp__eforge__eforge_extension_contribution', 'eforge_extension_contribution')
+      .replaceAll('mcp__eforge__eforge_extension', 'eforge_extension')
       .trim();
   }
 

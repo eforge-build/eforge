@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { HOST_OUTPUT_CHAR_BUDGET, HOST_OUTPUT_GUIDANCE } from '@eforge-build/client';
 import {
   createDaemonTool,
   McpUserError,
@@ -119,6 +120,24 @@ describe('createDaemonTool — success path', () => {
     await (handler as (...args: unknown[]) => Promise<unknown>)({}, fakeExtra);
     expect(capturedCwd).toBe('/tmp/test-cwd');
   });
+
+  it('caps huge default success output with raw length and continuation guidance', async () => {
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+
+    const handler = registerAndExtract(server, {
+      name: 'huge_success_tool',
+      description: 'Returns a huge payload',
+      schema: {},
+      handler: async () => ({ ok: true, items: Array.from({ length: 400 }, (_, index) => ({ index, detail: 'x'.repeat(400) })) }),
+    });
+
+    const result = await (handler as (...args: unknown[]) => Promise<unknown>)({}, fakeExtra);
+    const typed = result as { content: Array<{ type: string; text: string }> };
+
+    expect(typed.content[0].text.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+    expect(typed.content[0].text).toContain('rawLength');
+    expect(typed.content[0].text).toContain(HOST_OUTPUT_GUIDANCE);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -171,7 +190,7 @@ describe('createDaemonTool — custom formatResponse', () => {
 // ---------------------------------------------------------------------------
 
 describe('createDaemonTool — McpUserError wrapping', () => {
-  it('returns isError: true with JSON-stringified data when handler throws McpUserError', async () => {
+  it('returns isError: true with parseable JSON data when handler throws McpUserError', async () => {
     const server = new McpServer({ name: 'test', version: '0.0.0' });
 
     const handler = registerAndExtract(server, {
@@ -191,6 +210,27 @@ describe('createDaemonTool — McpUserError wrapping', () => {
     expect(parsed.status).toBe('aborted');
     expect(parsed.sessionId).toBe('abc');
     expect(parsed.message).toBe('timed out');
+  });
+
+  it('caps huge McpUserError output with raw length and continuation guidance', async () => {
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+
+    const handler = registerAndExtract(server, {
+      name: 'huge_user_error_tool',
+      description: 'Throws a huge McpUserError',
+      schema: {},
+      handler: async () => {
+        throw new McpUserError({ code: 'too-large', diagnostics: Array.from({ length: 500 }, (_, index) => ({ index, detail: 'y'.repeat(400) })) });
+      },
+    });
+
+    const result = await (handler as (...args: unknown[]) => Promise<unknown>)({}, fakeExtra);
+    const typed = result as { content: Array<{ type: string; text: string }>; isError: boolean };
+
+    expect(typed.isError).toBe(true);
+    expect(typed.content[0].text.length).toBeLessThanOrEqual(HOST_OUTPUT_CHAR_BUDGET);
+    expect(typed.content[0].text).toContain('rawLength');
+    expect(typed.content[0].text).toContain(HOST_OUTPUT_GUIDANCE);
   });
 });
 

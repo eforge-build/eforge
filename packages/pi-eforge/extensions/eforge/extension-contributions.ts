@@ -6,8 +6,10 @@ import {
   EXTENSION_HOST_CONTRIBUTION_KINDS,
   apiGetExtensionContributionManifestIfRunning,
   createExtensionContributionFailedInvocationEnvelope,
+  formatExtensionContributionDetail,
   formatExtensionContributionDetailText,
-  formatExtensionContributionFailedInvocationEnvelopeText,
+  formatExtensionContributionFailedInvocationEnvelope,
+  formatExtensionContributionList,
   formatExtensionContributionListText,
   formatExtensionContributionOutputText,
   invokeEforgeExtensionContributionIfRunning,
@@ -17,7 +19,10 @@ import {
   type ExtensionHostContributionDetailResponse,
   type ExtensionHostContributionKind,
   type ExtensionHostContributionProjection,
+  capHostOutputText,
+  createHostOutputMetadata,
   type ExtensionJsonObject,
+  type FormattedExtensionContributionOutput,
 } from '@eforge-build/client';
 import { DAEMON_NOT_RUNNING_GUIDANCE } from './daemon-requests.js';
 import { formatInvocationPanel, prepareContributionInput } from './extension-contribution-ux.js';
@@ -77,7 +82,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
           ...listOptionsFromParams(params),
         });
         if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return textResult(formatExtensionContributionListText(result));
+        return textResult(formatExtensionContributionList(result));
       }
       if (!params.id) throw new Error(`"id" is required when action is "${params.action}"`);
       if (params.kind === 'all') throw new Error('"kind: all" is only valid when action is "list"');
@@ -90,7 +95,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
           projection: projectionFromFullFlag(params.full),
         });
         if (detail === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
-        return textResult(formatExtensionContributionDetailText(detail));
+        return textResult(formatExtensionContributionDetail(detail));
       }
       const result = await invokeEforgeExtensionContributionIfRunning({
         cwd: ctx.cwd,
@@ -102,15 +107,12 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
       if (result === null) throw new Error(DAEMON_NOT_RUNNING_GUIDANCE);
       if (!result.response.ok) {
         const failureEnvelope = createExtensionContributionFailedInvocationEnvelope(result);
-        return textResult(failureEnvelope ? formatExtensionContributionFailedInvocationEnvelopeText(failureEnvelope) : result.response.error.message);
+        return textResult(failureEnvelope ? formatExtensionContributionFailedInvocationEnvelope(failureEnvelope) : result.response.error.message);
       }
-      return textResult([
-        `Invocation: ${result.response.invocationId}`,
-        `Target: ${result.target.kind}:${result.target.id}`,
-        `Action: ${result.target.actionId}`,
-        '',
+      return textResult(
         formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
-      ].join('\n'));
+        [`Invocation: ${result.response.invocationId}`, `Target: ${result.target.kind}:${result.target.id}`, `Action: ${result.target.actionId}`],
+      );
     },
   });
 }
@@ -449,11 +451,29 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function jsonResult(data: unknown): { content: { type: 'text'; text: string }[]; details: unknown } {
-  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }], details: data };
-}
+type ContributionHostOutputMetadata = ReturnType<typeof createHostOutputMetadata> & {
+  kind: FormattedExtensionContributionOutput['kind'] | 'text';
+  warnings: string[];
+};
 
-function textResult(text: string): { content: { type: 'text'; text: string }[]; details: { text: string } } {
-  return { content: [{ type: 'text', text }], details: { text } };
+export function textResult(
+  output: string | FormattedExtensionContributionOutput,
+  headers: string[] = [],
+): { content: { type: 'text'; text: string }[]; details: { hostOutput: ContributionHostOutputMetadata } } {
+  const formatted = typeof output === 'string' ? undefined : output;
+  const text = [headers.join('\n'), formatted?.text ?? output].filter(Boolean).join('\n\n');
+  const capped = capHostOutputText(text);
+  const rawLength = formatted?.rawLength ?? (output as string).length;
+  const summarized = formatted?.kind === 'json-summary';
+  return {
+    content: [{ type: 'text', text: capped.text }],
+    details: {
+      hostOutput: {
+        ...createHostOutputMetadata({ rawLength, truncated: (formatted?.truncated ?? false) || capped.truncated, summarized }),
+        kind: formatted?.kind ?? 'text',
+        warnings: formatted?.warnings ?? [],
+      },
+    },
+  };
 }
 // --- eforge:endregion contribution-helpers ---

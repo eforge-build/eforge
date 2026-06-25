@@ -13,6 +13,7 @@
 
 import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { renderHostOutputText } from '@eforge-build/client';
 import { formatMcpError } from './errors.js';
 
 // ---------------------------------------------------------------------------
@@ -56,9 +57,8 @@ export interface ToolContext {
  * Throw `McpUserError` from a tool handler to return a structured error
  * response without going through `classifyDaemonError`.
  *
- * The factory catches this error and wraps `data` in a JSON-stringified MCP
- * error response (`isError: true`) so handlers don't need to call
- * `JSON.stringify` themselves.
+ * The factory catches this error and wraps `data` in a host-safe MCP error
+ * response (`isError: true`) so handlers don't need to format it themselves.
  *
  * Use this for domain-level errors (e.g. "session aborted", "active builds
  * prevent shutdown") rather than daemon/network errors, which should be
@@ -101,8 +101,8 @@ export interface DaemonToolSpec<S extends ZodRawShape> {
   schema: S;
   /**
    * Async handler. Receives typed `args` (inferred from `schema`) and a
-   * `ToolContext`. Return any serialisable value; the factory JSON-stringifies
-   * it with 2-space indent unless `formatResponse` is provided.
+   * `ToolContext`. Return any serialisable value; the factory renders it as
+   * host-safe pretty JSON unless `formatResponse` is provided.
    *
    * Throw a plain `Error` to trigger `formatMcpError` (daemon/network errors).
    * Throw `McpUserError` to return a custom `isError: true` payload without
@@ -112,7 +112,7 @@ export interface DaemonToolSpec<S extends ZodRawShape> {
   /**
    * Optional override for response formatting. Receives the handler's return
    * value and must return a full `McpToolResult`. When omitted, the factory
-   * uses `JSON.stringify(data, null, 2)` wrapped in the standard content shape.
+   * renders host-safe pretty JSON wrapped in the standard content shape.
    */
   formatResponse?: (data: unknown) => McpToolResult;
 }
@@ -126,11 +126,10 @@ export interface DaemonToolSpec<S extends ZodRawShape> {
  *
  * Co-locates resource JSON formatting with the tool-response JSON formatting
  * already centralised in this factory. Resource handlers call this instead of
- * inlining `JSON.stringify(data, null, 2)` so that `mcp-proxy.ts` stays free
- * of that pattern (required by the acceptance criterion rg check).
+ * open-coding JSON formatting so that `mcp-proxy.ts` stays free of that pattern.
  */
 export function formatResourceJson(data: unknown): string {
-  return JSON.stringify(data, null, 2);
+  return renderHostOutputText(data);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,12 +167,12 @@ export function createDaemonTool<S extends ZodRawShape>(
       const data = await spec.handler(args as ShapeOutput<S>, ctx);
       if (spec.formatResponse) return spec.formatResponse(data);
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+        content: [{ type: 'text' as const, text: renderHostOutputText(data) }],
       };
     } catch (err) {
       if (err instanceof McpUserError) {
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(err.data, null, 2) }],
+          content: [{ type: 'text' as const, text: renderHostOutputText(err.data) }],
           isError: true as const,
         };
       }
