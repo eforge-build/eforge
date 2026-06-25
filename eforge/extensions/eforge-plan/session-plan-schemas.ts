@@ -126,6 +126,17 @@ export const SetSessionPlanSectionOutputSchema = Type.Object({
   readiness: SessionPlanReadinessDetailSchema,
   plan: SessionPlanProjectionSchema,
 }, JsonObjectAdditionalProperties);
+export const SkipSessionPlanDimensionInputSchema = Type.Object({
+  session: Type.String(),
+  dimension: Type.String(),
+  reason: Type.String(),
+});
+export const SkipSessionPlanDimensionOutputSchema = Type.Object({
+  session: Type.String(),
+  path: Type.String(),
+  readiness: SessionPlanReadinessDetailSchema,
+  plan: SessionPlanProjectionSchema,
+}, JsonObjectAdditionalProperties);
 export const SelectSessionPlanDimensionsInputSchema = Type.Object({
   session: Type.String(),
   planningType: Type.Optional(PlanningTypeSchema),
@@ -203,6 +214,8 @@ export type ShowSessionPlanInput = Static<typeof ShowSessionPlanInputSchema>;
 export type ShowSessionPlanSetInput = Static<typeof ShowSessionPlanSetInputSchema>;
 export type CreateSessionPlanInput = Static<typeof CreateSessionPlanInputSchema>;
 export type SetSessionPlanSectionInput = Static<typeof SetSessionPlanSectionInputSchema>;
+export type SkipSessionPlanDimensionInput = Static<typeof SkipSessionPlanDimensionInputSchema>;
+export type SkipSessionPlanDimensionOutput = Static<typeof SkipSessionPlanDimensionOutputSchema>;
 export type SelectSessionPlanDimensionsInput = Static<typeof SelectSessionPlanDimensionsInputSchema>;
 export type CheckSessionPlanReadinessInput = Static<typeof CheckSessionPlanReadinessInputSchema>;
 export type SetSessionPlanReadyInput = Static<typeof SetSessionPlanReadyInputSchema>;

@@ -236,6 +236,23 @@ describe('eforge-plan session-plan extension actions', () => {
     });
   });
 
+  it('persists skipped dimension readiness through SQL-backed plan projections', async () => {
+    await withTempProject(async (cwd) => {
+      await writeSessionPlanRaw(cwd, 'skip-plan', readyBody().replace('## Assumptions And Validation\n\nValidation uses the existing TypeScript type-check command.\n', ''));
+
+      const skipped = await dispatch(cwd, 'skip-dimension', { session: 'skip-plan', dimension: 'assumptions-and-validation', reason: 'No external assumptions need validation.' });
+      const show = await dispatch(cwd, 'show-session-plan', { session: 'skip-plan' });
+      const listed = await dispatch(cwd, 'list-planning-artifacts', { includeSubmitted: true });
+      const listedPlan = (listed.plans as Array<{ session: string; readiness: unknown }>).find((plan) => plan.session === 'skip-plan');
+
+      expect(skipped.readiness).toMatchObject({ ready: true, skippedDimensions: ['assumptions-and-validation'] });
+      expectStoredReadiness(cwd, 'skip-plan', skipped.readiness);
+      expect(show.readiness).toEqual(skipped.readiness);
+      expect(listedPlan).toMatchObject({ readiness: skipped.readiness });
+      expect(collectUndefinedPaths(skipped)).toEqual([]);
+    });
+  });
+
   it('returns acceptance-criteria diagnostics for grouping labels, bare commands, vague criteria, and manual-only criteria', async () => {
     await withTempProject(async (cwd) => {
       await writeSessionPlanRaw(cwd, 'bad-ac', readyBody().replace('- `pnpm type-check` exits 0.\n- eforge/extensions/eforge-plan/session-plan-actions.ts contains the handoff action.', '- Tests cover:\n- `pnpm type-check`.\n- Works correctly.\n- Manually verify in browser.'));

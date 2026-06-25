@@ -114,6 +114,26 @@ function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, depe
   const sections = detail.sections ?? {};
   const unresolvedDependsOn = detail.unresolvedDependsOn ?? [];
   const section = (name: string) => sections[name] ?? sections[name.toLowerCase()] ?? '';
+  const eligibility = detail.planEligible === undefined
+    ? {
+      planEligible: summary.planEligible,
+      planEligibilityReasonCode: summary.planEligibilityReasonCode,
+      planEligibilityReasonMessage: summary.planEligibilityReasonMessage,
+      planEligibilityLinks: summary.planEligibilityLinks ?? [],
+    }
+    : detail.planEligible
+      ? {
+        planEligible: true,
+        planEligibilityReasonCode: detail.planEligibilityReasonCode,
+        planEligibilityReasonMessage: detail.planEligibilityReasonMessage,
+        planEligibilityLinks: detail.planEligibilityLinks ?? [],
+      }
+      : {
+        planEligible: false,
+        planEligibilityReasonCode: detail.planEligibilityReasonCode ?? summary.planEligibilityReasonCode,
+        planEligibilityReasonMessage: detail.planEligibilityReasonMessage ?? summary.planEligibilityReasonMessage,
+        planEligibilityLinks: detail.planEligibilityLinks ?? summary.planEligibilityLinks ?? [],
+      };
   return {
     ...summary,
     ...boardItemFromCompact(detail, new Map(), recommendationIndex(null)),
@@ -137,10 +157,7 @@ function mergeDetailIntoItem(summary: BoardItem, detail: CompactItemDetail, depe
     effectiveLifecycle: detail.effectiveLifecycle ?? summary.effectiveLifecycle,
     reasonCodes: detail.reasonCodes ?? summary.reasonCodes ?? [],
     associatedLinks: detail.associatedLinks ?? summary.associatedLinks ?? [],
-    planEligible: detail.planEligible ?? summary.planEligible,
-    planEligibilityReasonCode: detail.planEligibilityReasonCode ?? summary.planEligibilityReasonCode,
-    planEligibilityReasonMessage: detail.planEligibilityReasonMessage ?? summary.planEligibilityReasonMessage,
-    planEligibilityLinks: detail.planEligibilityLinks ?? summary.planEligibilityLinks ?? [],
+    ...eligibility,
     snippets: detail.snippet?.text ? [detail.snippet.text] : summary.snippets,
   };
 }

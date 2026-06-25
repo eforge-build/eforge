@@ -99,6 +99,7 @@ Backlog captures are guarded to keep open items session-plan-ready: `capture-ite
 - `show-session-plan-set` example input: `{ "planSetId": "import-workflow" }`
 - `create-session-plan` example input: `{ "session": "2026-06-05-add-import-preview", "topic": "Add import preview", "planningType": "feature", "planningDepth": "focused", "profile": "excursion", "agentProfile": "frontend" }`
 - `set-session-plan-section` example input: `{ "session": "2026-06-05-add-import-preview", "dimension": "scope", "content": "Implement preview rendering and cancel handling." }`; `dimension: "executive-summary"` is also supported for editing the leading `## Executive Summary` and is not a readiness dimension.
+- `skip-dimension` example input: `{ "session": "2026-06-05-add-import-preview", "dimension": "assumptions-and-validation", "reason": "No external assumptions need validation." }`; records a skipped readiness dimension and syncs cached readiness for SQL-backed plan reads.
 - `check-session-plan-readiness` example input: `{ "session": "2026-06-05-add-import-preview" }`
 - `set-session-plan-ready` example input: `{ "session": "2026-06-05-add-import-preview" }`; returns `kind: "not-ready"` instead of mutating when required dimensions or acceptance criteria checks fail.
 - `handoff-session-plan` example input: `{ "session": "2026-06-05-add-import-preview" }`; requires the plan to be ready and `status: ready`, then enqueues the session plan through the daemon build queue.
@@ -263,6 +264,7 @@ The extension registers backlog, board, search, recommendation, roadmap, planner
 | `show-session-plan-set` | Return a plan-set detail projection with manifest summary, validation detail, directory paths, manifest path, and anchor content when present. | `local-read` |
 | `create-session-plan` | Write `.eforge/session-plans/<session>.md` using the shared session-planning workflow format. | `local-write` |
 | `set-session-plan-section` | Replace a named readiness planning dimension section in a flat session plan, or use the supported non-readiness section id `executive-summary` to edit the leading `## Executive Summary`. Duplicate headings for the targeted section are collapsed to one section; readiness dimensions remain separate from the executive summary. | `local-write` |
+| `skip-dimension` | Record a skipped readiness dimension with a reason in the flat session plan and synchronize cached readiness into SQLite-backed plan projections. | `local-write` |
 | `update-session-plan-metadata` | Update session-plan metadata fields that are not exposed through section editing, such as `profile`, `agent_profile`, and `open_questions`. | `local-write` |
 | `select-session-plan-dimensions` | Update the selected planning dimensions for a flat session plan. | `local-write` |
 | `check-session-plan-readiness` | Run adapter-backed readiness and acceptance-criteria diagnostics without mutating the file. | `local-read` |

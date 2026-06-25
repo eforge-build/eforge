@@ -15,6 +15,7 @@ import { syncSessionPlanArtifact } from '../canonical/session-plan-records.js';
 import { getItemDetailProjection } from '../projections/items.js';
 import { createEmptyRecommendationModel, writeRecommendations } from '../recommendations-store.js';
 import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
+import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 import { openEforgePlanStore } from '../sqlite/index.js';
 
 function tempProject(): string { return mkdtempSync(join(tmpdir(), 'eforge-plan-live-coverage-')); }
@@ -48,6 +49,26 @@ function evidenceRows(cwd: string, session: string): Array<{ is_current: number;
 }
 
 describe('live coverage planning state regression', () => {
+  it('ignores stale legacy trace sidecars when SQL projections show selected work is eligible', async () => {
+    const cwd = tempProject();
+    const itemId = 'sql-eligible-stale-trace';
+    captureCanonicalBacklogItem(cwd, { id: itemId, title: 'SQL eligible with stale trace', status: 'planned' });
+    await writeRecommendations(cwd, { ...createEmptyRecommendationModel(), readyCandidates: [{ ref: 'ready-stale-trace', itemId, rationale: 'SQL says this is ready.' }] });
+    const trace = createTraceSidecar(itemId);
+    trace.queuePrds.push({ prdId: 'stale-prd', path: '.eforge/prds/stale-prd.md', status: 'queued', queuedAt: '2026-01-01T00:00:00.000Z' });
+    await writeTraceSidecar(cwd, trace);
+
+    const board = await dispatch(cwd, 'list-board-compact', { includeArchive: true, limit: 50 });
+    const item = await dispatch(cwd, 'get-item', { id: itemId });
+    const recommendations = await dispatch(cwd, 'get-recommendations', {});
+    expect(JSON.stringify(board)).toContain('"planEligible":true');
+    expect(item).toMatchObject({ kind: 'success', output: { item: { id: itemId, planEligible: true } } });
+    expect(recommendations).toMatchObject({ kind: 'success', output: { recommendationActionability: { readyCandidates: [expect.objectContaining({ itemId, actionability: expect.objectContaining({ state: 'actionable' }) })] } } });
+
+    const replacement = await dispatch(cwd, 'start-planning-agent-task', { itemIds: [itemId], includeRoadmap: false });
+    expect(replacement).toMatchObject({ kind: 'success', output: { task: { taskId: 'replacement-task' } } });
+  });
+
   it('drives replacement eligibility through extension actions after a creation draft is abandoned', async () => {
     const cwd = tempProject();
     const itemId = 'workflow-item';

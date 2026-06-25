@@ -107,12 +107,25 @@ export async function getSessionPlanLifecycleProjection(cwd: string, session: st
 }
 
 export async function listPlanningArtifactsProjection(cwd: string, input: ListPlanningArtifactsInput): Promise<any> {
-  const sqlFlat = await withProjectionStore(cwd, async (store) => await Promise.all(listProjectionSessionPlans(store, input.includeSubmitted).map(async (p) => await artifactFromPlan(cwd, p, sessionLifecycleFromStore(store, p.session)))), () => []);
-  const sqlSessions = new Set(sqlFlat.map((artifact) => artifact.session));
-  const flat = [...sqlFlat, ...(await listFlatArtifacts(cwd, input.includeSubmitted)).filter((artifact) => !sqlSessions.has(artifact.session))];
-  const artifacts = [...flat, ...(await listPlanSetArtifacts(cwd, input.includeSubmitted))].sort((a: any, b: any) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || (a.session ?? a.planSetId ?? '').localeCompare(b.session ?? b.planSetId ?? ''));
-  const page = paginateProjection(artifacts, input, 50, 100);
-  const base: Record<string, unknown> = { artifacts: page.entries, plans: page.entries.filter((a: any) => a.kind === 'plan'), planSets: page.entries.filter((a: any) => a.kind === 'plan-set'), total: page.total, limit: page.limit, offset: page.offset, pagination: pageMetadata(page, page.total) };
+  type ArtifactDescriptor =
+    | { descriptorKind: 'sql-plan'; key: string; session: string; planSetId?: string; updatedAt?: string; plan: ProjectionSessionPlanRow }
+    | { descriptorKind: 'artifact'; key: string; session?: string; planSetId?: string; updatedAt?: string; artifact: any };
+  const sqlPlans = await withProjectionStore(cwd, (store) => listProjectionSessionPlans(store, input.includeSubmitted), () => []);
+  const sqlSessions = new Set(sqlPlans.map((plan) => plan.session));
+  const flat = (await listFlatArtifacts(cwd, input.includeSubmitted)).filter((artifact) => !sqlSessions.has(artifact.session));
+  const planSets = await listPlanSetArtifacts(cwd, input.includeSubmitted);
+  const descriptors: ArtifactDescriptor[] = [
+    ...sqlPlans.map((plan) => ({ descriptorKind: 'sql-plan' as const, key: `plan:${plan.session}`, session: plan.session, updatedAt: plan.updatedAt, plan })),
+    ...flat.map((artifact) => ({ descriptorKind: 'artifact' as const, key: artifact.key, session: artifact.session, updatedAt: artifact.updatedAt, artifact })),
+    ...planSets.map((artifact) => ({ descriptorKind: 'artifact' as const, key: artifact.key, planSetId: artifact.planSetId, updatedAt: artifact.updatedAt, artifact })),
+  ];
+  descriptors.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || (a.session ?? a.planSetId ?? '').localeCompare(b.session ?? b.planSetId ?? ''));
+  const page = paginateProjection(descriptors, input, 50, 100);
+  const sqlPagePlans = page.entries.filter((entry): entry is Extract<ArtifactDescriptor, { descriptorKind: 'sql-plan' }> => entry.descriptorKind === 'sql-plan');
+  const hydratedSql = await withProjectionStore(cwd, async (store) => await Promise.all(sqlPagePlans.map(async (entry) => [entry.key, await artifactFromPlan(cwd, entry.plan, sessionLifecycleFromStore(store, entry.session))] as const)), () => []);
+  const hydratedSqlByKey = new Map(hydratedSql);
+  const entries = page.entries.map((entry) => entry.descriptorKind === 'sql-plan' ? hydratedSqlByKey.get(entry.key) : entry.artifact).filter((entry): entry is any => entry !== undefined);
+  const base: Record<string, unknown> = { artifacts: entries, plans: entries.filter((a: any) => a.kind === 'plan'), planSets: entries.filter((a: any) => a.kind === 'plan-set'), total: page.total, limit: page.limit, offset: page.offset, pagination: pageMetadata(page, page.total) };
   if (input.includeBoard === true) base.board = await boardProjection(cwd, input);
   return base;
 }

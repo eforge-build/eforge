@@ -32,6 +32,8 @@ import {
   ListPlanningArtifactsOutputSchema,
   SelectSessionPlanDimensionsInputSchema,
   SelectSessionPlanDimensionsOutputSchema,
+  SkipSessionPlanDimensionInputSchema,
+  SkipSessionPlanDimensionOutputSchema,
   SetSessionPlanReadyInputSchema,
   SetSessionPlanReadyOutputSchema,
   SetSessionPlanSectionInputSchema,
@@ -152,6 +154,27 @@ export const setSessionPlanSectionAction = defineExtensionAction({
       session: input.session,
       dimension: input.dimension,
       content: input.content,
+    });
+    const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
+    await syncFlatSessionPlan(ctx.cwd, input.session, path, result.readiness);
+    return toJsonSafeObject({ session: input.session, path, readiness: result.readiness, plan: projectSessionPlan(result.plan) });
+  },
+});
+
+export const skipDimensionAction = defineExtensionAction({
+  id: 'skip-dimension',
+  title: 'Skip session plan dimension',
+  description: 'Record a skipped readiness dimension with a reason in a flat session plan.',
+  inputSchema: SkipSessionPlanDimensionInputSchema,
+  outputSchema: SkipSessionPlanDimensionOutputSchema,
+  sideEffects: ['local-write'],
+  async handler(input, ctx) {
+    const planning = adapter();
+    const result = await planning.flat.skipDimension({
+      cwd: ctx.cwd,
+      session: input.session,
+      dimension: input.dimension,
+      reason: input.reason,
     });
     const path = planning.flat.resolvePath({ cwd: ctx.cwd, session: input.session });
     await syncFlatSessionPlan(ctx.cwd, input.session, path, result.readiness);
@@ -331,6 +354,7 @@ export const sessionPlanActions = [
   showSessionPlanSet,
   createSessionPlanAction,
   setSessionPlanSectionAction,
+  skipDimensionAction,
   selectSessionPlanDimensions,
   checkSessionPlanReadiness,
   setSessionPlanReady,
