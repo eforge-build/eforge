@@ -148,7 +148,7 @@ const promoteItem = defineExtensionAction({
   id: 'promote-item', title: 'Promote backlog item', description: 'Reject duplicate coverage, write a session plan, and sync canonical SQLite metadata and lifecycle evidence for a visible eforge-plan backlog item.',
   inputSchema: PromoteInput, outputSchema: ActionObjectOutput, sideEffects: ['local-write'],
   async handler(input, ctx) {
-    const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null });
+    const result = await promoteBacklogItem({ cwd: ctx.cwd, itemId: input.itemId, status: input.status ?? 'active', session: input.session, profile: input.profile ?? null, agentTasks: ctx.agentTasks });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-item', [result.itemId]);
     return toJsonSafeObject(result);
   },
@@ -167,6 +167,7 @@ const promoteSelection = defineExtensionAction({
       status: input.status,
       ...(input.profile !== undefined && { profile: input.profile }),
       title: input.title,
+      agentTasks: ctx.agentTasks,
     });
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-selection', result.itemIds);
     return toJsonSafeObject(result);

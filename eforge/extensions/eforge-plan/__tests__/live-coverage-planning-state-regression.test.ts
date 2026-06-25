@@ -69,6 +69,23 @@ describe('live coverage planning state regression', () => {
     expect(replacement).toMatchObject({ kind: 'success', output: { task: { taskId: 'replacement-task' } } });
   });
 
+  it('ignores stale indexed planning-task artifacts when daemon live status is unavailable', async () => {
+    const cwd = tempProject();
+    const itemId = 'stale-indexed-task-item';
+    captureCanonicalBacklogItem(cwd, { id: itemId, title: 'Stale indexed task item', status: 'candidate' });
+    await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-stale-indexed', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan stale indexed task item.', derivedRequest: 'Draft a session plan.', selection: { itemIds: [itemId] }, requestedOutputSections: ['sessionPlanCreationDraft'] });
+    const store = openEforgePlanStore(cwd);
+    const db = new DatabaseSync(store.path);
+    store.close();
+    try { db.prepare("UPDATE planning_tasks SET status_snapshot = 'indexed', applied_at = '2026-01-01T00:01:00.000Z' WHERE task_id = 'task-stale-indexed'").run(); } finally { db.close(); }
+
+    const item = await dispatch(cwd, 'get-item', { id: itemId });
+    expect(item).toMatchObject({ kind: 'success', output: { item: { id: itemId, planEligible: true } } });
+
+    const replacement = await dispatch(cwd, 'start-planning-agent-task', { itemIds: [itemId], includeRoadmap: false });
+    expect(replacement).toMatchObject({ kind: 'success', output: { task: { taskId: 'replacement-task' } } });
+  });
+
   it('drives replacement eligibility through extension actions after a creation draft is abandoned', async () => {
     const cwd = tempProject();
     const itemId = 'workflow-item';

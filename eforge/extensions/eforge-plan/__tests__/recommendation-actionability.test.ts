@@ -1,13 +1,13 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter } from '@eforge-build/input';
 import type { ExtensionAgentTaskRecord } from '@eforge-build/client';
 import { assertRecommendationSelectionActionable, buildRecommendationActionability } from '../recommendation-actionability.js';
 import { writeBacklogItem } from '../markdown-store.js';
 import { createEmptyRecommendationModel } from '../recommendations-store.js';
-import { recordPlanningTaskWorkflowEntry } from '../planning-task-workflow-store.js';
+import { recordPlanningTaskWorkflowEntry, resolvePlanningTaskWorkflowIndexPath } from '../planning-task-workflow-store.js';
 import { updateSessionPlanSourceMetadata } from '../session-plan-metadata.js';
 import { createTraceSidecar, writeTraceSidecar } from '../trace-store.js';
 import type { BacklogRecommendationModel } from '../schema.js';
@@ -29,6 +29,12 @@ async function seedItems(cwd: string, itemIds: string[] = ['item-one']): Promise
   for (const itemId of itemIds) {
     await writeBacklogItem(cwd, { id: itemId, status: 'candidate', body: `# ${itemId}\n\n## Claim\n\nPlan ${itemId}.\n` });
   }
+}
+
+async function writeLegacyPlanningTaskWorkflowEntry(cwd: string, entry: Parameters<typeof recordPlanningTaskWorkflowEntry>[1]): Promise<void> {
+  const path = resolvePlanningTaskWorkflowIndexPath(cwd);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify({ schemaVersion: 1, entries: [entry] }), 'utf-8');
 }
 
 function runningTask(taskId: string): ExtensionAgentTaskRecord {
@@ -111,6 +117,19 @@ describe('recommendation actionability projection', () => {
       const output = await buildRecommendationActionability(cwd, model(), { async get(taskId) { return { task: runningTask(taskId) }; } });
 
       expectNonActionable(output.recommendedNextSequence[0]?.actionability, { reasonCode: 'active-planning-task', lifecycleState: 'active', associatedLink: { kind: 'planning-task', taskId: 'task-active', status: 'running' } });
+    });
+  });
+
+  it('honors excluded parent tasks when only the legacy workflow index exists', async () => {
+    await withTempProject(async (cwd) => {
+      await seedItems(cwd);
+      await writeLegacyPlanningTaskWorkflowEntry(cwd, { taskId: 'task-parent', createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan', derivedRequest: 'Plan item one.', selection: { itemIds: ['item-one'] }, requestedOutputSections: ['sessionPlanCreationDraft'] });
+      const agentTasks = { async get(taskId: string) { return { task: runningTask(taskId) }; } };
+
+      await expect(assertRecommendationSelectionActionable(cwd, ['item-one'], agentTasks)).rejects.toMatchObject({
+        details: [expect.objectContaining({ path: 'itemIds', suppressedItems: [expect.objectContaining({ itemId: 'item-one', reasonCode: 'active-planning-task' })] })],
+      });
+      await expect(assertRecommendationSelectionActionable(cwd, ['item-one'], agentTasks, 'itemIds', { excludePlanningTaskIds: ['task-parent'] })).resolves.toBeUndefined();
     });
   });
 

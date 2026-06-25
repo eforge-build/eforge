@@ -232,6 +232,7 @@ const promoteDraftUnit = defineExtensionAction({
       ...(input.status !== undefined && { status: input.status }),
       ...(input.session !== undefined && { session: input.session }),
       profile: unit.profile ?? null,
+      agentTasks: ctx.agentTasks,
     });
     const updated = await markDraftPlanUnitPromoted(ctx.cwd, input.unitId, promotion.session);
     await markRecommendationsStaleForBacklogMutation(ctx.cwd, 'promote-draft-unit', promotion.itemIds);

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { createSessionPlanningWorkflowAdapter, normalizeBuildSource, sessionPlanToBuildSource } from '@eforge-build/input';
 import { readAcceptedAnalysisBaseline } from '../backlog-curation-git-delta.js';
@@ -496,6 +497,22 @@ describe('planner orchestration', () => {
       expect(await readTraceSidecar(cwd, 'item-two')).toBeNull();
       expect((await readBacklogItem(cwd, 'item-one'))?.status).toBe('planned');
       expect((await readBacklogItem(cwd, 'item-two'))?.status).toBe('candidate');
+    });
+  });
+
+  it('applies a creation draft when stale indexed planning-task rows are historical only', async () => {
+    await withTempProject(async (cwd) => {
+      await seed(cwd);
+      await recordCreationWorkflow(cwd, { itemIds: ['item-two'] }, 'task-stale-indexed');
+      const store = openEforgePlanStore(cwd);
+      const db = new DatabaseSync(store.path);
+      store.close();
+      try { db.prepare("UPDATE planning_tasks SET status_snapshot = 'indexed', applied_at = '2026-01-01T00:01:00.000Z' WHERE task_id = 'task-stale-indexed'").run(); } finally { db.close(); }
+      await recordCreationWorkflow(cwd, { itemIds: ['item-two'] });
+
+      const result = await applyCompletedPlanningAgentTaskResult(cwd, creationDraftTask('stale-indexed-apply-session'), { taskId: 'task-creation', applySessionPlanCreationDraft: {} });
+
+      expect(result.sessionPlanCreationDraft).toMatchObject({ session: 'stale-indexed-apply-session', sourceRefs: { sourceItemIds: ['item-two'], sourceEpicIds: [] } });
     });
   });
 
