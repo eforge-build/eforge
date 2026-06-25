@@ -1,13 +1,14 @@
 import * as React from 'react';
-import { Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle2, CircleDashed, Trash2, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ToneChip } from '@/components/ui/tone-chip';
 import { useToast } from '@/components/toast';
-import { agentTaskTone } from '@/lib/tone';
+import { cn } from '@/lib/utils';
+import { agentTaskTone, type Tone } from '@/lib/tone';
 import { formatRelativeTime, shortTaskId } from '@/lib/format-time';
 import { isGeneratedPlannerPrompt, selectionItemsLabel } from '@/lib/plan-title';
-import type { BacklogCurationProgress, JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskApplyError, PlanningTaskWorkflowEntry } from '@/types';
+import type { BacklogCurationItemProgress, BacklogCurationItemProgressStatus, BacklogCurationProgress, JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskRecord, PlanningTaskApplyError, PlanningTaskSectionProgress, PlanningTaskWorkflowEntry } from '@/types';
 import { PlanningTaskResultPreview } from './planning-task-result-preview';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -155,66 +156,155 @@ function RunningProgress({ task }: { task?: PlanningAgentTaskRecord }) {
   const message = task?.metadata?.progressMessage;
   return (
     <div className="mt-2 grid gap-2 text-xs text-muted-foreground">
-      <span className="flex items-start gap-2"><Spinner className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words">{message ?? 'Planning in progress…'}</span></span>
+      <span className="flex items-start gap-2"><Spinner className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words text-foreground">{message ?? 'Planning in progress…'}</span></span>
       {backlogCurationProgress && <BacklogCurationProgressView progress={backlogCurationProgress} />}
-      {progress && (
-        <div className="grid gap-0.5 break-words">
-          {progress.currentSection && <span>Current section: <span className="text-foreground">{progress.currentSection}</span></span>}
-          {progress.coveredSections && progress.coveredSections.length > 0 && <span>Covered: {progress.coveredSections.join(', ')}</span>}
-          {progress.remainingSections && progress.remainingSections.length > 0 && <span>Remaining: {progress.remainingSections.join(', ')}</span>}
-        </div>
-      )}
+      {progress && <SectionProgressView progress={progress} />}
     </div>
   );
 }
 
+// The backlog audit fans one agent out per item. A fixed 3-lane grid went
+// lopsided the moment the work skewed (7 done, 1 running, 0 queued left two
+// near-empty columns) and squeezed every title to "Validate backlog epic…" in
+// the 34rem drawer. Instead show one full-width roster ordered by what needs
+// attention first - running, then failures, then queued, then analyzed - so the
+// list reads top-to-bottom, titles wrap to two readable lines, and empty buckets
+// simply disappear rather than reserving dead space.
 function BacklogCurationProgressView({ progress }: { progress: BacklogCurationProgress }) {
   const total = Math.max(0, progress.total);
   const percent = total === 0 ? 0 : Math.min(100, Math.round((progress.completed / total) * 100));
-  const runningItems = progress.items.filter((item) => item.status === 'running');
-  const allCompletedItems = progress.items.filter((item) => item.status === 'completed' || item.status === 'cache-hit');
-  const completedItems = allCompletedItems.slice(0, 8);
-  const allRemainingItems = progress.items.filter((item) => item.status === 'pending');
-  const remainingItems = allRemainingItems.slice(0, 8);
-  const failedItems = progress.items.filter((item) => item.status === 'failed' || item.status === 'cancelled');
+  const groups = groupCurationItems(progress.items);
   return (
-    <div className="rounded-md border border-border/70 bg-muted/20 p-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="rounded-md border border-border/70 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="font-medium text-foreground">Backlog item agents</span>
-        <span>{progress.completed}/{total} analyzed · {progress.running} running · {progress.remaining} remaining</span>
+        <span className="text-2xs text-muted-foreground">
+          <span className="text-foreground">{progress.completed}/{total} analyzed</span>
+          {progress.running > 0 && <span className="ml-2 text-[color:var(--lane-progress)]">{progress.running} running</span>}
+          {progress.remaining > 0 && <span className="ml-2">{progress.remaining} queued</span>}
+        </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
       </div>
-      <div className="mt-2 grid gap-2 md:grid-cols-3">
-        <ProgressLane title="Running" items={runningItems} empty="No active item agents" />
-        <ProgressLane title="Completed" items={completedItems} empty="No completed items yet" suffix={allCompletedItems.length > completedItems.length ? `+${allCompletedItems.length - completedItems.length} more` : undefined} />
-        <ProgressLane title="Remaining" items={remainingItems} empty="No remaining items" suffix={allRemainingItems.length > remainingItems.length ? `+${allRemainingItems.length - remainingItems.length} more` : undefined} />
+      <div className="mt-3 grid gap-3">
+        {groups.map((group) => <CurationGroup key={group.key} group={group} />)}
       </div>
-      {failedItems.length > 0 && <ProgressLane className="mt-2" title="Needs attention" items={failedItems.slice(0, 6)} empty="" suffix={failedItems.length > 6 ? `+${failedItems.length - 6} more` : undefined} />}
     </div>
   );
 }
 
-function ProgressLane({ title, items, empty, suffix, className }: { title: string; items: BacklogCurationProgress['items']; empty: string; suffix?: string; className?: string }) {
+interface CurationGroupData { key: string; label: string; cap: number; items: BacklogCurationItemProgress[]; }
+
+// Running and failed items always show in full - they are the ones a human acts
+// on. Queued/analyzed buckets cap so a 50-item backlog does not bury them under
+// an endless tail; the overflow count keeps the total honest.
+function groupCurationItems(items: BacklogCurationItemProgress[]): CurationGroupData[] {
+  const buckets: Record<string, BacklogCurationItemProgress[]> = { running: [], attention: [], pending: [], done: [] };
+  for (const item of items) buckets[curationGroupKey(item.status)].push(item);
+  const defs: Array<Omit<CurationGroupData, 'items'>> = [
+    { key: 'running', label: 'Running', cap: Infinity },
+    { key: 'attention', label: 'Needs attention', cap: Infinity },
+    { key: 'pending', label: 'Queued', cap: 10 },
+    { key: 'done', label: 'Analyzed', cap: 10 },
+  ];
+  return defs.filter((def) => buckets[def.key].length > 0).map((def) => ({ ...def, items: buckets[def.key] }));
+}
+
+function curationGroupKey(status: BacklogCurationItemProgressStatus): string {
+  if (status === 'running') return 'running';
+  if (status === 'failed' || status === 'cancelled') return 'attention';
+  if (status === 'pending') return 'pending';
+  return 'done';
+}
+
+function CurationGroup({ group }: { group: CurationGroupData }) {
+  const shown = group.items.slice(0, group.cap);
+  const hidden = group.items.length - shown.length;
   return (
-    <div className={className}>
-      <div className="mb-1 flex items-center justify-between gap-2 text-2xs uppercase tracking-wide text-muted-foreground">
-        <span>{title}</span>
-        <span>{items.length}{suffix ? ` ${suffix}` : ''}</span>
+    <div>
+      <div className="mb-1.5 flex items-center gap-2 text-2xs uppercase tracking-wide text-muted-foreground">
+        <span>{group.label}</span>
+        <span className="h-px flex-1 bg-border/60" />
+        <span>{group.items.length}</span>
       </div>
-      <div className="grid gap-1">
-        {items.length === 0 && empty && <span className="rounded border border-dashed border-border px-2 py-1 text-muted-foreground">{empty}</span>}
-        {items.map((item) => (
-          <div key={`${title}-${item.itemId}`} title={item.summary ?? item.itemId} className="min-w-0 rounded border border-border/70 bg-background/70 px-2 py-1">
-            <div className="truncate text-foreground">{item.title ?? item.itemId}</div>
-            <div className="mt-0.5 flex flex-wrap gap-1 text-2xs">
-              <span className="rounded bg-muted px-1">{item.status}</span>
-              {item.verdict && <span className="rounded bg-primary/10 px-1 text-text-bright">{item.verdict}</span>}
-            </div>
-          </div>
-        ))}
+      <div className="grid gap-1.5">
+        {shown.map((item) => <CurationItemRow key={item.itemId} item={item} />)}
+        {hidden > 0 && <p className="px-1 text-2xs text-muted-foreground">+{hidden} more</p>}
       </div>
+    </div>
+  );
+}
+
+function CurationItemRow({ item }: { item: BacklogCurationItemProgress }) {
+  const meta = curationStatusMeta(item.status);
+  return (
+    <div title={item.summary ?? item.itemId} className="flex items-start gap-2 rounded border border-border/60 bg-background/60 px-2.5 py-1.5">
+      {item.status === 'running'
+        ? <Spinner className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', meta.className)} />
+        : <meta.icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', meta.className)} aria-hidden="true" />}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0 line-clamp-2 leading-snug text-foreground">{item.title ?? item.itemId}</span>
+          {item.verdict && <ToneChip tone={verdictTone(item.verdict)} className="shrink-0">{item.verdict}</ToneChip>}
+        </div>
+        {item.summary && <p className="mt-0.5 line-clamp-2 text-2xs text-muted-foreground">{item.summary}</p>}
+      </div>
+    </div>
+  );
+}
+
+function curationStatusMeta(status: BacklogCurationItemProgressStatus): { icon: LucideIcon; className: string } {
+  switch (status) {
+    case 'running': return { icon: CircleDashed, className: 'text-[color:var(--lane-progress)]' };
+    case 'completed':
+    case 'cache-hit': return { icon: CheckCircle2, className: 'text-[color:var(--lane-done)]' };
+    case 'failed': return { icon: AlertTriangle, className: 'text-[color:var(--lane-blocked)]' };
+    case 'cancelled': return { icon: Ban, className: 'text-muted-foreground' };
+    case 'pending':
+    default: return { icon: CircleDashed, className: 'text-muted-foreground/60' };
+  }
+}
+
+// Audit verdicts ("partial", "shipped", "still-needed", "archive") used to all
+// read as the same bright green, so nothing stood out. Map them onto the shared
+// tone recipe so "partial" reads as caution and a clean "shipped" reads as done.
+function verdictTone(verdict: string): Tone {
+  const value = verdict.toLowerCase();
+  if (value.includes('ship') || value === 'done' || value === 'complete') return 'done';
+  if (value.includes('partial') || value.includes('progress')) return 'warn';
+  if (value.includes('need') || value.includes('keep')) return 'info';
+  if (value.includes('archive') || value.includes('drop') || value.includes('remove')) return 'neutral';
+  return 'neutral';
+}
+
+// The planner streams draft-section progress separately from the per-item audit.
+// Render the slugs as wrapping chips rather than a comma-joined run-on so the
+// covered/remaining split stays scannable.
+function SectionProgressView({ progress }: { progress: PlanningTaskSectionProgress }) {
+  const covered = progress.coveredSections ?? [];
+  const remaining = progress.remainingSections ?? [];
+  if (!progress.currentSection && covered.length === 0 && remaining.length === 0) return null;
+  return (
+    <div className="grid gap-2 rounded-md border border-border/70 bg-muted/20 p-3">
+      <span className="font-medium text-foreground">Draft sections</span>
+      {progress.currentSection && (
+        <div className="flex items-center gap-2">
+          <Spinner className="h-3 w-3 shrink-0 text-[color:var(--lane-progress)]" />
+          <span>Writing <span className="font-mono text-foreground">{progress.currentSection}</span></span>
+        </div>
+      )}
+      {covered.length > 0 && <SectionChips label="Covered" sections={covered} tone="done" />}
+      {remaining.length > 0 && <SectionChips label="Remaining" sections={remaining} tone="neutral" />}
+    </div>
+  );
+}
+
+function SectionChips({ label, sections, tone }: { label: string; sections: string[]; tone: Tone }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="mr-1 text-2xs uppercase tracking-wide text-muted-foreground">{label}</span>
+      {sections.map((section) => <ToneChip key={section} tone={tone} className="font-mono normal-case">{section}</ToneChip>)}
     </div>
   );
 }
