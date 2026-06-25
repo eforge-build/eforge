@@ -5135,7 +5135,7 @@ Total variants: 229
 | `plan:build:review:parallel:perspective:complete` | `issues`, `perspective`, `planId`, `round` |
 | `plan:build:review:parallel:perspective:error` | `error`, `perspective`, `planId`, `round` |
 | `plan:build:review:fix:start` | `issueCount`, `planId`, `round` |
-| `plan:build:review:fix:complete` | `planId`, `round` |
+| `plan:build:review:fix:complete` | `issueReferences`, `planId`, `round` |
 | `plan:build:review:fix:continuation` | `attempt`, `maxContinuations`, `planId`, `round` |
 | `plan:build:evaluate:start` | `planId`, `round` |
 | `plan:build:evaluate:continuation` | `attempt`, `maxContinuations`, `planId`, `round` |

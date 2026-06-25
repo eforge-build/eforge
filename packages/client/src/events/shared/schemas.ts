@@ -56,6 +56,19 @@ export const LandingActionSchema = Type.Union([
 ]);
 export const EvaluationIssueOutcomeSchema = Type.Union(['resolved', 'false_positive', 'unresolved', 'unresolved_blocking', 'unresolved_nonblocking', 'needs_human_review', 'accepted_risk', 'split_to_followup'].map(v => Type.Literal(v)), { description: 'Evaluator issue disposition separate from patch action. Missing values are interpreted conservatively by the engine.' });
 export const ReviewCycleRoundField = { round: Type.Optional(Type.Integer({ minimum: 0 })) } as const;
+// --- eforge:region review-issue-traceability ---
+export const ReviewIssueIdSchema = Type.String({ minLength: 1, maxLength: MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH, pattern: '\\S' });
+export const ReviewFixIssueStatusSchema = Type.Union([
+  Type.Literal('addressed'),
+  Type.Literal('deferred'),
+  Type.Literal('obsolete'),
+]);
+export const ReviewFixIssueReferenceSchema = Type.Object({
+  issueId: ReviewIssueIdSchema,
+  status: ReviewFixIssueStatusSchema,
+  note: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REVIEW_ISSUE_METADATA_STRING_LENGTH })),
+});
+// --- eforge:endregion review-issue-traceability ---
 // --- eforge:endregion core-classification-schemas ---
 
 // --- eforge:region stack-schemas ---
@@ -302,6 +315,9 @@ export const JsonSafeMetadataSchema = Type.Recursive((Self) => Type.Union([
   Type.Record(Type.String(), Self),
 ]));
 export const ReviewIssueSchema = Type.Object({
+  // --- eforge:region review-issue-traceability ---
+  issueId: Type.Optional(ReviewIssueIdSchema),
+  // --- eforge:endregion review-issue-traceability ---
   severity: Type.Union([Type.Literal('critical'), Type.Literal('warning'), Type.Literal('suggestion')]),
   category: Type.String(),
   file: Type.String(),
@@ -476,7 +492,11 @@ export const FailingPlanEntrySchema = Type.Object({
   toolUseCount: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 export const ReviewFailureActionSchema = Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')]);
-export const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema), retryGuidance: Type.Optional(Type.String()) });
+export const ReviewFailureEvaluationVerdictSchema = Type.Object({ file: Type.String(), action: ReviewFailureActionSchema, reason: Type.String(), hunk: Type.Optional(Type.Integer({ minimum: 1 })), issueOutcome: Type.Optional(EvaluationIssueOutcomeSchema), retryGuidance: Type.Optional(Type.String()),
+  // --- eforge:region review-issue-traceability ---
+  issueIds: Type.Optional(Type.Array(ReviewIssueIdSchema)),
+  // --- eforge:endregion review-issue-traceability ---
+});
 export const ReviewFailureDetailsSchema = Type.Object({ planId: Type.String(), issues: Type.Array(ReviewIssueSchema), evaluation: Type.Optional(Type.Object({ accepted: Type.Integer({ minimum: 0 }), rejected: Type.Integer({ minimum: 0 }), review: Type.Integer({ minimum: 0 }), verdicts: Type.Array(ReviewFailureEvaluationVerdictSchema) })) });
 export const TerminalFailureScopeSchema = Type.Union([Type.Literal('plan'), Type.Literal('post-merge-validation'), Type.Literal('prd-validation'), Type.Literal('acceptance-validation'), Type.Literal('artifact-recording'), Type.Literal('landing'), Type.Literal('daemon'), Type.Literal('compile'), Type.Literal('unknown')]);
 export const TFLandingSchema = Type.Object({ status: Type.String(), action: Type.Optional(Type.String()), reason: Type.Optional(Type.String()) });

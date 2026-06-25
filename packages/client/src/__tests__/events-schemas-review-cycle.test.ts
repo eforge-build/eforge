@@ -180,6 +180,89 @@ it('accepts all six built-in perspectives in parallel:start', () => {
   });
 });
 
+describe('safeParseEforgeEvent — review issue traceability', () => {
+  it('accepts legacy review-complete and fix-complete events without issue traceability fields', () => {
+    expect(safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        severity: 'warning',
+        category: 'style',
+        file: 'src/app.ts',
+        description: 'Legacy issue without an ID',
+      }],
+    }).success).toBe(true);
+
+    expect(safeParseEforgeEvent({
+      type: 'plan:build:review:fix:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+    }).success).toBe(true);
+  });
+
+  it('accepts review issues with issueId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        issueId: 'review-issue-1',
+        severity: 'critical',
+        category: 'bug',
+        file: 'src/app.ts',
+        description: 'Null dereference',
+      }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects whitespace-only issue IDs across traceability fields', () => {
+    expect(safeParseEforgeEvent({
+      type: 'plan:build:review:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issues: [{
+        issueId: '   ',
+        severity: 'critical',
+        category: 'bug',
+        file: 'src/app.ts',
+        description: 'Null dereference',
+      }],
+    }).success).toBe(false);
+
+    expect(safeParseEforgeEvent({
+      type: 'plan:build:review:fix:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issueReferences: [{ issueId: '   ', status: 'addressed' }],
+    }).success).toBe(false);
+
+    expect(safeParseEforgeEvent({
+      type: 'plan:build:evaluate:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      accepted: 0,
+      rejected: 1,
+      verdicts: [{ file: 'src/app.ts', action: 'reject', reason: 'Still broken', issueIds: ['   '] }],
+    }).success).toBe(false);
+  });
+
+  it('accepts fix-complete issueReferences with all statuses', () => {
+    const result = safeParseEforgeEvent({
+      type: 'plan:build:review:fix:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      issueReferences: [
+        { issueId: 'review-issue-1', status: 'addressed', note: 'Patched directly' },
+        { issueId: 'review-issue-2', status: 'deferred', note: 'Requires product decision' },
+        { issueId: 'review-issue-3', status: 'obsolete' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('safeParseEforgeEvent — ReviewIssue validation guidance', () => {
   it('accepts validation guidance fields with structural repair class', () => {
     const result = safeParseEforgeEvent({
