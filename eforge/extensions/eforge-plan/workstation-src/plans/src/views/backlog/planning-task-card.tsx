@@ -293,7 +293,7 @@ function SectionProgressView({ progress }: { progress: PlanningTaskSectionProgre
       {progress.currentSection && (
         <div className="flex items-center gap-2">
           <Spinner className="h-3 w-3 shrink-0 text-[color:var(--lane-progress)]" />
-          <span>Writing <span className="font-mono text-foreground">{progress.currentSection}</span></span>
+          <span>Current section: <span className="font-mono text-foreground">{progress.currentSection}</span></span>
         </div>
       )}
       {covered.length > 0 && <SectionChips label="Covered" sections={covered} tone="done" />}
