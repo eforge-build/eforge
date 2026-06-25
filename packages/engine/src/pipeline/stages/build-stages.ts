@@ -29,6 +29,7 @@ import { runDocAuthor } from '../../agents/doc-author.js';
 import { runDocSyncer } from '../../agents/doc-syncer.js';
 import { runTestWriter, runTester } from '../../agents/tester.js';
 import { testIssueToReviewIssue } from '../../agents/common.js';
+import { assignReviewIssueIds } from '../../review-issue-traceability.js';
 import type { ResolvedAgentConfig } from '../../config.js';
 import { runParallel } from '../../concurrency.js';
 import { forgeCommit } from '../../git.js';
@@ -440,13 +441,12 @@ async function* reviewStageInner(
   }
 
   // Augment the buffered complete event with the drift issue (if any), then yield it.
-  const finalIssues = driftIssue
-    ? [...(bufferedReviewComplete?.issues ?? []), driftIssue]
-    : (bufferedReviewComplete?.issues ?? []);
+  const finalIssues = driftIssue ? [...(bufferedReviewComplete?.issues ?? []), driftIssue] : (bufferedReviewComplete?.issues ?? []);
+  const finalIssuesWithIds = assignReviewIssueIds(finalIssues, { round, lane: 'review-contract' });
 
   const completeEvent: Extract<EforgeEvent, { type: 'plan:build:review:complete' }> = bufferedReviewComplete
-    ? { ...bufferedReviewComplete, issues: finalIssues }
-    : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssues, ...(round !== undefined ? { round } : {}) };
+    ? { ...bufferedReviewComplete, issues: finalIssuesWithIds }
+    : { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId: ctx.planId, issues: finalIssuesWithIds, ...(round !== undefined ? { round } : {}) };
 
   ctx.reviewIssues = completeEvent.issues;
   metadata.completeIssueCount = completeEvent.issues.length;

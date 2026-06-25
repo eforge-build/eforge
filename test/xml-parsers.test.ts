@@ -157,10 +157,10 @@ describe('parseReviewIssues', () => {
     });
   });
 
-  it('parses optional line and fix', () => {
+  it('parses optional line, fix, and issueId', () => {
     const text = `
 <review-issues>
-  <issue severity="warning" category="perf" file="src/db.ts" line="42">
+  <issue issueId="custom-1" severity="warning" category="perf" file="src/db.ts" line="42">
     Slow query
     <fix>Add index on user_id</fix>
   </issue>
@@ -168,9 +168,23 @@ describe('parseReviewIssues', () => {
 
     const result = parseReviewIssues(text);
     expect(result).toHaveLength(1);
+    expect(result[0].issueId).toBe('custom-1');
     expect(result[0].line).toBe(42);
     expect(result[0].fix).toBe('Add index on user_id');
     expect(result[0].description).toBe('Slow query');
+  });
+
+  it('parses kebab-case issue-id and ignores blank IDs', () => {
+    const text = `
+<review-issues>
+  <issue issue-id="custom-2" severity="warning" category="perf" file="src/db.ts">Slow query</issue>
+  <issue issue-id="   " severity="suggestion" category="style" file="src/ui.ts">Use const</issue>
+</review-issues>`;
+
+    const result = parseReviewIssues(text);
+    expect(result).toHaveLength(2);
+    expect(result[0].issueId).toBe('custom-2');
+    expect(result[1].issueId).toBeUndefined();
   });
 
   it('skips issues with invalid severity', () => {
@@ -265,13 +279,14 @@ describe('parseReviewIssuesStrict', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('returns valid:true and parses a well-formed issue', () => {
+  it('returns valid:true and parses a well-formed issue with issueId', () => {
     const text = `<review-issues>
-  <issue severity="warning" category="bugs" file="src/app.ts">Slow query<fix>Add index</fix></issue>
+  <issue issueId="custom-1" severity="warning" category="bugs" file="src/app.ts">Slow query<fix>Add index</fix></issue>
 </review-issues>`;
     const result = parseReviewIssuesStrict(text);
     expect(result.valid).toBe(true);
     expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].issueId).toBe('custom-1');
     expect(result.issues[0].severity).toBe('warning');
     expect(result.issues[0].category).toBe('bugs');
     expect(result.issues[0].file).toBe('src/app.ts');
@@ -395,11 +410,12 @@ Some trailing text.`;
     expect(result.issues[0].category).toBe('review-contract');
   });
 
-  it('returns valid:true for issues without any line attribute', () => {
+  it('returns valid:true for legacy issues without line or issueId attributes', () => {
     const text = '<review-issues><issue severity="warning" category="bugs" file="src/a.ts">No line</issue></review-issues>';
     const result = parseReviewIssuesStrict(text);
     expect(result.valid).toBe(true);
     expect(result.issues[0].line).toBeUndefined();
+    expect(result.issues[0].issueId).toBeUndefined();
   });
 
   it('returns valid:true for issues with a valid numeric line attribute', () => {
@@ -407,6 +423,17 @@ Some trailing text.`;
     const result = parseReviewIssuesStrict(text);
     expect(result.valid).toBe(true);
     expect(result.issues[0].line).toBe(42);
+  });
+
+  it('parses kebab-case issue-id attributes and ignores invalid blank IDs', () => {
+    const text = `<review-issues>
+  <issue issue-id="custom-2" severity="warning" category="bugs" file="src/a.ts">With ID</issue>
+  <issue issueId="   " severity="warning" category="bugs" file="src/b.ts">Blank ID</issue>
+</review-issues>`;
+    const result = parseReviewIssuesStrict(text);
+    expect(result.valid).toBe(true);
+    expect(result.issues[0].issueId).toBe('custom-2');
+    expect(result.issues[1].issueId).toBeUndefined();
   });
 
   it('returns valid:false for plain text reviewer output with no XML block', () => {

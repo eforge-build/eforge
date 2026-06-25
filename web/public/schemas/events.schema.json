@@ -5069,6 +5069,7 @@
                   "issueId": {
                     "minLength": 1,
                     "maxLength": 4096,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "severity": {
@@ -5325,6 +5326,7 @@
                   "issueId": {
                     "minLength": 1,
                     "maxLength": 4096,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "severity": {
@@ -5581,6 +5583,7 @@
                   "issueId": {
                     "minLength": 1,
                     "maxLength": 4096,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "severity": {
@@ -5988,6 +5991,7 @@
                   "issueId": {
                     "minLength": 1,
                     "maxLength": 4096,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "severity": {
@@ -6210,6 +6214,7 @@
                   "issueId": {
                     "minLength": 1,
                     "maxLength": 4096,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "severity": {
@@ -6426,6 +6431,7 @@
                   "issueId": {
                     "minLength": 1,
                     "maxLength": 4096,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "status": {
@@ -6661,6 +6667,7 @@
                     "items": {
                       "minLength": 1,
                       "maxLength": 4096,
+                      "pattern": "\\S",
                       "type": "string"
                     }
                   }
@@ -10544,6 +10551,7 @@
                           "issueId": {
                             "minLength": 1,
                             "maxLength": 4096,
+                            "pattern": "\\S",
                             "type": "string"
                           },
                           "severity": {
@@ -10772,6 +10780,7 @@
                                 "items": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 }
                               }
@@ -19453,6 +19462,7 @@
                                 "issueId": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 },
                                 "severity": {
@@ -19709,6 +19719,7 @@
                                 "issueId": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 },
                                 "severity": {
@@ -19965,6 +19976,7 @@
                                 "issueId": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 },
                                 "severity": {
@@ -20372,6 +20384,7 @@
                                 "issueId": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 },
                                 "severity": {
@@ -20594,6 +20607,7 @@
                                 "issueId": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 },
                                 "severity": {
@@ -20810,6 +20824,7 @@
                                 "issueId": {
                                   "minLength": 1,
                                   "maxLength": 4096,
+                                  "pattern": "\\S",
                                   "type": "string"
                                 },
                                 "status": {
@@ -21045,6 +21060,7 @@
                                   "items": {
                                     "minLength": 1,
                                     "maxLength": 4096,
+                                    "pattern": "\\S",
                                     "type": "string"
                                   }
                                 }
@@ -24928,6 +24944,7 @@
                                         "issueId": {
                                           "minLength": 1,
                                           "maxLength": 4096,
+                                          "pattern": "\\S",
                                           "type": "string"
                                         },
                                         "severity": {
@@ -25156,6 +25173,7 @@
                                               "items": {
                                                 "minLength": 1,
                                                 "maxLength": 4096,
+                                                "pattern": "\\S",
                                                 "type": "string"
                                               }
                                             }

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { describe, it, expect } from 'vitest';
 import { loadPrompt, renderPromptTemplate } from '@eforge-build/engine/prompts';
 
@@ -8,6 +8,22 @@ async function renderExtensionPlanningPrompt(variables: Record<string, string>):
 }
 
 describe('loadPrompt() throws on unresolved template variables', () => {
+  it('keeps reviewer prompt issueId guidance in XML examples and rules', async () => {
+    const promptDir = 'packages/engine/src/prompts';
+    const promptFiles = (await readdir(promptDir)).filter((file) => file.endsWith('.md')).sort();
+    const reviewerPrompts: Array<{ file: string; prompt: string }> = [];
+    for (const file of promptFiles) {
+      const prompt = await readFile(`${promptDir}/${file}`, 'utf-8');
+      if (prompt.includes('<review-issues>')) reviewerPrompts.push({ file, prompt });
+    }
+
+    expect(reviewerPrompts.length).toBeGreaterThan(0);
+    for (const { file, prompt } of reviewerPrompts) {
+      expect(prompt, file).toContain('<issue issueId="optional-hint-1"');
+      expect(prompt, file).toContain('when omitted, duplicated, or invalid, the engine assigns the canonical ID used downstream');
+    }
+  });
+
   it('throws when called with partial vars for the planner prompt', async () => {
     await expect(
       loadPrompt('planner', {}),

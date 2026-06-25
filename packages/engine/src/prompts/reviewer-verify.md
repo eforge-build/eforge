@@ -70,7 +70,7 @@ After completing your review, output your findings in this exact XML format:
 
 ```
 <review-issues>
-  <issue severity="critical" category="verification-failure" file="path/to/file.ts" line="42">
+  <issue issueId="optional-hint-1" severity="critical" category="verification-failure" file="path/to/file.ts" line="42">
     Description of the verification gap.
     <fix>Description of what the implementation should do to satisfy the verification criterion.</fix>
   </issue>
@@ -78,6 +78,7 @@ After completing your review, output your findings in this exact XML format:
 ```
 
 Rules:
+- The `issueId` attribute is optional. You may include a stable hint such as `issueId="custom-1"`; when omitted, duplicated, or invalid, the engine assigns the canonical ID used downstream.
 - The `severity` attribute must be `critical`
 - The `category` attribute must be `verification-failure`
 - The `file` attribute is the relative path from the repository root, or `.` when not tied to a specific file

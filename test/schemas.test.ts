@@ -29,6 +29,7 @@ import { getEvaluationSubmissionSchemaYaml } from '@eforge-build/engine/schemas'
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {
     const yaml = getSchemaYaml('test-review-issue', reviewIssueSchema);
+    expect(yaml).toContain('issueId');
     expect(yaml).toContain('severity');
     expect(yaml).toContain('category');
     expect(yaml).toContain('file');
@@ -55,8 +56,9 @@ describe('getSchemaYaml', () => {
 });
 
 describe('perspective-specific schema YAML getters', () => {
-  it('getReviewIssueSchemaYaml contains general categories', () => {
+  it('getReviewIssueSchemaYaml contains issueId and general categories', () => {
     const yaml = getReviewIssueSchemaYaml();
+    expect(yaml).toContain('issueId');
     expect(yaml).toContain('bugs');
     expect(yaml).toContain('security');
     expect(yaml).toContain('maintainability');
@@ -103,6 +105,7 @@ describe('perspective-specific schema YAML getters', () => {
 describe('reviewIssueSchema safeParse', () => {
   it('accepts a valid ReviewIssue', () => {
     const result = safeParseWithSchema(reviewIssueSchema, {
+      issueId: 'custom-1',
       severity: 'critical',
       category: 'bugs',
       file: 'src/index.ts',

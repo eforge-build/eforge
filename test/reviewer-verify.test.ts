@@ -21,8 +21,10 @@ describe('getVerifyReviewIssueSchemaYaml', () => {
     expect(yaml.length).toBeGreaterThan(0);
   });
 
-  it('constrains severity to critical only', () => {
+  it('exposes optional issueId and constrains severity to critical only', () => {
     const yaml = getVerifyReviewIssueSchemaYaml();
+    expect(yaml).toContain('issueId');
+    expect(yaml).not.toMatch(/required:\s*[\s\S]*- issueId/);
     expect(yaml).toContain('critical');
     // warning and suggestion should not appear as enum values for severity
     // (they may appear in description text, but the enum should be single-valued)
@@ -45,7 +47,19 @@ describe('getVerifyReviewIssueSchemaYaml', () => {
 // ---------------------------------------------------------------------------
 
 describe('verifyReviewIssueSchema', () => {
-  it('accepts a valid verify issue', () => {
+  it('accepts a valid verify issue with issueId', () => {
+    const result = safeParseWithSchema(verifyReviewIssueSchema, {
+      issueId: 'verify-custom-1',
+      severity: 'critical',
+      category: 'verification-failure',
+      file: '.',
+      description: 'Command `pnpm type-check` failed with exit code 1.',
+      fix: 'Command: pnpm type-check\nExit code: 1\nstderr: error TS2345',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a valid verify issue without issueId', () => {
     const result = safeParseWithSchema(verifyReviewIssueSchema, {
       severity: 'critical',
       category: 'verification-failure',

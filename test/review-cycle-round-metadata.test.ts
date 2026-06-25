@@ -155,16 +155,68 @@ describe('review-cycle round lifecycle metadata', () => {
     expectRound(events, 'plan:build:review:fix:complete', [0, 1]);
     expectRound(events, 'plan:build:evaluate:start', [0, 1]);
     expectRound(events, 'plan:build:evaluate:complete', [0, 1]);
+
+    const perspectiveCompletes = filterEvents(events, 'plan:build:review:parallel:perspective:complete');
+    expect(perspectiveCompletes.map((event) => event.issues[0]?.issueId)).toEqual(['review-r0-code-1', 'review-r1-code-1']);
+    const reviewCompletes = filterEvents(events, 'plan:build:review:complete');
+    const emittedIssueIds = reviewCompletes.flatMap((event) => event.issues.map((issue) => issue.issueId));
+    expect(emittedIssueIds).toEqual(['review-r0-code-1', 'review-r1-code-1']);
+    expect(new Set(emittedIssueIds).size).toBe(emittedIssueIds.length);
+  });
+
+  it('assigns unique issue IDs to review-cycle synthetic reviewer failures', async () => {
+    const repo = await initRepo(makeTempDir());
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 1;\n');
+    await commitAll(repo, 'chore: initial');
+    const preImplementCommit = await head(repo);
+    await writeRepoFile(repo, 'src/app.ts', 'export const value = 2;\n');
+    await commitAll(repo, 'feat: implementation');
+
+    class ThrowingReviewerHarness extends StubHarness {
+      async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
+        if (agent === 'reviewer') {
+          throw new Error('reviewer unavailable');
+        }
+        yield* super.run(options, agent, planId);
+      }
+    }
+
+    const harness = new ThrowingReviewerHarness([
+      { text: 'Recorded synthetic review failure.' },
+      { toolCalls: [{ tool: 'submit_evaluation_verdicts', toolUseId: 'eval-0', input: { verdicts: [{ file: 'src/app.ts', action: 'accept', reason: 'Synthetic issue recorded' }] }, output: '' }] },
+    ] satisfies StubResponse[]);
+    const ctx = makeContext(repo, harness, preImplementCommit, {
+      strategy: 'parallel',
+      perspectives: ['code'],
+      maxRounds: 1,
+      evaluatorStrictness: 'standard',
+    });
+
+    const events = await collectEvents(getBuildStage('review-cycle')(ctx));
+    const reviewComplete = filterEvents(events, 'plan:build:review:complete')[0];
+    expect(reviewComplete).toBeDefined();
+    expect(reviewComplete.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ issueId: 'review-r0-code-1', severity: 'critical', category: 'review-contract' }),
+    ]));
+    const emittedIssueIds = reviewComplete.issues.map((issue) => issue.issueId);
+    expect(emittedIssueIds.every((issueId) => typeof issueId === 'string' && issueId.length > 0)).toBe(true);
+    expect(new Set(emittedIssueIds).size).toBe(emittedIssueIds.length);
   });
 
   it('omits round metadata for standalone review, review-fix, and evaluate stages', async () => {
     const reviewRepo = await initRepo(makeTempDir());
     await writeRepoFile(reviewRepo, 'src/app.ts', 'export const value = 1;\n');
     await commitAll(reviewRepo, 'chore: initial');
-    const reviewCtx = makeContext(reviewRepo, new StubHarness([{ text: '<review-issues></review-issues>' }]), await head(reviewRepo), { ...DEFAULT_REVIEW, strategy: 'single' });
+    const reviewCtx = makeContext(reviewRepo, new StubHarness([{ text: 'Malformed reviewer output without XML.' }]), await head(reviewRepo), { ...DEFAULT_REVIEW, strategy: 'single' });
     const reviewEvents = await collectEvents(getBuildStage('review')(reviewCtx));
     expect(filterEvents(reviewEvents, 'plan:build:review:start')[0]).not.toHaveProperty('round');
-    expect(filterEvents(reviewEvents, 'plan:build:review:complete')[0]).not.toHaveProperty('round');
+    const standaloneReviewComplete = filterEvents(reviewEvents, 'plan:build:review:complete')[0];
+    expect(standaloneReviewComplete).not.toHaveProperty('round');
+    expect(standaloneReviewComplete.issues[0]).toMatchObject({
+      issueId: 'review-r0-review-contract-1',
+      severity: 'critical',
+      category: 'review-contract',
+    });
 
     const fixRepo = await initRepo(makeTempDir());
     await writeRepoFile(fixRepo, 'src/app.ts', 'export const value = 1;\n');

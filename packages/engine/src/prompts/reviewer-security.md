@@ -82,7 +82,7 @@ After completing your review, output your findings in this exact XML format:
 
 ```
 <review-issues>
-  <issue severity="critical|warning|suggestion" category="injection|secrets|auth|unsafe-ops|cryptography|dependencies|data-exposure" file="path/to/file.ts" line="42">
+  <issue issueId="optional-hint-1" severity="critical|warning|suggestion" category="injection|secrets|auth|unsafe-ops|cryptography|dependencies|data-exposure" file="path/to/file.ts" line="42">
     Description of the issue.
     <fix>Description of the recommended fix for the review-fixer agent to apply.</fix>
   </issue>
@@ -90,6 +90,7 @@ After completing your review, output your findings in this exact XML format:
 ```
 
 Rules:
+- The `issueId` attribute is optional. You may include a stable hint such as `issueId="custom-1"`; when omitted, duplicated, or invalid, the engine assigns the canonical ID used downstream.
 - The `severity` attribute must be one of: `critical`, `warning`, `suggestion`
 - The `file` attribute is the relative path from the repository root
 - The `line` attribute is optional

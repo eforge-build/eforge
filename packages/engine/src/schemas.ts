@@ -8,6 +8,7 @@
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import {
   REVIEW_PERSPECTIVES,
+  ReviewIssueIdSchema,
   ReviewPerspectiveKeySchema,
   getSchemaYaml,
   safeParseWithSchema,
@@ -146,6 +147,7 @@ const planReviewCategorySchema = Type.Union(
 
 /** Base review issue schema with string category (union of all perspectives). */
 export const reviewIssueSchema = Type.Object({
+  issueId: Type.Optional(ReviewIssueIdSchema),
   severity: severitySchema,
   category: Type.String({ description: 'Review category — allowed values depend on the review perspective' }),
   file: Type.String({ description: 'Relative file path from the repository root' }),
