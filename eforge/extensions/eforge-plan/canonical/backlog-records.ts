@@ -93,7 +93,7 @@ export function upsertCanonicalBacklogItem(store: EforgePlanStore, input: Canoni
   } satisfies BacklogItemUpsert);
   if (input.tags) replaceBacklogItemTags(store, input.id, input.tags);
   if (input.sections) replaceBacklogItemSections(store, input.id, input.sections);
-  if (input.dependencies ?? input.dependsOn) replaceItemDependencies(store, input.id, input.dependencies ?? (input.dependsOn ?? []).map((dependencyRef) => ({ dependencyRef })));
+  if (input.dependencies ?? input.dependsOn) replaceItemDependencies(store, input.id, normalizeInputDependencies(store, input));
   mirrorBacklogItem(storeCwd(store), input.id, row.frontmatter, body);
   markItemDirty(store, input.id);
   if (existing?.epicRef !== epicRef || existing?.epicId !== epicId) for (const epicDocumentId of new Set([existing?.epicRef, existing?.epicId, epicRef, epicId].filter((value): value is string => !!value))) markEpicDirty(store, epicDocumentId);
@@ -153,6 +153,20 @@ export function backlogItemRowToDomain(row: BacklogItemRow): BacklogItem {
 
 export function epicRowToDomain(row: EpicRow): BacklogEpic {
   return { id: row.id, title: row.title, body: row.body, status: row.userStatus as BacklogStatus, priority: row.priority, tags: arrayOfStrings(row.frontmatter.tags), created: row.createdAt, updated: row.updatedAt, eforge_plan: objectOrUndefined(row.frontmatter.eforge_plan) };
+}
+
+function normalizeInputDependencies(store: EforgePlanStore, input: CanonicalBacklogItemInput): ItemDependencyUpsert[] {
+  const dependencies: ItemDependencyUpsert[] = input.dependencies ?? (input.dependsOn ?? []).map((dependencyRef) => ({ dependencyRef }));
+  return dependencies.map((dependency) => {
+    if (dependency.dependencyStatus === 'external') return dependency;
+    const target = getBacklogItem(store, dependency.resolvedDependencyItemId ?? dependency.dependencyRef);
+    if (!target) return dependency;
+    return { ...dependency, resolvedDependencyItemId: target.id, dependencyStatus: isClosedDependencyTarget(target.userStatus) ? 'closed' : 'open' };
+  });
+}
+
+function isClosedDependencyTarget(status: UserStatus): boolean {
+  return status === 'shipped' || status === 'stale' || status === 'superseded';
 }
 
 function normalizeUserStatus(value: string): UserStatus {

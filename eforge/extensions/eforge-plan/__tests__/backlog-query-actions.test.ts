@@ -52,6 +52,18 @@ describe('eforge-plan compact backlog query actions', () => {
     });
   });
 
+  it('hydrates dependency details from dependency refs when resolved dependency ids are missing', async () => {
+    await withTempProject(async (cwd) => {
+      captureCanonicalBacklogItem(cwd, { id: 'blocked-before-repair', title: 'Blocked before repair', status: 'candidate', dependsOn: ['closed-dep'], body: 'Child body.' });
+      captureCanonicalBacklogItem(cwd, { id: 'closed-dep', title: 'Closed dependency', status: 'shipped', body: 'Dependency body.' });
+
+      const output = await invoke(cwd, 'get-item', { id: 'blocked-before-repair' });
+
+      expect(output.item).toMatchObject({ id: 'blocked-before-repair', lane: 'inbox', blocked: false, dependsOn: ['closed-dep'], unresolvedDependsOn: [] });
+      expect(output.dependencies).toEqual([expect.objectContaining({ id: 'closed-dep', title: 'Closed dependency', status: 'shipped' })]);
+    });
+  });
+
   it('searches and pages compact item summaries', async () => {
     await withTempProject(async (cwd) => {
       await seedBacklog(cwd);

@@ -28,6 +28,18 @@ describe('SQLite board projections', () => {
     });
   });
 
+  it('treats shipped dependency refs as resolved and non-blocking even when stored dependency metadata is stale', async () => {
+    await withTempProjectionProject(async (cwd) => {
+      captureCanonicalBacklogItem(cwd, { id: 'blocked-before-repair', title: 'Blocked before repair', status: 'candidate', dependsOn: ['closed-dep'] });
+      captureCanonicalBacklogItem(cwd, { id: 'closed-dep', title: 'Closed dependency', status: 'shipped' });
+
+      const output = await listBoardCompactProjection(cwd, { includeClosed: true, includeArchive: true, limit: 100 });
+      const cards = byId(output.items);
+
+      expect(cards.get('blocked-before-repair')).toMatchObject({ lane: 'inbox', blocked: false, unresolvedDependsOn: [], dependsOn: ['closed-dep'], planEligible: true });
+    });
+  });
+
   it('keeps explicit shipped status closed even with historical session-plan links', async () => {
     await withTempProjectionProject(async (cwd) => {
       seedProjectionBacklog(cwd);
