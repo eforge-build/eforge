@@ -11,7 +11,7 @@ import {
   formatExtensionContributionFailedInvocationEnvelope,
   formatExtensionContributionList,
   formatExtensionContributionListText,
-  formatExtensionContributionOutput,
+  formatExtensionContributionOutputText,
   invokeEforgeExtensionContributionIfRunning,
   listEforgeExtensionContributionsIfRunning,
   showExtensionContributionManifestEntry,
@@ -110,7 +110,7 @@ export function registerExtensionContributionTool(pi: ExtensionAPI): void {
         return textResult(failureEnvelope ? formatExtensionContributionFailedInvocationEnvelope(failureEnvelope) : result.response.error.message);
       }
       return textResult(
-        formatExtensionContributionOutput(result.response.output, { outputProfile: result.target.outputProfile }),
+        formatExtensionContributionOutputText(result.response.output, { outputProfile: result.target.outputProfile }),
         [`Invocation: ${result.response.invocationId}`, `Target: ${result.target.kind}:${result.target.id}`, `Action: ${result.target.actionId}`],
       );
     },
