@@ -214,6 +214,209 @@ describe('runReviewFixer — continuation context rendering', () => {
 });
 
 // ---------------------------------------------------------------------------
+// runReviewFixer — issue reference reporting
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-03-review-fixer-references ---
+describe('runReviewFixer — issue reference reporting', () => {
+  const ISSUE_REFERENCE_ISSUES: ReviewIssue[] = [
+    { issueId: 'review-r0-code-1', severity: 'warning', category: 'bugs', file: 'src/foo.ts', description: 'Fix foo' },
+    { issueId: 'review-r0-security-2', severity: 'suggestion', category: 'secrets', file: 'src/bar.ts', description: 'Fix bar' },
+  ];
+
+  it('includes reviewer issue IDs in the fixer prompt', async () => {
+    const backend = new StubHarness([{ text: 'Fixed.' }]);
+
+    await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    expect(backend.prompts[0]).toContain('Issue ID: review-r0-code-1');
+    expect(backend.prompts[0]).toContain('Issue ID: review-r0-security-2');
+    expect(backend.prompts[0]).toContain('submit_review_fixer_issue_references');
+    expect(backend.prompts[0]).toContain('issueReferences:');
+    expect(backend.prompts[0]).toContain('issueId:');
+    expect(backend.prompts[0]).toContain('`addressed` — you applied a fix intended to resolve the reviewer issue.');
+    expect(backend.prompts[0]).toContain('`deferred` — you intentionally skipped the issue because it was unclear, unsafe, too broad, manual/follow-up only, or out of scope for this fixer pass.');
+    expect(backend.prompts[0]).toContain('`obsolete` — the issue no longer applies because the relevant code changed or the finding was superseded.');
+    expect(backend.prompts[0]).toContain('<issue-references>');
+    expect(backend.prompts[0]).toContain('<issueId>review-r0-code-1</issueId>');
+    expect(backend.customToolSets[0]?.map(tool => tool.name)).toContain('submit_review_fixer_issue_references');
+  });
+
+  it('emits structured issueReferences from the submission tool and preserves unknown issue IDs', async () => {
+    const submittedReferences = [
+      { issueId: 'review-r0-code-1', status: 'addressed' as const, note: 'Fixed null guard.' },
+      { issueId: 'review-r0-security-2', status: 'deferred' as const, note: 'Manual follow-up needed.' },
+      { issueId: 'review-r0-docs-3', status: 'obsolete' as const },
+      { issueId: 'unknown-review-issue', status: 'addressed' as const, note: 'Unknown but syntactically valid.' },
+    ];
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_review_fixer_issue_references',
+        toolUseId: 'issue-refs-1',
+        input: { issueReferences: submittedReferences },
+        output: '',
+      }],
+      text: 'Fixed and reported references.',
+    }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete?.issueReferences).toEqual(submittedReferences);
+  });
+
+  it('rejects invalid structured tool submissions without failing the build', async () => {
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_review_fixer_issue_references',
+        toolUseId: 'issue-refs-invalid',
+        input: {
+          issueReferences: [
+            { issueId: '', status: 'addressed' },
+            { issueId: 'review-r0-code-1', status: 'invalid' },
+          ],
+        },
+        output: '',
+      }],
+      text: 'Fixed but submitted invalid issue metadata.',
+    }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const toolResult = findEvent(events, 'agent:tool_result');
+    expect(toolResult?.output).toContain('Review-fixer issue reference submission rejected');
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete).toBeDefined();
+    expect(complete).not.toHaveProperty('issueReferences');
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
+  });
+
+  it('prefers structured tool submission over conflicting fallback XML', async () => {
+    const submittedReferences = [
+      { issueId: 'review-r0-code-1', status: 'addressed' as const, note: 'Structured status wins.' },
+    ];
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_review_fixer_issue_references',
+        toolUseId: 'issue-refs-1',
+        input: { issueReferences: submittedReferences },
+        output: '',
+      }],
+      text: `<issue-references>
+  <issue-reference>
+    <issueId>review-r0-security-2</issueId>
+    <status>deferred</status>
+    <note>Conflicting fallback must be ignored.</note>
+  </issue-reference>
+</issue-references>`,
+    }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete?.issueReferences).toEqual(submittedReferences);
+  });
+
+  it('omits issueReferences for legacy output with no submission or fallback XML', async () => {
+    const backend = new StubHarness([{ text: 'Fixed without structured issue metadata.' }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete).toBeDefined();
+    expect(complete).not.toHaveProperty('issueReferences');
+  });
+
+  it('parses valid fallback XML entries and skips invalid entries without failing the build', async () => {
+    const backend = new StubHarness([{
+      text: `<issue-references>
+  <issue-reference>
+    <issueId>review-r0-code-1</issueId>
+    <status>addressed</status>
+    <note>Fixed.</note>
+  </issue-reference>
+  <issue-reference>
+    <issueId>unknown-review-issue</issueId>
+    <status>obsolete</status>
+  </issue-reference>
+  <issue-reference>
+    <issueId>review-r0-security-2</issueId>
+    <status>invalid</status>
+  </issue-reference>
+</issue-references>`,
+    }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete?.issueReferences).toEqual([
+      { issueId: 'review-r0-code-1', status: 'addressed', note: 'Fixed.' },
+      { issueId: 'unknown-review-issue', status: 'obsolete' },
+    ]);
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
+  });
+
+  it('omits issueReferences for fallback XML with only invalid entries', async () => {
+    const backend = new StubHarness([{
+      text: `<issue-references>
+  <issue-reference>
+    <issueId></issueId>
+    <status>addressed</status>
+  </issue-reference>
+  <issue-reference>
+    <issueId>review-r0-security-2</issueId>
+    <status>invalid</status>
+  </issue-reference>
+</issue-references>`,
+    }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete).toBeDefined();
+    expect(complete).not.toHaveProperty('issueReferences');
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
+  });
+
+  it('parses fallback XML supplied only in resultText', async () => {
+    const backend = new StubHarness([{
+      resultText: `<issue-references>
+  <issue-reference>
+    <issueId>review-r0-code-1</issueId>
+    <status>addressed</status>
+    <note>Reported in final result only.</note>
+  </issue-reference>
+</issue-references>`,
+    }]);
+
+    const events = await collectEvents(
+      runReviewFixer({ harness: backend, planId: 'plan-01', cwd: '/tmp', issues: ISSUE_REFERENCE_ISSUES }),
+    );
+
+    const complete = findEvent(events, 'plan:build:review:fix:complete');
+    expect(complete?.issueReferences).toEqual([
+      { issueId: 'review-r0-code-1', status: 'addressed', note: 'Reported in final result only.' },
+    ]);
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
+  });
+});
+// --- eforge:endregion plan-03-review-fixer-references ---
+
+// ---------------------------------------------------------------------------
 // buildReviewFixerContinuationInput — git safety
 // ---------------------------------------------------------------------------
 

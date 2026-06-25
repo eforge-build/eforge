@@ -25,6 +25,9 @@ import {
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
 import { getEvaluationSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
+// --- eforge:region plan-03-review-fixer-references ---
+import { getReviewFixerIssueReferenceSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
+// --- eforge:endregion plan-03-review-fixer-references ---
 
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {
@@ -367,6 +370,17 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('reason');
     expect(yaml).toContain('hunk');
   });
+
+  // --- eforge:region plan-03-review-fixer-references ---
+  it('getReviewFixerIssueReferenceSubmissionSchemaYaml contains all reference statuses', () => {
+    const yaml = getReviewFixerIssueReferenceSubmissionSchemaYaml();
+    expect(yaml).toContain('issueReferences');
+    expect(yaml).toContain('issueId');
+    expect(yaml).toContain('addressed');
+    expect(yaml).toContain('deferred');
+    expect(yaml).toContain('obsolete');
+  });
+  // --- eforge:endregion plan-03-review-fixer-references ---
 
   it('getClarificationSchemaYaml contains question fields', () => {
     const yaml = getClarificationSchemaYaml();

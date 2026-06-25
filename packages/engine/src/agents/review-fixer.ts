@@ -9,6 +9,14 @@ import { pickSdkOptions, isMaxTurnsError } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import type { ReviewFixerContinuationContext } from '../retry.js';
+// --- eforge:region plan-03-review-fixer-references ---
+import { getReviewFixerIssueReferenceSubmissionSchemaYaml, type ReviewFixerIssueReferenceSubmission } from '../schemas.js';
+import {
+  createReviewFixerIssueReferencesTool,
+  parseReviewFixerIssueReferencesBlock,
+  REVIEW_FIXER_ISSUE_REFERENCES_TOOL_NAME,
+} from './review-fixer-issue-references.js';
+// --- eforge:endregion plan-03-review-fixer-references ---
 
 export interface ReviewFixerOptions extends SdkPassthroughConfig {
   /** Harness for running the agent */
@@ -47,7 +55,8 @@ function formatIssuesForPrompt(issues: ReviewIssue[]): string {
     .map((issue, i) => {
       const line = issue.line ? `:${issue.line}` : '';
       const guidance = formatValidationGuidance(issue);
-      return `${i + 1}. [${issue.severity.toUpperCase()}] ${issue.file}${line} — ${issue.category}\n   ${issue.description}${guidance}`;
+      const issueId = issue.issueId ?? '(none)';
+      return `${i + 1}. [${issue.severity.toUpperCase()}] ${issue.file}${line} — ${issue.category}\n   Issue ID: ${issueId}\n   ${issue.description}${guidance}`;
     })
     .join('\n\n');
 }
@@ -170,16 +179,30 @@ export async function* runReviewFixer(
 
   const issuesText = formatIssuesForPrompt(issues);
   const continuationText = renderContinuationContext(continuationContext);
+  // --- eforge:region plan-03-review-fixer-references ---
+  let structuredIssueReferenceSubmission: ReviewFixerIssueReferenceSubmission | undefined;
+  const customTools = [createReviewFixerIssueReferencesTool((submission) => {
+    if (structuredIssueReferenceSubmission) return false;
+    structuredIssueReferenceSubmission = submission;
+  })];
+  const submitIssueReferencesTool = harness.effectiveCustomToolName(REVIEW_FIXER_ISSUE_REFERENCES_TOOL_NAME);
+  // --- eforge:endregion plan-03-review-fixer-references ---
   const prompt = await loadPrompt('review-fixer', {
     issues: issuesText,
     evaluator_feedback_context: evaluatorFeedbackContext ?? '',
     validation_repair_context: validationRepairContext ?? '',
     continuation_context: continuationText,
+    // --- eforge:region plan-03-review-fixer-references ---
+    submit_issue_references_tool: submitIssueReferencesTool,
+    issue_reference_submission_schema: getReviewFixerIssueReferenceSubmissionSchemaYaml(),
+    // --- eforge:endregion plan-03-review-fixer-references ---
   }, options.promptAppend);
 
   // Bounded buffer of recent agent:message events. Yielded before rethrowing
   // a max-turns error so withRetry can include them in the discovery context.
   const messageBuffer: EforgeEvent[] = [];
+
+  let fullText = '';
 
   try {
     for await (const event of harness.run(
@@ -188,6 +211,9 @@ export async function* runReviewFixer(
         cwd,
         maxTurns,
         tools: 'coding',
+        // --- eforge:region plan-03-review-fixer-references ---
+        customTools,
+        // --- eforge:endregion plan-03-review-fixer-references ---
         abortSignal: abortController?.signal,
         ...pickSdkOptions(options),
       },
@@ -201,6 +227,12 @@ export async function* runReviewFixer(
         if (messageBuffer.length > MAX_MESSAGE_BUFFER) {
           messageBuffer.shift();
         }
+        if (event.content) {
+          fullText += event.content;
+        }
+      }
+      if (event.type === 'agent:result' && event.result.resultText && !fullText.includes(event.result.resultText)) {
+        fullText += event.result.resultText;
       }
       if (isAlwaysYieldedAgentEvent(event) || verbose) {
         yield event;
@@ -223,5 +255,10 @@ export async function* runReviewFixer(
     // Other fixer failures are non-fatal
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:complete', planId, ...roundMetadata };
+  // --- eforge:region plan-03-review-fixer-references ---
+  const issueReferences = structuredIssueReferenceSubmission?.issueReferences ?? parseReviewFixerIssueReferencesBlock(fullText);
+  const issueReferenceMetadata = issueReferences.length > 0 ? { issueReferences } : {};
+  // --- eforge:endregion plan-03-review-fixer-references ---
+
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:complete', planId, ...roundMetadata, ...issueReferenceMetadata };
 }
