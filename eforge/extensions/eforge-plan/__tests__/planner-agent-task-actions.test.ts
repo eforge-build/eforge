@@ -31,6 +31,10 @@ function expectSuppressedInvalidInput(result: unknown, expected: { reasonCode: s
   expect(result).toMatchObject({ kind: 'invalid-input', validationErrors: [expect.objectContaining({ path: 'itemIds', suppressedItems: [expect.objectContaining({ itemId: 'item-one', state: 'non-actionable', reasonCode: expected.reasonCode, reasonMessage: expect.stringMatching(/\S/), lifecycleState: expected.lifecycleState, associatedLinks: expect.arrayContaining([expect.objectContaining(expected.associatedLink)]) })] })] });
 }
 const completedTimestamps = { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:00:01.000Z' };
+const activityLog = [
+  { timestamp: '2026-01-01T00:00:00.000Z', message: 'Planner task started.' },
+  { timestamp: '2026-01-01T00:00:01.000Z', message: 'Planner task completed.' },
+];
 function completedTask(overrides: Partial<ExtensionAgentTaskRecord> = {}): ExtensionAgentTaskRecord {
   return parseExtensionAgentTaskRecord({
     taskId: 'task-complete', kind: 'eforge-plan.planning-draft', status: 'completed', ...completedTimestamps,
@@ -229,12 +233,12 @@ describe('planning agent task actions', () => {
       const registry = load();
       const agentTasks = () => ({
         async start() { throw new Error('unexpected start'); },
-        async get(taskId: string) { calls.push(`get:${taskId}`); return { task: runningTask(taskId) }; },
+        async get(taskId: string) { calls.push(`get:${taskId}`); return { task: { ...runningTask(taskId), metadata: { activityLog } } }; },
         async cancel(taskId: string, reason?: string) { calls.push(`cancel:${taskId}:${reason}`); return { task: { ...runningTask(taskId), status: 'cancelled' as const, cancelledAt: '2026-01-01T00:00:01.000Z', errorMessage: reason } }; },
       });
       const getResult = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:get-planning-agent-task', input: { taskId: 'task-one' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
       const cancelResult = await dispatchExtensionAction(registry, { actionId: 'eforge-plan:cancel-planning-agent-task', input: { taskId: 'task-one', reason: 'user' }, requestedBy: { host: 'console' }, cwd, timeoutMs: 1000, agentTasks });
-      expect(getResult).toMatchObject({ kind: 'success', output: { task: { taskId: 'task-one', status: 'running' } } });
+      expect(getResult).toMatchObject({ kind: 'success', output: { task: { taskId: 'task-one', status: 'running', metadata: { activityLog } } } });
       expect(cancelResult).toMatchObject({ kind: 'success', output: { task: { taskId: 'task-one', status: 'cancelled', errorMessage: 'user' } } });
       expect(calls).toEqual(['get:task-one', 'cancel:task-one:user']);
     });
@@ -693,7 +697,7 @@ describe('planning agent task actions', () => {
       await recordPlanningTaskWorkflowEntry(cwd, { taskId: 'task-two', createdAt: '2026-01-02T00:00:00.000Z', ...base });
       const records: Record<string, ExtensionAgentTaskRecord> = {
         'task-one': completedTask({ taskId: 'task-one' } as Partial<ExtensionAgentTaskRecord>),
-        'task-two': completedTask({ taskId: 'task-two' } as Partial<ExtensionAgentTaskRecord>),
+        'task-two': completedTask({ taskId: 'task-two', metadata: { progressMessage: 'Planner task completed.', activityLog } } as Partial<ExtensionAgentTaskRecord>),
       };
       const result = await dispatchExtensionAction(load(), {
         actionId: 'eforge-plan:list-planning-agent-tasks',
@@ -711,7 +715,7 @@ describe('planning agent task actions', () => {
       if (result.kind !== 'success') throw new Error(result.message);
       expect(result.output).toMatchObject({ total: 2, returned: 1, limit: 1, offset: 0, hasMore: true, nextOffset: 1 });
       const [task] = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
-      expect(task).toMatchObject({ available: true, status: 'completed', entrySummary: { taskId: 'task-two', selection: { itemCount: 1 } }, taskSummary: { taskId: 'task-two', resultSummary: { outputKeys: expect.arrayContaining(['recommendations', 'sessionPlanPatch']) } } });
+      expect(task).toMatchObject({ available: true, status: 'completed', entrySummary: { taskId: 'task-two', selection: { itemCount: 1 } }, taskSummary: { taskId: 'task-two', metadata: { activityLog }, resultSummary: { outputKeys: expect.arrayContaining(['recommendations', 'sessionPlanPatch']) } } });
       expect(task).not.toHaveProperty('entry');
       expect(task).not.toHaveProperty('task');
     });
@@ -754,6 +758,7 @@ describe('planning agent task actions', () => {
     ];
     for (const testCase of cases) {
       await withTempProject(async (cwd) => {
+        testCase.task.metadata = { progressMessage: 'Planner task completed.', activityLog };
         await recordPlanningTaskWorkflowEntry(cwd, { taskId: testCase.task.taskId, createdAt: '2026-01-01T00:00:00.000Z', originalRequest: 'Plan', derivedRequest: 'Draft planning output.', selection: { itemIds: ['item-one'] }, requestedOutputSections: testCase.requestedOutputSections });
         const result = await dispatchExtensionAction(load(), {
           actionId: 'eforge-plan:list-planning-agent-tasks',
@@ -772,7 +777,7 @@ describe('planning agent task actions', () => {
         const [row] = (result.output as { tasks: Array<Record<string, unknown>> }).tasks;
         expect(row).toMatchObject({ available: true, status: 'completed' });
         const task = row?.task as Record<string, unknown> | undefined;
-        expect(task).toMatchObject({ taskId: testCase.task.taskId, status: 'completed', createdAt: testCase.task.createdAt, updatedAt: testCase.task.updatedAt, completedAt: testCase.task.completedAt });
+        expect(task).toMatchObject({ taskId: testCase.task.taskId, status: 'completed', createdAt: testCase.task.createdAt, updatedAt: testCase.task.updatedAt, completedAt: testCase.task.completedAt, metadata: { activityLog } });
         if (testCase.omitted) {
           expect(row).toMatchObject({ resultOmitted: true });
           expect(task).not.toHaveProperty('result');

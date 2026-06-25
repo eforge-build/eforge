@@ -54,13 +54,17 @@ export const BACKLOG_CURATION_SHIPPED_EVIDENCE_CONTEXT_CAPS = {
   diagnosticCount: 8,
 } as const;
 
-interface BacklogCurationSourceBuildOptions {
+type BacklogCurationSourceActivityCallback = (message: string) => Promise<void> | void;
+
+export interface BacklogCurationSourceBuildOptions {
   signal?: AbortSignal;
   itemAuditConcurrency?: number;
   shippedEvidenceCaps?: Partial<ShippedEvidenceCaps>;
   enrichPullRequests?: boolean;
   gitDeltaCaps?: Partial<BacklogCurationGitDeltaCaps>;
   fullImplementationAuditCaps?: Record<string, number>;
+  progress?: BacklogCurationSourceActivityCallback;
+  activity?: BacklogCurationSourceActivityCallback;
 }
 // --- eforge:endregion shipped-evidence-context ---
 
@@ -98,7 +102,9 @@ export async function readBacklogCurationSourcePreviewMetadata(cwd: string, sour
 
 export async function buildBacklogCurationSource(cwd: string, redraft?: Record<string, unknown>, options: BacklogCurationSourceBuildOptions = {}): Promise<BacklogCurationSourceBuild> {
   throwIfAborted(options.signal);
+  await emitBacklogCurationSourceActivity(options, 'Starting backlog curation source assembly');
   const itemAuditConcurrency = normalizeItemAuditConcurrency(options.itemAuditConcurrency);
+  await emitBacklogCurationSourceActivity(options, 'Reading backlog records');
   const [itemSnapshots, epicSnapshots, recommendationProjection, recommendations] = await Promise.all([
     listBacklogItemSnapshots(cwd),
     listBacklogEpicSnapshots(cwd),
@@ -116,9 +122,12 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
   ]);
   throwIfAborted(options.signal);
   const traceSummaries = boundTraceSummaries(rawTraceSummaries as unknown as Array<Record<string, unknown>>, truncation);
+  await emitBacklogCurationSourceActivity(options, 'Scanning git delta');
   const gitDelta = await collectBacklogCurationGitDeltaWithHistory({ cwd, caps: collectGitDeltaCaps(options), enrichPullRequests: options.enrichPullRequests, signal: options.signal });
+  await emitBacklogCurationSourceActivity(options, 'Classifying evidence');
   const classification = await classifyBacklogCurationEvidence({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, gitHistory: gitDelta.gitHistory, pullRequests: gitDelta.pullRequestEnrichment?.pullRequests, caps: collectCaps(options.shippedEvidenceCaps), diagnostics: gitDelta.gitHistory.diagnostics, signal: options.signal });
   gitDelta.gitDelta.affectedItemCandidates = classification.affectedItemCandidates;
+  await emitBacklogCurationSourceActivity(options, 'Running source-first audit');
   const fullImplementationAudit = await collectBacklogCurationFullImplementationAudit({ cwd, items: openItemSnapshots.map((snapshot) => snapshot.record), traceSummaries: rawTraceSummaries, caps: { ...options.shippedEvidenceCaps, ...options.fullImplementationAuditCaps }, itemAuditConcurrency, enrichPullRequests: options.enrichPullRequests, signal: options.signal });
   const shippedEvidence = await buildShippedEvidenceContext(cwd, openItemSnapshots.map((snapshot) => snapshot.record), rawTraceSummaries, truncation, options, classification, fullImplementationAudit.shippedEvidenceCandidates, true);
   throwIfAborted(options.signal);
@@ -164,6 +173,7 @@ export async function buildBacklogCurationSource(cwd: string, redraft?: Record<s
     truncation,
     ...(redraft !== undefined && { redraft }),
   };
+  await emitBacklogCurationSourceActivity(options, 'Preparing map/reduce packets');
   const backlogCurationMapReduce = buildBacklogCurationMapReduceSourceBundle(source);
   return { sourceFingerprint, sourceText: buildSourceText(source), source, backlogCurationMapReduce, ...(fullImplementationAudit !== undefined && { fullImplementationAuditPreview: fullImplementationAudit.preview as BacklogCurationFullImplementationAuditPreview }) };
 }
@@ -360,6 +370,14 @@ function evidenceRank(candidate: ShippedEvidenceCandidate): number {
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Backlog curation source assembly was aborted.');
+}
+
+async function emitBacklogCurationSourceActivity(options: BacklogCurationSourceBuildOptions, message: string): Promise<void> {
+  try {
+    await (options.progress ?? options.activity)?.(message);
+  } catch {
+    // Source assembly milestones are best-effort and must not fail curation.
+  }
 }
 // --- eforge:endregion shipped-evidence-context ---
 

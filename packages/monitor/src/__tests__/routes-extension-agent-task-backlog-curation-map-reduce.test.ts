@@ -91,7 +91,22 @@ describe('backlog curation map/reduce runner', () => {
     expect(result).toMatchObject({ summary: 'Reduced curation outcomes.', backlogCurationDraft: { sourceFingerprint: SHA } });
     expect(harness.itemAuditCalls).toBe(1);
     expect(harness.reducerCalls).toBe(1);
-    expect(progress).toEqual(expect.arrayContaining(['Preparing curation source', 'Built 1 item packets', 'Cache hits 0, misses 1', 'Audited 1/1 items', 'Reducing 1 item outcomes', 'Validating curation draft']));
+    expect(progress).toEqual(expect.arrayContaining([
+      'Preparing map/reduce packets',
+      'Preparing curation source',
+      'Built 1 item packets',
+      'Scanning item audit cache',
+      'Item audit cache scan complete: 0 hits, 1 misses',
+      'Cache hits 0, misses 1',
+      'Cache hit aggregate: 0',
+      'Cache miss aggregate: 1',
+      'Auditing 1 item packets',
+      'Audited 1/1 items',
+      'Reducing 1 item outcomes',
+      'Running backlog curation reducer',
+      'Validating curation draft',
+      'Validating reducer draft',
+    ]));
   });
 
   it('reports structured item-agent progress for backlog curation', async () => {
@@ -107,9 +122,11 @@ describe('backlog curation map/reduce runner', () => {
 
   it('uses cache-hit outcomes without invoking an item audit agent', async () => {
     const harness = new MapReduceHarness();
+    const progress: string[] = [];
     const cachedFinding = finding();
     const result = await runBacklogCurationMapReduceTask(baseOptions({
       harness,
+      progress,
       providerHooks: {
         readBacklogCurationItemAuditCache: async () => ({ hit: true, finding: cachedFinding }),
         buildBacklogCurationReducerInput: (globalContext, outcomes) => ({ schemaVersion: 1, sourceFingerprint: globalContext.sourceFingerprint, globalContext, outcomes: [...outcomes], diagnostics: [] }),
@@ -118,6 +135,7 @@ describe('backlog curation map/reduce runner', () => {
 
     expect(result).toMatchObject({ backlogCurationDraft: { sourceFingerprint: SHA } });
     expect(harness.itemAuditCalls).toBe(0);
+    expect(progress).toEqual(expect.arrayContaining(['Scanning item audit cache', 'Item audit cache scan complete: 1 hits, 0 misses', 'Cache hit aggregate: 1', 'Cache miss aggregate: 0', 'Auditing 0 item packets', 'Running backlog curation reducer']));
     // The reducer prompt JSON is compacted before prompting, so it carries the
     // finding's stable identity/verdict fields rather than the verbatim record.
     expect(harness.reducerInputs.at(0)?.outcomes).toEqual([expect.objectContaining({
@@ -140,9 +158,11 @@ describe('backlog curation map/reduce runner', () => {
   });
 
   it('bounds validation repair and returns needs-input when reducer output remains invalid', async () => {
-    const harness = new MapReduceHarness({ reducerResult: { summary: 'Invalid reducer output.', assumptionsOpenQuestions: [] } });
+    const harness = new MapReduceHarness({ reducerResult: validReducerResult({ summary: 'Invalid reducer output.' }) });
+    const progress: string[] = [];
     const result = await runBacklogCurationMapReduceTask(baseOptions({
       harness,
+      progress,
       providerHooks: {
         readBacklogCurationItemAuditCache: async () => ({ hit: false }),
         buildBacklogCurationReducerInput: (globalContext, outcomes) => ({ schemaVersion: 1, sourceFingerprint: globalContext.sourceFingerprint, globalContext, outcomes: [...outcomes], diagnostics: [] }),
@@ -151,6 +171,7 @@ describe('backlog curation map/reduce runner', () => {
     }));
 
     expect(harness.reducerCalls).toBe(2);
+    expect(progress).toEqual(expect.arrayContaining(['Running backlog curation reducer', 'Validating reducer draft', 'Running reducer repair attempt', 'Validating repaired reducer draft']));
     expect(result).toMatchObject({ decision: 'needs-input' });
     expect(result.assumptionsOpenQuestions?.length).toBeLessThanOrEqual(12);
     expect(JSON.stringify(result).length).toBeLessThan(10_000);
@@ -327,6 +348,15 @@ function extractReducerInput(prompt: string): { outcomes?: unknown[] } {
   const match = /```json\n([\s\S]*?)\n```/.exec(prompt);
   if (match === null) return {};
   return JSON.parse(match[1]!) as { outcomes?: unknown[] };
+}
+
+function validReducerResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    summary: 'Reduced curation outcomes.',
+    assumptionsOpenQuestions: [],
+    backlogCurationDraft: { schemaVersion: 1, sourceFingerprint: SHA, summary: [], itemChanges: [], epicChanges: [], noOpRechecks: [], skipped: [], needsInput: [] },
+    ...overrides,
+  };
 }
 
 function finding(): BacklogCurationMapReduceFinding {

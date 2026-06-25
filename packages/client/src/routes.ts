@@ -137,7 +137,13 @@ export type {
 } from './routes/stack.js';
 
 // --- eforge:region extension-agent-task-contracts ---
+export {
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
+  EXTENSION_AGENT_TASK_ACTIVITY_MESSAGE_MAX_LENGTH,
+} from './extension-agent-tasks/constants.js';
+
 export type {
+  ExtensionAgentTaskActivityEntry,
   ExtensionAgentTaskCancelRequest,
   ExtensionAgentTaskCancelResponse,
   ExtensionAgentTaskGetRequest,

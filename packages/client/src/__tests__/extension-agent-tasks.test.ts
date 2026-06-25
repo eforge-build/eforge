@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { API_ROUTES, buildPath } from '../routes.js';
 import {
   DAEMON_API_VERSION,
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
   assertExtensionAgentTaskId,
   parseEforgePlanPlanningDraftResult,
   safeParseEforgePlanPlanningDraftResult,
@@ -80,6 +81,35 @@ describe('extension agent task contracts', () => {
     }).success).toBe(true);
     expect(safeParseExtensionAgentTaskRecord(taskRecord({ result: undefined })).success).toBe(false);
     expect(safeParseExtensionAgentTaskRecord(taskRecord({ status: 'running' })).success).toBe(false);
+  });
+
+  it('accepts legacy records and bounded activity logs', () => {
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ metadata: { summary: 'legacy' } })).success).toBe(true);
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ metadata: {
+      summary: 'done',
+      activityLog: [{ timestamp: '2026-06-25T00:00:00.000Z', message: 'Planner task completed' }],
+    } })).success).toBe(true);
+    expect(safeParseExtensionAgentTaskRecord({
+      taskId: 'task-1',
+      kind: 'eforge-plan.planning-draft',
+      status: 'running',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:01.000Z',
+      startedAt: '2025-01-01T00:00:01.000Z',
+      metadata: { activityLog: [{ timestamp: '2026-06-25T00:00:00.000Z', message: 'Planner task started' }] },
+    }).success).toBe(true);
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ metadata: {
+      activityLog: Array.from({ length: EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES }, (_, index) => ({ timestamp: `2026-06-25T00:00:${String(index).padStart(2, '0')}.000Z`, message: `Activity ${index}` })),
+    } })).success).toBe(true);
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ metadata: {
+      activityLog: Array.from({ length: EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES + 1 }, (_, index) => ({ timestamp: `2026-06-25T00:00:${String(index).padStart(2, '0')}.000Z`, message: `Activity ${index}` })),
+    } })).success).toBe(false);
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ metadata: {
+      activityLog: [{ timestamp: 'not-a-date', message: 'Invalid timestamp' }],
+    } })).success).toBe(false);
+    expect(safeParseExtensionAgentTaskRecord(taskRecord({ metadata: {
+      activityLog: [{ timestamp: '2026-99-99T99:99:99.999Z', message: 'Impossible timestamp' }],
+    } })).success).toBe(false);
   });
 
   it('requires planning results to include an applicable output section', () => {

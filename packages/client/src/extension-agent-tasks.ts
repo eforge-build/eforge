@@ -4,10 +4,17 @@ import {
   EforgePlanPlanningBacklogCurationDraftSchema,
 } from './extension-agent-tasks/backlog-curation.js';
 import { EforgePlanPlanningPlanRevisionTurnSchema } from './extension-agent-tasks/plan-revision.js';
+import {
+  ExtensionAgentTaskActivityEntrySchema,
+  ExtensionAgentTaskBacklogCurationProgressSchema,
+  EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES,
+  extensionAgentTaskActivityTimestampError,
+} from './extension-agent-tasks/task-metadata.js';
 export * from './extension-agent-tasks/common.js';
 export * from './extension-agent-tasks/backlog-curation.js';
 export * from './extension-agent-tasks/backlog-curation-map-reduce.js';
 export * from './extension-agent-tasks/plan-revision.js';
+export * from './extension-agent-tasks/task-metadata.js';
 import { formatSchemaError, parseWithSchema, safeParseWithSchema, type SafeParseResult } from './schema-utils.js';
 
 export const EXTENSION_AGENT_TASK_KIND_EFORGE_PLAN_PLANNING_DRAFT = 'eforge-plan.planning-draft' as const;
@@ -367,27 +374,6 @@ export const ExtensionAgentTaskCancelRequestSchema = Type.Object({
   reason: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
-export const ExtensionAgentTaskBacklogCurationItemProgressSchema = Type.Object({
-  itemId: Type.String({ minLength: 1, maxLength: 240 }),
-  title: Type.Optional(Type.String({ maxLength: 300 })),
-  status: Type.Union([Type.Literal('pending'), Type.Literal('running'), Type.Literal('cache-hit'), Type.Literal('completed'), Type.Literal('failed'), Type.Literal('cancelled')]),
-  outcome: Type.Optional(Type.String({ maxLength: 80 })),
-  verdict: Type.Optional(Type.String({ maxLength: 80 })),
-  summary: Type.Optional(Type.String({ maxLength: 500 })),
-  startedAt: Type.Optional(Type.String({ maxLength: 120 })),
-  completedAt: Type.Optional(Type.String({ maxLength: 120 })),
-}, { additionalProperties: false });
-
-export const ExtensionAgentTaskBacklogCurationProgressSchema = Type.Object({
-  total: Type.Integer({ minimum: 0 }),
-  cacheHits: Type.Integer({ minimum: 0 }),
-  misses: Type.Integer({ minimum: 0 }),
-  running: Type.Integer({ minimum: 0 }),
-  completed: Type.Integer({ minimum: 0 }),
-  remaining: Type.Integer({ minimum: 0 }),
-  items: Type.Array(ExtensionAgentTaskBacklogCurationItemProgressSchema, { maxItems: 1_000 }),
-}, { additionalProperties: false });
-
 export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   label: Type.Optional(Type.String()),
   summary: Type.Optional(Type.String()),
@@ -398,6 +384,7 @@ export const ExtensionAgentTaskSanitizedMetadataSchema = Type.Object({
   sectionProgress: Type.Optional(EforgePlanPlanningSectionProgressSchema),
   // --- eforge:endregion session-plan-creation-draft ---
   backlogCurationProgress: Type.Optional(ExtensionAgentTaskBacklogCurationProgressSchema),
+  activityLog: Type.Optional(Type.Array(ExtensionAgentTaskActivityEntrySchema, { maxItems: EXTENSION_AGENT_TASK_ACTIVITY_LOG_MAX_ENTRIES })),
 }, { additionalProperties: false });
 
 const extensionAgentTaskRecordBaseFields = {
@@ -479,8 +466,6 @@ export type ExtensionAgentTaskContributionStartRequest = Static<typeof Extension
 export type ExtensionAgentTaskStartRequest = Static<typeof ExtensionAgentTaskStartRequestSchema>;
 export type ExtensionAgentTaskGetRequest = Static<typeof ExtensionAgentTaskGetRequestSchema>;
 export type ExtensionAgentTaskCancelRequest = Static<typeof ExtensionAgentTaskCancelRequestSchema>;
-export type ExtensionAgentTaskBacklogCurationItemProgress = Static<typeof ExtensionAgentTaskBacklogCurationItemProgressSchema>;
-export type ExtensionAgentTaskBacklogCurationProgress = Static<typeof ExtensionAgentTaskBacklogCurationProgressSchema>;
 export type ExtensionAgentTaskSanitizedMetadata = Static<typeof ExtensionAgentTaskSanitizedMetadataSchema>;
 export type ExtensionAgentTaskRecord = Static<typeof ExtensionAgentTaskRecordSchema>;
 export type ExtensionAgentTaskStartResponse = Static<typeof ExtensionAgentTaskStartResponseSchema>;
@@ -529,7 +514,10 @@ export function assertExtensionAgentTaskId(taskId: string): void {
 }
 
 export function safeParseExtensionAgentTaskRecord(value: unknown): SafeParseResult<ExtensionAgentTaskRecord> {
-  return safeParseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskRecordSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data);
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskRecord(value: unknown): ExtensionAgentTaskRecord {
@@ -563,27 +551,42 @@ export function parseExtensionAgentTaskCancelRequest(value: unknown): ExtensionA
 }
 
 export function safeParseExtensionAgentTaskGetResponse(value: unknown): SafeParseResult<ExtensionAgentTaskGetResponse> {
-  return safeParseWithSchema(ExtensionAgentTaskGetResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskGetResponseSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data.task, '/task');
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskGetResponse(value: unknown): ExtensionAgentTaskGetResponse {
-  return parseWithSchema(ExtensionAgentTaskGetResponseSchema, value);
+  const result = safeParseExtensionAgentTaskGetResponse(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function safeParseExtensionAgentTaskStartResponse(value: unknown): SafeParseResult<ExtensionAgentTaskStartResponse> {
-  return safeParseWithSchema(ExtensionAgentTaskStartResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskStartResponseSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data.task, '/task');
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskStartResponse(value: unknown): ExtensionAgentTaskStartResponse {
-  return parseWithSchema(ExtensionAgentTaskStartResponseSchema, value);
+  const result = safeParseExtensionAgentTaskStartResponse(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function safeParseExtensionAgentTaskCancelResponse(value: unknown): SafeParseResult<ExtensionAgentTaskCancelResponse> {
-  return safeParseWithSchema(ExtensionAgentTaskCancelResponseSchema, value);
+  const result = safeParseWithSchema(ExtensionAgentTaskCancelResponseSchema, value);
+  if (!result.success) return result;
+  const timestampError = extensionAgentTaskActivityTimestampError(result.data.task, '/task');
+  return timestampError === undefined ? result : { success: false, error: timestampError };
 }
 
 export function parseExtensionAgentTaskCancelResponse(value: unknown): ExtensionAgentTaskCancelResponse {
-  return parseWithSchema(ExtensionAgentTaskCancelResponseSchema, value);
+  const result = safeParseExtensionAgentTaskCancelResponse(value);
+  if (result.success) return result.data;
+  throw new Error(formatSchemaError(result.error));
 }
 
 export function formatExtensionAgentTaskSchemaError(result: SafeParseResult<unknown>): string | undefined {

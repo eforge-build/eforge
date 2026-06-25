@@ -63,6 +63,7 @@ export interface BacklogCurationMapReduceRunnerOptions extends SdkPassthroughCon
   itemAuditConcurrency?: number;
   abortController: AbortController;
   progress: (message: string) => Promise<void>;
+  activity?: (message: string) => Promise<void>;
   backlogCurationProgress?: (progress: ExtensionAgentTaskBacklogCurationProgress) => Promise<void>;
   sectionProgress: (update: EforgePlanPlanningProgressUpdate) => Promise<void>;
 }
@@ -78,6 +79,10 @@ interface CacheKeyInput {
 }
 
 type CacheReadResult = { hit: true; finding: BacklogCurationMapReduceFinding } | { hit: false; reason?: string };
+
+async function emitActivity(options: BacklogCurationMapReduceRunnerOptions, message: string): Promise<void> {
+  await (options.activity ?? options.progress)(message);
+}
 
 export function isBacklogCurationMapReduceBundle(value: unknown): value is BacklogCurationMapReduceSourceBundle {
   return safeParseBacklogCurationMapReduceSourceBundle(value).success;
@@ -111,20 +116,27 @@ export async function runBacklogCurationMapReduceTask(options: BacklogCurationMa
   throwIfAborted(options.abortController.signal);
   const bundle = parseSourceBundle(options.sourceBundle);
   const progressTracker = createBacklogCurationProgressTracker(options, bundle);
-  await options.progress('Preparing curation source');
+  await emitActivity(options, 'Preparing map/reduce packets');
+  await emitActivity(options, 'Preparing curation source');
   await progressTracker.emit();
-  await options.progress(`Built ${bundle.packets.length} item packets`);
+  await emitActivity(options, `Built ${bundle.packets.length} item packets`);
   const promptVersion = options.providerHooks.defaultBacklogCurationItemAuditPromptVersion?.() ?? BACKLOG_CURATION_ITEM_AUDIT_PROMPT_VERSION;
+  await emitActivity(options, 'Scanning item audit cache');
   const cached = await resolveCacheAndMisses(options, bundle.packets, promptVersion, progressTracker);
   progressTracker.setCacheCounts(cached.hits, cached.misses);
   await progressTracker.emit();
-  await options.progress(`Cache hits ${cached.hits}, misses ${cached.misses}`);
+  await emitActivity(options, `Item audit cache scan complete: ${cached.hits} hits, ${cached.misses} misses`);
+  await emitActivity(options, `Cache hits ${cached.hits}, misses ${cached.misses}`);
+  await emitActivity(options, `Cache hit aggregate: ${cached.hits}`);
+  await emitActivity(options, `Cache miss aggregate: ${cached.misses}`);
+  await emitActivity(options, `Auditing ${cached.missPackets.length} item packets`);
   const audited = await auditMisses(options, cached.missPackets, promptVersion, cached.outcomes.length, bundle.packets.length, progressTracker);
   throwIfAborted(options.abortController.signal);
   const outcomes = [...bundle.degradedOutcomes, ...cached.outcomes, ...audited];
-  await options.progress(`Reducing ${outcomes.length} item outcomes`);
+  await emitActivity(options, `Reducing ${outcomes.length} item outcomes`);
   const reducerInput = buildReducerInput(options, bundle, outcomes);
-  await options.progress('Validating curation draft');
+  await emitActivity(options, 'Running backlog curation reducer');
+  await emitActivity(options, 'Validating curation draft');
   return await runReducer(options, reducerInput);
 }
 
@@ -287,12 +299,14 @@ async function runReducer(options: BacklogCurationMapReduceRunnerOptions, reduce
   if (first.errors.length === 0) return first.result;
   throwIfAborted(options.abortController.signal);
   const repairErrors = boundValidationErrors(first.errors);
+  await emitActivity(options, 'Running reducer repair attempt');
   const second = await runReducerAttempt(options, reducerInput, repairErrors, `${options.taskId}:reducer:repair`);
   if (second.errors.length === 0) return second.result;
   return boundedNeedsInputPlanningResult([...repairErrors, ...second.errors], 'Reducer repair submission failed validation.');
 }
 
 async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions, reducerInput: BacklogCurationMapReduceReducerInput, validationErrors: string[] | undefined, taskId: string): Promise<{ result: EforgePlanPlanningDraftResult; errors: string[] }> {
+  let result: EforgePlanPlanningDraftResult;
   try {
     const rawResult = await runRegisteredContributionTask({
       options,
@@ -303,7 +317,16 @@ async function runReducerAttempt(options: BacklogCurationMapReduceRunnerOptions,
       taskId,
       stage: validationErrors === undefined ? 'extension-agent-task:reducer' : 'extension-agent-task:reducer-repair',
     });
-    const result = parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(rawResult)));
+    result = parseEforgePlanPlanningDraftResult(JSON.parse(JSON.stringify(rawResult)));
+  } catch (err) {
+    if (options.abortController.signal.aborted) throwIfAborted(options.abortController.signal);
+    const message = errorMessage(err);
+    return { result: boundedNeedsInputPlanningResult([message], 'Reducer submission failed validation.'), errors: [message] };
+  }
+
+  await emitActivity(options, validationErrors === undefined ? 'Validating reducer draft' : 'Validating repaired reducer draft');
+
+  try {
     const errors = await validateReducerResult(options, result) ?? [];
     return { result, errors };
   } catch (err) {

@@ -39,5 +39,6 @@
  * (v75 is a case 1 bump: enqueue requests can carry postMerge commands that
  * stale daemons would silently drop.)
  * (v76 is a case 1 bump: removes direct daemon APIs for playbooks and related session-plan derivation.)
+ * (v77 is a case 2 bump: first-party clients gate on extension agent task metadata activityLog entries.)
  */
-export const DAEMON_API_VERSION = 76; // v76: removes direct daemon APIs for playbooks and related session-plan derivation.
+export const DAEMON_API_VERSION = 77; // v77: first-party clients gate on extension agent task metadata activityLog entries.

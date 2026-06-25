@@ -338,6 +338,10 @@ const mockRunningTask: PlanningAgentTaskRecord = {
   metadata: {
     progressMessage: 'Drafting session-plan sections…',
     sectionProgress: { currentSection: 'acceptance-criteria', coveredSections: ['scope'], remainingSections: ['assumptions-and-validation'] },
+    activityLog: [
+      { timestamp: '2026-06-07T00:00:01.000Z', message: 'Planner task started.' },
+      { timestamp: '2026-06-07T00:00:02.000Z', message: 'Drafting acceptance criteria.' },
+    ],
   },
 };
 

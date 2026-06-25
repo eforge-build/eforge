@@ -1,5 +1,6 @@
-import type { EforgePlanPlanningBacklogCurationDraft, EforgePlanPlanningPlanRevisionTurn, ExtensionJsonObject } from '@eforge-build/client/browser';
+import type { EforgePlanPlanningBacklogCurationDraft, EforgePlanPlanningPlanRevisionTurn, ExtensionAgentTaskActivityEntry as PlanningTaskActivityEntry, ExtensionJsonObject } from '@eforge-build/client/browser';
 import type { BacklogCurationPreviewDetails, BacklogCurationRecommendationProjection, BacklogCurationRecommendationsSkipped, RecommendationReferenceValidationResult } from './backlog-curation-types';
+export type { PlanningTaskActivityEntry };
 export type JsonObject = ExtensionJsonObject;
 export type BacklogCurationDraft = EforgePlanPlanningBacklogCurationDraft;
 export type PlanRevisionTurnResult = EforgePlanPlanningPlanRevisionTurn;
@@ -50,7 +51,6 @@ export interface EpicProgress {
   failedItemCount?: number;
   itemRows?: LifecycleItemProgressRow[];
 }
-
 export interface PlanSourceRefs {
   itemIds?: string[];
   epicIds?: string[];
@@ -366,6 +366,7 @@ export interface PlanningAgentTaskMetadata {
   warningCount?: number;
   sectionProgress?: PlanningTaskSectionProgress;
   backlogCurationProgress?: BacklogCurationProgress;
+  activityLog?: PlanningTaskActivityEntry[];
 }
 export interface PlanningAgentTaskRecord {
   taskId: string;

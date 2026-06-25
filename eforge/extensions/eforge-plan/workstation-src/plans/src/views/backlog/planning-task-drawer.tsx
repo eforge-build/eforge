@@ -2,6 +2,7 @@ import * as React from 'react';
 import { getBridge } from '@/bridge';
 import { Drawer } from '@/components/ui/drawer';
 import type { JsonObject, PlanningAgentTaskListItem, PlanningAgentTaskResponse, PlanningTaskApplyError } from '@/types';
+import { PlanningTaskActivityTimeline } from './planning-task-activity';
 import { PlanningTaskCard } from './planning-task-card';
 import type { RedraftInput } from './use-planning-task-workflows';
 
@@ -68,6 +69,7 @@ export function PlanningTaskDrawer({ item, busy, titles, onCancel, onRemove, onR
         detailLoading={detailState === 'loading'}
         detailError={detailError}
       />
+      <PlanningTaskActivityTimeline activityLog={detailItem.task?.metadata?.activityLog} />
     </Drawer>
   );
 }

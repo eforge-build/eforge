@@ -261,7 +261,16 @@ export function countOutputSections(result: EforgePlanPlanningDraftResult): numb
 }
 
 type DeferredSourceProviderSpec = NonNullable<LegacyExtensionAgentTaskStartRequest['input']['sourceProvider']>;
-type DeferredSourceProviderHandler = (context: { cwd: string; input: Record<string, unknown>; signal: AbortSignal }) => Promise<unknown> | unknown;
+// --- eforge:region extension-agent-task-activity-log ---
+type DeferredSourceProviderContext = {
+  cwd: string;
+  input: Record<string, unknown>;
+  signal: AbortSignal;
+  progress?: (message: string) => Promise<void> | void;
+  activity?: (message: string) => Promise<void> | void;
+};
+type DeferredSourceProviderHandler = (context: DeferredSourceProviderContext) => Promise<unknown> | unknown;
+// --- eforge:endregion extension-agent-task-activity-log ---
 
 export interface ResolvedDeferredSourceInput {
   input: LegacyExtensionAgentTaskStartRequest['input'];
@@ -270,12 +279,18 @@ export interface ResolvedDeferredSourceInput {
   providerHooks?: BacklogCurationMapReduceProviderHooks;
 }
 
-export async function runDeferredSourceProvider(options: { cwd: string; owner: ExtensionAgentTaskOwner; provider: DeferredSourceProviderSpec; signal: AbortSignal }): Promise<{ sourceText: string; structuredSource?: unknown; providerHooks: BacklogCurationMapReduceProviderHooks }> {
+export async function runDeferredSourceProvider(options: { cwd: string; owner: ExtensionAgentTaskOwner; provider: DeferredSourceProviderSpec; signal: AbortSignal; progress?: (message: string) => Promise<void> | void; activity?: (message: string) => Promise<void> | void }): Promise<{ sourceText: string; structuredSource?: unknown; providerHooks: BacklogCurationMapReduceProviderHooks }> {
   throwIfSourceProviderAborted(options.signal);
   const modulePath = await resolveProviderModulePath(options.owner.extensionPath, options.provider.module);
   const moduleExports = await importDeferredSourceProviderModule(modulePath);
   const handler = resolveDeferredSourceProviderHandler(moduleExports, options.provider.exportName);
-  const result = await handler({ cwd: options.cwd, input: options.provider.input ?? {}, signal: options.signal });
+  const result = await handler({
+    cwd: options.cwd,
+    input: options.provider.input ?? {},
+    signal: options.signal,
+    ...(options.progress !== undefined && { progress: options.progress }),
+    ...(options.activity !== undefined && { activity: options.activity }),
+  });
   throwIfSourceProviderAborted(options.signal);
   if (!isRecord(result) || typeof result.sourceText !== 'string') {
     throw new AgentTaskServiceError(`Deferred source provider ${options.provider.module} did not return { sourceText: string }`, 500);

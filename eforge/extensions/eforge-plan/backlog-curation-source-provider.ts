@@ -5,6 +5,16 @@ import { validateBacklogCurationPlanningDraftResult } from './backlog-curation-a
 import { ItemAuditConcurrencySchema } from './backlog-curation-schemas.js';
 import type { BacklogCurationMapReduceSourceBundle } from '@eforge-build/client';
 
+type BacklogCurationSourceProviderActivityCallback = (message: string) => Promise<void> | void;
+
+type BacklogCurationSourceProviderContext = {
+  cwd: string;
+  signal: AbortSignal;
+  input?: { itemAuditConcurrency?: unknown; redraft?: unknown };
+  progress?: BacklogCurationSourceProviderActivityCallback;
+  activity?: BacklogCurationSourceProviderActivityCallback;
+};
+
 export {
   buildBacklogCurationItemAuditCacheKey,
   defaultBacklogCurationItemAuditPromptVersion,
@@ -21,12 +31,26 @@ export {
   validateBacklogCurationPlanningDraftResult,
 };
 
-export async function buildSource(context: { cwd: string; signal: AbortSignal; input?: { itemAuditConcurrency?: unknown; redraft?: unknown } }): Promise<{ sourceText: string; backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle }> {
+export async function buildSource(context: BacklogCurationSourceProviderContext): Promise<{ sourceText: string; backlogCurationMapReduce: BacklogCurationMapReduceSourceBundle }> {
   const itemAuditConcurrency = parseSourceProviderItemAuditConcurrency(context.input?.itemAuditConcurrency);
   const redraft = parseSourceProviderRedraft(context.input?.redraft);
-  const source = await buildBacklogCurationSource(context.cwd, redraft, { signal: context.signal, ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }) });
+  const source = await buildBacklogCurationSource(context.cwd, redraft, {
+    signal: context.signal,
+    ...(itemAuditConcurrency !== undefined && { itemAuditConcurrency }),
+    ...(context.progress !== undefined && { progress: context.progress }),
+    ...(context.activity !== undefined && { activity: context.activity }),
+  });
   await writeBacklogCurationSourcePreviewMetadata(context.cwd, source);
+  await emitSourceProviderActivity(context, 'Finished source metadata preview write');
   return { sourceText: source.sourceText, backlogCurationMapReduce: source.backlogCurationMapReduce };
+}
+
+async function emitSourceProviderActivity(context: BacklogCurationSourceProviderContext, message: string): Promise<void> {
+  try {
+    await (context.progress ?? context.activity)?.(message);
+  } catch {
+    // Source-provider milestones are best-effort and must not fail curation.
+  }
 }
 
 function parseSourceProviderItemAuditConcurrency(value: unknown): number | undefined {
